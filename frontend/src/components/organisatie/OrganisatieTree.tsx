@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, ChevronDown, Users, Plus } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Badge } from '@/components/common/Badge';
 import type { OrganisatieEenheidTreeNode } from '@/types';
