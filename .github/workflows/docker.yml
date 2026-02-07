@@ -80,7 +80,7 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "name=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
           else
-            echo "name=production" >> "$GITHUB_OUTPUT"
+            echo "name=main" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Deploy backend to ZAD
@@ -91,7 +91,7 @@ jobs:
           deployment-name: ${{ steps.names.outputs.name }}
           component: component-2
           image: ${{ env.IMAGE_PREFIX }}/backend:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
-          clone-from: ${{ github.event_name == 'pull_request' && 'production' || '' }}
+          clone-from: ${{ github.event_name == 'pull_request' && 'main' || '' }}
 
       - name: Deploy frontend to ZAD
         uses: RijksICTGilde/zad-actions/deploy@v2
@@ -101,7 +101,7 @@ jobs:
           deployment-name: ${{ steps.names.outputs.name }}
           component: component-1
           image: ${{ env.IMAGE_PREFIX }}/frontend:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
-          clone-from: ${{ github.event_name == 'pull_request' && 'production' || '' }}
+          clone-from: ${{ github.event_name == 'pull_request' && 'main' || '' }}
           comment-on-pr: ${{ github.event_name == 'pull_request' }}
           wait-for-ready: true
           health-endpoint: /
