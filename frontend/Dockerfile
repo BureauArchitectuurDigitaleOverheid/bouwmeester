@@ -25,6 +25,16 @@ CMD ["npm", "run", "dev", "--", "--host"]
 
 FROM nginx:alpine AS production
 
+# Make nginx work as non-root (ZAD runs containers without root)
+RUN mkdir -p /var/cache/nginx/client_temp \
+             /var/cache/nginx/proxy_temp \
+             /var/cache/nginx/fastcgi_temp \
+             /var/cache/nginx/uwsgi_temp \
+             /var/cache/nginx/scgi_temp \
+    && chmod -R 777 /var/cache/nginx \
+    && chmod -R 777 /var/run \
+    && chmod -R 777 /var/log/nginx
+
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # SPA fallback (no API proxy — frontend talks directly to backend via browser)
