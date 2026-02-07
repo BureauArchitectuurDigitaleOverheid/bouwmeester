@@ -1,0 +1,81 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: bouwmeester
+
+resources:
+  - ../../base
+
+patches:
+  # Backend: 2 replicas (same as base)
+  - target:
+      kind: Deployment
+      name: bouwmeester-backend
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: bouwmeester-backend
+      spec:
+        replicas: 2
+
+  # Frontend: 2 replicas (same as base)
+  - target:
+      kind: Deployment
+      name: bouwmeester-frontend
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: bouwmeester-frontend
+      spec:
+        replicas: 2
+
+  # Staging ingress host
+  - target:
+      kind: Ingress
+      name: bouwmeester-ingress
+    patch: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: bouwmeester-ingress
+      spec:
+        tls:
+          - hosts:
+              - bouwmeester-staging.rijkscloud.nl
+            secretName: bouwmeester-staging-tls
+        rules:
+          - host: bouwmeester-staging.rijkscloud.nl
+            http:
+              paths:
+                - path: /api
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: bouwmeester-backend
+                      port:
+                        number: 8000
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: bouwmeester-frontend
+                      port:
+                        number: 80
+
+  # Staging ConfigMap values
+  - target:
+      kind: ConfigMap
+      name: bouwmeester-config
+    patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: bouwmeester-config
+      data:
+        APP_NAME: "Bouwmeester (Staging)"
+        DEBUG: "false"
+        DATABASE_URL: "postgresql+asyncpg://bouwmeester:bouwmeester@postgres:5432/bouwmeester_staging"
+        OIDC_ISSUER: "https://login-staging.rijkscloud.nl/realms/bouwmeester"
+        OIDC_CLIENT_ID: "bouwmeester-staging"

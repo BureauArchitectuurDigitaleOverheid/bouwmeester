@@ -1,0 +1,124 @@
+import { CheckCircle2, Circle, Clock, AlertTriangle } from 'lucide-react';
+import { Badge } from '@/components/common/Badge';
+import { Card } from '@/components/common/Card';
+import { useUpdateTask } from '@/hooks/useTasks';
+import {
+  TaskStatus,
+  TaskPriority,
+  TASK_PRIORITY_LABELS,
+  TASK_PRIORITY_COLORS,
+  TASK_STATUS_LABELS,
+} from '@/types';
+import type { Task } from '@/types';
+
+interface TaskCardProps {
+  task: Task;
+  onEdit?: (task: Task) => void;
+  compact?: boolean;
+}
+
+const priorityIcons: Record<TaskPriority, React.ReactNode> = {
+  [TaskPriority.KRITIEK]: <AlertTriangle className="h-3.5 w-3.5" />,
+  [TaskPriority.HOOG]: <AlertTriangle className="h-3.5 w-3.5" />,
+  [TaskPriority.NORMAAL]: null,
+  [TaskPriority.LAAG]: null,
+};
+
+export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
+  const updateTask = useUpdateTask();
+  const isDone = task.status === TaskStatus.DONE;
+  const isOverdue =
+    task.due_date && new Date(task.due_date) < new Date() && !isDone;
+
+  const handleToggleDone = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    updateTask.mutate({
+      id: task.id,
+      data: {
+        status: isDone ? TaskStatus.OPEN : TaskStatus.DONE,
+      },
+    });
+  };
+
+  const handleCardClick = () => {
+    onEdit?.(task);
+  };
+
+  return (
+    <Card
+      hoverable={!!onEdit}
+      onClick={onEdit ? handleCardClick : undefined}
+    >
+      <div className="flex items-start gap-3">
+        {/* Checkbox */}
+        <button
+          onClick={handleToggleDone}
+          className={`mt-0.5 shrink-0 transition-colors ${
+            isDone
+              ? 'text-emerald-500 hover:text-emerald-600'
+              : 'text-text-secondary hover:text-primary-700'
+          }`}
+        >
+          {isDone ? (
+            <CheckCircle2 className="h-5 w-5" />
+          ) : (
+            <Circle className="h-5 w-5" />
+          )}
+        </button>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <p
+            className={`text-sm font-medium ${
+              isDone ? 'text-text-secondary line-through' : 'text-text'
+            }`}
+          >
+            {task.title}
+          </p>
+
+          {!compact && task.description && (
+            <p className="text-xs text-text-secondary mt-0.5 line-clamp-1">
+              {task.description}
+            </p>
+          )}
+
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <Badge
+              variant={TASK_PRIORITY_COLORS[task.priority] as 'blue'}
+              dot
+            >
+              {priorityIcons[task.priority]}
+              {TASK_PRIORITY_LABELS[task.priority]}
+            </Badge>
+
+            {!compact && (
+              <Badge variant={isDone ? 'green' : 'gray'}>
+                {TASK_STATUS_LABELS[task.status]}
+              </Badge>
+            )}
+
+            {task.due_date && (
+              <span
+                className={`inline-flex items-center gap-1 text-xs ${
+                  isOverdue ? 'text-red-600 font-medium' : 'text-text-secondary'
+                }`}
+              >
+                <Clock className="h-3 w-3" />
+                {new Date(task.due_date).toLocaleDateString('nl-NL', {
+                  day: 'numeric',
+                  month: 'short',
+                })}
+              </span>
+            )}
+
+            {task.assignee && (
+              <span className="text-xs text-text-secondary">
+                {task.assignee.naam}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}

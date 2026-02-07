@@ -1,0 +1,68 @@
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+export interface ImportResult {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
+export async function importPolitiekeInputs(file: File): Promise<ImportResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${BASE_URL}/api/import/politieke-inputs`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Import failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function importNodes(file: File): Promise<ImportResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${BASE_URL}/api/import/nodes`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Import failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function importEdges(file: File): Promise<ImportResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${BASE_URL}/api/import/edges`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Import failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export function exportNodesUrl(nodeType?: string): string {
+  const params = nodeType ? `?node_type=${encodeURIComponent(nodeType)}` : '';
+  return `${BASE_URL}/api/export/nodes${params}`;
+}
+
+export function exportEdgesUrl(): string {
+  return `${BASE_URL}/api/export/edges`;
+}
+
+export function exportCorpusUrl(): string {
+  return `${BASE_URL}/api/export/corpus`;
+}
