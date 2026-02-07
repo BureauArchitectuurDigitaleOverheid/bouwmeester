@@ -103,5 +103,3 @@ jobs:
           image: ${{ env.IMAGE_PREFIX }}/frontend:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
           clone-from: ${{ github.event_name == 'pull_request' && 'main' || '' }}
           comment-on-pr: ${{ github.event_name == 'pull_request' }}
-          wait-for-ready: true
-          health-endpoint: /
