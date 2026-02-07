@@ -28,9 +28,6 @@ jobs:
             context: ./frontend
             dockerfile: ./frontend/Dockerfile
             target: production
-          - image: app
-            context: .
-            dockerfile: ./Dockerfile
 
     steps:
       - uses: actions/checkout@v4
