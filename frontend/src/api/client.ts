@@ -1,4 +1,22 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+function getBaseUrl(): string {
+  // Check runtime config (injected via config.js)
+  const config = (window as Record<string, unknown>).__CONFIG__ as Record<string, string> | undefined;
+  if (config?.BACKEND_URL) return config.BACKEND_URL;
+
+  // Check build-time env
+  if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
+
+  // Auto-detect: if frontend runs on component-1-*, backend is on component-2-*
+  const host = window.location.hostname;
+  if (host.startsWith('component-1-')) {
+    return `${window.location.protocol}//component-2-${host.slice('component-1-'.length)}`;
+  }
+
+  // Default: same origin (works with nginx proxy or Vite dev proxy)
+  return '';
+}
+
+const BASE_URL = getBaseUrl();
 
 export class ApiError extends Error {
   constructor(
