@@ -27,8 +27,8 @@ FROM nginx:alpine AS production
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# SPA fallback + API proxy
-RUN cat > /etc/nginx/conf.d/default.conf <<'EOF'
+# SPA fallback + API proxy (backend URL configurable via BACKEND_URL env var)
+RUN cat > /etc/nginx/templates/default.conf.template <<'EOF'
 server {
     listen 80;
     server_name _;
@@ -37,7 +37,9 @@ server {
     index index.html;
 
     location /api/ {
-        proxy_pass http://backend:8000;
+        resolver 127.0.0.11 valid=10s;
+        set $backend "${BACKEND_URL}";
+        proxy_pass $backend;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -49,6 +51,8 @@ server {
     }
 }
 EOF
+
+ENV BACKEND_URL=http://backend:8000
 
 EXPOSE 80
 
