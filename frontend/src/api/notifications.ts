@@ -36,6 +36,6 @@ export async function markNotificationRead(id: string): Promise<Notification> {
   return apiPut<Notification>(`/api/notifications/${id}/read`);
 }
 
-export async function markAllNotificationsRead(personId: string): Promise<{ marked_read: number }> {
+export async function markAllNotificationsRead(_personId: string): Promise<{ marked_read: number }> {
   return apiPut<{ marked_read: number }>('/api/notifications/read-all', undefined);
 }

@@ -11,7 +11,6 @@ interface MultiSelectProps {
   value: Set<string>;
   onChange: (value: Set<string>) => void;
   options: MultiSelectOption[];
-  placeholder?: string;
   allLabel?: string;
 }
 
@@ -19,7 +18,6 @@ export function MultiSelect({
   value,
   onChange,
   options,
-  placeholder = 'Selecteer...',
   allLabel = 'Alles',
 }: MultiSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
