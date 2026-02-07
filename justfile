@@ -1,4 +1,4 @@
-# Bouwmeester (Bado-Tool) project commands
+# Bouwmeester project commands
 
 # Default: list all available recipes
 default:

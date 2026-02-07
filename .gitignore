@@ -15,7 +15,7 @@ env/
 .python-version
 
 # uv
-uv.lock
+# uv.lock is committed for reproducible Docker builds
 
 # Node
 node_modules/

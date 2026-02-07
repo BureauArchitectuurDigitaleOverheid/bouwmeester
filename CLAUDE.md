@@ -1,4 +1,4 @@
-# Bouwmeester (Bado-Tool)
+# Bouwmeester
 
 Policy corpus management tool for the Dutch government (BZK). Manages organisational structure, people, policy dossiers, tasks, and their relationships.
 
