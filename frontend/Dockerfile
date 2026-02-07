@@ -30,7 +30,7 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # SPA fallback (no API proxy — frontend talks directly to backend via browser)
 COPY <<'EOF' /etc/nginx/conf.d/default.conf
 server {
-    listen 8080;
+    listen 8000;
     server_name _;
 
     root /usr/share/nginx/html;
@@ -42,6 +42,6 @@ server {
 }
 EOF
 
-EXPOSE 8080
+EXPOSE 8000
 
 CMD ["nginx", "-g", "daemon off;"]
