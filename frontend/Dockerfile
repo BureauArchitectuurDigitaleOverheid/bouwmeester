@@ -27,20 +27,41 @@ FROM nginxinc/nginx-unprivileged:alpine AS production
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# SPA fallback (no API proxy — frontend talks directly to backend via browser)
-COPY <<'EOF' /etc/nginx/conf.d/default.conf
-server {
-    listen 8000;
-    server_name _;
+# Replace main nginx.conf to avoid port 80 and user directive issues
+COPY <<'NGINX' /etc/nginx/nginx.conf
+worker_processes auto;
+error_log /var/log/nginx/error.log notice;
+pid /tmp/nginx.pid;
 
-    root /usr/share/nginx/html;
-    index index.html;
+events {
+    worker_connections 1024;
+}
 
-    location / {
-        try_files $uri $uri/ /index.html;
+http {
+    client_body_temp_path /tmp/client_temp;
+    proxy_temp_path /tmp/proxy_temp;
+    fastcgi_temp_path /tmp/fastcgi_temp;
+    uwsgi_temp_path /tmp/uwsgi_temp;
+    scgi_temp_path /tmp/scgi_temp;
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+    keepalive_timeout 65;
+
+    server {
+        listen 8000;
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
     }
 }
-EOF
+NGINX
 
 EXPOSE 8000
 
