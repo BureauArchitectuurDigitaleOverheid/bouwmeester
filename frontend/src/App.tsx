@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { CurrentPersonProvider } from '@/contexts/CurrentPersonContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { InboxPage } from '@/pages/InboxPage';
 import { CorpusPage } from '@/pages/CorpusPage';
@@ -22,19 +23,21 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route path="/" element={<InboxPage />} />
-            <Route path="/corpus" element={<CorpusPage />} />
-            <Route path="/nodes/:id" element={<NodeDetailPage />} />
-            <Route path="/tasks" element={<TasksPage />} />
-            <Route path="/people" element={<PeoplePage />} />
-            <Route path="/organisatie" element={<OrganisatiePage />} />
-            <Route path="/search" element={<SearchPage />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <CurrentPersonProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<InboxPage />} />
+              <Route path="/corpus" element={<CorpusPage />} />
+              <Route path="/nodes/:id" element={<NodeDetailPage />} />
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="/people" element={<PeoplePage />} />
+              <Route path="/organisatie" element={<OrganisatiePage />} />
+              <Route path="/search" element={<SearchPage />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </CurrentPersonProvider>
     </QueryClientProvider>
   );
 }

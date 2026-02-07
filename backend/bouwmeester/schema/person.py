@@ -36,6 +36,14 @@ class PersonResponse(PersonBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class NodeStakeholderResponse(BaseModel):
+    id: UUID
+    person: PersonResponse
+    rol: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PersonTaskSummary(BaseModel):
     id: UUID
     title: str

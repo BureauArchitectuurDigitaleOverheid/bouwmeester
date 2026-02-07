@@ -41,6 +41,7 @@ class CorpusNodeResponse(CorpusNodeBase):
     id: UUID
     created_at: datetime
     updated_at: datetime | None = None
+    edge_count: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

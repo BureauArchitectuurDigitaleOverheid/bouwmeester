@@ -1,28 +1,38 @@
-import { useState } from 'react';
-import { clsx } from 'clsx';
+import { useState, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import { NodeCard } from './NodeCard';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Input } from '@/components/common/Input';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useNodes } from '@/hooks/useNodes';
 import { NodeType, NODE_TYPE_LABELS } from '@/types';
+import type { SelectOption } from '@/components/common/CreatableSelect';
 
-const allNodeTypes = [undefined, ...Object.values(NodeType)] as const;
+const nodeTypeOptions: SelectOption[] = [
+  { value: '', label: 'Alle types' },
+  ...Object.values(NodeType).map((t) => ({
+    value: t,
+    label: NODE_TYPE_LABELS[t],
+  })),
+];
 
 export function NodeList() {
-  const [selectedType, setSelectedType] = useState<NodeType | undefined>(undefined);
+  const [selectedType, setSelectedType] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
-  const { data: nodes, isLoading, error } = useNodes(selectedType);
+  const nodeType = selectedType || undefined;
+  const { data: nodes, isLoading, error } = useNodes(nodeType as NodeType | undefined);
 
-  const filteredNodes = nodes?.filter((node) => {
-    if (!searchQuery) return true;
+  const filteredNodes = useMemo(() => {
+    if (!nodes) return undefined;
+    if (!searchQuery) return nodes;
     const q = searchQuery.toLowerCase();
-    return (
-      node.title.toLowerCase().includes(q) ||
-      node.description?.toLowerCase().includes(q)
+    return nodes.filter(
+      (node) =>
+        node.title.toLowerCase().includes(q) ||
+        node.description?.toLowerCase().includes(q),
     );
-  });
+  }, [nodes, searchQuery]);
 
   if (error) {
     return (
@@ -35,33 +45,26 @@ export function NodeList() {
 
   return (
     <div className="space-y-4">
-      {/* Filter tabs */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-1">
-        {allNodeTypes.map((type) => (
-          <button
-            key={type ?? 'all'}
-            onClick={() => setSelectedType(type)}
-            className={clsx(
-              'px-3.5 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-150',
-              selectedType === type
-                ? 'bg-primary-900 text-white shadow-sm'
-                : 'text-text-secondary hover:bg-gray-100 hover:text-text',
-            )}
-          >
-            {type ? NODE_TYPE_LABELS[type] : 'Alles'}
-          </button>
-        ))}
-      </div>
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="w-44">
+          <CreatableSelect
+            value={selectedType}
+            onChange={setSelectedType}
+            options={nodeTypeOptions}
+            placeholder="Alle types"
+          />
+        </div>
 
-      {/* Search within list */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
-        <Input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Zoek in lijst..."
-          className="pl-9"
-        />
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Zoek in lijst..."
+            className="pl-9"
+          />
+        </div>
       </div>
 
       {/* Grid */}

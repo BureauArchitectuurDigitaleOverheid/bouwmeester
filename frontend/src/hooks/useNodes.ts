@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getNodes, getNode, createNode, updateNode, deleteNode, getNodeNeighbors } from '@/api/nodes';
+import { getNodes, getNode, createNode, updateNode, deleteNode, getNodeNeighbors, getNodeStakeholders } from '@/api/nodes';
 import type { CorpusNodeCreate, CorpusNodeUpdate, NodeType } from '@/types';
 
 export function useNodes(nodeType?: NodeType) {
@@ -55,6 +55,14 @@ export function useNodeNeighbors(id: string | undefined) {
   return useQuery({
     queryKey: ['nodes', id, 'neighbors'],
     queryFn: () => getNodeNeighbors(id!),
+    enabled: !!id,
+  });
+}
+
+export function useNodeStakeholders(id: string | undefined) {
+  return useQuery({
+    queryKey: ['nodes', id, 'stakeholders'],
+    queryFn: () => getNodeStakeholders(id!),
     enabled: !!id,
   });
 }

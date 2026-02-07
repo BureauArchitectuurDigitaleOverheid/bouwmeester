@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from './client';
-import type { CorpusNode, CorpusNodeCreate, CorpusNodeUpdate, GraphViewResponse, NodeType } from '@/types';
+import type { CorpusNode, CorpusNodeCreate, CorpusNodeUpdate, GraphViewResponse, NodeStakeholder, NodeType } from '@/types';
 
 export async function getNodes(nodeType?: NodeType): Promise<CorpusNode[]> {
   return apiGet<CorpusNode[]>('/api/nodes', {
@@ -29,4 +29,8 @@ export async function getNodeNeighbors(id: string): Promise<CorpusNode[]> {
 
 export async function getNodeGraph(id: string, depth?: number): Promise<GraphViewResponse> {
   return apiGet<GraphViewResponse>(`/api/nodes/${id}/graph`, { depth });
+}
+
+export async function getNodeStakeholders(id: string): Promise<NodeStakeholder[]> {
+  return apiGet<NodeStakeholder[]>(`/api/nodes/${id}/stakeholders`);
 }

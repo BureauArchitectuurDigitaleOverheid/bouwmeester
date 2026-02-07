@@ -71,14 +71,14 @@ export interface EdgeType {
 // Edges
 export interface Edge {
   id: string;
-  source_id: string;
-  target_id: string;
-  edge_type: string;
+  from_node_id: string;
+  to_node_id: string;
+  edge_type_id: string;
+  weight?: number;
   description?: string;
-  metadata?: Record<string, unknown>;
   created_at: string;
-  source_node?: CorpusNode;
-  target_node?: CorpusNode;
+  from_node?: CorpusNode;
+  to_node?: CorpusNode;
 }
 
 export interface EdgeCreate {
@@ -86,11 +86,6 @@ export interface EdgeCreate {
   to_node_id: string;
   edge_type_id: string;
   description?: string;
-}
-
-export interface EdgeResponse {
-  edges: Edge[];
-  total: number;
 }
 
 // Tasks
@@ -278,6 +273,12 @@ export interface PersonSummaryResponse {
   done_task_count: number;
   open_tasks: PersonTaskSummary[];
   stakeholder_nodes: PersonStakeholderNode[];
+}
+
+export interface NodeStakeholder {
+  id: string;
+  person: Person;
+  rol: string;
 }
 
 export const STAKEHOLDER_ROL_LABELS: Record<string, string> = {

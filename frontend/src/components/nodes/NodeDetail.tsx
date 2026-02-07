@@ -1,25 +1,25 @@
 import { useState } from 'react';
 import { clsx } from 'clsx';
-import { ArrowLeft, Pencil, Trash2, Calendar, Link as LinkIcon } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Calendar, Link as LinkIcon, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
+import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { EdgeList } from './EdgeList';
-import { TaskList } from '@/components/tasks/TaskList';
-import { TaskEditForm } from '@/components/tasks/TaskEditForm';
-import { useNode, useNodeNeighbors, useDeleteNode } from '@/hooks/useNodes';
+import { TaskView } from '@/components/tasks/TaskView';
+import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode } from '@/hooks/useNodes';
 import { useTasks } from '@/hooks/useTasks';
-import { NODE_TYPE_LABELS, NODE_TYPE_COLORS } from '@/types';
-import type { Task } from '@/types';
+import { NODE_TYPE_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
 
-type TabId = 'overview' | 'connections' | 'tasks' | 'activity';
+type TabId = 'overview' | 'connections' | 'stakeholders' | 'tasks' | 'activity';
 
 const tabs: { id: TabId; label: string }[] = [
   { id: 'overview', label: 'Overzicht' },
   { id: 'connections', label: 'Verbindingen' },
+  { id: 'stakeholders', label: 'Betrokkenen' },
   { id: 'tasks', label: 'Taken' },
   { id: 'activity', label: 'Activiteit' },
 ];
@@ -31,10 +31,10 @@ interface NodeDetailProps {
 export function NodeDetail({ nodeId }: NodeDetailProps) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabId>('overview');
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const { data: node, isLoading, error } = useNode(nodeId);
   const { data: neighbors } = useNodeNeighbors(nodeId);
   const { data: nodeTasks } = useTasks({ node_id: nodeId });
+  const { data: stakeholders } = useNodeStakeholders(nodeId);
   const deleteNode = useDeleteNode();
 
   if (isLoading) {
@@ -162,6 +162,37 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
               </Card>
             )}
 
+            {/* Stakeholders preview */}
+            {stakeholders && stakeholders.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-text mb-3">
+                  <Users className="h-4 w-4 inline mr-1.5 -mt-0.5" />
+                  Betrokkenen ({stakeholders.length})
+                </h3>
+                <div className="space-y-2">
+                  {stakeholders.slice(0, 5).map((s) => (
+                    <PersonCardExpandable
+                      key={s.id}
+                      person={s.person}
+                      extraBadge={
+                        <Badge variant="slate">
+                          {STAKEHOLDER_ROL_LABELS[s.rol] ?? s.rol}
+                        </Badge>
+                      }
+                    />
+                  ))}
+                  {stakeholders.length > 5 && (
+                    <button
+                      onClick={() => setActiveTab('stakeholders')}
+                      className="text-xs text-primary-700 hover:text-primary-900 transition-colors"
+                    >
+                      Bekijk alle {stakeholders.length} betrokkenen
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Connected nodes preview */}
             {neighbors && neighbors.length > 0 && (
               <Card>
@@ -201,16 +232,36 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
           <EdgeList nodeId={nodeId} />
         )}
 
-        {activeTab === 'tasks' && (
-          <TaskList tasks={nodeTasks ?? []} onEditTask={setEditingTask} />
+        {activeTab === 'stakeholders' && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-text">
+              Betrokkenen ({stakeholders?.length ?? 0})
+            </h3>
+            {stakeholders && stakeholders.length > 0 ? (
+              <div className="space-y-2">
+                {stakeholders.map((s) => (
+                  <PersonCardExpandable
+                    key={s.id}
+                    person={s.person}
+                    extraBadge={
+                      <Badge variant="slate">
+                        {STAKEHOLDER_ROL_LABELS[s.rol] ?? s.rol}
+                      </Badge>
+                    }
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="Geen betrokkenen"
+                description="Er zijn nog geen personen gekoppeld aan deze node."
+              />
+            )}
+          </div>
         )}
 
-        {editingTask && (
-          <TaskEditForm
-            open={!!editingTask}
-            onClose={() => setEditingTask(null)}
-            task={editingTask}
-          />
+        {activeTab === 'tasks' && (
+          <TaskView tasks={nodeTasks ?? []} defaultNodeId={nodeId} />
         )}
 
         {activeTab === 'activity' && (
