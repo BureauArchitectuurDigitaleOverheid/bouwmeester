@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bouwmeester-ingress
+  namespace: bouwmeester
+  labels:
+    app.kubernetes.io/part-of: bouwmeester
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - bouwmeester.rijkscloud.nl
+      secretName: bouwmeester-tls
+  rules:
+    - host: bouwmeester.rijkscloud.nl
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: bouwmeester-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: bouwmeester-frontend
+                port:
+                  number: 80

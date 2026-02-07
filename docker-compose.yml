@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: bouwmeester
+      POSTGRES_PASSWORD: bouwmeester
+      POSTGRES_DB: bouwmeester
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bouwmeester -d bouwmeester"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://bouwmeester:bouwmeester@db:5432/bouwmeester
+    volumes:
+      - ./backend:/app
+    command: uv run uvicorn bouwmeester.core.app:create_app --factory --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    ports:
+      - "5173:3000"
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  pgdata:
