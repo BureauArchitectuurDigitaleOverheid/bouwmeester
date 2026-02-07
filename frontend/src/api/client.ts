@@ -1,6 +1,6 @@
 function getBaseUrl(): string {
   // Check runtime config (injected via config.js)
-  const config = (window as Record<string, unknown>).__CONFIG__ as Record<string, string> | undefined;
+  const config = (window as unknown as Record<string, unknown>).__CONFIG__ as Record<string, string> | undefined;
   if (config?.BACKEND_URL) return config.BACKEND_URL;
 
   // Check build-time env
