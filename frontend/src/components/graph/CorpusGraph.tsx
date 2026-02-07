@@ -342,7 +342,6 @@ export function CorpusGraph() {
             value={enabledNodeTypes as Set<string>}
             onChange={handleNodeTypesChange}
             options={nodeTypeFilterOptions}
-            placeholder="Node types"
             allLabel="Alle types"
           />
         </div>
@@ -352,7 +351,6 @@ export function CorpusGraph() {
               value={enabledEdgeTypes}
               onChange={setEnabledEdgeTypes}
               options={edgeTypeFilterOptions}
-              placeholder="Relatie types"
               allLabel="Alle relaties"
             />
           </div>
