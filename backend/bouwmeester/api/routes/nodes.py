@@ -20,7 +20,7 @@ from bouwmeester.schema.graph import (
     GraphViewResponse,
     NeighborEntry,
 )
-from bouwmeester.schema.person import PersonResponse
+from bouwmeester.schema.person import NodeStakeholderResponse, PersonResponse
 from bouwmeester.schema.task import TaskResponse
 from bouwmeester.services.node_service import NodeService
 
@@ -64,6 +64,8 @@ async def get_node(
     node = await service.get(id)
     if node is None:
         raise HTTPException(status_code=404, detail="Node not found")
+    edges_from = [EdgeResponse.model_validate(e) for e in node.edges_from]
+    edges_to = [EdgeResponse.model_validate(e) for e in node.edges_to]
     return CorpusNodeWithEdges(
         id=node.id,
         title=node.title,
@@ -72,8 +74,9 @@ async def get_node(
         status=node.status,
         created_at=node.created_at,
         updated_at=node.updated_at,
-        edges_from=[EdgeResponse.model_validate(e) for e in node.edges_from],
-        edges_to=[EdgeResponse.model_validate(e) for e in node.edges_to],
+        edge_count=len(edges_from) + len(edges_to),
+        edges_from=edges_from,
+        edges_to=edges_to,
     )
 
 
@@ -154,11 +157,11 @@ async def get_node_tasks(
     return [TaskResponse.model_validate(t) for t in tasks]
 
 
-@router.get("/{id}/stakeholders", response_model=list[PersonResponse])
+@router.get("/{id}/stakeholders", response_model=list[NodeStakeholderResponse])
 async def get_node_stakeholders(
     id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> list[PersonResponse]:
+) -> list[NodeStakeholderResponse]:
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 
@@ -177,4 +180,11 @@ async def get_node_stakeholders(
     )
     result = await db.execute(stmt)
     stakeholders = result.scalars().all()
-    return [PersonResponse.model_validate(s.person) for s in stakeholders]
+    return [
+        NodeStakeholderResponse(
+            id=s.id,
+            person=PersonResponse.model_validate(s.person),
+            rol=s.rol,
+        )
+        for s in stakeholders
+    ]

@@ -13,15 +13,16 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import { GraphNode, type GraphNodeData } from './GraphNode';
-import { GraphFilters } from './GraphFilters';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { MultiSelect } from '@/components/common/MultiSelect';
+import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { useGraphView } from '@/hooks/useGraph';
 import { useCreateEdge } from '@/hooks/useEdges';
-import { NodeType } from '@/types';
+import { NodeType, NODE_TYPE_LABELS } from '@/types';
 import type { CorpusNode, Edge } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 
@@ -61,8 +62,8 @@ function computeLayout(
   }
 
   for (const edge of edges) {
-    const src = edge.source_id ?? (edge as Record<string, unknown>).from_node_id as string;
-    const tgt = edge.target_id ?? (edge as Record<string, unknown>).to_node_id as string;
+    const src = edge.from_node_id;
+    const tgt = edge.to_node_id;
     if (nodeIds.has(src) && nodeIds.has(tgt)) {
       inDegree.set(tgt, (inDegree.get(tgt) ?? 0) + 1);
       outEdges.get(src)?.push(tgt);
@@ -150,6 +151,13 @@ const NODE_TYPE_HEX_COLORS: Record<string, string> = {
 
 const DASHED_EDGE_TYPES = new Set(['conflicteert_met', 'conflicteert']);
 
+// Node type options for multi-select filter
+const nodeTypeFilterOptions: MultiSelectOption[] = Object.values(NodeType).map((t) => ({
+  value: t,
+  label: NODE_TYPE_LABELS[t],
+  color: NODE_TYPE_HEX_COLORS[t],
+}));
+
 // Custom node types for React Flow
 const nodeTypes = {
   corpusNode: GraphNode,
@@ -176,8 +184,7 @@ export function CorpusGraph() {
     if (!data?.edges) return [];
     const types = new Set<string>();
     for (const edge of data.edges) {
-      const edgeType = edge.edge_type ?? (edge as Record<string, unknown>).edge_type_id as string;
-      if (edgeType) types.add(edgeType);
+      if (edge.edge_type_id) types.add(edge.edge_type_id);
     }
     return [...types].sort();
   }, [data?.edges]);
@@ -200,13 +207,10 @@ export function CorpusGraph() {
 
     // Filter edges: both endpoints must be visible, and edge type must be enabled
     const filteredEdges = data.edges.filter((e) => {
-      const src = e.source_id ?? (e as Record<string, unknown>).from_node_id as string;
-      const tgt = e.target_id ?? (e as Record<string, unknown>).to_node_id as string;
-      const edgeType = e.edge_type ?? (e as Record<string, unknown>).edge_type_id as string;
       return (
-        filteredNodeIds.has(src) &&
-        filteredNodeIds.has(tgt) &&
-        enabledEdgeTypes.has(edgeType)
+        filteredNodeIds.has(e.from_node_id) &&
+        filteredNodeIds.has(e.to_node_id) &&
+        enabledEdgeTypes.has(e.edge_type_id)
       );
     });
 
@@ -230,16 +234,13 @@ export function CorpusGraph() {
 
     // Map to React Flow edges
     const rfEdges: RFEdge[] = filteredEdges.map((edge) => {
-      const src = edge.source_id ?? (edge as Record<string, unknown>).from_node_id as string;
-      const tgt = edge.target_id ?? (edge as Record<string, unknown>).to_node_id as string;
-      const edgeType = edge.edge_type ?? (edge as Record<string, unknown>).edge_type_id as string;
-      const isDashed = DASHED_EDGE_TYPES.has(edgeType);
+      const isDashed = DASHED_EDGE_TYPES.has(edge.edge_type_id);
 
       return {
         id: edge.id,
-        source: src,
-        target: tgt,
-        label: edgeType?.replace(/_/g, ' '),
+        source: edge.from_node_id,
+        target: edge.to_node_id,
+        label: edge.edge_type_id?.replace(/_/g, ' '),
         type: 'default',
         animated: isDashed,
         style: {
@@ -274,37 +275,15 @@ export function CorpusGraph() {
     setEdges(rfEdges);
   }, [rfNodes, rfEdges, setNodes, setEdges]);
 
-  // Toggle handlers
-  const handleToggleNodeType = useCallback((type: NodeType) => {
-    setEnabledNodeTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(type)) {
-        next.delete(type);
-      } else {
-        next.add(type);
-      }
-      return next;
-    });
-  }, []);
+  // Edge type options for multi-select (derived from data)
+  const edgeTypeFilterOptions: MultiSelectOption[] = useMemo(
+    () => availableEdgeTypes.map((t) => ({ value: t, label: t.replace(/_/g, ' ') })),
+    [availableEdgeTypes],
+  );
 
-  const handleToggleEdgeType = useCallback((type: string) => {
-    setEnabledEdgeTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(type)) {
-        next.delete(type);
-      } else {
-        next.add(type);
-      }
-      return next;
-    });
-  }, []);
-
-  const handleSelectAllNodeTypes = useCallback(() => {
-    setEnabledNodeTypes(new Set(Object.values(NodeType)));
-  }, []);
-
-  const handleDeselectAllNodeTypes = useCallback(() => {
-    setEnabledNodeTypes(new Set());
+  // Wrap Set onChange for node types to cast correctly
+  const handleNodeTypesChange = useCallback((next: Set<string>) => {
+    setEnabledNodeTypes(next as Set<NodeType>);
   }, []);
 
   // Handle connection drag completion
@@ -355,22 +334,33 @@ export function CorpusGraph() {
   }
 
   return (
-    <div className="flex gap-4" style={{ height: 'calc(100vh - 200px)', minHeight: '500px' }}>
-      {/* Filter sidebar */}
-      <div className="w-56 shrink-0 overflow-y-auto">
-        <GraphFilters
-          enabledNodeTypes={enabledNodeTypes}
-          onToggleNodeType={handleToggleNodeType}
-          enabledEdgeTypes={enabledEdgeTypes}
-          availableEdgeTypes={availableEdgeTypes}
-          onToggleEdgeType={handleToggleEdgeType}
-          onSelectAllNodeTypes={handleSelectAllNodeTypes}
-          onDeselectAllNodeTypes={handleDeselectAllNodeTypes}
-        />
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="w-52">
+          <MultiSelect
+            value={enabledNodeTypes as Set<string>}
+            onChange={handleNodeTypesChange}
+            options={nodeTypeFilterOptions}
+            placeholder="Node types"
+            allLabel="Alle types"
+          />
+        </div>
+        {edgeTypeFilterOptions.length > 0 && (
+          <div className="w-52">
+            <MultiSelect
+              value={enabledEdgeTypes}
+              onChange={setEnabledEdgeTypes}
+              options={edgeTypeFilterOptions}
+              placeholder="Relatie types"
+              allLabel="Alle relaties"
+            />
+          </div>
+        )}
       </div>
 
       {/* Graph canvas */}
-      <div className="flex-1 bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden" style={{ height: 'calc(100vh - 260px)', minHeight: '500px' }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}

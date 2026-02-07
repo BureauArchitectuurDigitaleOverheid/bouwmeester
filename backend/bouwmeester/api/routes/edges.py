@@ -13,24 +13,39 @@ from bouwmeester.schema.edge import EdgeCreate, EdgeResponse, EdgeUpdate, EdgeWi
 router = APIRouter(prefix="/edges", tags=["edges"])
 
 
-@router.get("", response_model=list[EdgeResponse])
+@router.get("", response_model=list[EdgeWithNodes])
 async def list_edges(
     from_node_id: UUID | None = None,
     to_node_id: UUID | None = None,
+    node_id: UUID | None = None,
     edge_type_id: str | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-) -> list[EdgeResponse]:
+) -> list[EdgeWithNodes]:
     repo = EdgeRepository(db)
     edges = await repo.get_all(
         skip=skip,
         limit=limit,
         from_node_id=from_node_id,
         to_node_id=to_node_id,
+        node_id=node_id,
         edge_type_id=edge_type_id,
     )
-    return [EdgeResponse.model_validate(e) for e in edges]
+    return [
+        EdgeWithNodes(
+            id=e.id,
+            from_node_id=e.from_node_id,
+            to_node_id=e.to_node_id,
+            edge_type_id=e.edge_type_id,
+            weight=e.weight,
+            description=e.description,
+            created_at=e.created_at,
+            from_node=CorpusNodeResponse.model_validate(e.from_node),
+            to_node=CorpusNodeResponse.model_validate(e.to_node),
+        )
+        for e in edges
+    ]
 
 
 @router.post("", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)

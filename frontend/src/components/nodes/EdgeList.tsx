@@ -17,14 +17,12 @@ interface EdgeListProps {
 export function EdgeList({ nodeId }: EdgeListProps) {
   const navigate = useNavigate();
   const [showAddForm, setShowAddForm] = useState(false);
-  const { data: edgeResponse, isLoading } = useEdges({ node_id: nodeId });
+  const { data: edges = [], isLoading } = useEdges({ node_id: nodeId });
   const deleteEdge = useDeleteEdge();
 
   if (isLoading) {
     return <LoadingSpinner className="py-8" />;
   }
-
-  const edges = edgeResponse?.edges ?? [];
 
   return (
     <div className="space-y-4">
@@ -46,15 +44,15 @@ export function EdgeList({ nodeId }: EdgeListProps) {
         <div className="space-y-2">
           {edges.map((edge) => {
             const connectedNode =
-              edge.source_id === nodeId ? edge.target_node : edge.source_node;
-            const direction = edge.source_id === nodeId ? 'outgoing' : 'incoming';
+              edge.from_node_id === nodeId ? edge.to_node : edge.from_node;
+            const direction = edge.from_node_id === nodeId ? 'outgoing' : 'incoming';
 
             return (
               <Card key={edge.id} padding={false}>
                 <div className="flex items-center gap-3 px-4 py-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="slate">{edge.edge_type}</Badge>
+                      <Badge variant="slate">{edge.edge_type_id.replace(/_/g, ' ')}</Badge>
                       <ArrowRight
                         className={`h-3.5 w-3.5 text-text-secondary ${
                           direction === 'incoming' ? 'rotate-180' : ''
