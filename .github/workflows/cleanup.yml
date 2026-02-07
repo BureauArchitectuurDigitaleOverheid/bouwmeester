@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Cleanup ZAD deployment
-        uses: RijksICTGilde/zad-actions/cleanup@v1
+        uses: RijksICTGilde/zad-actions/cleanup@v2
         with:
           api-key: ${{ secrets.ZAD_API_KEY }}
           project-id: bouwm-75c
@@ -25,7 +25,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cleanup backend container
-        uses: RijksICTGilde/zad-actions/cleanup@v1
+        uses: RijksICTGilde/zad-actions/cleanup@v2
         with:
           api-key: ${{ secrets.ZAD_API_KEY }}
           project-id: bouwm-75c
