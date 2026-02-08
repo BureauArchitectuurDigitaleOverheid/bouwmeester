@@ -1,5 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getNodes, getNode, createNode, updateNode, deleteNode, getNodeNeighbors, getNodeStakeholders, getNodeMotieImport } from '@/api/nodes';
+import {
+  getNodes, getNode, createNode, updateNode, deleteNode,
+  getNodeNeighbors, getNodeStakeholders, addNodeStakeholder,
+  updateNodeStakeholder, removeNodeStakeholder, getNodeMotieImport,
+} from '@/api/nodes';
 import type { CorpusNodeCreate, CorpusNodeUpdate, NodeType } from '@/types';
 
 export function useNodes(nodeType?: NodeType) {
@@ -64,6 +68,42 @@ export function useNodeStakeholders(id: string | undefined) {
     queryKey: ['nodes', id, 'stakeholders'],
     queryFn: () => getNodeStakeholders(id!),
     enabled: !!id,
+  });
+}
+
+export function useAddNodeStakeholder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ nodeId, data }: { nodeId: string; data: { person_id: string; rol: string } }) =>
+      addNodeStakeholder(nodeId, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['nodes', variables.nodeId, 'stakeholders'] });
+    },
+  });
+}
+
+export function useUpdateNodeStakeholder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ nodeId, stakeholderId, data }: { nodeId: string; stakeholderId: string; data: { rol: string } }) =>
+      updateNodeStakeholder(nodeId, stakeholderId, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['nodes', variables.nodeId, 'stakeholders'] });
+    },
+  });
+}
+
+export function useRemoveNodeStakeholder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ nodeId, stakeholderId }: { nodeId: string; stakeholderId: string }) =>
+      removeNodeStakeholder(nodeId, stakeholderId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['nodes', variables.nodeId, 'stakeholders'] });
+    },
   });
 }
 

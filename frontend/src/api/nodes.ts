@@ -35,6 +35,28 @@ export async function getNodeStakeholders(id: string): Promise<NodeStakeholder[]
   return apiGet<NodeStakeholder[]>(`/api/nodes/${id}/stakeholders`);
 }
 
+export async function addNodeStakeholder(
+  nodeId: string,
+  data: { person_id: string; rol: string },
+): Promise<NodeStakeholder> {
+  return apiPost<NodeStakeholder>(`/api/nodes/${nodeId}/stakeholders`, data);
+}
+
+export async function updateNodeStakeholder(
+  nodeId: string,
+  stakeholderId: string,
+  data: { rol: string },
+): Promise<NodeStakeholder> {
+  return apiPut<NodeStakeholder>(`/api/nodes/${nodeId}/stakeholders/${stakeholderId}`, data);
+}
+
+export async function removeNodeStakeholder(
+  nodeId: string,
+  stakeholderId: string,
+): Promise<void> {
+  return apiDelete(`/api/nodes/${nodeId}/stakeholders/${stakeholderId}`);
+}
+
 export interface NodeMotieImport {
   indieners: string[];
   document_url: string | null;
