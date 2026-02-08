@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
+import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
 import { TaskView } from '@/components/tasks/TaskView';
@@ -64,6 +65,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const { data: allPeople } = usePeople();
   const [newStakeholderPersonId, setNewStakeholderPersonId] = useState('');
   const [newStakeholderRol, setNewStakeholderRol] = useState('betrokken');
+  const [personCreateName, setPersonCreateName] = useState('');
+  const [showPersonCreate, setShowPersonCreate] = useState(false);
 
   // Tag search: fetch all tags and filter client-side for instant results
   const { data: allTags } = useTags();
@@ -467,6 +470,12 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       description: p.functie || undefined,
                     }))}
                     placeholder="Selecteer persoon..."
+                    onCreate={async (text) => {
+                      setPersonCreateName(text);
+                      setShowPersonCreate(true);
+                      return null;
+                    }}
+                    createLabel="Nieuwe persoon aanmaken"
                   />
                 </div>
                 <div className="w-48">
@@ -568,6 +577,15 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
           node={node}
         />
       )}
+
+      <PersonQuickCreateForm
+        open={showPersonCreate}
+        onClose={() => setShowPersonCreate(false)}
+        initialName={personCreateName}
+        onCreated={(personId) => {
+          setNewStakeholderPersonId(personId);
+        }}
+      />
     </div>
   );
 }
