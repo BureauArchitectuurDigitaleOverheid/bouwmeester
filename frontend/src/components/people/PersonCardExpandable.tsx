@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Mail, Briefcase, Shield, Pencil, CheckCircle2, Circle, FileText, Loader2, Bot, MessageSquare, Terminal } from 'lucide-react';
+import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, Bot, MessageSquare, Terminal } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { usePersonSummary } from '@/hooks/usePeople';
-import { ROL_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
+import { FUNCTIE_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import type { Person } from '@/types';
 
@@ -79,10 +79,10 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             )}
             {isManager && (
               <Badge
-                variant={person.rol === 'minister' || person.rol === 'staatssecretaris' ? 'purple' : 'blue'}
+                variant={person.functie === 'minister' || person.functie === 'staatssecretaris' ? 'purple' : 'blue'}
                 className="text-[10px] px-1.5 py-0 shrink-0"
               >
-                {person.rol === 'minister' || person.rol === 'staatssecretaris' ? 'Bewindspersoon' : 'Manager'}
+                {person.functie === 'minister' || person.functie === 'staatssecretaris' ? 'Bewindspersoon' : 'Manager'}
               </Badge>
             )}
             {extraBadge && <div className="shrink-0 ml-auto">{extraBadge}</div>}
@@ -101,13 +101,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             {person.functie && (
               <span className="flex items-center gap-1">
                 <Briefcase className="h-3 w-3" />
-                {person.functie}
-              </span>
-            )}
-            {person.rol && (
-              <span className="flex items-center gap-1">
-                <Shield className="h-3 w-3" />
-                {ROL_LABELS[person.rol] || person.rol}
+                {FUNCTIE_LABELS[person.functie] || person.functie}
               </span>
             )}
           </div>

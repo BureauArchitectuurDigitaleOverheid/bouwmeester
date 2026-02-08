@@ -9,9 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class PersonBase(BaseModel):
     naam: str
     email: str | None = None
-    afdeling: str | None = None
     functie: str | None = None
-    rol: str | None = None
     organisatie_eenheid_id: UUID | None = None
     is_agent: bool = False
     api_key: str | None = None
@@ -24,9 +22,7 @@ class PersonCreate(PersonBase):
 class PersonUpdate(BaseModel):
     naam: str | None = None
     email: str | None = None
-    afdeling: str | None = None
     functie: str | None = None
-    rol: str | None = None
     organisatie_eenheid_id: UUID | None = None
     is_agent: bool | None = None
     api_key: str | None = None

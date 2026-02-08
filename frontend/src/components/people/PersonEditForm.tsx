@@ -29,7 +29,7 @@ function generateMockApiKey(): string {
   ).join('-');
 }
 
-const DEFAULT_ROL_OPTIONS: SelectOption[] = [
+const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = [
   { value: 'minister', label: 'Minister' },
   { value: 'staatssecretaris', label: 'Staatssecretaris' },
   { value: 'secretaris_generaal', label: 'Secretaris-Generaal' },
@@ -70,11 +70,9 @@ export function PersonEditForm({
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
   const [organisatieEenheidId, setOrganisatieEenheidId] = useState('');
-  const [afdeling, setAfdeling] = useState('');
   const [functie, setFunctie] = useState('');
-  const [rol, setRol] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [rolOptions, setRolOptions] = useState<SelectOption[]>(DEFAULT_ROL_OPTIONS);
+  const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
 
   const { data: orgEenheden = [] } = useOrganisatieFlat();
   const createOrgMutation = useCreateOrganisatieEenheid();
@@ -92,13 +90,11 @@ export function PersonEditForm({
         setNaam(editData.naam);
         setEmail(editData.email || '');
         setOrganisatieEenheidId(editData.organisatie_eenheid_id || '');
-        setAfdeling(editData.afdeling || '');
         setFunctie(editData.functie || '');
-        setRol(editData.rol || '');
         setApiKey(editData.api_key || '');
-        // Ensure the existing rol value is in options
-        if (editData.rol && !rolOptions.some((o) => o.value === editData.rol)) {
-          setRolOptions((prev) => [...prev, { value: editData.rol!, label: editData.rol! }]);
+        // Ensure the existing functie value is in options
+        if (editData.functie && !functieOptions.some((o) => o.value === editData.functie)) {
+          setFunctieOptions((prev) => [...prev, { value: editData.functie!, label: editData.functie! }]);
         }
       } else {
         // For new agents, pick next available Karakter name
@@ -111,9 +107,7 @@ export function PersonEditForm({
         }
         setEmail('');
         setOrganisatieEenheidId(defaultOrgEenheidId || '');
-        setAfdeling('');
         setFunctie('');
-        setRol('');
         setApiKey(defaultIsAgent ? generateMockApiKey() : '');
       }
     }
@@ -130,9 +124,7 @@ export function PersonEditForm({
     onSubmit({
       naam: naam.trim(),
       email: email.trim() || undefined,
-      afdeling: afdeling.trim() || undefined,
-      functie: functie.trim() || undefined,
-      rol: rol || undefined,
+      functie: functie || undefined,
       organisatie_eenheid_id: organisatieEenheidId || null,
       is_agent: isAgent,
       api_key: isAgent ? apiKey : undefined,
@@ -151,10 +143,10 @@ export function PersonEditForm({
     }
   };
 
-  const handleCreateRol = async (text: string): Promise<string | null> => {
+  const handleCreateFunctie = async (text: string): Promise<string | null> => {
     const value = text.toLowerCase().replace(/\s+/g, '_');
-    setRolOptions((prev) => [...prev, { value, label: text }]);
-    setRol(value);
+    setFunctieOptions((prev) => [...prev, { value, label: text }]);
+    setFunctie(value);
     return value;
   };
 
@@ -240,25 +232,13 @@ export function PersonEditForm({
           createLabel="Nieuwe eenheid aanmaken"
         />
         <CreatableSelect
-          label="Rol"
-          value={rol}
-          onChange={setRol}
-          options={rolOptions}
-          placeholder="Selecteer of maak rol..."
-          onCreate={handleCreateRol}
-          createLabel="Nieuwe rol aanmaken"
-        />
-        <Input
-          label="Afdeling"
-          value={afdeling}
-          onChange={(e) => setAfdeling(e.target.value)}
-          placeholder="Bijv. Stadsontwikkeling"
-        />
-        <Input
           label="Functie"
           value={functie}
-          onChange={(e) => setFunctie(e.target.value)}
-          placeholder="Bijv. Beleidsmedewerker"
+          onChange={setFunctie}
+          options={functieOptions}
+          placeholder="Selecteer of maak functie..."
+          onCreate={handleCreateFunctie}
+          createLabel="Nieuwe functie aanmaken"
         />
       </form>
     </Modal>

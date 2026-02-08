@@ -76,7 +76,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
   const personOptions: SelectOption[] = (allPeople ?? []).map((p) => ({
     value: p.id,
     label: p.naam,
-    description: p.functie ?? p.afdeling ?? undefined,
+    description: p.functie ?? undefined,
   }));
 
   const handleCreateNode = useCallback(

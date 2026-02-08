@@ -226,7 +226,7 @@ export const ORGANISATIE_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'team', label: 'Team' },
 ];
 
-export const ROL_LABELS: Record<string, string> = {
+export const FUNCTIE_LABELS: Record<string, string> = {
   minister: 'Minister',
   staatssecretaris: 'Staatssecretaris',
   secretaris_generaal: 'Secretaris-Generaal',
@@ -250,9 +250,7 @@ export interface Person {
   id: string;
   naam: string;
   email?: string;
-  afdeling?: string;
   functie?: string;
-  rol?: string;
   organisatie_eenheid_id?: string | null;
   is_agent: boolean;
   api_key?: string | null;
@@ -263,9 +261,7 @@ export interface Person {
 export interface PersonCreate {
   naam: string;
   email?: string;
-  afdeling?: string;
   functie?: string;
-  rol?: string;
   organisatie_eenheid_id?: string | null;
   is_agent?: boolean;
   api_key?: string;

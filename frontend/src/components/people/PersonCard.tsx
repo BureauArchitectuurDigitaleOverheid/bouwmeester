@@ -1,6 +1,6 @@
-import { User, Mail, Building, Briefcase, Shield } from 'lucide-react';
+import { User, Mail, Briefcase } from 'lucide-react';
 import { Card } from '@/components/common/Card';
-import { ROL_LABELS } from '@/types';
+import { FUNCTIE_LABELS } from '@/types';
 import type { Person } from '@/types';
 
 interface PersonCardProps {
@@ -43,22 +43,10 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
                 <span className="truncate">{person.email}</span>
               </div>
             )}
-            {person.afdeling && (
-              <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-                <Building className="h-3 w-3 shrink-0" />
-                <span className="truncate">{person.afdeling}</span>
-              </div>
-            )}
             {person.functie && (
               <div className="flex items-center gap-1.5 text-xs text-text-secondary">
                 <Briefcase className="h-3 w-3 shrink-0" />
-                <span className="truncate">{person.functie}</span>
-              </div>
-            )}
-            {person.rol && (
-              <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-                <Shield className="h-3 w-3 shrink-0" />
-                <span className="truncate">{ROL_LABELS[person.rol] || person.rol}</span>
+                <span className="truncate">{FUNCTIE_LABELS[person.functie] || person.functie}</span>
               </div>
             )}
           </div>
