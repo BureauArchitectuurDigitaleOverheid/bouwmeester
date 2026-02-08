@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.database import get_db
 from bouwmeester.models.node_stakeholder import NodeStakeholder
+from bouwmeester.models.person import Person
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.person import (
@@ -39,6 +40,16 @@ async def create_person(
     data: PersonCreate,
     db: AsyncSession = Depends(get_db),
 ) -> PersonResponse:
+    # Agent names must be unique
+    if data.is_agent:
+        existing = await db.execute(
+            select(Person).where(Person.naam == data.naam, Person.is_agent == True)  # noqa: E712
+        )
+        if existing.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Er bestaat al een agent met de naam '{data.naam}'",
+            )
     repo = PersonRepository(db)
     person = await repo.create(data)
     return PersonResponse.model_validate(person)
