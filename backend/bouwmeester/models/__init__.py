@@ -13,6 +13,7 @@ from bouwmeester.models.edge_type import EdgeType  # noqa: F401
 from bouwmeester.models.effect import Effect  # noqa: F401
 from bouwmeester.models.instrument import Instrument  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
+from bouwmeester.models.mention import Mention  # noqa: F401
 from bouwmeester.models.motie_import import MotieImport, SuggestedEdge  # noqa: F401
 from bouwmeester.models.node_stakeholder import NodeStakeholder  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
@@ -37,6 +38,7 @@ __all__ = [
     "Effect",
     "Instrument",
     "Maatregel",
+    "Mention",
     "MotieImport",
     "NodeStakeholder",
     "NodeTag",

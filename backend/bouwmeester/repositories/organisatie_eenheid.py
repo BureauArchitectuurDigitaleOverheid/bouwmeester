@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import func, literal_column, select, union_all
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 

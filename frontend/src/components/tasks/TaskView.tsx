@@ -1,13 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Plus, LayoutList, Columns3 } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { TaskList } from './TaskList';
 import { TaskBoard } from './TaskBoard';
 import { TaskCreateForm } from './TaskCreateForm';
-import { TaskEditForm } from './TaskEditForm';
 import { usePeople } from '@/hooks/usePeople';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import {
   TaskStatus,
   TaskPriority,
@@ -51,8 +51,8 @@ interface TaskViewProps {
 
 export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(getStoredView);
+  const { openTaskDetail } = useTaskDetail();
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [priorityFilter, setPriorityFilter] = useState<string>('');
   const [personFilter, setPersonFilter] = useState<string>('');
@@ -79,6 +79,10 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
     setViewMode(mode);
     localStorage.setItem(VIEW_STORAGE_KEY, mode);
   };
+
+  const handleTaskClick = useCallback((task: Task) => {
+    openTaskDetail(task.id);
+  }, [openTaskDetail]);
 
   const filteredTasks = useMemo(() => {
     const effectivePersonId = personFilter === MY_TASKS_SENTINEL
@@ -165,9 +169,9 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
 
       {/* Content */}
       {viewMode === 'list' ? (
-        <TaskList tasks={filteredTasks} onEditTask={setEditingTask} />
+        <TaskList tasks={filteredTasks} onEditTask={handleTaskClick} />
       ) : (
-        <TaskBoard tasks={filteredTasks} onEditTask={setEditingTask} />
+        <TaskBoard tasks={filteredTasks} onEditTask={handleTaskClick} />
       )}
 
       {/* Create form modal */}
@@ -176,15 +180,6 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
         onClose={() => setShowCreateForm(false)}
         nodeId={defaultNodeId}
       />
-
-      {/* Edit form modal */}
-      {editingTask && (
-        <TaskEditForm
-          open={!!editingTask}
-          onClose={() => setEditingTask(null)}
-          task={editingTask}
-        />
-      )}
     </div>
   );
 }

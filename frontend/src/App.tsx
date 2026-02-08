@@ -2,6 +2,9 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CurrentPersonProvider } from '@/contexts/CurrentPersonContext';
 import { VocabularyProvider } from '@/contexts/VocabularyContext';
+import { TaskDetailProvider } from '@/contexts/TaskDetailContext';
+import { NodeDetailProvider } from '@/contexts/NodeDetailContext';
+import { DetailModals } from '@/components/common/DetailModals';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { InboxPage } from '@/pages/InboxPage';
 import { CorpusPage } from '@/pages/CorpusPage';
@@ -28,18 +31,23 @@ export default function App() {
       <CurrentPersonProvider>
         <VocabularyProvider>
         <BrowserRouter>
-          <Routes>
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<InboxPage />} />
-              <Route path="/corpus" element={<CorpusPage />} />
-              <Route path="/nodes/:id" element={<NodeDetailPage />} />
-              <Route path="/tasks" element={<TasksPage />} />
-              <Route path="/people" element={<PeoplePage />} />
-              <Route path="/organisatie" element={<OrganisatiePage />} />
-              <Route path="/search" element={<SearchPage />} />
-              <Route path="/moties" element={<MotiesPage />} />
-            </Route>
-          </Routes>
+          <TaskDetailProvider>
+          <NodeDetailProvider>
+            <Routes>
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<InboxPage />} />
+                <Route path="/corpus" element={<CorpusPage />} />
+                <Route path="/nodes/:id" element={<NodeDetailPage />} />
+                <Route path="/tasks" element={<TasksPage />} />
+                <Route path="/people" element={<PeoplePage />} />
+                <Route path="/organisatie" element={<OrganisatiePage />} />
+                <Route path="/search" element={<SearchPage />} />
+                <Route path="/moties" element={<MotiesPage />} />
+              </Route>
+            </Routes>
+            <DetailModals />
+          </NodeDetailProvider>
+          </TaskDetailProvider>
         </BrowserRouter>
         </VocabularyProvider>
       </CurrentPersonProvider>

@@ -13,6 +13,7 @@ from bouwmeester.schema.notification import (
     SendMessageRequest,
     UnreadCountResponse,
 )
+from bouwmeester.services.mention_service import MentionService
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -90,5 +91,18 @@ async def send_message(
         sender_id=body.sender_id,
     )
     notification = await service.repo.create(data)
+
+    # Sync mentions from message body
+    if body.message:
+        mention_svc = MentionService(db)
+        new_mentions = await mention_svc.sync_mentions(
+            "notification", notification.id, body.message, body.sender_id
+        )
+        for m in new_mentions:
+            if m.mention_type == "person" and m.target_id != body.person_id:
+                await service.notify_mention(
+                    m.target_id, "notification", title, sender_id=body.sender_id,
+                )
+
     await db.commit()
     return NotificationResponse.model_validate(notification)

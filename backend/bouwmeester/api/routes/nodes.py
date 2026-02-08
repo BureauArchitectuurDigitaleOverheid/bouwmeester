@@ -23,7 +23,9 @@ from bouwmeester.schema.graph import (
 from bouwmeester.schema.person import NodeStakeholderResponse, PersonResponse
 from bouwmeester.schema.tag import NodeTagCreate, NodeTagResponse, TagCreate
 from bouwmeester.schema.task import TaskResponse
+from bouwmeester.services.mention_service import MentionService
 from bouwmeester.services.node_service import NodeService
+from bouwmeester.services.notification_service import NotificationService
 
 # Resolve forward reference to EdgeResponse in CorpusNodeWithEdges.
 CorpusNodeWithEdges.model_rebuild()
@@ -53,6 +55,20 @@ async def create_node(
 ) -> CorpusNodeResponse:
     service = NodeService(db)
     node = await service.create(data)
+
+    # Sync mentions from description
+    if data.description:
+        mention_svc = MentionService(db)
+        new_mentions = await mention_svc.sync_mentions(
+            "node", node.id, data.description, None,
+        )
+        notif_svc = NotificationService(db)
+        for m in new_mentions:
+            if m.mention_type == "person":
+                await notif_svc.notify_mention(
+                    m.target_id, "node", node.title, source_node_id=node.id,
+                )
+
     return CorpusNodeResponse.model_validate(node)
 
 
@@ -91,6 +107,20 @@ async def update_node(
     node = await service.update(id, data)
     if node is None:
         raise HTTPException(status_code=404, detail="Node not found")
+
+    # Sync mentions from description
+    if data.description is not None:
+        mention_svc = MentionService(db)
+        new_mentions = await mention_svc.sync_mentions(
+            "node", node.id, data.description, None,
+        )
+        notif_svc = NotificationService(db)
+        for m in new_mentions:
+            if m.mention_type == "person":
+                await notif_svc.notify_mention(
+                    m.target_id, "node", node.title, source_node_id=node.id,
+                )
+
     return CorpusNodeResponse.model_validate(node)
 
 

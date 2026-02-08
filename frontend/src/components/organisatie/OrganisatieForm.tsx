@@ -3,6 +3,7 @@ import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
+import { RichTextEditor } from '@/components/common/RichTextEditor';
 import type {
   OrganisatieEenheid,
   OrganisatieEenheidCreate,
@@ -172,12 +173,11 @@ export function OrganisatieForm({
 
         <div className="space-y-1.5">
           <label className="block text-sm font-medium text-text">Beschrijving</label>
-          <textarea
+          <RichTextEditor
             value={beschrijving}
-            onChange={(e) => setBeschrijving(e.target.value)}
-            placeholder="Optionele beschrijving van deze organisatie-eenheid..."
+            onChange={setBeschrijving}
+            placeholder="Optionele beschrijving... Gebruik @ voor personen, # voor nodes/taken"
             rows={3}
-            className="block w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm text-text placeholder:text-text-secondary/50 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 hover:border-border-hover"
           />
         </div>
       </form>

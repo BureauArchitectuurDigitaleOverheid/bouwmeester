@@ -60,3 +60,13 @@ class PersonRepository:
         stmt = select(Person).where(Person.email == email)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def search(self, query: str, limit: int = 10) -> list[Person]:
+        stmt = (
+            select(Person)
+            .where(Person.naam.ilike(f"%{query}%"))
+            .order_by(Person.naam)
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

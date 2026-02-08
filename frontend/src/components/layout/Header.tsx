@@ -4,6 +4,7 @@ import { Search, User, ChevronDown, Check } from 'lucide-react';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { VOCABULARY_LABELS, type VocabularyId } from '@/vocabulary';
+import { NotificationBell } from '@/components/common/NotificationBell';
 
 const pageTitles: Record<string, string> = {
   '/': 'Inbox',
@@ -106,6 +107,9 @@ export function Header() {
             </button>
           ))}
         </div>
+
+        {/* Notification bell */}
+        <NotificationBell personId={currentPerson?.id} />
 
         {/* Search shortcut */}
         <button

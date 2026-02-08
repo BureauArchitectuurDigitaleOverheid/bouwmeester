@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/common/Button';
+import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useSendMessage } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import type { Person } from '@/types';
@@ -60,14 +61,13 @@ export function SendMessageModal({ open, onClose, recipient }: SendMessageModalP
           </button>
         </div>
 
-        {/* Body — textarea fills the space */}
+        {/* Body */}
         <div className="px-6 py-4 flex-1">
-          <textarea
-            className="w-full h-48 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-            placeholder={isAgent ? 'Typ je prompt...' : 'Typ je bericht...'}
+          <RichTextEditor
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            autoFocus
+            onChange={setText}
+            placeholder={isAgent ? 'Typ je prompt... Gebruik @ voor personen, # voor nodes' : 'Typ je bericht... Gebruik @ voor personen, # voor nodes'}
+            rows={8}
           />
         </div>
 

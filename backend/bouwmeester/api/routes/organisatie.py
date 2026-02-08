@@ -15,6 +15,8 @@ from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidUpdate,
 )
 from bouwmeester.schema.person import PersonResponse
+from bouwmeester.services.mention_service import MentionService
+from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/organisatie", tags=["organisatie"])
 
@@ -67,6 +69,20 @@ async def create_organisatie(
         if parent is None:
             raise HTTPException(status_code=404, detail="Parent eenheid not found")
     eenheid = await repo.create(data)
+
+    # Sync mentions from beschrijving
+    if data.beschrijving:
+        mention_svc = MentionService(db)
+        new_mentions = await mention_svc.sync_mentions(
+            "organisatie", eenheid.id, data.beschrijving, None
+        )
+        notif_svc = NotificationService(db)
+        for m in new_mentions:
+            if m.mention_type == "person":
+                await notif_svc.notify_mention(
+                    m.target_id, "organisatie", eenheid.naam,
+                )
+
     return OrganisatieEenheidResponse.model_validate(eenheid)
 
 
@@ -92,6 +108,20 @@ async def update_organisatie(
     eenheid = await repo.update(id, data)
     if eenheid is None:
         raise HTTPException(status_code=404, detail="Eenheid not found")
+
+    # Sync mentions from beschrijving
+    if data.beschrijving is not None:
+        mention_svc = MentionService(db)
+        new_mentions = await mention_svc.sync_mentions(
+            "organisatie", eenheid.id, data.beschrijving, None
+        )
+        notif_svc = NotificationService(db)
+        for m in new_mentions:
+            if m.mention_type == "person":
+                await notif_svc.notify_mention(
+                    m.target_id, "organisatie", eenheid.naam,
+                )
+
     return OrganisatieEenheidResponse.model_validate(eenheid)
 
 

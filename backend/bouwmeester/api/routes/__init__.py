@@ -8,6 +8,7 @@ from bouwmeester.api.routes.edge_types import router as edge_types_router
 from bouwmeester.api.routes.edges import router as edges_router
 from bouwmeester.api.routes.graph import router as graph_router
 from bouwmeester.api.routes.import_export import router as import_export_router
+from bouwmeester.api.routes.mentions import router as mentions_router
 from bouwmeester.api.routes.moties import router as moties_router
 from bouwmeester.api.routes.nodes import router as nodes_router
 from bouwmeester.api.routes.notifications import router as notifications_router
@@ -29,6 +30,7 @@ api_router.include_router(activity_router)
 api_router.include_router(graph_router)
 api_router.include_router(search_router)
 api_router.include_router(import_export_router)
+api_router.include_router(mentions_router)
 api_router.include_router(notifications_router)
 api_router.include_router(organisatie_router)
 api_router.include_router(tags_router)
