@@ -3370,15 +3370,24 @@ async def seed(db: AsyncSession) -> None:
             [
                 (
                     "Inventarisatie NFC-chip types in omloop",
-                    p_nguyen, "done", "normaal", date(2026, 2, 15),
+                    p_nguyen,
+                    "done",
+                    "normaal",
+                    date(2026, 2, 15),
                 ),
                 (
                     "Test NFC-uitlezing op Android-toestellen",
-                    p_nguyen, "in_progress", "hoog", date(2026, 3, 1),
+                    p_nguyen,
+                    "in_progress",
+                    "hoog",
+                    date(2026, 3, 1),
                 ),
                 (
                     "Test NFC-uitlezing op iOS-toestellen",
-                    None, "open", "hoog", date(2026, 3, 10),
+                    None,
+                    "open",
+                    "hoog",
+                    date(2026, 3, 10),
                 ),
             ],
         ),
@@ -4024,9 +4033,7 @@ async def seed(db: AsyncSession) -> None:
                 status=task_status,
                 priority=priority,
                 deadline=deadline,
-                organisatie_eenheid_id=(
-                    org_eenheid.id if org_eenheid else None
-                ),
+                organisatie_eenheid_id=(org_eenheid.id if org_eenheid else None),
             )
         )
 
@@ -4036,24 +4043,17 @@ async def seed(db: AsyncSession) -> None:
                 TaskCreate(
                     title=sub_title,
                     node_id=node.id,
-                    assignee_id=(
-                        sub_assignee.id if sub_assignee else None
-                    ),
+                    assignee_id=(sub_assignee.id if sub_assignee else None),
                     status=sub_status,
                     priority=sub_prio,
                     deadline=sub_dl,
                     parent_id=parent.id,
-                    organisatie_eenheid_id=(
-                        org_eenheid.id if org_eenheid else None
-                    ),
+                    organisatie_eenheid_id=(org_eenheid.id if org_eenheid else None),
                 )
             )
             subtask_count += 1
 
-    print(
-        f"  Taken: {len(tasks_data)} taken + "
-        f"{subtask_count} subtaken aangemaakt"
-    )
+    print(f"  Taken: {len(tasks_data)} taken + {subtask_count} subtaken aangemaakt")
 
     # =========================================================================
     # 7. NODE STAKEHOLDERS

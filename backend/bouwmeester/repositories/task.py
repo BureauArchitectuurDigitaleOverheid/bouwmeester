@@ -38,9 +38,7 @@ class TaskRepository:
         organisatie_eenheid_id: UUID | None = None,
         include_children: bool = False,
     ) -> list[Task]:
-        stmt = (
-            select(Task).options(*_task_options()).offset(skip).limit(limit)
-        )
+        stmt = select(Task).options(*_task_options()).offset(skip).limit(limit)
         if status is not None:
             stmt = stmt.where(Task.status == status)
         if organisatie_eenheid_id is not None:
@@ -60,7 +58,9 @@ class TaskRepository:
         await self.session.refresh(
             task,
             attribute_names=[
-                "assignee", "organisatie_eenheid", "subtasks",
+                "assignee",
+                "organisatie_eenheid",
+                "subtasks",
             ],
         )
         return task
@@ -76,8 +76,10 @@ class TaskRepository:
         await self.session.refresh(
             task,
             attribute_names=[
-                "updated_at", "assignee",
-                "organisatie_eenheid", "subtasks",
+                "updated_at",
+                "assignee",
+                "organisatie_eenheid",
+                "subtasks",
             ],
         )
         return task

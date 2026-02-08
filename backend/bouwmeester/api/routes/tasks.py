@@ -136,9 +136,7 @@ async def get_eenheid_overview(
         .cte(name="descendants", recursive=True)
     )
     cte = cte.union_all(
-        select(OrganisatieEenheid.id).where(
-            OrganisatieEenheid.parent_id == cte.c.id
-        )
+        select(OrganisatieEenheid.id).where(OrganisatieEenheid.parent_id == cte.c.id)
     )
     desc_ids_stmt = select(cte.c.id)
     desc_result = await db.execute(desc_ids_stmt)
