@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, AlertTriangle, User, Bot } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { Card } from '@/components/common/Card';
 import { useUpdateTask } from '@/hooks/useTasks';
@@ -112,7 +112,12 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {task.assignee && (
-              <span className="text-xs text-text-secondary">
+              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+                {task.assignee.is_agent ? (
+                  <Bot className="h-3 w-3 text-violet-500" />
+                ) : (
+                  <User className="h-3 w-3" />
+                )}
                 {task.assignee.naam}
               </span>
             )}

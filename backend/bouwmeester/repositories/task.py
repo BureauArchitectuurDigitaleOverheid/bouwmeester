@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.task import Task
 from bouwmeester.schema.task import TaskCreate, TaskUpdate
@@ -15,7 +16,13 @@ class TaskRepository:
         self.session = session
 
     async def get(self, id: UUID) -> Task | None:
-        return await self.session.get(Task, id)
+        stmt = (
+            select(Task)
+            .where(Task.id == id)
+            .options(selectinload(Task.assignee))
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def get_all(
         self,
@@ -23,7 +30,12 @@ class TaskRepository:
         limit: int = 100,
         status: str | None = None,
     ) -> list[Task]:
-        stmt = select(Task).offset(skip).limit(limit)
+        stmt = (
+            select(Task)
+            .options(selectinload(Task.assignee))
+            .offset(skip)
+            .limit(limit)
+        )
         if status is not None:
             stmt = stmt.where(Task.status == status)
         stmt = stmt.order_by(Task.created_at.desc())
@@ -65,6 +77,7 @@ class TaskRepository:
         stmt = (
             select(Task)
             .where(Task.assignee_id == assignee_id)
+            .options(selectinload(Task.assignee))
             .offset(skip)
             .limit(limit)
             .order_by(Task.created_at.desc())
@@ -81,6 +94,7 @@ class TaskRepository:
         stmt = (
             select(Task)
             .where(Task.node_id == node_id)
+            .options(selectinload(Task.assignee))
             .offset(skip)
             .limit(limit)
             .order_by(Task.created_at.desc())
@@ -92,9 +106,13 @@ class TaskRepository:
         self,
         assignee_id: UUID | None = None,
     ) -> list[Task]:
-        stmt = select(Task).where(
-            Task.deadline < date.today(),
-            Task.status.notin_(["done", "cancelled"]),
+        stmt = (
+            select(Task)
+            .where(
+                Task.deadline < date.today(),
+                Task.status.notin_(["done", "cancelled"]),
+            )
+            .options(selectinload(Task.assignee))
         )
         if assignee_id is not None:
             stmt = stmt.where(Task.assignee_id == assignee_id)
