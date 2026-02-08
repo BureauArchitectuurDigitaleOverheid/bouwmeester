@@ -5,9 +5,10 @@ import type { InboxItem } from '@/types';
 
 interface InboxListProps {
   items: InboxItem[];
+  highlightId?: string | null;
 }
 
-export function InboxList({ items }: InboxListProps) {
+export function InboxList({ items, highlightId }: InboxListProps) {
   if (items.length === 0) {
     return (
       <EmptyState
@@ -37,7 +38,7 @@ export function InboxList({ items }: InboxListProps) {
           </h3>
           <div className="space-y-2">
             {groupItems.map((item) => (
-              <InboxItemCard key={item.id} item={item} />
+              <InboxItemCard key={item.id} item={item} highlighted={item.id === highlightId} />
             ))}
           </div>
         </div>

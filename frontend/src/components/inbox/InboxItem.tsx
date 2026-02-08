@@ -1,3 +1,4 @@
+import { useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, CheckSquare, Bell, MessageSquare } from 'lucide-react';
 import { Card } from '@/components/common/Card';
@@ -6,6 +7,7 @@ import type { InboxItem as InboxItemType } from '@/types';
 
 interface InboxItemProps {
   item: InboxItemType;
+  highlighted?: boolean;
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -22,8 +24,15 @@ const typeColors: Record<string, string> = {
   message: 'green',
 };
 
-export function InboxItemCard({ item }: InboxItemProps) {
+export function InboxItemCard({ item, highlighted }: InboxItemProps) {
   const navigate = useNavigate();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (highlighted && ref.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlighted]);
 
   const handleClick = () => {
     if (item.node_id) {
@@ -32,7 +41,8 @@ export function InboxItemCard({ item }: InboxItemProps) {
   };
 
   return (
-    <Card hoverable={!!item.node_id} onClick={handleClick}>
+    <div ref={ref}>
+    <Card hoverable={!!item.node_id} onClick={handleClick} className={highlighted ? 'ring-2 ring-primary-400' : ''}>
       <div className="flex items-start gap-3">
         <div
           className={`flex items-center justify-center h-8 w-8 rounded-lg shrink-0 ${
@@ -78,5 +88,6 @@ export function InboxItemCard({ item }: InboxItemProps) {
         </div>
       </div>
     </Card>
+    </div>
   );
 }

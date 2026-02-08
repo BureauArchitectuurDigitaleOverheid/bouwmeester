@@ -1,5 +1,6 @@
 import { Inbox, CheckSquare, Network, TrendingUp, Users } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { InboxList } from '@/components/inbox/InboxList';
@@ -12,6 +13,15 @@ import type { InboxItem } from '@/types';
 
 export function InboxPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const highlightId = searchParams.get('notification');
+
+  // Clear the query param after mount so refreshing doesn't re-highlight
+  useEffect(() => {
+    if (highlightId) {
+      setSearchParams({}, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { currentPerson } = useCurrentPerson();
   const { data: notifications } = useNotifications(currentPerson?.id);
@@ -123,7 +133,7 @@ export function InboxPage() {
         </div>
 
         {inboxItems.length > 0 ? (
-          <InboxList items={inboxItems} />
+          <InboxList items={inboxItems} highlightId={highlightId} />
         ) : (
           <EmptyState
             icon={<Inbox className="h-16 w-16" />}
