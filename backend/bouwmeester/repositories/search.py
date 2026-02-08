@@ -1,6 +1,6 @@
 """Repository for full-text search on corpus nodes."""
 
-from sqlalchemy import func, select
+from sqlalchemy import func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
@@ -21,13 +21,14 @@ class SearchRepository:
         Uses to_tsvector/to_tsquery with ts_rank on title and description.
         """
         # Build the tsvector from title (weight A) and description (weight B)
+        # setweight() requires PG "char" type — use literal SQL casts
         ts_vector = func.setweight(
             func.to_tsvector("dutch", func.coalesce(CorpusNode.title, "")),
-            "A",
+            literal_column("'A'"),
         ).op("||")(
             func.setweight(
                 func.to_tsvector("dutch", func.coalesce(CorpusNode.description, "")),
-                "B",
+                literal_column("'B'"),
             )
         )
 
