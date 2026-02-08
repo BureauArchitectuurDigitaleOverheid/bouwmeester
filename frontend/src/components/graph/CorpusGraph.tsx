@@ -267,7 +267,7 @@ export function CorpusGraph() {
     });
 
     return { rfNodes, rfEdges };
-  }, [data, enabledNodeTypes, enabledEdgeTypes, navigate, vocabEdgeLabel, nodeLabel]);
+  }, [data, enabledNodeTypes, enabledEdgeTypes, navigate, vocabEdgeLabel]);
 
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);

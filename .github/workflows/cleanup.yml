@@ -1,37 +1,37 @@
-name: Cleanup preview deployment
-
-on:
-  pull_request:
-    types: [closed]
-
-jobs:
-  cleanup:
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      pull-requests: write
-
-    steps:
-      - name: Cleanup ZAD deployment
-        uses: RijksICTGilde/zad-actions/cleanup@v2
-        with:
-          api-key: ${{ secrets.ZAD_API_KEY }}
-          project-id: bouwm-75c
-          deployment-name: pr-${{ github.event.pull_request.number }}
-          delete-container: true
-          container-org: BureauArchitectuurDigitaleOverheid
-          container-name: bouwmeester/frontend
-          container-tag: pr-${{ github.event.pull_request.number }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Cleanup backend container
-        uses: RijksICTGilde/zad-actions/cleanup@v2
-        with:
-          api-key: ${{ secrets.ZAD_API_KEY }}
-          project-id: bouwm-75c
-          deployment-name: pr-${{ github.event.pull_request.number }}
-          delete-container: true
-          container-org: BureauArchitectuurDigitaleOverheid
-          container-name: bouwmeester/backend
-          container-tag: pr-${{ github.event.pull_request.number }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+# name: Cleanup preview deployment
+#
+# on:
+#   pull_request:
+#     types: [closed]
+#
+# jobs:
+#   cleanup:
+#     runs-on: ubuntu-latest
+#     permissions:
+#       packages: write
+#       pull-requests: write
+#
+#     steps:
+#       - name: Cleanup ZAD deployment
+#         uses: RijksICTGilde/zad-actions/cleanup@v2
+#         with:
+#           api-key: ${{ secrets.ZAD_API_KEY }}
+#           project-id: bouwm-75c
+#           deployment-name: pr-${{ github.event.pull_request.number }}
+#           delete-container: true
+#           container-org: BureauArchitectuurDigitaleOverheid
+#           container-name: bouwmeester/frontend
+#           container-tag: pr-${{ github.event.pull_request.number }}
+#           github-token: ${{ secrets.GITHUB_TOKEN }}
+#
+#       - name: Cleanup backend container
+#         uses: RijksICTGilde/zad-actions/cleanup@v2
+#         with:
+#           api-key: ${{ secrets.ZAD_API_KEY }}
+#           project-id: bouwm-75c
+#           deployment-name: pr-${{ github.event.pull_request.number }}
+#           delete-container: true
+#           container-org: BureauArchitectuurDigitaleOverheid
+#           container-name: bouwmeester/backend
+#           container-tag: pr-${{ github.event.pull_request.number }}
+#           github-token: ${{ secrets.GITHUB_TOKEN }}
