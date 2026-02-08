@@ -105,7 +105,10 @@ class MotieImportService:
                 result = await self._process_motie(motie)
                 if result:
                     imported_count += 1
-            except Exception:
+            except (
+                httpx.HTTPError, anthropic.APIError, SQLAlchemyError,
+                ValueError, KeyError,
+            ):
                 logger.exception(f"Error processing motie {motie.zaak_id}")
 
         return imported_count

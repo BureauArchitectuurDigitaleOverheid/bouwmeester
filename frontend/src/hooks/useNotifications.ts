@@ -30,6 +30,9 @@ export function useMarkNotificationRead() {
 
   return useMutation({
     mutationFn: (id: string) => markNotificationRead(id),
+    onError: (error) => {
+      console.error('Fout bij markeren als gelezen:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
@@ -41,6 +44,9 @@ export function useMarkAllNotificationsRead() {
 
   return useMutation({
     mutationFn: (personId: string) => markAllNotificationsRead(personId),
+    onError: (error) => {
+      console.error('Fout bij markeren notificaties:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
@@ -52,6 +58,9 @@ export function useSendMessage() {
 
   return useMutation({
     mutationFn: sendMessage,
+    onError: (error) => {
+      console.error('Fout bij verzenden bericht:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },

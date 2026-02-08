@@ -15,6 +15,9 @@ export function useCreateEdge() {
 
   return useMutation({
     mutationFn: (data: EdgeCreate) => createEdge(data),
+    onError: (error) => {
+      console.error('Fout bij aanmaken relatie:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['edges'] });
       queryClient.invalidateQueries({ queryKey: ['nodes'] });
@@ -28,6 +31,9 @@ export function useDeleteEdge() {
 
   return useMutation({
     mutationFn: (id: string) => deleteEdge(id),
+    onError: (error) => {
+      console.error('Fout bij verwijderen relatie:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['edges'] });
       queryClient.invalidateQueries({ queryKey: ['nodes'] });

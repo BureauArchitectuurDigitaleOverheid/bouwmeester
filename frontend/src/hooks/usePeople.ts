@@ -23,6 +23,9 @@ export function useCreatePerson() {
 
   return useMutation({
     mutationFn: (data: PersonCreate) => createPerson(data),
+    onError: (error) => {
+      console.error('Fout bij aanmaken persoon:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['people'] });
       queryClient.invalidateQueries({ queryKey: ['organisatie'] });
@@ -44,6 +47,9 @@ export function useUpdatePerson() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<PersonCreate> }) =>
       updatePerson(id, data),
+    onError: (error) => {
+      console.error('Fout bij bijwerken persoon:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['people'] });
       queryClient.invalidateQueries({ queryKey: ['organisatie'] });
@@ -72,6 +78,9 @@ export function useAddPersonOrganisatie() {
       personId: string;
       data: { organisatie_eenheid_id: string; dienstverband?: string; start_datum: string };
     }) => addPersonOrganisatie(personId, data),
+    onError: (error) => {
+      console.error('Fout bij toevoegen plaatsing:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['people'] });
       queryClient.invalidateQueries({ queryKey: ['organisatie'] });
@@ -92,6 +101,9 @@ export function useUpdatePersonOrganisatie() {
       placementId: string;
       data: { dienstverband?: string; eind_datum?: string | null };
     }) => updatePersonOrganisatie(personId, placementId, data),
+    onError: (error) => {
+      console.error('Fout bij bijwerken plaatsing:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['people'] });
       queryClient.invalidateQueries({ queryKey: ['organisatie'] });
@@ -110,6 +122,9 @@ export function useRemovePersonOrganisatie() {
       personId: string;
       placementId: string;
     }) => removePersonOrganisatie(personId, placementId),
+    onError: (error) => {
+      console.error('Fout bij verwijderen plaatsing:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['people'] });
       queryClient.invalidateQueries({ queryKey: ['organisatie'] });

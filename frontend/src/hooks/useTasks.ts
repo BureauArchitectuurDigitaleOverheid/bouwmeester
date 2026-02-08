@@ -23,6 +23,9 @@ export function useCreateTask() {
 
   return useMutation({
     mutationFn: (data: TaskCreate) => createTask(data),
+    onError: (error) => {
+      console.error('Fout bij aanmaken taak:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
@@ -34,6 +37,9 @@ export function useUpdateTask() {
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) => updateTask(id, data),
+    onError: (error) => {
+      console.error('Fout bij bijwerken taak:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
@@ -45,6 +51,9 @@ export function useDeleteTask() {
 
   return useMutation({
     mutationFn: (id: string) => deleteTask(id),
+    onError: (error) => {
+      console.error('Fout bij verwijderen taak:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },

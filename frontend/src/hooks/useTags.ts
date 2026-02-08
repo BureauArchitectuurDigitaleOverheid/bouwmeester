@@ -22,6 +22,9 @@ export function useCreateTag() {
 
   return useMutation({
     mutationFn: (data: TagCreate) => createTag(data),
+    onError: (error) => {
+      console.error('Fout bij aanmaken tag:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] });
     },
@@ -34,6 +37,9 @@ export function useAddTagToNode() {
   return useMutation({
     mutationFn: ({ nodeId, data }: { nodeId: string; data: { tag_id?: string; tag_name?: string } }) =>
       addTagToNode(nodeId, data),
+    onError: (error) => {
+      console.error('Fout bij toevoegen tag:', error);
+    },
     onSuccess: (_, { nodeId }) => {
       queryClient.invalidateQueries({ queryKey: ['node-tags', nodeId] });
       queryClient.invalidateQueries({ queryKey: ['tags'] });
@@ -47,6 +53,9 @@ export function useRemoveTagFromNode() {
   return useMutation({
     mutationFn: ({ nodeId, tagId }: { nodeId: string; tagId: string }) =>
       removeTagFromNode(nodeId, tagId),
+    onError: (error) => {
+      console.error('Fout bij verwijderen tag:', error);
+    },
     onSuccess: (_, { nodeId }) => {
       queryClient.invalidateQueries({ queryKey: ['node-tags', nodeId] });
     },

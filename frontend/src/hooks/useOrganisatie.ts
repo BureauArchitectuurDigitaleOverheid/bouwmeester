@@ -54,6 +54,9 @@ export function useCreateOrganisatieEenheid() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: OrganisatieEenheidCreate) => createOrganisatieEenheid(data),
+    onError: (error) => {
+      console.error('Fout bij aanmaken eenheid:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organisatie'] });
     },
@@ -65,6 +68,9 @@ export function useUpdateOrganisatieEenheid() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: OrganisatieEenheidUpdate }) =>
       updateOrganisatieEenheid(id, data),
+    onError: (error) => {
+      console.error('Fout bij bijwerken eenheid:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organisatie'] });
     },
@@ -75,6 +81,9 @@ export function useDeleteOrganisatieEenheid() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteOrganisatieEenheid(id),
+    onError: (error) => {
+      console.error('Fout bij verwijderen eenheid:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organisatie'] });
     },

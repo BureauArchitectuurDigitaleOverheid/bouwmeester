@@ -26,6 +26,9 @@ export function useCreateNode() {
 
   return useMutation({
     mutationFn: (data: CorpusNodeCreate) => createNode(data),
+    onError: (error) => {
+      console.error('Fout bij aanmaken node:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nodes'] });
       queryClient.invalidateQueries({ queryKey: ['graph'] });
@@ -38,6 +41,9 @@ export function useUpdateNode() {
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: CorpusNodeUpdate }) => updateNode(id, data),
+    onError: (error) => {
+      console.error('Fout bij bijwerken node:', error);
+    },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['nodes'] });
@@ -50,6 +56,9 @@ export function useDeleteNode() {
 
   return useMutation({
     mutationFn: (id: string) => deleteNode(id),
+    onError: (error) => {
+      console.error('Fout bij verwijderen node:', error);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nodes'] });
     },
@@ -78,6 +87,9 @@ export function useAddNodeStakeholder() {
   return useMutation({
     mutationFn: ({ nodeId, data }: { nodeId: string; data: { person_id: string; rol: string } }) =>
       addNodeStakeholder(nodeId, data),
+    onError: (error) => {
+      console.error('Fout bij toevoegen stakeholder:', error);
+    },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', variables.nodeId, 'stakeholders'] });
     },
@@ -90,6 +102,9 @@ export function useUpdateNodeStakeholder() {
   return useMutation({
     mutationFn: ({ nodeId, stakeholderId, data }: { nodeId: string; stakeholderId: string; data: { rol: string } }) =>
       updateNodeStakeholder(nodeId, stakeholderId, data),
+    onError: (error) => {
+      console.error('Fout bij bijwerken stakeholder:', error);
+    },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', variables.nodeId, 'stakeholders'] });
     },
@@ -102,6 +117,9 @@ export function useRemoveNodeStakeholder() {
   return useMutation({
     mutationFn: ({ nodeId, stakeholderId }: { nodeId: string; stakeholderId: string }) =>
       removeNodeStakeholder(nodeId, stakeholderId),
+    onError: (error) => {
+      console.error('Fout bij verwijderen stakeholder:', error);
+    },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', variables.nodeId, 'stakeholders'] });
     },
