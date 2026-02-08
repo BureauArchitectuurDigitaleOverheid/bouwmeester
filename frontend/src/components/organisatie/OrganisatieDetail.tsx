@@ -1,4 +1,4 @@
-import { Pencil, Trash2, Plus, Users, Building2, User, ChevronDown, ChevronRight } from 'lucide-react';
+import { Pencil, Trash2, Plus, Users, Building2, User, Bot, ChevronDown, ChevronRight } from 'lucide-react';
 import { useState, useCallback } from 'react';
 import { clsx } from 'clsx';
 import { Button } from '@/components/common/Button';
@@ -13,6 +13,8 @@ const TYPE_BADGE_COLORS: Record<string, 'blue' | 'purple' | 'amber' | 'cyan' | '
   ministerie: 'blue',
   directoraat_generaal: 'purple',
   directie: 'amber',
+  dienst: 'gray',
+  bureau: 'gray',
   afdeling: 'cyan',
   team: 'green',
 };
@@ -21,9 +23,22 @@ const TYPE_BG_COLORS: Record<string, string> = {
   ministerie: 'bg-blue-50/40',
   directoraat_generaal: 'bg-purple-50/40',
   directie: 'bg-amber-50/40',
+  dienst: 'bg-gray-50/40',
+  bureau: 'bg-gray-50/40',
   afdeling: 'bg-cyan-50/40',
   team: 'bg-emerald-50/40',
 };
+
+function filterGroup(
+  group: OrganisatieEenheidPersonenGroup,
+  predicate: (p: Person) => boolean,
+): OrganisatieEenheidPersonenGroup {
+  return {
+    ...group,
+    personen: group.personen.filter(predicate),
+    children: group.children.map((child) => filterGroup(child, predicate)),
+  };
+}
 
 function countAllPersonen(group: OrganisatieEenheidPersonenGroup): number {
   return group.personen.length + group.children.reduce((sum, child) => sum + countAllPersonen(child), 0);
@@ -200,6 +215,7 @@ interface OrganisatieDetailProps {
   onDelete: () => void;
   onAddChild: () => void;
   onAddPerson: () => void;
+  onAddAgent: () => void;
   onEditPerson: (person: Person) => void;
   onDragStartPerson?: (e: React.DragEvent, person: Person) => void;
   onDropPerson?: (personId: string, targetNodeId: string) => void;
@@ -211,6 +227,7 @@ export function OrganisatieDetail({
   onDelete,
   onAddChild,
   onAddPerson,
+  onAddAgent,
   onEditPerson,
   onDragStartPerson,
   onDropPerson,
@@ -218,7 +235,10 @@ export function OrganisatieDetail({
   const { data: eenheid, isLoading } = useOrganisatieEenheid(selectedId);
   const { data: personenGroup } = useOrganisatiePersonenRecursive(selectedId);
 
-  const totalCount = personenGroup ? countAllPersonen(personenGroup) : 0;
+  const personenOnly = personenGroup ? filterGroup(personenGroup, (p) => !p.is_agent) : undefined;
+  const agentsOnly = personenGroup ? filterGroup(personenGroup, (p) => p.is_agent) : undefined;
+  const personenCount = personenOnly ? countAllPersonen(personenOnly) : 0;
+  const agentCount = agentsOnly ? countAllPersonen(agentsOnly) : 0;
 
   if (isLoading) {
     return <LoadingSpinner className="py-12" />;
@@ -294,6 +314,14 @@ export function OrganisatieDetail({
         >
           Persoon toevoegen
         </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Bot className="h-3.5 w-3.5" />}
+          onClick={onAddAgent}
+        >
+          Agent toevoegen
+        </Button>
       </div>
 
       {/* People — recursive grouped view */}
@@ -301,17 +329,41 @@ export function OrganisatieDetail({
         <div className="flex items-center gap-2 mb-3">
           <Users className="h-4 w-4 text-text-secondary" />
           <h3 className="text-sm font-semibold text-text">
-            Personen ({totalCount})
+            Personen ({personenCount})
           </h3>
         </div>
 
-        {!personenGroup || totalCount === 0 ? (
+        {!personenOnly || personenCount === 0 ? (
           <p className="text-sm text-text-secondary">
             Geen personen gekoppeld aan deze eenheid.
           </p>
         ) : (
           <PersonGroupSection
-            group={personenGroup}
+            group={personenOnly}
+            isRoot={true}
+            onEditPerson={onEditPerson}
+            onDragStartPerson={onDragStartPerson}
+            onDropPerson={onDropPerson}
+          />
+        )}
+      </div>
+
+      {/* Agents — recursive grouped view */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Bot className="h-4 w-4 text-text-secondary" />
+          <h3 className="text-sm font-semibold text-text">
+            Agents ({agentCount})
+          </h3>
+        </div>
+
+        {!agentsOnly || agentCount === 0 ? (
+          <p className="text-sm text-text-secondary">
+            Geen agents gekoppeld aan deze eenheid.
+          </p>
+        ) : (
+          <PersonGroupSection
+            group={agentsOnly}
             isRoot={true}
             onEditPerson={onEditPerson}
             onDragStartPerson={onDragStartPerson}

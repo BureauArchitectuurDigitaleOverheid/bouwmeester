@@ -102,3 +102,15 @@ typecheck:
 # Install frontend dependencies
 install-frontend:
     cd frontend && npm install
+
+# ---------------------------------------------------------------------------
+# Worker
+# ---------------------------------------------------------------------------
+
+# View worker logs
+worker-logs:
+    docker compose logs -f worker
+
+# Manually trigger motie import (via API)
+import-moties:
+    curl -X POST http://localhost:8000/api/moties/imports/trigger

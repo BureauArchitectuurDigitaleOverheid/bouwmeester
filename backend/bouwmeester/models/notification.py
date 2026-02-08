@@ -46,9 +46,17 @@ class Notification(Base):
         ForeignKey("task.id", ondelete="SET NULL"),
         nullable=True,
     )
+    sender_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("person.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     # Relationships
-    person: Mapped["Person"] = relationship("Person")
+    person: Mapped["Person"] = relationship("Person", foreign_keys=[person_id])
+    sender: Mapped[Optional["Person"]] = relationship(
+        "Person", foreign_keys=[sender_id]
+    )
     related_node: Mapped[Optional["CorpusNode"]] = relationship("CorpusNode")
     related_task: Mapped[Optional["Task"]] = relationship("Task")

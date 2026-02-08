@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getNodes, getNode, createNode, updateNode, deleteNode, getNodeNeighbors, getNodeStakeholders } from '@/api/nodes';
+import { getNodes, getNode, createNode, updateNode, deleteNode, getNodeNeighbors, getNodeStakeholders, getNodeMotieImport } from '@/api/nodes';
 import type { CorpusNodeCreate, CorpusNodeUpdate, NodeType } from '@/types';
 
 export function useNodes(nodeType?: NodeType) {
@@ -64,5 +64,13 @@ export function useNodeStakeholders(id: string | undefined) {
     queryKey: ['nodes', id, 'stakeholders'],
     queryFn: () => getNodeStakeholders(id!),
     enabled: !!id,
+  });
+}
+
+export function useNodeMotieImport(id: string | undefined, nodeType?: string) {
+  return useQuery({
+    queryKey: ['nodes', id, 'motie-import'],
+    queryFn: () => getNodeMotieImport(id!),
+    enabled: !!id && nodeType === 'politieke_input',
   });
 }

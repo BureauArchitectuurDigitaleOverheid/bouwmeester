@@ -6,7 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
-from bouwmeester.schema.notification import NotificationResponse, UnreadCountResponse
+from bouwmeester.models.person import Person
+from bouwmeester.schema.notification import (
+    NotificationCreate,
+    NotificationResponse,
+    SendMessageRequest,
+    UnreadCountResponse,
+)
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -57,3 +63,32 @@ async def mark_all_notifications_read(
     service = NotificationService(db)
     count = await service.mark_all_read(person_id)
     return {"marked_read": count}
+
+
+@router.post("/send", response_model=NotificationResponse)
+async def send_message(
+    body: SendMessageRequest,
+    db: AsyncSession = Depends(get_db),
+) -> NotificationResponse:
+    recipient = await db.get(Person, body.person_id)
+    if recipient is None:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    sender = await db.get(Person, body.sender_id)
+    if sender is None:
+        raise HTTPException(status_code=404, detail="Sender not found")
+
+    is_agent = recipient.is_agent
+    notif_type = "agent_prompt" if is_agent else "direct_message"
+    title = f"{'Prompt' if is_agent else 'Bericht'} van {sender.naam}"
+
+    service = NotificationService(db)
+    data = NotificationCreate(
+        person_id=body.person_id,
+        type=notif_type,
+        title=title,
+        message=body.message,
+        sender_id=body.sender_id,
+    )
+    notification = await service.repo.create(data)
+    await db.commit()
+    return NotificationResponse.model_validate(notification)

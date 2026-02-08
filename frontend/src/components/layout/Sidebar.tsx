@@ -6,6 +6,7 @@ import {
   CheckSquare,
   Search,
   Building2,
+  ScrollText,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
@@ -16,6 +17,7 @@ const navItems = [
   { to: '/corpus', icon: Network, label: 'Corpus' },
   { to: '/tasks', icon: CheckSquare, label: 'Taken' },
   { to: '/organisatie', icon: Building2, label: 'Organisatie' },
+  { to: '/moties', icon: ScrollText, label: 'Kamermoties' },
   { to: '/search', icon: Search, label: 'Zoeken' },
 ];
 

@@ -80,8 +80,17 @@ export function OrganisatiePage() {
   };
 
   // Person handlers
+  const [defaultIsAgent, setDefaultIsAgent] = useState(false);
+
   const handleAddPerson = () => {
     setEditPerson(null);
+    setDefaultIsAgent(false);
+    setShowPersonForm(true);
+  };
+
+  const handleAddAgent = () => {
+    setEditPerson(null);
+    setDefaultIsAgent(true);
     setShowPersonForm(true);
   };
 
@@ -179,6 +188,7 @@ export function OrganisatiePage() {
                     onDelete={handleDelete}
                     onAddChild={() => handleAdd(selectedId)}
                     onAddPerson={handleAddPerson}
+                    onAddAgent={handleAddAgent}
                     onEditPerson={handleEditPerson}
                     onDragStartPerson={handleDragStartPerson}
                     onDropPerson={handleDropPerson}
@@ -215,6 +225,7 @@ export function OrganisatiePage() {
         isLoading={createPersonMutation.isPending || updatePersonMutation.isPending}
         editData={editPerson}
         defaultOrgEenheidId={selectedId}
+        defaultIsAgent={defaultIsAgent}
       />
     </div>
   );

@@ -13,6 +13,7 @@ from bouwmeester.core.database import Base
 if TYPE_CHECKING:
     from bouwmeester.models.edge import Edge
     from bouwmeester.models.node_stakeholder import NodeStakeholder
+    from bouwmeester.models.tag import NodeTag
     from bouwmeester.models.task import Task
 
 
@@ -55,6 +56,11 @@ class CorpusNode(Base):
     )
     stakeholders: Mapped[list["NodeStakeholder"]] = relationship(
         "NodeStakeholder",
+        back_populates="node",
+        cascade="all, delete-orphan",
+    )
+    node_tags: Mapped[list["NodeTag"]] = relationship(
+        "NodeTag",
         back_populates="node",
         cascade="all, delete-orphan",
     )

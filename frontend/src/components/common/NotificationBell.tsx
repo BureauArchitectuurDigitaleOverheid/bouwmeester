@@ -26,6 +26,8 @@ const TYPE_COLORS: Record<string, string> = {
   node_updated: 'bg-green-100 text-green-700',
   edge_created: 'bg-purple-100 text-purple-700',
   coverage_needed: 'bg-amber-100 text-amber-700',
+  direct_message: 'bg-green-100 text-green-700',
+  agent_prompt: 'bg-violet-100 text-violet-700',
 };
 
 function NotificationItem({

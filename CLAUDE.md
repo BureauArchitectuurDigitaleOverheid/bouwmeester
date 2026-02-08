@@ -29,6 +29,8 @@ Run `just` to see all available commands. Key ones:
 | `just lint` | Backend lint (ruff) |
 | `just logs` | Follow all service logs |
 | `just db-shell` | Open psql shell |
+| `just worker-logs` | Follow worker service logs |
+| `just import-moties` | Manually trigger motie import via API |
 
 ## Architecture
 
@@ -113,10 +115,18 @@ Person
 ├── Notification (person_id)
 └── Absence (person_id / substitute_id)
 
-CorpusNode (dossier/doel/instrument/beleidskader/maatregel/politieke_input)
+CorpusNode (dossier/doel/instrument/beleidskader/maatregel/politieke_input/probleem/effect/beleidsoptie)
 ├── Edge (from_node_id / to_node_id, typed via EdgeType)
 ├── Task (node_id)
-└── NodeStakeholder (node_id)
+├── NodeStakeholder (node_id)
+└── NodeTag (node_id → Tag, hierarchical tagging)
+
+Tag (hierarchical, parent_id self-ref)
+└── NodeTag (many-to-many with CorpusNode)
+
+MotieImport (tracks imported TK/EK moties)
+├── SuggestedEdge (proposed edges to corpus nodes, pending review)
+└── CorpusNode (corpus_node_id, the created politieke_input node)
 ```
 
 ## Database

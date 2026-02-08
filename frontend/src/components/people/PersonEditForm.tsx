@@ -1,10 +1,19 @@
 import { useState, useEffect } from 'react';
+import { Copy, RefreshCw } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { useOrganisatieFlat, useCreateOrganisatieEenheid } from '@/hooks/useOrganisatie';
 import type { Person, PersonCreate } from '@/types';
+
+function generateMockApiKey(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const segments = [8, 4, 4, 4, 12];
+  return 'bm_' + segments.map(len =>
+    Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+  ).join('-');
+}
 
 const DEFAULT_ROL_OPTIONS: SelectOption[] = [
   { value: 'minister', label: 'Minister' },
@@ -30,6 +39,7 @@ interface PersonEditFormProps {
   isLoading?: boolean;
   editData?: Person | null;
   defaultOrgEenheidId?: string | null;
+  defaultIsAgent?: boolean;
 }
 
 export function PersonEditForm({
@@ -39,6 +49,7 @@ export function PersonEditForm({
   isLoading,
   editData,
   defaultOrgEenheidId,
+  defaultIsAgent = false,
 }: PersonEditFormProps) {
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
@@ -46,6 +57,7 @@ export function PersonEditForm({
   const [afdeling, setAfdeling] = useState('');
   const [functie, setFunctie] = useState('');
   const [rol, setRol] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [rolOptions, setRolOptions] = useState<SelectOption[]>(DEFAULT_ROL_OPTIONS);
 
   const { data: orgEenheden = [] } = useOrganisatieFlat();
@@ -66,6 +78,7 @@ export function PersonEditForm({
         setAfdeling(editData.afdeling || '');
         setFunctie(editData.functie || '');
         setRol(editData.rol || '');
+        setApiKey(editData.api_key || '');
         // Ensure the existing rol value is in options
         if (editData.rol && !rolOptions.some((o) => o.value === editData.rol)) {
           setRolOptions((prev) => [...prev, { value: editData.rol!, label: editData.rol! }]);
@@ -77,11 +90,13 @@ export function PersonEditForm({
         setAfdeling('');
         setFunctie('');
         setRol('');
+        setApiKey(defaultIsAgent ? generateMockApiKey() : '');
       }
     }
   }, [open, editData, defaultOrgEenheidId]);
 
-  const isValid = naam.trim() && email.trim();
+  const isAgent = editData ? editData.is_agent : defaultIsAgent;
+  const isValid = naam.trim() && (isAgent || email.trim());
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,11 +104,13 @@ export function PersonEditForm({
 
     onSubmit({
       naam: naam.trim(),
-      email: email.trim(),
+      email: email.trim() || undefined,
       afdeling: afdeling.trim() || undefined,
       functie: functie.trim() || undefined,
       rol: rol || undefined,
       organisatie_eenheid_id: organisatieEenheidId || null,
+      is_agent: isAgent,
+      api_key: isAgent ? apiKey : undefined,
     });
   };
 
@@ -116,7 +133,9 @@ export function PersonEditForm({
     return value;
   };
 
-  const title = editData ? 'Persoon bewerken' : 'Persoon toevoegen';
+  const title = editData
+    ? (isAgent ? 'Agent bewerken' : 'Persoon bewerken')
+    : (isAgent ? 'Agent toevoegen' : 'Persoon toevoegen');
 
   return (
     <Modal
@@ -147,14 +166,45 @@ export function PersonEditForm({
           required
           autoFocus
         />
-        <Input
-          label="E-mail"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="email@voorbeeld.nl"
-          required
-        />
+        {!isAgent && (
+          <Input
+            label="E-mail"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="email@voorbeeld.nl"
+            required
+          />
+        )}
+        {isAgent && (
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">API Key</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={apiKey}
+                className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary"
+              />
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(apiKey)}
+                className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
+                title="Kopieer API key"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setApiKey(generateMockApiKey())}
+                className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
+                title="Genereer nieuwe API key"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
         <CreatableSelect
           label="Organisatie-eenheid"
           value={organisatieEenheidId}

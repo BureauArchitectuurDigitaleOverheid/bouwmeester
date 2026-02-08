@@ -34,7 +34,7 @@ class NodeStakeholder(Base):
         nullable=False,
     )
     rol: Mapped[str] = mapped_column(
-        comment="eigenaar|betrokken|adviseur",
+        comment="eigenaar|betrokken|adviseur|indiener",
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

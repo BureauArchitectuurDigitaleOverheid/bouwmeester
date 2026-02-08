@@ -25,6 +25,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://bouwmeester:bouwmeester@db:5432/bouwmeester
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ./backend:/app
     command: uv run uvicorn bouwmeester.core.app:create_app --factory --host 0.0.0.0 --port 8000 --reload
@@ -42,6 +43,19 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+
+  worker:
+    build:
+      context: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://bouwmeester:bouwmeester@db:5432/bouwmeester
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./backend:/app
+    command: uv run python -m bouwmeester.worker
 
 volumes:
   pgdata:
