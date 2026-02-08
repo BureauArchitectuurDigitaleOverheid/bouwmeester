@@ -69,6 +69,14 @@ class TaskOrgEenheidSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TaskNodeSummary(BaseModel):
+    id: UUID
+    title: str
+    node_type: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TaskSubtaskSummary(BaseModel):
     id: UUID
     title: str
@@ -85,6 +93,7 @@ class TaskResponse(BaseModel):
     title: str
     description: str | None = None
     node_id: UUID
+    node: TaskNodeSummary | None = None
     assignee_id: UUID | None = None
     assignee: TaskAssigneeSummary | None = None
     organisatie_eenheid_id: UUID | None = None

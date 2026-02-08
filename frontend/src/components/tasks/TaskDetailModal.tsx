@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Clock, User, Bot, Calendar, Link as LinkIcon, Pencil, Building2, ListTree, Plus, CheckCircle2, Circle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Clock, User, Bot, Calendar, Link as LinkIcon, Pencil, Building2, ListTree, Plus, CheckCircle2, Circle, FileSearch } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
@@ -8,6 +9,7 @@ import { ReferencesList } from '@/components/common/ReferencesList';
 import { TaskEditForm } from './TaskEditForm';
 import { TaskCreateForm } from './TaskCreateForm';
 import { useTask } from '@/hooks/useTasks';
+import { useMotieImportByNode } from '@/hooks/useMoties';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import {
@@ -36,6 +38,12 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
   const [showSubtaskCreate, setShowSubtaskCreate] = useState(false);
   const { openNodeDetail } = useNodeDetail();
   const { openTaskDetail } = useTaskDetail();
+  const navigate = useNavigate();
+
+  const isPolitiekeInput = task?.node?.node_type === 'politieke_input';
+  const { data: motieImport } = useMotieImportByNode(
+    isPolitiekeInput ? task?.node_id : undefined
+  );
 
   if (!open) return null;
 
@@ -184,6 +192,25 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
                   <span className="text-text-secondary">Geen</span>
                 )}
               </div>
+
+              {/* Motie review link */}
+              {motieImport && (
+                <div>
+                  <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
+                    Motiebeoordeling
+                  </h4>
+                  <button
+                    onClick={() => {
+                      onClose();
+                      navigate(`/moties?motie=${motieImport.id}`);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-sm"
+                  >
+                    <FileSearch className="h-4 w-4" />
+                    Ga naar beoordeling
+                  </button>
+                </div>
+              )}
 
               {/* Created at */}
               <div>

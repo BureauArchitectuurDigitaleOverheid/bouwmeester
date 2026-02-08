@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getMotieImports,
   getMotieImport,
+  getMotieImportByNode,
   triggerMotieImport,
   rejectMotieImport,
   completeMotieReview,
@@ -23,6 +24,14 @@ export function useMotieImport(id: string) {
     queryKey: ['motie-imports', id],
     queryFn: () => getMotieImport(id),
     enabled: !!id,
+  });
+}
+
+export function useMotieImportByNode(nodeId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['motie-imports', 'by-node', nodeId],
+    queryFn: () => getMotieImportByNode(nodeId!),
+    enabled: !!nodeId,
   });
 }
 

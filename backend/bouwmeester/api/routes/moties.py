@@ -4,10 +4,12 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
 from bouwmeester.models.edge import Edge
+from bouwmeester.models.task import Task
 from bouwmeester.repositories.motie_import import (
     MotieImportRepository,
     SuggestedEdgeRepository,
@@ -30,6 +32,18 @@ async def list_imports(
         status=status_filter, bron=bron, skip=skip, limit=limit
     )
     return [MotieImportResponse.model_validate(i) for i in imports]
+
+
+@router.get("/imports/by-node/{node_id}", response_model=MotieImportResponse)
+async def get_import_by_node(
+    node_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> MotieImportResponse:
+    repo = MotieImportRepository(db)
+    motie_import = await repo.get_by_corpus_node_id(node_id)
+    if motie_import is None:
+        raise HTTPException(status_code=404, detail="No import for this node")
+    return MotieImportResponse.model_validate(motie_import)
 
 
 @router.get("/imports/{import_id}", response_model=MotieImportResponse)
@@ -91,6 +105,19 @@ async def complete_review(
     )
     if motie_import is None:
         raise HTTPException(status_code=404, detail="Import not found")
+
+    # Auto-complete the review task linked to this motie's corpus node
+    if motie_import.corpus_node_id:
+        stmt = select(Task).where(
+            Task.node_id == motie_import.corpus_node_id,
+            Task.title.startswith("Beoordeel motie:"),
+            Task.status.notin_(["done", "cancelled"]),
+        )
+        result = await db.execute(stmt)
+        for task in result.scalars().all():
+            task.status = "done"
+        await db.flush()
+
     return MotieImportResponse.model_validate(motie_import)
 
 

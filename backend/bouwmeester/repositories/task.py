@@ -17,6 +17,7 @@ def _task_options():
     return [
         selectinload(Task.assignee),
         selectinload(Task.organisatie_eenheid),
+        selectinload(Task.node),
         selectinload(Task.subtasks).selectinload(Task.assignee),
     ]
 
@@ -60,6 +61,7 @@ class TaskRepository:
             attribute_names=[
                 "assignee",
                 "organisatie_eenheid",
+                "node",
                 "subtasks",
             ],
         )
@@ -79,6 +81,7 @@ class TaskRepository:
                 "updated_at",
                 "assignee",
                 "organisatie_eenheid",
+                "node",
                 "subtasks",
             ],
         )

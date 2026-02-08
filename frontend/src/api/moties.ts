@@ -14,6 +14,10 @@ export async function getMotieImport(id: string): Promise<MotieImport> {
   return apiGet<MotieImport>(`/api/moties/imports/${id}`);
 }
 
+export async function getMotieImportByNode(nodeId: string): Promise<MotieImport> {
+  return apiGet<MotieImport>(`/api/moties/imports/by-node/${nodeId}`);
+}
+
 export async function triggerMotieImport(): Promise<{ message: string; imported: number }> {
   return apiPost('/api/moties/imports/trigger');
 }

@@ -4,7 +4,7 @@ from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
@@ -151,6 +151,12 @@ async def get_eenheid_overview(
 
     today = date.today()
 
+    priority_order = case(
+        {"kritiek": 0, "hoog": 1, "normaal": 2, "laag": 3},
+        value=Task.priority,
+        else_=4,
+    )
+
     # --- Unassigned: no person (tasks in this hierarchy without assignee) ---
     no_person_stmt = (
         select(Task)
@@ -160,7 +166,7 @@ async def get_eenheid_overview(
             Task.status.notin_(["done", "cancelled"]),
         )
         .options(*_task_options())
-        .order_by(Task.created_at.desc())
+        .order_by(priority_order, Task.deadline.asc().nullslast())
         .limit(50)
     )
     no_person_result = await db.execute(no_person_stmt)
@@ -191,7 +197,7 @@ async def get_eenheid_overview(
                 Task.status.notin_(["done", "cancelled"]),
             )
             .options(*_task_options())
-            .order_by(Task.created_at.desc())
+            .order_by(priority_order, Task.deadline.asc().nullslast())
             .limit(50)
         )
         no_unit_result = await db.execute(no_unit_stmt)

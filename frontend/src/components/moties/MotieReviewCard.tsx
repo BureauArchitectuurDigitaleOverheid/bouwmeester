@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp, Check, X, ExternalLink, Users, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
@@ -20,11 +20,19 @@ import { useVocabulary } from '@/contexts/VocabularyContext';
 
 interface MotieReviewCardProps {
   motie: MotieImport;
+  defaultExpanded?: boolean;
 }
 
-export function MotieReviewCard({ motie }: MotieReviewCardProps) {
-  const [expanded, setExpanded] = useState(false);
+export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewCardProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const cardRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (defaultExpanded && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [defaultExpanded]);
   const { nodeLabel, edgeLabel } = useVocabulary();
   const approveEdge = useApproveSuggestedEdge();
   const rejectEdge = useRejectSuggestedEdge();
@@ -50,6 +58,7 @@ export function MotieReviewCard({ motie }: MotieReviewCardProps) {
   };
 
   return (
+    <div ref={cardRef}>
     <Card>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -267,5 +276,6 @@ export function MotieReviewCard({ motie }: MotieReviewCardProps) {
         </div>
       )}
     </Card>
+    </div>
   );
 }
