@@ -23,7 +23,7 @@ export function EenheidOverzichtPage() {
     [eenheden],
   );
 
-  const { data: overview, isLoading } = useEenheidOverview(
+  const { data: overview, isLoading, isError } = useEenheidOverview(
     selectedEenheidId || null,
   );
 
@@ -50,6 +50,15 @@ export function EenheidOverzichtPage() {
 
       {selectedEenheidId && isLoading && (
         <LoadingSpinner className="py-8" />
+      )}
+
+      {selectedEenheidId && isError && (
+        <Card>
+          <div className="flex items-center gap-3 text-red-600">
+            <AlertTriangle className="h-5 w-5" />
+            <p className="text-sm">Kon het overzicht niet laden. Probeer het opnieuw.</p>
+          </div>
+        </Card>
       )}
 
       {selectedEenheidId && overview && (

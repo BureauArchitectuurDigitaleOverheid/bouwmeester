@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ReactFlow, {
@@ -193,10 +193,12 @@ export function CorpusGraph() {
   }, [data?.edges]);
 
   // Initialize edge type filter once data is available
-  if (availableEdgeTypes.length > 0 && !edgeTypesInitialized) {
-    setEnabledEdgeTypes(new Set(availableEdgeTypes));
-    setEdgeTypesInitialized(true);
-  }
+  useEffect(() => {
+    if (availableEdgeTypes.length > 0 && !edgeTypesInitialized) {
+      setEnabledEdgeTypes(new Set(availableEdgeTypes));
+      setEdgeTypesInitialized(true);
+    }
+  }, [availableEdgeTypes, edgeTypesInitialized]);
 
   // Build React Flow nodes and edges
   const { rfNodes, rfEdges } = useMemo(() => {
@@ -283,32 +285,32 @@ export function CorpusGraph() {
       const goesUp = fromPos && toPos && fromPos.y > toPos.y;
       const bMarker = { type: MarkerType.ArrowClosed, width: 14, height: 14, color: '#94a3b8' };
       return {
-      id: bridge.id,
-      source: goesUp ? bridge.to_node_id : bridge.from_node_id,
-      target: goesUp ? bridge.from_node_id : bridge.to_node_id,
-      label: `via ${bridge.bridgedThrough.length} nodes`,
-      type: 'bezier',
-      animated: false,
-      ...(goesUp ? { markerStart: bMarker } : { markerEnd: bMarker }),
-      style: {
-        stroke: '#94a3b8',
-        strokeWidth: 1.5,
-        strokeDasharray: '3 3',
-        opacity: 0.6,
-      },
-      labelStyle: {
-        fontSize: 9,
-        fill: '#94a3b8',
-        fontStyle: 'italic',
-        fontWeight: 400,
-      },
-      labelBgStyle: {
-        fill: '#ffffff',
-        fillOpacity: 0.9,
-      },
-      labelBgPadding: [4, 2] as [number, number],
-      labelBgBorderRadius: 4,
-    };
+        id: bridge.id,
+        source: goesUp ? bridge.to_node_id : bridge.from_node_id,
+        target: goesUp ? bridge.from_node_id : bridge.to_node_id,
+        label: `via ${bridge.bridgedThrough.length} nodes`,
+        type: 'bezier',
+        animated: false,
+        ...(goesUp ? { markerStart: bMarker } : { markerEnd: bMarker }),
+        style: {
+          stroke: '#94a3b8',
+          strokeWidth: 1.5,
+          strokeDasharray: '3 3',
+          opacity: 0.6,
+        },
+        labelStyle: {
+          fontSize: 9,
+          fill: '#94a3b8',
+          fontStyle: 'italic',
+          fontWeight: 400,
+        },
+        labelBgStyle: {
+          fill: '#ffffff',
+          fillOpacity: 0.9,
+        },
+        labelBgPadding: [4, 2] as [number, number],
+        labelBgBorderRadius: 4,
+      };
     });
 
     const rfEdges: RFEdge[] = [...rfNormalEdges, ...rfBridgeEdges];
@@ -321,7 +323,7 @@ export function CorpusGraph() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(rfEdges);
 
   // Sync rfNodes/rfEdges into state when they change
-  useMemo(() => {
+  useEffect(() => {
     setNodes(rfNodes);
     setEdges(rfEdges);
   }, [rfNodes, rfEdges, setNodes, setEdges]);
@@ -357,10 +359,10 @@ export function CorpusGraph() {
   }, [pendingConnection, newEdgeType, createEdge]);
 
   // Node type options for create modal
-  const nodeTypeCreateOptions: SelectOption[] = Object.values(NodeType).map((t) => ({
-    value: t,
-    label: nodeLabel(t),
-  }));
+  const nodeTypeCreateOptions: SelectOption[] = useMemo(
+    () => Object.values(NodeType).map((t) => ({ value: t, label: nodeLabel(t) })),
+    [nodeLabel],
+  );
 
   const handleOpenCreateNode = useCallback(() => {
     setNewNodeTitle('');

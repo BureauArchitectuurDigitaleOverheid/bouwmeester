@@ -95,8 +95,7 @@ export function PersonEditForm({
         setDienstverband('in_dienst');
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editData]);
+  }, [open, editData, defaultIsAgent, defaultOrgEenheidId, allPeople, functieOptions]);
 
   const isAgent = editData ? editData.is_agent : defaultIsAgent;
   const isValid = naam.trim() && (isAgent || email.trim());

@@ -32,7 +32,7 @@ export function CascadingOrgSelect({
   onChange,
   label = 'Organisatie-eenheid',
 }: CascadingOrgSelectProps) {
-  const { data: tree = [] } = useOrganisatieTree();
+  const { data: tree = [], isLoading } = useOrganisatieTree();
   const [selections, setSelections] = useState<string[]>([]);
 
   // When value changes externally (or on mount), rebuild the path
@@ -92,6 +92,19 @@ export function CascadingOrgSelect({
     onChange(newSelections.length > 0 ? newSelections[newSelections.length - 1] : '');
   };
 
+  if (isLoading) {
+    return (
+      <div>
+        {label && (
+          <label className="block text-sm font-medium text-text mb-1">
+            {label}
+          </label>
+        )}
+        <p className="text-xs text-text-secondary py-2">Laden...</p>
+      </div>
+    );
+  }
+
   if (tree.length === 0) return null;
 
   return (
@@ -104,7 +117,7 @@ export function CascadingOrgSelect({
       <div className="space-y-2">
         {levels.map((level, i) => (
           <select
-            key={i}
+            key={`${i}-${level.type}`}
             value={level.selected}
             onChange={(e) => handleChange(i, e.target.value)}
             className="w-full rounded-lg border border-border px-3 py-2 text-sm text-text bg-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
