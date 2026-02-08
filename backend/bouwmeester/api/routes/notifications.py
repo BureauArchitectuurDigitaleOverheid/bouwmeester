@@ -101,7 +101,10 @@ async def send_message(
         for m in new_mentions:
             if m.mention_type == "person" and m.target_id != body.person_id:
                 await service.notify_mention(
-                    m.target_id, "notification", title, sender_id=body.sender_id,
+                    m.target_id,
+                    "notification",
+                    title,
+                    sender_id=body.sender_id,
                 )
 
     await db.commit()

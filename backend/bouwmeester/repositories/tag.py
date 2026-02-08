@@ -41,10 +41,7 @@ class TagRepository:
 
     async def search(self, query: str) -> list[Tag]:
         stmt = (
-            select(Tag)
-            .where(Tag.name.ilike(f"%{query}%"))
-            .order_by(Tag.name)
-            .limit(20)
+            select(Tag).where(Tag.name.ilike(f"%{query}%")).order_by(Tag.name).limit(20)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

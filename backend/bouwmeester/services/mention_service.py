@@ -89,7 +89,8 @@ class MentionService:
 
         # Only return mentions that didn't exist before (for notifications)
         return [
-            m for m in all_mentions
+            m
+            for m in all_mentions
             if (m.mention_type, str(m.target_id)) not in existing_keys
         ]
 
@@ -214,8 +215,10 @@ def _walk_tiptap(node: dict | list, mentions: list[dict]) -> None:
     if node_type == "mention":
         attrs = node.get("attrs", {})
         target_id = attrs.get("id")
+        # mentionType attr: person vs organisatie (default "person")
+        mention_type = attrs.get("mentionType", "person")
         if target_id:
-            mentions.append({"mention_type": "person", "target_id": str(target_id)})
+            mentions.append({"mention_type": mention_type, "target_id": str(target_id)})
 
     elif node_type == "hashtagMention":
         attrs = node.get("attrs", {})

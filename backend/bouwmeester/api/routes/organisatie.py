@@ -38,7 +38,10 @@ def _build_tree(
     ]
 
 
-@router.get("", response_model=list[OrganisatieEenheidResponse] | list[OrganisatieEenheidTreeNode])
+@router.get(
+    "",
+    response_model=list[OrganisatieEenheidResponse] | list[OrganisatieEenheidTreeNode],
+)
 async def list_organisatie(
     format: str = Query("flat", pattern="^(flat|tree)$"),
     db: AsyncSession = Depends(get_db),
@@ -54,6 +57,19 @@ async def list_organisatie(
         return _build_tree(flat, personen_counts)
 
     return flat
+
+
+@router.get("/search", response_model=list[OrganisatieEenheidResponse])
+async def search_organisatie(
+    q: str = Query("", min_length=0),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+) -> list[OrganisatieEenheidResponse]:
+    if not q.strip():
+        return []
+    repo = OrganisatieEenheidRepository(db)
+    units = await repo.search(q.strip(), limit=limit)
+    return [OrganisatieEenheidResponse.model_validate(u) for u in units]
 
 
 @router.post(
@@ -80,7 +96,9 @@ async def create_organisatie(
         for m in new_mentions:
             if m.mention_type == "person":
                 await notif_svc.notify_mention(
-                    m.target_id, "organisatie", eenheid.naam,
+                    m.target_id,
+                    "organisatie",
+                    eenheid.naam,
                 )
 
     return OrganisatieEenheidResponse.model_validate(eenheid)
@@ -119,7 +137,9 @@ async def update_organisatie(
         for m in new_mentions:
             if m.mention_type == "person":
                 await notif_svc.notify_mention(
-                    m.target_id, "organisatie", eenheid.naam,
+                    m.target_id,
+                    "organisatie",
+                    eenheid.naam,
                 )
 
     return OrganisatieEenheidResponse.model_validate(eenheid)
@@ -191,5 +211,3 @@ async def get_organisatie_personen(
         )
 
     return build_group(id)
-
-

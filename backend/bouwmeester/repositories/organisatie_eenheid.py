@@ -144,6 +144,16 @@ class OrganisatieEenheidRepository:
         result = await self.session.execute(stmt)
         return list(result.unique().scalars().all())
 
+    async def search(self, query: str, limit: int = 10) -> list[OrganisatieEenheid]:
+        stmt = (
+            select(OrganisatieEenheid)
+            .where(OrganisatieEenheid.naam.ilike(f"%{query}%"))
+            .order_by(OrganisatieEenheid.naam)
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_personen_for_units(self, unit_ids: list[UUID]) -> list[Person]:
         """Fetch all people for a list of unit IDs in one query."""
         if not unit_ids:

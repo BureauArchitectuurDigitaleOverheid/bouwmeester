@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from './client';
+import { apiGet, apiPost, apiPut, apiDelete } from './client';
 import type { CorpusNode, CorpusNodeCreate, CorpusNodeUpdate, GraphViewResponse, NodeStakeholder, NodeType } from '@/types';
 
 export async function getNodes(nodeType?: NodeType): Promise<CorpusNode[]> {
@@ -16,7 +16,7 @@ export async function createNode(data: CorpusNodeCreate): Promise<CorpusNode> {
 }
 
 export async function updateNode(id: string, data: CorpusNodeUpdate): Promise<CorpusNode> {
-  return apiPatch<CorpusNode>(`/api/nodes/${id}`, data);
+  return apiPut<CorpusNode>(`/api/nodes/${id}`, data);
 }
 
 export async function deleteNode(id: string): Promise<void> {

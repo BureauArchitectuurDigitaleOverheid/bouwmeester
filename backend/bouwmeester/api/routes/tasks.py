@@ -54,8 +54,11 @@ async def create_task(
         for m in new_mentions:
             if m.mention_type == "person":
                 await notif_svc.notify_mention(
-                    m.target_id, "task", task.title,
-                    source_task_id=task.id, source_node_id=task.node_id,
+                    m.target_id,
+                    "task",
+                    task.title,
+                    source_task_id=task.id,
+                    source_node_id=task.node_id,
                     sender_id=data.assignee_id,
                 )
 
@@ -116,8 +119,11 @@ async def update_task(
         for m in new_mentions:
             if m.mention_type == "person":
                 await notif_svc.notify_mention(
-                    m.target_id, "task", task.title,
-                    source_task_id=task.id, source_node_id=task.node_id,
+                    m.target_id,
+                    "task",
+                    task.title,
+                    source_task_id=task.id,
+                    source_node_id=task.node_id,
                     sender_id=data.assignee_id,
                 )
 
