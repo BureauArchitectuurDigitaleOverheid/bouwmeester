@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -20,7 +21,11 @@ const statusFilters: { value: MotieImportStatus | 'all'; label: string }[] = [
 ];
 
 export function MotiesPage() {
-  const [statusFilter, setStatusFilter] = useState<MotieImportStatus | 'all'>('imported');
+  const [searchParams] = useSearchParams();
+  const highlightMotieId = searchParams.get('motie');
+  const [statusFilter, setStatusFilter] = useState<MotieImportStatus | 'all'>(
+    highlightMotieId ? 'all' : 'imported'
+  );
   const { data: imports, isLoading } = useMotieImports(
     statusFilter === 'all' ? undefined : { status: statusFilter }
   );
@@ -74,7 +79,11 @@ export function MotiesPage() {
       ) : (
         <div className="space-y-3">
           {imports.map((motie) => (
-            <MotieReviewCard key={motie.id} motie={motie} />
+            <MotieReviewCard
+              key={motie.id}
+              motie={motie}
+              defaultExpanded={motie.id === highlightMotieId}
+            />
           ))}
         </div>
       )}

@@ -7,7 +7,8 @@ records, creates suggested edges, and sends notifications.
 
 import logging
 import uuid
-from datetime import datetime
+from collections import Counter
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,7 @@ from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.person import Person
 from bouwmeester.models.politieke_input import PolitiekeInput
+from bouwmeester.models.task import Task
 from bouwmeester.repositories.motie_import import (
     MotieImportRepository,
     SuggestedEdgeRepository,
@@ -257,11 +259,103 @@ class MotieImportService:
             except Exception:
                 logger.exception("Error sending motie import notifications")
 
+        # Step 11: Create review task
+        try:
+            review_unit_id = await self._determine_review_unit(affected_nodes)
+            task_title = f"Beoordeel motie: {motie.onderwerp}"
+            if len(task_title) > 200:
+                task_title = task_title[:197] + "..."
+
+            description_parts = [
+                f"Zaak: {motie.zaak_nummer}",
+                f"Bron: {motie.bron}",
+            ]
+            if samenvatting:
+                description_parts.append(f"\n{samenvatting}")
+            description_parts.append(
+                f"\n{len(affected_nodes)} gerelateerde beleidsdossiers gevonden."
+            )
+
+            # Deadline: 10 business days from now
+            deadline = self._business_days_from_now(10)
+
+            task = Task(
+                node_id=node.id,
+                title=task_title,
+                description="\n".join(description_parts),
+                priority="hoog",
+                status="open",
+                deadline=deadline,
+                organisatie_eenheid_id=review_unit_id,
+                assignee_id=None,
+                motie_import_id=motie_import.id,
+            )
+            self.session.add(task)
+            await self.session.flush()
+            logger.info(
+                f"Created review task for motie {motie.zaak_nummer} "
+                f"(unit: {review_unit_id or 'none'})"
+            )
+        except Exception:
+            logger.exception(
+                f"Error creating review task for motie {motie.zaak_nummer}"
+            )
+
         logger.info(
             f"Motie {motie.zaak_nummer} imported with {len(affected_nodes)} "
             f"suggested edges"
         )
         return True
+
+    async def _determine_review_unit(
+        self, affected_nodes: list[CorpusNode]
+    ) -> uuid.UUID | None:
+        """Determine the best organisatie_eenheid for a motie review task.
+
+        Looks at stakeholders (especially eigenaar role) of matched nodes and
+        picks the most common organisatie_eenheid.
+        """
+        if not affected_nodes:
+            return None
+
+        node_ids = [n.id for n in affected_nodes]
+        stmt = select(NodeStakeholder).where(
+            NodeStakeholder.node_id.in_(node_ids),
+            NodeStakeholder.rol == "eigenaar",
+        )
+        result = await self.session.execute(stmt)
+        stakeholders = result.scalars().all()
+
+        if not stakeholders:
+            return None
+
+        # Batch-query organisatie_eenheid_id for all stakeholder persons
+        person_ids = [sh.person_id for sh in stakeholders]
+        person_stmt = select(Person.organisatie_eenheid_id).where(
+            Person.id.in_(person_ids),
+            Person.organisatie_eenheid_id.isnot(None),
+        )
+        person_result = await self.session.execute(person_stmt)
+        unit_ids: list[uuid.UUID] = list(person_result.scalars().all())
+
+        if not unit_ids:
+            return None
+
+        # Return the most common unit
+        counter = Counter(unit_ids)
+        most_common_id, _ = counter.most_common(1)[0]
+        return most_common_id
+
+    @staticmethod
+    def _business_days_from_now(days: int) -> date:
+        """Calculate a date N business days from today."""
+        current = date.today()
+        added = 0
+        while added < days:
+            current += timedelta(days=1)
+            if current.weekday() < 5:  # Monday=0 .. Friday=4
+                added += 1
+        return current
 
     async def _find_matching_nodes(self, tag_names: list[str]) -> list[dict]:
         """Find corpus nodes that share tags with the motie.

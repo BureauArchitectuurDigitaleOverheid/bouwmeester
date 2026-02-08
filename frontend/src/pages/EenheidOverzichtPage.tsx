@@ -1,49 +1,50 @@
-import { useState, useMemo } from 'react';
-import { Building2, Users, AlertTriangle } from 'lucide-react';
-import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { useState, useEffect } from 'react';
+import { Building2, Users } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import { UnassignedTasksSection } from '@/components/eenheid/UnassignedTasksSection';
+import { PersonTasksRow } from '@/components/eenheid/PersonTasksRow';
+import { SubeenheidCard } from '@/components/eenheid/SubeenheidCard';
+import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { useEenheidOverview } from '@/hooks/useTasks';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
-import { ORGANISATIE_TYPE_LABELS } from '@/types';
 
 export function EenheidOverzichtPage() {
   const { currentPerson } = useCurrentPerson();
-  const { data: eenheden } = useOrganisatieFlat();
+  const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
 
-  const [selectedEenheidId, setSelectedEenheidId] = useState<string>(
-    currentPerson?.organisatie_eenheid_id ?? '',
-  );
+  const [selectedEenheidId, setSelectedEenheidId] = useState<string>('');
+  const [expandedPersonId, setExpandedPersonId] = useState<string | null>(null);
 
-  const eenheidOptions = useMemo(
-    () =>
-      (eenheden ?? []).map((e) => ({
-        value: e.id,
-        label: e.naam,
-        description: ORGANISATIE_TYPE_LABELS[e.type] ?? e.type,
-      })),
-    [eenheden],
-  );
+  // Auto-select managed unit on load
+  useEffect(() => {
+    if (selectedEenheidId) return;
+    if (managedEenheden && managedEenheden.length > 0) {
+      setSelectedEenheidId(managedEenheden[0].id);
+    } else if (currentPerson?.organisatie_eenheid_id) {
+      setSelectedEenheidId(currentPerson.organisatie_eenheid_id);
+    }
+  }, [managedEenheden, currentPerson, selectedEenheidId]);
 
   const { data: overview, isLoading } = useEenheidOverview(
     selectedEenheidId || null,
   );
 
+  const highLevelTypes = new Set(['ministerie', 'directoraat_generaal', 'directie']);
+  const showNoUnit = overview ? highLevelTypes.has(overview.eenheid_type) : false;
+
+  const handleSelectSubeenheid = (eenheidId: string) => {
+    setSelectedEenheidId(eenheidId);
+    setExpandedPersonId(null);
+  };
+
+  const handleTogglePerson = (personId: string) => {
+    setExpandedPersonId((prev) => (prev === personId ? null : personId));
+  };
+
   return (
     <div className="space-y-6 p-6">
-      {/* Org unit selector */}
-      <div className="max-w-md">
-        <CreatableSelect
-          label="Organisatie-eenheid"
-          value={selectedEenheidId}
-          onChange={setSelectedEenheidId}
-          options={eenheidOptions}
-          placeholder="Selecteer een eenheid..."
-        />
-      </div>
-
       {!selectedEenheidId && (
         <EmptyState
           icon={<Building2 className="h-16 w-16" />}
@@ -59,22 +60,15 @@ export function EenheidOverzichtPage() {
       {selectedEenheidId && overview && (
         <div className="space-y-6">
           {/* Section 1: Onverdeeld */}
-          {overview.unassigned_count > 0 && (
-            <Card>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-amber-100 text-amber-600">
-                  <AlertTriangle className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="text-base font-semibold text-text">Onverdeeld</h2>
-                  <p className="text-sm text-text-secondary">
-                    {overview.unassigned_count} {overview.unassigned_count === 1 ? 'taak' : 'taken'} zonder
-                    toegewezen persoon
-                  </p>
-                </div>
-              </div>
-            </Card>
-          )}
+          <UnassignedTasksSection
+            noUnitTasks={overview.unassigned_no_unit}
+            noUnitCount={overview.unassigned_no_unit_count}
+            noPersonTasks={overview.unassigned_no_person}
+            noPersonCount={overview.unassigned_no_person_count}
+            showNoUnit={showNoUnit}
+            eenheidType={overview.eenheid_type}
+            selectedEenheidId={selectedEenheidId}
+          />
 
           {/* Section 2: Teamoverzicht */}
           <div>
@@ -103,32 +97,12 @@ export function EenheidOverzichtPage() {
                     </thead>
                     <tbody>
                       {overview.by_person.map((person) => (
-                        <tr
+                        <PersonTasksRow
                           key={person.person_id}
-                          className="border-b border-border last:border-0 hover:bg-gray-50 transition-colors"
-                        >
-                          <td className="px-5 py-3 font-medium text-text">
-                            {person.person_naam}
-                          </td>
-                          <td className="px-5 py-3 text-right text-text-secondary">
-                            {person.open_count}
-                          </td>
-                          <td className="px-5 py-3 text-right text-text-secondary">
-                            {person.in_progress_count}
-                          </td>
-                          <td className="px-5 py-3 text-right text-text-secondary">
-                            {person.done_count}
-                          </td>
-                          <td
-                            className={`px-5 py-3 text-right font-medium ${
-                              person.overdue_count > 0
-                                ? 'text-red-600'
-                                : 'text-text-secondary'
-                            }`}
-                          >
-                            {person.overdue_count}
-                          </td>
-                        </tr>
+                          person={person}
+                          isExpanded={expandedPersonId === person.person_id}
+                          onToggle={() => handleTogglePerson(person.person_id)}
+                        />
                       ))}
                     </tbody>
                   </table>
@@ -146,21 +120,11 @@ export function EenheidOverzichtPage() {
               </h2>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {overview.by_subeenheid.map((sub) => (
-                  <Card key={sub.eenheid_id}>
-                    <div className="space-y-2">
-                      <div>
-                        <p className="font-medium text-text">{sub.eenheid_naam}</p>
-                        <p className="text-xs text-text-secondary">
-                          {ORGANISATIE_TYPE_LABELS[sub.eenheid_type] ?? sub.eenheid_type}
-                        </p>
-                      </div>
-                      <div className="flex gap-4 text-sm text-text-secondary">
-                        <span>Open: {sub.open_count}</span>
-                        <span>In uitvoering: {sub.in_progress_count}</span>
-                        <span>Afgerond: {sub.done_count}</span>
-                      </div>
-                    </div>
-                  </Card>
+                  <SubeenheidCard
+                    key={sub.eenheid_id}
+                    sub={sub}
+                    onSelect={handleSelectSubeenheid}
+                  />
                 ))}
               </div>
             </div>

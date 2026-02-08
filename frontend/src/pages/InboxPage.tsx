@@ -1,4 +1,4 @@
-import { Inbox, CheckSquare, Network, TrendingUp } from 'lucide-react';
+import { Inbox, CheckSquare, Network, TrendingUp, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
@@ -6,6 +6,8 @@ import { InboxList } from '@/components/inbox/InboxList';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useManagedEenheden } from '@/hooks/useOrganisatie';
+import { useEenheidOverview } from '@/hooks/useTasks';
 import type { InboxItem } from '@/types';
 
 export function InboxPage() {
@@ -13,6 +15,16 @@ export function InboxPage() {
 
   const { currentPerson } = useCurrentPerson();
   const { data: notifications } = useNotifications(currentPerson?.id);
+  const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
+  const managedEenheid = managedEenheden?.[0] ?? null;
+  const managedEenheidId = managedEenheid?.id ?? null;
+  const { data: overview } = useEenheidOverview(managedEenheidId);
+
+  const PERSON_LEVEL_TYPES = new Set(['afdeling', 'team']);
+  const visibleUnassignedCount = overview
+    ? (overview.unassigned_no_unit_count ?? 0) +
+      (PERSON_LEVEL_TYPES.has(overview.eenheid_type) ? (overview.unassigned_no_person_count ?? 0) : 0)
+    : 0;
 
   const inboxItems: InboxItem[] = (notifications ?? []).map((n) => ({
     id: n.id,
@@ -81,6 +93,28 @@ export function InboxPage() {
           </div>
         </Card>
       </div>
+
+      {/* Manager stats card */}
+      {managedEenheidId && visibleUnassignedCount > 0 && (
+        <Card
+          hoverable
+          onClick={() => navigate('/eenheid-overzicht')}
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-purple-50 text-purple-600">
+              <Users className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-text">
+                {visibleUnassignedCount} onverdeelde {visibleUnassignedCount === 1 ? 'taak' : 'taken'}
+              </p>
+              <p className="text-xs text-text-secondary">
+                In jouw eenheid - klik om te verdelen
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Inbox section */}
       <div>

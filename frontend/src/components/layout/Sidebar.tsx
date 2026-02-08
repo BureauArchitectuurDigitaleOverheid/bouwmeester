@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
 import { clsx } from 'clsx';
 import {
@@ -12,19 +13,30 @@ import {
   PanelLeftOpen,
 } from 'lucide-react';
 import { useUIStore } from '@/store/ui';
-
-const navItems = [
-  { to: '/', icon: Inbox, label: 'Inbox' },
-  { to: '/corpus', icon: Network, label: 'Corpus' },
-  { to: '/tasks', icon: CheckSquare, label: 'Taken' },
-  { to: '/organisatie', icon: Building2, label: 'Organisatie' },
-  { to: '/eenheid-overzicht', icon: Users, label: 'Eenheid' },
-  { to: '/moties', icon: ScrollText, label: 'Kamermoties' },
-  { to: '/search', icon: Search, label: 'Zoeken' },
-];
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useManagedEenheden } from '@/hooks/useOrganisatie';
+import { ORGANISATIE_TYPE_LABELS } from '@/types';
 
 export function Sidebar() {
   const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { currentPerson } = useCurrentPerson();
+  const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
+
+  const eenheidLabel = useMemo(() => {
+    const first = managedEenheden?.[0];
+    if (first) return ORGANISATIE_TYPE_LABELS[first.type] ?? 'Eenheid';
+    return 'Eenheid';
+  }, [managedEenheden]);
+
+  const navItems = useMemo(() => [
+    { to: '/', icon: Inbox, label: 'Inbox' },
+    { to: '/corpus', icon: Network, label: 'Corpus' },
+    { to: '/tasks', icon: CheckSquare, label: 'Taken' },
+    { to: '/organisatie', icon: Building2, label: 'Organisatie' },
+    { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel },
+    { to: '/moties', icon: ScrollText, label: 'Kamermoties' },
+    { to: '/search', icon: Search, label: 'Zoeken' },
+  ], [eenheidLabel]);
 
   return (
     <aside

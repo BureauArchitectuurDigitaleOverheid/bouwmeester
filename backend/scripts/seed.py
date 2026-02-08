@@ -6,7 +6,7 @@ Clears all existing data and populates organisatie, personen, corpus, edges, and
 
 import asyncio
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -4010,6 +4010,121 @@ async def seed(db: AsyncSession) -> None:
             "hoog",
             date(2026, 3, 31),
         ),
+        # --- Onverdeelde taken: geen eenheid, geen persoon ---
+        (
+            dos_digi_overheid,
+            "Inventarisatie open standaarden gemeenten",
+            (
+                "Breng in kaart welke open standaarden momenteel in gebruik zijn bij "
+                "gemeenten en welke gaps er bestaan."
+            ),
+            None,
+            "open",
+            "hoog",
+            date(2026, 3, 15),
+        ),
+        (
+            dos_data,
+            "Datalandschap analyse waterschappen",
+            (
+                "Analyseer het datalandschap van waterschappen en identificeer "
+                "mogelijkheden voor data-uitwisseling met het Rijk."
+            ),
+            None,
+            "open",
+            "normaal",
+            date(2026, 4, 30),
+        ),
+        (
+            dos_ai,
+            "EU AI Act gap-analyse rijksoverheid",
+            (
+                "Voer een gap-analyse uit op de huidige AI-inzet bij de rijksoverheid "
+                "ten opzichte van de EU AI Act vereisten."
+            ),
+            None,
+            "open",
+            "kritiek",
+            date(2026, 2, 28),
+        ),
+        (
+            dos_cio_rijk,
+            "Benchmark IT-kosten departementen 2025",
+            (
+                "Stel een benchmark op van IT-uitgaven per departement over 2025 en "
+                "identificeer besparingsmogelijkheden."
+            ),
+            None,
+            "open",
+            "normaal",
+            date(2026, 5, 31),
+        ),
+        # --- Onverdeelde taken: wel eenheid, geen persoon ---
+        (
+            dos_digi_overheid,
+            "GDI-componenten migratieplan 2026",
+            (
+                "Stel een migratieplan op voor de vernieuwing van GDI-componenten "
+                "met prioritering en afhankelijkheden."
+            ),
+            None,
+            "open",
+            "hoog",
+            date(2026, 3, 31),
+            dir_ddo,
+        ),
+        (
+            instr_digid,
+            "DigiD toegankelijkheidsaudit WCAG 2.2",
+            (
+                "Voer een toegankelijkheidsaudit uit op DigiD conform WCAG 2.2 "
+                "en stel een verbeterplan op."
+            ),
+            None,
+            "open",
+            "normaal",
+            date(2026, 4, 15),
+            afd_id_toegang,
+        ),
+        (
+            dos_ai,
+            "Algoritmeregister vulling departement BZK",
+            (
+                "Zorg ervoor dat alle AI-systemen van BZK correct zijn geregistreerd "
+                "in het Algoritmeregister met volledige metadata."
+            ),
+            None,
+            "open",
+            "hoog",
+            date(2026, 3, 15),
+            afd_ai_data,
+        ),
+        (
+            dos_digi_samenleving,
+            "Digitale inclusie nulmeting 60+",
+            (
+                "Voer een nulmeting uit onder 60-plussers over digitale vaardigheden "
+                "en toegang tot overheidsdiensten."
+            ),
+            None,
+            "open",
+            "normaal",
+            date(2026, 5, 1),
+            dir_ds,
+        ),
+        (
+            dos_cio_rijk,
+            "Cloud-exit strategie kritische systemen",
+            (
+                "Ontwikkel een cloud-exit strategie voor de meest kritische "
+                "overheidssystemen als continuiteitsplan."
+            ),
+            None,
+            "in_progress",
+            "kritiek",
+            date(2026, 2, 15),
+            dir_cio,
+        ),
     ]
 
     subtask_count = 0
@@ -4349,6 +4464,287 @@ async def seed(db: AsyncSession) -> None:
             count += 1
 
     print(f"  Node-tag koppelingen: {count} koppelingen aangemaakt")
+
+    # =========================================================================
+    # 9. MOTIE IMPORTS — Seeded imports with review tasks
+    # =========================================================================
+    from datetime import timedelta
+
+    from bouwmeester.models.motie_import import MotieImport, SuggestedEdge
+
+    # Motie 1: routed to afd_ai_data (eigenaar of matched nodes is in that unit)
+    mi_node_1 = await node_repo.create(
+        CorpusNodeCreate(
+            title="Motie Kathmann (GL-PvdA) — Transparantie algoritmegebruik gemeenten",
+            node_type="politieke_input",
+            description=(
+                "Aangenomen motie die de regering verzoekt gemeenten te verplichten "
+                "hun algoritmegebruik te registreren in het Algoritmeregister en "
+                "jaarlijks een transparantierapportage te publiceren."
+            ),
+            status="actief",
+        )
+    )
+    from bouwmeester.models.politieke_input import PolitiekeInput as PIModel
+
+    db.add(
+        PIModel(
+            id=mi_node_1.id,
+            type="motie",
+            referentie="36560-45",
+            datum=date(2026, 1, 21),
+            status="aangenomen",
+        )
+    )
+    await db.flush()
+
+    # Tag the node
+    for tag in [tag_algoritmen, tag_ai]:
+        await tag_repo.add_tag_to_node(mi_node_1.id, tag.id)
+
+    mi_1 = MotieImport(
+        zaak_id="mi-seed-kathmann-algoritmen",
+        zaak_nummer="36560-45",
+        titel=(
+            "Motie van het lid Kathmann over transparantie algoritmegebruik gemeenten"
+        ),
+        onderwerp="Transparantie algoritmegebruik gemeenten",
+        bron="tweede_kamer",
+        datum=date(2026, 1, 21),
+        status="imported",
+        corpus_node_id=mi_node_1.id,
+        indieners=["Kathmann"],
+        llm_samenvatting=(
+            "Motie verzoekt de regering gemeenten te verplichten algoritmegebruik "
+            "te registreren in het Algoritmeregister."
+        ),
+        matched_tags=["algoritmen", "ai"],
+        imported_at=datetime.utcnow() - timedelta(days=3),
+    )
+    db.add(mi_1)
+    await db.flush()
+
+    # Suggested edges for motie 1
+    db.add(
+        SuggestedEdge(
+            motie_import_id=mi_1.id,
+            target_node_id=instr_algo_register.id,
+            edge_type_id="adresseert",
+            confidence=0.9,
+            reason="Gedeelde tags: algoritmen, ai",
+            status="pending",
+        )
+    )
+    db.add(
+        SuggestedEdge(
+            motie_import_id=mi_1.id,
+            target_node_id=bk_algo_kader.id,
+            edge_type_id="adresseert",
+            confidence=0.8,
+            reason="Gedeelde tags: algoritmen",
+            status="pending",
+        )
+    )
+    await db.flush()
+
+    # Review task for motie 1 — routed to afd_ai_data (eigenaar of algo register)
+    await task_repo.create(
+        TaskCreate(
+            title="Beoordeel motie: Transparantie algoritmegebruik gemeenten",
+            description=(
+                "Zaak: 36560-45\n"
+                "Bron: tweede_kamer\n\n"
+                "Motie verzoekt de regering gemeenten te verplichten algoritmegebruik "
+                "te registreren in het Algoritmeregister.\n\n"
+                "2 gerelateerde beleidsdossiers gevonden."
+            ),
+            node_id=mi_node_1.id,
+            priority="hoog",
+            status="open",
+            deadline=date(2026, 2, 4),
+            organisatie_eenheid_id=afd_ai_data.id,
+            assignee_id=None,
+            motie_import_id=mi_1.id,
+        )
+    )
+
+    # Motie 2: routed to afd_id_toegang (eigenaar of DigiD nodes)
+    mi_node_2 = await node_repo.create(
+        CorpusNodeCreate(
+            title="Motie Dekker-Abdulaziz (D66) — DigiD voor EU-burgers",
+            node_type="politieke_input",
+            description=(
+                "Motie die de regering verzoekt DigiD beschikbaar te maken voor "
+                "EU-burgers die in Nederland wonen maar geen BSN hebben, via "
+                "koppeling met het eIDAS-stelsel."
+            ),
+            status="actief",
+        )
+    )
+    db.add(
+        PIModel(
+            id=mi_node_2.id,
+            type="motie",
+            referentie="36560-52",
+            datum=date(2026, 1, 28),
+            status="aangenomen",
+        )
+    )
+    await db.flush()
+
+    for tag in [tag_ident, tag_eidas]:
+        await tag_repo.add_tag_to_node(mi_node_2.id, tag.id)
+
+    mi_2 = MotieImport(
+        zaak_id="mi-seed-dekker-digid-eu",
+        zaak_nummer="36560-52",
+        titel="Motie van het lid Dekker-Abdulaziz over DigiD voor EU-burgers",
+        onderwerp="DigiD voor EU-burgers",
+        bron="tweede_kamer",
+        datum=date(2026, 1, 28),
+        status="imported",
+        corpus_node_id=mi_node_2.id,
+        indieners=["Dekker-Abdulaziz"],
+        llm_samenvatting=(
+            "Motie verzoekt DigiD beschikbaar te maken voor EU-burgers zonder BSN "
+            "via eIDAS-koppeling."
+        ),
+        matched_tags=["digitale identiteit", "eIDAS"],
+        imported_at=datetime.utcnow() - timedelta(days=1),
+    )
+    db.add(mi_2)
+    await db.flush()
+
+    db.add(
+        SuggestedEdge(
+            motie_import_id=mi_2.id,
+            target_node_id=instr_digid.id,
+            edge_type_id="adresseert",
+            confidence=0.85,
+            reason="Gedeelde tags: digitale identiteit",
+            status="pending",
+        )
+    )
+    db.add(
+        SuggestedEdge(
+            motie_import_id=mi_2.id,
+            target_node_id=instr_eidas_wallet.id,
+            edge_type_id="adresseert",
+            confidence=0.75,
+            reason="Gedeelde tags: eIDAS",
+            status="pending",
+        )
+    )
+    await db.flush()
+
+    # Review task for motie 2 — routed to afd_id_toegang
+    await task_repo.create(
+        TaskCreate(
+            title="Beoordeel motie: DigiD voor EU-burgers",
+            description=(
+                "Zaak: 36560-52\n"
+                "Bron: tweede_kamer\n\n"
+                "Motie verzoekt DigiD beschikbaar te maken voor EU-burgers zonder BSN "
+                "via eIDAS-koppeling.\n\n"
+                "2 gerelateerde beleidsdossiers gevonden."
+            ),
+            node_id=mi_node_2.id,
+            priority="hoog",
+            status="open",
+            deadline=date(2026, 2, 11),
+            organisatie_eenheid_id=afd_id_toegang.id,
+            assignee_id=None,
+            motie_import_id=mi_2.id,
+        )
+    )
+
+    # Motie 3: NO unit routing (no matching eigenaar stakeholders) → "Geen eenheid"
+    mi_node_3 = await node_repo.create(
+        CorpusNodeCreate(
+            title=(
+                "Motie Van Baarle (DENK) — Digitale dienstverlening in meerdere talen"
+            ),
+            node_type="politieke_input",
+            description=(
+                "Motie die de regering verzoekt de belangrijkste digitale "
+                "overheidsdiensten (DigiD, MijnOverheid, Overheid.nl) ook in het "
+                "Engels, Turks en Arabisch beschikbaar te maken."
+            ),
+            status="actief",
+        )
+    )
+    db.add(
+        PIModel(
+            id=mi_node_3.id,
+            type="motie",
+            referentie="36560-61",
+            datum=date(2026, 2, 3),
+            status="aangenomen",
+        )
+    )
+    await db.flush()
+
+    for tag in [tag_toegankelijkheid, tag_digitale_kloof]:
+        await tag_repo.add_tag_to_node(mi_node_3.id, tag.id)
+
+    mi_3 = MotieImport(
+        zaak_id="mi-seed-vanbaarle-meertalig",
+        zaak_nummer="36560-61",
+        titel=(
+            "Motie van het lid Van Baarle over digitale dienstverlening "
+            "in meerdere talen"
+        ),
+        onderwerp="Digitale dienstverlening in meerdere talen",
+        bron="tweede_kamer",
+        datum=date(2026, 2, 3),
+        status="imported",
+        corpus_node_id=mi_node_3.id,
+        indieners=["Van Baarle"],
+        llm_samenvatting=(
+            "Motie verzoekt overheidsdiensten meertalig beschikbaar te maken "
+            "voor burgers die het Nederlands onvoldoende beheersen."
+        ),
+        matched_tags=["toegankelijkheid", "digitale kloof"],
+        imported_at=datetime.utcnow(),
+    )
+    db.add(mi_3)
+    await db.flush()
+
+    # No suggested edges with clear eigenaar → lands in "Geen eenheid"
+    db.add(
+        SuggestedEdge(
+            motie_import_id=mi_3.id,
+            target_node_id=prob_digitale_kloof.id,
+            edge_type_id="adresseert",
+            confidence=0.7,
+            reason="Gedeelde tags: digitale kloof, toegankelijkheid",
+            status="pending",
+        )
+    )
+    await db.flush()
+
+    # Review task for motie 3 — NO unit (will appear in "Geen eenheid")
+    await task_repo.create(
+        TaskCreate(
+            title="Beoordeel motie: Digitale dienstverlening in meerdere talen",
+            description=(
+                "Zaak: 36560-61\n"
+                "Bron: tweede_kamer\n\n"
+                "Motie verzoekt overheidsdiensten meertalig beschikbaar te maken "
+                "voor burgers die het Nederlands onvoldoende beheersen.\n\n"
+                "1 gerelateerd beleidsdossier gevonden."
+            ),
+            node_id=mi_node_3.id,
+            priority="hoog",
+            status="open",
+            deadline=date(2026, 2, 17),
+            organisatie_eenheid_id=None,
+            assignee_id=None,
+            motie_import_id=mi_3.id,
+        )
+    )
+
+    print("  Motie imports: 3 moties met review-taken aangemaakt")
 
     await db.commit()
     print("\nSeed voltooid!")

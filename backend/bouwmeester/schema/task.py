@@ -28,6 +28,7 @@ class TaskBase(BaseModel):
     assignee_id: UUID | None = None
     organisatie_eenheid_id: UUID | None = None
     parent_id: UUID | None = None
+    motie_import_id: UUID | None = None
     status: TaskStatus = TaskStatus.open
     priority: TaskPriority = TaskPriority.normaal
     deadline: date | None = Field(None, alias="due_date")
@@ -46,6 +47,7 @@ class TaskUpdate(BaseModel):
     assignee_id: UUID | None = None
     organisatie_eenheid_id: UUID | None = None
     parent_id: UUID | None = None
+    motie_import_id: UUID | None = None
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     deadline: date | None = Field(None, alias="due_date")
@@ -69,6 +71,14 @@ class TaskOrgEenheidSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TaskNodeSummary(BaseModel):
+    id: UUID
+    title: str
+    node_type: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TaskSubtaskSummary(BaseModel):
     id: UUID
     title: str
@@ -85,11 +95,13 @@ class TaskResponse(BaseModel):
     title: str
     description: str | None = None
     node_id: UUID
+    node: TaskNodeSummary | None = None
     assignee_id: UUID | None = None
     assignee: TaskAssigneeSummary | None = None
     organisatie_eenheid_id: UUID | None = None
     organisatie_eenheid: TaskOrgEenheidSummary | None = None
     parent_id: UUID | None = None
+    motie_import_id: UUID | None = None
     subtasks: list[TaskSubtaskSummary] = []
     status: TaskStatus
     priority: TaskPriority
@@ -116,9 +128,15 @@ class EenheidSubeenheidStats(BaseModel):
     open_count: int = 0
     in_progress_count: int = 0
     done_count: int = 0
+    overdue_count: int = 0
 
 
 class EenheidOverviewResponse(BaseModel):
     unassigned_count: int
+    unassigned_no_unit: list[TaskResponse] = []
+    unassigned_no_unit_count: int = 0
+    unassigned_no_person: list[TaskResponse] = []
+    unassigned_no_person_count: int = 0
     by_person: list[EenheidPersonTaskStats]
     by_subeenheid: list[EenheidSubeenheidStats]
+    eenheid_type: str = ""
