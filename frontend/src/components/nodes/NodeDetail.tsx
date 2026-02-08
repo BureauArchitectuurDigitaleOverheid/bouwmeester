@@ -9,14 +9,17 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
+import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
 import { TaskView } from '@/components/tasks/TaskView';
-import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeMotieImport } from '@/hooks/useNodes';
+import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeMotieImport, useAddNodeStakeholder, useUpdateNodeStakeholder, useRemoveNodeStakeholder } from '@/hooks/useNodes';
 import { useTasks } from '@/hooks/useTasks';
+import { usePeople } from '@/hooks/usePeople';
 import { useNodeTags, useAddTagToNode, useRemoveTagFromNode, useTags } from '@/hooks/useTags';
 import { useReferences } from '@/hooks/useMentions';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 
@@ -56,6 +59,14 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const { data: motieImport } = useNodeMotieImport(nodeId, node?.node_type);
   const { data: references } = useReferences(nodeId);
   const { openTaskDetail } = useTaskDetail();
+  const addStakeholder = useAddNodeStakeholder();
+  const updateStakeholder = useUpdateNodeStakeholder();
+  const removeStakeholder = useRemoveNodeStakeholder();
+  const { data: allPeople } = usePeople();
+  const [newStakeholderPersonId, setNewStakeholderPersonId] = useState('');
+  const [newStakeholderRol, setNewStakeholderRol] = useState('betrokken');
+  const [personCreateName, setPersonCreateName] = useState('');
+  const [showPersonCreate, setShowPersonCreate] = useState(false);
 
   // Tag search: fetch all tags and filter client-side for instant results
   const { data: allTags } = useTags();
@@ -443,18 +454,99 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             <h3 className="text-sm font-medium text-text">
               Betrokkenen ({stakeholders?.length ?? 0})
             </h3>
+
+            {/* Add stakeholder form */}
+            <Card>
+              <h4 className="text-sm font-medium text-text mb-3">Betrokkene toevoegen</h4>
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <CreatableSelect
+                    label="Persoon"
+                    value={newStakeholderPersonId}
+                    onChange={setNewStakeholderPersonId}
+                    options={(allPeople ?? []).map((p) => ({
+                      value: p.id,
+                      label: p.naam,
+                      description: p.functie || undefined,
+                    }))}
+                    placeholder="Selecteer persoon..."
+                    onCreate={async (text) => {
+                      setPersonCreateName(text);
+                      setShowPersonCreate(true);
+                      return null;
+                    }}
+                    createLabel="Nieuwe persoon aanmaken"
+                  />
+                </div>
+                <div className="w-48">
+                  <label className="block text-sm font-medium text-text mb-1.5">Rol</label>
+                  <select
+                    value={newStakeholderRol}
+                    onChange={(e) => setNewStakeholderRol(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm"
+                  >
+                    {Object.entries(STAKEHOLDER_ROL_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <Button
+                  icon={<Plus className="h-4 w-4" />}
+                  disabled={!newStakeholderPersonId || addStakeholder.isPending}
+                  onClick={() => {
+                    addStakeholder.mutate(
+                      { nodeId, data: { person_id: newStakeholderPersonId, rol: newStakeholderRol } },
+                      {
+                        onSuccess: () => {
+                          setNewStakeholderPersonId('');
+                          setNewStakeholderRol('betrokken');
+                        },
+                      },
+                    );
+                  }}
+                >
+                  Toevoegen
+                </Button>
+              </div>
+            </Card>
+
+            {/* Stakeholder list */}
             {stakeholders && stakeholders.length > 0 ? (
               <div className="space-y-2">
                 {stakeholders.map((s) => (
-                  <PersonCardExpandable
-                    key={s.id}
-                    person={s.person}
-                    extraBadge={
-                      <Badge variant="slate">
-                        {STAKEHOLDER_ROL_LABELS[s.rol] ?? s.rol}
-                      </Badge>
-                    }
-                  />
+                  <div key={s.id} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-white">
+                    <div className="flex-1 min-w-0">
+                      <PersonCardExpandable
+                        person={s.person}
+                      />
+                    </div>
+                    <select
+                      value={s.rol}
+                      onChange={(e) => {
+                        updateStakeholder.mutate({
+                          nodeId,
+                          stakeholderId: s.id,
+                          data: { rol: e.target.value },
+                        });
+                      }}
+                      className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm"
+                    >
+                      {Object.entries(STAKEHOLDER_ROL_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`${s.person.naam} verwijderen als betrokkene?`)) {
+                          removeStakeholder.mutate({ nodeId, stakeholderId: s.id });
+                        }
+                      }}
+                      className="p-1.5 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors"
+                      title="Verwijderen"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -485,6 +577,15 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
           node={node}
         />
       )}
+
+      <PersonQuickCreateForm
+        open={showPersonCreate}
+        onClose={() => setShowPersonCreate(false)}
+        initialName={personCreateName}
+        onCreated={(personId) => {
+          setNewStakeholderPersonId(personId);
+        }}
+      />
     </div>
   );
 }
