@@ -10,7 +10,6 @@ class PersonBase(BaseModel):
     naam: str
     email: str | None = None
     functie: str | None = None
-    organisatie_eenheid_id: UUID | None = None
     is_agent: bool = False
     api_key: str | None = None
 
@@ -23,7 +22,6 @@ class PersonUpdate(BaseModel):
     naam: str | None = None
     email: str | None = None
     functie: str | None = None
-    organisatie_eenheid_id: UUID | None = None
     is_agent: bool | None = None
     api_key: str | None = None
 
@@ -77,3 +75,26 @@ class PersonSummaryResponse(BaseModel):
     done_task_count: int
     open_tasks: list[PersonTaskSummary]
     stakeholder_nodes: list[PersonStakeholderNode]
+
+
+class PersonOrganisatieCreate(BaseModel):
+    organisatie_eenheid_id: UUID
+    dienstverband: str = "in_dienst"
+    start_datum: date
+
+
+class PersonOrganisatieUpdate(BaseModel):
+    dienstverband: str | None = None
+    eind_datum: date | None = None
+
+
+class PersonOrganisatieResponse(BaseModel):
+    id: UUID
+    person_id: UUID
+    organisatie_eenheid_id: UUID
+    organisatie_eenheid_naam: str
+    dienstverband: str
+    start_datum: date
+    eind_datum: date | None = None
+
+    model_config = ConfigDict(from_attributes=True)

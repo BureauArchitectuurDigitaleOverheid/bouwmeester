@@ -8,6 +8,7 @@ from sqlalchemy.orm import joinedload
 
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidCreate,
     OrganisatieEenheidUpdate,
@@ -91,8 +92,11 @@ class OrganisatieEenheidRepository:
     async def has_personen(self, id: UUID) -> bool:
         stmt = (
             select(func.count())
-            .select_from(Person)
-            .where(Person.organisatie_eenheid_id == id)
+            .select_from(PersonOrganisatieEenheid)
+            .where(
+                PersonOrganisatieEenheid.organisatie_eenheid_id == id,
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one() > 0
@@ -100,7 +104,11 @@ class OrganisatieEenheidRepository:
     async def get_personen(self, id: UUID) -> list[Person]:
         stmt = (
             select(Person)
-            .where(Person.organisatie_eenheid_id == id)
+            .join(PersonOrganisatieEenheid)
+            .where(
+                PersonOrganisatieEenheid.organisatie_eenheid_id == id,
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
             .order_by(Person.naam)
         )
         result = await self.session.execute(stmt)
@@ -109,8 +117,11 @@ class OrganisatieEenheidRepository:
     async def count_personen(self, id: UUID) -> int:
         stmt = (
             select(func.count())
-            .select_from(Person)
-            .where(Person.organisatie_eenheid_id == id)
+            .select_from(PersonOrganisatieEenheid)
+            .where(
+                PersonOrganisatieEenheid.organisatie_eenheid_id == id,
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one()
@@ -155,13 +166,17 @@ class OrganisatieEenheidRepository:
         return list(result.scalars().all())
 
     async def get_personen_for_units(self, unit_ids: list[UUID]) -> list[Person]:
-        """Fetch all people for a list of unit IDs in one query."""
+        """Fetch all active people for a list of unit IDs in one query."""
         if not unit_ids:
             return []
         stmt = (
             select(Person)
-            .where(Person.organisatie_eenheid_id.in_(unit_ids))
+            .join(PersonOrganisatieEenheid)
+            .where(
+                PersonOrganisatieEenheid.organisatie_eenheid_id.in_(unit_ids),
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
             .order_by(Person.naam)
         )
         result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        return list(result.unique().scalars().all())

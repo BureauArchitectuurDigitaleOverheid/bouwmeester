@@ -19,6 +19,7 @@ from bouwmeester.models.node_stakeholder import NodeStakeholder  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid  # noqa: F401
 from bouwmeester.models.person import Person  # noqa: F401
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid  # noqa: F401
 from bouwmeester.models.politieke_input import PolitiekeInput  # noqa: F401
 from bouwmeester.models.probleem import Probleem  # noqa: F401
 from bouwmeester.models.tag import NodeTag, Tag  # noqa: F401
@@ -45,6 +46,7 @@ __all__ = [
     "Notification",
     "OrganisatieEenheid",
     "Person",
+    "PersonOrganisatieEenheid",
     "PolitiekeInput",
     "Probleem",
     "SuggestedEdge",

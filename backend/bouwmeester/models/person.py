@@ -2,16 +2,16 @@
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, func, text
+from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from bouwmeester.core.database import Base
 
 if TYPE_CHECKING:
-    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+    from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 
 
 class Person(Base):
@@ -29,16 +29,11 @@ class Person(Base):
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
     is_agent: Mapped[bool] = mapped_column(default=False, server_default="false")
     api_key: Mapped[str | None] = mapped_column(nullable=True)
-    organisatie_eenheid_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("organisatie_eenheid.id", ondelete="SET NULL"),
-        nullable=True,
-    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     # Relationships
-    organisatie_eenheid: Mapped[Optional["OrganisatieEenheid"]] = relationship(
-        "OrganisatieEenheid",
-        back_populates="personen",
-        foreign_keys=[organisatie_eenheid_id],
+    organisatie_plaatsingen: Mapped[list["PersonOrganisatieEenheid"]] = relationship(
+        "PersonOrganisatieEenheid",
+        back_populates="person",
+        cascade="all, delete-orphan",
     )

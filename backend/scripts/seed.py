@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import async_session
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.repositories.edge_type import EdgeTypeRepository
@@ -546,14 +547,23 @@ async def seed(db: AsyncSession) -> None:
 
     # Helper to create people in bulk
     async def cp(naam, email, functie, eenheid):
-        return await person_repo.create(
+        person = await person_repo.create(
             PersonCreate(
                 naam=naam,
                 email=email,
                 functie=functie,
-                organisatie_eenheid_id=eenheid.id,
             )
         )
+        # Create org placement
+        placement = PersonOrganisatieEenheid(
+            person_id=person.id,
+            organisatie_eenheid_id=eenheid.id,
+            dienstverband="in_dienst",
+            start_datum=date.today(),
+        )
+        db.add(placement)
+        await db.flush()
+        return person
 
     # --- Bewindspersoon en ambtelijke top (echte namen) ---
     p_vanmarum = await cp(
@@ -1786,18 +1796,25 @@ async def seed(db: AsyncSession) -> None:
     # 2a. AGENTS
     # =========================================================================
 
-    async def create_agent(naam, functie, eenheid, rol="beleidsmedewerker"):
+    async def create_agent(naam, functie, eenheid):
         api_key = f"bm_{''.join(f'{b:02x}' for b in uuid.uuid4().bytes[:16])}"
-        return await person_repo.create(
+        agent = await person_repo.create(
             PersonCreate(
                 naam=naam,
                 functie=functie,
-                rol=rol,
-                organisatie_eenheid_id=eenheid.id,
                 is_agent=True,
                 api_key=api_key,
             )
         )
+        placement = PersonOrganisatieEenheid(
+            person_id=agent.id,
+            organisatie_eenheid_id=eenheid.id,
+            dienstverband="in_dienst",
+            start_datum=date.today(),
+        )
+        db.add(placement)
+        await db.flush()
+        return agent
 
     # Domain-specialist agents in "Afdeling Zonder Mensen"
     # Named after characters from Bordewijk's novel "Karakter"
@@ -1805,7 +1822,6 @@ async def seed(db: AsyncSession) -> None:
         "Dreverhaven",
         "Beleidsmedewerker digitale identiteit en authenticatie (eID, DigiD, eIDAS)",
         afd_zonder_mensen,
-        rol="afdelingshoofd",
     )
     agent_open = await create_agent(
         "Katadreuffe",
@@ -1816,7 +1832,6 @@ async def seed(db: AsyncSession) -> None:
         "Stroomkoning",
         "Adviseur algoritmeverantwoording, AI-verordening en publieke waarden",
         afd_zonder_mensen,
-        rol="adviseur",
     )
     agent_interop = await create_agent(
         "De Gankelaar",
