@@ -5,6 +5,8 @@ import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { VOCABULARY_LABELS, type VocabularyId } from '@/vocabulary';
 import { NotificationBell } from '@/components/common/NotificationBell';
+import { useManagedEenheden } from '@/hooks/useOrganisatie';
+import { ORGANISATIE_TYPE_LABELS } from '@/types';
 
 const pageTitles: Record<string, string> = {
   '/': 'Inbox',
@@ -12,7 +14,6 @@ const pageTitles: Record<string, string> = {
   '/tasks': 'Taken',
   '/people': 'Personen',
   '/organisatie': 'Organisatie',
-  '/eenheid-overzicht': 'Eenheid Overzicht',
   '/moties': 'Kamermoties',
   '/search': 'Zoeken',
 };
@@ -26,8 +27,20 @@ export function Header() {
   const [search, setSearch] = useState('');
   const pickerRef = useRef<HTMLDivElement>(null);
 
+  const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
+
   const pathBase = '/' + (location.pathname.split('/')[1] || '');
-  const title = pageTitles[pathBase] || 'Bouwmeester';
+  const eenheidTitle = (() => {
+    const first = managedEenheden?.[0];
+    if (first) {
+      const label = ORGANISATIE_TYPE_LABELS[first.type] ?? first.type;
+      return `${label} Overzicht`;
+    }
+    return 'Eenheid Overzicht';
+  })();
+  const title = pathBase === '/eenheid-overzicht'
+    ? eenheidTitle
+    : pageTitles[pathBase] || 'Bouwmeester';
 
   const isDetailPage = location.pathname.match(/^\/nodes\/.+/);
   const breadcrumbs = isDetailPage

@@ -33,7 +33,7 @@ router = APIRouter(prefix="/people", tags=["people"])
 @router.get("", response_model=list[PersonResponse])
 async def list_people(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(1000, ge=1, le=10000),
     db: AsyncSession = Depends(get_db),
 ) -> list[PersonResponse]:
     repo = PersonRepository(db)
