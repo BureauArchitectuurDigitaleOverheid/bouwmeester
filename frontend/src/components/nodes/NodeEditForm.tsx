@@ -5,10 +5,8 @@ import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useUpdateNode } from '@/hooks/useNodes';
-import { NodeType } from '@/types';
+import { useNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
 import type { CorpusNode } from '@/types';
-import type { SelectOption } from '@/components/common/CreatableSelect';
-import { useVocabulary } from '@/contexts/VocabularyContext';
 
 interface NodeEditFormProps {
   open: boolean;
@@ -17,11 +15,7 @@ interface NodeEditFormProps {
 }
 
 export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
-  const { nodeLabel } = useVocabulary();
-  const nodeTypeOptions: SelectOption[] = Object.values(NodeType).map((type) => ({
-    value: type,
-    label: nodeLabel(type),
-  }));
+  const nodeTypeOptions = useNodeTypeOptions();
 
   const [title, setTitle] = useState(node.title);
   const [nodeType, setNodeType] = useState<string>(node.node_type);

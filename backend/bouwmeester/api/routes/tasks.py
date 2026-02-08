@@ -63,7 +63,11 @@ async def create_task(
     task = await repo.create(data)
 
     await sync_and_notify_mentions(
-        db, "task", task.id, data.description, task.title,
+        db,
+        "task",
+        task.id,
+        data.description,
+        task.title,
         sender_id=data.assignee_id,
         source_task_id=task.id,
         source_node_id=task.node_id,
@@ -143,7 +147,11 @@ async def update_task(
     task = require_found(await repo.update(id, data), "Task")
 
     await sync_and_notify_mentions(
-        db, "task", task.id, data.description, task.title,
+        db,
+        "task",
+        task.id,
+        data.description,
+        task.title,
         sender_id=data.assignee_id,
         source_task_id=task.id,
         source_node_id=task.node_id,

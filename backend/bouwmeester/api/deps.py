@@ -18,8 +18,7 @@ async def validate_csv_upload(file: UploadFile) -> bytes:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Ongeldig bestandstype: {content_type}. "
-                "Alleen CSV is toegestaan."
+                f"Ongeldig bestandstype: {content_type}. Alleen CSV is toegestaan."
             ),
         )
 
@@ -29,8 +28,7 @@ async def validate_csv_upload(file: UploadFile) -> bytes:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Bestand te groot ({len(content)} bytes). "
-                f"Maximum is {max_mb} MB."
+                f"Bestand te groot ({len(content)} bytes). Maximum is {max_mb} MB."
             ),
         )
 

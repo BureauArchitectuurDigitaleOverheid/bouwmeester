@@ -4,10 +4,12 @@ import csv
 import io
 from datetime import date, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
+from bouwmeester.models.edge_type import EdgeType
 from bouwmeester.models.politieke_input import PolitiekeInput
 from bouwmeester.schema.import_export import ImportResult
 
@@ -160,16 +162,48 @@ class ImportService:
         Columns: from_node_title, to_node_title,
         edge_type_id, description. Looks up nodes by title.
         """
-        from sqlalchemy import select
-
         imported = 0
         skipped = 0
         errors: list[str] = []
 
         text_content = file_content.decode("utf-8-sig")
-        reader = csv.DictReader(io.StringIO(text_content))
 
+        # First pass: parse CSV and collect all unique titles and edge type IDs
+        rows: list[tuple[int, dict[str, str]]] = []
+        all_titles: set[str] = set()
+        all_type_ids: set[str] = set()
+
+        reader = csv.DictReader(io.StringIO(text_content))
         for row_num, row in enumerate(reader, start=2):
+            rows.append((row_num, row))
+            from_title = row.get("from_node_title", "").strip()
+            to_title = row.get("to_node_title", "").strip()
+            edge_type_id = row.get("edge_type_id", "").strip()
+            if from_title:
+                all_titles.add(from_title)
+            if to_title:
+                all_titles.add(to_title)
+            if edge_type_id:
+                all_type_ids.add(edge_type_id)
+
+        # Batch-load all referenced nodes by title
+        nodes_by_title: dict[str, CorpusNode] = {}
+        if all_titles:
+            stmt_nodes = select(CorpusNode).where(CorpusNode.title.in_(all_titles))
+            result_nodes = await self.session.execute(stmt_nodes)
+            for node in result_nodes.scalars().all():
+                nodes_by_title[node.title] = node
+
+        # Batch-load all referenced edge types
+        edge_types_by_id: dict[str, EdgeType] = {}
+        if all_type_ids:
+            stmt_types = select(EdgeType).where(EdgeType.id.in_(all_type_ids))
+            result_types = await self.session.execute(stmt_types)
+            for et in result_types.scalars().all():
+                edge_types_by_id[et.id] = et
+
+        # Second pass: create edges using dict lookups
+        for row_num, row in rows:
             try:
                 from_title = row.get("from_node_title", "").strip()
                 to_title = row.get("to_node_title", "").strip()
@@ -189,31 +223,19 @@ class ImportService:
                     skipped += 1
                     continue
 
-                # Look up from_node by title
-                stmt_from = select(CorpusNode).where(CorpusNode.title == from_title)
-                result_from = await self.session.execute(stmt_from)
-                from_node = result_from.scalar_one_or_none()
-
+                from_node = nodes_by_title.get(from_title)
                 if from_node is None:
                     errors.append(f"Rij {row_num}: node '{from_title}' niet gevonden")
                     skipped += 1
                     continue
 
-                # Look up to_node by title
-                stmt_to = select(CorpusNode).where(CorpusNode.title == to_title)
-                result_to = await self.session.execute(stmt_to)
-                to_node = result_to.scalar_one_or_none()
-
+                to_node = nodes_by_title.get(to_title)
                 if to_node is None:
                     errors.append(f"Rij {row_num}: node '{to_title}' niet gevonden")
                     skipped += 1
                     continue
 
-                # Verify edge_type exists
-                from bouwmeester.models.edge_type import EdgeType
-
-                edge_type = await self.session.get(EdgeType, edge_type_id)
-                if edge_type is None:
+                if edge_type_id not in edge_types_by_id:
                     errors.append(
                         f"Rij {row_num}: edge_type '{edge_type_id}' niet gevonden"
                     )

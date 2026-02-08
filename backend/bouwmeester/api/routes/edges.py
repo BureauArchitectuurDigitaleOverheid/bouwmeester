@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.edge import EdgeRepository
-from bouwmeester.schema.corpus_node import CorpusNodeResponse
 from bouwmeester.schema.edge import EdgeCreate, EdgeResponse, EdgeUpdate, EdgeWithNodes
 
 router = APIRouter(prefix="/edges", tags=["edges"])
@@ -33,20 +32,7 @@ async def list_edges(
         node_id=node_id,
         edge_type_id=edge_type_id,
     )
-    return [
-        EdgeWithNodes(
-            id=e.id,
-            from_node_id=e.from_node_id,
-            to_node_id=e.to_node_id,
-            edge_type_id=e.edge_type_id,
-            weight=e.weight,
-            description=e.description,
-            created_at=e.created_at,
-            from_node=CorpusNodeResponse.model_validate(e.from_node),
-            to_node=CorpusNodeResponse.model_validate(e.to_node),
-        )
-        for e in edges
-    ]
+    return [EdgeWithNodes.model_validate(e) for e in edges]
 
 
 @router.post("", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)
@@ -66,17 +52,7 @@ async def get_edge(
 ) -> EdgeWithNodes:
     repo = EdgeRepository(db)
     edge = require_found(await repo.get(id), "Edge")
-    return EdgeWithNodes(
-        id=edge.id,
-        from_node_id=edge.from_node_id,
-        to_node_id=edge.to_node_id,
-        edge_type_id=edge.edge_type_id,
-        weight=edge.weight,
-        description=edge.description,
-        created_at=edge.created_at,
-        from_node=CorpusNodeResponse.model_validate(edge.from_node),
-        to_node=CorpusNodeResponse.model_validate(edge.to_node),
-    )
+    return EdgeWithNodes.model_validate(edge)
 
 
 @router.put("/{id}", response_model=EdgeResponse)

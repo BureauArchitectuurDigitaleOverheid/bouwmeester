@@ -97,7 +97,11 @@ async def create_organisatie(
     eenheid = await repo.create(data)
 
     await sync_and_notify_mentions(
-        db, "organisatie", eenheid.id, data.beschrijving, eenheid.naam,
+        db,
+        "organisatie",
+        eenheid.id,
+        data.beschrijving,
+        eenheid.naam,
     )
 
     return OrganisatieEenheidResponse.model_validate(eenheid)
@@ -123,7 +127,11 @@ async def update_organisatie(
     eenheid = require_found(await repo.update(id, data), "Eenheid")
 
     await sync_and_notify_mentions(
-        db, "organisatie", eenheid.id, data.beschrijving, eenheid.naam,
+        db,
+        "organisatie",
+        eenheid.id,
+        data.beschrijving,
+        eenheid.naam,
     )
 
     return OrganisatieEenheidResponse.model_validate(eenheid)

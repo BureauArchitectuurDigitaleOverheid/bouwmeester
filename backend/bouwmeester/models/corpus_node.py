@@ -27,6 +27,7 @@ class CorpusNode(Base):
     )
     node_type: Mapped[str] = mapped_column(
         comment="dossier|doel|instrument|beleidskader|maatregel|politieke_input|probleem|effect|beleidsoptie",
+        index=True,
     )
     title: Mapped[str] = mapped_column(nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -19,6 +19,8 @@ from bouwmeester.repositories.motie_import import (
 )
 from bouwmeester.schema.motie_import import MotieImportResponse, SuggestedEdgeResponse
 
+SUGGESTED_EDGE_DESCRIPTION = "Automatisch voorgesteld vanuit motie-import"
+
 
 class FollowUpTask(BaseModel):
     title: str
@@ -194,7 +196,7 @@ async def approve_edge(
         from_node_id=motie_import.corpus_node_id,
         to_node_id=suggested_edge.target_node_id,
         edge_type_id=suggested_edge.edge_type_id,
-        description="Automatisch voorgesteld vanuit motie-import",
+        description=SUGGESTED_EDGE_DESCRIPTION,
     )
     db.add(edge)
     await db.flush()

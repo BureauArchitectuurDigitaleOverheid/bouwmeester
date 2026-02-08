@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.database import get_db
+from bouwmeester.models.person import Person
+from bouwmeester.repositories.node_stakeholder import NodeStakeholderRepository
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.corpus_node import (
     CorpusNodeCreate,
@@ -25,7 +27,6 @@ from bouwmeester.schema.person import (
     NodeStakeholderCreate,
     NodeStakeholderResponse,
     NodeStakeholderUpdate,
-    PersonResponse,
 )
 from bouwmeester.schema.tag import NodeTagCreate, NodeTagResponse, TagCreate
 from bouwmeester.schema.task import TaskResponse
@@ -60,7 +61,11 @@ async def create_node(
     node = await service.create(data)
 
     await sync_and_notify_mentions(
-        db, "node", node.id, data.description, node.title,
+        db,
+        "node",
+        node.id,
+        data.description,
+        node.title,
         source_node_id=node.id,
     )
 
@@ -100,7 +105,11 @@ async def update_node(
     node = require_found(await service.update(id, data), "Node")
 
     await sync_and_notify_mentions(
-        db, "node", node.id, data.description, node.title,
+        db,
+        "node",
+        node.id,
+        data.description,
+        node.title,
         source_node_id=node.id,
     )
 
@@ -173,30 +182,13 @@ async def get_node_stakeholders(
     id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> list[NodeStakeholderResponse]:
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-
-    from bouwmeester.models.node_stakeholder import NodeStakeholder
-
     # Verify node exists
     service = NodeService(db)
     require_found(await service.get(id), "Node")
 
-    stmt = (
-        select(NodeStakeholder)
-        .where(NodeStakeholder.node_id == id)
-        .options(selectinload(NodeStakeholder.person))
-    )
-    result = await db.execute(stmt)
-    stakeholders = result.scalars().all()
-    return [
-        NodeStakeholderResponse(
-            id=s.id,
-            person=PersonResponse.model_validate(s.person),
-            rol=s.rol,
-        )
-        for s in stakeholders
-    ]
+    repo = NodeStakeholderRepository(db)
+    stakeholders = await repo.get_by_node(id)
+    return [NodeStakeholderResponse.model_validate(s) for s in stakeholders]
 
 
 @router.post(
@@ -209,40 +201,15 @@ async def add_node_stakeholder(
     data: NodeStakeholderCreate,
     db: AsyncSession = Depends(get_db),
 ) -> NodeStakeholderResponse:
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-
-    from bouwmeester.models.node_stakeholder import NodeStakeholder
-    from bouwmeester.models.person import Person
-
     service = NodeService(db)
     require_found(await service.get(id), "Node")
-
     require_found(await db.get(Person, data.person_id), "Person")
 
-    stakeholder = NodeStakeholder(
-        node_id=id,
-        person_id=data.person_id,
-        rol=data.rol,
-    )
-    db.add(stakeholder)
-    await db.flush()
-
-    # Reload with person relationship
-    stmt = (
-        select(NodeStakeholder)
-        .where(NodeStakeholder.id == stakeholder.id)
-        .options(selectinload(NodeStakeholder.person))
-    )
-    result = await db.execute(stmt)
-    stakeholder = result.scalar_one()
+    repo = NodeStakeholderRepository(db)
+    stakeholder = await repo.create_stakeholder(id, data.person_id, data.rol)
     await db.commit()
 
-    return NodeStakeholderResponse(
-        id=stakeholder.id,
-        person=PersonResponse.model_validate(stakeholder.person),
-        rol=stakeholder.rol,
-    )
+    return NodeStakeholderResponse.model_validate(stakeholder)
 
 
 @router.put(
@@ -255,31 +222,18 @@ async def update_node_stakeholder(
     data: NodeStakeholderUpdate,
     db: AsyncSession = Depends(get_db),
 ) -> NodeStakeholderResponse:
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-
-    from bouwmeester.models.node_stakeholder import NodeStakeholder
-
-    stmt = (
-        select(NodeStakeholder)
-        .where(
-            NodeStakeholder.id == stakeholder_id,
-            NodeStakeholder.node_id == id,
-        )
-        .options(selectinload(NodeStakeholder.person))
+    repo = NodeStakeholderRepository(db)
+    stakeholder = require_found(
+        await repo.get_with_person(stakeholder_id, id),
+        "Stakeholder",
     )
-    result = await db.execute(stmt)
-    stakeholder = require_found(result.scalar_one_or_none(), "Stakeholder")
 
     stakeholder.rol = data.rol
-    await db.commit()
+    await db.flush()
     await db.refresh(stakeholder)
+    await db.commit()
 
-    return NodeStakeholderResponse(
-        id=stakeholder.id,
-        person=PersonResponse.model_validate(stakeholder.person),
-        rol=stakeholder.rol,
-    )
+    return NodeStakeholderResponse.model_validate(stakeholder)
 
 
 @router.delete(
@@ -291,16 +245,11 @@ async def remove_node_stakeholder(
     stakeholder_id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    from sqlalchemy import select
-
-    from bouwmeester.models.node_stakeholder import NodeStakeholder
-
-    stmt = select(NodeStakeholder).where(
-        NodeStakeholder.id == stakeholder_id,
-        NodeStakeholder.node_id == id,
+    repo = NodeStakeholderRepository(db)
+    stakeholder = require_found(
+        await repo.get_with_person(stakeholder_id, id),
+        "Stakeholder",
     )
-    result = await db.execute(stmt)
-    stakeholder = require_found(result.scalar_one_or_none(), "Stakeholder")
 
     await db.delete(stakeholder)
     await db.commit()

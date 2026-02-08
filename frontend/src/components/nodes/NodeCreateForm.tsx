@@ -5,9 +5,8 @@ import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useCreateNode } from '@/hooks/useNodes';
+import { useNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
 import { NodeType } from '@/types';
-import type { SelectOption } from '@/components/common/CreatableSelect';
-import { useVocabulary } from '@/contexts/VocabularyContext';
 
 interface NodeCreateFormProps {
   open: boolean;
@@ -15,11 +14,7 @@ interface NodeCreateFormProps {
 }
 
 export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
-  const { nodeLabel } = useVocabulary();
-  const nodeTypeOptions: SelectOption[] = Object.values(NodeType).map((type) => ({
-    value: type,
-    label: nodeLabel(type),
-  }));
+  const nodeTypeOptions = useNodeTypeOptions();
   const [title, setTitle] = useState('');
   const [nodeType, setNodeType] = useState<string>(NodeType.DOSSIER);
   const [description, setDescription] = useState('');

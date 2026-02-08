@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
@@ -6,16 +6,11 @@ import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { useCreateTask } from '@/hooks/useTasks';
-import { useNodes, useCreateNode } from '@/hooks/useNodes';
-import { usePeople } from '@/hooks/usePeople';
-import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import { useTaskFormOptions } from '@/hooks/useTaskFormOptions';
 import {
   TaskPriority,
   TASK_PRIORITY_LABELS,
-  ORGANISATIE_TYPE_LABELS,
-  NodeType,
 } from '@/types';
-import { useVocabulary } from '@/contexts/VocabularyContext';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 
 interface TaskCreateFormProps {
@@ -38,8 +33,6 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
   const [selectedNodeId, setSelectedNodeId] = useState(nodeId ?? '');
   const [assigneeId, setAssigneeId] = useState('');
   const [organisatieEenheidId, setOrganisatieEenheidId] = useState('');
-  const [personCreateName, setPersonCreateName] = useState('');
-  const [showPersonCreate, setShowPersonCreate] = useState(false);
 
   // Reset form state when dialog opens
   useEffect(() => {
@@ -54,53 +47,12 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
     }
   }, [open, nodeId]);
 
-  const { nodeLabel } = useVocabulary();
   const createTask = useCreateTask();
-  const createNode = useCreateNode();
-  const { data: allNodes } = useNodes();
-  const { data: allPeople } = usePeople();
-  const { data: eenheden } = useOrganisatieFlat();
-
-  const nodeOptions: SelectOption[] = (allNodes ?? []).map((n) => ({
-    value: n.id,
-    label: n.title,
-    description: nodeLabel(n.node_type),
-  }));
-
-  const personOptions: SelectOption[] = (allPeople ?? []).map((p) => ({
-    value: p.id,
-    label: p.naam,
-    description: p.functie ?? undefined,
-  }));
-
-  const eenheidOptions: SelectOption[] = useMemo(() => [
-    { value: '', label: 'Geen' },
-    ...(eenheden ?? []).map((e) => ({
-      value: e.id,
-      label: e.naam,
-      description: ORGANISATIE_TYPE_LABELS[e.type] ?? e.type,
-    })),
-  ], [eenheden]);
-
-  const handleCreateNode = useCallback(
-    async (text: string): Promise<string | null> => {
-      const node = await createNode.mutateAsync({
-        title: text,
-        node_type: NodeType.NOTITIE,
-      });
-      return node.id;
-    },
-    [createNode],
-  );
-
-  const handleCreatePerson = useCallback(
-    async (text: string): Promise<string | null> => {
-      setPersonCreateName(text);
-      setShowPersonCreate(true);
-      return null; // Person will be selected via the dialog callback
-    },
-    [],
-  );
+  const {
+    nodeOptions, personOptions, eenheidOptions,
+    handleCreateNode, handleCreatePerson,
+    personCreateName, showPersonCreate, setShowPersonCreate,
+  } = useTaskFormOptions();
 
   const handlePersonCreated = useCallback((personId: string) => {
     setAssigneeId(personId);

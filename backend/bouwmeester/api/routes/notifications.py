@@ -88,7 +88,11 @@ async def send_message(
     notification = await service.repo.create(data)
 
     await sync_and_notify_mentions(
-        db, "notification", notification.id, body.message, title,
+        db,
+        "notification",
+        notification.id,
+        body.message,
+        title,
         sender_id=body.sender_id,
         exclude_person_id=body.person_id,
     )

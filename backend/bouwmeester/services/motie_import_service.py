@@ -106,8 +106,11 @@ class MotieImportService:
                 if result:
                     imported_count += 1
             except (
-                httpx.HTTPError, anthropic.APIError, SQLAlchemyError,
-                ValueError, KeyError,
+                httpx.HTTPError,
+                anthropic.APIError,
+                SQLAlchemyError,
+                ValueError,
+                KeyError,
             ):
                 logger.exception(f"Error processing motie {motie.zaak_id}")
 
