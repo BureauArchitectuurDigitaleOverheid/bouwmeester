@@ -6,6 +6,7 @@ import {
   CheckSquare,
   Search,
   Building2,
+  Users,
   ScrollText,
   PanelLeftClose,
   PanelLeftOpen,
@@ -17,6 +18,7 @@ const navItems = [
   { to: '/corpus', icon: Network, label: 'Corpus' },
   { to: '/tasks', icon: CheckSquare, label: 'Taken' },
   { to: '/organisatie', icon: Building2, label: 'Organisatie' },
+  { to: '/eenheid-overzicht', icon: Users, label: 'Eenheid' },
   { to: '/moties', icon: ScrollText, label: 'Kamermoties' },
   { to: '/search', icon: Search, label: 'Zoeken' },
 ];

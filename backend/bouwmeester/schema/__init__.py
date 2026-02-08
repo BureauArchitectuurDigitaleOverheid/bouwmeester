@@ -60,11 +60,16 @@ from bouwmeester.schema.tag import (
     TagUpdate,
 )
 from bouwmeester.schema.task import (
+    EenheidOverviewResponse,
+    EenheidPersonTaskStats,
+    EenheidSubeenheidStats,
     TaskBase,
     TaskCreate,
+    TaskOrgEenheidSummary,
     TaskPriority,
     TaskResponse,
     TaskStatus,
+    TaskSubtaskSummary,
     TaskUpdate,
 )
 
@@ -93,11 +98,16 @@ __all__ = [
     "EdgeTypeCreate",
     "EdgeTypeResponse",
     # task
+    "EenheidOverviewResponse",
+    "EenheidPersonTaskStats",
+    "EenheidSubeenheidStats",
     "TaskBase",
     "TaskCreate",
+    "TaskOrgEenheidSummary",
     "TaskPriority",
     "TaskResponse",
     "TaskStatus",
+    "TaskSubtaskSummary",
     "TaskUpdate",
     # organisatie_eenheid
     "OrganisatieEenheidCreate",

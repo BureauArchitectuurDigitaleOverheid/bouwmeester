@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Clock, AlertTriangle, User, Bot } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, AlertTriangle, User, Bot, Building2, ListTree } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { Card } from '@/components/common/Card';
 import { useUpdateTask } from '@/hooks/useTasks';
@@ -29,6 +29,9 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
   const isDone = task.status === TaskStatus.DONE;
   const isOverdue =
     task.due_date && new Date(task.due_date) < new Date() && !isDone;
+
+  const subtasks = task.subtasks ?? [];
+  const doneSubtasks = subtasks.filter((s) => s.status === TaskStatus.DONE).length;
 
   const handleToggleDone = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -119,6 +122,20 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
                   <User className="h-3 w-3" />
                 )}
                 {task.assignee.naam}
+              </span>
+            )}
+
+            {task.organisatie_eenheid && (
+              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+                <Building2 className="h-3 w-3" />
+                {task.organisatie_eenheid.naam}
+              </span>
+            )}
+
+            {subtasks.length > 0 && (
+              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+                <ListTree className="h-3 w-3" />
+                {doneSubtasks}/{subtasks.length}
               </span>
             )}
           </div>

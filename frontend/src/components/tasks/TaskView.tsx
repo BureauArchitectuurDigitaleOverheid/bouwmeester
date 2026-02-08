@@ -1,11 +1,13 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Plus, LayoutList, Columns3 } from 'lucide-react';
+import { Plus, LayoutList, Columns3, User } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { TaskList } from './TaskList';
 import { TaskBoard } from './TaskBoard';
+import { TaskPersonalView } from './TaskPersonalView';
 import { TaskCreateForm } from './TaskCreateForm';
 import { usePeople } from '@/hooks/usePeople';
+import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import {
@@ -13,18 +15,20 @@ import {
   TaskPriority,
   TASK_STATUS_LABELS,
   TASK_PRIORITY_LABELS,
+  ORGANISATIE_TYPE_LABELS,
 } from '@/types';
 import type { Task } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 
-type ViewMode = 'list' | 'board';
+type ViewMode = 'list' | 'board' | 'personal';
 
 const VIEW_STORAGE_KEY = 'tasks-view-mode';
 const MY_TASKS_SENTINEL = '__me__';
 
 function getStoredView(): ViewMode {
   const stored = localStorage.getItem(VIEW_STORAGE_KEY);
-  return stored === 'board' ? 'board' : 'list';
+  if (stored === 'board' || stored === 'personal') return stored;
+  return 'list';
 }
 
 const statusOptions: SelectOption[] = [
@@ -56,8 +60,10 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [priorityFilter, setPriorityFilter] = useState<string>('');
   const [personFilter, setPersonFilter] = useState<string>('');
+  const [eenheidFilter, setEenheidFilter] = useState<string>('');
 
   const { data: people } = usePeople();
+  const { data: eenheden } = useOrganisatieFlat();
   const { currentPerson } = useCurrentPerson();
 
   const personOptions: SelectOption[] = useMemo(() => [
@@ -74,6 +80,15 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
       description: p.functie ?? undefined,
     })),
   ], [people, currentPerson]);
+
+  const eenheidOptions: SelectOption[] = useMemo(() => [
+    { value: '', label: 'Alle eenheden' },
+    ...(eenheden ?? []).map((e) => ({
+      value: e.id,
+      label: e.naam,
+      description: ORGANISATIE_TYPE_LABELS[e.type] ?? e.type,
+    })),
+  ], [eenheden]);
 
   const handleViewChange = (mode: ViewMode) => {
     setViewMode(mode);
@@ -92,9 +107,10 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
       if (statusFilter && task.status !== statusFilter) return false;
       if (priorityFilter && task.priority !== priorityFilter) return false;
       if (effectivePersonId && task.assignee_id !== effectivePersonId) return false;
+      if (eenheidFilter && task.organisatie_eenheid_id !== eenheidFilter) return false;
       return true;
     });
-  }, [tasks, statusFilter, priorityFilter, personFilter, currentPerson]);
+  }, [tasks, statusFilter, priorityFilter, personFilter, eenheidFilter, currentPerson]);
 
   return (
     <div className="space-y-4">
@@ -128,6 +144,15 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
               placeholder="Alle personen"
             />
           </div>
+
+          <div className="w-52">
+            <CreatableSelect
+              value={eenheidFilter}
+              onChange={setEenheidFilter}
+              options={eenheidOptions}
+              placeholder="Alle eenheden"
+            />
+          </div>
         </div>
 
         {/* Right: View toggle + New task */}
@@ -155,6 +180,17 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
             >
               <Columns3 className="h-4 w-4" />
             </button>
+            <button
+              onClick={() => handleViewChange('personal')}
+              className={`p-1.5 rounded-lg transition-colors ${
+                viewMode === 'personal'
+                  ? 'bg-primary-900 text-white'
+                  : 'text-text-secondary hover:text-text'
+              }`}
+              title="Persoonlijke weergave"
+            >
+              <User className="h-4 w-4" />
+            </button>
           </div>
 
           <Button
@@ -170,8 +206,10 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
       {/* Content */}
       {viewMode === 'list' ? (
         <TaskList tasks={filteredTasks} onEditTask={handleTaskClick} />
-      ) : (
+      ) : viewMode === 'board' ? (
         <TaskBoard tasks={filteredTasks} onEditTask={handleTaskClick} />
+      ) : (
+        <TaskPersonalView tasks={filteredTasks} onEditTask={handleTaskClick} />
       )}
 
       {/* Create form modal */}

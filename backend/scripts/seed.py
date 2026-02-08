@@ -3352,6 +3352,9 @@ async def seed(db: AsyncSession) -> None:
 
     tasks_data = [
         # --- DigiD / Identiteit ---
+        # (node, title, description, assignee, status, priority, deadline,
+        #  organisatie_eenheid, subtasks)
+        # subtasks: list of (title, assignee, status, priority, deadline)
         (
             maatr_digid_upgrade,
             "Technische analyse DigiD NFC-chip uitlezing",
@@ -3363,6 +3366,21 @@ async def seed(db: AsyncSession) -> None:
             "in_progress",
             "hoog",
             date(2026, 3, 15),
+            afd_id_toegang,
+            [
+                (
+                    "Inventarisatie NFC-chip types in omloop",
+                    p_nguyen, "done", "normaal", date(2026, 2, 15),
+                ),
+                (
+                    "Test NFC-uitlezing op Android-toestellen",
+                    p_nguyen, "in_progress", "hoog", date(2026, 3, 1),
+                ),
+                (
+                    "Test NFC-uitlezing op iOS-toestellen",
+                    None, "open", "hoog", date(2026, 3, 10),
+                ),
+            ],
         ),
         (
             maatr_digid_upgrade,
@@ -3375,6 +3393,8 @@ async def seed(db: AsyncSession) -> None:
             "open",
             "hoog",
             date(2026, 4, 1),
+            afd_id_toegang,
+            [],
         ),
         (
             pi_kamervraag_digid,
@@ -3387,6 +3407,8 @@ async def seed(db: AsyncSession) -> None:
             "done",
             "kritiek",
             date(2026, 1, 20),
+            afd_id_toegang,
+            [],
         ),
         (
             instr_digid,
@@ -3399,6 +3421,23 @@ async def seed(db: AsyncSession) -> None:
             "done",
             "normaal",
             date(2026, 1, 31),
+            afd_id_toegang,
+            [],
+        ),
+        # Unassigned task for coordinator workflow demo
+        (
+            instr_digid,
+            "DigiD beveiligingsreview Q1 2026",
+            (
+                "Coördineer de periodieke beveiligingsreview van DigiD-infrastructuur "
+                "met Logius en NCSC."
+            ),
+            None,
+            "open",
+            "hoog",
+            date(2026, 3, 31),
+            afd_id_toegang,
+            [],
         ),
         # --- EUDIW ---
         (
@@ -3412,6 +3451,8 @@ async def seed(db: AsyncSession) -> None:
             "in_progress",
             "hoog",
             date(2026, 6, 1),
+            afd_id_toegang,
+            [],
         ),
         (
             doel_eudiw,
@@ -3424,6 +3465,8 @@ async def seed(db: AsyncSession) -> None:
             "open",
             "hoog",
             date(2026, 4, 15),
+            afd_id_toegang,
+            [],
         ),
         # --- WDO ---
         (
@@ -3488,6 +3531,8 @@ async def seed(db: AsyncSession) -> None:
             "in_progress",
             "kritiek",
             date(2026, 6, 30),
+            afd_ai_data,
+            [],
         ),
         (
             instr_algo_register,
@@ -3500,6 +3545,8 @@ async def seed(db: AsyncSession) -> None:
             "in_progress",
             "hoog",
             date(2026, 5, 15),
+            afd_ai_data,
+            [],
         ),
         (
             bk_ai_act,
@@ -3512,6 +3559,8 @@ async def seed(db: AsyncSession) -> None:
             "open",
             "kritiek",
             date(2026, 3, 1),
+            afd_ai_data,
+            [],
         ),
         (
             pi_motie_veldhoen,
@@ -3954,20 +4003,57 @@ async def seed(db: AsyncSession) -> None:
         ),
     ]
 
-    for node, title, description, assignee, status, priority, deadline in tasks_data:
-        await task_repo.create(
+    subtask_count = 0
+    for entry in tasks_data:
+        node = entry[0]
+        title = entry[1]
+        description = entry[2]
+        assignee = entry[3]
+        task_status = entry[4]
+        priority = entry[5]
+        deadline = entry[6]
+        org_eenheid = entry[7] if len(entry) > 7 else None
+        subtasks = entry[8] if len(entry) > 8 else []
+
+        parent = await task_repo.create(
             TaskCreate(
                 title=title,
                 description=description,
                 node_id=node.id,
-                assignee_id=assignee.id,
-                status=status,
+                assignee_id=assignee.id if assignee else None,
+                status=task_status,
                 priority=priority,
                 deadline=deadline,
+                organisatie_eenheid_id=(
+                    org_eenheid.id if org_eenheid else None
+                ),
             )
         )
 
-    print(f"  Taken: {len(tasks_data)} taken aangemaakt")
+        for sub in subtasks:
+            sub_title, sub_assignee, sub_status, sub_prio, sub_dl = sub
+            await task_repo.create(
+                TaskCreate(
+                    title=sub_title,
+                    node_id=node.id,
+                    assignee_id=(
+                        sub_assignee.id if sub_assignee else None
+                    ),
+                    status=sub_status,
+                    priority=sub_prio,
+                    deadline=sub_dl,
+                    parent_id=parent.id,
+                    organisatie_eenheid_id=(
+                        org_eenheid.id if org_eenheid else None
+                    ),
+                )
+            )
+            subtask_count += 1
+
+    print(
+        f"  Taken: {len(tasks_data)} taken + "
+        f"{subtask_count} subtaken aangemaakt"
+    )
 
     # =========================================================================
     # 7. NODE STAKEHOLDERS

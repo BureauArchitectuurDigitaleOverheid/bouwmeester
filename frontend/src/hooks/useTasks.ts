@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getTasks, getTask, createTask, updateTask, deleteTask } from '@/api/tasks';
+import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks } from '@/api/tasks';
 import type { TaskCreate, TaskUpdate } from '@/types';
 import type { TaskFilters } from '@/api/tasks';
 
@@ -48,5 +48,28 @@ export function useDeleteTask() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
+  });
+}
+
+export function useUnassignedTasks(organisatieEenheidId?: string) {
+  return useQuery({
+    queryKey: ['tasks', 'unassigned', organisatieEenheidId],
+    queryFn: () => getUnassignedTasks(organisatieEenheidId),
+  });
+}
+
+export function useEenheidOverview(organisatieEenheidId: string | null) {
+  return useQuery({
+    queryKey: ['tasks', 'eenheid-overview', organisatieEenheidId],
+    queryFn: () => getEenheidOverview(organisatieEenheidId!),
+    enabled: !!organisatieEenheidId,
+  });
+}
+
+export function useTaskSubtasks(taskId: string | null) {
+  return useQuery({
+    queryKey: ['tasks', taskId, 'subtasks'],
+    queryFn: () => getTaskSubtasks(taskId!),
+    enabled: !!taskId,
   });
 }
