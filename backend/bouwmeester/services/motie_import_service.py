@@ -214,9 +214,7 @@ class MotieImportService:
             try:
                 await self.tag_repo.add_tag_to_node(node.id, tag.id)
             except SQLAlchemyError:
-                logger.exception(
-                    f"Error tagging node {node.id} with tag '{tag_name}'"
-                )
+                logger.exception(f"Error tagging node {node.id} with tag '{tag_name}'")
 
         # Step 8: Create MotieImport record
         motie_import = await self.import_repo.create(

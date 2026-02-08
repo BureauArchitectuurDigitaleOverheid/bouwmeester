@@ -54,4 +54,3 @@ class EdgeRepository(BaseRepository[Edge]):
         stmt = stmt.order_by(Edge.created_at.desc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
-
