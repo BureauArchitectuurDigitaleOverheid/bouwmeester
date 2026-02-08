@@ -13,11 +13,10 @@ class PersonBase(BaseModel):
     functie: str | None = None
     description: str | None = None
     is_agent: bool = False
-    api_key: str | None = None
 
 
 class PersonCreate(PersonBase):
-    pass
+    api_key: str | None = None
 
 
 class PersonUpdate(BaseModel):
@@ -30,13 +29,20 @@ class PersonUpdate(BaseModel):
 
 
 class PersonResponse(PersonBase):
+    """Response schema for person lists — api_key excluded for security."""
+
     id: UUID
     is_active: bool
     is_agent: bool
-    api_key: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PersonDetailResponse(PersonResponse):
+    """Full response including api_key — only for get/create/update."""
+
+    api_key: str | None = None
 
 
 class NodeStakeholderCreate(BaseModel):

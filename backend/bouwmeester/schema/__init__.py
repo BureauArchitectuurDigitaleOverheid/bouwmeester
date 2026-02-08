@@ -45,6 +45,7 @@ from bouwmeester.schema.organisatie_eenheid import (
 from bouwmeester.schema.person import (
     PersonBase,
     PersonCreate,
+    PersonDetailResponse,
     PersonResponse,
     PersonSummaryResponse,
     PersonUpdate,
@@ -118,6 +119,7 @@ __all__ = [
     # person
     "PersonBase",
     "PersonCreate",
+    "PersonDetailResponse",
     "PersonResponse",
     "PersonSummaryResponse",
     "PersonUpdate",

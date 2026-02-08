@@ -16,6 +16,7 @@ from bouwmeester.models.task import Task
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.person import (
     PersonCreate,
+    PersonDetailResponse,
     PersonOrganisatieCreate,
     PersonOrganisatieResponse,
     PersonOrganisatieUpdate,
@@ -40,11 +41,15 @@ async def list_people(
     return [PersonResponse.model_validate(p) for p in people]
 
 
-@router.post("", response_model=PersonResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=PersonDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_person(
     data: PersonCreate,
     db: AsyncSession = Depends(get_db),
-) -> PersonResponse:
+) -> PersonDetailResponse:
     # Agent names must be unique
     if data.is_agent:
         existing = await db.execute(
@@ -57,7 +62,7 @@ async def create_person(
             )
     repo = PersonRepository(db)
     person = await repo.create(data)
-    return PersonResponse.model_validate(person)
+    return PersonDetailResponse.model_validate(person)
 
 
 @router.get("/search", response_model=list[PersonResponse])
@@ -141,29 +146,29 @@ async def get_person_summary(
     )
 
 
-@router.get("/{id}", response_model=PersonResponse)
+@router.get("/{id}", response_model=PersonDetailResponse)
 async def get_person(
     id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> PersonResponse:
+) -> PersonDetailResponse:
     repo = PersonRepository(db)
     person = await repo.get(id)
     if person is None:
         raise HTTPException(status_code=404, detail="Person not found")
-    return PersonResponse.model_validate(person)
+    return PersonDetailResponse.model_validate(person)
 
 
-@router.put("/{id}", response_model=PersonResponse)
+@router.put("/{id}", response_model=PersonDetailResponse)
 async def update_person(
     id: UUID,
     data: PersonUpdate,
     db: AsyncSession = Depends(get_db),
-) -> PersonResponse:
+) -> PersonDetailResponse:
     repo = PersonRepository(db)
     person = await repo.update(id, data)
     if person is None:
         raise HTTPException(status_code=404, detail="Person not found")
-    return PersonResponse.model_validate(person)
+    return PersonDetailResponse.model_validate(person)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
