@@ -88,6 +88,7 @@ export function OrganisatieForm({
         setBeschrijving('');
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editData, defaultParentId]);
 
   const handleSubmit = (e: React.FormEvent) => {
