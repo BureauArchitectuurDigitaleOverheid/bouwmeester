@@ -13,6 +13,9 @@ class NotificationType(enum.StrEnum):
     node_updated = "node_updated"
     edge_created = "edge_created"
     coverage_needed = "coverage_needed"
+    politieke_input_imported = "politieke_input_imported"
+    direct_message = "direct_message"
+    agent_prompt = "agent_prompt"
 
 
 class NotificationBase(BaseModel):
@@ -20,6 +23,7 @@ class NotificationBase(BaseModel):
     type: NotificationType
     title: str
     message: str | None = None
+    sender_id: UUID | None = None
     related_node_id: UUID | None = None
     related_task_id: UUID | None = None
 
@@ -34,6 +38,12 @@ class NotificationResponse(NotificationBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SendMessageRequest(BaseModel):
+    person_id: UUID
+    sender_id: UUID
+    message: str
 
 
 class UnreadCountResponse(BaseModel):

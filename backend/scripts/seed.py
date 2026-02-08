@@ -5,6 +5,7 @@ Clears all existing data and populates organisatie, personen, corpus, edges, and
 """
 
 import asyncio
+import uuid
 from datetime import date
 
 from sqlalchemy import text
@@ -23,11 +24,13 @@ from bouwmeester.schema.edge_type import EdgeTypeCreate
 from bouwmeester.schema.organisatie_eenheid import OrganisatieEenheidCreate
 from bouwmeester.schema.person import PersonCreate
 from bouwmeester.schema.task import TaskCreate
+from bouwmeester.repositories.tag import TagRepository
+from bouwmeester.schema.tag import TagCreate
 
 
 async def seed(db: AsyncSession) -> None:
     # Clear existing data (order matters due to FKs)
-    for table in ["task", "node_stakeholder", "edge", "edge_type", "probleem", "effect", "beleidsoptie", "dossier", "doel", "instrument", "beleidskader", "maatregel", "politieke_input", "corpus_node", "person", "organisatie_eenheid"]:
+    for table in ["suggested_edge", "motie_import", "node_tag", "tag", "task", "node_stakeholder", "edge", "edge_type", "probleem", "effect", "beleidsoptie", "dossier", "doel", "instrument", "beleidskader", "maatregel", "politieke_input", "corpus_node", "person", "organisatie_eenheid"]:
         await db.execute(text(f"DELETE FROM {table}"))
     await db.flush()
 
@@ -37,6 +40,7 @@ async def seed(db: AsyncSession) -> None:
     edge_type_repo = EdgeTypeRepository(db)
     edge_repo = EdgeRepository(db)
     task_repo = TaskRepository(db)
+    tag_repo = TagRepository(db)
 
     # =========================================================================
     # 1. ORGANISATIE — BZK / DGDOO (realistic ~200 FTE structure)
@@ -292,6 +296,28 @@ async def seed(db: AsyncSession) -> None:
         beschrijving="Nationaal Actieplan Open Overheid en Open Government Partnership.",
     ))
 
+    # --- De Digitale Dienst (under DGDOO) ---
+    dienst_dd = await org_repo.create(OrganisatieEenheidCreate(
+        naam="De Digitale Dienst",
+        type="dienst",
+        parent_id=dgdoo.id,
+        beschrijving="Uitvoeringsorganisatie voor digitale voorzieningen en dienstverlening.",
+    ))
+    afd_zonder_mensen = await org_repo.create(OrganisatieEenheidCreate(
+        naam="Afdeling Zonder Mensen",
+        type="afdeling",
+        parent_id=dienst_dd.id,
+        beschrijving="Geautomatiseerde processen en zelfbedieningsoplossingen.",
+    ))
+
+    # --- Bureau Architectuur Digitale Overheid (under Directie Digitale Overheid) ---
+    bureau_arch = await org_repo.create(OrganisatieEenheidCreate(
+        naam="Bureau Architectuur Digitale Overheid",
+        type="bureau",
+        parent_id=dir_ddo.id,
+        beschrijving="Architectuur en ontwerp voor digitale overheidsdienstverlening.",
+    ))
+
     # --- Bestuursstaf BZK ---
     staf_bzk = await org_repo.create(OrganisatieEenheidCreate(
         naam="Bestuursstaf BZK",
@@ -300,7 +326,7 @@ async def seed(db: AsyncSession) -> None:
         beschrijving="SG, pSG, woordvoering, parlementaire zaken, juridische zaken.",
     ))
 
-    org_count = 40  # approximate
+    org_count = 43  # approximate
     print(f"  Organisatie: ~{org_count} eenheden aangemaakt")
 
     # =========================================================================
@@ -637,6 +663,47 @@ async def seed(db: AsyncSession) -> None:
 
     person_count = 8 + 11 + 20 + len(bulk_people)  # top + afdelingshoofden + teamleiders + bulk
     print(f"  Personen: {person_count} personen aangemaakt")
+
+    # =========================================================================
+    # 2a. AGENTS
+    # =========================================================================
+
+    async def create_agent(naam, functie, eenheid, rol="beleidsmedewerker"):
+        api_key = f"bm_{''.join(f'{b:02x}' for b in uuid.uuid4().bytes[:16])}"
+        return await person_repo.create(PersonCreate(
+            naam=naam, functie=functie, rol=rol,
+            organisatie_eenheid_id=eenheid.id, is_agent=True,
+            api_key=api_key,
+        ))
+
+    # Domain-specialist agents in "Afdeling Zonder Mensen"
+    agent_identiteit = await create_agent(
+        "Digitale Identiteit Specialist",
+        "Beleidsmedewerker digitale identiteit en authenticatie (eID, DigiD, eIDAS)",
+        afd_zonder_mensen,
+    )
+    agent_open = await create_agent(
+        "Open Overheid Analist",
+        "Beleidsmedewerker transparantie, Woo-implementatie en actieve openbaarmaking",
+        afd_zonder_mensen,
+    )
+    agent_algo = await create_agent(
+        "Algoritmetoezicht Adviseur",
+        "Adviseur algoritmeverantwoording, AI-verordening en publieke waarden",
+        afd_zonder_mensen, rol="adviseur",
+    )
+    agent_interop = await create_agent(
+        "Interoperabiliteit Specialist",
+        "Beleidsmedewerker standaarden, stelselafspraken en Europese interoperabiliteit",
+        afd_zonder_mensen,
+    )
+    agent_infosec = await create_agent(
+        "Informatieveiligheid Analist",
+        "Beleidsmedewerker BIO-naleving, dreigingsanalyse en informatiebeveiliging",
+        afd_zonder_mensen,
+    )
+
+    print(f"  Agents: 5 agents aangemaakt (Afdeling Zonder Mensen)")
 
     # =========================================================================
     # 2b. SET MANAGERS on organisatie-eenheden
@@ -1295,6 +1362,28 @@ async def seed(db: AsyncSession) -> None:
          p_dgdoo, "open", "kritiek", date(2026, 6, 30)),
         (bk_nds, "NDS Voortgangsrapportage H1 2026", "Stel de eerste halfjaarlijkse voortgangsrapportage NDS op voor de Tweede Kamer.",
          p_dir_ds, "open", "hoog", date(2026, 7, 15)),
+
+        # --- Agent taken ---
+        (instr_digid, "DigiD betrouwbaarheidsniveau-analyse", "Analyseer het huidige betrouwbaarheidsniveau van DigiD in relatie tot eIDAS LoA-eisen en stel een gap-analyse op.",
+         agent_identiteit, "in_progress", "hoog", date(2026, 3, 15)),
+        (instr_eidas_wallet, "EUDIW pilotresultaten samenvatten", "Verwerk de resultaten van de EUDIW-pilot en stel een beleidsadvies op over opschaling.",
+         agent_identiteit, "open", "normaal", date(2026, 4, 1)),
+        (bk_wdo, "Woo-publicatiepatronen monitoren", "Analyseer publicatiefrequentie en categorieën van actieve Woo-openbaarmaking bij departementen.",
+         agent_open, "in_progress", "normaal", date(2026, 3, 31)),
+        (dos_digi_overheid, "Transparantie-benchmark rijksoverheid", "Vergelijk transparantiescores van ministeries en stel best practices samen.",
+         agent_open, "open", "laag", date(2026, 5, 15)),
+        (bk_ai_act, "AI Act conformiteitscheck hoog-risico", "Beoordeel bestaande hoog-risico AI-systemen op conformiteit met de AI Act en rapporteer gaps.",
+         agent_algo, "in_progress", "kritiek", date(2026, 3, 1)),
+        (instr_algo_register, "Algoritmeregister kwaliteitsaudit", "Voer een kwaliteitsaudit uit op registraties in het Algoritmeregister en stel verbetervoorstellen op.",
+         agent_algo, "open", "hoog", date(2026, 4, 15)),
+        (bk_ibds, "Datastrategie-interoperabiliteitstoets", "Toets de Interbestuurlijke Datastrategie op alignment met EU Data Act en Interoperabiliteitsverordening.",
+         agent_interop, "in_progress", "hoog", date(2026, 3, 15)),
+        (instr_nora, "NORA-standaarden actualiteitscheck", "Analyseer de actualiteit van NORA-standaarden en identificeer standaarden die herziening vereisen.",
+         agent_interop, "open", "normaal", date(2026, 5, 1)),
+        (instr_bio, "BIO-naleving risicoscan departementen", "Voer een risicoscan uit op BIO-naleving bij departementen en prioriteer verbeterpunten.",
+         agent_infosec, "in_progress", "kritiek", date(2026, 2, 28)),
+        (doel_bio_compliance, "Dreigingslandschap digitale overheid Q1", "Stel een kwartaalrapportage op over het dreigingslandschap voor de digitale overheid.",
+         agent_infosec, "open", "hoog", date(2026, 3, 31)),
     ]
 
     for node, title, description, assignee, status, priority, deadline in tasks_data:
@@ -1398,6 +1487,30 @@ async def seed(db: AsyncSession) -> None:
 
         # Open Overheid
         (dos_digi_overheid, p_dir_open, "betrokken"),
+
+        # Agent stakeholder koppelingen
+        (instr_digid, agent_identiteit, "betrokken"),
+        (instr_eidas_wallet, agent_identiteit, "betrokken"),
+        (doel_digid_nieuw, agent_identiteit, "betrokken"),
+        (maatr_digid_upgrade, agent_identiteit, "adviseur"),
+
+        (dos_digi_overheid, agent_open, "betrokken"),
+        (bk_wdo, agent_open, "betrokken"),
+
+        (bk_ai_act, agent_algo, "betrokken"),
+        (bk_algo_kader, agent_algo, "betrokken"),
+        (instr_algo_register, agent_algo, "betrokken"),
+        (maatr_algo_verpl, agent_algo, "adviseur"),
+        (maatr_genai, agent_algo, "adviseur"),
+
+        (bk_ibds, agent_interop, "betrokken"),
+        (instr_nora, agent_interop, "betrokken"),
+        (instr_ndd, agent_interop, "adviseur"),
+        (doel_fed_data, agent_interop, "betrokken"),
+
+        (instr_bio, agent_infosec, "betrokken"),
+        (doel_bio_compliance, agent_infosec, "eigenaar"),
+        (bk_cloudbeleid, agent_infosec, "adviseur"),
     ]
 
     for node, person, rol in stakeholders_data:
@@ -1409,6 +1522,143 @@ async def seed(db: AsyncSession) -> None:
     await db.flush()
 
     print(f"  Stakeholders: {len(stakeholders_data)} koppelingen aangemaakt")
+
+    # =========================================================================
+    # 8. TAGS — Hierarchical policy domain tags
+    # =========================================================================
+
+    # Root tags
+    tag_digitalisering = await tag_repo.create(TagCreate(name="digitalisering"))
+    tag_overheid = await tag_repo.create(TagCreate(name="overheid"))
+    tag_veiligheid = await tag_repo.create(TagCreate(name="veiligheid"))
+    tag_wetgeving = await tag_repo.create(TagCreate(name="wetgeving"))
+    tag_eu = await tag_repo.create(TagCreate(name="europees"))
+    tag_data = await tag_repo.create(TagCreate(name="data"))
+    tag_inclusie = await tag_repo.create(TagCreate(name="inclusie"))
+    tag_duurzaamheid = await tag_repo.create(TagCreate(name="duurzaamheid"))
+
+    # Digitalisering subtags
+    tag_ai = await tag_repo.create(TagCreate(name="digitalisering/AI", parent_id=tag_digitalisering.id))
+    tag_algoritmen = await tag_repo.create(TagCreate(name="digitalisering/algoritmen", parent_id=tag_digitalisering.id))
+    tag_cloud = await tag_repo.create(TagCreate(name="digitalisering/cloud", parent_id=tag_digitalisering.id))
+    tag_ident = await tag_repo.create(TagCreate(name="digitalisering/identiteit", parent_id=tag_digitalisering.id))
+    tag_infra = await tag_repo.create(TagCreate(name="digitalisering/infrastructuur", parent_id=tag_digitalisering.id))
+    tag_genai = await tag_repo.create(TagCreate(name="digitalisering/AI/generatieve-AI", parent_id=tag_ai.id))
+    tag_opensource = await tag_repo.create(TagCreate(name="digitalisering/open-source", parent_id=tag_digitalisering.id))
+
+    # Overheid subtags — more specific than just "overheid/dienstverlening"
+    tag_dienstverlening_digitaal = await tag_repo.create(TagCreate(name="overheid/digitale-dienstverlening", parent_id=tag_overheid.id))
+    tag_dienstverlening_fysiek = await tag_repo.create(TagCreate(name="overheid/fysieke-dienstverlening", parent_id=tag_overheid.id))
+    tag_cio = await tag_repo.create(TagCreate(name="overheid/CIO-stelsel", parent_id=tag_overheid.id))
+    tag_architectuur = await tag_repo.create(TagCreate(name="overheid/architectuur", parent_id=tag_overheid.id))
+    tag_it_personeel = await tag_repo.create(TagCreate(name="overheid/IT-personeel", parent_id=tag_overheid.id))
+    tag_rijksbrede_ict = await tag_repo.create(TagCreate(name="overheid/rijksbrede-ICT", parent_id=tag_overheid.id))
+
+    # Veiligheid subtags
+    tag_cyber = await tag_repo.create(TagCreate(name="veiligheid/cybersecurity", parent_id=tag_veiligheid.id))
+    tag_privacy = await tag_repo.create(TagCreate(name="veiligheid/privacy", parent_id=tag_veiligheid.id))
+    tag_bio = await tag_repo.create(TagCreate(name="veiligheid/BIO", parent_id=tag_veiligheid.id))
+
+    # Wetgeving subtags
+    tag_wdo = await tag_repo.create(TagCreate(name="wetgeving/WDO", parent_id=tag_wetgeving.id))
+    tag_ai_act = await tag_repo.create(TagCreate(name="wetgeving/AI-Act", parent_id=tag_wetgeving.id))
+    tag_woo = await tag_repo.create(TagCreate(name="wetgeving/Woo", parent_id=tag_wetgeving.id))
+
+    # EU subtags
+    tag_eidas = await tag_repo.create(TagCreate(name="europees/eIDAS", parent_id=tag_eu.id))
+    tag_eudiw = await tag_repo.create(TagCreate(name="europees/EUDIW", parent_id=tag_eu.id))
+    tag_eu_data_governance = await tag_repo.create(TagCreate(name="europees/Data-Governance-Act", parent_id=tag_eu.id))
+
+    # Data subtags — more specific
+    tag_federatief = await tag_repo.create(TagCreate(name="data/federatief-datastelsel", parent_id=tag_data.id))
+    tag_data_spaces = await tag_repo.create(TagCreate(name="data/data-spaces", parent_id=tag_data.id))
+    tag_open_data = await tag_repo.create(TagCreate(name="data/open-data", parent_id=tag_data.id))
+    tag_data_kwaliteit = await tag_repo.create(TagCreate(name="data/datakwaliteit", parent_id=tag_data.id))
+
+    # Inclusie subtags
+    tag_digitale_kloof = await tag_repo.create(TagCreate(name="inclusie/digitale-kloof", parent_id=tag_inclusie.id))
+    tag_toegankelijkheid = await tag_repo.create(TagCreate(name="inclusie/toegankelijkheid", parent_id=tag_inclusie.id))
+
+    print(f"  Tags: 40+ tags aangemaakt")
+
+    # =========================================================================
+    # 9. NODE-TAG ASSOCIATIONS
+    # =========================================================================
+
+    node_tag_data = [
+        # Dossiers
+        (dos_digi_overheid, [tag_dienstverlening_digitaal, tag_rijksbrede_ict]),
+        (dos_digi_samenleving, [tag_digitale_kloof, tag_toegankelijkheid]),
+        (dos_cio_rijk, [tag_cio, tag_cloud, tag_rijksbrede_ict]),
+        (dos_ai, [tag_ai, tag_algoritmen]),
+        (dos_data, [tag_federatief, tag_data_kwaliteit]),
+
+        # Beleidskaders
+        (bk_nds, [tag_rijksbrede_ict, tag_dienstverlening_digitaal]),
+        (bk_ibds, [tag_federatief, tag_data_kwaliteit]),
+        (bk_wdo, [tag_wdo, tag_dienstverlening_digitaal]),
+        (bk_ai_act, [tag_ai_act, tag_ai, tag_eu]),
+        (bk_cio_stelsel, [tag_cio, tag_rijksbrede_ict]),
+        (bk_cloudbeleid, [tag_cloud, tag_cyber]),
+        (bk_algo_kader, [tag_algoritmen, tag_ai]),
+
+        # Doelen
+        (doel_digid_nieuw, [tag_ident, tag_dienstverlening_digitaal]),
+        (doel_algo_register, [tag_algoritmen, tag_ai]),
+        (doel_eudiw, [tag_eudiw, tag_eidas, tag_ident]),
+        (doel_fed_data, [tag_federatief, tag_data_kwaliteit]),
+        (doel_vendor_reductie, [tag_cloud, tag_opensource]),
+        (doel_duurzaam_digi, [tag_duurzaamheid, tag_infra]),
+        (doel_bio_compliance, [tag_bio, tag_cyber]),
+        (doel_inclusie, [tag_digitale_kloof, tag_toegankelijkheid]),
+
+        # Instrumenten
+        (instr_digid, [tag_ident, tag_dienstverlening_digitaal, tag_infra]),
+        (instr_mijnoverheid, [tag_dienstverlening_digitaal, tag_infra]),
+        (instr_algo_register, [tag_algoritmen, tag_ai]),
+        (instr_nora, [tag_architectuur, tag_rijksbrede_ict]),
+        (instr_ndd, [tag_rijksbrede_ict, tag_infra]),
+        (instr_bio, [tag_bio, tag_cyber]),
+        (instr_eidas_wallet, [tag_eudiw, tag_eidas, tag_ident]),
+        (instr_cio_overleg, [tag_cio, tag_rijksbrede_ict]),
+
+        # Maatregelen
+        (maatr_algo_verpl, [tag_algoritmen, tag_ai_act]),
+        (maatr_cloud_exit, [tag_cloud, tag_opensource]),
+        (maatr_digid_upgrade, [tag_ident, tag_infra]),
+        (maatr_it_inhuur, [tag_it_personeel]),
+        (maatr_wdo_transitie, [tag_wdo, tag_dienstverlening_digitaal]),
+        (maatr_genai, [tag_genai, tag_ai]),
+        (maatr_data_spaces, [tag_data_spaces, tag_eu_data_governance]),
+
+        # Politieke inputs
+        (pi_motie_sixdijkstra, [tag_genai, tag_opensource]),
+        (pi_motie_veldhoen, [tag_algoritmen, tag_ai_act]),
+        (pi_kamervraag_digid, [tag_ident, tag_dienstverlening_digitaal]),
+        (pi_kamervraag_cloud, [tag_cloud]),
+        (pi_motie_digi_dienst, [tag_rijksbrede_ict, tag_infra]),
+
+        # Problemen
+        (prob_digitale_kloof, [tag_digitale_kloof, tag_toegankelijkheid]),
+        (prob_vendor_lock, [tag_cloud, tag_opensource]),
+        (prob_algo_bias, [tag_algoritmen, tag_privacy]),
+        (prob_data_silo, [tag_federatief, tag_data_kwaliteit]),
+        (prob_cyber_dreiging, [tag_cyber]),
+
+        # Effecten
+        (eff_digid_bereik, [tag_ident, tag_dienstverlening_digitaal, tag_digitale_kloof]),
+        (eff_algo_transparant, [tag_algoritmen, tag_ai]),
+        (eff_data_beschikbaar, [tag_open_data, tag_federatief]),
+        (eff_minder_inhuur, [tag_it_personeel]),
+    ]
+
+    count = 0
+    for node, tags in node_tag_data:
+        for tag in tags:
+            await tag_repo.add_tag_to_node(node.id, tag.id)
+            count += 1
+
+    print(f"  Node-tag koppelingen: {count} koppelingen aangemaakt")
 
     await db.commit()
     print("\nSeed voltooid!")

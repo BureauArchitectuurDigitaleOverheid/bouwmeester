@@ -34,3 +34,15 @@ export async function getNodeGraph(id: string, depth?: number): Promise<GraphVie
 export async function getNodeStakeholders(id: string): Promise<NodeStakeholder[]> {
   return apiGet<NodeStakeholder[]>(`/api/nodes/${id}/stakeholders`);
 }
+
+export interface NodeMotieImport {
+  indieners: string[];
+  document_url: string | null;
+  zaak_nummer: string;
+  bron: string;
+  datum: string | null;
+}
+
+export async function getNodeMotieImport(id: string): Promise<NodeMotieImport | null> {
+  return apiGet<NodeMotieImport | null>(`/api/nodes/${id}/motie-import`);
+}

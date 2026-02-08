@@ -4,6 +4,7 @@ import {
   getUnreadCount,
   markNotificationRead,
   markAllNotificationsRead,
+  sendMessage,
 } from '@/api/notifications';
 
 export function useNotifications(personId: string | undefined, unreadOnly = false) {
@@ -40,6 +41,17 @@ export function useMarkAllNotificationsRead() {
 
   return useMutation({
     mutationFn: (personId: string) => markAllNotificationsRead(personId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+export function useSendMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: sendMessage,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },

@@ -25,7 +25,7 @@ class OrganisatieEenheid(Base):
     naam: Mapped[str] = mapped_column(nullable=False)
     type: Mapped[str] = mapped_column(
         nullable=False,
-        comment="e.g. ministerie|directoraat_generaal|directie|afdeling|team",
+        comment="e.g. ministerie|directoraat_generaal|directie|dienst|bureau|afdeling|team",
     )
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

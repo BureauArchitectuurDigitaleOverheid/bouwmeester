@@ -13,6 +13,8 @@ const TYPE_BADGE_COLORS: Record<string, 'blue' | 'purple' | 'amber' | 'cyan' | '
   ministerie: 'blue',
   directoraat_generaal: 'purple',
   directie: 'amber',
+  dienst: 'gray',
+  bureau: 'gray',
   afdeling: 'cyan',
   team: 'green',
 };

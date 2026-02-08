@@ -24,6 +24,11 @@ from bouwmeester.schema.graph import (
     NeighborEntry,
 )
 from bouwmeester.schema.inbox import InboxItem, InboxResponse
+from bouwmeester.schema.motie_import import (
+    MotieImportResponse,
+    ReviewAction,
+    SuggestedEdgeResponse,
+)
 from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidCreate,
     OrganisatieEenheidPersonenGroup,
@@ -39,6 +44,15 @@ from bouwmeester.schema.person import (
     PersonUpdate,
 )
 from bouwmeester.schema.search import SearchResponse, SearchResult
+from bouwmeester.schema.tag import (
+    NodeTagCreate,
+    NodeTagResponse,
+    TagBase,
+    TagCreate,
+    TagResponse,
+    TagTreeResponse,
+    TagUpdate,
+)
 from bouwmeester.schema.task import (
     TaskBase,
     TaskCreate,
@@ -52,6 +66,7 @@ from bouwmeester.schema.task import (
 CorpusNodeWithEdges.model_rebuild()
 OrganisatieEenheidTreeNode.model_rebuild()
 OrganisatieEenheidPersonenGroup.model_rebuild()
+TagTreeResponse.model_rebuild()
 
 __all__ = [
     # corpus_node
@@ -103,4 +118,16 @@ __all__ = [
     # search
     "SearchResponse",
     "SearchResult",
+    # tag
+    "NodeTagCreate",
+    "NodeTagResponse",
+    "TagBase",
+    "TagCreate",
+    "TagResponse",
+    "TagTreeResponse",
+    "TagUpdate",
+    # motie_import
+    "MotieImportResponse",
+    "ReviewAction",
+    "SuggestedEdgeResponse",
 ]

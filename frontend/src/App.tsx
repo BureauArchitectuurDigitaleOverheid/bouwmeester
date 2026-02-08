@@ -10,6 +10,7 @@ import { TasksPage } from '@/pages/TasksPage';
 import { PeoplePage } from '@/pages/PeoplePage';
 import { OrganisatiePage } from '@/pages/OrganisatiePage';
 import { SearchPage } from '@/pages/SearchPage';
+import { MotiesPage } from '@/pages/MotiesPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,6 +37,7 @@ export default function App() {
               <Route path="/people" element={<PeoplePage />} />
               <Route path="/organisatie" element={<OrganisatiePage />} />
               <Route path="/search" element={<SearchPage />} />
+              <Route path="/moties" element={<MotiesPage />} />
             </Route>
           </Routes>
         </BrowserRouter>

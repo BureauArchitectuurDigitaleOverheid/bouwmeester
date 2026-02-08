@@ -1,8 +1,9 @@
-import { apiGet, apiPut } from './client';
+import { apiGet, apiPost, apiPut } from './client';
 
 export interface Notification {
   id: string;
   person_id: string;
+  sender_id?: string;
   type: string;
   title: string;
   message?: string;
@@ -38,4 +39,12 @@ export async function markNotificationRead(id: string): Promise<Notification> {
 
 export async function markAllNotificationsRead(_personId: string): Promise<{ marked_read: number }> {
   return apiPut<{ marked_read: number }>('/api/notifications/read-all', undefined);
+}
+
+export async function sendMessage(data: {
+  person_id: string;
+  sender_id: string;
+  message: string;
+}): Promise<Notification> {
+  return apiPost<Notification>('/api/notifications/send', data);
 }

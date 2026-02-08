@@ -4,12 +4,25 @@ import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { InboxList } from '@/components/inbox/InboxList';
 import { EmptyState } from '@/components/common/EmptyState';
+import { useNotifications } from '@/hooks/useNotifications';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import type { InboxItem } from '@/types';
 
 export function InboxPage() {
   const navigate = useNavigate();
 
-  // For now, show a welcome state since the inbox API may not be connected
-  const inboxItems: [] = [];
+  const { currentPerson } = useCurrentPerson();
+  const { data: notifications } = useNotifications(currentPerson?.id);
+
+  const inboxItems: InboxItem[] = (notifications ?? []).map((n) => ({
+    id: n.id,
+    type: n.type === 'direct_message' || n.type === 'agent_prompt' ? 'message' : 'notification',
+    title: n.title,
+    description: n.message,
+    node_id: n.related_node_id,
+    created_at: n.created_at,
+    read: n.is_read,
+  }));
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">

@@ -21,6 +21,7 @@ from bouwmeester.schema.graph import (
     NeighborEntry,
 )
 from bouwmeester.schema.person import NodeStakeholderResponse, PersonResponse
+from bouwmeester.schema.tag import NodeTagCreate, NodeTagResponse, TagCreate
 from bouwmeester.schema.task import TaskResponse
 from bouwmeester.services.node_service import NodeService
 
@@ -188,3 +189,99 @@ async def get_node_stakeholders(
         )
         for s in stakeholders
     ]
+
+
+@router.get("/{id}/tags", response_model=list[NodeTagResponse])
+async def get_node_tags(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[NodeTagResponse]:
+    from bouwmeester.repositories.tag import TagRepository
+
+    service = NodeService(db)
+    node = await service.get(id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    tag_repo = TagRepository(db)
+    node_tags = await tag_repo.get_by_node(id)
+    return [NodeTagResponse.model_validate(nt) for nt in node_tags]
+
+
+@router.post(
+    "/{id}/tags",
+    response_model=NodeTagResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_tag_to_node(
+    id: UUID,
+    data: NodeTagCreate,
+    db: AsyncSession = Depends(get_db),
+) -> NodeTagResponse:
+    from bouwmeester.repositories.tag import TagRepository
+
+    service = NodeService(db)
+    node = await service.get(id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    tag_repo = TagRepository(db)
+
+    # If tag_name is given, find or create tag
+    if data.tag_name and not data.tag_id:
+        existing = await tag_repo.get_by_name(data.tag_name)
+        if existing:
+            tag_id = existing.id
+        else:
+            new_tag = await tag_repo.create(TagCreate(name=data.tag_name))
+            tag_id = new_tag.id
+    elif data.tag_id:
+        tag_id = data.tag_id
+    else:
+        raise HTTPException(status_code=400, detail="Provide tag_id or tag_name")
+
+    node_tag = await tag_repo.add_tag_to_node(id, tag_id)
+    return NodeTagResponse.model_validate(node_tag)
+
+
+@router.delete("/{id}/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_tag_from_node(
+    id: UUID,
+    tag_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    from bouwmeester.repositories.tag import TagRepository
+
+    tag_repo = TagRepository(db)
+    removed = await tag_repo.remove_tag_from_node(id, tag_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Tag not linked to node")
+
+
+@router.get("/{id}/motie-import")
+async def get_node_motie_import(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict | None:
+    """Get linked motie import data for a politieke_input node."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from bouwmeester.models.motie_import import MotieImport
+
+    stmt = (
+        select(MotieImport)
+        .where(MotieImport.corpus_node_id == id)
+        .options(selectinload(MotieImport.suggested_edges))
+    )
+    result = await db.execute(stmt)
+    motie_import = result.scalar_one_or_none()
+    if motie_import is None:
+        return None
+    return {
+        "indieners": motie_import.indieners or [],
+        "document_url": motie_import.document_url,
+        "zaak_nummer": motie_import.zaak_nummer,
+        "bron": motie_import.bron,
+        "datum": str(motie_import.datum) if motie_import.datum else None,
+    }

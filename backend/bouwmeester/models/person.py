@@ -23,12 +23,14 @@ class Person(Base):
         server_default=text("gen_random_uuid()"),
     )
     naam: Mapped[str] = mapped_column(nullable=False)
-    email: Mapped[str] = mapped_column(unique=True, nullable=False)
+    email: Mapped[str | None] = mapped_column(unique=True, nullable=True)
     afdeling: Mapped[str | None] = mapped_column(nullable=True)
     functie: Mapped[str | None] = mapped_column(nullable=True)
     rol: Mapped[str | None] = mapped_column(nullable=True)
     oidc_subject: Mapped[str | None] = mapped_column(unique=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
+    is_agent: Mapped[bool] = mapped_column(default=False, server_default="false")
+    api_key: Mapped[str | None] = mapped_column(nullable=True)
     organisatie_eenheid_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organisatie_eenheid.id", ondelete="SET NULL"),

@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     OIDC_CLIENT_ID: str = ""
     OIDC_CLIENT_SECRET: str = ""
 
+    ANTHROPIC_API_KEY: str = ""
+    TK_API_BASE_URL: str = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0"
+    EK_API_BASE_URL: str = "https://opendata.eerstekamer.nl"
+    TK_POLL_INTERVAL_SECONDS: int = 3600
+    TK_IMPORT_LIMIT: int = 100
+    LLM_MODEL: str = "claude-haiku-4-5-20251001"
+
 
 @lru_cache
 def get_settings() -> Settings:

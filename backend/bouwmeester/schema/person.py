@@ -8,11 +8,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class PersonBase(BaseModel):
     naam: str
-    email: str
+    email: str | None = None
     afdeling: str | None = None
     functie: str | None = None
     rol: str | None = None
     organisatie_eenheid_id: UUID | None = None
+    is_agent: bool = False
+    api_key: str | None = None
 
 
 class PersonCreate(PersonBase):
@@ -26,11 +28,15 @@ class PersonUpdate(BaseModel):
     functie: str | None = None
     rol: str | None = None
     organisatie_eenheid_id: UUID | None = None
+    is_agent: bool | None = None
+    api_key: str | None = None
 
 
 class PersonResponse(PersonBase):
     id: UUID
     is_active: bool
+    is_agent: bool
+    api_key: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

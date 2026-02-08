@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Mail, Briefcase, Shield, Pencil, CheckCircle2, Circle, FileText, Loader2 } from 'lucide-react';
+import { Mail, Briefcase, Shield, Pencil, CheckCircle2, Circle, FileText, Loader2, Bot, MessageSquare, Terminal } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
+import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { usePersonSummary } from '@/hooks/usePeople';
 import { ROL_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
@@ -28,6 +29,7 @@ interface PersonCardExpandableProps {
 export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, isManager, extraBadge }: PersonCardExpandableProps) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [messageOpen, setMessageOpen] = useState(false);
   const navigate = useNavigate();
   const { nodeLabel } = useVocabulary();
   const { data: summary, isLoading: summaryLoading } = usePersonSummary(expanded ? person.id : null);
@@ -56,14 +58,25 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
       onDragStart={onDragStartPerson ? (e: React.DragEvent) => onDragStartPerson(e, person) : undefined}
     >
       <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center h-9 w-9 rounded-full bg-primary-100 text-primary-700 text-sm font-medium shrink-0">
-          {initials}
-        </div>
+        {person.is_agent ? (
+          <div className="relative flex items-center justify-center h-9 w-9 rounded-full bg-violet-100 text-violet-700 shrink-0">
+            <Bot className="h-4.5 w-4.5" />
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-9 w-9 rounded-full bg-primary-100 text-primary-700 text-sm font-medium shrink-0">
+            {initials}
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-text truncate">
               {person.naam}
             </p>
+            {person.is_agent && (
+              <Badge variant="purple" className="text-[10px] px-1.5 py-0 shrink-0">
+                Agent
+              </Badge>
+            )}
             {isManager && (
               <Badge
                 variant={person.rol === 'minister' || person.rol === 'staatssecretaris' ? 'purple' : 'blue'}
@@ -99,6 +112,23 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             )}
           </div>
         </div>
+        {/* Prominent message/prompt button — always visible */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setMessageOpen(true);
+          }}
+          className={clsx(
+            'shrink-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+            person.is_agent
+              ? 'bg-violet-100 text-violet-700 hover:bg-violet-200'
+              : 'bg-primary-100 text-primary-700 hover:bg-primary-200',
+          )}
+          title={person.is_agent ? 'Prompt sturen' : 'Bericht sturen'}
+        >
+          {person.is_agent ? <Terminal className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
+          {person.is_agent ? 'Prompt' : 'Bericht'}
+        </button>
       </div>
 
       {/* Expanded details */}
@@ -195,6 +225,12 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
           )}
         </div>
       )}
+
+      <SendMessageModal
+        open={messageOpen}
+        onClose={() => setMessageOpen(false)}
+        recipient={person}
+      />
     </Card>
   );
 }

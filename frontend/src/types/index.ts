@@ -210,6 +210,8 @@ export const ORGANISATIE_TYPE_LABELS: Record<string, string> = {
   ministerie: 'Ministerie',
   directoraat_generaal: 'Directoraat-Generaal',
   directie: 'Directie',
+  dienst: 'Dienst',
+  bureau: 'Bureau',
   afdeling: 'Afdeling',
   team: 'Team',
 };
@@ -218,6 +220,8 @@ export const ORGANISATIE_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'ministerie', label: 'Ministerie' },
   { value: 'directoraat_generaal', label: 'Directoraat-Generaal' },
   { value: 'directie', label: 'Directie' },
+  { value: 'dienst', label: 'Dienst' },
+  { value: 'bureau', label: 'Bureau' },
   { value: 'afdeling', label: 'Afdeling' },
   { value: 'team', label: 'Team' },
 ];
@@ -248,6 +252,8 @@ export interface Person {
   functie?: string;
   rol?: string;
   organisatie_eenheid_id?: string | null;
+  is_agent: boolean;
+  api_key?: string | null;
   created_at: string;
   updated_at?: string;
 }
@@ -259,6 +265,8 @@ export interface PersonCreate {
   functie?: string;
   rol?: string;
   organisatie_eenheid_id?: string | null;
+  is_agent?: boolean;
+  api_key?: string;
 }
 
 // Person Summary (expanded card)
@@ -294,6 +302,7 @@ export const STAKEHOLDER_ROL_LABELS: Record<string, string> = {
   eigenaar: 'Eigenaar',
   betrokken: 'Betrokken',
   adviseur: 'Adviseur',
+  indiener: 'Indiener',
 };
 
 // Activity
@@ -347,3 +356,78 @@ export interface GraphViewResponse {
   nodes: CorpusNode[];
   edges: Edge[];
 }
+
+// Tags
+export interface Tag {
+  id: string;
+  name: string;
+  parent_id?: string | null;
+  description?: string | null;
+  created_at: string;
+  children?: Tag[];
+}
+
+export interface TagCreate {
+  name: string;
+  parent_id?: string | null;
+  description?: string | null;
+}
+
+export interface NodeTagResponse {
+  id: string;
+  tag: Tag;
+  created_at: string;
+}
+
+// Motie Import
+export type MotieImportStatus = 'pending' | 'imported' | 'reviewed' | 'rejected';
+export type SuggestedEdgeStatus = 'pending' | 'approved' | 'rejected';
+
+export interface MotieImport {
+  id: string;
+  zaak_id: string;
+  zaak_nummer: string;
+  titel: string;
+  onderwerp: string;
+  bron: string;
+  datum?: string;
+  status: MotieImportStatus;
+  corpus_node_id?: string;
+  indieners?: string[];
+  document_tekst?: string;
+  document_url?: string;
+  llm_samenvatting?: string;
+  matched_tags?: string[];
+  imported_at?: string;
+  reviewed_at?: string;
+  created_at: string;
+  suggested_edges?: SuggestedEdge[];
+}
+
+export interface SuggestedEdge {
+  id: string;
+  motie_import_id: string;
+  target_node_id: string;
+  target_node?: CorpusNode;
+  edge_type_id: string;
+  confidence: number;
+  reason?: string;
+  status: SuggestedEdgeStatus;
+  edge_id?: string;
+  reviewed_at?: string;
+  created_at: string;
+}
+
+export const MOTIE_IMPORT_STATUS_LABELS: Record<MotieImportStatus, string> = {
+  pending: 'In wachtrij',
+  imported: 'Geïmporteerd',
+  reviewed: 'Beoordeeld',
+  rejected: 'Afgewezen',
+};
+
+export const MOTIE_IMPORT_STATUS_COLORS: Record<MotieImportStatus, string> = {
+  pending: 'amber',
+  imported: 'blue',
+  reviewed: 'green',
+  rejected: 'gray',
+};

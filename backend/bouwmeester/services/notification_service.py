@@ -101,6 +101,45 @@ class NotificationService:
                 notifications.append(notification)
         return notifications
 
+    async def notify_motie_imported(
+        self, motie_node: CorpusNode, affected_nodes: list[CorpusNode]
+    ) -> list[Notification]:
+        """Notify stakeholders of affected nodes about a new imported motie."""
+        from sqlalchemy import select
+
+        from bouwmeester.models.node_stakeholder import NodeStakeholder
+
+        notifications = []
+        notified_person_ids: set[UUID] = set()
+
+        for node in affected_nodes:
+            stmt = select(NodeStakeholder).where(
+                NodeStakeholder.node_id == node.id,
+            )
+            result = await self.session.execute(stmt)
+            stakeholders = result.scalars().all()
+
+            for sh in stakeholders:
+                if sh.person_id in notified_person_ids:
+                    continue
+                notified_person_ids.add(sh.person_id)
+
+                data = NotificationCreate(
+                    person_id=sh.person_id,
+                    type="politieke_input_imported",
+                    title=f"Nieuwe aangenomen motie: {motie_node.title}",
+                    message=(
+                        f"Aangenomen motie '{motie_node.title}' is mogelijk "
+                        f"relevant voor '{node.title}'. "
+                        f"Beoordeel de voorgestelde verbindingen."
+                    ),
+                    related_node_id=motie_node.id,
+                )
+                notification = await self.repo.create(data)
+                notifications.append(notification)
+
+        return notifications
+
     async def get_notifications(
         self,
         person_id: UUID,
