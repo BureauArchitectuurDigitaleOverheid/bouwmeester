@@ -650,7 +650,20 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
 
     # Helper to create people in bulk
+    def _email_from_name(naam: str) -> str:
+        """Generate voornaam.achternaam@minbzk.nl from full name."""
+        import unicodedata
+
+        normalized = unicodedata.normalize("NFKD", naam)
+        ascii_name = normalized.encode("ascii", "ignore").decode()
+        parts = ascii_name.lower().split()
+        voornaam = parts[0]
+        rest = "".join(parts[1:])
+        return f"{voornaam}.{rest}@minbzk.nl"
+
     async def cp(naam, email, functie, eenheid):
+        if email is None:
+            email = _email_from_name(naam)
         person = await person_repo.create(
             PersonCreate(
                 naam=naam,
@@ -672,13 +685,13 @@ async def seed(db: AsyncSession) -> None:
     # --- Bewindspersoon en ambtelijke top (echte namen) ---
     p_vanmarum = await cp(
         "Eddie van Marum",
-        "e.vanmarum@minbzk.nl",
+        "eddie.vanmarum@minbzk.nl",
         "staatssecretaris",
         bzk,
     )
     p_dgdoo = await cp(
         "Eva den Dunnen-Heijblom",
-        "e.dendunnen@minbzk.nl",
+        "eva.heijblom@minbzk.nl",
         "directeur_generaal",
         dgdoo,
     )
@@ -686,37 +699,37 @@ async def seed(db: AsyncSession) -> None:
     # --- Directeuren (echte namen via ABD) ---
     p_vermeer = await cp(
         "Mark Vermeer",
-        "m.vermeer@minbzk.nl",
+        "mark.vermeer@minbzk.nl",
         "directeur",
         dir_ddo,
     )
     p_beentjes = await cp(
         "Hillie Beentjes",
-        "h.beentjes@minbzk.nl",
+        "hillie.beentjes@minbzk.nl",
         "directeur",
         dir_ds,
     )
     p_deblaauw = await cp(
         "Art de Blaauw",
-        "a.deblaauw@minbzk.nl",
+        "art.deblaauw@minbzk.nl",
         "directeur",
         dir_cio,
     )
     p_weimar = await cp(
         "André Weimar",
-        "a.weimar@minbzk.nl",
+        "andre.weimar@minbzk.nl",
         "directeur",
         dir_ao,
     )
     p_hulzebosch = await cp(
         "Mariya Hulzebosch",
-        "m.hulzebosch@minbzk.nl",
+        "mariya.hulzebosch@minbzk.nl",
         "directeur",
         dir_ifhr,
     )
     p_rutjens = await cp(
         "Jacqueline Rutjens",
-        "j.rutjens@minbzk.nl",
+        "jacqueline.rutjens@minbzk.nl",
         "directeur",
         prog_open,
     )
@@ -725,31 +738,31 @@ async def seed(db: AsyncSession) -> None:
     # Digitale Overheid
     p_westelaken = await cp(
         "Lindy van de Westelaken",
-        "l.vandewestelaken@minbzk.nl",
+        "lindy.vandewestelaken@minbzk.nl",
         "afdelingshoofd",
         afd_basisinfra,
     )
     p_vanwissen = await cp(
         "Lissy van Wissen",
-        "l.vanwissen@minbzk.nl",
+        "lissy.vanwissen@minbzk.nl",
         "afdelingshoofd",
         afd_id_toegang,
     )
     p_lucassen = await cp(
         "Hetty Lucassen",
-        "h.lucassen@minbzk.nl",
+        "hetty.lucassen@minbzk.nl",
         "afdelingshoofd",
         afd_wdo,
     )
     p_olivers = await cp(
         "Christel Olivers",
-        "c.olivers@minbzk.nl",
+        "christel.olivers@minbzk.nl",
         "afdelingshoofd",
         afd_dienstverlening,
     )
     p_keulemans = await cp(
         "Kees Keulemans",
-        "k.keulemans@minbzk.nl",
+        "kees.keulemans@minbzk.nl",
         "coordinator",
         bureau_arch,
     )
@@ -757,25 +770,25 @@ async def seed(db: AsyncSession) -> None:
     # Digitale Samenleving
     p_vanherwaarden = await cp(
         "Digna van Herwaarden",
-        "d.vanherwaarden@minbzk.nl",
+        "digna.vanherwaarden@minbzk.nl",
         "afdelingshoofd",
         afd_ds_a,
     )
     p_zondervan = await cp(
         "Ingrid Zondervan",
-        "i.zondervan@minbzk.nl",
+        "ingrid.zondervan@minbzk.nl",
         "afdelingshoofd",
         afd_ds_b,
     )
     p_geerts = await cp(
         "Desiree Geerts",
-        "d.geerts@minbzk.nl",
+        "desiree.geerts@minbzk.nl",
         "afdelingshoofd",
         afd_ds_c,
     )
     p_kewal = await cp(
         "Suzie Kewal",
-        "s.kewal@minbzk.nl",
+        "suzie.kewal@minbzk.nl",
         "afdelingshoofd",
         afd_ds_d,
     )
@@ -783,21 +796,21 @@ async def seed(db: AsyncSession) -> None:
     # CIO Rijk
     p_terborg = await cp(
         "Fleur ter Borg",
-        "f.terborg@minbzk.nl",
+        "fleur.terborg@minbzk.nl",
         "afdelingshoofd",
         afd_ict_voorz,
     )
     # I-Stelsel en Vakmanschap — fictief
     p_brouwer = await cp(
         "Stefan Brouwer",
-        "s.brouwer@minbzk.nl",
+        "stefan.brouwer@minbzk.nl",
         "afdelingshoofd",
         afd_istelsel,
     )
     # Informatiebeveiliging — fictief
     p_timmermans = await cp(
         "Renate Timmermans",
-        "r.timmermans@minbzk.nl",
+        "renate.timmermans@minbzk.nl",
         "afdelingshoofd",
         afd_infobev,
     )
@@ -805,14 +818,14 @@ async def seed(db: AsyncSession) -> None:
     # Ambtenaar & Organisatie
     p_vandegraaf = await cp(
         "Hester van de Graaf",
-        "h.vandegraaf@minbzk.nl",
+        "hester.vandegraaf@minbzk.nl",
         "afdelingshoofd",
         afd_ambt_vak,
     )
     # Arbeidsmarkt — fictief
     p_meijer = await cp(
         "Wouter Meijer",
-        "w.meijer@minbzk.nl",
+        "wouter.meijer@minbzk.nl",
         "afdelingshoofd",
         afd_arbeidsmarkt,
     )
@@ -820,13 +833,13 @@ async def seed(db: AsyncSession) -> None:
     # IFHR
     p_zwaans = await cp(
         "David Zwaans",
-        "d.zwaans@minbzk.nl",
+        "david.zwaans@minbzk.nl",
         "afdelingshoofd",
         afd_inkoop,
     )
     p_coenen = await cp(
         "Irene Coenen",
-        "i.coenen@minbzk.nl",
+        "irene.coenen@minbzk.nl",
         "afdelingshoofd",
         afd_fac_huisv,
     )
@@ -834,115 +847,115 @@ async def seed(db: AsyncSession) -> None:
     # --- Teamleiders (fictief) ---
     p_tl_digid = await cp(
         "Priya Sharma",
-        "p.sharma@minbzk.nl",
+        None,
         "coordinator",
         team_digid,
     )
     p_tl_eudiw = await cp(
         "Joost van Dijk",
-        "j.vandijk@minbzk.nl",
+        None,
         "coordinator",
         team_eudiw,
     )
     p_tl_mijnov = await cp(
         "Nienke Postma",
-        "n.postma@minbzk.nl",
+        None,
         "coordinator",
         team_mijnoverheid,
     )
     p_tl_gdi = await cp(
         "Rick Janssen",
-        "r.janssen@minbzk.nl",
+        None,
         "coordinator",
         team_gdi,
     )
     p_tl_algo = await cp(
         "Fatima Bakker-El Idrissi",
-        "f.bakker@minbzk.nl",
+        None,
         "coordinator",
         team_algo,
     )
     p_tl_aiact = await cp(
         "Daan Vermeulen",
-        "d.vermeulen@minbzk.nl",
+        None,
         "coordinator",
         team_ai_act,
     )
     p_tl_data = await cp(
         "Samira El Amrani",
-        "s.elamrani@minbzk.nl",
+        None,
         "coordinator",
         team_data,
     )
     p_tl_incl = await cp(
         "Marjolein de Wit",
-        "m.dewit@minbzk.nl",
+        None,
         "coordinator",
         team_inclusie,
     )
     p_tl_eu = await cp(
         "Pieter-Jan Hofstra",
-        "pj.hofstra@minbzk.nl",
+        None,
         "coordinator",
         team_eu_intl,
     )
     p_tl_comm = await cp(
         "Lisa van Beek",
-        "l.vanbeek@minbzk.nl",
+        None,
         "coordinator",
         team_comm,
     )
     p_tl_cloud = await cp(
         "Bas Hendriks",
-        "b.hendriks@minbzk.nl",
+        None,
         "coordinator",
         team_cloud,
     )
     p_tl_sourc = await cp(
         "Eva Jansen",
-        "e.jansen@minbzk.nl",
+        None,
         "coordinator",
         team_sourcing,
     )
     p_tl_arch = await cp(
         "Jeroen Smit",
-        "j.smit@minbzk.nl",
+        None,
         "coordinator",
         team_arch,
     )
     p_tl_ciostel = await cp(
         "Annemiek Vos",
-        "a.vos@minbzk.nl",
+        None,
         "coordinator",
         team_cio_stelsel,
     )
     p_tl_bio = await cp(
         "Sander Kuijpers",
-        "s.kuijpers@minbzk.nl",
+        None,
         "coordinator",
         team_bio,
     )
     p_tl_cao = await cp(
         "Mirjam Schouten",
-        "m.schouten@minbzk.nl",
+        None,
         "coordinator",
         team_cao,
     )
     p_tl_div = await cp(
         "Omar Yilmaz",
-        "o.yilmaz@minbzk.nl",
+        None,
         "coordinator",
         team_diversiteit,
     )
     p_tl_woo = await cp(
         "Charlotte Dekker",
-        "c.dekker@minbzk.nl",
+        None,
         "coordinator",
         team_woo,
     )
     p_tl_actie = await cp(
         "Tim Groenewegen",
-        "t.groenewegen@minbzk.nl",
+        None,
         "coordinator",
         team_actieplan,
     )
@@ -1894,28 +1907,28 @@ async def seed(db: AsyncSession) -> None:
     p_peeters = None
     p_achterberg = None
 
-    for naam, email_prefix, functie, eenheid in bulk_people:
-        p = await cp(naam, f"{email_prefix}@minbzk.nl", functie, eenheid)
+    for naam, _email_prefix, functie, eenheid in bulk_people:
+        p = await cp(naam, None, functie, eenheid)
         # Keep references to key people for tasks
-        if email_prefix == "d.kaya":
+        if naam == "Deniz Kaya":
             p_kaya = p
-        elif email_prefix == "l.nguyen":
+        elif naam == "Linh Nguyen":
             p_nguyen = p
-        elif email_prefix == "m.visser":
+        elif naam == "Marloes Visser":
             p_visser = p
-        elif email_prefix == "b.dejong":
+        elif naam == "Bram de Jong":
             p_dejong = p
-        elif email_prefix == "r.kumar":
+        elif naam == "Raj Kumar":
             p_kumar = p
-        elif email_prefix == "a.hendriks":
+        elif naam == "Anne Hendriks":
             p_hendriks = p
-        elif email_prefix == "k.devries":
+        elif naam == "Karin de Vries":
             p_devries = p
-        elif email_prefix == "t.vandenberg":
+        elif naam == "Thomas van den Berg":
             p_berg = p
-        elif email_prefix == "m.peeters":
+        elif naam == "Maarten Peeters":
             p_peeters = p
-        elif email_prefix == "l.achterberg":
+        elif naam == "Lisa Achterberg":
             p_achterberg = p
 
     person_count = (
