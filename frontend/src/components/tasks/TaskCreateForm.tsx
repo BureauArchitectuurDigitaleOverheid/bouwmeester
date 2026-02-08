@@ -11,8 +11,8 @@ import {
   TaskPriority,
   TASK_PRIORITY_LABELS,
   NodeType,
-  NODE_TYPE_LABELS,
 } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 
 interface TaskCreateFormProps {
@@ -36,6 +36,7 @@ export function TaskCreateForm({ open, onClose, nodeId }: TaskCreateFormProps) {
   const [personCreateName, setPersonCreateName] = useState('');
   const [showPersonCreate, setShowPersonCreate] = useState(false);
 
+  const { nodeLabel } = useVocabulary();
   const createTask = useCreateTask();
   const createNode = useCreateNode();
   const { data: allNodes } = useNodes();
@@ -44,7 +45,7 @@ export function TaskCreateForm({ open, onClose, nodeId }: TaskCreateFormProps) {
   const nodeOptions: SelectOption[] = (allNodes ?? []).map((n) => ({
     value: n.id,
     label: n.title,
-    description: NODE_TYPE_LABELS[n.node_type],
+    description: nodeLabel(n.node_type),
   }));
 
   const personOptions: SelectOption[] = (allPeople ?? []).map((p) => ({

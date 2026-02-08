@@ -66,3 +66,7 @@ export function exportEdgesUrl(): string {
 export function exportCorpusUrl(): string {
   return `${BASE_URL}/api/export/corpus`;
 }
+
+export function exportArchimateUrl(): string {
+  return `${BASE_URL}/api/export/archimate`;
+}

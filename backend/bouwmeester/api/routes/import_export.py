@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
 from bouwmeester.schema.import_export import ImportResult
+from bouwmeester.services.archimate_export_service import (
+    ArchiMateExportService,
+)
 from bouwmeester.services.export_service import ExportService
 from bouwmeester.services.import_service import ImportService
 
@@ -91,5 +94,27 @@ async def export_corpus(
     data = await service.export_corpus_json()
     return JSONResponse(
         content=data,
-        headers={"Content-Disposition": "attachment; filename=corpus.json"},
+        headers={
+            "Content-Disposition": (
+                "attachment; filename=corpus.json"
+            )
+        },
+    )
+
+
+@router.get("/export/archimate")
+async def export_archimate(
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Export corpus as ArchiMate Exchange Format XML."""
+    service = ArchiMateExportService(db)
+    xml_content = await service.export_archimate_xml()
+    return StreamingResponse(
+        io.StringIO(xml_content),
+        media_type="application/xml",
+        headers={
+            "Content-Disposition": (
+                "attachment; filename=bouwmeester-archimate.xml"
+            )
+        },
     )

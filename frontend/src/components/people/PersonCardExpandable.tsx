@@ -5,7 +5,8 @@ import { Mail, Briefcase, Shield, Pencil, CheckCircle2, Circle, FileText, Loader
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { usePersonSummary } from '@/hooks/usePeople';
-import { ROL_LABELS, NODE_TYPE_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
+import { ROL_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 import type { Person } from '@/types';
 
 const PRIORITY_DOT_COLORS: Record<string, string> = {
@@ -28,6 +29,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
+  const { nodeLabel } = useVocabulary();
   const { data: summary, isLoading: summaryLoading } = usePersonSummary(expanded ? person.id : null);
 
   const handleCopyEmail = useCallback((e: React.MouseEvent) => {
@@ -157,7 +159,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                           variant={(NODE_TYPE_COLORS[node.node_type as keyof typeof NODE_TYPE_COLORS] || 'gray') as 'blue' | 'green' | 'purple' | 'amber' | 'cyan' | 'rose' | 'slate' | 'gray'}
                           className="text-[10px] px-1.5 py-0 shrink-0"
                         >
-                          {NODE_TYPE_LABELS[node.node_type as keyof typeof NODE_TYPE_LABELS] || node.node_type}
+                          {nodeLabel(node.node_type)}
                         </Badge>
                         <span className="text-text-secondary shrink-0 ml-auto">
                           {STAKEHOLDER_ROL_LABELS[node.stakeholder_rol] || node.stakeholder_rol}

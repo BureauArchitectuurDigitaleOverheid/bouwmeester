@@ -6,20 +6,22 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { Input } from '@/components/common/Input';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useNodes } from '@/hooks/useNodes';
-import { NodeType, NODE_TYPE_LABELS } from '@/types';
+import { NodeType } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
-
-const nodeTypeOptions: SelectOption[] = [
-  { value: '', label: 'Alle types' },
-  ...Object.values(NodeType).map((t) => ({
-    value: t,
-    label: NODE_TYPE_LABELS[t],
-  })),
-];
+import { useVocabulary } from '@/contexts/VocabularyContext';
 
 export function NodeList() {
+  const { nodeLabel } = useVocabulary();
   const [selectedType, setSelectedType] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const nodeTypeOptions: SelectOption[] = [
+    { value: '', label: 'Alle types' },
+    ...Object.values(NodeType).map((t) => ({
+      value: t,
+      label: nodeLabel(t),
+    })),
+  ];
   const nodeType = selectedType || undefined;
   const { data: nodes, isLoading, error } = useNodes(nodeType as NodeType | undefined);
 

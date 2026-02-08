@@ -22,19 +22,13 @@ import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { useGraphView } from '@/hooks/useGraph';
 import { useCreateEdge } from '@/hooks/useEdges';
-import { NodeType, NODE_TYPE_LABELS } from '@/types';
+import { NodeType } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
+import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 import type { CorpusNode, Edge } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 
-const edgeTypeOptions: SelectOption[] = [
-  { value: 'kadert', label: 'Kadert in' },
-  { value: 'draagt_bij_aan', label: 'Draagt bij aan' },
-  { value: 'implementeert', label: 'Implementeert' },
-  { value: 'vereist', label: 'Vereist' },
-  { value: 'aanvulling_op', label: 'Aanvulling op' },
-  { value: 'conflicteert_met', label: 'Conflicteert met' },
-  { value: 'vervangt', label: 'Vervangt' },
-];
+// Edge type options are built dynamically in the component using vocabulary
 
 // ---- Layout algorithm (simple layered / force-directed) ----
 
@@ -143,6 +137,9 @@ const NODE_TYPE_HEX_COLORS: Record<string, string> = {
   [NodeType.BELEIDSKADER]: '#F59E0B',
   [NodeType.MAATREGEL]: '#06B6D4',
   [NodeType.POLITIEKE_INPUT]: '#F43F5E',
+  [NodeType.PROBLEEM]: '#EF4444',
+  [NodeType.EFFECT]: '#059669',
+  [NodeType.BELEIDSOPTIE]: '#6366F1',
   [NodeType.NOTITIE]: '#64748b',
   [NodeType.OVERIG]: '#9ca3af',
 };
@@ -151,12 +148,7 @@ const NODE_TYPE_HEX_COLORS: Record<string, string> = {
 
 const DASHED_EDGE_TYPES = new Set(['conflicteert_met', 'conflicteert']);
 
-// Node type options for multi-select filter
-const nodeTypeFilterOptions: MultiSelectOption[] = Object.values(NodeType).map((t) => ({
-  value: t,
-  label: NODE_TYPE_LABELS[t],
-  color: NODE_TYPE_HEX_COLORS[t],
-}));
+// Node type options are built dynamically in the component using vocabulary
 
 // Custom node types for React Flow
 const nodeTypes = {
@@ -165,7 +157,19 @@ const nodeTypes = {
 
 export function CorpusGraph() {
   const navigate = useNavigate();
+  const { nodeLabel, edgeLabel: vocabEdgeLabel } = useVocabulary();
   const { data, isLoading, error } = useGraphView();
+
+  const edgeTypeOptions: SelectOption[] = Object.keys(EDGE_TYPE_VOCABULARY).map((key) => ({
+    value: key,
+    label: vocabEdgeLabel(key),
+  }));
+
+  const nodeTypeFilterOptions: MultiSelectOption[] = Object.values(NodeType).map((t) => ({
+    value: t,
+    label: nodeLabel(t),
+    color: NODE_TYPE_HEX_COLORS[t],
+  }));
   const createEdge = useCreateEdge();
 
   // Filter state
@@ -240,7 +244,7 @@ export function CorpusGraph() {
         id: edge.id,
         source: edge.from_node_id,
         target: edge.to_node_id,
-        label: edge.edge_type_id?.replace(/_/g, ' '),
+        label: vocabEdgeLabel(edge.edge_type_id),
         type: 'default',
         animated: isDashed,
         style: {
@@ -263,7 +267,7 @@ export function CorpusGraph() {
     });
 
     return { rfNodes, rfEdges };
-  }, [data, enabledNodeTypes, enabledEdgeTypes, navigate]);
+  }, [data, enabledNodeTypes, enabledEdgeTypes, navigate, vocabEdgeLabel, nodeLabel]);
 
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
@@ -277,8 +281,8 @@ export function CorpusGraph() {
 
   // Edge type options for multi-select (derived from data)
   const edgeTypeFilterOptions: MultiSelectOption[] = useMemo(
-    () => availableEdgeTypes.map((t) => ({ value: t, label: t.replace(/_/g, ' ') })),
-    [availableEdgeTypes],
+    () => availableEdgeTypes.map((t) => ({ value: t, label: vocabEdgeLabel(t) })),
+    [availableEdgeTypes, vocabEdgeLabel],
   );
 
   // Wrap Set onChange for node types to cast correctly

@@ -6,6 +6,9 @@ export enum NodeType {
   BELEIDSKADER = 'beleidskader',
   MAATREGEL = 'maatregel',
   POLITIEKE_INPUT = 'politieke_input',
+  PROBLEEM = 'probleem',
+  EFFECT = 'effect',
+  BELEIDSOPTIE = 'beleidsoptie',
   NOTITIE = 'notitie',
   OVERIG = 'overig',
 }
@@ -17,6 +20,9 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   [NodeType.BELEIDSKADER]: 'Beleidskader',
   [NodeType.MAATREGEL]: 'Maatregel',
   [NodeType.POLITIEKE_INPUT]: 'Politieke Input',
+  [NodeType.PROBLEEM]: 'Probleem',
+  [NodeType.EFFECT]: 'Effect',
+  [NodeType.BELEIDSOPTIE]: 'Beleidsoptie',
   [NodeType.NOTITIE]: 'Notitie',
   [NodeType.OVERIG]: 'Overig',
 };
@@ -28,6 +34,9 @@ export const NODE_TYPE_COLORS: Record<NodeType, string> = {
   [NodeType.BELEIDSKADER]: 'amber',
   [NodeType.MAATREGEL]: 'cyan',
   [NodeType.POLITIEKE_INPUT]: 'rose',
+  [NodeType.PROBLEEM]: 'red',
+  [NodeType.EFFECT]: 'emerald',
+  [NodeType.BELEIDSOPTIE]: 'indigo',
   [NodeType.NOTITIE]: 'slate',
   [NodeType.OVERIG]: 'gray',
 };

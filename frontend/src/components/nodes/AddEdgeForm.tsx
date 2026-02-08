@@ -5,8 +5,10 @@ import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useCreateEdge } from '@/hooks/useEdges';
 import { useNodes, useCreateNode } from '@/hooks/useNodes';
-import { NodeType, NODE_TYPE_LABELS } from '@/types';
+import { NodeType } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
+import { useVocabulary } from '@/contexts/VocabularyContext';
+import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 
 interface AddEdgeFormProps {
   open: boolean;
@@ -14,17 +16,8 @@ interface AddEdgeFormProps {
   sourceNodeId: string;
 }
 
-const edgeTypeOptions: SelectOption[] = [
-  { value: 'kadert', label: 'Kadert in' },
-  { value: 'draagt_bij_aan', label: 'Draagt bij aan' },
-  { value: 'implementeert', label: 'Implementeert' },
-  { value: 'vereist', label: 'Vereist' },
-  { value: 'aanvulling_op', label: 'Aanvulling op' },
-  { value: 'conflicteert_met', label: 'Conflicteert met' },
-  { value: 'vervangt', label: 'Vervangt' },
-];
-
 export function AddEdgeForm({ open, onClose, sourceNodeId }: AddEdgeFormProps) {
+  const { nodeLabel, edgeLabel: vocabEdgeLabel } = useVocabulary();
   const [targetId, setTargetId] = useState('');
   const [edgeType, setEdgeType] = useState('');
   const [description, setDescription] = useState('');
@@ -32,12 +25,17 @@ export function AddEdgeForm({ open, onClose, sourceNodeId }: AddEdgeFormProps) {
   const createNode = useCreateNode();
   const { data: allNodes } = useNodes();
 
+  const edgeTypeOptions: SelectOption[] = Object.keys(EDGE_TYPE_VOCABULARY).map((key) => ({
+    value: key,
+    label: vocabEdgeLabel(key),
+  }));
+
   const targetOptions: SelectOption[] = (allNodes ?? [])
     .filter((n) => n.id !== sourceNodeId)
     .map((n) => ({
       value: n.id,
       label: n.title,
-      description: NODE_TYPE_LABELS[n.node_type],
+      description: nodeLabel(n.node_type),
     }));
 
   const handleCreateNode = useCallback(

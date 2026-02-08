@@ -18,6 +18,9 @@ class NodeType(enum.StrEnum):
     beleidskader = "beleidskader"
     maatregel = "maatregel"
     politieke_input = "politieke_input"
+    probleem = "probleem"
+    effect = "effect"
+    beleidsoptie = "beleidsoptie"
 
 
 class CorpusNodeBase(BaseModel):

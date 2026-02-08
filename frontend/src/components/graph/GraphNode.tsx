@@ -1,7 +1,8 @@
 import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 import type { NodeProps } from 'reactflow';
-import { NodeType, NODE_TYPE_LABELS } from '@/types';
+import { NodeType } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 
 const NODE_TYPE_HEX_COLORS: Record<string, string> = {
   [NodeType.DOSSIER]: '#3B82F6',
@@ -10,6 +11,9 @@ const NODE_TYPE_HEX_COLORS: Record<string, string> = {
   [NodeType.BELEIDSKADER]: '#F59E0B',
   [NodeType.MAATREGEL]: '#06B6D4',
   [NodeType.POLITIEKE_INPUT]: '#F43F5E',
+  [NodeType.PROBLEEM]: '#EF4444',
+  [NodeType.EFFECT]: '#059669',
+  [NodeType.BELEIDSOPTIE]: '#6366F1',
   [NodeType.NOTITIE]: '#64748b',
   [NodeType.OVERIG]: '#9ca3af',
 };
@@ -21,6 +25,9 @@ const NODE_TYPE_BG_COLORS: Record<string, string> = {
   [NodeType.BELEIDSKADER]: '#FFFBEB',
   [NodeType.MAATREGEL]: '#ECFEFF',
   [NodeType.POLITIEKE_INPUT]: '#FFF1F2',
+  [NodeType.PROBLEEM]: '#FEF2F2',
+  [NodeType.EFFECT]: '#ECFDF5',
+  [NodeType.BELEIDSOPTIE]: '#EEF2FF',
   [NodeType.NOTITIE]: '#F8FAFC',
   [NodeType.OVERIG]: '#F9FAFB',
 };
@@ -32,9 +39,10 @@ export interface GraphNodeData {
 }
 
 function GraphNodeComponent({ data }: NodeProps<GraphNodeData>) {
+  const { nodeLabel } = useVocabulary();
   const color = NODE_TYPE_HEX_COLORS[data.nodeType] ?? '#9ca3af';
   const bgColor = NODE_TYPE_BG_COLORS[data.nodeType] ?? '#F9FAFB';
-  const label = NODE_TYPE_LABELS[data.nodeType] ?? data.nodeType;
+  const label = nodeLabel(data.nodeType);
 
   return (
     <div

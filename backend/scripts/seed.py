@@ -27,7 +27,7 @@ from bouwmeester.schema.task import TaskCreate
 
 async def seed(db: AsyncSession) -> None:
     # Clear existing data (order matters due to FKs)
-    for table in ["task", "node_stakeholder", "edge", "edge_type", "corpus_node", "person", "organisatie_eenheid"]:
+    for table in ["task", "node_stakeholder", "edge", "edge_type", "probleem", "effect", "beleidsoptie", "dossier", "doel", "instrument", "beleidskader", "maatregel", "politieke_input", "corpus_node", "person", "organisatie_eenheid"]:
         await db.execute(text(f"DELETE FROM {table}"))
     await db.flush()
 
@@ -714,6 +714,12 @@ async def seed(db: AsyncSession) -> None:
                        description="Het ene item vervangt het andere."),
         EdgeTypeCreate(id="onderdeel_van", label_nl="Onderdeel van", label_en="Part of",
                        description="Het ene item is een onderdeel of deelstrategie van het andere."),
+        EdgeTypeCreate(id="leidt_tot", label_nl="Leidt tot", label_en="Leads to",
+                       description="Causale relatie: het ene item leidt tot het andere (probleem→doel, maatregel→effect)."),
+        EdgeTypeCreate(id="adresseert", label_nl="Adresseert", label_en="Addresses",
+                       description="Het ene item adresseert of pakt het andere aan (maatregel/instrument→probleem)."),
+        EdgeTypeCreate(id="meet", label_nl="Meet", label_en="Measures",
+                       description="Het ene item meet of monitort het andere (effect→indicator/doel)."),
     ]
     for et in edge_types:
         await edge_type_repo.create(et)
@@ -961,7 +967,85 @@ async def seed(db: AsyncSession) -> None:
         description="Bijeenkomst van de Eerste Kamer commissie Digitalisering (DIGI) met experts over de haalbaarheid en financiering van de Nederlandse Digitaliseringsstrategie.",
     ))
 
-    print(f"  Corpus: {46} nodes aangemaakt")
+    # --- Problemen (Drivers) ---
+    prob_digitale_kloof = await node_repo.create(CorpusNodeCreate(
+        title="Digitale kloof in overheidsdienstverlening",
+        node_type="probleem",
+        description="Circa 4 miljoen Nederlanders zijn onvoldoende digitaal vaardig om zelfstandig overheidsdiensten digitaal te gebruiken. Dit leidt tot ongelijke toegang tot voorzieningen.",
+    ))
+    prob_vendor_lock = await node_repo.create(CorpusNodeCreate(
+        title="Afhankelijkheid externe IT-leveranciers",
+        node_type="probleem",
+        description="De rijksoverheid is sterk afhankelijk van een beperkt aantal grote IT-leveranciers (Microsoft, SAP, Oracle). Dit creëert lock-in risico's, hoge kosten en verminderde soevereiniteit.",
+    ))
+    prob_algo_bias = await node_repo.create(CorpusNodeCreate(
+        title="Risico op algoritmische discriminatie",
+        node_type="probleem",
+        description="Onvoldoende toezicht en transparantie bij overheidsalgoritmen kan leiden tot discriminatie en aantasting van grondrechten, zoals gebleken bij de toeslagenaffaire.",
+    ))
+    prob_data_silo = await node_repo.create(CorpusNodeCreate(
+        title="Gefragmenteerd datalandschap overheid",
+        node_type="probleem",
+        description="Data bij de overheid zit verspreid over honderden organisaties en systemen. Dit belemmert interbestuurlijke samenwerking, beleidsanalyse en dienstverlening.",
+    ))
+    prob_cyber_dreiging = await node_repo.create(CorpusNodeCreate(
+        title="Toenemende cyberdreiging overheid",
+        node_type="probleem",
+        description="Statelijke actoren en cybercriminelen richten zich steeds meer op overheidsorganisaties. BIO-compliance is onvoldoende en bewustzijn van medewerkers is wisselend.",
+    ))
+
+    # --- Effecten (Outcomes) ---
+    eff_digid_bereik = await node_repo.create(CorpusNodeCreate(
+        title="Verhoogd betrouwbaarheidsniveau digitale identiteit",
+        node_type="effect",
+        description="Door DigiD Hoog en EUDIW beschikken burgers over identiteitsmiddelen op betrouwbaarheidsniveau hoog, waardoor meer diensten veilig digitaal afgehandeld kunnen worden.",
+    ))
+    eff_algo_transparant = await node_repo.create(CorpusNodeCreate(
+        title="Transparantie overheidsalgoritmen gerealiseerd",
+        node_type="effect",
+        description="Alle impactvolle overheidsalgoritmen zijn gepubliceerd in het Algoritmeregister, waardoor burgers en toezichthouders inzicht hebben in algoritmische besluitvorming.",
+    ))
+    eff_data_beschikbaar = await node_repo.create(CorpusNodeCreate(
+        title="Interbestuurlijke data beschikbaar via Federatief Datastelsel",
+        node_type="effect",
+        description="Via het Federatief Datastelsel kunnen overheidsorganisaties op een gestandaardiseerde en veilige manier data uitwisselen voor betere dienstverlening en beleid.",
+    ))
+    eff_minder_inhuur = await node_repo.create(CorpusNodeCreate(
+        title="Reductie externe IT-inhuur met 20%",
+        node_type="effect",
+        description="Door gericht wervingsbeleid en betere arbeidsvoorwaarden is het aandeel externe IT-inhuur bij de rijksoverheid met 20% gedaald ten opzichte van 2024.",
+    ))
+
+    # --- Beleidsopties (Courses of Action) ---
+    bo_wallet_native = await node_repo.create(CorpusNodeCreate(
+        title="Beleidsoptie: EUDIW als native app",
+        node_type="beleidsoptie",
+        description="De Nederlandse EUDIW wallet wordt als native app (iOS/Android) ontwikkeld. Voordelen: betere beveiliging en hardware-integratie. Nadeel: hogere ontwikkel- en onderhoudskosten.",
+    ))
+    bo_wallet_pwa = await node_repo.create(CorpusNodeCreate(
+        title="Beleidsoptie: EUDIW als Progressive Web App",
+        node_type="beleidsoptie",
+        description="De Nederlandse EUDIW wallet wordt als PWA ontwikkeld. Voordelen: platform-onafhankelijk, lagere kosten. Nadeel: beperktere toegang tot hardware (NFC, biometrie).",
+    ))
+    bo_algo_zelfregulering = await node_repo.create(CorpusNodeCreate(
+        title="Beleidsoptie: Algoritmeregistratie via zelfregulering",
+        node_type="beleidsoptie",
+        description="Overheidsorganisaties registreren algoritmen vrijwillig op basis van richtlijnen. Voordelen: snel te implementeren, weinig regeldruk. Nadeel: onvoldoende compliance zonder wettelijke basis.",
+        status="afgewezen",
+    ))
+    bo_algo_wettelijk = await node_repo.create(CorpusNodeCreate(
+        title="Beleidsoptie: Wettelijk verplichte algoritmeregistratie",
+        node_type="beleidsoptie",
+        description="Algoritmeregistratie wordt wettelijk verplicht via AMvB. Voordelen: volledige dekking, handhaafbaar. Nadeel: langere implementatietijd, hogere uitvoeringslasten.",
+        status="gekozen",
+    ))
+    bo_cloud_soeverein = await node_repo.create(CorpusNodeCreate(
+        title="Beleidsoptie: Soevereine overheidscloud",
+        node_type="beleidsoptie",
+        description="De rijksoverheid bouwt een eigen soevereine cloudinfrastructuur. Voordelen: volledige controle, geen lock-in. Nadeel: zeer hoge kosten, beperkte innovatiesnelheid.",
+    ))
+
+    print(f"  Corpus: {61} nodes aangemaakt")
 
     # =========================================================================
     # 5. EDGES
@@ -1046,6 +1130,45 @@ async def seed(db: AsyncSession) -> None:
         (pi_verzamelbrief_q4, bk_wdo, "verwijst_naar", "Verzamelbrief rapporteert over WDO-voortgang"),
         (pi_debat_diza, pi_planningsbrief, "verwijst_naar", "Debat gaat over onderwerpen uit planningsbrief"),
         (pi_ek_deskundigen, bk_nds, "evalueert", "Eerste Kamer evalueert NDS haalbaarheid"),
+
+        # Probleem → Doel (leidt_tot)
+        (prob_digitale_kloof, doel_inclusie, "leidt_tot", "Digitale kloof motiveert inclusiedoelstellingen"),
+        (prob_vendor_lock, doel_vendor_reductie, "leidt_tot", "Vendor lock-in probleem leidt tot reductiedoelstelling"),
+        (prob_algo_bias, doel_algo_register, "leidt_tot", "Risico op discriminatie motiveert algoritmeregistratie"),
+        (prob_data_silo, doel_fed_data, "leidt_tot", "Datafragmentatie motiveert Federatief Datastelsel"),
+        (prob_cyber_dreiging, doel_bio_compliance, "leidt_tot", "Cyberdreiging motiveert 100% BIO-compliance"),
+
+        # Maatregel/Instrument adresseert Probleem
+        (instr_mijnoverheid, prob_digitale_kloof, "adresseert", "MijnOverheid adresseert toegankelijkheid overheidsdiensten"),
+        (maatr_it_inhuur, prob_vendor_lock, "adresseert", "Inhuurreductie adresseert leveranciersafhankelijkheid"),
+        (maatr_algo_verpl, prob_algo_bias, "adresseert", "Verplichte registratie adresseert algoritmisch risico"),
+        (maatr_data_spaces, prob_data_silo, "adresseert", "Data Spaces adresseren gefragmenteerd datalandschap"),
+        (instr_bio, prob_cyber_dreiging, "adresseert", "BIO adresseert cyberdreiging bij overheid"),
+
+        # Maatregel → Effect (leidt_tot)
+        (maatr_digid_upgrade, eff_digid_bereik, "leidt_tot", "DigiD Hoog upgrade leidt tot hoger betrouwbaarheidsniveau"),
+        (maatr_algo_verpl, eff_algo_transparant, "leidt_tot", "Verplichte registratie leidt tot algoritmetransparantie"),
+        (maatr_data_spaces, eff_data_beschikbaar, "leidt_tot", "Data Spaces leiden tot beschikbare interbestuurlijke data"),
+        (maatr_it_inhuur, eff_minder_inhuur, "leidt_tot", "Inhuurprogramma leidt tot 20% reductie externe IT-inhuur"),
+
+        # Effect meet Doel
+        (eff_algo_transparant, doel_algo_register, "meet", "Algoritmtransparantie meet registratiedoelstelling"),
+        (eff_data_beschikbaar, doel_fed_data, "meet", "Data-beschikbaarheid meet FDS-doelstelling"),
+        (eff_minder_inhuur, doel_vendor_reductie, "meet", "Inhuurreductie meet vendor-reductiedoel"),
+        (eff_digid_bereik, doel_digid_nieuw, "meet", "Betrouwbaarheidsniveau meet DigiD Hoog doel"),
+
+        # Beleidsoptie → Doel (draagt_bij_aan)
+        (bo_wallet_native, doel_eudiw, "draagt_bij_aan", "Native app-optie draagt bij aan EUDIW-doel"),
+        (bo_wallet_pwa, doel_eudiw, "draagt_bij_aan", "PWA-optie draagt bij aan EUDIW-doel"),
+        (bo_algo_wettelijk, doel_algo_register, "draagt_bij_aan", "Wettelijke verplichting draagt bij aan registratiedoel"),
+        (bo_algo_zelfregulering, doel_algo_register, "draagt_bij_aan", "Zelfregulering draagt bij aan registratiedoel"),
+        (bo_cloud_soeverein, doel_vendor_reductie, "draagt_bij_aan", "Soevereine cloud draagt bij aan vendorreductie"),
+
+        # Probleem → Dossier (onderdeel_van)
+        (prob_digitale_kloof, dos_digi_overheid, "onderdeel_van", "Digitale kloof is kernprobleem in digitale overheid"),
+        (prob_vendor_lock, dos_cio_rijk, "onderdeel_van", "Vendor lock-in is probleem in CIO Rijk dossier"),
+        (prob_algo_bias, dos_ai, "onderdeel_van", "Algoritmische discriminatie is kernprobleem in AI-dossier"),
+        (prob_data_silo, dos_data, "onderdeel_van", "Datafragmentatie is kernprobleem in data-dossier"),
     ]
 
     for from_node, to_node, edge_type_id, description in edges_data:

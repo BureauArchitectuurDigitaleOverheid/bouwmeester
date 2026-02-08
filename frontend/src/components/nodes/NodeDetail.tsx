@@ -12,7 +12,8 @@ import { EdgeList } from './EdgeList';
 import { TaskView } from '@/components/tasks/TaskView';
 import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode } from '@/hooks/useNodes';
 import { useTasks } from '@/hooks/useTasks';
-import { NODE_TYPE_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
+import { NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 
 type TabId = 'overview' | 'connections' | 'stakeholders' | 'tasks' | 'activity';
 
@@ -36,6 +37,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const { data: nodeTasks } = useTasks({ node_id: nodeId });
   const { data: stakeholders } = useNodeStakeholders(nodeId);
   const deleteNode = useDeleteNode();
+  const { nodeLabel, nodeAltLabel } = useVocabulary();
 
   if (isLoading) {
     return <LoadingSpinner className="py-16" />;
@@ -79,8 +81,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <Badge variant={color as 'blue'} dot>
-              {NODE_TYPE_LABELS[node.node_type]}
+            <Badge variant={color as 'blue'} dot title={nodeAltLabel(node.node_type)}>
+              {nodeLabel(node.node_type)}
             </Badge>
             {node.status && <Badge variant="gray">{node.status}</Badge>}
           </div>
@@ -206,8 +208,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       onClick={() => navigate(`/nodes/${neighbor.id}`)}
                       className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
                     >
-                      <Badge variant={NODE_TYPE_COLORS[neighbor.node_type] as 'blue'} dot>
-                        {NODE_TYPE_LABELS[neighbor.node_type]}
+                      <Badge variant={NODE_TYPE_COLORS[neighbor.node_type] as 'blue'} dot title={nodeAltLabel(neighbor.node_type)}>
+                        {nodeLabel(neighbor.node_type)}
                       </Badge>
                       <span className="text-sm text-text truncate">
                         {neighbor.title}
