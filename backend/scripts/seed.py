@@ -752,6 +752,7 @@ async def seed(db: AsyncSession) -> None:
         (team_diversiteit, p_tl_div),
         (team_woo, p_tl_woo),
         (team_actieplan, p_tl_actie),
+        (afd_zonder_mensen, agent_identiteit),
     ]
     for unit, manager in manager_assignments:
         unit.manager_id = manager.id
