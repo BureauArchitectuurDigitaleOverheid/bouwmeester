@@ -37,7 +37,7 @@ const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = [
   { value: 'plaatsvervangend_directeur_generaal', label: 'Plaatsvervangend Directeur-Generaal' },
   { value: 'directeur', label: 'Directeur' },
   { value: 'afdelingshoofd', label: 'Afdelingshoofd' },
-  { value: 'coordinator', label: 'Coordinator' },
+  { value: 'coordinator', label: 'Coördinator' },
   { value: 'beleidsmedewerker', label: 'Beleidsmedewerker' },
   { value: 'senior_beleidsmedewerker', label: 'Senior Beleidsmedewerker' },
   { value: 'adviseur', label: 'Adviseur' },

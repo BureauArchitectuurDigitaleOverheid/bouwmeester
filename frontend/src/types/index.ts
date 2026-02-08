@@ -235,7 +235,7 @@ export const FUNCTIE_LABELS: Record<string, string> = {
   plaatsvervangend_directeur_generaal: 'Plaatsvervangend Directeur-Generaal',
   directeur: 'Directeur',
   afdelingshoofd: 'Afdelingshoofd',
-  coordinator: 'Coordinator',
+  coordinator: 'Coördinator',
   beleidsmedewerker: 'Beleidsmedewerker',
   senior_beleidsmedewerker: 'Senior Beleidsmedewerker',
   adviseur: 'Adviseur',
