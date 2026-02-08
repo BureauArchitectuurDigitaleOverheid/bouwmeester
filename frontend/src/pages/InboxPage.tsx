@@ -16,8 +16,15 @@ export function InboxPage() {
   const { currentPerson } = useCurrentPerson();
   const { data: notifications } = useNotifications(currentPerson?.id);
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
-  const managedEenheidId = managedEenheden?.[0]?.id ?? null;
+  const managedEenheid = managedEenheden?.[0] ?? null;
+  const managedEenheidId = managedEenheid?.id ?? null;
   const { data: overview } = useEenheidOverview(managedEenheidId);
+
+  const PERSON_LEVEL_TYPES = new Set(['afdeling', 'team']);
+  const visibleUnassignedCount = overview
+    ? (overview.unassigned_no_unit_count ?? 0) +
+      (PERSON_LEVEL_TYPES.has(overview.eenheid_type) ? (overview.unassigned_no_person_count ?? 0) : 0)
+    : 0;
 
   const inboxItems: InboxItem[] = (notifications ?? []).map((n) => ({
     id: n.id,
@@ -88,7 +95,7 @@ export function InboxPage() {
       </div>
 
       {/* Manager stats card */}
-      {managedEenheidId && overview && overview.unassigned_count > 0 && (
+      {managedEenheidId && visibleUnassignedCount > 0 && (
         <Card
           hoverable
           onClick={() => navigate('/eenheid-overzicht')}
@@ -99,7 +106,7 @@ export function InboxPage() {
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium text-text">
-                {overview.unassigned_count} onverdeelde {overview.unassigned_count === 1 ? 'taak' : 'taken'}
+                {visibleUnassignedCount} onverdeelde {visibleUnassignedCount === 1 ? 'taak' : 'taken'}
               </p>
               <p className="text-xs text-text-secondary">
                 In jouw eenheid - klik om te verdelen
