@@ -8,6 +8,7 @@ import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { useUpdateTask, useDeleteTask } from '@/hooks/useTasks';
 import { useTaskFormOptions } from '@/hooks/useTaskFormOptions';
+import { useEnumOptions } from '@/hooks/useEnumOptions';
 import {
   TaskStatus,
   TaskPriority,
@@ -15,23 +16,12 @@ import {
   TASK_STATUS_LABELS,
 } from '@/types';
 import type { Task } from '@/types';
-import type { SelectOption } from '@/components/common/CreatableSelect';
 
 interface TaskEditFormProps {
   open: boolean;
   onClose: () => void;
   task: Task;
 }
-
-const priorityOptions: SelectOption[] = Object.values(TaskPriority).map((p) => ({
-  value: p,
-  label: TASK_PRIORITY_LABELS[p],
-}));
-
-const statusOptions: SelectOption[] = Object.values(TaskStatus).map((s) => ({
-  value: s,
-  label: TASK_STATUS_LABELS[s],
-}));
 
 export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
   const [title, setTitle] = useState(task.title);
@@ -43,6 +33,9 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
   const [organisatieEenheidId, setOrganisatieEenheidId] = useState(task.organisatie_eenheid_id ?? '');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const priorityOptions = useEnumOptions(TaskPriority, TASK_PRIORITY_LABELS);
+  const statusOptions = useEnumOptions(TaskStatus, TASK_STATUS_LABELS);
 
   const updateTask = useUpdateTask();
   const deleteTaskMutation = useDeleteTask();

@@ -7,7 +7,6 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.edge import Edge
 from bouwmeester.repositories.base import BaseRepository
-from bouwmeester.schema.edge import EdgeCreate
 
 
 class EdgeRepository(BaseRepository[Edge]):
@@ -56,9 +55,3 @@ class EdgeRepository(BaseRepository[Edge]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def create(self, data: EdgeCreate) -> Edge:
-        edge = Edge(**data.model_dump())
-        self.session.add(edge)
-        await self.session.flush()
-        await self.session.refresh(edge)
-        return edge

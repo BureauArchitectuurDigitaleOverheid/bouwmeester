@@ -2,10 +2,10 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_found
+from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.schema.edge import EdgeCreate, EdgeResponse, EdgeUpdate, EdgeWithNodes
@@ -72,6 +72,4 @@ async def delete_edge(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = EdgeRepository(db)
-    deleted = await repo.delete(id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Edge not found")
+    require_deleted(await repo.delete(id), "Edge")

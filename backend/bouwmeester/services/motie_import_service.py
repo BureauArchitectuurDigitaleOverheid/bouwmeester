@@ -208,16 +208,15 @@ class MotieImportService:
         # Step 6: Link indieners as stakeholders
         await self._link_indieners(node.id, motie.indieners, motie.bron)
 
-        # Step 7: Tag the new node with matched tags
-        for tag_name in matched_tag_names:
-            tag = await self.tag_repo.get_by_name(tag_name)
-            if tag:
-                try:
-                    await self.tag_repo.add_tag_to_node(node.id, tag.id)
-                except SQLAlchemyError:
-                    logger.exception(
-                        f"Error tagging node {node.id} with tag '{tag_name}'"
-                    )
+        # Step 7: Tag the new node with matched tags (batch lookup)
+        matched_tag_map = await self.tag_repo.get_by_names(matched_tag_names)
+        for tag_name, tag in matched_tag_map.items():
+            try:
+                await self.tag_repo.add_tag_to_node(node.id, tag.id)
+            except SQLAlchemyError:
+                logger.exception(
+                    f"Error tagging node {node.id} with tag '{tag_name}'"
+                )
 
         # Step 8: Create MotieImport record
         motie_import = await self.import_repo.create(
@@ -386,12 +385,8 @@ class MotieImportService:
         if not tag_names:
             return []
 
-        # Resolve tag names to Tag objects
-        tag_objects: dict[str, object] = {}
-        for name in tag_names:
-            tag = await self.tag_repo.get_by_name(name)
-            if tag:
-                tag_objects[name] = tag
+        # Resolve tag names to Tag objects (batch query)
+        tag_objects = await self.tag_repo.get_by_names(tag_names)
 
         if not tag_objects:
             return []
@@ -511,8 +506,12 @@ class MotieImportService:
         await self.session.flush()
 
     async def _find_or_create_person(self, naam: str, kamer: str) -> Person:
-        """Find a person by name or create a new external person record."""
-        stmt = select(Person).where(Person.naam == naam)
+        """Find a person by name+functie or create a new external person record."""
+        functie = f"Kamerlid {kamer}"
+        stmt = select(Person).where(
+            Person.naam == naam,
+            Person.functie == functie,
+        )
         result = await self.session.execute(stmt)
         person = result.scalar_one_or_none()
 
@@ -521,7 +520,7 @@ class MotieImportService:
 
         person = Person(
             naam=naam,
-            functie=f"Kamerlid {kamer}",
+            functie=functie,
             rol="extern",
             is_active=True,
         )

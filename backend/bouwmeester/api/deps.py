@@ -43,3 +43,12 @@ def require_found[T](obj: T | None, name: str = "Resource") -> T:
             detail=f"{name} not found",
         )
     return obj
+
+
+def require_deleted(deleted: bool, name: str = "Resource") -> None:
+    """Raise 404 if the delete operation found nothing."""
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"{name} not found",
+        )

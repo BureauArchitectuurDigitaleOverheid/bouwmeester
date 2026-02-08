@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class BaseRepository[T]:
-    """Base repository providing get_by_id, update, and delete.
+    """Base repository providing get_by_id, create, update, and delete.
 
     Subclasses must set the `model` class attribute to the SQLAlchemy model.
     """
@@ -19,6 +19,13 @@ class BaseRepository[T]:
 
     async def get_by_id(self, id: UUID) -> T | None:
         return await self.session.get(self.model, id)
+
+    async def create(self, data: BaseModel) -> T:
+        obj = self.model(**data.model_dump())
+        self.session.add(obj)
+        await self.session.flush()
+        await self.session.refresh(obj)
+        return obj
 
     async def update(self, id: UUID, data: BaseModel) -> T | None:
         obj = await self.session.get(self.model, id)

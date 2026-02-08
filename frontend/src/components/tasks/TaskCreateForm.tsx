@@ -1,17 +1,17 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
-import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { useCreateTask } from '@/hooks/useTasks';
 import { useTaskFormOptions } from '@/hooks/useTaskFormOptions';
+import { useEnumOptions } from '@/hooks/useEnumOptions';
 import {
   TaskPriority,
   TASK_PRIORITY_LABELS,
 } from '@/types';
-import type { SelectOption } from '@/components/common/CreatableSelect';
 
 interface TaskCreateFormProps {
   open: boolean;
@@ -19,11 +19,6 @@ interface TaskCreateFormProps {
   nodeId?: string;
   parentId?: string;
 }
-
-const priorityOptions: SelectOption[] = Object.values(TaskPriority).map((p) => ({
-  value: p,
-  label: TASK_PRIORITY_LABELS[p],
-}));
 
 export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFormProps) {
   const [title, setTitle] = useState('');
@@ -33,6 +28,8 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
   const [selectedNodeId, setSelectedNodeId] = useState(nodeId ?? '');
   const [assigneeId, setAssigneeId] = useState('');
   const [organisatieEenheidId, setOrganisatieEenheidId] = useState('');
+
+  const priorityOptions = useEnumOptions(TaskPriority, TASK_PRIORITY_LABELS);
 
   // Reset form state when dialog opens
   useEffect(() => {
@@ -73,13 +70,6 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
       parent_id: parentId || undefined,
     });
 
-    setTitle('');
-    setDescription('');
-    setPriority(TaskPriority.NORMAAL);
-    setDueDate('');
-    setSelectedNodeId(nodeId ?? '');
-    setAssigneeId('');
-    setOrganisatieEenheidId('');
     onClose();
   };
 
@@ -90,18 +80,13 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
         onClose={onClose}
         title={parentId ? 'Subtaak aanmaken' : 'Nieuwe taak aanmaken'}
         footer={
-          <>
-            <Button variant="secondary" onClick={onClose}>
-              Annuleren
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              loading={createTask.isPending}
-              disabled={!title.trim() || (!selectedNodeId && !parentId)}
-            >
-              Aanmaken
-            </Button>
-          </>
+          <FormModalFooter
+            onCancel={onClose}
+            onSubmit={handleSubmit}
+            submitLabel="Aanmaken"
+            isLoading={createTask.isPending}
+            disabled={!title.trim() || (!selectedNodeId && !parentId)}
+          />
         }
       >
         <form onSubmit={handleSubmit} className="space-y-4">

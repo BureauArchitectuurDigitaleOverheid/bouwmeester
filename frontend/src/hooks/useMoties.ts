@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   getMotieImports,
   getMotieImport,
@@ -9,6 +9,7 @@ import {
   approveSuggestedEdge,
   rejectSuggestedEdge,
 } from '@/api/moties';
+import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { MotieImportFilters, CompleteReviewData } from '@/api/moties';
 
 export function useMotieImports(filters?: MotieImportFilters) {
@@ -33,80 +34,45 @@ export function useReviewQueue() {
   });
 }
 
-export function useTriggerMotieImport() {
-  const queryClient = useQueryClient();
+const MOTIE_INVALIDATE_KEYS = [['motie-imports'], ['motie-review-queue']];
 
-  return useMutation({
+export function useTriggerMotieImport() {
+  return useMutationWithError({
     mutationFn: () => triggerMotieImport(),
-    onError: (error) => {
-      console.error('Fout bij importeren moties:', error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['motie-imports'] });
-      queryClient.invalidateQueries({ queryKey: ['motie-review-queue'] });
-    },
+    errorMessage: 'Fout bij importeren moties',
+    invalidateKeys: MOTIE_INVALIDATE_KEYS,
   });
 }
 
 export function useRejectMotieImport() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (id: string) => rejectMotieImport(id),
-    onError: (error) => {
-      console.error('Fout bij afwijzen motie:', error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['motie-imports'] });
-      queryClient.invalidateQueries({ queryKey: ['motie-review-queue'] });
-    },
+    errorMessage: 'Fout bij afwijzen motie',
+    invalidateKeys: MOTIE_INVALIDATE_KEYS,
   });
 }
 
 export function useCompleteMotieReview() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({ id, data }: { id: string; data: CompleteReviewData }) =>
       completeMotieReview(id, data),
-    onError: (error) => {
-      console.error('Fout bij afronden review:', error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['motie-imports'] });
-      queryClient.invalidateQueries({ queryKey: ['motie-review-queue'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['nodes'] });
-    },
+    errorMessage: 'Fout bij afronden review',
+    invalidateKeys: [...MOTIE_INVALIDATE_KEYS, ['tasks'], ['nodes']],
   });
 }
 
 export function useApproveSuggestedEdge() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (id: string) => approveSuggestedEdge(id),
-    onError: (error) => {
-      console.error('Fout bij goedkeuren relatie:', error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['motie-imports'] });
-      queryClient.invalidateQueries({ queryKey: ['motie-review-queue'] });
-    },
+    errorMessage: 'Fout bij goedkeuren relatie',
+    invalidateKeys: MOTIE_INVALIDATE_KEYS,
   });
 }
 
 export function useRejectSuggestedEdge() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (id: string) => rejectSuggestedEdge(id),
-    onError: (error) => {
-      console.error('Fout bij afwijzen relatie:', error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['motie-imports'] });
-      queryClient.invalidateQueries({ queryKey: ['motie-review-queue'] });
-    },
+    errorMessage: 'Fout bij afwijzen relatie',
+    invalidateKeys: MOTIE_INVALIDATE_KEYS,
   });
 }

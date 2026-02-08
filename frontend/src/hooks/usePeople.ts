@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   getPeople,
   createPerson,
@@ -9,6 +9,7 @@ import {
   updatePersonOrganisatie,
   removePersonOrganisatie,
 } from '@/api/people';
+import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { PersonCreate } from '@/types';
 
 export function usePeople() {
@@ -19,17 +20,10 @@ export function usePeople() {
 }
 
 export function useCreatePerson() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (data: PersonCreate) => createPerson(data),
-    onError: (error) => {
-      console.error('Fout bij aanmaken persoon:', error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['people'] });
-      queryClient.invalidateQueries({ queryKey: ['organisatie'] });
-    },
+    errorMessage: 'Fout bij aanmaken persoon',
+    invalidateKeys: [['people'], ['organisatie']],
   });
 }
 
@@ -42,18 +36,11 @@ export function usePersonSummary(id: string | null) {
 }
 
 export function useUpdatePerson() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({ id, data }: { id: string; data: Partial<PersonCreate> }) =>
       updatePerson(id, data),
-    onError: (error) => {
-      console.error('Fout bij bijwerken persoon:', error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['people'] });
-      queryClient.invalidateQueries({ queryKey: ['organisatie'] });
-    },
+    errorMessage: 'Fout bij bijwerken persoon',
+    invalidateKeys: [['people'], ['organisatie']],
   });
 }
 
@@ -68,9 +55,7 @@ export function usePersonOrganisaties(personId: string | null, actief = true) {
 }
 
 export function useAddPersonOrganisatie() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({
       personId,
       data,
@@ -78,20 +63,13 @@ export function useAddPersonOrganisatie() {
       personId: string;
       data: { organisatie_eenheid_id: string; dienstverband?: string; start_datum: string };
     }) => addPersonOrganisatie(personId, data),
-    onError: (error) => {
-      console.error('Fout bij toevoegen plaatsing:', error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['people'] });
-      queryClient.invalidateQueries({ queryKey: ['organisatie'] });
-    },
+    errorMessage: 'Fout bij toevoegen plaatsing',
+    invalidateKeys: [['people'], ['organisatie']],
   });
 }
 
 export function useUpdatePersonOrganisatie() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({
       personId,
       placementId,
@@ -101,20 +79,13 @@ export function useUpdatePersonOrganisatie() {
       placementId: string;
       data: { dienstverband?: string; eind_datum?: string | null };
     }) => updatePersonOrganisatie(personId, placementId, data),
-    onError: (error) => {
-      console.error('Fout bij bijwerken plaatsing:', error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['people'] });
-      queryClient.invalidateQueries({ queryKey: ['organisatie'] });
-    },
+    errorMessage: 'Fout bij bijwerken plaatsing',
+    invalidateKeys: [['people'], ['organisatie']],
   });
 }
 
 export function useRemovePersonOrganisatie() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({
       personId,
       placementId,
@@ -122,12 +93,7 @@ export function useRemovePersonOrganisatie() {
       personId: string;
       placementId: string;
     }) => removePersonOrganisatie(personId, placementId),
-    onError: (error) => {
-      console.error('Fout bij verwijderen plaatsing:', error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['people'] });
-      queryClient.invalidateQueries({ queryKey: ['organisatie'] });
-    },
+    errorMessage: 'Fout bij verwijderen plaatsing',
+    invalidateKeys: [['people'], ['organisatie']],
   });
 }

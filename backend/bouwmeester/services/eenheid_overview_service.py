@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
@@ -16,7 +17,18 @@ from bouwmeester.schema.task import (
     EenheidOverviewResponse,
     EenheidPersonTaskStats,
     EenheidSubeenheidStats,
+    TaskResponse,
 )
+
+
+def _task_options():
+    """Eager-load options so TaskResponse can serialize relationships."""
+    return [
+        selectinload(Task.assignee),
+        selectinload(Task.organisatie_eenheid),
+        selectinload(Task.node),
+        selectinload(Task.subtasks).selectinload(Task.assignee),
+    ]
 
 
 class EenheidOverviewService:
@@ -26,32 +38,79 @@ class EenheidOverviewService:
     async def get_overview(
         self, organisatie_eenheid_id: UUID
     ) -> EenheidOverviewResponse:
+        # Fetch the eenheid itself for type info
+        eenheid = await self.session.get(OrganisatieEenheid, organisatie_eenheid_id)
+        eenheid_type = eenheid.type if eenheid else ""
+
         all_unit_ids = await get_descendant_ids(self.session, organisatie_eenheid_id)
 
-        unassigned_count = await self._unassigned_count(all_unit_ids)
+        no_unit_tasks, no_unit_count = await self._unassigned_no_unit(all_unit_ids)
+        no_person_tasks, no_person_count = await self._unassigned_no_person(
+            all_unit_ids,
+        )
         by_person = await self._person_stats(organisatie_eenheid_id)
         by_subeenheid = await self._subeenheid_stats(
             organisatie_eenheid_id, all_unit_ids
         )
 
         return EenheidOverviewResponse(
-            unassigned_count=unassigned_count,
+            unassigned_count=no_unit_count + no_person_count,
+            unassigned_no_unit=[TaskResponse.model_validate(t) for t in no_unit_tasks],
+            unassigned_no_unit_count=no_unit_count,
+            unassigned_no_person=[
+                TaskResponse.model_validate(t) for t in no_person_tasks
+            ],
+            unassigned_no_person_count=no_person_count,
             by_person=by_person,
             by_subeenheid=by_subeenheid,
+            eenheid_type=eenheid_type,
         )
 
-    async def _unassigned_count(self, unit_ids: list[UUID]) -> int:
-        stmt = (
-            select(func.count())
-            .select_from(Task)
-            .where(
-                Task.organisatie_eenheid_id.in_(unit_ids),
-                Task.assignee_id.is_(None),
-                Task.status.notin_(["done", "cancelled"]),
-            )
+    async def _unassigned_no_unit(
+        self, unit_ids: list[UUID], limit: int = 20
+    ) -> tuple[list[Task], int]:
+        """Tasks with no organisatie_eenheid_id at all (visible at high levels)."""
+        base = (
+            Task.organisatie_eenheid_id.is_(None)
+            & Task.assignee_id.is_(None)
+            & Task.status.notin_(["done", "cancelled"])
         )
-        result = await self.session.execute(stmt)
-        return result.scalar_one()
+        count_stmt = select(func.count()).select_from(Task).where(base)
+        result = await self.session.execute(count_stmt)
+        count = result.scalar_one()
+
+        tasks_stmt = (
+            select(Task)
+            .where(base)
+            .options(*_task_options())
+            .order_by(Task.deadline.asc().nulls_last(), Task.created_at.desc())
+            .limit(limit)
+        )
+        tasks_result = await self.session.execute(tasks_stmt)
+        return list(tasks_result.scalars().all()), count
+
+    async def _unassigned_no_person(
+        self, unit_ids: list[UUID], limit: int = 20
+    ) -> tuple[list[Task], int]:
+        """Tasks within these units that have no assignee."""
+        base = (
+            Task.organisatie_eenheid_id.in_(unit_ids)
+            & Task.assignee_id.is_(None)
+            & Task.status.notin_(["done", "cancelled"])
+        )
+        count_stmt = select(func.count()).select_from(Task).where(base)
+        result = await self.session.execute(count_stmt)
+        count = result.scalar_one()
+
+        tasks_stmt = (
+            select(Task)
+            .where(base)
+            .options(*_task_options())
+            .order_by(Task.deadline.asc().nulls_last(), Task.created_at.desc())
+            .limit(limit)
+        )
+        tasks_result = await self.session.execute(tasks_stmt)
+        return list(tasks_result.scalars().all()), count
 
     async def _person_stats(self, eenheid_id: UUID) -> list[EenheidPersonTaskStats]:
         # Get people in this unit (active placements)

@@ -2,10 +2,10 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_found
+from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import (
@@ -70,6 +70,4 @@ async def update_tag(
 @router.delete("/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tag(tag_id: UUID, db: AsyncSession = Depends(get_db)) -> None:
     repo = TagRepository(db)
-    deleted = await repo.delete(tag_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Tag not found")
+    require_deleted(await repo.delete(tag_id), "Tag")

@@ -16,17 +16,23 @@ export function useTaskFormOptions() {
   const { data: allPeople } = usePeople();
   const { data: eenheden } = useOrganisatieFlat();
 
-  const nodeOptions: SelectOption[] = (allNodes ?? []).map((n) => ({
-    value: n.id,
-    label: n.title,
-    description: nodeLabel(n.node_type),
-  }));
+  const nodeOptions: SelectOption[] = useMemo(
+    () => (allNodes ?? []).map((n) => ({
+      value: n.id,
+      label: n.title,
+      description: nodeLabel(n.node_type),
+    })),
+    [allNodes, nodeLabel],
+  );
 
-  const personOptions: SelectOption[] = (allPeople ?? []).map((p) => ({
-    value: p.id,
-    label: p.naam,
-    description: p.functie ?? undefined,
-  }));
+  const personOptions: SelectOption[] = useMemo(
+    () => (allPeople ?? []).map((p) => ({
+      value: p.id,
+      label: p.naam,
+      description: p.functie ?? undefined,
+    })),
+    [allPeople],
+  );
 
   const eenheidOptions: SelectOption[] = useMemo(() => [
     { value: '', label: 'Geen' },

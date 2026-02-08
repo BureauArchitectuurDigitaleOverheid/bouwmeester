@@ -2,10 +2,10 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_found
+from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.inbox import InboxResponse
@@ -13,6 +13,7 @@ from bouwmeester.schema.task import (
     EenheidOverviewResponse,
     TaskCreate,
     TaskResponse,
+    TaskStatus,
     TaskUpdate,
 )
 from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 @router.get("", response_model=list[TaskResponse])
 async def list_tasks(
-    status_filter: str | None = Query(None, alias="status"),
+    status_filter: TaskStatus | None = Query(None, alias="status"),
     node_id: UUID | None = Query(None),
     assignee_id: UUID | None = Query(None),
     organisatie_eenheid_id: UUID | None = Query(None),
@@ -166,6 +167,4 @@ async def delete_task(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = TaskRepository(db)
-    deleted = await repo.delete(id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Task not found")
+    require_deleted(await repo.delete(id), "Task")

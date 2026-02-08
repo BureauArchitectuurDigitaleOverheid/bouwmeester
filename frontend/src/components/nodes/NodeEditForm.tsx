@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
-import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useUpdateNode } from '@/hooks/useNodes';
 import { useNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
@@ -52,18 +52,13 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
       onClose={onClose}
       title="Node bewerken"
       footer={
-        <div className="flex items-center justify-end w-full gap-3">
-          <Button variant="secondary" onClick={onClose}>
-            Annuleren
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            loading={updateNode.isPending}
-            disabled={!title.trim()}
-          >
-            Opslaan
-          </Button>
-        </div>
+        <FormModalFooter
+          onCancel={onClose}
+          onSubmit={handleSubmit}
+          submitLabel="Opslaan"
+          isLoading={updateNode.isPending}
+          disabled={!title.trim()}
+        />
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">

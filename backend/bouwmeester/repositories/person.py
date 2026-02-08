@@ -6,7 +6,6 @@ from sqlalchemy import select
 
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.base import BaseRepository
-from bouwmeester.schema.person import PersonCreate
 
 
 class PersonRepository(BaseRepository[Person]):
@@ -23,13 +22,6 @@ class PersonRepository(BaseRepository[Person]):
         stmt = select(Person).offset(skip).limit(limit).order_by(Person.naam)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
-
-    async def create(self, data: PersonCreate) -> Person:
-        person = Person(**data.model_dump())
-        self.session.add(person)
-        await self.session.flush()
-        await self.session.refresh(person)
-        return person
 
     async def get_by_email(self, email: str) -> Person | None:
         stmt = select(Person).where(Person.email == email)

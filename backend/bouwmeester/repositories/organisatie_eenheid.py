@@ -9,9 +9,6 @@ from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.repositories.base import BaseRepository
-from bouwmeester.schema.organisatie_eenheid import (
-    OrganisatieEenheidCreate,
-)
 
 
 class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
@@ -49,13 +46,6 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         stmt = stmt.order_by(OrganisatieEenheid.naam)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
-
-    async def create(self, data: OrganisatieEenheidCreate) -> OrganisatieEenheid:
-        eenheid = OrganisatieEenheid(**data.model_dump())
-        self.session.add(eenheid)
-        await self.session.flush()
-        await self.session.refresh(eenheid)
-        return eenheid
 
     async def has_children(self, id: UUID) -> bool:
         stmt = (

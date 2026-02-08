@@ -7,7 +7,6 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.tag import NodeTag, Tag
 from bouwmeester.repositories.base import BaseRepository
-from bouwmeester.schema.tag import TagCreate
 
 
 class TagRepository(BaseRepository[Tag]):
@@ -38,19 +37,20 @@ class TagRepository(BaseRepository[Tag]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_names(self, names: list[str]) -> dict[str, Tag]:
+        """Batch-load tags by name. Returns {name: Tag} dict."""
+        if not names:
+            return {}
+        stmt = select(Tag).where(Tag.name.in_(names))
+        result = await self.session.execute(stmt)
+        return {tag.name: tag for tag in result.scalars().all()}
+
     async def search(self, query: str) -> list[Tag]:
         stmt = (
             select(Tag).where(Tag.name.ilike(f"%{query}%")).order_by(Tag.name).limit(20)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
-
-    async def create(self, data: TagCreate) -> Tag:
-        tag = Tag(**data.model_dump())
-        self.session.add(tag)
-        await self.session.flush()
-        await self.session.refresh(tag)
-        return tag
 
     async def get_by_node(self, node_id: UUID) -> list[NodeTag]:
         """Get all tags for a node, with tag relationship loaded."""

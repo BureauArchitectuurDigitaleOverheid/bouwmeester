@@ -8,7 +8,6 @@ from sqlalchemy.orm import selectinload
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.repositories.base import BaseRepository
-from bouwmeester.schema.corpus_node import CorpusNodeCreate
 
 
 class CorpusNodeRepository(BaseRepository[CorpusNode]):
@@ -38,13 +37,6 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         stmt = stmt.order_by(CorpusNode.created_at.desc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
-
-    async def create(self, data: CorpusNodeCreate) -> CorpusNode:
-        node = CorpusNode(**data.model_dump())
-        self.session.add(node)
-        await self.session.flush()
-        await self.session.refresh(node)
-        return node
 
     async def get_neighbors(self, id: UUID) -> dict:
         """Return the node and its directly connected nodes with edges."""

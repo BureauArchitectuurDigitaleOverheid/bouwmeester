@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_found
+from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.node_stakeholder import NodeStakeholderRepository
@@ -122,9 +122,7 @@ async def delete_node(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     service = NodeService(db)
-    deleted = await service.delete(id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Node not found")
+    require_deleted(await service.delete(id), "Node")
 
 
 @router.get("/{id}/neighbors", response_model=GraphNeighborsResponse)
@@ -313,9 +311,7 @@ async def remove_tag_from_node(
     from bouwmeester.repositories.tag import TagRepository
 
     tag_repo = TagRepository(db)
-    removed = await tag_repo.remove_tag_from_node(id, tag_id)
-    if not removed:
-        raise HTTPException(status_code=404, detail="Tag not linked to node")
+    require_deleted(await tag_repo.remove_tag_from_node(id, tag_id), "Tag link")
 
 
 @router.get("/{id}/motie-import")

@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.api.deps import require_found
+from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
@@ -172,9 +172,7 @@ async def delete_person(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = PersonRepository(db)
-    deleted = await repo.delete(id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Person not found")
+    require_deleted(await repo.delete(id), "Person")
 
 
 # --- Org placements ---
