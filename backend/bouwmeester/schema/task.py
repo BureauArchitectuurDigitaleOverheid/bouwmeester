@@ -49,12 +49,21 @@ class TaskUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class TaskAssigneeSummary(BaseModel):
+    id: UUID
+    naam: str
+    is_agent: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TaskResponse(BaseModel):
     id: UUID
     title: str
     description: str | None = None
     node_id: UUID
     assignee_id: UUID | None = None
+    assignee: TaskAssigneeSummary | None = None
     status: TaskStatus
     priority: TaskPriority
     due_date: date | None = Field(None, validation_alias="deadline")
