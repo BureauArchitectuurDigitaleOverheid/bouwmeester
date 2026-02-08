@@ -35,16 +35,20 @@ export function PeoplePage() {
       createPersonMutation.mutate(data, {
         onSuccess: (person) => {
           if (orgEenheidId) {
-            addPlacementMutation.mutate({
-              personId: person.id,
-              data: {
-                organisatie_eenheid_id: orgEenheidId,
-                dienstverband: dienstverband || 'in_dienst',
-                start_datum: new Date().toISOString().split('T')[0],
+            addPlacementMutation.mutate(
+              {
+                personId: person.id,
+                data: {
+                  organisatie_eenheid_id: orgEenheidId,
+                  dienstverband: dienstverband || 'in_dienst',
+                  start_datum: new Date().toISOString().split('T')[0],
+                },
               },
-            });
+              { onSettled: () => setShowForm(false) },
+            );
+          } else {
+            setShowForm(false);
           }
-          setShowForm(false);
         },
       });
     }
@@ -79,7 +83,7 @@ export function PeoplePage() {
         open={showForm}
         onClose={() => setShowForm(false)}
         onSubmit={handleFormSubmit}
-        isLoading={createPersonMutation.isPending || updatePersonMutation.isPending}
+        isLoading={createPersonMutation.isPending || updatePersonMutation.isPending || addPlacementMutation.isPending}
         editData={editPerson}
       />
     </div>

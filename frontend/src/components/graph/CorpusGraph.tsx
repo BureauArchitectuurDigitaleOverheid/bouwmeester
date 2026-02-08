@@ -286,7 +286,7 @@ export function CorpusGraph() {
       id: bridge.id,
       source: goesUp ? bridge.to_node_id : bridge.from_node_id,
       target: goesUp ? bridge.from_node_id : bridge.to_node_id,
-      label: `via ${bridge.bridgedThrough.length} node(s)`,
+      label: `via ${bridge.bridgedThrough.length} nodes`,
       type: 'bezier',
       animated: false,
       ...(goesUp ? { markerStart: bMarker } : { markerEnd: bMarker }),

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.database import get_db
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.inbox import InboxResponse
@@ -155,10 +156,17 @@ async def get_eenheid_overview(
     unassigned_result = await db.execute(unassigned_stmt)
     unassigned_count = unassigned_result.scalar_one()
 
-    # Per-person stats: people in this unit who have tasks
+    # Per-person stats: people in this unit (via junction table)
     people_stmt = (
         select(Person)
-        .where(Person.organisatie_eenheid_id == organisatie_eenheid_id)
+        .join(
+            PersonOrganisatieEenheid,
+            PersonOrganisatieEenheid.person_id == Person.id,
+        )
+        .where(
+            PersonOrganisatieEenheid.organisatie_eenheid_id == organisatie_eenheid_id,
+            PersonOrganisatieEenheid.eind_datum.is_(None),
+        )
         .order_by(Person.naam)
     )
     people_result = await db.execute(people_stmt)

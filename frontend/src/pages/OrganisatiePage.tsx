@@ -110,16 +110,20 @@ export function OrganisatiePage() {
       createPersonMutation.mutate(data, {
         onSuccess: (person) => {
           if (orgEenheidId) {
-            addPlacementMutation.mutate({
-              personId: person.id,
-              data: {
-                organisatie_eenheid_id: orgEenheidId,
-                dienstverband: dienstverband || 'in_dienst',
-                start_datum: new Date().toISOString().split('T')[0],
+            addPlacementMutation.mutate(
+              {
+                personId: person.id,
+                data: {
+                  organisatie_eenheid_id: orgEenheidId,
+                  dienstverband: dienstverband || 'in_dienst',
+                  start_datum: new Date().toISOString().split('T')[0],
+                },
               },
-            });
+              { onSettled: () => setShowPersonForm(false) },
+            );
+          } else {
+            setShowPersonForm(false);
           }
-          setShowPersonForm(false);
         },
       });
     }
@@ -246,7 +250,7 @@ export function OrganisatiePage() {
         open={showPersonForm}
         onClose={() => setShowPersonForm(false)}
         onSubmit={handlePersonFormSubmit}
-        isLoading={createPersonMutation.isPending || updatePersonMutation.isPending}
+        isLoading={createPersonMutation.isPending || updatePersonMutation.isPending || addPlacementMutation.isPending}
         editData={editPerson}
         defaultIsAgent={defaultIsAgent}
         defaultOrgEenheidId={selectedId || undefined}

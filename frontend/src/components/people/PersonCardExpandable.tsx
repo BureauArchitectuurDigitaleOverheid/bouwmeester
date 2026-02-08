@@ -30,6 +30,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [messageOpen, setMessageOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { nodeLabel } = useVocabulary();
   const { data: summary, isLoading: summaryLoading } = usePersonSummary(expanded ? person.id : null);
@@ -222,11 +223,14 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                endPlacement.mutate({
-                                  personId: person.id,
-                                  placementId: p.id,
-                                  data: { eind_datum: new Date().toISOString().split('T')[0] },
-                                });
+                                endPlacement.mutate(
+                                  {
+                                    personId: person.id,
+                                    placementId: p.id,
+                                    data: { eind_datum: new Date().toISOString().split('T')[0] },
+                                  },
+                                  { onError: () => alert('Plaatsing beëindigen mislukt.') },
+                                );
                               }}
                               className="text-text-secondary hover:text-amber-600 transition-colors"
                               title="Plaatsing beëindigen"
@@ -234,19 +238,46 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                               <CheckCircle2 className="h-3 w-3" />
                             </button>
                           )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removePlacement.mutate({
-                                personId: person.id,
-                                placementId: p.id,
-                              });
-                            }}
-                            className="text-text-secondary hover:text-red-600 transition-colors"
-                            title="Plaatsing verwijderen"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
+                          {confirmDeleteId === p.id ? (
+                            <span className="flex items-center gap-1 text-red-600">
+                              <span>Zeker?</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removePlacement.mutate(
+                                    { personId: person.id, placementId: p.id },
+                                    {
+                                      onSettled: () => setConfirmDeleteId(null),
+                                      onError: () => alert('Verwijderen mislukt.'),
+                                    },
+                                  );
+                                }}
+                                className="font-medium hover:underline"
+                              >
+                                Ja
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmDeleteId(null);
+                                }}
+                                className="text-text-secondary hover:text-text"
+                              >
+                                Nee
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteId(p.id);
+                              }}
+                              className="text-text-secondary hover:text-red-600 transition-colors"
+                              title="Plaatsing verwijderen"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}

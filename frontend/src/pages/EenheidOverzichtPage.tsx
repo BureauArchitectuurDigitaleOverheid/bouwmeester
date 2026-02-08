@@ -28,7 +28,7 @@ export function EenheidOverzichtPage() {
   );
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       {/* Org unit selector */}
       <div className="max-w-md">
         <CreatableSelect
