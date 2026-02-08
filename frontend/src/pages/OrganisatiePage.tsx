@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Building2 } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
@@ -18,7 +19,8 @@ import { useCreatePerson, useUpdatePerson, useAddPersonOrganisatie } from '@/hoo
 import type { OrganisatieEenheid, OrganisatieEenheidCreate, OrganisatieEenheidUpdate, Person, PersonCreate } from '@/types';
 
 export function OrganisatiePage() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('eenheid'));
   const [showForm, setShowForm] = useState(false);
   const [editData, setEditData] = useState<OrganisatieEenheid | null>(null);
   const [defaultParentId, setDefaultParentId] = useState<string | null>(null);
@@ -26,6 +28,15 @@ export function OrganisatiePage() {
   // Person form state
   const [showPersonForm, setShowPersonForm] = useState(false);
   const [editPerson, setEditPerson] = useState<Person | null>(null);
+
+  // Sync ?eenheid= param on arrival, then clear it
+  useEffect(() => {
+    const eenheidParam = searchParams.get('eenheid');
+    if (eenheidParam) {
+      setSelectedId(eenheidParam);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const { data: tree = [], isLoading } = useOrganisatieTree();
   const createMutation = useCreateOrganisatieEenheid();

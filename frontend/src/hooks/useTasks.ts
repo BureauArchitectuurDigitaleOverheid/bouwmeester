@@ -6,14 +6,14 @@ import type { TaskFilters } from '@/api/tasks';
 
 export function useTasks(filters?: TaskFilters) {
   return useQuery({
-    queryKey: ['tasks', filters],
+    queryKey: ['tasks', 'list', filters],
     queryFn: () => getTasks(filters),
   });
 }
 
 export function useTask(id: string | null) {
   return useQuery({
-    queryKey: ['tasks', id],
+    queryKey: ['tasks', 'detail', id],
     queryFn: () => getTask(id!),
     enabled: !!id,
   });
@@ -23,7 +23,7 @@ export function useCreateTask() {
   return useMutationWithError({
     mutationFn: (data: TaskCreate) => createTask(data),
     errorMessage: 'Fout bij aanmaken taak',
-    invalidateKeys: [['tasks']],
+    invalidateKeys: [['tasks', 'list']],
   });
 }
 
@@ -31,7 +31,7 @@ export function useUpdateTask() {
   return useMutationWithError({
     mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) => updateTask(id, data),
     errorMessage: 'Fout bij bijwerken taak',
-    invalidateKeys: [['tasks']],
+    invalidateKeys: [['tasks', 'list']],
   });
 }
 
@@ -39,20 +39,20 @@ export function useDeleteTask() {
   return useMutationWithError({
     mutationFn: (id: string) => deleteTask(id),
     errorMessage: 'Fout bij verwijderen taak',
-    invalidateKeys: [['tasks']],
+    invalidateKeys: [['tasks', 'list']],
   });
 }
 
 export function useUnassignedTasks(organisatieEenheidId?: string) {
   return useQuery({
-    queryKey: ['tasks', 'unassigned', organisatieEenheidId],
+    queryKey: ['tasks', 'list', 'unassigned', organisatieEenheidId],
     queryFn: () => getUnassignedTasks(organisatieEenheidId),
   });
 }
 
 export function useEenheidOverview(organisatieEenheidId: string | null) {
   return useQuery({
-    queryKey: ['tasks', 'eenheid-overview', organisatieEenheidId],
+    queryKey: ['tasks', 'list', 'eenheid-overview', organisatieEenheidId],
     queryFn: () => getEenheidOverview(organisatieEenheidId!),
     enabled: !!organisatieEenheidId,
   });
@@ -60,7 +60,7 @@ export function useEenheidOverview(organisatieEenheidId: string | null) {
 
 export function useTaskSubtasks(taskId: string | null) {
   return useQuery({
-    queryKey: ['tasks', taskId, 'subtasks'],
+    queryKey: ['tasks', 'detail', taskId, 'subtasks'],
     queryFn: () => getTaskSubtasks(taskId!),
     enabled: !!taskId,
   });
@@ -68,7 +68,7 @@ export function useTaskSubtasks(taskId: string | null) {
 
 export function useTasksByPerson(personId: string | null) {
   return useQuery({
-    queryKey: ['tasks', 'by-person', personId],
+    queryKey: ['tasks', 'list', 'by-person', personId],
     queryFn: () => getTasksByPerson(personId!),
     enabled: !!personId,
   });

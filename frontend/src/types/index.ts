@@ -41,6 +41,25 @@ export const NODE_TYPE_COLORS: Record<NodeType, string> = {
   [NodeType.OVERIG]: 'gray',
 };
 
+// Node Status
+export enum NodeStatus {
+  CONCEPT = 'concept',
+  ACTIEF = 'actief',
+  GEPAUZEERD = 'gepauzeerd',
+  AFGEROND = 'afgerond',
+  GEKOZEN = 'gekozen',
+  AFGEWEZEN = 'afgewezen',
+}
+
+export const NODE_STATUS_LABELS: Record<NodeStatus, string> = {
+  [NodeStatus.CONCEPT]: 'Concept',
+  [NodeStatus.ACTIEF]: 'Actief',
+  [NodeStatus.GEPAUZEERD]: 'Gepauzeerd',
+  [NodeStatus.AFGEROND]: 'Afgerond',
+  [NodeStatus.GEKOZEN]: 'Gekozen',
+  [NodeStatus.AFGEWEZEN]: 'Afgewezen',
+};
+
 // Corpus Node
 export interface CorpusNode {
   id: string;

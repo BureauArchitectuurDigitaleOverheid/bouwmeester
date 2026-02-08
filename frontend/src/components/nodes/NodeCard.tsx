@@ -5,6 +5,7 @@ import { Badge } from '@/components/common/Badge';
 import type { CorpusNode } from '@/types';
 import { NODE_TYPE_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
+import { richTextToPlain } from '@/utils/richtext';
 
 interface NodeCardProps {
   node: CorpusNode;
@@ -37,7 +38,7 @@ export function NodeCard({ node }: NodeCardProps) {
 
           {node.description && (
             <p className="text-xs text-text-secondary line-clamp-2">
-              {node.description}
+              {richTextToPlain(node.description)}
             </p>
           )}
         </div>

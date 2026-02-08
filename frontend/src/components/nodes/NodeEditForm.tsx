@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
+import { Select } from '@/components/common/Select';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useUpdateNode } from '@/hooks/useNodes';
 import { useNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
+import { NODE_STATUS_LABELS } from '@/types';
 import type { CorpusNode } from '@/types';
 
 interface NodeEditFormProps {
@@ -91,11 +93,11 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
           />
         </div>
 
-        <Input
+        <Select
           label="Status"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          placeholder="Bijv. concept, actief, afgerond..."
+          options={Object.entries(NODE_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
         />
       </form>
     </Modal>

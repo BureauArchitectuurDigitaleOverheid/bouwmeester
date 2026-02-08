@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 
@@ -30,6 +31,7 @@ function isTipTapJson(value: string): TipTapNode | null {
 }
 
 export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschikbaar.' }: RichTextDisplayProps) {
+  const navigate = useNavigate();
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
 
@@ -43,13 +45,14 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
     return <p className="text-sm text-text-secondary whitespace-pre-wrap">{content}</p>;
   }
 
-  const handlers: MentionHandlers = { openTaskDetail, openNodeDetail };
+  const handlers: MentionHandlers = { openTaskDetail, openNodeDetail, navigate };
   return <div className="text-sm text-text-secondary">{renderNodes(doc.content ?? [], handlers)}</div>;
 }
 
 interface MentionHandlers {
   openTaskDetail: (id: string) => void;
   openNodeDetail: (id: string) => void;
+  navigate: (path: string) => void;
 }
 
 function renderNodes(nodes: TipTapNode[], handlers: MentionHandlers): React.ReactNode[] {
@@ -71,16 +74,22 @@ function renderNode(node: TipTapNode, key: number, handlers: MentionHandlers): R
     case 'mention': {
       const id = node.attrs?.id as string | undefined;
       const label = node.attrs?.label as string | undefined;
+      const mentionType = (node.attrs?.mentionType as string | undefined) ?? 'person';
+      const isOrg = mentionType === 'organisatie';
       return (
         <button
           key={key}
           onClick={() => {
-            // Navigate to person detail (if we had one) or just show tooltip
-            // For now, we'll keep it as a styled span
+            if (isOrg && id) {
+              handlers.navigate(`/organisatie?eenheid=${id}`);
+            }
           }}
-          className="inline bg-blue-50 text-blue-700 rounded px-1 py-0.5 font-medium text-sm hover:bg-blue-100 transition-colors cursor-default"
-          title={`Persoon: ${label}`}
-          data-person-id={id}
+          className={`inline rounded px-1 py-0.5 font-medium text-sm transition-colors ${
+            isOrg
+              ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer'
+              : 'bg-blue-50 text-blue-700 hover:bg-blue-100 cursor-default'
+          }`}
+          title={isOrg ? `Afdeling: ${label}` : `Persoon: ${label}`}
         >
           @{label}
         </button>
