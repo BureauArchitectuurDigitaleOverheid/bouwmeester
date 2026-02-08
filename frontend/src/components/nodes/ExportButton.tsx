@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Download, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/common/Button';
-import { exportNodesUrl, exportEdgesUrl, exportCorpusUrl } from '@/api/import-export';
+import { exportNodesUrl, exportEdgesUrl, exportCorpusUrl, exportArchimateUrl } from '@/api/import-export';
 
 interface ExportButtonProps {
   nodeType?: string;
@@ -39,18 +39,18 @@ export function ExportButton({ nodeType }: ExportButtonProps) {
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 w-56 rounded-xl border border-border bg-surface shadow-lg">
+        <div className="absolute right-0 top-full mt-1 z-20 w-64 rounded-xl border border-border bg-surface shadow-lg">
           <div className="py-1">
             <button
               onClick={() => handleExport(exportNodesUrl(nodeType))}
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text hover:bg-gray-50 transition-colors"
+              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text hover:bg-gray-50 transition-colors whitespace-nowrap"
             >
               <Download className="h-4 w-4 text-text-secondary" />
               Nodes als CSV
             </button>
             <button
               onClick={() => handleExport(exportEdgesUrl())}
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text hover:bg-gray-50 transition-colors"
+              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text hover:bg-gray-50 transition-colors whitespace-nowrap"
             >
               <Download className="h-4 w-4 text-text-secondary" />
               Edges als CSV
@@ -58,10 +58,17 @@ export function ExportButton({ nodeType }: ExportButtonProps) {
             <div className="border-t border-border my-1" />
             <button
               onClick={() => handleExport(exportCorpusUrl())}
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text hover:bg-gray-50 transition-colors"
+              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text hover:bg-gray-50 transition-colors whitespace-nowrap"
             >
               <Download className="h-4 w-4 text-text-secondary" />
               Volledig corpus als JSON
+            </button>
+            <button
+              onClick={() => handleExport(exportArchimateUrl())}
+              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text hover:bg-gray-50 transition-colors whitespace-nowrap"
+            >
+              <Download className="h-4 w-4 text-text-secondary" />
+              ArchiMate XML
             </button>
           </div>
         </div>

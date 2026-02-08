@@ -3,7 +3,8 @@ import { ArrowRight, Link as LinkIcon } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import type { CorpusNode } from '@/types';
-import { NODE_TYPE_LABELS, NODE_TYPE_COLORS } from '@/types';
+import { NODE_TYPE_COLORS } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 
 interface NodeCardProps {
   node: CorpusNode;
@@ -11,6 +12,7 @@ interface NodeCardProps {
 
 export function NodeCard({ node }: NodeCardProps) {
   const navigate = useNavigate();
+  const { nodeLabel, nodeAltLabel } = useVocabulary();
   const color = NODE_TYPE_COLORS[node.node_type];
 
   return (
@@ -21,8 +23,8 @@ export function NodeCard({ node }: NodeCardProps) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <Badge variant={color as 'blue'} dot>
-              {NODE_TYPE_LABELS[node.node_type]}
+            <Badge variant={color as 'blue'} dot title={nodeAltLabel(node.node_type)}>
+              {nodeLabel(node.node_type)}
             </Badge>
             {node.status && (
               <Badge variant="gray">{node.status}</Badge>

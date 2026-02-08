@@ -4,20 +4,21 @@ import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useCreateNode } from '@/hooks/useNodes';
-import { NodeType, NODE_TYPE_LABELS } from '@/types';
+import { NodeType } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 
 interface NodeCreateFormProps {
   open: boolean;
   onClose: () => void;
 }
 
-const nodeTypeOptions: SelectOption[] = Object.values(NodeType).map((type) => ({
-  value: type,
-  label: NODE_TYPE_LABELS[type],
-}));
-
 export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
+  const { nodeLabel } = useVocabulary();
+  const nodeTypeOptions: SelectOption[] = Object.values(NodeType).map((type) => ({
+    value: type,
+    label: nodeLabel(type),
+  }));
   const [title, setTitle] = useState('');
   const [nodeType, setNodeType] = useState<string>(NodeType.DOSSIER);
   const [description, setDescription] = useState('');

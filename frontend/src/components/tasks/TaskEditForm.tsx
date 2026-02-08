@@ -14,8 +14,8 @@ import {
   TASK_PRIORITY_LABELS,
   TASK_STATUS_LABELS,
   NodeType,
-  NODE_TYPE_LABELS,
 } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 import type { Task } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 
@@ -47,6 +47,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
   const [showPersonCreate, setShowPersonCreate] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const { nodeLabel } = useVocabulary();
   const updateTask = useUpdateTask();
   const deleteTaskMutation = useDeleteTask();
   const createNode = useCreateNode();
@@ -68,7 +69,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
   const nodeOptions: SelectOption[] = (allNodes ?? []).map((n) => ({
     value: n.id,
     label: n.title,
-    description: NODE_TYPE_LABELS[n.node_type],
+    description: nodeLabel(n.node_type),
   }));
 
   const personOptions: SelectOption[] = (allPeople ?? []).map((p) => ({

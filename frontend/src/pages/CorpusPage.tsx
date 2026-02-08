@@ -4,6 +4,7 @@ import { clsx } from 'clsx';
 import { Button } from '@/components/common/Button';
 import { NodeList } from '@/components/nodes/NodeList';
 import { NodeCreateForm } from '@/components/nodes/NodeCreateForm';
+import { ExportButton } from '@/components/nodes/ExportButton';
 import { CorpusGraph } from '@/components/graph/CorpusGraph';
 
 type ViewMode = 'list' | 'graph';
@@ -49,6 +50,8 @@ export function CorpusPage() {
               Netwerk
             </button>
           </div>
+
+          <ExportButton />
 
           <Button
             icon={<Plus className="h-4 w-4" />}

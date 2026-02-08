@@ -8,7 +8,8 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { AddEdgeForm } from './AddEdgeForm';
 import { useEdges, useDeleteEdge } from '@/hooks/useEdges';
-import { NODE_TYPE_LABELS, NODE_TYPE_COLORS } from '@/types';
+import { NODE_TYPE_COLORS } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 
 interface EdgeListProps {
   nodeId: string;
@@ -16,6 +17,7 @@ interface EdgeListProps {
 
 export function EdgeList({ nodeId }: EdgeListProps) {
   const navigate = useNavigate();
+  const { nodeLabel, nodeAltLabel, edgeLabel } = useVocabulary();
   const [showAddForm, setShowAddForm] = useState(false);
   const { data: edges = [], isLoading } = useEdges({ node_id: nodeId });
   const deleteEdge = useDeleteEdge();
@@ -52,7 +54,7 @@ export function EdgeList({ nodeId }: EdgeListProps) {
                 <div className="flex items-center gap-3 px-4 py-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="slate">{edge.edge_type_id.replace(/_/g, ' ')}</Badge>
+                      <Badge variant="slate">{edgeLabel(edge.edge_type_id)}</Badge>
                       <ArrowRight
                         className={`h-3.5 w-3.5 text-text-secondary ${
                           direction === 'incoming' ? 'rotate-180' : ''
@@ -67,8 +69,9 @@ export function EdgeList({ nodeId }: EdgeListProps) {
                         <Badge
                           variant={NODE_TYPE_COLORS[connectedNode.node_type] as 'blue'}
                           className="mr-2"
+                          title={nodeAltLabel(connectedNode.node_type)}
                         >
-                          {NODE_TYPE_LABELS[connectedNode.node_type]}
+                          {nodeLabel(connectedNode.node_type)}
                         </Badge>
                         {connectedNode.title}
                       </button>

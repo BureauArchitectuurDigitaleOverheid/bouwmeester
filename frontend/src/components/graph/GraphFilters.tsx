@@ -1,4 +1,5 @@
-import { NodeType, NODE_TYPE_LABELS } from '@/types';
+import { NodeType } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 
 const NODE_TYPE_HEX_COLORS: Record<string, string> = {
   [NodeType.DOSSIER]: '#3B82F6',
@@ -7,6 +8,9 @@ const NODE_TYPE_HEX_COLORS: Record<string, string> = {
   [NodeType.BELEIDSKADER]: '#F59E0B',
   [NodeType.MAATREGEL]: '#06B6D4',
   [NodeType.POLITIEKE_INPUT]: '#F43F5E',
+  [NodeType.PROBLEEM]: '#EF4444',
+  [NodeType.EFFECT]: '#059669',
+  [NodeType.BELEIDSOPTIE]: '#6366F1',
   [NodeType.NOTITIE]: '#64748b',
   [NodeType.OVERIG]: '#9ca3af',
 };
@@ -30,6 +34,7 @@ export function GraphFilters({
   onSelectAllNodeTypes,
   onDeselectAllNodeTypes,
 }: GraphFiltersProps) {
+  const { nodeLabel, edgeLabel } = useVocabulary();
   const allNodeTypesSelected = enabledNodeTypes.size === Object.values(NodeType).length;
 
   return (
@@ -66,7 +71,7 @@ export function GraphFilters({
                   style={{ background: color }}
                 />
                 <span className="text-sm text-text group-hover:text-primary-700">
-                  {NODE_TYPE_LABELS[type]}
+                  {nodeLabel(type)}
                 </span>
               </label>
             );
@@ -93,7 +98,7 @@ export function GraphFilters({
                   className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-3.5 w-3.5"
                 />
                 <span className="text-sm text-text group-hover:text-primary-700">
-                  {edgeType.replace(/_/g, ' ')}
+                  {edgeLabel(edgeType)}
                 </span>
               </label>
             ))}

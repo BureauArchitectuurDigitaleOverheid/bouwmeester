@@ -25,7 +25,7 @@ class CorpusNode(Base):
         server_default=text("gen_random_uuid()"),
     )
     node_type: Mapped[str] = mapped_column(
-        comment="dossier|doel|instrument|beleidskader|maatregel|politieke_input",
+        comment="dossier|doel|instrument|beleidskader|maatregel|politieke_input|probleem|effect|beleidsoptie",
     )
     title: Mapped[str] = mapped_column(nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

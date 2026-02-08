@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, User, ChevronDown, Check } from 'lucide-react';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useVocabulary } from '@/contexts/VocabularyContext';
+import { VOCABULARY_LABELS, type VocabularyId } from '@/vocabulary';
 
 const pageTitles: Record<string, string> = {
   '/': 'Inbox',
@@ -16,6 +18,7 @@ export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
   const { currentPerson, setCurrentPersonId, people } = useCurrentPerson();
+  const { vocabularyId, setVocabularyId } = useVocabulary();
   const [showPersonPicker, setShowPersonPicker] = useState(false);
   const [search, setSearch] = useState('');
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -86,6 +89,23 @@ export function Header() {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-3">
+        {/* Vocabulary toggle */}
+        <div className="flex items-center rounded-lg border border-border text-xs overflow-hidden">
+          {(Object.keys(VOCABULARY_LABELS) as VocabularyId[]).map((id) => (
+            <button
+              key={id}
+              onClick={() => setVocabularyId(id)}
+              className={`px-2.5 py-1.5 transition-colors ${
+                vocabularyId === id
+                  ? 'bg-primary-100 text-primary-700 font-medium'
+                  : 'text-text-secondary hover:text-text hover:bg-gray-50'
+              }`}
+            >
+              {VOCABULARY_LABELS[id]}
+            </button>
+          ))}
+        </div>
+
         {/* Search shortcut */}
         <button
           onClick={() => navigate('/search')}

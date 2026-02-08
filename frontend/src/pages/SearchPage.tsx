@@ -6,11 +6,13 @@ import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useSearch } from '@/hooks/useSearch';
-import { NODE_TYPE_LABELS, NODE_TYPE_COLORS } from '@/types';
+import { NODE_TYPE_COLORS } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 
 export function SearchPage() {
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
+  const { nodeLabel, nodeAltLabel } = useVocabulary();
   const { data, isLoading, isFetched } = useSearch(query);
 
   const results = data?.results ?? [];
@@ -68,7 +70,7 @@ export function SearchPage() {
           {Object.entries(grouped).map(([nodeType, groupResults]) => (
             <div key={nodeType}>
               <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
-                {NODE_TYPE_LABELS[nodeType as keyof typeof NODE_TYPE_LABELS] ?? nodeType} (
+                {nodeLabel(nodeType)} (
                 {groupResults.length})
               </h3>
               <div className="space-y-2">
@@ -89,7 +91,7 @@ export function SearchPage() {
                             }
                             dot
                           >
-                            {NODE_TYPE_LABELS[result.node_type]}
+                            {nodeLabel(result.node_type)}
                           </Badge>
                         </div>
                         <h4 className="text-sm font-medium text-text">

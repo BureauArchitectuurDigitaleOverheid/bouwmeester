@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CurrentPersonProvider } from '@/contexts/CurrentPersonContext';
+import { VocabularyProvider } from '@/contexts/VocabularyContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { InboxPage } from '@/pages/InboxPage';
 import { CorpusPage } from '@/pages/CorpusPage';
@@ -24,6 +25,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <CurrentPersonProvider>
+        <VocabularyProvider>
         <BrowserRouter>
           <Routes>
             <Route element={<AppLayout />}>
@@ -37,6 +39,7 @@ export default function App() {
             </Route>
           </Routes>
         </BrowserRouter>
+        </VocabularyProvider>
       </CurrentPersonProvider>
     </QueryClientProvider>
   );
