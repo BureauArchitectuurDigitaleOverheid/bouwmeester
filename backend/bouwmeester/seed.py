@@ -422,8 +422,7 @@ async def seed() -> None:
             to_node_id=ids["eu_digitale_strategie"],
             edge_type_id="draagt_bij_aan",
             description=(
-                "Volledig digitale dienstverlening draagt bij"
-                " aan de Europese doelen."
+                "Volledig digitale dienstverlening draagt bij aan de Europese doelen."
             ),
         ),
         # Digitale inclusie draagt bij aan NL Digitaliseringsstrategie
@@ -460,8 +459,7 @@ async def seed() -> None:
             to_node_id=ids["nl_digitaliseringsstrategie"],
             edge_type_id="implementeert",
             description=(
-                "De WDO geeft wettelijke invulling"
-                " aan de digitaliseringsstrategie."
+                "De WDO geeft wettelijke invulling aan de digitaliseringsstrategie."
             ),
         ),
         # Wet Digitale Overheid (instrument) implementeert WDO (dossier)
@@ -511,8 +509,7 @@ async def seed() -> None:
             to_node_id=ids["doel_100_digitaal"],
             edge_type_id="draagt_bij_aan",
             description=(
-                "Het coalitieakkoord bevat ambities"
-                " voor digitale dienstverlening."
+                "Het coalitieakkoord bevat ambities voor digitale dienstverlening."
             ),
         ),
         # Motie-Dekker draagt bij aan Open source
@@ -522,8 +519,7 @@ async def seed() -> None:
             to_node_id=ids["doel_open_source"],
             edge_type_id="draagt_bij_aan",
             description=(
-                "De motie verzoekt de regering open source"
-                " als norm te hanteren."
+                "De motie verzoekt de regering open source als norm te hanteren."
             ),
         ),
         # Kamerbrief kadert in Modernisering Basisregistraties
@@ -533,8 +529,7 @@ async def seed() -> None:
             to_node_id=ids["dossier_basisregistraties"],
             edge_type_id="kadert",
             description=(
-                "De Kamerbrief rapporteert over de voortgang"
-                " van het programma."
+                "De Kamerbrief rapporteert over de voortgang van het programma."
             ),
         ),
         # Open source conflicteert met Innovatiebudget (budget tension)

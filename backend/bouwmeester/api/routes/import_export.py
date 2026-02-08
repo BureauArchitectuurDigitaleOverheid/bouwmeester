@@ -94,11 +94,7 @@ async def export_corpus(
     data = await service.export_corpus_json()
     return JSONResponse(
         content=data,
-        headers={
-            "Content-Disposition": (
-                "attachment; filename=corpus.json"
-            )
-        },
+        headers={"Content-Disposition": ("attachment; filename=corpus.json")},
     )
 
 
@@ -113,8 +109,6 @@ async def export_archimate(
         io.StringIO(xml_content),
         media_type="application/xml",
         headers={
-            "Content-Disposition": (
-                "attachment; filename=bouwmeester-archimate.xml"
-            )
+            "Content-Disposition": ("attachment; filename=bouwmeester-archimate.xml")
         },
     )

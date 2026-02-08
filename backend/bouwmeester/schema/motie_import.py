@@ -49,4 +49,5 @@ class MotieImportResponse(BaseModel):
 
 class ReviewAction(BaseModel):
     """Used when reviewing/approving/rejecting suggested edges."""
+
     status: str  # "approved" | "rejected"

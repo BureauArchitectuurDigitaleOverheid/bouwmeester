@@ -51,9 +51,7 @@ async def create_tag(
 
 
 @router.get("/{tag_id}", response_model=TagResponse)
-async def get_tag(
-    tag_id: UUID, db: AsyncSession = Depends(get_db)
-) -> TagResponse:
+async def get_tag(tag_id: UUID, db: AsyncSession = Depends(get_db)) -> TagResponse:
     repo = TagRepository(db)
     tag = await repo.get_by_id(tag_id)
     if tag is None:
@@ -73,9 +71,7 @@ async def update_tag(
 
 
 @router.delete("/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_tag(
-    tag_id: UUID, db: AsyncSession = Depends(get_db)
-) -> None:
+async def delete_tag(tag_id: UUID, db: AsyncSession = Depends(get_db)) -> None:
     repo = TagRepository(db)
     deleted = await repo.delete(tag_id)
     if not deleted:
