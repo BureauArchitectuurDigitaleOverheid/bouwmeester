@@ -30,7 +30,7 @@ class Mention(Base):
     mention_type: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
-        comment="person|node|task|tag",
+        comment="person|organisatie|node|task|tag",
     )
     target_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

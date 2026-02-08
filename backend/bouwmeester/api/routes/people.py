@@ -100,9 +100,7 @@ async def get_person_summary(
         .where(Task.assignee_id == id, Task.status.in_(["open", "in_progress"]))
         .order_by(
             # kritiek=0, hoog=1, normaal=2, laag=3
-            func.array_position(
-                ["kritiek", "hoog", "normaal", "laag"], Task.priority
-            ),
+            func.array_position(["kritiek", "hoog", "normaal", "laag"], Task.priority),
             Task.deadline.asc().nullslast(),
         )
         .limit(5)

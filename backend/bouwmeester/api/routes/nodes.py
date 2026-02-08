@@ -63,13 +63,19 @@ async def create_node(
     if data.description:
         mention_svc = MentionService(db)
         new_mentions = await mention_svc.sync_mentions(
-            "node", node.id, data.description, None,
+            "node",
+            node.id,
+            data.description,
+            None,
         )
         notif_svc = NotificationService(db)
         for m in new_mentions:
             if m.mention_type == "person":
                 await notif_svc.notify_mention(
-                    m.target_id, "node", node.title, source_node_id=node.id,
+                    m.target_id,
+                    "node",
+                    node.title,
+                    source_node_id=node.id,
                 )
 
     return CorpusNodeResponse.model_validate(node)
@@ -115,13 +121,19 @@ async def update_node(
     if data.description is not None:
         mention_svc = MentionService(db)
         new_mentions = await mention_svc.sync_mentions(
-            "node", node.id, data.description, None,
+            "node",
+            node.id,
+            data.description,
+            None,
         )
         notif_svc = NotificationService(db)
         for m in new_mentions:
             if m.mention_type == "person":
                 await notif_svc.notify_mention(
-                    m.target_id, "node", node.title, source_node_id=node.id,
+                    m.target_id,
+                    "node",
+                    node.title,
+                    source_node_id=node.id,
                 )
 
     return CorpusNodeResponse.model_validate(node)

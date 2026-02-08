@@ -44,4 +44,3 @@ export async function getOrganisatiePersonen(id: string): Promise<Person[]> {
 export async function getOrganisatiePersonenRecursive(id: string): Promise<OrganisatieEenheidPersonenGroup> {
   return apiGet<OrganisatieEenheidPersonenGroup>(`/api/organisatie/${id}/personen`, { recursive: true });
 }
-

@@ -27,8 +27,13 @@ class ExportService:
         writer = csv.writer(output)
         writer.writerow(
             [
-                "id", "title", "node_type", "description",
-                "status", "created_at", "updated_at",
+                "id",
+                "title",
+                "node_type",
+                "description",
+                "status",
+                "created_at",
+                "updated_at",
             ]
         )
         for node in nodes:

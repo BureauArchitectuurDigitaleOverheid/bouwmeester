@@ -47,28 +47,42 @@ class LLMService:
         if document_tekst:
             motie_content += f"\n\nDOCUMENTTEKST:\n{document_tekst}"
 
-        prompt = f"""Je bent een beleidsanalist van het ministerie van BZK (Binnenlandse Zaken en Koninkrijksrelaties). Analyseer deze aangenomen motie en bepaal welke beleidstags relevant zijn.
-
-MOTIE:
-{motie_content}
-
-BESTAANDE TAGS IN HET SYSTEEM:
-{json.dumps(bestaande_tags, ensure_ascii=False)}
-
-Instructies:
-- Selecteer ALLEEN tags die specifiek relevant zijn voor deze motie
-- Vermijd te brede/generieke tags. Tags als "overheid", "data", "digitalisering" op zichzelf zijn te breed — gebruik altijd de meest specifieke subtag (bijv. "digitalisering/AI/generatieve-AI" in plaats van "digitalisering")
-- Selecteer een brede parent-tag ALLEEN als de motie echt over het hele brede onderwerp gaat
-- Stel maximaal 3 nieuwe tags voor als de bestaande tags het onderwerp niet dekken
-- Nieuwe tags moeten het hiërarchische pad-formaat volgen (bijv. "digitalisering/AI/privacy")
-- Geef een korte samenvatting (max 2 zinnen) van wat de motie vraagt en waarom
-
-Geef je analyse als JSON (en ALLEEN JSON, geen andere tekst):
-{{
-  "samenvatting": "...",
-  "matched_tags": ["specifieke/tag1", "specifieke/tag2"],
-  "suggested_new_tags": ["nieuwe/specifieke/tag"]
-}}"""
+        tags_json = json.dumps(bestaande_tags, ensure_ascii=False)
+        prompt = (
+            "Je bent een beleidsanalist van het ministerie van BZK"
+            " (Binnenlandse Zaken en Koninkrijksrelaties)."
+            " Analyseer deze aangenomen motie en bepaal welke"
+            " beleidstags relevant zijn.\n\n"
+            f"MOTIE:\n{motie_content}\n\n"
+            f"BESTAANDE TAGS IN HET SYSTEEM:\n{tags_json}\n\n"
+            "Instructies:\n"
+            "- Selecteer ALLEEN tags die specifiek relevant"
+            " zijn voor deze motie\n"
+            "- Vermijd te brede/generieke tags. Tags als"
+            ' "overheid", "data", "digitalisering" op zichzelf'
+            " zijn te breed — gebruik altijd de meest specifieke"
+            " subtag (bijv."
+            ' "digitalisering/AI/generatieve-AI"'
+            ' in plaats van "digitalisering")\n'
+            "- Selecteer een brede parent-tag ALLEEN als de"
+            " motie echt over het hele brede onderwerp gaat\n"
+            "- Stel maximaal 3 nieuwe tags voor als de"
+            " bestaande tags het onderwerp niet dekken\n"
+            "- Nieuwe tags moeten het hiërarchische"
+            " pad-formaat volgen"
+            ' (bijv. "digitalisering/AI/privacy")\n'
+            "- Geef een korte samenvatting (max 2 zinnen)"
+            " van wat de motie vraagt en waarom\n\n"
+            "Geef je analyse als JSON"
+            " (en ALLEEN JSON, geen andere tekst):\n"
+            "{\n"
+            '  "samenvatting": "...",\n'
+            '  "matched_tags": ["specifieke/tag1",'
+            ' "specifieke/tag2"],\n'
+            '  "suggested_new_tags":'
+            ' ["nieuwe/specifieke/tag"]\n'
+            "}"
+        )
 
         try:
             response = await self.client.messages.create(

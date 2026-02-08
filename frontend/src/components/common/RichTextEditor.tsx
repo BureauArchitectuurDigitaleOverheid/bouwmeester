@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Mention from '@tiptap/extension-mention';
 import Placeholder from '@tiptap/extension-placeholder';
 import { apiGet } from '@/api/client';
-import type { Person } from '@/types';
+import type { Person, OrganisatieEenheid } from '@/types';
 import type { MentionSearchResult } from '@/api/mentions';
 import type { SuggestionProps, SuggestionKeyDownProps } from '@tiptap/suggestion';
 import { ReactRenderer } from '@tiptap/react';
@@ -35,12 +35,16 @@ interface SuggestionListProps {
 // ─── Mention type styling ────────────────────────────────────────────────────
 
 const MENTION_TYPE_LABELS: Record<string, string> = {
+  person: 'Persoon',
+  organisatie: 'Afdeling',
   node: 'Node',
   task: 'Taak',
   tag: 'Tag',
 };
 
 const MENTION_TYPE_STYLES: Record<string, string> = {
+  person: 'bg-blue-50 text-blue-700',
+  organisatie: 'bg-emerald-50 text-emerald-700',
   node: 'bg-blue-50 text-blue-700',
   task: 'bg-amber-50 text-amber-700',
   tag: 'bg-slate-100 text-slate-600',
@@ -201,14 +205,25 @@ function createSuggestionConfig(
 
 // ─── Fetch helpers ──────────────────────────────────────────────────────────
 
-async function fetchPeople(query: string): Promise<SuggestionItem[]> {
+async function fetchPeopleAndOrgs(query: string): Promise<SuggestionItem[]> {
   try {
-    const people = await apiGet<Person[]>('/api/people/search', { q: query, limit: 10 });
-    return people.map((p) => ({
+    const [people, orgs] = await Promise.all([
+      apiGet<Person[]>('/api/people/search', { q: query, limit: 8 }),
+      apiGet<OrganisatieEenheid[]>('/api/organisatie/search', { q: query, limit: 5 }),
+    ]);
+    const personItems: SuggestionItem[] = people.map((p) => ({
       id: p.id,
       label: p.naam,
       subtitle: p.functie ?? p.afdeling ?? undefined,
+      mentionType: 'person',
     }));
+    const orgItems: SuggestionItem[] = orgs.map((o) => ({
+      id: o.id,
+      label: o.naam,
+      subtitle: o.type.replace(/_/g, ' '),
+      mentionType: 'organisatie',
+    }));
+    return [...personItems, ...orgItems];
   } catch {
     return [];
   }
@@ -234,11 +249,47 @@ async function fetchMentionables(query: string): Promise<SuggestionItem[]> {
 
 // ─── TipTap extensions ──────────────────────────────────────────────────────
 
-const PersonMention = Mention.extend({ name: 'mention' }).configure({
+const PersonMention = Mention.extend({
+  name: 'mention',
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      mentionType: {
+        default: 'person',
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-mention-type') ?? 'person',
+        renderHTML: (attributes: Record<string, unknown>) => ({
+          'data-mention-type': attributes.mentionType as string,
+        }),
+      },
+    };
+  },
+}).configure({
   HTMLAttributes: {
     class: 'mention-person',
   },
-  suggestion: createSuggestionConfig(fetchPeople),
+  suggestion: {
+    ...createSuggestionConfig(fetchPeopleAndOrgs),
+    command: ({ editor, range, props }: { editor: Editor; range: { from: number; to: number }; props: SuggestionItem }) => {
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(range, [
+          {
+            type: 'mention',
+            attrs: {
+              id: props.id,
+              label: props.label,
+              mentionType: props.mentionType ?? 'person',
+            },
+          },
+          { type: 'text', text: ' ' },
+        ])
+        .run();
+    },
+  },
+  renderLabel: ({ node }: { node: { attrs: { label?: string } } }) => {
+    return `@${node.attrs.label ?? ''}`;
+  },
 });
 
 const HashtagMention = Mention.extend({
@@ -394,6 +445,10 @@ export function RichTextEditor({
           padding: 0.1rem 0.3rem;
           font-weight: 500;
           text-decoration: none;
+        }
+        .rich-text-editor .ProseMirror .mention-person[data-mention-type="organisatie"] {
+          background-color: #d1fae5;
+          color: #065f46;
         }
         .rich-text-editor .ProseMirror .mention-hashtag {
           background-color: #f1f5f9;

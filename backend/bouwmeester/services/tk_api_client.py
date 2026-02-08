@@ -119,8 +119,7 @@ class TweedeKamerClient:
         url = f"{self.base_url}/Besluit"
 
         logger.info(
-            f"Fetching aangenomen moties from TK API "
-            f"(since={since}, limit={limit})"
+            f"Fetching aangenomen moties from TK API (since={since}, limit={limit})"
         )
 
         try:
@@ -129,9 +128,7 @@ class TweedeKamerClient:
             data = response.json()
 
             besluiten = data.get("value", [])
-            logger.info(
-                f"Retrieved {len(besluiten)} aangenomen besluit records"
-            )
+            logger.info(f"Retrieved {len(besluiten)} aangenomen besluit records")
 
             # Process each besluit → zaak
             moties: list[MotieData] = []
@@ -148,10 +145,8 @@ class TweedeKamerClient:
                     # Fetch additional details
                     zaak_nummer = zaak.get("Nummer", "")
                     indieners = await self._fetch_indieners(zaak_id)
-                    document_tekst, document_url = (
-                        await self._fetch_document_text(
-                            zaak_id, zaak_nummer
-                        )
+                    document_tekst, document_url = await self._fetch_document_text(
+                        zaak_id, zaak_nummer
                     )
 
                     # Parse datum
@@ -178,9 +173,7 @@ class TweedeKamerClient:
                     )
                     moties.append(motie)
 
-            logger.info(
-                f"Successfully processed {len(moties)} aangenomen moties"
-            )
+            logger.info(f"Successfully processed {len(moties)} aangenomen moties")
             return moties
 
         except httpx.HTTPStatusError as e:
@@ -237,7 +230,8 @@ class TweedeKamerClient:
 
         except httpx.HTTPStatusError as e:
             logger.warning(
-                f"HTTP error checking besluit for zaak {zaak_id}: {e.response.status_code}"
+                "HTTP error checking besluit for zaak"
+                f" {zaak_id}: {e.response.status_code}"
             )
             return False
         except Exception as e:
@@ -283,9 +277,7 @@ class TweedeKamerClient:
             doc_nummer = doc.get("DocumentNummer")
 
             # Try to fetch the full HTML content of the document
-            full_text = (
-                await self._fetch_document_html(doc_id) if doc_id else None
-            )
+            full_text = await self._fetch_document_html(doc_id) if doc_id else None
             if not full_text:
                 full_text = doc.get("Onderwerp") or doc.get("Titel")
 
@@ -387,7 +379,8 @@ class TweedeKamerClient:
 
         except httpx.HTTPStatusError as e:
             logger.warning(
-                f"HTTP error fetching indieners for zaak {zaak_id}: {e.response.status_code}"
+                "HTTP error fetching indieners for zaak"
+                f" {zaak_id}: {e.response.status_code}"
             )
             return []
         except Exception as e:
