@@ -38,7 +38,7 @@ class MotieImport(Base):
         nullable=False,
         default="pending",
         server_default="pending",
-        comment="pending|imported|reviewed|rejected",
+        comment="pending|imported|reviewed|rejected|out_of_scope",
     )
     corpus_node_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

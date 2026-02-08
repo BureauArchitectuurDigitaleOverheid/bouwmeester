@@ -15,6 +15,7 @@ const statusFilters: { value: MotieImportStatus | 'all'; label: string }[] = [
   { value: 'imported', label: 'Te beoordelen' },
   { value: 'reviewed', label: 'Beoordeeld' },
   { value: 'rejected', label: 'Afgewezen' },
+  { value: 'out_of_scope', label: 'Buiten scope' },
   { value: 'pending', label: 'In wachtrij' },
 ];
 
