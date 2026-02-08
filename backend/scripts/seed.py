@@ -1796,12 +1796,12 @@ async def seed(db: AsyncSession) -> None:
     # 2a. AGENTS
     # =========================================================================
 
-    async def create_agent(naam, functie, eenheid):
+    async def create_agent(naam, description, eenheid):
         api_key = f"bm_{''.join(f'{b:02x}' for b in uuid.uuid4().bytes[:16])}"
         agent = await person_repo.create(
             PersonCreate(
                 naam=naam,
-                functie=functie,
+                description=description,
                 is_agent=True,
                 api_key=api_key,
             )

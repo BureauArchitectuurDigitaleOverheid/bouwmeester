@@ -10,6 +10,7 @@ class PersonBase(BaseModel):
     naam: str
     email: str | None = None
     functie: str | None = None
+    description: str | None = None
     is_agent: bool = False
     api_key: str | None = None
 
@@ -22,6 +23,7 @@ class PersonUpdate(BaseModel):
     naam: str | None = None
     email: str | None = None
     functie: str | None = None
+    description: str | None = None
     is_agent: bool | None = None
     api_key: str | None = None
 
