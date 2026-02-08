@@ -9,11 +9,10 @@ import logging
 import uuid
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.config import get_settings
-from sqlalchemy import select
-
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.person import Person
@@ -293,7 +292,7 @@ class MotieImportService:
             return []
 
         # Score nodes by tag overlap
-        # node_id -> {"node": CorpusNode, "score": float, "reasons": list[str], "tag_names": list[str]}
+        # node_id -> {node, score, reasons, tag_names}
         node_scores: dict[str, dict] = {}
 
         for tag_name, tag in tag_objects.items():
@@ -357,8 +356,7 @@ class MotieImportService:
                 {
                     "node": data["node"],
                     "confidence": confidence,
-                    "reason": "Gedeelde tags: "
-                    + ", ".join(data["tag_names"]),
+                    "reason": "Gedeelde tags: " + ", ".join(data["tag_names"]),
                     "tag_names": data["tag_names"],
                 }
             )
