@@ -23,7 +23,10 @@ from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.corpus_node import CorpusNodeCreate
 from bouwmeester.schema.edge import EdgeCreate
 from bouwmeester.schema.edge_type import EdgeTypeCreate
-from bouwmeester.schema.organisatie_eenheid import OrganisatieEenheidCreate
+from bouwmeester.schema.organisatie_eenheid import (
+    OrganisatieEenheidCreate,
+    OrganisatieEenheidUpdate,
+)
 from bouwmeester.schema.person import PersonCreate
 from bouwmeester.schema.tag import TagCreate
 from bouwmeester.schema.task import TaskCreate
@@ -51,6 +54,9 @@ async def seed(db: AsyncSession) -> None:
         "politieke_input",
         "corpus_node",
         "person_organisatie_eenheid",
+        "organisatie_eenheid_manager",
+        "organisatie_eenheid_parent",
+        "organisatie_eenheid_naam",
         "person",
         "organisatie_eenheid",
     ]:
@@ -108,37 +114,137 @@ async def seed(db: AsyncSession) -> None:
 
     afd_basisinfra = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Basisinfrastructuur en Dienstverlening",
+            naam="Afdeling Basisinfrastructuur",
             type="afdeling",
             parent_id=dir_ddo.id,
-            beschrijving=(
-                "Beleid voor digitale basisregistraties, MijnOverheid, machtigen en "
-                "Generieke Digitale Infrastructuur (GDI)."
-            ),
+            beschrijving=("GDI, standaarden, architectuur en basisregistraties."),
         )
     )
     afd_id_toegang = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Identiteit en Toegang",
+            naam="Afdeling Identiteit en BRP",
             type="afdeling",
             parent_id=dir_ddo.id,
             beschrijving=(
-                "DigiD, eIDAS, Europese digitale identiteit (EUDIW), elektronische "
-                "handtekeningen en inlogmiddelen."
+                "DigiD, eIDAS, Europese digitale identiteit (EUDIW), BRP en "
+                "inlogmiddelen."
             ),
         )
     )
     afd_wdo = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Wet- en Regelgeving Digitale Overheid",
+            naam="Afdeling Data en Toegang",
             type="afdeling",
             parent_id=dir_ddo.id,
             beschrijving=(
-                "Juridische kaders: Wet Digitale Overheid, Interoperabiliteitswet, "
-                "stelselwetgeving."
+                "Data, toegang, Wet Digitale Overheid en digitale identiteit."
             ),
         )
     )
+    afd_dienstverlening = await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Afdeling Dienstverlening",
+            type="afdeling",
+            parent_id=dir_ddo.id,
+            beschrijving=(
+                "MijnOverheid, machtigen en digitale overheidsdienstverlening."
+            ),
+        )
+    )
+
+    # --- Bureau Architectuur (under Basisinfrastructuur) ---
+    bureau_arch = await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Bureau Architectuur",
+            type="bureau",
+            parent_id=afd_basisinfra.id,
+            beschrijving=(
+                "Architectuur en ontwerp voor digitale overheidsdienstverlening."
+            ),
+        )
+    )
+    team_standaarden = await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Team Standaarden",
+            type="team",
+            parent_id=bureau_arch.id,
+            beschrijving="Standaarden en interoperabiliteit.",
+        )
+    )
+    await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Team Architectuur",
+            type="team",
+            parent_id=bureau_arch.id,
+            beschrijving="Enterprise-architectuur, NORA en referentie-architecturen.",
+        )
+    )
+    await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Team Strategie",
+            type="team",
+            parent_id=bureau_arch.id,
+            beschrijving="Strategisch advies digitale overheid.",
+        )
+    )
+
+    # --- Bureau MIDO (under Basisinfrastructuur) ---
+    await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Bureau MIDO",
+            type="bureau",
+            parent_id=afd_basisinfra.id,
+            beschrijving=("Meerjarige Investeringsplanning Digitale Overheid."),
+        )
+    )
+
+    # --- Cluster MijnOverheid (under Basisinfrastructuur) ---
+    cluster_mijnoverheid = await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Cluster MijnOverheid",
+            type="cluster",
+            parent_id=afd_basisinfra.id,
+            beschrijving="Doorontwikkeling en beheer van het MijnOverheid-portaal.",
+        )
+    )
+
+    # --- Clusters under Data en Toegang ---
+    await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Cluster Data",
+            type="cluster",
+            parent_id=afd_wdo.id,
+            beschrijving="Databeleid en datastrategie.",
+        )
+    )
+    await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Cluster Toegang",
+            type="cluster",
+            parent_id=afd_wdo.id,
+            beschrijving="Toegangsbeleid en authenticatie.",
+        )
+    )
+    await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Cluster WDO",
+            type="cluster",
+            parent_id=afd_wdo.id,
+            beschrijving="Wet Digitale Overheid en stelselwetgeving.",
+        )
+    )
+    await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Cluster Digitale Identiteit",
+            type="cluster",
+            parent_id=afd_wdo.id,
+            beschrijving=(
+                "Europese Digitale Identiteit Wallet en digitale identiteit."
+            ),
+        )
+    )
+
+    # --- Teams under Identiteit en BRP ---
     team_digid = await org_repo.create(
         OrganisatieEenheidCreate(
             naam="Team DigiD Beleid",
@@ -158,24 +264,10 @@ async def seed(db: AsyncSession) -> None:
             ),
         )
     )
-    team_mijnoverheid = await org_repo.create(
-        OrganisatieEenheidCreate(
-            naam="Team MijnOverheid",
-            type="team",
-            parent_id=afd_basisinfra.id,
-            beschrijving="Doorontwikkeling en beheer van het MijnOverheid-portaal.",
-        )
-    )
-    team_gdi = await org_repo.create(
-        OrganisatieEenheidCreate(
-            naam="Team GDI en Standaarden",
-            type="team",
-            parent_id=afd_basisinfra.id,
-            beschrijving=(
-                "Generieke Digitale Infrastructuur, standaarden en interoperabiliteit."
-            ),
-        )
-    )
+
+    # Backward-compat aliases for downstream references
+    team_mijnoverheid = cluster_mijnoverheid
+    team_gdi = team_standaarden
 
     # --- Directie Digitale Samenleving (~50 FTE) ---
     dir_ds = await org_repo.create(
@@ -190,28 +282,51 @@ async def seed(db: AsyncSession) -> None:
         )
     )
 
-    afd_ai_data = await org_repo.create(
+    afd_ds_a = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling AI, Algoritmen, Data en Digitale Inclusie",
+            naam="Afdeling A",
             type="afdeling",
             parent_id=dir_ds.id,
             beschrijving=(
-                "Algoritmeregister, AI-verordening implementatie,"
-                " algoritmekader, IBDS, data-ethiek en digitale inclusie."
+                "Bedrijfsvoering, portfoliomanagement, financiën & control, "
+                "secretariaat."
             ),
         )
     )
-    afd_strat_intl = await org_repo.create(
+    afd_ds_b = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Strategie, Internationaal en Communicatie",
+            naam="Afdeling B",
             type="afdeling",
             parent_id=dir_ds.id,
             beschrijving=(
-                "NDS-coördinatie, internationale digitaliseringsdossiers, EU-raden en "
-                "communicatie."
+                "Communicatie en communitymanagement, internationaal, strategie en "
+                "coördinatie, Caribisch Nederland, Werkagenda."
             ),
         )
     )
+    afd_ds_c = await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Afdeling C",
+            type="afdeling",
+            parent_id=dir_ds.id,
+            beschrijving=(
+                "Informatieveiligheid, publieke waarden en nieuwe technologie "
+                "(kinderrechten online, desinformatie, digitale gemeenschapsgoederen)."
+            ),
+        )
+    )
+    afd_ds_d = await org_repo.create(
+        OrganisatieEenheidCreate(
+            naam="Afdeling D",
+            type="afdeling",
+            parent_id=dir_ds.id,
+            beschrijving=("Data, AI en algoritmen, digitale inclusie."),
+        )
+    )
+
+    # Backward-compat aliases for downstream references
+    afd_ai_data = afd_ds_d
+    afd_strat_intl = afd_ds_b
     team_algo = await org_repo.create(
         OrganisatieEenheidCreate(
             naam="Team Algoritmeregister",
@@ -515,18 +630,6 @@ async def seed(db: AsyncSession) -> None:
         )
     )
 
-    # --- Bureau Architectuur Digitale Overheid (under Directie Digitale Overheid) ---
-    await org_repo.create(
-        OrganisatieEenheidCreate(
-            naam="Bureau Architectuur Digitale Overheid",
-            type="bureau",
-            parent_id=dir_ddo.id,
-            beschrijving=(
-                "Architectuur en ontwerp voor digitale overheidsdienstverlening."
-            ),
-        )
-    )
-
     # --- Bestuursstaf BZK ---
     staf_bzk = await org_repo.create(
         OrganisatieEenheidCreate(
@@ -632,19 +735,49 @@ async def seed(db: AsyncSession) -> None:
         "afdelingshoofd",
         afd_id_toegang,
     )
+    p_lucassen = await cp(
+        "Hetty Lucassen",
+        "h.lucassen@minbzk.nl",
+        "afdelingshoofd",
+        afd_wdo,
+    )
+    p_olivers = await cp(
+        "Christel Olivers",
+        "c.olivers@minbzk.nl",
+        "afdelingshoofd",
+        afd_dienstverlening,
+    )
+    p_keulemans = await cp(
+        "Kees Keulemans",
+        "k.keulemans@minbzk.nl",
+        "coordinator",
+        bureau_arch,
+    )
 
     # Digitale Samenleving
-    p_kewal = await cp(
-        "Suzie Kewal",
-        "s.kewal@minbzk.nl",
+    p_vanherwaarden = await cp(
+        "Digna van Herwaarden",
+        "d.vanherwaarden@minbzk.nl",
         "afdelingshoofd",
-        afd_ai_data,
+        afd_ds_a,
     )
     p_zondervan = await cp(
         "Ingrid Zondervan",
         "i.zondervan@minbzk.nl",
         "afdelingshoofd",
-        afd_strat_intl,
+        afd_ds_b,
+    )
+    p_geerts = await cp(
+        "Desiree Geerts",
+        "d.geerts@minbzk.nl",
+        "afdelingshoofd",
+        afd_ds_c,
+    )
+    p_kewal = await cp(
+        "Suzie Kewal",
+        "s.kewal@minbzk.nl",
+        "afdelingshoofd",
+        afd_ds_d,
     )
 
     # CIO Rijk
@@ -1747,7 +1880,6 @@ async def seed(db: AsyncSession) -> None:
         ),
     ]
 
-    p_linden = None
     p_kaya = None
     p_nguyen = None
     p_visser = None
@@ -1765,9 +1897,7 @@ async def seed(db: AsyncSession) -> None:
     for naam, email_prefix, functie, eenheid in bulk_people:
         p = await cp(naam, f"{email_prefix}@minbzk.nl", functie, eenheid)
         # Keep references to key people for tasks
-        if email_prefix == "s.vanderlinden":
-            p_linden = p
-        elif email_prefix == "d.kaya":
+        if email_prefix == "d.kaya":
             p_kaya = p
         elif email_prefix == "l.nguyen":
             p_nguyen = p
@@ -1866,9 +1996,13 @@ async def seed(db: AsyncSession) -> None:
         # Afdelingshoofden (ABD-benoemd)
         (afd_basisinfra, p_westelaken),
         (afd_id_toegang, p_vanwissen),
-        (afd_wdo, p_linden),
-        (afd_ai_data, p_kewal),
-        (afd_strat_intl, p_zondervan),
+        (afd_wdo, p_lucassen),
+        (afd_dienstverlening, p_olivers),
+        (bureau_arch, p_keulemans),
+        (afd_ds_a, p_vanherwaarden),
+        (afd_ds_b, p_zondervan),
+        (afd_ds_c, p_geerts),
+        (afd_ds_d, p_kewal),
         (afd_ict_voorz, p_terborg),
         (afd_istelsel, p_brouwer),
         (afd_infobev, p_timmermans),
@@ -1899,8 +2033,10 @@ async def seed(db: AsyncSession) -> None:
         (afd_zonder_mensen, agent_identiteit),
     ]
     for unit, manager in manager_assignments:
-        unit.manager_id = manager.id
-    await db.flush()
+        await org_repo.update(
+            unit.id,
+            OrganisatieEenheidUpdate(manager_id=manager.id),
+        )
 
     print(f"  Managers: {len(manager_assignments)} managers toegewezen")
 
@@ -3312,7 +3448,7 @@ async def seed(db: AsyncSession) -> None:
                 " uitvoeringsorganisaties om aan"
                 " WDO-vereisten te voldoen."
             ),
-            p_linden,
+            p_lucassen,
             "in_progress",
             "normaal",
             date(2026, 5, 1),
@@ -3575,7 +3711,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel een kabinetsreactie op de motie Rajkowski op met een versneld "
                 "tijdpad voor NDD-oprichting."
             ),
-            p_linden,
+            p_lucassen,
             "open",
             "hoog",
             date(2026, 2, 28),
@@ -3660,7 +3796,7 @@ async def seed(db: AsyncSession) -> None:
             pi_verzamelbrief_q4,
             "Verzamelbrief Digitalisering Q1 2026 opstellen",
             "Coördineer de bijdragen van alle directies voor de verzamelbrief Q1 2026.",
-            p_linden,
+            p_lucassen,
             "open",
             "hoog",
             date(2026, 3, 31),
@@ -4021,8 +4157,8 @@ async def seed(db: AsyncSession) -> None:
         (instr_eidas_wallet, p_kaya, "betrokken"),
         (doel_eudiw, p_tl_eudiw, "eigenaar"),
         # WDO
-        (bk_wdo, p_linden, "eigenaar"),
-        (maatr_wdo_transitie, p_linden, "eigenaar"),
+        (bk_wdo, p_lucassen, "eigenaar"),
+        (maatr_wdo_transitie, p_lucassen, "eigenaar"),
         (maatr_wdo_transitie, p_achterberg, "adviseur"),
         # MijnOverheid
         (instr_mijnoverheid, p_tl_mijnov, "eigenaar"),
@@ -4056,7 +4192,7 @@ async def seed(db: AsyncSession) -> None:
         (doel_bio_compliance, p_timmermans, "eigenaar"),
         # NDD
         (instr_ndd, p_vermeer, "eigenaar"),
-        (instr_ndd, p_linden, "betrokken"),
+        (instr_ndd, p_lucassen, "betrokken"),
         # Vendor reductie
         (maatr_it_inhuur, p_jansen, "eigenaar"),
         (doel_vendor_reductie, p_peeters, "betrokken"),

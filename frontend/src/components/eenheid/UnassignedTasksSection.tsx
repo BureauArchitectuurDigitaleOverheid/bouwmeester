@@ -14,7 +14,7 @@ import {
 import type { Task } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 
-const PERSON_LEVEL_TYPES = new Set(['afdeling', 'team']);
+const PERSON_LEVEL_TYPES = new Set(['afdeling', 'team', 'cluster']);
 
 function getDescendantIds(allUnits: { id: string; parent_id?: string | null }[], parentId: string): Set<string> {
   const descendants = new Set<string>();
