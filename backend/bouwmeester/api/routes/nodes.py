@@ -20,7 +20,12 @@ from bouwmeester.schema.graph import (
     GraphViewResponse,
     NeighborEntry,
 )
-from bouwmeester.schema.person import NodeStakeholderResponse, PersonResponse
+from bouwmeester.schema.person import (
+    NodeStakeholderCreate,
+    NodeStakeholderResponse,
+    NodeStakeholderUpdate,
+    PersonResponse,
+)
 from bouwmeester.schema.tag import NodeTagCreate, NodeTagResponse, TagCreate
 from bouwmeester.schema.task import TaskResponse
 from bouwmeester.services.mention_service import MentionService
@@ -46,9 +51,7 @@ async def list_nodes(
     return [CorpusNodeResponse.model_validate(n) for n in nodes]
 
 
-@router.post(
-    "", response_model=CorpusNodeResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("", response_model=CorpusNodeResponse, status_code=status.HTTP_201_CREATED)
 async def create_node(
     data: CorpusNodeCreate,
     db: AsyncSession = Depends(get_db),
@@ -219,6 +222,121 @@ async def get_node_stakeholders(
         )
         for s in stakeholders
     ]
+
+
+@router.post(
+    "/{id}/stakeholders",
+    response_model=NodeStakeholderResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_node_stakeholder(
+    id: UUID,
+    data: NodeStakeholderCreate,
+    db: AsyncSession = Depends(get_db),
+) -> NodeStakeholderResponse:
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from bouwmeester.models.node_stakeholder import NodeStakeholder
+    from bouwmeester.models.person import Person
+
+    service = NodeService(db)
+    node = await service.get(id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    person = await db.get(Person, data.person_id)
+    if person is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+
+    stakeholder = NodeStakeholder(
+        node_id=id,
+        person_id=data.person_id,
+        rol=data.rol,
+    )
+    db.add(stakeholder)
+    await db.flush()
+
+    # Reload with person relationship
+    stmt = (
+        select(NodeStakeholder)
+        .where(NodeStakeholder.id == stakeholder.id)
+        .options(selectinload(NodeStakeholder.person))
+    )
+    result = await db.execute(stmt)
+    stakeholder = result.scalar_one()
+    await db.commit()
+
+    return NodeStakeholderResponse(
+        id=stakeholder.id,
+        person=PersonResponse.model_validate(stakeholder.person),
+        rol=stakeholder.rol,
+    )
+
+
+@router.put(
+    "/{id}/stakeholders/{stakeholder_id}",
+    response_model=NodeStakeholderResponse,
+)
+async def update_node_stakeholder(
+    id: UUID,
+    stakeholder_id: UUID,
+    data: NodeStakeholderUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> NodeStakeholderResponse:
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from bouwmeester.models.node_stakeholder import NodeStakeholder
+
+    stmt = (
+        select(NodeStakeholder)
+        .where(
+            NodeStakeholder.id == stakeholder_id,
+            NodeStakeholder.node_id == id,
+        )
+        .options(selectinload(NodeStakeholder.person))
+    )
+    result = await db.execute(stmt)
+    stakeholder = result.scalar_one_or_none()
+    if stakeholder is None:
+        raise HTTPException(status_code=404, detail="Stakeholder not found")
+
+    stakeholder.rol = data.rol
+    await db.commit()
+    await db.refresh(stakeholder)
+
+    return NodeStakeholderResponse(
+        id=stakeholder.id,
+        person=PersonResponse.model_validate(stakeholder.person),
+        rol=stakeholder.rol,
+    )
+
+
+@router.delete(
+    "/{id}/stakeholders/{stakeholder_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_node_stakeholder(
+    id: UUID,
+    stakeholder_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    from sqlalchemy import select
+
+    from bouwmeester.models.node_stakeholder import NodeStakeholder
+
+    stmt = select(NodeStakeholder).where(
+        NodeStakeholder.id == stakeholder_id,
+        NodeStakeholder.node_id == id,
+    )
+    result = await db.execute(stmt)
+    stakeholder = result.scalar_one_or_none()
+    if stakeholder is None:
+        raise HTTPException(status_code=404, detail="Stakeholder not found")
+
+    await db.delete(stakeholder)
+    await db.commit()
 
 
 @router.get("/{id}/tags", response_model=list[NodeTagResponse])
