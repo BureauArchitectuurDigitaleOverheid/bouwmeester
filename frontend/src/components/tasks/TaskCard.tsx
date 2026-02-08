@@ -10,6 +10,7 @@ import {
   TASK_STATUS_LABELS,
 } from '@/types';
 import type { Task } from '@/types';
+import { richTextToPlain } from '@/utils/richtext';
 
 interface TaskCardProps {
   task: Task;
@@ -81,7 +82,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
 
           {!compact && task.description && (
             <p className="text-xs text-text-secondary mt-0.5 line-clamp-1">
-              {task.description}
+              {richTextToPlain(task.description)}
             </p>
           )}
 

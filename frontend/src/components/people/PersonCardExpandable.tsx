@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, Bot, MessageSquare, Terminal, Building2, X } from 'lucide-react';
 import { Card } from '@/components/common/Card';
@@ -8,6 +7,8 @@ import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
 import { FUNCTIE_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
+import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import type { Person } from '@/types';
 
 const PRIORITY_DOT_COLORS: Record<string, string> = {
@@ -31,8 +32,9 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
   const [copied, setCopied] = useState(false);
   const [messageOpen, setMessageOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const navigate = useNavigate();
   const { nodeLabel } = useVocabulary();
+  const { openTaskDetail } = useTaskDetail();
+  const { openNodeDetail } = useNodeDetail();
   const { data: summary, isLoading: summaryLoading } = usePersonSummary(expanded ? person.id : null);
   const { data: placements } = usePersonOrganisaties(expanded ? person.id : null);
   const endPlacement = useUpdatePersonOrganisatie();
@@ -160,7 +162,14 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 {summary.open_tasks.length > 0 && (
                   <div className="mt-1.5 space-y-1">
                     {summary.open_tasks.map((task) => (
-                      <div key={task.id} className="flex items-center gap-2 text-text">
+                      <button
+                        key={task.id}
+                        className="flex items-center gap-2 text-text w-full text-left hover:text-primary-600 transition-colors rounded px-1 -mx-1 py-0.5 hover:bg-primary-50/50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openTaskDetail(task.id);
+                        }}
+                      >
                         <span className={clsx('h-1.5 w-1.5 rounded-full shrink-0', PRIORITY_DOT_COLORS[task.priority] || 'bg-gray-300')} />
                         <span className="truncate">{task.title}</span>
                         {task.due_date && (
@@ -168,7 +177,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                             {new Date(task.due_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
                           </span>
                         )}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -184,7 +193,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                         className="flex items-center gap-2 text-text w-full text-left hover:text-primary-600 transition-colors rounded px-1 -mx-1 py-0.5 hover:bg-primary-50/50"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/nodes/${node.node_id}`);
+                          openNodeDetail(node.node_id);
                         }}
                       >
                         <FileText className="h-3 w-3 text-text-secondary shrink-0" />

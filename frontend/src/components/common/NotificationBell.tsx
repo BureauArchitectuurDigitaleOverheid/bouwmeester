@@ -4,6 +4,7 @@ import { useNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNo
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import type { Notification } from '@/api/notifications';
+import { richTextToPlain } from '@/utils/richtext';
 
 interface NotificationBellProps {
   personId: string | undefined;
@@ -62,7 +63,7 @@ function NotificationItem({
         </div>
         <p className="text-sm font-medium text-text truncate">{notification.title}</p>
         {notification.message && (
-          <p className="text-xs text-text-secondary truncate mt-0.5">{notification.message}</p>
+          <p className="text-xs text-text-secondary truncate mt-0.5">{richTextToPlain(notification.message)}</p>
         )}
       </div>
       {!notification.is_read && (
