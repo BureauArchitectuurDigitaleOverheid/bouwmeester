@@ -41,6 +41,9 @@ from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidResponse,
     OrganisatieEenheidTreeNode,
     OrganisatieEenheidUpdate,
+    OrgManagerRecord,
+    OrgNaamRecord,
+    OrgParentRecord,
 )
 from bouwmeester.schema.person import (
     PersonBase,
@@ -111,6 +114,9 @@ __all__ = [
     "TaskSubtaskSummary",
     "TaskUpdate",
     # organisatie_eenheid
+    "OrgManagerRecord",
+    "OrgNaamRecord",
+    "OrgParentRecord",
     "OrganisatieEenheidCreate",
     "OrganisatieEenheidPersonenGroup",
     "OrganisatieEenheidResponse",

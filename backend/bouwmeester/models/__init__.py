@@ -17,6 +17,9 @@ from bouwmeester.models.mention import Mention  # noqa: F401
 from bouwmeester.models.motie_import import MotieImport, SuggestedEdge  # noqa: F401
 from bouwmeester.models.node_stakeholder import NodeStakeholder  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
+from bouwmeester.models.org_manager import OrganisatieEenheidManager  # noqa: F401
+from bouwmeester.models.org_naam import OrganisatieEenheidNaam  # noqa: F401
+from bouwmeester.models.org_parent import OrganisatieEenheidParent  # noqa: F401
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid  # noqa: F401
 from bouwmeester.models.person import Person  # noqa: F401
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid  # noqa: F401
@@ -44,6 +47,9 @@ __all__ = [
     "NodeStakeholder",
     "NodeTag",
     "Notification",
+    "OrganisatieEenheidManager",
+    "OrganisatieEenheidNaam",
+    "OrganisatieEenheidParent",
     "OrganisatieEenheid",
     "Person",
     "PersonOrganisatieEenheid",

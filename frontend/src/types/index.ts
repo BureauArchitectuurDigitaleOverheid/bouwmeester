@@ -250,6 +250,8 @@ export interface OrganisatieEenheid {
   manager_id?: string | null;
   manager?: Person | null;
   beschrijving?: string | null;
+  geldig_van?: string | null;
+  geldig_tot?: string | null;
   created_at: string;
 }
 
@@ -264,6 +266,7 @@ export interface OrganisatieEenheidCreate {
   parent_id?: string | null;
   manager_id?: string | null;
   beschrijving?: string | null;
+  geldig_van?: string | null;
 }
 
 export interface OrganisatieEenheidUpdate {
@@ -272,6 +275,34 @@ export interface OrganisatieEenheidUpdate {
   parent_id?: string | null;
   manager_id?: string | null;
   beschrijving?: string | null;
+  geldig_tot?: string | null;
+  wijzig_datum?: string | null;
+}
+
+export interface OrgNaamRecord {
+  id: string;
+  eenheid_id: string;
+  naam: string;
+  geldig_van: string;
+  geldig_tot?: string | null;
+}
+
+export interface OrgParentRecord {
+  id: string;
+  eenheid_id: string;
+  parent_id: string;
+  parent_naam?: string | null;
+  geldig_van: string;
+  geldig_tot?: string | null;
+}
+
+export interface OrgManagerRecord {
+  id: string;
+  eenheid_id: string;
+  manager_id: string;
+  manager_naam?: string | null;
+  geldig_van: string;
+  geldig_tot?: string | null;
 }
 
 export interface OrganisatieEenheidPersonenGroup {
@@ -287,6 +318,7 @@ export const ORGANISATIE_TYPE_LABELS: Record<string, string> = {
   dienst: 'Dienst',
   bureau: 'Bureau',
   afdeling: 'Afdeling',
+  cluster: 'Cluster',
   team: 'Team',
 };
 
@@ -297,6 +329,7 @@ export const ORGANISATIE_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'dienst', label: 'Dienst' },
   { value: 'bureau', label: 'Bureau' },
   { value: 'afdeling', label: 'Afdeling' },
+  { value: 'cluster', label: 'Cluster' },
   { value: 'team', label: 'Team' },
 ];
 

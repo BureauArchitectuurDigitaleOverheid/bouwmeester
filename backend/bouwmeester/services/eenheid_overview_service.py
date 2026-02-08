@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.models.org_parent import OrganisatieEenheidParent
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
@@ -187,10 +188,17 @@ class EenheidOverviewService:
     async def _subeenheid_stats(
         self, parent_id: UUID, all_unit_ids: list[UUID]
     ) -> list[EenheidSubeenheidStats]:
-        # Get direct children
+        # Get direct children (via active temporal parent records)
         children_stmt = (
             select(OrganisatieEenheid)
-            .where(OrganisatieEenheid.parent_id == parent_id)
+            .join(
+                OrganisatieEenheidParent,
+                OrganisatieEenheidParent.eenheid_id == OrganisatieEenheid.id,
+            )
+            .where(
+                OrganisatieEenheidParent.parent_id == parent_id,
+                OrganisatieEenheidParent.geldig_tot.is_(None),
+            )
             .order_by(OrganisatieEenheid.naam)
         )
         children_result = await self.session.execute(children_stmt)

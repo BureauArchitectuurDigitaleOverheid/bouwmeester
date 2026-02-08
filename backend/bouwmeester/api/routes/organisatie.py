@@ -15,6 +15,9 @@ from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidResponse,
     OrganisatieEenheidTreeNode,
     OrganisatieEenheidUpdate,
+    OrgManagerRecord,
+    OrgNaamRecord,
+    OrgParentRecord,
 )
 from bouwmeester.schema.person import PersonResponse
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
@@ -130,7 +133,7 @@ async def update_organisatie(
         db,
         "organisatie",
         eenheid.id,
-        data.beschrijving,
+        eenheid.beschrijving,
         eenheid.naam,
     )
 
@@ -157,7 +160,43 @@ async def delete_organisatie(
     await repo.delete(id)
 
 
-@router.get("/{id}/personen")
+@router.get("/{id}/history/namen", response_model=list[OrgNaamRecord])
+async def get_naam_history(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[OrgNaamRecord]:
+    repo = OrganisatieEenheidRepository(db)
+    require_found(await repo.get(id), "Eenheid")
+    records = await repo.get_naam_history(id)
+    return [OrgNaamRecord.model_validate(r) for r in records]
+
+
+@router.get("/{id}/history/parents", response_model=list[OrgParentRecord])
+async def get_parent_history(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[OrgParentRecord]:
+    repo = OrganisatieEenheidRepository(db)
+    require_found(await repo.get(id), "Eenheid")
+    records = await repo.get_parent_history(id)
+    return [OrgParentRecord.model_validate(r) for r in records]
+
+
+@router.get("/{id}/history/managers", response_model=list[OrgManagerRecord])
+async def get_manager_history(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[OrgManagerRecord]:
+    repo = OrganisatieEenheidRepository(db)
+    require_found(await repo.get(id), "Eenheid")
+    records = await repo.get_manager_history(id)
+    return [OrgManagerRecord.model_validate(r) for r in records]
+
+
+@router.get(
+    "/{id}/personen",
+    response_model=list[PersonResponse] | OrganisatieEenheidPersonenGroup,
+)
 async def get_organisatie_personen(
     id: UUID,
     recursive: bool = Query(False),
