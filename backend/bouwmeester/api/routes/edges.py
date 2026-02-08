@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.schema.corpus_node import CorpusNodeResponse
@@ -64,9 +65,7 @@ async def get_edge(
     db: AsyncSession = Depends(get_db),
 ) -> EdgeWithNodes:
     repo = EdgeRepository(db)
-    edge = await repo.get(id)
-    if edge is None:
-        raise HTTPException(status_code=404, detail="Edge not found")
+    edge = require_found(await repo.get(id), "Edge")
     return EdgeWithNodes(
         id=edge.id,
         from_node_id=edge.from_node_id,
@@ -87,9 +86,7 @@ async def update_edge(
     db: AsyncSession = Depends(get_db),
 ) -> EdgeResponse:
     repo = EdgeRepository(db)
-    edge = await repo.update(id, data)
-    if edge is None:
-        raise HTTPException(status_code=404, detail="Edge not found")
+    edge = require_found(await repo.update(id, data), "Edge")
     return EdgeResponse.model_validate(edge)
 
 

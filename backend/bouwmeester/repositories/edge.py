@@ -3,16 +3,15 @@
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.edge import Edge
-from bouwmeester.schema.edge import EdgeCreate, EdgeUpdate
+from bouwmeester.repositories.base import BaseRepository
+from bouwmeester.schema.edge import EdgeCreate
 
 
-class EdgeRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+class EdgeRepository(BaseRepository[Edge]):
+    model = Edge
 
     async def get(self, id: UUID) -> Edge | None:
         stmt = (
@@ -63,22 +62,3 @@ class EdgeRepository:
         await self.session.flush()
         await self.session.refresh(edge)
         return edge
-
-    async def update(self, id: UUID, data: EdgeUpdate) -> Edge | None:
-        edge = await self.session.get(Edge, id)
-        if edge is None:
-            return None
-        update_data = data.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            setattr(edge, key, value)
-        await self.session.flush()
-        await self.session.refresh(edge)
-        return edge
-
-    async def delete(self, id: UUID) -> bool:
-        edge = await self.session.get(Edge, id)
-        if edge is None:
-            return False
-        await self.session.delete(edge)
-        await self.session.flush()
-        return True

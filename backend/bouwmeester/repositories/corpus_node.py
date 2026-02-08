@@ -3,17 +3,16 @@
 from uuid import UUID
 
 from sqlalchemy import func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
-from bouwmeester.schema.corpus_node import CorpusNodeCreate, CorpusNodeUpdate
+from bouwmeester.repositories.base import BaseRepository
+from bouwmeester.schema.corpus_node import CorpusNodeCreate
 
 
-class CorpusNodeRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+class CorpusNodeRepository(BaseRepository[CorpusNode]):
+    model = CorpusNode
 
     async def get(self, id: UUID) -> CorpusNode | None:
         stmt = (
@@ -46,25 +45,6 @@ class CorpusNodeRepository:
         await self.session.flush()
         await self.session.refresh(node)
         return node
-
-    async def update(self, id: UUID, data: CorpusNodeUpdate) -> CorpusNode | None:
-        node = await self.session.get(CorpusNode, id)
-        if node is None:
-            return None
-        update_data = data.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            setattr(node, key, value)
-        await self.session.flush()
-        await self.session.refresh(node)
-        return node
-
-    async def delete(self, id: UUID) -> bool:
-        node = await self.session.get(CorpusNode, id)
-        if node is None:
-            return False
-        await self.session.delete(node)
-        await self.session.flush()
-        return True
 
     async def get_neighbors(self, id: UUID) -> dict:
         """Return the node and its directly connected nodes with edges."""

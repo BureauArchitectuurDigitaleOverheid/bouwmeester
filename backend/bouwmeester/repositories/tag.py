@@ -3,16 +3,15 @@
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.tag import NodeTag, Tag
-from bouwmeester.schema.tag import TagCreate, TagUpdate
+from bouwmeester.repositories.base import BaseRepository
+from bouwmeester.schema.tag import TagCreate
 
 
-class TagRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+class TagRepository(BaseRepository[Tag]):
+    model = Tag
 
     async def get_all(self) -> list[Tag]:
         """Get all tags (flat list)."""
@@ -52,24 +51,6 @@ class TagRepository:
         await self.session.flush()
         await self.session.refresh(tag)
         return tag
-
-    async def update(self, tag_id: UUID, data: TagUpdate) -> Tag | None:
-        tag = await self.session.get(Tag, tag_id)
-        if tag is None:
-            return None
-        for key, value in data.model_dump(exclude_unset=True).items():
-            setattr(tag, key, value)
-        await self.session.flush()
-        await self.session.refresh(tag)
-        return tag
-
-    async def delete(self, tag_id: UUID) -> bool:
-        tag = await self.session.get(Tag, tag_id)
-        if tag is None:
-            return False
-        await self.session.delete(tag)
-        await self.session.flush()
-        return True
 
     async def get_by_node(self, node_id: UUID) -> list[NodeTag]:
         """Get all tags for a node, with tag relationship loaded."""

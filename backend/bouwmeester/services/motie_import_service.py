@@ -10,7 +10,10 @@ import uuid
 from collections import Counter
 from datetime import date, datetime, timedelta
 
+import anthropic
+import httpx
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.config import get_settings
@@ -78,7 +81,7 @@ class MotieImportService:
                     since=None, limit=self.settings.TK_IMPORT_LIMIT
                 )
             logger.info(f"Fetched {len(tk_moties)} moties from Tweede Kamer")
-        except Exception:
+        except httpx.HTTPError:
             logger.exception("Error fetching moties from Tweede Kamer")
             tk_moties = []
 
@@ -91,7 +94,7 @@ class MotieImportService:
             async with ek_client:
                 ek_moties = await ek_client.fetch_moties(since=None)
             logger.info(f"Fetched {len(ek_moties)} moties from Eerste Kamer")
-        except Exception:
+        except httpx.HTTPError:
             logger.exception("Error fetching moties from Eerste Kamer")
             ek_moties = []
 
@@ -130,7 +133,7 @@ class MotieImportService:
                 document_tekst=motie.document_tekst,
                 bestaande_tags=tag_names,
             )
-        except Exception:
+        except (anthropic.APIError, ValueError):
             logger.exception(f"LLM extraction failed for motie {motie.zaak_nummer}")
             extraction = None
 
@@ -168,7 +171,7 @@ class MotieImportService:
                 if not existing_tag:
                     try:
                         await self.tag_repo.create(TagCreate(name=new_tag_name))
-                    except Exception:
+                    except SQLAlchemyError:
                         logger.exception(
                             f"Error creating suggested tag '{new_tag_name}'"
                         )
@@ -205,7 +208,7 @@ class MotieImportService:
             if tag:
                 try:
                     await self.tag_repo.add_tag_to_node(node.id, tag.id)
-                except Exception:
+                except SQLAlchemyError:
                     logger.exception(
                         f"Error tagging node {node.id} with tag '{tag_name}'"
                     )
@@ -245,7 +248,7 @@ class MotieImportService:
                     status="pending",
                 )
                 affected_nodes.append(target_node)
-            except Exception:
+            except SQLAlchemyError:
                 logger.exception(
                     f"Error creating suggested edge to node {target_node.id}"
                 )
@@ -256,7 +259,7 @@ class MotieImportService:
                 await self.notification_service.notify_motie_imported(
                     node, affected_nodes
                 )
-            except Exception:
+            except (SQLAlchemyError, ValueError):
                 logger.exception("Error sending motie import notifications")
 
         # Step 11: Create review task
@@ -296,7 +299,7 @@ class MotieImportService:
                 f"Created review task for motie {motie.zaak_nummer} "
                 f"(unit: {review_unit_id or 'none'})"
             )
-        except Exception:
+        except SQLAlchemyError:
             logger.exception(
                 f"Error creating review task for motie {motie.zaak_nummer}"
             )
@@ -387,24 +390,51 @@ class MotieImportService:
         if not tag_objects:
             return []
 
+        # Batch-load all tag-node mappings upfront (fixes N+1)
+        all_tag_ids = set()
+        for tag in tag_objects.values():
+            all_tag_ids.add(tag.id)
+            if tag.parent_id:
+                all_tag_ids.add(tag.parent_id)
+
+        from bouwmeester.models.tag import NodeTag
+
+        tag_node_stmt = select(NodeTag.tag_id, NodeTag.node_id).where(
+            NodeTag.tag_id.in_(all_tag_ids)
+        )
+        tag_node_result = await self.session.execute(tag_node_stmt)
+        tag_to_nodes: dict[uuid.UUID, list[uuid.UUID]] = {}
+        all_node_ids: set[uuid.UUID] = set()
+        for tag_id, node_id in tag_node_result.all():
+            tag_to_nodes.setdefault(tag_id, []).append(node_id)
+            all_node_ids.add(node_id)
+
+        # Batch-load all candidate nodes (fixes N+1)
+        nodes_by_id: dict[uuid.UUID, CorpusNode] = {}
+        if all_node_ids:
+            nodes_stmt = select(CorpusNode).where(
+                CorpusNode.id.in_(all_node_ids),
+                CorpusNode.node_type != "politieke_input",
+            )
+            nodes_result = await self.session.execute(nodes_stmt)
+            for node in nodes_result.scalars().all():
+                nodes_by_id[node.id] = node
+
         # Score nodes by tag overlap
         # node_id -> {node, score, reasons, tag_names}
         node_scores: dict[str, dict] = {}
 
         for tag_name, tag in tag_objects.items():
             # Exact match: find nodes with this exact tag
-            node_ids = await self.tag_repo.get_nodes_by_tag(tag.id)
-            for node_id in node_ids:
+            for node_id in tag_to_nodes.get(tag.id, []):
                 nid = str(node_id)
-                if nid not in node_scores:
-                    node = await self.session.get(CorpusNode, node_id)
-                    if node and node.node_type != "politieke_input":
-                        node_scores[nid] = {
-                            "node": node,
-                            "score": 0.0,
-                            "reasons": [],
-                            "tag_names": [],
-                        }
+                if nid not in node_scores and node_id in nodes_by_id:
+                    node_scores[nid] = {
+                        "node": nodes_by_id[node_id],
+                        "score": 0.0,
+                        "reasons": [],
+                        "tag_names": [],
+                    }
                 if nid in node_scores:
                     node_scores[nid]["score"] += 1.0
                     node_scores[nid]["reasons"].append(f"tag '{tag_name}'")
@@ -414,30 +444,20 @@ class MotieImportService:
             # Parent tag match: if this tag has a parent, find nodes tagged
             # with the parent (broader category match)
             if tag.parent_id:
-                try:
-                    parent_node_ids = await self.tag_repo.get_nodes_by_tag(
-                        tag.parent_id
-                    )
-                    for node_id in parent_node_ids:
-                        nid = str(node_id)
-                        if nid not in node_scores:
-                            node = await self.session.get(CorpusNode, node_id)
-                            if node and node.node_type != "politieke_input":
-                                node_scores[nid] = {
-                                    "node": node,
-                                    "score": 0.0,
-                                    "reasons": [],
-                                    "tag_names": [],
-                                }
-                        if nid in node_scores:
-                            node_scores[nid]["score"] += 0.7
-                            node_scores[nid]["reasons"].append(
-                                f"parent tag van '{tag_name}'"
-                            )
-                except Exception:
-                    logger.exception(
-                        f"Error finding nodes for parent tag of '{tag_name}'"
-                    )
+                for node_id in tag_to_nodes.get(tag.parent_id, []):
+                    nid = str(node_id)
+                    if nid not in node_scores and node_id in nodes_by_id:
+                        node_scores[nid] = {
+                            "node": nodes_by_id[node_id],
+                            "score": 0.0,
+                            "reasons": [],
+                            "tag_names": [],
+                        }
+                    if nid in node_scores:
+                        node_scores[nid]["score"] += 0.7
+                        node_scores[nid]["reasons"].append(
+                            f"parent tag van '{tag_name}'"
+                        )
 
         # Normalize scores to [0, 1] confidence and build result list
         min_confidence = 0.5
@@ -479,7 +499,7 @@ class MotieImportService:
                     rol="indiener",
                 )
                 self.session.add(stakeholder)
-            except Exception:
+            except SQLAlchemyError:
                 logger.exception(f"Error linking indiener '{naam}' to node")
 
         await self.session.flush()

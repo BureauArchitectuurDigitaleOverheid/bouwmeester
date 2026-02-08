@@ -2,9 +2,10 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
 from bouwmeester.schema.notification import (
@@ -13,7 +14,7 @@ from bouwmeester.schema.notification import (
     SendMessageRequest,
     UnreadCountResponse,
 )
-from bouwmeester.services.mention_service import MentionService
+from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -50,9 +51,7 @@ async def mark_notification_read(
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
     service = NotificationService(db)
-    notification = await service.mark_read(id)
-    if notification is None:
-        raise HTTPException(status_code=404, detail="Notification not found")
+    notification = require_found(await service.mark_read(id), "Notification")
     return NotificationResponse.model_validate(notification)
 
 
@@ -71,12 +70,8 @@ async def send_message(
     body: SendMessageRequest,
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
-    recipient = await db.get(Person, body.person_id)
-    if recipient is None:
-        raise HTTPException(status_code=404, detail="Recipient not found")
-    sender = await db.get(Person, body.sender_id)
-    if sender is None:
-        raise HTTPException(status_code=404, detail="Sender not found")
+    recipient = require_found(await db.get(Person, body.person_id), "Recipient")
+    sender = require_found(await db.get(Person, body.sender_id), "Sender")
 
     is_agent = recipient.is_agent
     notif_type = "agent_prompt" if is_agent else "direct_message"
@@ -92,20 +87,11 @@ async def send_message(
     )
     notification = await service.repo.create(data)
 
-    # Sync mentions from message body
-    if body.message:
-        mention_svc = MentionService(db)
-        new_mentions = await mention_svc.sync_mentions(
-            "notification", notification.id, body.message, body.sender_id
-        )
-        for m in new_mentions:
-            if m.mention_type == "person" and m.target_id != body.person_id:
-                await service.notify_mention(
-                    m.target_id,
-                    "notification",
-                    title,
-                    sender_id=body.sender_id,
-                )
+    await sync_and_notify_mentions(
+        db, "notification", notification.id, body.message, title,
+        sender_id=body.sender_id,
+        exclude_person_id=body.person_id,
+    )
 
     await db.commit()
     return NotificationResponse.model_validate(notification)

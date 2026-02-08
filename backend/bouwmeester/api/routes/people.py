@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
@@ -86,9 +87,7 @@ async def get_person_summary(
 ) -> PersonSummaryResponse:
     """Compact summary: task counts, top open tasks, and stakeholder nodes."""
     repo = PersonRepository(db)
-    person = await repo.get(id)
-    if person is None:
-        raise HTTPException(status_code=404, detail="Person not found")
+    require_found(await repo.get(id), "Person")
 
     # Task counts
     open_count_stmt = (
@@ -152,9 +151,7 @@ async def get_person(
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
     repo = PersonRepository(db)
-    person = await repo.get(id)
-    if person is None:
-        raise HTTPException(status_code=404, detail="Person not found")
+    person = require_found(await repo.get(id), "Person")
     return PersonDetailResponse.model_validate(person)
 
 
@@ -165,9 +162,7 @@ async def update_person(
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
     repo = PersonRepository(db)
-    person = await repo.update(id, data)
-    if person is None:
-        raise HTTPException(status_code=404, detail="Person not found")
+    person = require_found(await repo.update(id, data), "Person")
     return PersonDetailResponse.model_validate(person)
 
 
@@ -191,9 +186,7 @@ async def list_person_organisaties(
     actief: bool = Query(True),
     db: AsyncSession = Depends(get_db),
 ) -> list[PersonOrganisatieResponse]:
-    person = await db.get(Person, id)
-    if person is None:
-        raise HTTPException(status_code=404, detail="Person not found")
+    require_found(await db.get(Person, id), "Person")
 
     stmt = (
         select(PersonOrganisatieEenheid, OrganisatieEenheid.naam)
@@ -228,13 +221,12 @@ async def add_person_organisatie(
     data: PersonOrganisatieCreate,
     db: AsyncSession = Depends(get_db),
 ) -> PersonOrganisatieResponse:
-    person = await db.get(Person, id)
-    if person is None:
-        raise HTTPException(status_code=404, detail="Person not found")
+    require_found(await db.get(Person, id), "Person")
 
-    eenheid = await db.get(OrganisatieEenheid, data.organisatie_eenheid_id)
-    if eenheid is None:
-        raise HTTPException(status_code=404, detail="Organisatie-eenheid not found")
+    eenheid = require_found(
+        await db.get(OrganisatieEenheid, data.organisatie_eenheid_id),
+        "Organisatie-eenheid",
+    )
 
     # Check for existing active placement in same org unit
     existing = await db.execute(
@@ -287,9 +279,7 @@ async def update_person_organisatie(
         PersonOrganisatieEenheid.person_id == id,
     )
     result = await db.execute(stmt)
-    placement = result.scalar_one_or_none()
-    if placement is None:
-        raise HTTPException(status_code=404, detail="Placement not found")
+    placement = require_found(result.scalar_one_or_none(), "Placement")
 
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -323,8 +313,6 @@ async def delete_person_organisatie(
         PersonOrganisatieEenheid.person_id == id,
     )
     result = await db.execute(stmt)
-    placement = result.scalar_one_or_none()
-    if placement is None:
-        raise HTTPException(status_code=404, detail="Placement not found")
+    placement = require_found(result.scalar_one_or_none(), "Placement")
     await db.delete(placement)
     await db.flush()

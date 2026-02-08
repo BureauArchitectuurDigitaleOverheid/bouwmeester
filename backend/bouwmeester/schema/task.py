@@ -22,8 +22,8 @@ class TaskPriority(enum.StrEnum):
 
 
 class TaskBase(BaseModel):
-    title: str
-    description: str | None = None
+    title: str = Field(min_length=1, max_length=500)
+    description: str | None = Field(None, max_length=10000)
     node_id: UUID
     assignee_id: UUID | None = None
     organisatie_eenheid_id: UUID | None = None
@@ -41,8 +41,8 @@ class TaskCreate(TaskBase):
 
 
 class TaskUpdate(BaseModel):
-    title: str | None = None
-    description: str | None = None
+    title: str | None = Field(None, min_length=1, max_length=500)
+    description: str | None = Field(None, max_length=10000)
     node_id: UUID | None = None
     assignee_id: UUID | None = None
     organisatie_eenheid_id: UUID | None = None

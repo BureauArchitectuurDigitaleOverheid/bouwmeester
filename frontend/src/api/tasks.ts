@@ -30,10 +30,6 @@ export async function deleteTask(id: string): Promise<void> {
   return apiDelete(`/api/tasks/${id}`);
 }
 
-export async function getMyTasks(personId: string): Promise<Task[]> {
-  return apiGet<Task[]>('/api/tasks', { assignee_id: personId });
-}
-
 export async function getUnassignedTasks(organisatieEenheidId?: string): Promise<Task[]> {
   const params: Record<string, string> = {};
   if (organisatieEenheidId) params.organisatie_eenheid_id = organisatieEenheidId;

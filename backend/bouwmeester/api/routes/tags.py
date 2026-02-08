@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import (
@@ -53,9 +54,7 @@ async def create_tag(
 @router.get("/{tag_id}", response_model=TagResponse)
 async def get_tag(tag_id: UUID, db: AsyncSession = Depends(get_db)) -> TagResponse:
     repo = TagRepository(db)
-    tag = await repo.get_by_id(tag_id)
-    if tag is None:
-        raise HTTPException(status_code=404, detail="Tag not found")
+    tag = require_found(await repo.get_by_id(tag_id), "Tag")
     return TagResponse.model_validate(tag)
 
 
@@ -64,9 +63,7 @@ async def update_tag(
     tag_id: UUID, data: TagUpdate, db: AsyncSession = Depends(get_db)
 ) -> TagResponse:
     repo = TagRepository(db)
-    tag = await repo.update(tag_id, data)
-    if tag is None:
-        raise HTTPException(status_code=404, detail="Tag not found")
+    tag = require_found(await repo.update(tag_id, data), "Tag")
     return TagResponse.model_validate(tag)
 
 

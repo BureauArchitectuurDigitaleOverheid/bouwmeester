@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.corpus_node import (
@@ -28,9 +29,8 @@ from bouwmeester.schema.person import (
 )
 from bouwmeester.schema.tag import NodeTagCreate, NodeTagResponse, TagCreate
 from bouwmeester.schema.task import TaskResponse
-from bouwmeester.services.mention_service import MentionService
+from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.node_service import NodeService
-from bouwmeester.services.notification_service import NotificationService
 
 # Resolve forward reference to EdgeResponse in CorpusNodeWithEdges.
 CorpusNodeWithEdges.model_rebuild()
@@ -59,24 +59,10 @@ async def create_node(
     service = NodeService(db)
     node = await service.create(data)
 
-    # Sync mentions from description
-    if data.description:
-        mention_svc = MentionService(db)
-        new_mentions = await mention_svc.sync_mentions(
-            "node",
-            node.id,
-            data.description,
-            None,
-        )
-        notif_svc = NotificationService(db)
-        for m in new_mentions:
-            if m.mention_type == "person":
-                await notif_svc.notify_mention(
-                    m.target_id,
-                    "node",
-                    node.title,
-                    source_node_id=node.id,
-                )
+    await sync_and_notify_mentions(
+        db, "node", node.id, data.description, node.title,
+        source_node_id=node.id,
+    )
 
     return CorpusNodeResponse.model_validate(node)
 
@@ -87,9 +73,7 @@ async def get_node(
     db: AsyncSession = Depends(get_db),
 ) -> CorpusNodeWithEdges:
     service = NodeService(db)
-    node = await service.get(id)
-    if node is None:
-        raise HTTPException(status_code=404, detail="Node not found")
+    node = require_found(await service.get(id), "Node")
     edges_from = [EdgeResponse.model_validate(e) for e in node.edges_from]
     edges_to = [EdgeResponse.model_validate(e) for e in node.edges_to]
     return CorpusNodeWithEdges(
@@ -113,28 +97,12 @@ async def update_node(
     db: AsyncSession = Depends(get_db),
 ) -> CorpusNodeResponse:
     service = NodeService(db)
-    node = await service.update(id, data)
-    if node is None:
-        raise HTTPException(status_code=404, detail="Node not found")
+    node = require_found(await service.update(id, data), "Node")
 
-    # Sync mentions from description
-    if data.description is not None:
-        mention_svc = MentionService(db)
-        new_mentions = await mention_svc.sync_mentions(
-            "node",
-            node.id,
-            data.description,
-            None,
-        )
-        notif_svc = NotificationService(db)
-        for m in new_mentions:
-            if m.mention_type == "person":
-                await notif_svc.notify_mention(
-                    m.target_id,
-                    "node",
-                    node.title,
-                    source_node_id=node.id,
-                )
+    await sync_and_notify_mentions(
+        db, "node", node.id, data.description, node.title,
+        source_node_id=node.id,
+    )
 
     return CorpusNodeResponse.model_validate(node)
 
@@ -157,8 +125,7 @@ async def get_neighbors(
 ) -> GraphNeighborsResponse:
     service = NodeService(db)
     result = await service.get_neighbors(id)
-    if result["node"] is None:
-        raise HTTPException(status_code=404, detail="Node not found")
+    require_found(result["node"], "Node")
     return GraphNeighborsResponse(
         node=CorpusNodeResponse.model_validate(result["node"]),
         neighbors=[
@@ -194,9 +161,7 @@ async def get_node_tasks(
 ) -> list[TaskResponse]:
     # Verify node exists
     service = NodeService(db)
-    node = await service.get(id)
-    if node is None:
-        raise HTTPException(status_code=404, detail="Node not found")
+    require_found(await service.get(id), "Node")
 
     task_repo = TaskRepository(db)
     tasks = await task_repo.get_by_node(id, skip=skip, limit=limit)
@@ -215,9 +180,7 @@ async def get_node_stakeholders(
 
     # Verify node exists
     service = NodeService(db)
-    node = await service.get(id)
-    if node is None:
-        raise HTTPException(status_code=404, detail="Node not found")
+    require_found(await service.get(id), "Node")
 
     stmt = (
         select(NodeStakeholder)
@@ -253,13 +216,9 @@ async def add_node_stakeholder(
     from bouwmeester.models.person import Person
 
     service = NodeService(db)
-    node = await service.get(id)
-    if node is None:
-        raise HTTPException(status_code=404, detail="Node not found")
+    require_found(await service.get(id), "Node")
 
-    person = await db.get(Person, data.person_id)
-    if person is None:
-        raise HTTPException(status_code=404, detail="Person not found")
+    require_found(await db.get(Person, data.person_id), "Person")
 
     stakeholder = NodeStakeholder(
         node_id=id,
@@ -310,9 +269,7 @@ async def update_node_stakeholder(
         .options(selectinload(NodeStakeholder.person))
     )
     result = await db.execute(stmt)
-    stakeholder = result.scalar_one_or_none()
-    if stakeholder is None:
-        raise HTTPException(status_code=404, detail="Stakeholder not found")
+    stakeholder = require_found(result.scalar_one_or_none(), "Stakeholder")
 
     stakeholder.rol = data.rol
     await db.commit()
@@ -343,9 +300,7 @@ async def remove_node_stakeholder(
         NodeStakeholder.node_id == id,
     )
     result = await db.execute(stmt)
-    stakeholder = result.scalar_one_or_none()
-    if stakeholder is None:
-        raise HTTPException(status_code=404, detail="Stakeholder not found")
+    stakeholder = require_found(result.scalar_one_or_none(), "Stakeholder")
 
     await db.delete(stakeholder)
     await db.commit()
@@ -359,9 +314,7 @@ async def get_node_tags(
     from bouwmeester.repositories.tag import TagRepository
 
     service = NodeService(db)
-    node = await service.get(id)
-    if node is None:
-        raise HTTPException(status_code=404, detail="Node not found")
+    require_found(await service.get(id), "Node")
 
     tag_repo = TagRepository(db)
     node_tags = await tag_repo.get_by_node(id)
@@ -381,9 +334,7 @@ async def add_tag_to_node(
     from bouwmeester.repositories.tag import TagRepository
 
     service = NodeService(db)
-    node = await service.get(id)
-    if node is None:
-        raise HTTPException(status_code=404, detail="Node not found")
+    require_found(await service.get(id), "Node")
 
     tag_repo = TagRepository(db)
 

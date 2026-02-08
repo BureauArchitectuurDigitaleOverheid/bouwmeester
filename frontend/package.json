@@ -20,6 +20,7 @@
     "@types/dagre": "^0.7.53",
     "clsx": "^2.1.1",
     "dagre": "^0.8.5",
+    "dompurify": "^3.3.1",
     "lucide-react": "^0.563.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.0.0",
+    "@types/dompurify": "^3.0.5",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.3",

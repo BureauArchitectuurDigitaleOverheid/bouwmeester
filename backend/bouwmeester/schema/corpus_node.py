@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     from bouwmeester.schema.edge import EdgeResponse
@@ -24,10 +24,10 @@ class NodeType(enum.StrEnum):
 
 
 class CorpusNodeBase(BaseModel):
-    title: str
-    description: str | None = None
+    title: str = Field(min_length=1, max_length=500)
+    description: str | None = Field(None, max_length=10000)
     node_type: NodeType
-    status: str = "actief"
+    status: str = Field("actief", max_length=50)
 
 
 class CorpusNodeCreate(CorpusNodeBase):
@@ -35,9 +35,9 @@ class CorpusNodeCreate(CorpusNodeBase):
 
 
 class CorpusNodeUpdate(BaseModel):
-    title: str | None = None
-    description: str | None = None
-    status: str | None = None
+    title: str | None = Field(None, min_length=1, max_length=500)
+    description: str | None = Field(None, max_length=10000)
+    status: str | None = Field(None, max_length=50)
 
 
 class CorpusNodeResponse(CorpusNodeBase):

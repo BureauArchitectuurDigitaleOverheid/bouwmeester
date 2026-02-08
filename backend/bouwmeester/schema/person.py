@@ -8,10 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class PersonBase(BaseModel):
-    naam: str
-    email: str | None = None
-    functie: str | None = None
-    description: str | None = None
+    naam: str = Field(min_length=1, max_length=200)
+    email: str | None = Field(None, max_length=254)
+    functie: str | None = Field(None, max_length=200)
+    description: str | None = Field(None, max_length=5000)
     is_agent: bool = False
 
 
@@ -20,10 +20,10 @@ class PersonCreate(PersonBase):
 
 
 class PersonUpdate(BaseModel):
-    naam: str | None = None
-    email: str | None = None
-    functie: str | None = None
-    description: str | None = None
+    naam: str | None = Field(None, min_length=1, max_length=200)
+    email: str | None = Field(None, max_length=254)
+    functie: str | None = Field(None, max_length=200)
+    description: str | None = Field(None, max_length=5000)
     is_agent: bool | None = None
     api_key: str | None = None
 
