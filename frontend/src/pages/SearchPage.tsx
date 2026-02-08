@@ -12,7 +12,7 @@ import { useVocabulary } from '@/contexts/VocabularyContext';
 export function SearchPage() {
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
-  const { nodeLabel, nodeAltLabel } = useVocabulary();
+  const { nodeLabel } = useVocabulary();
   const { data, isLoading, isFetched } = useSearch(query);
 
   const results = data?.results ?? [];

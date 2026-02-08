@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { clsx } from 'clsx';
-import { ArrowLeft, Pencil, Trash2, Calendar, Link as LinkIcon, Users, X, ExternalLink, UserCircle, Plus } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Calendar, Link as LinkIcon, Users, X, ExternalLink, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
