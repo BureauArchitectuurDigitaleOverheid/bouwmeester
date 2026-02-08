@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
+import { Select } from '@/components/common/Select';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useCreateNode } from '@/hooks/useNodes';
 import { useNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
-import { NodeType } from '@/types';
+import { NodeType, NodeStatus, NODE_STATUS_LABELS } from '@/types';
 
 interface NodeCreateFormProps {
   open: boolean;
@@ -18,7 +19,7 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
   const [title, setTitle] = useState('');
   const [nodeType, setNodeType] = useState<string>(NodeType.DOSSIER);
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState(NodeStatus.ACTIEF);
   const createNode = useCreateNode();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -36,7 +37,7 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
     setTitle('');
     setNodeType(NodeType.DOSSIER);
     setDescription('');
-    setStatus('');
+    setStatus(NodeStatus.ACTIEF);
     onClose();
   };
 
@@ -84,11 +85,11 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
           />
         </div>
 
-        <Input
+        <Select
           label="Status"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          placeholder="Bijv. concept, actief, afgerond..."
+          options={Object.entries(NODE_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
         />
       </form>
     </Modal>

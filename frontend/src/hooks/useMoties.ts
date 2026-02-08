@@ -57,7 +57,7 @@ export function useCompleteMotieReview() {
     mutationFn: ({ id, data }: { id: string; data: CompleteReviewData }) =>
       completeMotieReview(id, data),
     errorMessage: 'Fout bij afronden review',
-    invalidateKeys: [...MOTIE_INVALIDATE_KEYS, ['tasks'], ['nodes']],
+    invalidateKeys: [...MOTIE_INVALIDATE_KEYS, ['tasks', 'list'], ['nodes', 'list']],
   });
 }
 
