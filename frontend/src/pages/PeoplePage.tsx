@@ -25,7 +25,7 @@ export function PeoplePage() {
     setShowForm(true);
   };
 
-  const handleFormSubmit = (data: PersonCreate, orgEenheidId?: string) => {
+  const handleFormSubmit = (data: PersonCreate, orgEenheidId?: string, dienstverband?: string) => {
     if (editPerson) {
       updatePersonMutation.mutate(
         { id: editPerson.id, data },
@@ -39,7 +39,7 @@ export function PeoplePage() {
               personId: person.id,
               data: {
                 organisatie_eenheid_id: orgEenheidId,
-                dienstverband: 'in_dienst',
+                dienstverband: dienstverband || 'in_dienst',
                 start_datum: new Date().toISOString().split('T')[0],
               },
             });

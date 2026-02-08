@@ -6,7 +6,7 @@ import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
 import { usePeople } from '@/hooks/usePeople';
-import { FUNCTIE_LABELS } from '@/types';
+import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS } from '@/types';
 import type { Person, PersonCreate } from '@/types';
 
 // Character names from Bordewijk's novel "Karakter" — used as agent names
@@ -37,7 +37,7 @@ const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS).m
 interface PersonEditFormProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: PersonCreate, orgEenheidId?: string) => void;
+  onSubmit: (data: PersonCreate, orgEenheidId?: string, dienstverband?: string) => void;
   isLoading?: boolean;
   editData?: Person | null;
   defaultIsAgent?: boolean;
@@ -60,6 +60,7 @@ export function PersonEditForm({
   const [description, setDescription] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [orgEenheidId, setOrgEenheidId] = useState('');
+  const [dienstverband, setDienstverband] = useState('in_dienst');
   const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
 
   const { data: allPeople = [] } = usePeople();
@@ -91,6 +92,7 @@ export function PersonEditForm({
         setDescription('');
         setApiKey(defaultIsAgent ? generateMockApiKey() : '');
         setOrgEenheidId(defaultOrgEenheidId || '');
+        setDienstverband('in_dienst');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,6 +115,7 @@ export function PersonEditForm({
         api_key: isAgent ? apiKey : undefined,
       },
       orgEenheidId || undefined,
+      orgEenheidId ? dienstverband : undefined,
     );
   };
 
@@ -223,6 +226,24 @@ export function PersonEditForm({
             value={orgEenheidId}
             onChange={setOrgEenheidId}
           />
+        )}
+        {!editData && orgEenheidId && (
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">
+              Dienstverband
+            </label>
+            <select
+              value={dienstverband}
+              onChange={(e) => setDienstverband(e.target.value)}
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-text bg-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+            >
+              {Object.entries(DIENSTVERBAND_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
       </form>
     </Modal>
