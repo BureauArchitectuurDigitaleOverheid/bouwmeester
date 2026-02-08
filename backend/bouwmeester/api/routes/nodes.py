@@ -46,9 +46,7 @@ async def list_nodes(
     return [CorpusNodeResponse.model_validate(n) for n in nodes]
 
 
-@router.post(
-    "", response_model=CorpusNodeResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("", response_model=CorpusNodeResponse, status_code=status.HTTP_201_CREATED)
 async def create_node(
     data: CorpusNodeCreate,
     db: AsyncSession = Depends(get_db),
@@ -60,13 +58,19 @@ async def create_node(
     if data.description:
         mention_svc = MentionService(db)
         new_mentions = await mention_svc.sync_mentions(
-            "node", node.id, data.description, None,
+            "node",
+            node.id,
+            data.description,
+            None,
         )
         notif_svc = NotificationService(db)
         for m in new_mentions:
             if m.mention_type == "person":
                 await notif_svc.notify_mention(
-                    m.target_id, "node", node.title, source_node_id=node.id,
+                    m.target_id,
+                    "node",
+                    node.title,
+                    source_node_id=node.id,
                 )
 
     return CorpusNodeResponse.model_validate(node)
@@ -112,13 +116,19 @@ async def update_node(
     if data.description is not None:
         mention_svc = MentionService(db)
         new_mentions = await mention_svc.sync_mentions(
-            "node", node.id, data.description, None,
+            "node",
+            node.id,
+            data.description,
+            None,
         )
         notif_svc = NotificationService(db)
         for m in new_mentions:
             if m.mention_type == "person":
                 await notif_svc.notify_mention(
-                    m.target_id, "node", node.title, source_node_id=node.id,
+                    m.target_id,
+                    "node",
+                    node.title,
+                    source_node_id=node.id,
                 )
 
     return CorpusNodeResponse.model_validate(node)

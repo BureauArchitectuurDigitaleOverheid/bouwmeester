@@ -124,12 +124,8 @@ class GraphRepository:
             if i > 0:
                 prev_id = visited_ids[i - 1]
                 edge_stmt = select(Edge).where(
-                    (
-                        (Edge.from_node_id == prev_id) & (Edge.to_node_id == nid)
-                    )
-                    | (
-                        (Edge.from_node_id == nid) & (Edge.to_node_id == prev_id)
-                    )
+                    ((Edge.from_node_id == prev_id) & (Edge.to_node_id == nid))
+                    | ((Edge.from_node_id == nid) & (Edge.to_node_id == prev_id))
                 )
                 edge_result = await self.session.execute(edge_stmt)
                 edge = edge_result.scalar_one_or_none()

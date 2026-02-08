@@ -195,9 +195,7 @@ class ImportService:
                 from_node = result_from.scalar_one_or_none()
 
                 if from_node is None:
-                    errors.append(
-                        f"Rij {row_num}: node '{from_title}' niet gevonden"
-                    )
+                    errors.append(f"Rij {row_num}: node '{from_title}' niet gevonden")
                     skipped += 1
                     continue
 
@@ -207,9 +205,7 @@ class ImportService:
                 to_node = result_to.scalar_one_or_none()
 
                 if to_node is None:
-                    errors.append(
-                        f"Rij {row_num}: node '{to_title}' niet gevonden"
-                    )
+                    errors.append(f"Rij {row_num}: node '{to_title}' niet gevonden")
                     skipped += 1
                     continue
 

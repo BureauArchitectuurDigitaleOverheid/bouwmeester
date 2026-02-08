@@ -54,9 +54,7 @@ class ArchiMateExportService:
 
     async def export_archimate_xml(self) -> str:
         """Export full corpus as ArchiMate Exchange Format XML."""
-        nodes_stmt = select(CorpusNode).order_by(
-            CorpusNode.created_at.desc()
-        )
+        nodes_stmt = select(CorpusNode).order_by(CorpusNode.created_at.desc())
         nodes_result = await self.session.execute(nodes_stmt)
         nodes = list(nodes_result.scalars().all())
 
@@ -88,23 +86,17 @@ class ArchiMateExportService:
 
         metadata = ET.SubElement(root, "metadata")
         schema = ET.SubElement(metadata, "schema")
-        schema.text = (
-            "http://www.opengroup.org/xsd/archimate/3.0/"
-        )
+        schema.text = "http://www.opengroup.org/xsd/archimate/3.0/"
         schema_ver = ET.SubElement(metadata, "schemaversion")
         schema_ver.text = "3.1"
 
         # Elements
         elements_el = ET.SubElement(root, "elements")
         for node in nodes:
-            archimate_type = NODE_TYPE_TO_ARCHIMATE.get(
-                node.node_type, "Grouping"
-            )
+            archimate_type = NODE_TYPE_TO_ARCHIMATE.get(node.node_type, "Grouping")
             elem = ET.SubElement(elements_el, "element")
             elem.set("identifier", f"id-{node.id}")
-            elem.set(
-                "xsi:type", archimate_type
-            )
+            elem.set("xsi:type", archimate_type)
 
             elem_name = ET.SubElement(elem, "name")
             elem_name.set("xml:lang", "nl")
@@ -126,9 +118,7 @@ class ArchiMateExportService:
 
             if node.status:
                 prop_status = ET.SubElement(props, "property")
-                prop_status.set(
-                    "propertyDefinitionRef", "pd-status"
-                )
+                prop_status.set("propertyDefinitionRef", "pd-status")
                 val_s = ET.SubElement(prop_status, "value")
                 val_s.set("xml:lang", "nl")
                 val_s.text = node.status
@@ -136,9 +126,7 @@ class ArchiMateExportService:
         # Relationships
         rels_el = ET.SubElement(root, "relationships")
         for edge in edges:
-            archimate_rel = EDGE_TYPE_TO_ARCHIMATE.get(
-                edge.edge_type_id, "Association"
-            )
+            archimate_rel = EDGE_TYPE_TO_ARCHIMATE.get(edge.edge_type_id, "Association")
             rel = ET.SubElement(rels_el, "relationship")
             rel.set("identifier", f"id-{edge.id}")
             rel.set("xsi:type", archimate_rel)
@@ -153,9 +141,7 @@ class ArchiMateExportService:
             # Store original edge type as property
             props = ET.SubElement(rel, "properties")
             prop_et = ET.SubElement(props, "property")
-            prop_et.set(
-                "propertyDefinitionRef", "pd-edge-type"
-            )
+            prop_et.set("propertyDefinitionRef", "pd-edge-type")
             val_et = ET.SubElement(prop_et, "value")
             val_et.set("xml:lang", "nl")
             val_et.text = edge.edge_type_id
@@ -188,9 +174,7 @@ class ArchiMateExportService:
         org_el = ET.SubElement(root, "organizations")
         type_groups: dict[str, list[str]] = {}
         for node in nodes:
-            type_groups.setdefault(node.node_type, []).append(
-                str(node.id)
-            )
+            type_groups.setdefault(node.node_type, []).append(str(node.id))
         for node_type, node_ids in type_groups.items():
             item = ET.SubElement(org_el, "item")
             label = ET.SubElement(item, "label")
@@ -201,16 +185,11 @@ class ArchiMateExportService:
                 sub.set("identifierRef", f"id-{nid}")
 
         # Generate XML string
-        now = datetime.now(UTC).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         tree = ET.ElementTree(root)
         ET.indent(tree, space="  ")
-        xml_str = ET.tostring(
-            root, encoding="unicode", xml_declaration=False
-        )
+        xml_str = ET.tostring(root, encoding="unicode", xml_declaration=False)
         return (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
-            f"<!-- Exported from Bouwmeester on {now} -->\n"
-            + xml_str
+            f"<!-- Exported from Bouwmeester on {now} -->\n" + xml_str
         )

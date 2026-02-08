@@ -16,11 +16,7 @@ class TaskRepository:
         self.session = session
 
     async def get(self, id: UUID) -> Task | None:
-        stmt = (
-            select(Task)
-            .where(Task.id == id)
-            .options(selectinload(Task.assignee))
-        )
+        stmt = select(Task).where(Task.id == id).options(selectinload(Task.assignee))
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -31,10 +27,7 @@ class TaskRepository:
         status: str | None = None,
     ) -> list[Task]:
         stmt = (
-            select(Task)
-            .options(selectinload(Task.assignee))
-            .offset(skip)
-            .limit(limit)
+            select(Task).options(selectinload(Task.assignee)).offset(skip).limit(limit)
         )
         if status is not None:
             stmt = stmt.where(Task.status == status)
