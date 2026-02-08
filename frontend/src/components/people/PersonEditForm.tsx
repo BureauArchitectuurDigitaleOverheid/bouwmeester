@@ -5,7 +5,21 @@ import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { useOrganisatieFlat, useCreateOrganisatieEenheid } from '@/hooks/useOrganisatie';
+import { usePeople } from '@/hooks/usePeople';
 import type { Person, PersonCreate } from '@/types';
+
+// Character names from Bordewijk's novel "Karakter" — used as agent names
+const KARAKTER_NAMEN = [
+  // Hoofdpersonen
+  'Dreverhaven', 'Katadreuffe', 'Joba',
+  // Kantoor & juridisch
+  'Stroomkoning', 'De Gankelaar', 'Rentenstein', 'Carlion', 'Schuwagt',
+  'Lorna te George', 'Graanoogst', 'Piaat',
+  // Overige personages
+  'Jan Maan', 'Harm Knol Hein', 'De Merree', 'Kalvelage', 'Sibculo',
+  'Hamerslag', 'Den Hieperboree', 'Wever', 'Kees Adam',
+  'Burgeik', 'Van den Born', 'Iris',
+];
 
 function generateMockApiKey(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -62,6 +76,7 @@ export function PersonEditForm({
 
   const { data: orgEenheden = [] } = useOrganisatieFlat();
   const createOrgMutation = useCreateOrganisatieEenheid();
+  const { data: allPeople = [] } = usePeople();
 
   const orgOptions = orgEenheden.map((e) => ({
     value: e.id,
@@ -84,7 +99,14 @@ export function PersonEditForm({
           setRolOptions((prev) => [...prev, { value: editData.rol!, label: editData.rol! }]);
         }
       } else {
-        setNaam('');
+        // For new agents, pick next available Karakter name
+        if (defaultIsAgent) {
+          const usedNames = new Set(allPeople.filter(p => p.is_agent).map(p => p.naam));
+          const nextName = KARAKTER_NAMEN.find(n => !usedNames.has(n)) || '';
+          setNaam(nextName);
+        } else {
+          setNaam('');
+        }
         setEmail('');
         setOrganisatieEenheidId(defaultOrgEenheidId || '');
         setAfdeling('');

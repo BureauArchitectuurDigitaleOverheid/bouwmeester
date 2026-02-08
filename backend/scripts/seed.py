@@ -677,28 +677,29 @@ async def seed(db: AsyncSession) -> None:
         ))
 
     # Domain-specialist agents in "Afdeling Zonder Mensen"
+    # Named after characters from Bordewijk's novel "Karakter"
     agent_identiteit = await create_agent(
-        "Digitale Identiteit Specialist",
+        "Dreverhaven",
         "Beleidsmedewerker digitale identiteit en authenticatie (eID, DigiD, eIDAS)",
-        afd_zonder_mensen,
+        afd_zonder_mensen, rol="afdelingshoofd",
     )
     agent_open = await create_agent(
-        "Open Overheid Analist",
+        "Katadreuffe",
         "Beleidsmedewerker transparantie, Woo-implementatie en actieve openbaarmaking",
         afd_zonder_mensen,
     )
     agent_algo = await create_agent(
-        "Algoritmetoezicht Adviseur",
+        "Stroomkoning",
         "Adviseur algoritmeverantwoording, AI-verordening en publieke waarden",
         afd_zonder_mensen, rol="adviseur",
     )
     agent_interop = await create_agent(
-        "Interoperabiliteit Specialist",
+        "De Gankelaar",
         "Beleidsmedewerker standaarden, stelselafspraken en Europese interoperabiliteit",
         afd_zonder_mensen,
     )
     agent_infosec = await create_agent(
-        "Informatieveiligheid Analist",
+        "Rentenstein",
         "Beleidsmedewerker BIO-naleving, dreigingsanalyse en informatiebeveiliging",
         afd_zonder_mensen,
     )
