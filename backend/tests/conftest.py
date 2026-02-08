@@ -5,6 +5,7 @@ so tests never commit real data.
 """
 
 import uuid
+from datetime import date
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -163,6 +164,7 @@ async def sample_edge(
 @pytest.fixture
 async def sample_organisatie(db_session: AsyncSession):
     """Create an organisatie-eenheid for testing."""
+    from bouwmeester.models.org_naam import OrganisatieEenheidNaam
     from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 
     org = OrganisatieEenheid(
@@ -173,12 +175,20 @@ async def sample_organisatie(db_session: AsyncSession):
     )
     db_session.add(org)
     await db_session.flush()
+    db_session.add(
+        OrganisatieEenheidNaam(
+            eenheid_id=org.id, naam=org.naam, geldig_van=date.today()
+        )
+    )
+    await db_session.flush()
     return org
 
 
 @pytest.fixture
 async def child_organisatie(db_session: AsyncSession, sample_organisatie):
     """Create a child organisatie-eenheid for testing."""
+    from bouwmeester.models.org_naam import OrganisatieEenheidNaam
+    from bouwmeester.models.org_parent import OrganisatieEenheidParent
     from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 
     org = OrganisatieEenheid(
@@ -189,6 +199,19 @@ async def child_organisatie(db_session: AsyncSession, sample_organisatie):
         beschrijving="Een test directie",
     )
     db_session.add(org)
+    await db_session.flush()
+    db_session.add(
+        OrganisatieEenheidNaam(
+            eenheid_id=org.id, naam=org.naam, geldig_van=date.today()
+        )
+    )
+    db_session.add(
+        OrganisatieEenheidParent(
+            eenheid_id=org.id,
+            parent_id=sample_organisatie.id,
+            geldig_van=date.today(),
+        )
+    )
     await db_session.flush()
     return org
 
