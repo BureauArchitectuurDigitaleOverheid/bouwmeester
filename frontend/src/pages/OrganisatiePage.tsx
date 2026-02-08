@@ -14,7 +14,7 @@ import {
   useUpdateOrganisatieEenheid,
   useDeleteOrganisatieEenheid,
 } from '@/hooks/useOrganisatie';
-import { useCreatePerson, useUpdatePerson } from '@/hooks/usePeople';
+import { useCreatePerson, useUpdatePerson, useAddPersonOrganisatie } from '@/hooks/usePeople';
 import type { OrganisatieEenheid, OrganisatieEenheidCreate, OrganisatieEenheidUpdate, Person, PersonCreate } from '@/types';
 
 export function OrganisatiePage() {
@@ -33,6 +33,7 @@ export function OrganisatiePage() {
   const deleteMutation = useDeleteOrganisatieEenheid();
   const createPersonMutation = useCreatePerson();
   const updatePersonMutation = useUpdatePerson();
+  const addPlacementMutation = useAddPersonOrganisatie();
 
   const handleAdd = (parentId: string | null) => {
     setEditData(null);
@@ -107,7 +108,20 @@ export function OrganisatiePage() {
       );
     } else {
       createPersonMutation.mutate(data, {
-        onSuccess: () => setShowPersonForm(false),
+        onSuccess: (person) => {
+          // Auto-create placement for current org unit
+          if (selectedId) {
+            addPlacementMutation.mutate({
+              personId: person.id,
+              data: {
+                organisatie_eenheid_id: selectedId,
+                dienstverband: 'in_dienst',
+                start_datum: new Date().toISOString().split('T')[0],
+              },
+            });
+          }
+          setShowPersonForm(false);
+        },
       });
     }
   };
@@ -118,9 +132,13 @@ export function OrganisatiePage() {
   };
 
   const handleDropPerson = (personId: string, targetNodeId: string) => {
-    updatePersonMutation.mutate({
-      id: personId,
-      data: { organisatie_eenheid_id: targetNodeId },
+    addPlacementMutation.mutate({
+      personId,
+      data: {
+        organisatie_eenheid_id: targetNodeId,
+        dienstverband: 'in_dienst',
+        start_datum: new Date().toISOString().split('T')[0],
+      },
     });
   };
 
@@ -224,7 +242,6 @@ export function OrganisatiePage() {
         onSubmit={handlePersonFormSubmit}
         isLoading={createPersonMutation.isPending || updatePersonMutation.isPending}
         editData={editPerson}
-        defaultOrgEenheidId={selectedId}
         defaultIsAgent={defaultIsAgent}
       />
     </div>

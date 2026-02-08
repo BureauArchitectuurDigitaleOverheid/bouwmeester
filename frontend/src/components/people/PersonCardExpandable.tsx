@@ -98,10 +98,16 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 {copied ? 'Gekopieerd!' : person.email}
               </button>
             )}
-            {person.functie && (
+            {person.functie && !person.is_agent && (
               <span className="flex items-center gap-1">
                 <Briefcase className="h-3 w-3" />
                 {FUNCTIE_LABELS[person.functie] || person.functie}
+              </span>
+            )}
+            {person.description && person.is_agent && (
+              <span className="flex items-center gap-1 truncate">
+                <Briefcase className="h-3 w-3" />
+                {person.description}
               </span>
             )}
           </div>

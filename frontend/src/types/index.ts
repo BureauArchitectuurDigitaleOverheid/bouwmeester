@@ -251,21 +251,38 @@ export interface Person {
   naam: string;
   email?: string;
   functie?: string;
-  organisatie_eenheid_id?: string | null;
+  description?: string;
   is_agent: boolean;
   api_key?: string | null;
+  is_active: boolean;
   created_at: string;
-  updated_at?: string;
 }
 
 export interface PersonCreate {
   naam: string;
   email?: string;
   functie?: string;
-  organisatie_eenheid_id?: string | null;
+  description?: string;
   is_agent?: boolean;
   api_key?: string;
 }
+
+// Person ↔ OrganisatieEenheid placements
+export interface PersonOrganisatie {
+  id: string;
+  person_id: string;
+  organisatie_eenheid_id: string;
+  organisatie_eenheid_naam: string;
+  dienstverband: string;
+  start_datum: string;
+  eind_datum?: string | null;
+}
+
+export const DIENSTVERBAND_LABELS: Record<string, string> = {
+  in_dienst: 'In dienst',
+  ingehuurd: 'Ingehuurd',
+  extern: 'Extern',
+};
 
 // Person Summary (expanded card)
 export interface PersonTaskSummary {

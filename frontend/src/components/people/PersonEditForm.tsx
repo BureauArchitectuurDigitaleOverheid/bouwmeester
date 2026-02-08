@@ -4,7 +4,6 @@ import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
-import { useOrganisatieFlat, useCreateOrganisatieEenheid } from '@/hooks/useOrganisatie';
 import { usePeople } from '@/hooks/usePeople';
 import type { Person, PersonCreate } from '@/types';
 
@@ -54,7 +53,6 @@ interface PersonEditFormProps {
   onSubmit: (data: PersonCreate) => void;
   isLoading?: boolean;
   editData?: Person | null;
-  defaultOrgEenheidId?: string | null;
   defaultIsAgent?: boolean;
 }
 
@@ -64,33 +62,24 @@ export function PersonEditForm({
   onSubmit,
   isLoading,
   editData,
-  defaultOrgEenheidId,
   defaultIsAgent = false,
 }: PersonEditFormProps) {
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
-  const [organisatieEenheidId, setOrganisatieEenheidId] = useState('');
   const [functie, setFunctie] = useState('');
+  const [description, setDescription] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
 
-  const { data: orgEenheden = [] } = useOrganisatieFlat();
-  const createOrgMutation = useCreateOrganisatieEenheid();
   const { data: allPeople = [] } = usePeople();
-
-  const orgOptions = orgEenheden.map((e) => ({
-    value: e.id,
-    label: e.naam,
-    description: e.type,
-  }));
 
   useEffect(() => {
     if (open) {
       if (editData) {
         setNaam(editData.naam);
         setEmail(editData.email || '');
-        setOrganisatieEenheidId(editData.organisatie_eenheid_id || '');
         setFunctie(editData.functie || '');
+        setDescription(editData.description || '');
         setApiKey(editData.api_key || '');
         // Ensure the existing functie value is in options
         if (editData.functie && !functieOptions.some((o) => o.value === editData.functie)) {
@@ -106,13 +95,13 @@ export function PersonEditForm({
           setNaam('');
         }
         setEmail('');
-        setOrganisatieEenheidId(defaultOrgEenheidId || '');
         setFunctie('');
+        setDescription('');
         setApiKey(defaultIsAgent ? generateMockApiKey() : '');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editData, defaultOrgEenheidId]);
+  }, [open, editData]);
 
   const isAgent = editData ? editData.is_agent : defaultIsAgent;
   const isValid = naam.trim() && (isAgent || email.trim());
@@ -124,23 +113,11 @@ export function PersonEditForm({
     onSubmit({
       naam: naam.trim(),
       email: email.trim() || undefined,
-      functie: functie || undefined,
-      organisatie_eenheid_id: organisatieEenheidId || null,
+      functie: isAgent ? undefined : (functie || undefined),
+      description: isAgent ? (description.trim() || undefined) : undefined,
       is_agent: isAgent,
       api_key: isAgent ? apiKey : undefined,
     });
-  };
-
-  const handleCreateOrgEenheid = async (text: string): Promise<string | null> => {
-    try {
-      const result = await createOrgMutation.mutateAsync({
-        naam: text,
-        type: 'afdeling',
-      });
-      return result.id;
-    } catch {
-      return null;
-    }
   };
 
   const handleCreateFunctie = async (text: string): Promise<string | null> => {
@@ -194,52 +171,57 @@ export function PersonEditForm({
           />
         )}
         {isAgent && (
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">API Key</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                readOnly
-                value={apiKey}
-                className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary"
-              />
-              <button
-                type="button"
-                onClick={() => navigator.clipboard.writeText(apiKey)}
-                className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
-                title="Kopieer API key"
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setApiKey(generateMockApiKey())}
-                className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
-                title="Genereer nieuwe API key"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </button>
+          <>
+            <div>
+              <label className="block text-sm font-medium text-text mb-1">API Key</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={apiKey}
+                  className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary"
+                />
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(apiKey)}
+                  className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
+                  title="Kopieer API key"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setApiKey(generateMockApiKey())}
+                  className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
+                  title="Genereer nieuwe API key"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
+            <div>
+              <label className="block text-sm font-medium text-text mb-1">Beschrijving</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Wat doet deze agent?"
+                rows={3}
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm text-text placeholder:text-text-secondary/50 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+              />
+            </div>
+          </>
         )}
-        <CreatableSelect
-          label="Organisatie-eenheid"
-          value={organisatieEenheidId}
-          onChange={setOrganisatieEenheidId}
-          options={orgOptions}
-          placeholder="Selecteer of maak eenheid..."
-          onCreate={handleCreateOrgEenheid}
-          createLabel="Nieuwe eenheid aanmaken"
-        />
-        <CreatableSelect
-          label="Functie"
-          value={functie}
-          onChange={setFunctie}
-          options={functieOptions}
-          placeholder="Selecteer of maak functie..."
-          onCreate={handleCreateFunctie}
-          createLabel="Nieuwe functie aanmaken"
-        />
+        {!isAgent && (
+          <CreatableSelect
+            label="Functie"
+            value={functie}
+            onChange={setFunctie}
+            options={functieOptions}
+            placeholder="Selecteer of maak functie..."
+            onCreate={handleCreateFunctie}
+            createLabel="Nieuwe functie aanmaken"
+          />
+        )}
       </form>
     </Modal>
   );
