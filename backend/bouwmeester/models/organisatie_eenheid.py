@@ -12,6 +12,7 @@ from bouwmeester.core.database import Base
 
 if TYPE_CHECKING:
     from bouwmeester.models.person import Person
+    from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 
 
 class OrganisatieEenheid(Base):
@@ -61,9 +62,9 @@ class OrganisatieEenheid(Base):
         lazy="joined",
     )
 
-    # People in this unit
-    personen: Mapped[list["Person"]] = relationship(
-        "Person",
+    # Placements (people assigned to this unit via junction table)
+    plaatsingen: Mapped[list["PersonOrganisatieEenheid"]] = relationship(
+        "PersonOrganisatieEenheid",
         back_populates="organisatie_eenheid",
-        foreign_keys="Person.organisatie_eenheid_id",
+        cascade="all, delete-orphan",
     )

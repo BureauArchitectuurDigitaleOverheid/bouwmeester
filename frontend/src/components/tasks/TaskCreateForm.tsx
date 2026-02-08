@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
@@ -41,6 +41,19 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
   const [personCreateName, setPersonCreateName] = useState('');
   const [showPersonCreate, setShowPersonCreate] = useState(false);
 
+  // Reset form state when dialog opens
+  useEffect(() => {
+    if (open) {
+      setTitle('');
+      setDescription('');
+      setPriority(TaskPriority.NORMAAL);
+      setDueDate('');
+      setSelectedNodeId(nodeId ?? '');
+      setAssigneeId('');
+      setOrganisatieEenheidId('');
+    }
+  }, [open, nodeId]);
+
   const { nodeLabel } = useVocabulary();
   const createTask = useCreateTask();
   const createNode = useCreateNode();
@@ -54,24 +67,11 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
     description: nodeLabel(n.node_type),
   }));
 
-  const personOptions: SelectOption[] = useMemo(() => {
-    const people = allPeople ?? [];
-    if (organisatieEenheidId) {
-      const filtered = people.filter((p) => p.organisatie_eenheid_id === organisatieEenheidId);
-      if (filtered.length > 0) {
-        return filtered.map((p) => ({
-          value: p.id,
-          label: p.naam,
-          description: p.functie ?? p.afdeling ?? undefined,
-        }));
-      }
-    }
-    return people.map((p) => ({
-      value: p.id,
-      label: p.naam,
-      description: p.functie ?? p.afdeling ?? undefined,
-    }));
-  }, [allPeople, organisatieEenheidId]);
+  const personOptions: SelectOption[] = (allPeople ?? []).map((p) => ({
+    value: p.id,
+    label: p.naam,
+    description: p.functie ?? undefined,
+  }));
 
   const eenheidOptions: SelectOption[] = useMemo(() => [
     { value: '', label: 'Geen' },
@@ -108,14 +108,14 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !selectedNodeId) return;
+    if (!title.trim() || (!selectedNodeId && !parentId)) return;
 
     await createTask.mutateAsync({
       title: title.trim(),
       description: description.trim() || undefined,
       priority: priority as TaskPriority,
       due_date: dueDate || undefined,
-      node_id: selectedNodeId,
+      node_id: selectedNodeId || nodeId || '',
       assignee_id: assigneeId || undefined,
       organisatie_eenheid_id: organisatieEenheidId || undefined,
       parent_id: parentId || undefined,
@@ -145,7 +145,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
             <Button
               onClick={handleSubmit}
               loading={createTask.isPending}
-              disabled={!title.trim() || !selectedNodeId}
+              disabled={!title.trim() || (!selectedNodeId && !parentId)}
             >
               Aanmaken
             </Button>
@@ -182,8 +182,8 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
             placeholder="Koppel aan een node..."
             onCreate={handleCreateNode}
             createLabel="Nieuw aanmaken"
-            required
-            error={!selectedNodeId && createTask.isError ? 'Node is verplicht' : undefined}
+            required={!parentId}
+            error={!selectedNodeId && !parentId && createTask.isError ? 'Node is verplicht' : undefined}
           />
 
           <CreatableSelect

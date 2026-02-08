@@ -67,24 +67,12 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId }: { task: Task; sh
 
   const personOptions: SelectOption[] = useMemo(() => {
     if (!showPersonAssign) return [];
-    const people = allPeople ?? [];
-    const eenheidId = task.organisatie_eenheid_id;
-    if (eenheidId) {
-      const filtered = people.filter((p) => p.organisatie_eenheid_id === eenheidId);
-      if (filtered.length > 0) {
-        return filtered.map((p) => ({
-          value: p.id,
-          label: p.naam,
-          description: p.functie ?? undefined,
-        }));
-      }
-    }
-    return people.map((p) => ({
+    return (allPeople ?? []).map((p) => ({
       value: p.id,
       label: p.naam,
       description: p.functie ?? undefined,
     }));
-  }, [allPeople, task.organisatie_eenheid_id, showPersonAssign]);
+  }, [allPeople, showPersonAssign]);
 
   const handleUnitChange = (value: string) => {
     updateTask.mutate({

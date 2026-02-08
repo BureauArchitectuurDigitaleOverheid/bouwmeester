@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 
 from bouwmeester.core.auth import CurrentUser, get_oauth
 from bouwmeester.core.config import Settings, get_settings
-from bouwmeester.schema.person import PersonResponse
+from bouwmeester.schema.person import PersonDetailResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -108,7 +108,7 @@ async def logout(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/me", response_model=PersonResponse)
-async def me(current_user: CurrentUser) -> PersonResponse:
+@router.get("/me", response_model=PersonDetailResponse)
+async def me(current_user: CurrentUser) -> PersonDetailResponse:
     """Return information about the currently authenticated user."""
-    return PersonResponse.model_validate(current_user)
+    return PersonDetailResponse.model_validate(current_user)

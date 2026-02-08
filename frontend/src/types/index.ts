@@ -281,14 +281,16 @@ export const ORGANISATIE_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'team', label: 'Team' },
 ];
 
-export const ROL_LABELS: Record<string, string> = {
+export const FUNCTIE_LABELS: Record<string, string> = {
   minister: 'Minister',
   staatssecretaris: 'Staatssecretaris',
   secretaris_generaal: 'Secretaris-Generaal',
+  plaatsvervangend_secretaris_generaal: 'Plaatsvervangend Secretaris-Generaal',
   directeur_generaal: 'Directeur-Generaal',
+  plaatsvervangend_directeur_generaal: 'Plaatsvervangend Directeur-Generaal',
   directeur: 'Directeur',
   afdelingshoofd: 'Afdelingshoofd',
-  coordinator: 'Coordinator',
+  coordinator: 'Coördinator',
   beleidsmedewerker: 'Beleidsmedewerker',
   senior_beleidsmedewerker: 'Senior Beleidsmedewerker',
   adviseur: 'Adviseur',
@@ -303,26 +305,39 @@ export interface Person {
   id: string;
   naam: string;
   email?: string;
-  afdeling?: string;
   functie?: string;
-  rol?: string;
-  organisatie_eenheid_id?: string | null;
+  description?: string;
   is_agent: boolean;
   api_key?: string | null;
+  is_active: boolean;
   created_at: string;
-  updated_at?: string;
 }
 
 export interface PersonCreate {
   naam: string;
   email?: string;
-  afdeling?: string;
   functie?: string;
-  rol?: string;
-  organisatie_eenheid_id?: string | null;
+  description?: string;
   is_agent?: boolean;
   api_key?: string;
 }
+
+// Person ↔ OrganisatieEenheid placements
+export interface PersonOrganisatie {
+  id: string;
+  person_id: string;
+  organisatie_eenheid_id: string;
+  organisatie_eenheid_naam: string;
+  dienstverband: string;
+  start_datum: string;
+  eind_datum?: string | null;
+}
+
+export const DIENSTVERBAND_LABELS: Record<string, string> = {
+  in_dienst: 'In dienst',
+  ingehuurd: 'Ingehuurd',
+  extern: 'Extern',
+};
 
 // Person Summary (expanded card)
 export interface PersonTaskSummary {

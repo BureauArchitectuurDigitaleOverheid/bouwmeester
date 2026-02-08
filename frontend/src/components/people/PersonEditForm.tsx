@@ -4,8 +4,9 @@ import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
-import { useOrganisatieFlat, useCreateOrganisatieEenheid } from '@/hooks/useOrganisatie';
+import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
 import { usePeople } from '@/hooks/usePeople';
+import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS } from '@/types';
 import type { Person, PersonCreate } from '@/types';
 
 // Character names from Bordewijk's novel "Karakter" — used as agent names
@@ -29,31 +30,19 @@ function generateMockApiKey(): string {
   ).join('-');
 }
 
-const DEFAULT_ROL_OPTIONS: SelectOption[] = [
-  { value: 'minister', label: 'Minister' },
-  { value: 'staatssecretaris', label: 'Staatssecretaris' },
-  { value: 'secretaris_generaal', label: 'Secretaris-Generaal' },
-  { value: 'directeur_generaal', label: 'Directeur-Generaal' },
-  { value: 'directeur', label: 'Directeur' },
-  { value: 'afdelingshoofd', label: 'Afdelingshoofd' },
-  { value: 'coordinator', label: 'Coordinator' },
-  { value: 'beleidsmedewerker', label: 'Beleidsmedewerker' },
-  { value: 'senior_beleidsmedewerker', label: 'Senior Beleidsmedewerker' },
-  { value: 'adviseur', label: 'Adviseur' },
-  { value: 'projectleider', label: 'Projectleider' },
-  { value: 'programmamanager', label: 'Programmamanager' },
-  { value: 'jurist', label: 'Jurist' },
-  { value: 'communicatieadviseur', label: 'Communicatieadviseur' },
-];
+const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS).map(
+  ([value, label]) => ({ value, label })
+);
 
 interface PersonEditFormProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: PersonCreate) => void;
+  onSubmit: (data: PersonCreate, orgEenheidId?: string, dienstverband?: string) => void;
   isLoading?: boolean;
   editData?: Person | null;
-  defaultOrgEenheidId?: string | null;
   defaultIsAgent?: boolean;
+  /** Pre-fill the org unit selector (e.g. when adding from within an org unit) */
+  defaultOrgEenheidId?: string;
 }
 
 export function PersonEditForm({
@@ -62,41 +51,32 @@ export function PersonEditForm({
   onSubmit,
   isLoading,
   editData,
-  defaultOrgEenheidId,
   defaultIsAgent = false,
+  defaultOrgEenheidId,
 }: PersonEditFormProps) {
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
-  const [organisatieEenheidId, setOrganisatieEenheidId] = useState('');
-  const [afdeling, setAfdeling] = useState('');
   const [functie, setFunctie] = useState('');
-  const [rol, setRol] = useState('');
+  const [description, setDescription] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [rolOptions, setRolOptions] = useState<SelectOption[]>(DEFAULT_ROL_OPTIONS);
+  const [orgEenheidId, setOrgEenheidId] = useState('');
+  const [dienstverband, setDienstverband] = useState('in_dienst');
+  const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
 
-  const { data: orgEenheden = [] } = useOrganisatieFlat();
-  const createOrgMutation = useCreateOrganisatieEenheid();
   const { data: allPeople = [] } = usePeople();
-
-  const orgOptions = orgEenheden.map((e) => ({
-    value: e.id,
-    label: e.naam,
-    description: e.type,
-  }));
 
   useEffect(() => {
     if (open) {
       if (editData) {
         setNaam(editData.naam);
         setEmail(editData.email || '');
-        setOrganisatieEenheidId(editData.organisatie_eenheid_id || '');
-        setAfdeling(editData.afdeling || '');
         setFunctie(editData.functie || '');
-        setRol(editData.rol || '');
+        setDescription(editData.description || '');
         setApiKey(editData.api_key || '');
-        // Ensure the existing rol value is in options
-        if (editData.rol && !rolOptions.some((o) => o.value === editData.rol)) {
-          setRolOptions((prev) => [...prev, { value: editData.rol!, label: editData.rol! }]);
+        setOrgEenheidId('');
+        // Ensure the existing functie value is in options
+        if (editData.functie && !functieOptions.some((o) => o.value === editData.functie)) {
+          setFunctieOptions((prev) => [...prev, { value: editData.functie!, label: editData.functie! }]);
         }
       } else {
         // For new agents, pick next available Karakter name
@@ -108,15 +88,14 @@ export function PersonEditForm({
           setNaam('');
         }
         setEmail('');
-        setOrganisatieEenheidId(defaultOrgEenheidId || '');
-        setAfdeling('');
         setFunctie('');
-        setRol('');
+        setDescription('');
         setApiKey(defaultIsAgent ? generateMockApiKey() : '');
+        setOrgEenheidId(defaultOrgEenheidId || '');
+        setDienstverband('in_dienst');
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editData, defaultOrgEenheidId]);
+  }, [open, editData, defaultIsAgent, defaultOrgEenheidId, allPeople, functieOptions]);
 
   const isAgent = editData ? editData.is_agent : defaultIsAgent;
   const isValid = naam.trim() && (isAgent || email.trim());
@@ -125,34 +104,24 @@ export function PersonEditForm({
     e.preventDefault();
     if (!isValid) return;
 
-    onSubmit({
-      naam: naam.trim(),
-      email: email.trim() || undefined,
-      afdeling: afdeling.trim() || undefined,
-      functie: functie.trim() || undefined,
-      rol: rol || undefined,
-      organisatie_eenheid_id: organisatieEenheidId || null,
-      is_agent: isAgent,
-      api_key: isAgent ? apiKey : undefined,
-    });
+    onSubmit(
+      {
+        naam: naam.trim(),
+        email: email.trim() || undefined,
+        functie: isAgent ? undefined : (functie || undefined),
+        description: isAgent ? (description.trim() || undefined) : undefined,
+        is_agent: isAgent,
+        api_key: isAgent ? apiKey : undefined,
+      },
+      orgEenheidId || undefined,
+      orgEenheidId ? dienstverband : undefined,
+    );
   };
 
-  const handleCreateOrgEenheid = async (text: string): Promise<string | null> => {
-    try {
-      const result = await createOrgMutation.mutateAsync({
-        naam: text,
-        type: 'afdeling',
-      });
-      return result.id;
-    } catch {
-      return null;
-    }
-  };
-
-  const handleCreateRol = async (text: string): Promise<string | null> => {
+  const handleCreateFunctie = async (text: string): Promise<string | null> => {
     const value = text.toLowerCase().replace(/\s+/g, '_');
-    setRolOptions((prev) => [...prev, { value, label: text }]);
-    setRol(value);
+    setFunctieOptions((prev) => [...prev, { value, label: text }]);
+    setFunctie(value);
     return value;
   };
 
@@ -200,64 +169,81 @@ export function PersonEditForm({
           />
         )}
         {isAgent && (
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">API Key</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                readOnly
-                value={apiKey}
-                className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary"
-              />
-              <button
-                type="button"
-                onClick={() => navigator.clipboard.writeText(apiKey)}
-                className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
-                title="Kopieer API key"
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setApiKey(generateMockApiKey())}
-                className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
-                title="Genereer nieuwe API key"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </button>
+          <>
+            <div>
+              <label className="block text-sm font-medium text-text mb-1">API Key</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={apiKey}
+                  className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary"
+                />
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(apiKey)}
+                  className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
+                  title="Kopieer API key"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setApiKey(generateMockApiKey())}
+                  className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
+                  title="Genereer nieuwe API key"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-text mb-1">Beschrijving</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Wat doet deze agent?"
+                rows={3}
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm text-text placeholder:text-text-secondary/50 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+              />
+            </div>
+          </>
+        )}
+        {!isAgent && (
+          <CreatableSelect
+            label="Functie"
+            value={functie}
+            onChange={setFunctie}
+            options={functieOptions}
+            placeholder="Selecteer of maak functie..."
+            onCreate={handleCreateFunctie}
+            createLabel="Nieuwe functie aanmaken"
+          />
+        )}
+        {!editData && (
+          <CascadingOrgSelect
+            value={orgEenheidId}
+            onChange={setOrgEenheidId}
+          />
+        )}
+        {!editData && orgEenheidId && (
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">
+              Dienstverband
+            </label>
+            <select
+              value={dienstverband}
+              onChange={(e) => setDienstverband(e.target.value)}
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-text bg-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+            >
+              {Object.entries(DIENSTVERBAND_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </div>
         )}
-        <CreatableSelect
-          label="Organisatie-eenheid"
-          value={organisatieEenheidId}
-          onChange={setOrganisatieEenheidId}
-          options={orgOptions}
-          placeholder="Selecteer of maak eenheid..."
-          onCreate={handleCreateOrgEenheid}
-          createLabel="Nieuwe eenheid aanmaken"
-        />
-        <CreatableSelect
-          label="Rol"
-          value={rol}
-          onChange={setRol}
-          options={rolOptions}
-          placeholder="Selecteer of maak rol..."
-          onCreate={handleCreateRol}
-          createLabel="Nieuwe rol aanmaken"
-        />
-        <Input
-          label="Afdeling"
-          value={afdeling}
-          onChange={(e) => setAfdeling(e.target.value)}
-          placeholder="Bijv. Stadsontwikkeling"
-        />
-        <Input
-          label="Functie"
-          value={functie}
-          onChange={(e) => setFunctie(e.target.value)}
-          placeholder="Bijv. Beleidsmedewerker"
-        />
       </form>
     </Modal>
   );

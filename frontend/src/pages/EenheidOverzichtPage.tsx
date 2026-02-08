@@ -1,33 +1,44 @@
-import { useState, useEffect } from 'react';
-import { Building2, Users } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Building2, Users, AlertTriangle } from 'lucide-react';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { UnassignedTasksSection } from '@/components/eenheid/UnassignedTasksSection';
 import { PersonTasksRow } from '@/components/eenheid/PersonTasksRow';
 import { SubeenheidCard } from '@/components/eenheid/SubeenheidCard';
-import { useManagedEenheden } from '@/hooks/useOrganisatie';
+import { useOrganisatieFlat, useManagedEenheden } from '@/hooks/useOrganisatie';
 import { useEenheidOverview } from '@/hooks/useTasks';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { ORGANISATIE_TYPE_LABELS } from '@/types';
 
 export function EenheidOverzichtPage() {
   const { currentPerson } = useCurrentPerson();
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
+  const { data: eenheden } = useOrganisatieFlat();
 
   const [selectedEenheidId, setSelectedEenheidId] = useState<string>('');
   const [expandedPersonId, setExpandedPersonId] = useState<string | null>(null);
+
+  const eenheidOptions = useMemo(
+    () =>
+      (eenheden ?? []).map((e) => ({
+        value: e.id,
+        label: e.naam,
+        description: ORGANISATIE_TYPE_LABELS[e.type] ?? e.type,
+      })),
+    [eenheden],
+  );
 
   // Auto-select managed unit on load
   useEffect(() => {
     if (selectedEenheidId) return;
     if (managedEenheden && managedEenheden.length > 0) {
       setSelectedEenheidId(managedEenheden[0].id);
-    } else if (currentPerson?.organisatie_eenheid_id) {
-      setSelectedEenheidId(currentPerson.organisatie_eenheid_id);
     }
-  }, [managedEenheden, currentPerson, selectedEenheidId]);
+  }, [managedEenheden, selectedEenheidId]);
 
-  const { data: overview, isLoading } = useEenheidOverview(
+  const { data: overview, isLoading, isError } = useEenheidOverview(
     selectedEenheidId || null,
   );
 
@@ -44,7 +55,18 @@ export function EenheidOverzichtPage() {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
+      {/* Org unit selector */}
+      <div className="max-w-md">
+        <CreatableSelect
+          label="Organisatie-eenheid"
+          value={selectedEenheidId}
+          onChange={setSelectedEenheidId}
+          options={eenheidOptions}
+          placeholder="Selecteer een eenheid..."
+        />
+      </div>
+
       {!selectedEenheidId && (
         <EmptyState
           icon={<Building2 className="h-16 w-16" />}
@@ -55,6 +77,15 @@ export function EenheidOverzichtPage() {
 
       {selectedEenheidId && isLoading && (
         <LoadingSpinner className="py-8" />
+      )}
+
+      {selectedEenheidId && isError && (
+        <Card>
+          <div className="flex items-center gap-3 text-red-600">
+            <AlertTriangle className="h-5 w-5" />
+            <p className="text-sm">Kon het overzicht niet laden. Probeer het opnieuw.</p>
+          </div>
+        </Card>
       )}
 
       {selectedEenheidId && overview && (

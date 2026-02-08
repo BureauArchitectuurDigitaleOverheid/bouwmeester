@@ -1,6 +1,7 @@
 """Pydantic schemas for Person."""
 
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,37 +10,39 @@ from pydantic import BaseModel, ConfigDict, Field
 class PersonBase(BaseModel):
     naam: str
     email: str | None = None
-    afdeling: str | None = None
     functie: str | None = None
-    rol: str | None = None
-    organisatie_eenheid_id: UUID | None = None
+    description: str | None = None
     is_agent: bool = False
-    api_key: str | None = None
 
 
 class PersonCreate(PersonBase):
-    pass
+    api_key: str | None = None
 
 
 class PersonUpdate(BaseModel):
     naam: str | None = None
     email: str | None = None
-    afdeling: str | None = None
     functie: str | None = None
-    rol: str | None = None
-    organisatie_eenheid_id: UUID | None = None
+    description: str | None = None
     is_agent: bool | None = None
     api_key: str | None = None
 
 
 class PersonResponse(PersonBase):
+    """Response schema for person lists — api_key excluded for security."""
+
     id: UUID
     is_active: bool
     is_agent: bool
-    api_key: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PersonDetailResponse(PersonResponse):
+    """Full response including api_key — only for get/create/update."""
+
+    api_key: str | None = None
 
 
 class NodeStakeholderCreate(BaseModel):
@@ -81,3 +84,27 @@ class PersonSummaryResponse(BaseModel):
     done_task_count: int
     open_tasks: list[PersonTaskSummary]
     stakeholder_nodes: list[PersonStakeholderNode]
+
+
+Dienstverband = Literal["in_dienst", "ingehuurd", "extern"]
+
+
+class PersonOrganisatieCreate(BaseModel):
+    organisatie_eenheid_id: UUID
+    dienstverband: Dienstverband = "in_dienst"
+    start_datum: date
+
+
+class PersonOrganisatieUpdate(BaseModel):
+    dienstverband: Dienstverband | None = None
+    eind_datum: date | None = None
+
+
+class PersonOrganisatieResponse(BaseModel):
+    id: UUID
+    person_id: UUID
+    organisatie_eenheid_id: UUID
+    organisatie_eenheid_naam: str
+    dienstverband: str
+    start_datum: date
+    eind_datum: date | None = None
