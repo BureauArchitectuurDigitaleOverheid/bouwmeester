@@ -3,13 +3,13 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TagBase(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=200)
     parent_id: UUID | None = None
-    description: str | None = None
+    description: str | None = Field(None, max_length=2000)
 
 
 class TagCreate(TagBase):
@@ -17,9 +17,9 @@ class TagCreate(TagBase):
 
 
 class TagUpdate(BaseModel):
-    name: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=200)
     parent_id: UUID | None = None
-    description: str | None = None
+    description: str | None = Field(None, max_length=2000)
 
 
 class TagResponse(TagBase):

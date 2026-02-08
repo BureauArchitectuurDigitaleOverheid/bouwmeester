@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
@@ -7,36 +7,21 @@ import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { useUpdateTask, useDeleteTask } from '@/hooks/useTasks';
-import { useNodes, useCreateNode } from '@/hooks/useNodes';
-import { usePeople } from '@/hooks/usePeople';
-import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import { useTaskFormOptions } from '@/hooks/useTaskFormOptions';
+import { useEnumOptions } from '@/hooks/useEnumOptions';
 import {
   TaskStatus,
   TaskPriority,
   TASK_PRIORITY_LABELS,
   TASK_STATUS_LABELS,
-  ORGANISATIE_TYPE_LABELS,
-  NodeType,
 } from '@/types';
-import { useVocabulary } from '@/contexts/VocabularyContext';
 import type { Task } from '@/types';
-import type { SelectOption } from '@/components/common/CreatableSelect';
 
 interface TaskEditFormProps {
   open: boolean;
   onClose: () => void;
   task: Task;
 }
-
-const priorityOptions: SelectOption[] = Object.values(TaskPriority).map((p) => ({
-  value: p,
-  label: TASK_PRIORITY_LABELS[p],
-}));
-
-const statusOptions: SelectOption[] = Object.values(TaskStatus).map((s) => ({
-  value: s,
-  label: TASK_STATUS_LABELS[s],
-}));
 
 export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
   const [title, setTitle] = useState(task.title);
@@ -47,17 +32,18 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
   const [selectedNodeId, setSelectedNodeId] = useState(task.node_id ?? '');
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
   const [organisatieEenheidId, setOrganisatieEenheidId] = useState(task.organisatie_eenheid_id ?? '');
-  const [personCreateName, setPersonCreateName] = useState('');
-  const [showPersonCreate, setShowPersonCreate] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const { nodeLabel } = useVocabulary();
+  const priorityOptions = useEnumOptions(TaskPriority, TASK_PRIORITY_LABELS);
+  const statusOptions = useEnumOptions(TaskStatus, TASK_STATUS_LABELS);
+
   const updateTask = useUpdateTask();
   const deleteTaskMutation = useDeleteTask();
-  const createNode = useCreateNode();
-  const { data: allNodes } = useNodes();
-  const { data: allPeople } = usePeople();
-  const { data: eenheden } = useOrganisatieFlat();
+  const {
+    nodeOptions, personOptions, eenheidOptions,
+    handleCreateNode, handleCreatePerson,
+    personCreateName, showPersonCreate, setShowPersonCreate,
+  } = useTaskFormOptions();
 
   // Reset form when task changes
   useEffect(() => {
@@ -71,47 +57,6 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
     setOrganisatieEenheidId(task.organisatie_eenheid_id ?? '');
     setShowDeleteConfirm(false);
   }, [task]);
-
-  const nodeOptions: SelectOption[] = (allNodes ?? []).map((n) => ({
-    value: n.id,
-    label: n.title,
-    description: nodeLabel(n.node_type),
-  }));
-
-  const personOptions: SelectOption[] = (allPeople ?? []).map((p) => ({
-    value: p.id,
-    label: p.naam,
-    description: p.functie ?? undefined,
-  }));
-
-  const eenheidOptions: SelectOption[] = useMemo(() => [
-    { value: '', label: 'Geen' },
-    ...(eenheden ?? []).map((e) => ({
-      value: e.id,
-      label: e.naam,
-      description: ORGANISATIE_TYPE_LABELS[e.type] ?? e.type,
-    })),
-  ], [eenheden]);
-
-  const handleCreateNode = useCallback(
-    async (text: string): Promise<string | null> => {
-      const node = await createNode.mutateAsync({
-        title: text,
-        node_type: NodeType.NOTITIE,
-      });
-      return node.id;
-    },
-    [createNode],
-  );
-
-  const handleCreatePerson = useCallback(
-    async (text: string): Promise<string | null> => {
-      setPersonCreateName(text);
-      setShowPersonCreate(true);
-      return null;
-    },
-    [],
-  );
 
   const handlePersonCreated = useCallback((personId: string) => {
     setAssigneeId(personId);

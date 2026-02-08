@@ -10,6 +10,8 @@ from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.edge_type import EdgeType
 
+MAX_EXPORT_ROWS = 50_000
+
 
 class ExportService:
     def __init__(self, session: AsyncSession) -> None:
@@ -20,6 +22,7 @@ class ExportService:
         stmt = select(CorpusNode).order_by(CorpusNode.created_at.desc())
         if node_type is not None:
             stmt = stmt.where(CorpusNode.node_type == node_type)
+        stmt = stmt.limit(MAX_EXPORT_ROWS)
         result = await self.session.execute(stmt)
         nodes = result.scalars().all()
 
@@ -58,6 +61,7 @@ class ExportService:
             select(Edge)
             .options(selectinload(Edge.from_node), selectinload(Edge.to_node))
             .order_by(Edge.created_at.desc())
+            .limit(MAX_EXPORT_ROWS)
         )
         result = await self.session.execute(stmt)
         edges = result.scalars().all()
@@ -96,12 +100,18 @@ class ExportService:
     async def export_corpus_json(self) -> dict:
         """Full corpus as JSON with nodes, edges, edge_types."""
         # Nodes
-        nodes_stmt = select(CorpusNode).order_by(CorpusNode.created_at.desc())
+        nodes_stmt = (
+            select(CorpusNode)
+            .order_by(CorpusNode.created_at.desc())
+            .limit(MAX_EXPORT_ROWS)
+        )
         nodes_result = await self.session.execute(nodes_stmt)
         nodes = nodes_result.scalars().all()
 
         # Edges
-        edges_stmt = select(Edge).order_by(Edge.created_at.desc())
+        edges_stmt = (
+            select(Edge).order_by(Edge.created_at.desc()).limit(MAX_EXPORT_ROWS)
+        )
         edges_result = await self.session.execute(edges_stmt)
         edges = edges_result.scalars().all()
 

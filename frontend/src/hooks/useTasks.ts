@@ -1,5 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks, getTasksByPerson } from '@/api/tasks';
+import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { TaskCreate, TaskUpdate } from '@/types';
 import type { TaskFilters } from '@/api/tasks';
 
@@ -19,35 +20,26 @@ export function useTask(id: string | null) {
 }
 
 export function useCreateTask() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (data: TaskCreate) => createTask(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    },
+    errorMessage: 'Fout bij aanmaken taak',
+    invalidateKeys: [['tasks']],
   });
 }
 
 export function useUpdateTask() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) => updateTask(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    },
+    errorMessage: 'Fout bij bijwerken taak',
+    invalidateKeys: [['tasks']],
   });
 }
 
 export function useDeleteTask() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (id: string) => deleteTask(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    },
+    errorMessage: 'Fout bij verwijderen taak',
+    invalidateKeys: [['tasks']],
   });
 }
 

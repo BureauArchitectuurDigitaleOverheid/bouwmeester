@@ -3,24 +3,19 @@
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
-from bouwmeester.schema.organisatie_eenheid import (
-    OrganisatieEenheidCreate,
-    OrganisatieEenheidUpdate,
-)
+from bouwmeester.repositories.base import BaseRepository
 
 
-class OrganisatieEenheidRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
+    model = OrganisatieEenheid
 
     async def get(self, id: UUID) -> OrganisatieEenheid | None:
-        return await self.session.get(OrganisatieEenheid, id)
+        return await self.get_by_id(id)
 
     async def get_all(
         self,
@@ -51,34 +46,6 @@ class OrganisatieEenheidRepository:
         stmt = stmt.order_by(OrganisatieEenheid.naam)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
-
-    async def create(self, data: OrganisatieEenheidCreate) -> OrganisatieEenheid:
-        eenheid = OrganisatieEenheid(**data.model_dump())
-        self.session.add(eenheid)
-        await self.session.flush()
-        await self.session.refresh(eenheid)
-        return eenheid
-
-    async def update(
-        self, id: UUID, data: OrganisatieEenheidUpdate
-    ) -> OrganisatieEenheid | None:
-        eenheid = await self.session.get(OrganisatieEenheid, id)
-        if eenheid is None:
-            return None
-        update_data = data.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            setattr(eenheid, key, value)
-        await self.session.flush()
-        await self.session.refresh(eenheid)
-        return eenheid
-
-    async def delete(self, id: UUID) -> bool:
-        eenheid = await self.session.get(OrganisatieEenheid, id)
-        if eenheid is None:
-            return False
-        await self.session.delete(eenheid)
-        await self.session.flush()
-        return True
 
     async def has_children(self, id: UUID) -> bool:
         stmt = (

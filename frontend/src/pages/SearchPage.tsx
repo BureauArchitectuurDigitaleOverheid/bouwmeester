@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import DOMPurify from 'dompurify';
 import { Search as SearchIcon, FileQuestion } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
@@ -108,7 +109,7 @@ export function SearchPage() {
                               <p
                                 key={i}
                                 className="text-xs text-text-secondary italic"
-                                dangerouslySetInnerHTML={{ __html: h }}
+                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(h, { ALLOWED_TAGS: ['mark'] }) }}
                               />
                             ))}
                           </div>

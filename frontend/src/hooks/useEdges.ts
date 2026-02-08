@@ -1,5 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { getEdges, createEdge, deleteEdge } from '@/api/edges';
+import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { EdgeCreate } from '@/types';
 import type { EdgeFilters } from '@/api/edges';
 
@@ -11,26 +12,17 @@ export function useEdges(filters?: EdgeFilters) {
 }
 
 export function useCreateEdge() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (data: EdgeCreate) => createEdge(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['edges'] });
-      queryClient.invalidateQueries({ queryKey: ['nodes'] });
-      queryClient.invalidateQueries({ queryKey: ['graph'] });
-    },
+    errorMessage: 'Fout bij aanmaken relatie',
+    invalidateKeys: [['edges'], ['nodes'], ['graph']],
   });
 }
 
 export function useDeleteEdge() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (id: string) => deleteEdge(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['edges'] });
-      queryClient.invalidateQueries({ queryKey: ['nodes'] });
-    },
+    errorMessage: 'Fout bij verwijderen relatie',
+    invalidateKeys: [['edges'], ['nodes']],
   });
 }

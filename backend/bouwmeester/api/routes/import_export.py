@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import validate_csv_upload
 from bouwmeester.core.database import get_db
 from bouwmeester.schema.import_export import ImportResult
 from bouwmeester.services.archimate_export_service import (
@@ -26,7 +27,7 @@ async def import_politieke_inputs(
     db: AsyncSession = Depends(get_db),
 ) -> ImportResult:
     """Upload a CSV to bulk-import politieke inputs."""
-    content = await file.read()
+    content = await validate_csv_upload(file)
     service = ImportService(db)
     return await service.import_politieke_inputs_csv(content)
 
@@ -37,7 +38,7 @@ async def import_nodes(
     db: AsyncSession = Depends(get_db),
 ) -> ImportResult:
     """Upload a CSV to bulk-import generic nodes."""
-    content = await file.read()
+    content = await validate_csv_upload(file)
     service = ImportService(db)
     return await service.import_nodes_csv(content)
 
@@ -48,7 +49,7 @@ async def import_edges(
     db: AsyncSession = Depends(get_db),
 ) -> ImportResult:
     """Upload a CSV to bulk-import edges."""
-    content = await file.read()
+    content = await validate_csv_upload(file)
     service = ImportService(db)
     return await service.import_edges_csv(content)
 

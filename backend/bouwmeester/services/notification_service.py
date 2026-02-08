@@ -1,10 +1,13 @@
 """Service layer for Notification operations."""
 
+from collections import defaultdict
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.notification import Notification
 from bouwmeester.models.person import Person
 from bouwmeester.models.task import Task
@@ -45,10 +48,6 @@ class NotificationService:
         self, node: CorpusNode, actor: Person
     ) -> list[Notification]:
         """Notify all stakeholders of a node update (except the actor)."""
-        from sqlalchemy import select
-
-        from bouwmeester.models.node_stakeholder import NodeStakeholder
-
         stmt = select(NodeStakeholder).where(
             NodeStakeholder.node_id == node.id,
             NodeStakeholder.person_id != actor.id,
@@ -73,19 +72,26 @@ class NotificationService:
         self, absent_person: Person, nodes: list[CorpusNode]
     ) -> list[Notification]:
         """Notify relevant people that coverage is needed because someone is absent."""
+        if not nodes:
+            return []
+
+        node_ids = [node.id for node in nodes]
+        node_map = {node.id: node for node in nodes}
+
+        stmt = select(NodeStakeholder).where(
+            NodeStakeholder.node_id.in_(node_ids),
+            NodeStakeholder.person_id != absent_person.id,
+        )
+        result = await self.session.execute(stmt)
+        all_stakeholders = result.scalars().all()
+
+        stakeholders_by_node: dict[UUID, list[NodeStakeholder]] = defaultdict(list)
+        for sh in all_stakeholders:
+            stakeholders_by_node[sh.node_id].append(sh)
+
         notifications = []
-        for node in nodes:
-            from sqlalchemy import select
-
-            from bouwmeester.models.node_stakeholder import NodeStakeholder
-
-            stmt = select(NodeStakeholder).where(
-                NodeStakeholder.node_id == node.id,
-                NodeStakeholder.person_id != absent_person.id,
-            )
-            result = await self.session.execute(stmt)
-            stakeholders = result.scalars().all()
-
+        for node_id, stakeholders in stakeholders_by_node.items():
+            node = node_map[node_id]
             for sh in stakeholders:
                 data = NotificationCreate(
                     person_id=sh.person_id,
@@ -105,20 +111,27 @@ class NotificationService:
         self, motie_node: CorpusNode, affected_nodes: list[CorpusNode]
     ) -> list[Notification]:
         """Notify stakeholders of affected nodes about a new imported motie."""
-        from sqlalchemy import select
+        if not affected_nodes:
+            return []
 
-        from bouwmeester.models.node_stakeholder import NodeStakeholder
+        node_ids = [node.id for node in affected_nodes]
+        node_map = {node.id: node for node in affected_nodes}
+
+        stmt = select(NodeStakeholder).where(
+            NodeStakeholder.node_id.in_(node_ids),
+        )
+        result = await self.session.execute(stmt)
+        all_stakeholders = result.scalars().all()
+
+        stakeholders_by_node: dict[UUID, list[NodeStakeholder]] = defaultdict(list)
+        for sh in all_stakeholders:
+            stakeholders_by_node[sh.node_id].append(sh)
 
         notifications = []
         notified_person_ids: set[UUID] = set()
 
-        for node in affected_nodes:
-            stmt = select(NodeStakeholder).where(
-                NodeStakeholder.node_id == node.id,
-            )
-            result = await self.session.execute(stmt)
-            stakeholders = result.scalars().all()
-
+        for node_id, stakeholders in stakeholders_by_node.items():
+            node = node_map[node_id]
             for sh in stakeholders:
                 if sh.person_id in notified_person_ids:
                     continue

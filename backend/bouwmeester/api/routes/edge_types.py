@@ -1,8 +1,9 @@
 """API routes for edge types."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.edge_type import EdgeTypeRepository
 from bouwmeester.schema.edge_type import EdgeTypeCreate, EdgeTypeResponse
@@ -37,9 +38,7 @@ async def get_edge_type(
     db: AsyncSession = Depends(get_db),
 ) -> EdgeTypeResponse:
     repo = EdgeTypeRepository(db)
-    edge_type = await repo.get(id)
-    if edge_type is None:
-        raise HTTPException(status_code=404, detail="Edge type not found")
+    edge_type = require_found(await repo.get(id), "Edge type")
     return EdgeTypeResponse.model_validate(edge_type)
 
 
@@ -49,6 +48,4 @@ async def delete_edge_type(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = EdgeTypeRepository(db)
-    deleted = await repo.delete(id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Edge type not found")
+    require_deleted(await repo.delete(id), "Edge type")

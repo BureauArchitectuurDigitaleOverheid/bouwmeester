@@ -3,15 +3,13 @@
 from uuid import UUID
 
 from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.notification import Notification
-from bouwmeester.schema.notification import NotificationCreate
+from bouwmeester.repositories.base import BaseRepository
 
 
-class NotificationRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+class NotificationRepository(BaseRepository[Notification]):
+    model = Notification
 
     async def get_by_person(
         self,
@@ -31,13 +29,6 @@ class NotificationRepository:
             stmt = stmt.where(Notification.is_read == False)  # noqa: E712
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
-
-    async def create(self, data: NotificationCreate) -> Notification:
-        notification = Notification(**data.model_dump())
-        self.session.add(notification)
-        await self.session.flush()
-        await self.session.refresh(notification)
-        return notification
 
     async def mark_read(self, notification_id: UUID) -> Notification | None:
         notification = await self.session.get(Notification, notification_id)

@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     OIDC_CLIENT_ID: str = ""
     OIDC_CLIENT_SECRET: str = ""
 
+    CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+
     ANTHROPIC_API_KEY: str = ""
     TK_API_BASE_URL: str = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0"
     EK_API_BASE_URL: str = "https://opendata.eerstekamer.nl"

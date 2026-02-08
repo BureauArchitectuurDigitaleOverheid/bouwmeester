@@ -4,10 +4,10 @@ from datetime import date
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.task import Task
+from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.task import TaskCreate, TaskUpdate
 
 
@@ -21,9 +21,8 @@ def _task_options():
     ]
 
 
-class TaskRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+class TaskRepository(BaseRepository[Task]):
+    model = Task
 
     async def get(self, id: UUID) -> Task | None:
         stmt = select(Task).where(Task.id == id).options(*_task_options())
@@ -85,14 +84,6 @@ class TaskRepository:
             ],
         )
         return task
-
-    async def delete(self, id: UUID) -> bool:
-        task = await self.session.get(Task, id)
-        if task is None:
-            return False
-        await self.session.delete(task)
-        await self.session.flush()
-        return True
 
     async def get_by_assignee(
         self,

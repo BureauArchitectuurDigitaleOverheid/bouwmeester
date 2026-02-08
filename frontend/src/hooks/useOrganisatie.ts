@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   getOrganisatieTree,
   getOrganisatieFlat,
@@ -10,6 +10,7 @@ import {
   getOrganisatiePersonenRecursive,
   getManagedEenheden,
 } from '@/api/organisatie';
+import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { OrganisatieEenheidCreate, OrganisatieEenheidUpdate } from '@/types';
 
 export function useOrganisatieTree() {
@@ -51,33 +52,27 @@ export function useOrganisatiePersonenRecursive(id: string | null) {
 }
 
 export function useCreateOrganisatieEenheid() {
-  const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (data: OrganisatieEenheidCreate) => createOrganisatieEenheid(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organisatie'] });
-    },
+    errorMessage: 'Fout bij aanmaken eenheid',
+    invalidateKeys: [['organisatie']],
   });
 }
 
 export function useUpdateOrganisatieEenheid() {
-  const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({ id, data }: { id: string; data: OrganisatieEenheidUpdate }) =>
       updateOrganisatieEenheid(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organisatie'] });
-    },
+    errorMessage: 'Fout bij bijwerken eenheid',
+    invalidateKeys: [['organisatie']],
   });
 }
 
 export function useDeleteOrganisatieEenheid() {
-  const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (id: string) => deleteOrganisatieEenheid(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organisatie'] });
-    },
+    errorMessage: 'Fout bij verwijderen eenheid',
+    invalidateKeys: [['organisatie']],
   });
 }
 
