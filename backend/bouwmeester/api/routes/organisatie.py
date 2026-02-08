@@ -72,6 +72,17 @@ async def search_organisatie(
     return [OrganisatieEenheidResponse.model_validate(u) for u in units]
 
 
+@router.get("/managed-by/{person_id}", response_model=list[OrganisatieEenheidResponse])
+async def get_managed_eenheden(
+    person_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[OrganisatieEenheidResponse]:
+    """Get all eenheden where person_id is the manager."""
+    repo = OrganisatieEenheidRepository(db)
+    eenheden = await repo.get_by_manager(person_id)
+    return [OrganisatieEenheidResponse.model_validate(e) for e in eenheden]
+
+
 @router.post(
     "", response_model=OrganisatieEenheidResponse, status_code=status.HTTP_201_CREATED
 )

@@ -116,9 +116,15 @@ class EenheidSubeenheidStats(BaseModel):
     open_count: int = 0
     in_progress_count: int = 0
     done_count: int = 0
+    overdue_count: int = 0
 
 
 class EenheidOverviewResponse(BaseModel):
     unassigned_count: int
+    unassigned_no_unit: list[TaskResponse] = []
+    unassigned_no_unit_count: int = 0
+    unassigned_no_person: list[TaskResponse] = []
+    unassigned_no_person_count: int = 0
     by_person: list[EenheidPersonTaskStats]
     by_subeenheid: list[EenheidSubeenheidStats]
+    eenheid_type: str = ""

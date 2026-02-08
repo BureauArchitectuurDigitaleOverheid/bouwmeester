@@ -49,3 +49,7 @@ export async function getEenheidOverview(organisatieEenheidId: string): Promise<
 export async function getTaskSubtasks(taskId: string): Promise<Task[]> {
   return apiGet<Task[]>(`/api/tasks/${taskId}/subtasks`);
 }
+
+export async function getTasksByPerson(personId: string): Promise<Task[]> {
+  return apiGet<Task[]>('/api/tasks', { assignee_id: personId });
+}

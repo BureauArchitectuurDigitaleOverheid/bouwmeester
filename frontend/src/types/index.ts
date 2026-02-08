@@ -206,12 +206,18 @@ export interface EenheidSubeenheidStats {
   open_count: number;
   in_progress_count: number;
   done_count: number;
+  overdue_count: number;
 }
 
 export interface EenheidOverviewResponse {
   unassigned_count: number;
+  unassigned_no_unit: Task[];
+  unassigned_no_unit_count: number;
+  unassigned_no_person: Task[];
+  unassigned_no_person_count: number;
   by_person: EenheidPersonTaskStats[];
   by_subeenheid: EenheidSubeenheidStats[];
+  eenheid_type: string;
 }
 
 // Organisatie Eenheid

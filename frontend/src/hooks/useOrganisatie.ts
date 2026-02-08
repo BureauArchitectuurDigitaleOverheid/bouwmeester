@@ -8,6 +8,7 @@ import {
   deleteOrganisatieEenheid,
   getOrganisatiePersonen,
   getOrganisatiePersonenRecursive,
+  getManagedEenheden,
 } from '@/api/organisatie';
 import type { OrganisatieEenheidCreate, OrganisatieEenheidUpdate } from '@/types';
 
@@ -77,5 +78,13 @@ export function useDeleteOrganisatieEenheid() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organisatie'] });
     },
+  });
+}
+
+export function useManagedEenheden(personId: string | undefined) {
+  return useQuery({
+    queryKey: ['organisatie', 'managed-by', personId],
+    queryFn: () => getManagedEenheden(personId!),
+    enabled: !!personId,
   });
 }

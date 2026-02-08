@@ -4010,6 +4010,121 @@ async def seed(db: AsyncSession) -> None:
             "hoog",
             date(2026, 3, 31),
         ),
+        # --- Onverdeelde taken: geen eenheid, geen persoon ---
+        (
+            dos_digi_overheid,
+            "Inventarisatie open standaarden gemeenten",
+            (
+                "Breng in kaart welke open standaarden momenteel in gebruik zijn bij "
+                "gemeenten en welke gaps er bestaan."
+            ),
+            None,
+            "open",
+            "hoog",
+            date(2026, 3, 15),
+        ),
+        (
+            dos_data,
+            "Datalandschap analyse waterschappen",
+            (
+                "Analyseer het datalandschap van waterschappen en identificeer "
+                "mogelijkheden voor data-uitwisseling met het Rijk."
+            ),
+            None,
+            "open",
+            "normaal",
+            date(2026, 4, 30),
+        ),
+        (
+            dos_ai,
+            "EU AI Act gap-analyse rijksoverheid",
+            (
+                "Voer een gap-analyse uit op de huidige AI-inzet bij de rijksoverheid "
+                "ten opzichte van de EU AI Act vereisten."
+            ),
+            None,
+            "open",
+            "kritiek",
+            date(2026, 2, 28),
+        ),
+        (
+            dos_cio_rijk,
+            "Benchmark IT-kosten departementen 2025",
+            (
+                "Stel een benchmark op van IT-uitgaven per departement over 2025 en "
+                "identificeer besparingsmogelijkheden."
+            ),
+            None,
+            "open",
+            "normaal",
+            date(2026, 5, 31),
+        ),
+        # --- Onverdeelde taken: wel eenheid, geen persoon ---
+        (
+            dos_digi_overheid,
+            "GDI-componenten migratieplan 2026",
+            (
+                "Stel een migratieplan op voor de vernieuwing van GDI-componenten "
+                "met prioritering en afhankelijkheden."
+            ),
+            None,
+            "open",
+            "hoog",
+            date(2026, 3, 31),
+            dir_ddo,
+        ),
+        (
+            instr_digid,
+            "DigiD toegankelijkheidsaudit WCAG 2.2",
+            (
+                "Voer een toegankelijkheidsaudit uit op DigiD conform WCAG 2.2 "
+                "en stel een verbeterplan op."
+            ),
+            None,
+            "open",
+            "normaal",
+            date(2026, 4, 15),
+            afd_id_toegang,
+        ),
+        (
+            dos_ai,
+            "Algoritmeregister vulling departement BZK",
+            (
+                "Zorg ervoor dat alle AI-systemen van BZK correct zijn geregistreerd "
+                "in het Algoritmeregister met volledige metadata."
+            ),
+            None,
+            "open",
+            "hoog",
+            date(2026, 3, 15),
+            afd_ai_data,
+        ),
+        (
+            dos_digi_samenleving,
+            "Digitale inclusie nulmeting 60+",
+            (
+                "Voer een nulmeting uit onder 60-plussers over digitale vaardigheden "
+                "en toegang tot overheidsdiensten."
+            ),
+            None,
+            "open",
+            "normaal",
+            date(2026, 5, 1),
+            dir_ds,
+        ),
+        (
+            dos_cio_rijk,
+            "Cloud-exit strategie kritische systemen",
+            (
+                "Ontwikkel een cloud-exit strategie voor de meest kritische "
+                "overheidssystemen als continuiteitsplan."
+            ),
+            None,
+            "in_progress",
+            "kritiek",
+            date(2026, 2, 15),
+            dir_cio,
+        ),
     ]
 
     subtask_count = 0

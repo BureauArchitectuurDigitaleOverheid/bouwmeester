@@ -2,7 +2,7 @@ import { apiGet, apiPost, apiPut } from './client';
 import type { Person, PersonCreate, PersonSummaryResponse } from '@/types';
 
 export async function getPeople(): Promise<Person[]> {
-  return apiGet<Person[]>('/api/people');
+  return apiGet<Person[]>('/api/people', { limit: '1000' });
 }
 
 export async function getPerson(id: string): Promise<Person> {

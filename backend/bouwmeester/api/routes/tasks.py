@@ -11,7 +11,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.task import Task
-from bouwmeester.repositories.task import TaskRepository
+from bouwmeester.repositories.task import TaskRepository, _task_options
 from bouwmeester.schema.inbox import InboxResponse
 from bouwmeester.schema.task import (
     EenheidOverviewResponse,
@@ -129,6 +129,13 @@ async def get_eenheid_overview(
     db: AsyncSession = Depends(get_db),
 ) -> EenheidOverviewResponse:
     """Overview of tasks for an organisatie-eenheid."""
+    # Get the eenheid itself to know its type
+    eenheid = await db.get(OrganisatieEenheid, organisatie_eenheid_id)
+    eenheid_type = eenheid.type if eenheid else ""
+
+    # High-level types where "no unit" tasks are relevant
+    high_level_types = {"ministerie", "directoraat_generaal", "directie"}
+
     # Get descendant unit IDs
     cte = (
         select(OrganisatieEenheid.id)
@@ -142,8 +149,24 @@ async def get_eenheid_overview(
     desc_result = await db.execute(desc_ids_stmt)
     all_unit_ids = list(desc_result.scalars().all())
 
-    # Unassigned count
-    unassigned_stmt = (
+    today = date.today()
+
+    # --- Unassigned: no person (tasks in this hierarchy without assignee) ---
+    no_person_stmt = (
+        select(Task)
+        .where(
+            Task.organisatie_eenheid_id.in_(all_unit_ids),
+            Task.assignee_id.is_(None),
+            Task.status.notin_(["done", "cancelled"]),
+        )
+        .options(*_task_options())
+        .order_by(Task.created_at.desc())
+        .limit(50)
+    )
+    no_person_result = await db.execute(no_person_stmt)
+    unassigned_no_person_tasks = list(no_person_result.scalars().all())
+
+    no_person_count_stmt = (
         select(func.count())
         .select_from(Task)
         .where(
@@ -152,8 +175,39 @@ async def get_eenheid_overview(
             Task.status.notin_(["done", "cancelled"]),
         )
     )
-    unassigned_result = await db.execute(unassigned_stmt)
-    unassigned_count = unassigned_result.scalar_one()
+    no_person_count_result = await db.execute(no_person_count_stmt)
+    unassigned_no_person_count = no_person_count_result.scalar_one()
+
+    # --- Unassigned: no unit (tasks with no organisatie_eenheid at all) ---
+    # Only include for high-level unit types
+    unassigned_no_unit_tasks: list[Task] = []
+    unassigned_no_unit_count = 0
+    if eenheid_type in high_level_types:
+        no_unit_stmt = (
+            select(Task)
+            .where(
+                Task.organisatie_eenheid_id.is_(None),
+                Task.assignee_id.is_(None),
+                Task.status.notin_(["done", "cancelled"]),
+            )
+            .options(*_task_options())
+            .order_by(Task.created_at.desc())
+            .limit(50)
+        )
+        no_unit_result = await db.execute(no_unit_stmt)
+        unassigned_no_unit_tasks = list(no_unit_result.scalars().all())
+
+        no_unit_count_stmt = (
+            select(func.count())
+            .select_from(Task)
+            .where(
+                Task.organisatie_eenheid_id.is_(None),
+                Task.assignee_id.is_(None),
+                Task.status.notin_(["done", "cancelled"]),
+            )
+        )
+        no_unit_count_result = await db.execute(no_unit_count_stmt)
+        unassigned_no_unit_count = no_unit_count_result.scalar_one()
 
     # Per-person stats: people in this unit who have tasks
     people_stmt = (
@@ -165,7 +219,6 @@ async def get_eenheid_overview(
     people = list(people_result.scalars().all())
 
     by_person: list[EenheidPersonTaskStats] = []
-    today = date.today()
     for person in people:
         tasks_stmt = (
             select(Task.status, Task.deadline, func.count())
@@ -231,16 +284,26 @@ async def get_eenheid_overview(
         child_unit_ids = list(child_ids_result.scalars().all())
 
         stats_stmt = (
-            select(Task.status, func.count())
+            select(Task.status, Task.deadline, func.count())
             .where(Task.organisatie_eenheid_id.in_(child_unit_ids))
-            .group_by(Task.status)
+            .group_by(Task.status, Task.deadline)
         )
         stats_result = await db.execute(stats_stmt)
         stats_rows = stats_result.all()
 
-        open_c = sum(c for s, c in stats_rows if s == "open")
-        ip_c = sum(c for s, c in stats_rows if s == "in_progress")
-        done_c = sum(c for s, c in stats_rows if s == "done")
+        open_c = 0
+        ip_c = 0
+        done_c = 0
+        overdue_c = 0
+        for s, dl, c in stats_rows:
+            if s == "open":
+                open_c += c
+            elif s == "in_progress":
+                ip_c += c
+            elif s == "done":
+                done_c += c
+            if s in ("open", "in_progress") and dl is not None and dl < today:
+                overdue_c += c
 
         by_subeenheid.append(
             EenheidSubeenheidStats(
@@ -250,13 +313,26 @@ async def get_eenheid_overview(
                 open_count=open_c,
                 in_progress_count=ip_c,
                 done_count=done_c,
+                overdue_count=overdue_c,
             )
         )
 
+    no_unit_responses = [
+        TaskResponse.model_validate(t) for t in unassigned_no_unit_tasks
+    ]
+    no_person_responses = [
+        TaskResponse.model_validate(t) for t in unassigned_no_person_tasks
+    ]
+
     return EenheidOverviewResponse(
-        unassigned_count=unassigned_count,
+        unassigned_count=(unassigned_no_person_count + unassigned_no_unit_count),
+        unassigned_no_unit=no_unit_responses,
+        unassigned_no_unit_count=unassigned_no_unit_count,
+        unassigned_no_person=no_person_responses,
+        unassigned_no_person_count=unassigned_no_person_count,
         by_person=by_person,
         by_subeenheid=by_subeenheid,
+        eenheid_type=eenheid_type,
     )
 
 
