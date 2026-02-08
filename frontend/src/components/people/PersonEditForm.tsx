@@ -115,6 +115,7 @@ export function PersonEditForm({
         setApiKey(defaultIsAgent ? generateMockApiKey() : '');
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editData, defaultOrgEenheidId]);
 
   const isAgent = editData ? editData.is_agent : defaultIsAgent;

@@ -65,41 +65,41 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-      pull-requests: write
-
-    steps:
-      - name: Set deployment name
-        id: names
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "name=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=main" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Deploy backend to ZAD
-        uses: RijksICTGilde/zad-actions/deploy@v2
-        with:
-          api-key: ${{ secrets.ZAD_API_KEY }}
-          project-id: bouwm-75c
-          deployment-name: ${{ steps.names.outputs.name }}
-          component: component-2
-          image: ${{ env.IMAGE_PREFIX }}/backend:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
-          clone-from: ${{ github.event_name == 'pull_request' && 'main' || '' }}
-
-      - name: Deploy frontend to ZAD
-        uses: RijksICTGilde/zad-actions/deploy@v2
-        with:
-          api-key: ${{ secrets.ZAD_API_KEY }}
-          project-id: bouwm-75c
-          deployment-name: ${{ steps.names.outputs.name }}
-          component: component-1
-          image: ${{ env.IMAGE_PREFIX }}/frontend:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
-          clone-from: ${{ github.event_name == 'pull_request' && 'main' || '' }}
-          comment-on-pr: ${{ github.event_name == 'pull_request' }}
+  # deploy:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #     packages: read
+  #     pull-requests: write
+  #
+  #   steps:
+  #     - name: Set deployment name
+  #       id: names
+  #       run: |
+  #         if [ "${{ github.event_name }}" = "pull_request" ]; then
+  #           echo "name=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+  #         else
+  #           echo "name=main" >> "$GITHUB_OUTPUT"
+  #         fi
+  #
+  #     - name: Deploy backend to ZAD
+  #       uses: RijksICTGilde/zad-actions/deploy@v2
+  #       with:
+  #         api-key: ${{ secrets.ZAD_API_KEY }}
+  #         project-id: bouwm-75c
+  #         deployment-name: ${{ steps.names.outputs.name }}
+  #         component: component-2
+  #         image: ${{ env.IMAGE_PREFIX }}/backend:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
+  #         clone-from: ${{ github.event_name == 'pull_request' && 'main' || '' }}
+  #
+  #     - name: Deploy frontend to ZAD
+  #       uses: RijksICTGilde/zad-actions/deploy@v2
+  #       with:
+  #         api-key: ${{ secrets.ZAD_API_KEY }}
+  #         project-id: bouwm-75c
+  #         deployment-name: ${{ steps.names.outputs.name }}
+  #         component: component-1
+  #         image: ${{ env.IMAGE_PREFIX }}/frontend:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'main' }}
+  #         clone-from: ${{ github.event_name == 'pull_request' && 'main' || '' }}
+  #         comment-on-pr: ${{ github.event_name == 'pull_request' }}
