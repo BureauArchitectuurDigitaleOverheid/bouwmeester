@@ -104,16 +104,12 @@ export function TaskPersonalView({ tasks, onEditTask }: TaskPersonalViewProps) {
         ) : null,
       )}
 
-      {/* Beschikbaar section - always shown */}
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <Calendar className="h-4 w-4 text-text-secondary" />
-          <h3 className="text-sm font-semibold text-text">Beschikbaar</h3>
-        </div>
-        <p className="text-sm text-text-secondary italic">
-          Taken die aan jouw eenheid zijn toegewezen maar nog niet aan een persoon.
+      {/* Empty state when no tasks at all */}
+      {groups.every((g) => g.tasks.length === 0) && (
+        <p className="text-sm text-text-secondary italic py-4 text-center">
+          Geen taken gevonden.
         </p>
-      </section>
+      )}
     </div>
   );
 }

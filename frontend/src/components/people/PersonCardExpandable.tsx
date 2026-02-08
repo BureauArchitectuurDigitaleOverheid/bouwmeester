@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Mail, Briefcase, Shield, Pencil, CheckCircle2, Circle, FileText, Loader2, Bot, MessageSquare, Terminal } from 'lucide-react';
+import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, Bot, MessageSquare, Terminal, Building2, X } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
-import { usePersonSummary } from '@/hooks/usePeople';
-import { ROL_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
+import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
+import { FUNCTIE_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import type { Person } from '@/types';
 
@@ -30,9 +30,13 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [messageOpen, setMessageOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { nodeLabel } = useVocabulary();
   const { data: summary, isLoading: summaryLoading } = usePersonSummary(expanded ? person.id : null);
+  const { data: placements } = usePersonOrganisaties(expanded ? person.id : null);
+  const endPlacement = useUpdatePersonOrganisatie();
+  const removePlacement = useRemovePersonOrganisatie();
 
   const handleCopyEmail = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -79,10 +83,10 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             )}
             {isManager && (
               <Badge
-                variant={person.rol === 'minister' || person.rol === 'staatssecretaris' ? 'purple' : 'blue'}
+                variant={person.functie === 'minister' || person.functie === 'staatssecretaris' ? 'purple' : 'blue'}
                 className="text-[10px] px-1.5 py-0 shrink-0"
               >
-                {person.rol === 'minister' || person.rol === 'staatssecretaris' ? 'Bewindspersoon' : 'Manager'}
+                {person.functie === 'minister' || person.functie === 'staatssecretaris' ? 'Bewindspersoon' : 'Manager'}
               </Badge>
             )}
             {extraBadge && <div className="shrink-0 ml-auto">{extraBadge}</div>}
@@ -98,16 +102,16 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 {copied ? 'Gekopieerd!' : person.email}
               </button>
             )}
-            {person.functie && (
+            {person.functie && !person.is_agent && (
               <span className="flex items-center gap-1">
                 <Briefcase className="h-3 w-3" />
-                {person.functie}
+                {FUNCTIE_LABELS[person.functie] || person.functie}
               </span>
             )}
-            {person.rol && (
-              <span className="flex items-center gap-1">
-                <Shield className="h-3 w-3" />
-                {ROL_LABELS[person.rol] || person.rol}
+            {person.description && person.is_agent && (
+              <span className="flex items-center gap-1 truncate">
+                <Briefcase className="h-3 w-3" />
+                {person.description}
               </span>
             )}
           </div>
@@ -200,9 +204,90 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 </div>
               )}
 
+              {/* Org placements section */}
+              {placements && placements.length > 0 && (
+                <div>
+                  <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
+                    <Building2 className="h-3 w-3" />
+                    Plaatsingen
+                  </p>
+                  <div className="space-y-1">
+                    {placements.map((p) => (
+                      <div key={p.id} className="flex items-center gap-2 text-text">
+                        <span className="truncate">{p.organisatie_eenheid_naam}</span>
+                        <Badge variant="gray" className="text-[10px] px-1.5 py-0 shrink-0">
+                          {DIENSTVERBAND_LABELS[p.dienstverband] || p.dienstverband}
+                        </Badge>
+                        <div className="flex items-center gap-1 shrink-0 ml-auto">
+                          {!p.eind_datum && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                endPlacement.mutate(
+                                  {
+                                    personId: person.id,
+                                    placementId: p.id,
+                                    data: { eind_datum: new Date().toISOString().split('T')[0] },
+                                  },
+                                  { onError: () => alert('Plaatsing beëindigen mislukt.') },
+                                );
+                              }}
+                              className="text-text-secondary hover:text-amber-600 transition-colors"
+                              title="Plaatsing beëindigen"
+                            >
+                              <CheckCircle2 className="h-3 w-3" />
+                            </button>
+                          )}
+                          {confirmDeleteId === p.id ? (
+                            <span className="flex items-center gap-1 text-red-600">
+                              <span>Zeker?</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removePlacement.mutate(
+                                    { personId: person.id, placementId: p.id },
+                                    {
+                                      onSettled: () => setConfirmDeleteId(null),
+                                      onError: () => alert('Verwijderen mislukt.'),
+                                    },
+                                  );
+                                }}
+                                className="font-medium hover:underline"
+                              >
+                                Ja
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmDeleteId(null);
+                                }}
+                                className="text-text-secondary hover:text-text"
+                              >
+                                Nee
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteId(p.id);
+                              }}
+                              className="text-text-secondary hover:text-red-600 transition-colors"
+                              title="Plaatsing verwijderen"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* No tasks and no nodes */}
-              {summary.open_task_count === 0 && summary.done_task_count === 0 && summary.stakeholder_nodes.length === 0 && (
-                <p className="text-text-secondary">Geen taken of dossiers.</p>
+              {summary.open_task_count === 0 && summary.done_task_count === 0 && summary.stakeholder_nodes.length === 0 && (!placements || placements.length === 0) && (
+                <p className="text-text-secondary">Geen taken, dossiers of plaatsingen.</p>
               )}
             </div>
           ) : null}

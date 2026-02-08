@@ -1,6 +1,6 @@
-import { User, Mail, Building, Briefcase, Shield } from 'lucide-react';
+import { User, Mail, Briefcase, Bot } from 'lucide-react';
 import { Card } from '@/components/common/Card';
-import { ROL_LABELS } from '@/types';
+import { FUNCTIE_LABELS } from '@/types';
 import type { Person } from '@/types';
 
 interface PersonCardProps {
@@ -27,14 +27,27 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
     >
       <div className="flex items-start gap-3">
         {/* Avatar */}
-        <div className="flex items-center justify-center h-10 w-10 rounded-full bg-primary-100 text-primary-700 font-semibold text-sm shrink-0">
-          {initials || <User className="h-5 w-5" />}
-        </div>
+        {person.is_agent ? (
+          <div className="flex items-center justify-center h-10 w-10 rounded-full bg-purple-100 text-purple-700 shrink-0">
+            <Bot className="h-5 w-5" />
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-10 w-10 rounded-full bg-primary-100 text-primary-700 font-semibold text-sm shrink-0">
+            {initials || <User className="h-5 w-5" />}
+          </div>
+        )}
 
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-text truncate">
-            {person.naam}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-text truncate">
+              {person.naam}
+            </h3>
+            {person.is_agent && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">
+                Agent
+              </span>
+            )}
+          </div>
 
           <div className="space-y-1 mt-1.5">
             {person.email && (
@@ -43,23 +56,14 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
                 <span className="truncate">{person.email}</span>
               </div>
             )}
-            {person.afdeling && (
-              <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-                <Building className="h-3 w-3 shrink-0" />
-                <span className="truncate">{person.afdeling}</span>
-              </div>
-            )}
             {person.functie && (
               <div className="flex items-center gap-1.5 text-xs text-text-secondary">
                 <Briefcase className="h-3 w-3 shrink-0" />
-                <span className="truncate">{person.functie}</span>
+                <span className="truncate">{FUNCTIE_LABELS[person.functie] || person.functie}</span>
               </div>
             )}
-            {person.rol && (
-              <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-                <Shield className="h-3 w-3 shrink-0" />
-                <span className="truncate">{ROL_LABELS[person.rol] || person.rol}</span>
-              </div>
+            {person.is_agent && person.description && (
+              <p className="text-xs text-text-secondary truncate">{person.description}</p>
             )}
           </div>
         </div>

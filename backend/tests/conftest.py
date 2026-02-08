@@ -81,8 +81,7 @@ async def sample_person(db_session: AsyncSession):
         id=uuid.uuid4(),
         naam="Jan Tester",
         email="jan@example.com",
-        functie="Beleidsmedewerker",
-        rol="beleidsmedewerker",
+        functie="beleidsmedewerker",
         is_active=True,
     )
     db_session.add(person)
@@ -99,8 +98,7 @@ async def second_person(db_session: AsyncSession):
         id=uuid.uuid4(),
         naam="Piet Tester",
         email="piet@example.com",
-        functie="Adviseur",
-        rol="adviseur",
+        functie="adviseur",
         is_active=True,
     )
     db_session.add(person)

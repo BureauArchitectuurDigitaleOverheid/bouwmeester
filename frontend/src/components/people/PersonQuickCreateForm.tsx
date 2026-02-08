@@ -1,10 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
-import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useCreatePerson } from '@/hooks/usePeople';
-import { useOrganisatieFlat, useCreateOrganisatieEenheid } from '@/hooks/useOrganisatie';
 
 interface PersonQuickCreateFormProps {
   open: boolean;
@@ -21,16 +19,14 @@ export function PersonQuickCreateForm({
 }: PersonQuickCreateFormProps) {
   const [naam, setNaam] = useState(initialName);
   const [email, setEmail] = useState('');
-  const [organisatieEenheidId, setOrganisatieEenheidId] = useState('');
   const createPerson = useCreatePerson();
-  const { data: orgEenheden = [] } = useOrganisatieFlat();
-  const createOrgMutation = useCreateOrganisatieEenheid();
 
-  const orgOptions = orgEenheden.map((e) => ({
-    value: e.id,
-    label: e.naam,
-    description: e.type,
-  }));
+  useEffect(() => {
+    if (open) {
+      setNaam(initialName);
+      setEmail('');
+    }
+  }, [open, initialName]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,26 +35,12 @@ export function PersonQuickCreateForm({
     const person = await createPerson.mutateAsync({
       naam: naam.trim(),
       email: email.trim() || undefined,
-      organisatie_eenheid_id: organisatieEenheidId || undefined,
     });
 
     onCreated(person.id);
     setNaam('');
     setEmail('');
-    setOrganisatieEenheidId('');
     onClose();
-  };
-
-  const handleCreateOrgEenheid = async (text: string): Promise<string | null> => {
-    try {
-      const result = await createOrgMutation.mutateAsync({
-        naam: text,
-        type: 'afdeling',
-      });
-      return result.id;
-    } catch {
-      return null;
-    }
   };
 
   return (
@@ -97,15 +79,6 @@ export function PersonQuickCreateForm({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="email@voorbeeld.nl"
-        />
-        <CreatableSelect
-          label="Organisatie-eenheid"
-          value={organisatieEenheidId}
-          onChange={setOrganisatieEenheidId}
-          options={orgOptions}
-          placeholder="Selecteer of maak eenheid..."
-          onCreate={handleCreateOrgEenheid}
-          createLabel="Nieuwe eenheid aanmaken"
         />
       </form>
     </Modal>

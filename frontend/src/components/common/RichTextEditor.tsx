@@ -214,7 +214,7 @@ async function fetchPeopleAndOrgs(query: string): Promise<SuggestionItem[]> {
     const personItems: SuggestionItem[] = people.map((p) => ({
       id: p.id,
       label: p.naam,
-      subtitle: p.functie ?? p.afdeling ?? undefined,
+      subtitle: p.functie ?? undefined,
       mentionType: 'person',
     }));
     const orgItems: SuggestionItem[] = orgs.map((o) => ({

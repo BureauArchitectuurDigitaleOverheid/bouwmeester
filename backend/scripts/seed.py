@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import async_session
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.repositories.edge_type import EdgeTypeRepository
@@ -49,6 +50,7 @@ async def seed(db: AsyncSession) -> None:
         "maatregel",
         "politieke_input",
         "corpus_node",
+        "person_organisatie_eenheid",
         "person",
         "organisatie_eenheid",
     ]:
@@ -545,29 +547,35 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
 
     # Helper to create people in bulk
-    async def cp(naam, email, functie, rol, eenheid):
-        return await person_repo.create(
+    async def cp(naam, email, functie, eenheid):
+        person = await person_repo.create(
             PersonCreate(
                 naam=naam,
                 email=email,
                 functie=functie,
-                rol=rol,
-                organisatie_eenheid_id=eenheid.id,
             )
         )
+        # Create org placement
+        placement = PersonOrganisatieEenheid(
+            person_id=person.id,
+            organisatie_eenheid_id=eenheid.id,
+            dienstverband="in_dienst",
+            start_datum=date.today(),
+        )
+        db.add(placement)
+        await db.flush()
+        return person
 
     # --- Bewindspersoon en ambtelijke top (echte namen) ---
     p_vanmarum = await cp(
         "Eddie van Marum",
         "e.vanmarum@minbzk.nl",
-        "Staatssecretaris Digitalisering en Koninkrijksrelaties",
         "staatssecretaris",
         bzk,
     )
     p_dgdoo = await cp(
         "Eva den Dunnen-Heijblom",
         "e.dendunnen@minbzk.nl",
-        "Directeur-Generaal Digitalisering en Overheidsorganisatie",
         "directeur_generaal",
         dgdoo,
     )
@@ -576,42 +584,36 @@ async def seed(db: AsyncSession) -> None:
     p_vermeer = await cp(
         "Mark Vermeer",
         "m.vermeer@minbzk.nl",
-        "Directeur Digitale Overheid",
         "directeur",
         dir_ddo,
     )
     p_beentjes = await cp(
         "Hillie Beentjes",
         "h.beentjes@minbzk.nl",
-        "Directeur Digitale Samenleving / plv. DG DOO",
         "directeur",
         dir_ds,
     )
     p_deblaauw = await cp(
         "Art de Blaauw",
         "a.deblaauw@minbzk.nl",
-        "Directeur CIO Rijk",
         "directeur",
         dir_cio,
     )
     p_weimar = await cp(
         "André Weimar",
         "a.weimar@minbzk.nl",
-        "Wnd. directeur A&O / plv. DG Overheidsorganisatie",
         "directeur",
         dir_ao,
     )
     p_hulzebosch = await cp(
         "Mariya Hulzebosch",
         "m.hulzebosch@minbzk.nl",
-        "Wnd. directeur IFHR / plv. DG Overheidsorganisatie",
         "directeur",
         dir_ifhr,
     )
     p_rutjens = await cp(
         "Jacqueline Rutjens",
         "j.rutjens@minbzk.nl",
-        "Wnd. directeur Programma Open Overheid",
         "directeur",
         prog_open,
     )
@@ -621,14 +623,12 @@ async def seed(db: AsyncSession) -> None:
     p_westelaken = await cp(
         "Lindy van de Westelaken",
         "l.vandewestelaken@minbzk.nl",
-        "Afdelingshoofd Basisinfrastructuur en Dienstverlening",
         "afdelingshoofd",
         afd_basisinfra,
     )
     p_vanwissen = await cp(
         "Lissy van Wissen",
         "l.vanwissen@minbzk.nl",
-        "Afdelingshoofd Identiteit en Toegang",
         "afdelingshoofd",
         afd_id_toegang,
     )
@@ -637,14 +637,12 @@ async def seed(db: AsyncSession) -> None:
     p_kewal = await cp(
         "Suzie Kewal",
         "s.kewal@minbzk.nl",
-        "Afdelingshoofd AI, Algoritmen, Data en Digitale Inclusie",
         "afdelingshoofd",
         afd_ai_data,
     )
     p_zondervan = await cp(
         "Ingrid Zondervan",
         "i.zondervan@minbzk.nl",
-        "Afdelingshoofd Strategie, Internationaal en Communicatie",
         "afdelingshoofd",
         afd_strat_intl,
     )
@@ -653,7 +651,6 @@ async def seed(db: AsyncSession) -> None:
     p_terborg = await cp(
         "Fleur ter Borg",
         "f.terborg@minbzk.nl",
-        "Afdelingshoofd ICT-diensten en Voorzieningen",
         "afdelingshoofd",
         afd_ict_voorz,
     )
@@ -661,7 +658,6 @@ async def seed(db: AsyncSession) -> None:
     p_brouwer = await cp(
         "Stefan Brouwer",
         "s.brouwer@minbzk.nl",
-        "Afdelingshoofd I-Stelsel en Vakmanschap",
         "afdelingshoofd",
         afd_istelsel,
     )
@@ -669,7 +665,6 @@ async def seed(db: AsyncSession) -> None:
     p_timmermans = await cp(
         "Renate Timmermans",
         "r.timmermans@minbzk.nl",
-        "Afdelingshoofd Informatiebeveiliging / CISO Rijk",
         "afdelingshoofd",
         afd_infobev,
     )
@@ -678,7 +673,6 @@ async def seed(db: AsyncSession) -> None:
     p_vandegraaf = await cp(
         "Hester van de Graaf",
         "h.vandegraaf@minbzk.nl",
-        "Afdelingshoofd Ambtelijk Vakmanschap en Rechtspositie",
         "afdelingshoofd",
         afd_ambt_vak,
     )
@@ -686,7 +680,6 @@ async def seed(db: AsyncSession) -> None:
     p_meijer = await cp(
         "Wouter Meijer",
         "w.meijer@minbzk.nl",
-        "Afdelingshoofd Arbeidsmarkt en Organisatie",
         "afdelingshoofd",
         afd_arbeidsmarkt,
     )
@@ -695,14 +688,12 @@ async def seed(db: AsyncSession) -> None:
     p_zwaans = await cp(
         "David Zwaans",
         "d.zwaans@minbzk.nl",
-        "Afdelingshoofd Inkoop- en Aanbestedingsbeleid Rijk",
         "afdelingshoofd",
         afd_inkoop,
     )
     p_coenen = await cp(
         "Irene Coenen",
         "i.coenen@minbzk.nl",
-        "Afdelingshoofd Faciliteiten- en Huisvestingsbeleid",
         "afdelingshoofd",
         afd_fac_huisv,
     )
@@ -711,208 +702,179 @@ async def seed(db: AsyncSession) -> None:
     p_tl_digid = await cp(
         "Priya Sharma",
         "p.sharma@minbzk.nl",
-        "Teamleider DigiD Beleid",
         "coordinator",
         team_digid,
     )
     p_tl_eudiw = await cp(
         "Joost van Dijk",
         "j.vandijk@minbzk.nl",
-        "Teamleider EUDIW",
         "coordinator",
         team_eudiw,
     )
     p_tl_mijnov = await cp(
         "Nienke Postma",
         "n.postma@minbzk.nl",
-        "Teamleider MijnOverheid",
         "coordinator",
         team_mijnoverheid,
     )
     p_tl_gdi = await cp(
         "Rick Janssen",
         "r.janssen@minbzk.nl",
-        "Teamleider GDI en Standaarden",
         "coordinator",
         team_gdi,
     )
     p_tl_algo = await cp(
         "Fatima Bakker-El Idrissi",
         "f.bakker@minbzk.nl",
-        "Teamleider Algoritmeregister",
         "coordinator",
         team_algo,
     )
     p_tl_aiact = await cp(
         "Daan Vermeulen",
         "d.vermeulen@minbzk.nl",
-        "Teamleider AI Act Implementatie",
         "coordinator",
         team_ai_act,
     )
     p_tl_data = await cp(
         "Samira El Amrani",
         "s.elamrani@minbzk.nl",
-        "Teamleider Data en IBDS",
         "coordinator",
         team_data,
     )
     p_tl_incl = await cp(
         "Marjolein de Wit",
         "m.dewit@minbzk.nl",
-        "Teamleider Digitale Inclusie",
         "coordinator",
         team_inclusie,
     )
     p_tl_eu = await cp(
         "Pieter-Jan Hofstra",
         "pj.hofstra@minbzk.nl",
-        "Teamleider EU en Internationaal",
         "coordinator",
         team_eu_intl,
     )
     p_tl_comm = await cp(
         "Lisa van Beek",
         "l.vanbeek@minbzk.nl",
-        "Teamleider Communicatie en Strategie",
         "coordinator",
         team_comm,
     )
     p_tl_cloud = await cp(
         "Bas Hendriks",
         "b.hendriks@minbzk.nl",
-        "Teamleider Cloud en Soevereiniteit",
         "coordinator",
         team_cloud,
     )
     p_tl_sourc = await cp(
         "Eva Jansen",
         "e.jansen@minbzk.nl",
-        "Teamleider Sourcing en Leveranciersmanagement",
         "coordinator",
         team_sourcing,
     )
     p_tl_arch = await cp(
         "Jeroen Smit",
         "j.smit@minbzk.nl",
-        "Teamleider Architectuur en NORA",
         "coordinator",
         team_arch,
     )
     p_tl_ciostel = await cp(
         "Annemiek Vos",
         "a.vos@minbzk.nl",
-        "Teamleider CIO-stelsel",
         "coordinator",
         team_cio_stelsel,
     )
     p_tl_bio = await cp(
         "Sander Kuijpers",
         "s.kuijpers@minbzk.nl",
-        "Teamleider BIO en Cyberveiligheid",
         "coordinator",
         team_bio,
     )
     p_tl_cao = await cp(
         "Mirjam Schouten",
         "m.schouten@minbzk.nl",
-        "Teamleider CAO en Arbeidsvoorwaarden",
         "coordinator",
         team_cao,
     )
     p_tl_div = await cp(
         "Omar Yilmaz",
         "o.yilmaz@minbzk.nl",
-        "Teamleider Diversiteit en Inclusie",
         "coordinator",
         team_diversiteit,
     )
     p_tl_woo = await cp(
         "Charlotte Dekker",
         "c.dekker@minbzk.nl",
-        "Teamleider Woo en Informatiehuishouding",
         "coordinator",
         team_woo,
     )
     p_tl_actie = await cp(
         "Tim Groenewegen",
         "t.groenewegen@minbzk.nl",
-        "Teamleider Actieplan Open Overheid",
         "coordinator",
         team_actieplan,
     )
 
     # --- Senior beleidsmedewerkers en beleidsmedewerkers (fictief, ~150 personen) ---
-    # Bulk data: (naam, email prefix, functie, rol, eenheid)
+    # Bulk data: (naam, email prefix, functie, eenheid)
     bulk_people = [
         # === Directie Digitale Overheid — Afd Basisinfra (~12) ===
         (
             "Sophie van der Linden",
             "s.vanderlinden",
-            "Senior beleidsmedewerker GDI",
             "senior_beleidsmedewerker",
             team_gdi,
         ),
         (
             "Thomas Bakker",
             "t.bakker",
-            "Beleidsmedewerker basisregistraties",
             "beleidsmedewerker",
             team_gdi,
         ),
         (
             "Anouk Willems",
             "a.willems",
-            "Beleidsmedewerker standaarden",
             "beleidsmedewerker",
             team_gdi,
         ),
         (
             "Marloes Visser",
             "m.visser",
-            "Projectleider MijnOverheid doorontwikkeling",
             "projectleider",
             team_mijnoverheid,
         ),
         (
             "Ravi Patel",
             "r.patel",
-            "Senior beleidsmedewerker MijnOverheid",
             "senior_beleidsmedewerker",
             team_mijnoverheid,
         ),
         (
             "Dominique Leroy",
             "d.leroy",
-            "Beleidsmedewerker berichtenbox",
             "beleidsmedewerker",
             team_mijnoverheid,
         ),
         (
             "Fleur Mulder",
             "f.mulder",
-            "Beleidsmedewerker machtigen",
             "beleidsmedewerker",
             team_mijnoverheid,
         ),
         (
             "Youssef Amrani",
             "y.amrani",
-            "Beleidsmedewerker lopende zaken",
             "beleidsmedewerker",
             afd_basisinfra,
         ),
         (
             "Wietske Nauta",
             "w.nauta",
-            "Directiesecretaris Digitale Overheid",
             "beleidsmedewerker",
             afd_basisinfra,
         ),
         (
             "Jasper van Leeuwen",
             "j.vanleeuwen",
-            "Beleidsmedewerker toegankelijkheid",
             "beleidsmedewerker",
             afd_basisinfra,
         ),
@@ -920,70 +882,60 @@ async def seed(db: AsyncSession) -> None:
         (
             "Deniz Kaya",
             "d.kaya",
-            "Senior beleidsmedewerker digitale identiteit",
             "senior_beleidsmedewerker",
             afd_id_toegang,
         ),
         (
             "Floor Dijkstra",
             "f.dijkstra",
-            "Senior beleidsmedewerker eIDAS",
             "senior_beleidsmedewerker",
             afd_id_toegang,
         ),
         (
             "Linh Nguyen",
             "l.nguyen",
-            "Beleidsmedewerker DigiD",
             "beleidsmedewerker",
             team_digid,
         ),
         (
             "Koen Janssen",
             "k.janssen",
-            "Beleidsmedewerker DigiD Hoog",
             "beleidsmedewerker",
             team_digid,
         ),
         (
             "Sara Molenaar",
             "s.molenaar",
-            "Beleidsmedewerker DigiD Machtigen",
             "beleidsmedewerker",
             team_digid,
         ),
         (
             "Thijs de Boer",
             "th.deboer",
-            "Senior beleidsmedewerker EUDIW",
             "senior_beleidsmedewerker",
             team_eudiw,
         ),
         (
             "Nina Aerts",
             "n.aerts",
-            "Beleidsmedewerker wallet architectuur",
             "beleidsmedewerker",
             team_eudiw,
         ),
         (
             "Maarten Vos",
             "m.vos",
-            "Beleidsmedewerker eIDAS2-implementatie",
             "beleidsmedewerker",
             team_eudiw,
         ),
         (
             "Emma van Dalen",
             "e.vandalen",
-            "Beleidsmedewerker pilotprogramma EUDIW",
             "beleidsmedewerker",
             team_eudiw,
         ),
         (
             "Ruben Groen",
             "r.groen",
-            "Beleidsmedewerker elektronische handtekeningen",
             "beleidsmedewerker",
             afd_id_toegang,
         ),
@@ -991,42 +943,36 @@ async def seed(db: AsyncSession) -> None:
         (
             "Lisa Achterberg",
             "l.achterberg",
-            "Juridisch adviseur digitale grondrechten",
             "jurist",
             afd_wdo,
         ),
         (
             "Vincent Bos",
             "v.bos",
-            "Senior juridisch medewerker WDO",
             "senior_beleidsmedewerker",
             afd_wdo,
         ),
         (
             "Manon Kuiper",
             "m.kuiper",
-            "Beleidsmedewerker interoperabiliteitswet",
             "beleidsmedewerker",
             afd_wdo,
         ),
         (
             "Alexander Scholten",
             "a.scholten",
-            "Beleidsmedewerker stelselwetgeving",
             "beleidsmedewerker",
             afd_wdo,
         ),
         (
             "Julia van Houten",
             "j.vanhouten",
-            "Juridisch medewerker WDO transitie",
             "jurist",
             afd_wdo,
         ),
         (
             "Bart Koster",
             "b.koster",
-            "Beleidsmedewerker rechtsbescherming",
             "beleidsmedewerker",
             afd_wdo,
         ),
@@ -1034,105 +980,90 @@ async def seed(db: AsyncSession) -> None:
         (
             "Bram de Jong",
             "b.dejong",
-            "Senior beleidsmedewerker AI-verordening",
             "senior_beleidsmedewerker",
             team_ai_act,
         ),
         (
             "Raj Kumar",
             "r.kumar",
-            "Senior beleidsmedewerker data en IBDS",
             "senior_beleidsmedewerker",
             team_data,
         ),
         (
             "Anne Hendriks",
             "a.hendriks",
-            "Beleidsmedewerker digitale inclusie",
             "beleidsmedewerker",
             team_inclusie,
         ),
         (
             "Naomi Osei",
             "n.osei",
-            "Beleidsmedewerker Algoritmeregister",
             "beleidsmedewerker",
             team_algo,
         ),
         (
             "Sven Berger",
             "s.berger",
-            "Beleidsmedewerker algoritmekader",
             "beleidsmedewerker",
             team_algo,
         ),
         (
             "Iris van Dam",
             "i.vandam",
-            "Beleidsmedewerker impactassessment algoritmen",
             "beleidsmedewerker",
             team_algo,
         ),
         (
             "Mike Koopman",
             "m.koopman",
-            "Senior beleidsmedewerker AI Act hoog-risico",
             "senior_beleidsmedewerker",
             team_ai_act,
         ),
         (
             "Femke Admiraal",
             "f.admiraal",
-            "Beleidsmedewerker generatieve AI",
             "beleidsmedewerker",
             team_ai_act,
         ),
         (
             "Leon Groot",
             "l.groot",
-            "Beleidsmedewerker AI toezicht",
             "beleidsmedewerker",
             team_ai_act,
         ),
         (
             "Carmen Torres",
             "c.torres",
-            "Senior beleidsmedewerker IBDS afsprakenstelsel",
             "senior_beleidsmedewerker",
             team_data,
         ),
         (
             "Jesse van Rijn",
             "j.vanrijn",
-            "Beleidsmedewerker Federatief Datastelsel",
             "beleidsmedewerker",
             team_data,
         ),
         (
             "Esra Yildirim",
             "e.yildirim",
-            "Beleidsmedewerker open data",
             "beleidsmedewerker",
             team_data,
         ),
         (
             "Hanneke Prins",
             "h.prins",
-            "Senior beleidsmedewerker digitale geletterdheid",
             "senior_beleidsmedewerker",
             team_inclusie,
         ),
         (
             "Jan-Willem Moerman",
             "jw.moerman",
-            "Beleidsmedewerker digibeten programma",
             "beleidsmedewerker",
             team_inclusie,
         ),
         (
             "Lot van Dongen",
             "l.vandongen",
-            "Beleidsmedewerker toegankelijkheid overheid",
             "beleidsmedewerker",
             team_inclusie,
         ),
@@ -1140,56 +1071,48 @@ async def seed(db: AsyncSession) -> None:
         (
             "Mees Hoekstra",
             "m.hoekstra",
-            "Senior beleidsmedewerker NDS coördinatie",
             "senior_beleidsmedewerker",
             team_comm,
         ),
         (
             "Luuk Driessen",
             "l.driessen",
-            "Communicatieadviseur digitalisering",
             "communicatieadviseur",
             team_comm,
         ),
         (
             "Petra Claassen",
             "p.claassen",
-            "Senior beleidsmedewerker EU TTE",
             "senior_beleidsmedewerker",
             team_eu_intl,
         ),
         (
             "Freek van der Heijden",
             "f.vanderheijden",
-            "Beleidsmedewerker OECD digitaal",
             "beleidsmedewerker",
             team_eu_intl,
         ),
         (
             "Lieke Vermolen",
             "l.vermolen",
-            "Beleidsmedewerker internationale digitalisering",
             "beleidsmedewerker",
             team_eu_intl,
         ),
         (
             "Bob Gerrits",
             "b.gerrits",
-            "Beleidsmedewerker stakeholdermanagement",
             "beleidsmedewerker",
             team_comm,
         ),
         (
             "Nikki Rodenburg",
             "n.rodenburg",
-            "Directiesecretaris Digitale Samenleving",
             "beleidsmedewerker",
             afd_strat_intl,
         ),
         (
             "Matthijs Born",
             "m.born",
-            "Beleidsmedewerker digitale grondrechten",
             "beleidsmedewerker",
             afd_strat_intl,
         ),
@@ -1197,56 +1120,48 @@ async def seed(db: AsyncSession) -> None:
         (
             "Karin de Vries",
             "k.devries",
-            "Senior beleidsmedewerker cloudbeleid",
             "senior_beleidsmedewerker",
             team_cloud,
         ),
         (
             "Patrick Oomen",
             "p.oomen",
-            "Beleidsmedewerker soevereine cloud",
             "beleidsmedewerker",
             team_cloud,
         ),
         (
             "Daniëlle Moerland",
             "d.moerland",
-            "Beleidsmedewerker datacentersstrategie",
             "beleidsmedewerker",
             team_cloud,
         ),
         (
             "Tom Willemse",
             "t.willemse",
-            "Beleidsmedewerker exit-strategieën",
             "beleidsmedewerker",
             team_cloud,
         ),
         (
             "Inge Westra",
             "i.westra",
-            "Senior beleidsmedewerker leveranciersmanagement",
             "senior_beleidsmedewerker",
             team_sourcing,
         ),
         (
             "Arjan de Haan",
             "a.dehaan",
-            "Beleidsmedewerker IT-marktordening",
             "beleidsmedewerker",
             team_sourcing,
         ),
         (
             "Sandra Muijs",
             "s.muijs",
-            "Beleidsmedewerker vendor lock-in",
             "beleidsmedewerker",
             team_sourcing,
         ),
         (
             "Wesley Kort",
             "w.kort",
-            "CTO adviseur technische standaarden",
             "adviseur",
             afd_ict_voorz,
         ),
@@ -1254,43 +1169,37 @@ async def seed(db: AsyncSession) -> None:
         (
             "Michelle Langenberg",
             "m.langenberg",
-            "Senior enterprise architect Rijk",
             "senior_beleidsmedewerker",
             team_arch,
         ),
-        ("Robert Kok", "r.kok", "NORA-beheerder", "adviseur", team_arch),
+        ("Robert Kok", "r.kok", "adviseur", team_arch),
         (
             "Vera Gielen",
             "v.gielen",
-            "Beleidsmedewerker referentie-architectuur",
             "beleidsmedewerker",
             team_arch,
         ),
         (
             "Frank Polman",
             "f.polman",
-            "Senior beleidsmedewerker CIO-stelsel",
             "senior_beleidsmedewerker",
             team_cio_stelsel,
         ),
         (
             "Greta van Rooij",
             "g.vanrooij",
-            "Beleidsmedewerker CIO-overleg",
             "beleidsmedewerker",
             team_cio_stelsel,
         ),
         (
             "Henri Manders",
             "h.manders",
-            "Beleidsmedewerker digitaal vakmanschap",
             "beleidsmedewerker",
             team_cio_stelsel,
         ),
         (
             "Annelies Boom",
             "a.boom",
-            "Beleidsmedewerker I-strategie",
             "beleidsmedewerker",
             afd_istelsel,
         ),
@@ -1298,42 +1207,36 @@ async def seed(db: AsyncSession) -> None:
         (
             "Thomas van den Berg",
             "t.vandenberg",
-            "Senior beleidsmedewerker BIO",
             "senior_beleidsmedewerker",
             team_bio,
         ),
         (
             "Erik Huizen",
             "e.huizen",
-            "Beleidsmedewerker cyberveiligheid Rijk",
             "beleidsmedewerker",
             team_bio,
         ),
         (
             "Linda Verhoeven",
             "l.verhoeven",
-            "Beleidsmedewerker security awareness",
             "beleidsmedewerker",
             team_bio,
         ),
         (
             "Marco Fontein",
             "m.fontein",
-            "Senior beleidsmedewerker audits en compliance",
             "senior_beleidsmedewerker",
             afd_infobev,
         ),
         (
             "Yvette Claessens",
             "y.claessens",
-            "Beleidsmedewerker incidentrespons",
             "beleidsmedewerker",
             afd_infobev,
         ),
         (
             "Niels Borgman",
             "n.borgman",
-            "Beleidsmedewerker dreigingsanalyse",
             "beleidsmedewerker",
             afd_infobev,
         ),
@@ -1341,91 +1244,78 @@ async def seed(db: AsyncSession) -> None:
         (
             "Maarten Peeters",
             "m.peeters",
-            "Senior beleidsmedewerker HR Rijksdienst",
             "senior_beleidsmedewerker",
             afd_arbeidsmarkt,
         ),
         (
             "Leonie Mulder",
             "l.mulder",
-            "Beleidsmedewerker arbeidsmarktcommunicatie",
             "beleidsmedewerker",
             afd_arbeidsmarkt,
         ),
         (
             "Jasper Hoekman",
             "j.hoekman",
-            "Beleidsmedewerker talentprogramma's",
             "beleidsmedewerker",
             afd_arbeidsmarkt,
         ),
         (
             "Monique Geerts",
             "m.geerts",
-            "Senior beleidsmedewerker CAO Rijk",
             "senior_beleidsmedewerker",
             team_cao,
         ),
         (
             "Arno Willems",
             "a2.willems",
-            "Beleidsmedewerker pensioenen en sociale zekerheid",
             "beleidsmedewerker",
             team_cao,
         ),
         (
             "Claire van Beek",
             "c.vanbeek",
-            "Beleidsmedewerker salarisbeleid",
             "beleidsmedewerker",
             team_cao,
         ),
         (
             "Said Benali",
             "s.benali",
-            "Senior beleidsmedewerker ambtelijk vakmanschap",
             "senior_beleidsmedewerker",
             afd_ambt_vak,
         ),
         (
             "Tanja Veldkamp",
             "t.veldkamp",
-            "Juridisch medewerker Ambtenarenwet",
             "jurist",
             afd_ambt_vak,
         ),
         (
             "Kim Janson",
             "k.janson",
-            "Beleidsmedewerker integriteit",
             "beleidsmedewerker",
             afd_ambt_vak,
         ),
         (
             "Yusuf Arslan",
             "y.arslan",
-            "Senior beleidsmedewerker banenafspraak",
             "senior_beleidsmedewerker",
             team_diversiteit,
         ),
         (
             "Noor de Groot",
             "n.degroot",
-            "Beleidsmedewerker inclusief werkgeverschap",
             "beleidsmedewerker",
             team_diversiteit,
         ),
         (
             "Dirk Aalbers",
             "d.aalbers",
-            "Beleidsmedewerker organisatieontwikkeling",
             "beleidsmedewerker",
             afd_arbeidsmarkt,
         ),
         (
             "Patricia Volkers",
             "p.volkers",
-            "Directiesecretaris A&O",
             "beleidsmedewerker",
             dir_ao,
         ),
@@ -1433,63 +1323,54 @@ async def seed(db: AsyncSession) -> None:
         (
             "Chantal Gorter",
             "c.gorter",
-            "Senior beleidsmedewerker MVI",
             "senior_beleidsmedewerker",
             afd_inkoop,
         ),
         (
             "Hugo Verwey",
             "h.verwey",
-            "Beleidsmedewerker aanbestedingsrecht",
             "beleidsmedewerker",
             afd_inkoop,
         ),
         (
             "Renée van Vliet",
             "r.vanvliet",
-            "Beleidsmedewerker categoriemanagement",
             "beleidsmedewerker",
             afd_inkoop,
         ),
         (
             "Stan Molenaar",
             "s2.molenaar",
-            "Beleidsmedewerker IT-inkoop",
             "beleidsmedewerker",
             afd_inkoop,
         ),
         (
             "Wendy Driessen",
             "w.driessen",
-            "Senior beleidsmedewerker rijkshuisvesting",
             "senior_beleidsmedewerker",
             afd_fac_huisv,
         ),
         (
             "Karel Mertens",
             "k.mertens",
-            "Beleidsmedewerker hybride werken",
             "beleidsmedewerker",
             afd_fac_huisv,
         ),
         (
             "Astrid van Hoorn",
             "a.vanhoorn",
-            "Beleidsmedewerker verduurzaming kantoren",
             "beleidsmedewerker",
             afd_fac_huisv,
         ),
         (
             "Rutger Bosman",
             "r.bosman",
-            "Beleidsmedewerker facilitaire dienstverlening",
             "beleidsmedewerker",
             afd_fac_huisv,
         ),
         (
             "Debby Konings",
             "d.konings",
-            "Directiesecretaris IFHR",
             "beleidsmedewerker",
             dir_ifhr,
         ),
@@ -1497,74 +1378,64 @@ async def seed(db: AsyncSession) -> None:
         (
             "Mireille Pastoor",
             "m.pastoor",
-            "Senior beleidsmedewerker Woo",
             "senior_beleidsmedewerker",
             team_woo,
         ),
         (
             "Gerben Zijlstra",
             "g.zijlstra",
-            "Beleidsmedewerker actieve openbaarmaking",
             "beleidsmedewerker",
             team_woo,
         ),
         (
             "Ilse Vermeer",
             "i.vermeer",
-            "Beleidsmedewerker informatiehuishouding",
             "beleidsmedewerker",
             team_woo,
         ),
         (
             "Robin van Es",
             "r.vanes",
-            "Senior beleidsmedewerker OGP",
             "senior_beleidsmedewerker",
             team_actieplan,
         ),
         (
             "Sanne Lammers",
             "s.lammers",
-            "Beleidsmedewerker actieplan",
             "beleidsmedewerker",
             team_actieplan,
         ),
         (
             "Max Verbeek",
             "m.verbeek",
-            "Beleidsmedewerker participatie",
             "beleidsmedewerker",
             team_actieplan,
         ),
         (
             "Lotte Verduin",
             "l.verduin",
-            "Programmasecretaris Open Overheid",
             "beleidsmedewerker",
             prog_open,
         ),
         # === DG-staf / overkoepelend (~8) ===
-        ("Eline Modderman", "e.modderman", "DG-secretaris", "adviseur", dgdoo),
-        ("Derk Ottens", "d.ottens", "Strategisch adviseur DG", "adviseur", dgdoo),
+        ("Eline Modderman", "e.modderman", "adviseur", dgdoo),
+        ("Derk Ottens", "d.ottens", "adviseur", dgdoo),
         (
             "Felien de Vos",
             "f.devos",
-            "Managementassistent DG",
             "beleidsmedewerker",
             dgdoo,
         ),
         (
             "Huub Geelen",
             "h.geelen",
-            "Parlementair liaison digitalisering",
             "adviseur",
             dgdoo,
         ),
-        ("Willeke Post", "w.post", "Controller DGDOO", "adviseur", dgdoo),
+        ("Willeke Post", "w.post", "adviseur", dgdoo),
         (
             "Jacob Tervoort",
             "j.tervoort",
-            "Communicatieadviseur DGDOO",
             "communicatieadviseur",
             dgdoo,
         ),
@@ -1572,70 +1443,60 @@ async def seed(db: AsyncSession) -> None:
         (
             "Wouter van Eijk",
             "w.vaneijk",
-            "Beleidsmedewerker DigiD Hoog roadmap",
             "beleidsmedewerker",
             team_digid,
         ),
         (
             "Rosa Bakker",
             "r.bakker",
-            "Beleidsmedewerker authenticatie-aansluiting",
             "beleidsmedewerker",
             team_digid,
         ),
         (
             "Amir Hassan",
             "a.hassan",
-            "Beleidsmedewerker EUDIW privacykader",
             "beleidsmedewerker",
             team_eudiw,
         ),
         (
             "Tineke van der Wal",
             "t.vanderwal",
-            "Beleidsmedewerker GDI governance",
             "beleidsmedewerker",
             team_gdi,
         ),
         (
             "Stefan Groot",
             "s.groot",
-            "Beleidsmedewerker basisregistraties koppelvlak",
             "beleidsmedewerker",
             team_gdi,
         ),
         (
             "Naomi Veen",
             "n.veen",
-            "Beleidsmedewerker MijnOverheid app",
             "beleidsmedewerker",
             team_mijnoverheid,
         ),
         (
             "Jip Aldenberg",
             "j.aldenberg",
-            "Beleidsmedewerker WDO transitiebegeleiding",
             "beleidsmedewerker",
             afd_wdo,
         ),
         (
             "Lara Koppers",
             "l.koppers",
-            "Beleidsmedewerker WDO handhaving",
             "beleidsmedewerker",
             afd_wdo,
         ),
         (
             "Daan van Houten",
             "d.vanhouten",
-            "Beleidsmedewerker basisinfra monitoring",
             "beleidsmedewerker",
             afd_basisinfra,
         ),
         (
             "Merel Franken",
             "m.franken",
-            "Beleidsmedewerker digitale toegankelijkheid",
             "beleidsmedewerker",
             afd_basisinfra,
         ),
@@ -1643,70 +1504,60 @@ async def seed(db: AsyncSession) -> None:
         (
             "Khalid Bensaid",
             "k.bensaid",
-            "Beleidsmedewerker AI-ethiek",
             "beleidsmedewerker",
             team_ai_act,
         ),
         (
             "Jolien Verstappen",
             "j.verstappen",
-            "Beleidsmedewerker AI sandbox",
             "beleidsmedewerker",
             team_ai_act,
         ),
         (
             "Olaf Kuijpers",
             "o.kuijpers",
-            "Beleidsmedewerker algoritmeverificatie",
             "beleidsmedewerker",
             team_algo,
         ),
         (
             "Isa de Bruijn",
             "i.debruijn",
-            "Beleidsmedewerker open algoritmen",
             "beleidsmedewerker",
             team_algo,
         ),
         (
             "Timo van Dijk",
             "t.vandijk",
-            "Beleidsmedewerker datakwaliteit",
             "beleidsmedewerker",
             team_data,
         ),
         (
             "Femke Bierens",
             "f.bierens",
-            "Beleidsmedewerker high-value datasets",
             "beleidsmedewerker",
             team_data,
         ),
         (
             "Yousra El Moussaoui",
             "y.elmoussaoui",
-            "Beleidsmedewerker digivaardig op school",
             "beleidsmedewerker",
             team_inclusie,
         ),
         (
             "Pieter Voogd",
             "p.voogd",
-            "Beleidsmedewerker NDS doelarchitectuur",
             "beleidsmedewerker",
             team_comm,
         ),
         (
             "Karlijn Oomen",
             "k.oomen",
-            "Beleidsmedewerker EU Digital Decade",
             "beleidsmedewerker",
             team_eu_intl,
         ),
         (
             "Florian Gerritse",
             "f.gerritse",
-            "Beleidsmedewerker digitaal partnerschap",
             "beleidsmedewerker",
             team_eu_intl,
         ),
@@ -1714,70 +1565,60 @@ async def seed(db: AsyncSession) -> None:
         (
             "Sietse Hoekema",
             "s.hoekema",
-            "Beleidsmedewerker GenAI governance",
             "beleidsmedewerker",
             team_cloud,
         ),
         (
             "Nadia Soufiani",
             "n.soufiani",
-            "Beleidsmedewerker cloud security",
             "beleidsmedewerker",
             team_cloud,
         ),
         (
             "Victor Blom",
             "v.blom",
-            "Beleidsmedewerker IT-contractrecht",
             "beleidsmedewerker",
             team_sourcing,
         ),
         (
             "Britt Aalders",
             "b.aalders",
-            "Beleidsmedewerker CIO-dashboard",
             "beleidsmedewerker",
             team_cio_stelsel,
         ),
         (
             "Ruud Janssen",
             "r2.janssen",
-            "Beleidsmedewerker NORA doorontwikkeling",
             "beleidsmedewerker",
             team_arch,
         ),
         (
             "Elise van Rooijen",
             "e.vanrooijen",
-            "Beleidsmedewerker pentesting beleid",
             "beleidsmedewerker",
             team_bio,
         ),
         (
             "Maurice Franssen",
             "m.franssen",
-            "Beleidsmedewerker zero trust architectuur",
             "beleidsmedewerker",
             afd_infobev,
         ),
         (
             "Daphne Kramer",
             "d.kramer",
-            "Beleidsmedewerker informatiebeveiligingsaudits",
             "beleidsmedewerker",
             afd_infobev,
         ),
         (
             "Joris de Lange",
             "j.delange",
-            "Beleidsmedewerker CDO/CPO implementatie",
             "beleidsmedewerker",
             team_cio_stelsel,
         ),
         (
             "Imke Verhagen",
             "i.verhagen",
-            "Beleidsmedewerker digitaal vakmanschap Rijk",
             "beleidsmedewerker",
             afd_istelsel,
         ),
@@ -1785,56 +1626,48 @@ async def seed(db: AsyncSession) -> None:
         (
             "Stefan Kamp",
             "s.kamp",
-            "Beleidsmedewerker modern werkgeverschap",
             "beleidsmedewerker",
             afd_arbeidsmarkt,
         ),
         (
             "Liza Veldman",
             "l.veldman",
-            "Beleidsmedewerker WNT en topinkomens",
             "beleidsmedewerker",
             afd_ambt_vak,
         ),
         (
             "Dennis Roelofs",
             "d.roelofs",
-            "Beleidsmedewerker integriteitsbeleid Rijk",
             "beleidsmedewerker",
             afd_ambt_vak,
         ),
         (
             "Wilma Koetse",
             "w.koetse",
-            "Beleidsmedewerker traineeprogramma Rijksdienst",
             "beleidsmedewerker",
             afd_arbeidsmarkt,
         ),
         (
             "Thom Dijkema",
             "t.dijkema",
-            "Beleidsmedewerker hybride werken beleid",
             "beleidsmedewerker",
             team_diversiteit,
         ),
         (
             "Samantha Pool",
             "s.pool",
-            "Beleidsmedewerker cultuursensitief werken",
             "beleidsmedewerker",
             team_diversiteit,
         ),
         (
             "Kevin Bakx",
             "k.bakx",
-            "Beleidsmedewerker CAO onderhandeling",
             "beleidsmedewerker",
             team_cao,
         ),
         (
             "Nienke Dijkhuizen",
             "n.dijkhuizen",
-            "Beleidsmedewerker sociale zekerheid ambtenaren",
             "beleidsmedewerker",
             team_cao,
         ),
@@ -1842,56 +1675,48 @@ async def seed(db: AsyncSession) -> None:
         (
             "Laura Bontekoe",
             "l.bontekoe",
-            "Beleidsmedewerker circulair inkopen",
             "beleidsmedewerker",
             afd_inkoop,
         ),
         (
             "Gijs Schuurman",
             "g.schuurman",
-            "Beleidsmedewerker rijkshuisvesting verduurzaming",
             "beleidsmedewerker",
             afd_fac_huisv,
         ),
         (
             "Marleen Jonker",
             "m.jonker",
-            "Beleidsmedewerker flexwerkplekken Rijk",
             "beleidsmedewerker",
             afd_fac_huisv,
         ),
         (
             "Otto Prins",
             "o.prins",
-            "Beleidsmedewerker Woo-verzoeken analyse",
             "beleidsmedewerker",
             team_woo,
         ),
         (
             "Nathalie Hendriks",
             "n2.hendriks",
-            "Beleidsmedewerker informatiehuishouding standaarden",
             "beleidsmedewerker",
             team_woo,
         ),
         (
             "Casper Bloemendaal",
             "c.bloemendaal",
-            "Beleidsmedewerker actieplan transparantie",
             "beleidsmedewerker",
             team_actieplan,
         ),
         (
             "Elisabeth Vink",
             "e.vink",
-            "Beleidsmedewerker open spending",
             "beleidsmedewerker",
             team_actieplan,
         ),
         (
             "Mark de Wolf",
             "m.dewolf",
-            "Beleidsmedewerker MVI sociale voorwaarden",
             "beleidsmedewerker",
             afd_inkoop,
         ),
@@ -1899,28 +1724,24 @@ async def seed(db: AsyncSession) -> None:
         (
             "Marie-Claire Bouwhuis",
             "mc.bouwhuis",
-            "Parlementair adviseur BZK",
             "adviseur",
             staf_bzk,
         ),
         (
             "Hans Rietdijk",
             "h.rietdijk",
-            "Woordvoerder digitalisering BZK",
             "communicatieadviseur",
             staf_bzk,
         ),
         (
             "Bert Kamphuis",
             "b.kamphuis",
-            "Juridisch adviseur digitaal recht",
             "jurist",
             staf_bzk,
         ),
         (
             "Anke Tersteeg",
             "a.tersteeg",
-            "Beleidscoördinator SG-staf",
             "adviseur",
             staf_bzk,
         ),
@@ -1941,8 +1762,8 @@ async def seed(db: AsyncSession) -> None:
     p_peeters = None
     p_achterberg = None
 
-    for naam, email_prefix, functie, rol, eenheid in bulk_people:
-        p = await cp(naam, f"{email_prefix}@minbzk.nl", functie, rol, eenheid)
+    for naam, email_prefix, functie, eenheid in bulk_people:
+        p = await cp(naam, f"{email_prefix}@minbzk.nl", functie, eenheid)
         # Keep references to key people for tasks
         if email_prefix == "s.vanderlinden":
             p_linden = p
@@ -1976,18 +1797,25 @@ async def seed(db: AsyncSession) -> None:
     # 2a. AGENTS
     # =========================================================================
 
-    async def create_agent(naam, functie, eenheid, rol="beleidsmedewerker"):
+    async def create_agent(naam, description, eenheid):
         api_key = f"bm_{''.join(f'{b:02x}' for b in uuid.uuid4().bytes[:16])}"
-        return await person_repo.create(
+        agent = await person_repo.create(
             PersonCreate(
                 naam=naam,
-                functie=functie,
-                rol=rol,
-                organisatie_eenheid_id=eenheid.id,
+                description=description,
                 is_agent=True,
                 api_key=api_key,
             )
         )
+        placement = PersonOrganisatieEenheid(
+            person_id=agent.id,
+            organisatie_eenheid_id=eenheid.id,
+            dienstverband="in_dienst",
+            start_datum=date.today(),
+        )
+        db.add(placement)
+        await db.flush()
+        return agent
 
     # Domain-specialist agents in "Afdeling Zonder Mensen"
     # Named after characters from Bordewijk's novel "Karakter"
@@ -1995,7 +1823,6 @@ async def seed(db: AsyncSession) -> None:
         "Dreverhaven",
         "Beleidsmedewerker digitale identiteit en authenticatie (eID, DigiD, eIDAS)",
         afd_zonder_mensen,
-        rol="afdelingshoofd",
     )
     agent_open = await create_agent(
         "Katadreuffe",
@@ -2006,7 +1833,6 @@ async def seed(db: AsyncSession) -> None:
         "Stroomkoning",
         "Adviseur algoritmeverantwoording, AI-verordening en publieke waarden",
         afd_zonder_mensen,
-        rol="adviseur",
     )
     agent_interop = await create_agent(
         "De Gankelaar",

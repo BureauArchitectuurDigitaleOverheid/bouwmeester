@@ -1,26 +1,20 @@
 """API routes for tasks."""
 
-from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-from bouwmeester.models.person import Person
-from bouwmeester.models.task import Task
-from bouwmeester.repositories.task import TaskRepository, _task_options
+from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.inbox import InboxResponse
 from bouwmeester.schema.task import (
     EenheidOverviewResponse,
-    EenheidPersonTaskStats,
-    EenheidSubeenheidStats,
     TaskCreate,
     TaskResponse,
     TaskUpdate,
 )
+from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_service import MentionService
 from bouwmeester.services.notification_service import NotificationService
@@ -56,8 +50,6 @@ async def list_tasks(
             skip=skip,
             limit=limit,
             status=status_filter,
-            organisatie_eenheid_id=organisatie_eenheid_id,
-            include_children=include_children,
         )
     return [TaskResponse.model_validate(t) for t in tasks]
 
@@ -129,217 +121,8 @@ async def get_eenheid_overview(
     db: AsyncSession = Depends(get_db),
 ) -> EenheidOverviewResponse:
     """Overview of tasks for an organisatie-eenheid."""
-    # Get the eenheid itself to know its type
-    eenheid = await db.get(OrganisatieEenheid, organisatie_eenheid_id)
-    eenheid_type = eenheid.type if eenheid else ""
-
-    # High-level types where "no unit" tasks are relevant
-    high_level_types = {"ministerie", "directoraat_generaal", "directie"}
-
-    # Get descendant unit IDs
-    cte = (
-        select(OrganisatieEenheid.id)
-        .where(OrganisatieEenheid.id == organisatie_eenheid_id)
-        .cte(name="descendants", recursive=True)
-    )
-    cte = cte.union_all(
-        select(OrganisatieEenheid.id).where(OrganisatieEenheid.parent_id == cte.c.id)
-    )
-    desc_ids_stmt = select(cte.c.id)
-    desc_result = await db.execute(desc_ids_stmt)
-    all_unit_ids = list(desc_result.scalars().all())
-
-    today = date.today()
-
-    priority_order = case(
-        {"kritiek": 0, "hoog": 1, "normaal": 2, "laag": 3},
-        value=Task.priority,
-        else_=4,
-    )
-
-    # --- Unassigned: no person (tasks in this hierarchy without assignee) ---
-    no_person_stmt = (
-        select(Task)
-        .where(
-            Task.organisatie_eenheid_id.in_(all_unit_ids),
-            Task.assignee_id.is_(None),
-            Task.status.notin_(["done", "cancelled"]),
-        )
-        .options(*_task_options())
-        .order_by(priority_order, Task.deadline.asc().nullslast())
-        .limit(50)
-    )
-    no_person_result = await db.execute(no_person_stmt)
-    unassigned_no_person_tasks = list(no_person_result.scalars().all())
-
-    no_person_count_stmt = (
-        select(func.count())
-        .select_from(Task)
-        .where(
-            Task.organisatie_eenheid_id.in_(all_unit_ids),
-            Task.assignee_id.is_(None),
-            Task.status.notin_(["done", "cancelled"]),
-        )
-    )
-    no_person_count_result = await db.execute(no_person_count_stmt)
-    unassigned_no_person_count = no_person_count_result.scalar_one()
-
-    # --- Unassigned: no unit (tasks with no organisatie_eenheid at all) ---
-    # Only include for high-level unit types
-    unassigned_no_unit_tasks: list[Task] = []
-    unassigned_no_unit_count = 0
-    if eenheid_type in high_level_types:
-        no_unit_stmt = (
-            select(Task)
-            .where(
-                Task.organisatie_eenheid_id.is_(None),
-                Task.assignee_id.is_(None),
-                Task.status.notin_(["done", "cancelled"]),
-            )
-            .options(*_task_options())
-            .order_by(priority_order, Task.deadline.asc().nullslast())
-            .limit(50)
-        )
-        no_unit_result = await db.execute(no_unit_stmt)
-        unassigned_no_unit_tasks = list(no_unit_result.scalars().all())
-
-        no_unit_count_stmt = (
-            select(func.count())
-            .select_from(Task)
-            .where(
-                Task.organisatie_eenheid_id.is_(None),
-                Task.assignee_id.is_(None),
-                Task.status.notin_(["done", "cancelled"]),
-            )
-        )
-        no_unit_count_result = await db.execute(no_unit_count_stmt)
-        unassigned_no_unit_count = no_unit_count_result.scalar_one()
-
-    # Per-person stats: people in this unit who have tasks
-    people_stmt = (
-        select(Person)
-        .where(Person.organisatie_eenheid_id == organisatie_eenheid_id)
-        .order_by(Person.naam)
-    )
-    people_result = await db.execute(people_stmt)
-    people = list(people_result.scalars().all())
-
-    by_person: list[EenheidPersonTaskStats] = []
-    for person in people:
-        tasks_stmt = (
-            select(Task.status, Task.deadline, func.count())
-            .where(Task.assignee_id == person.id)
-            .group_by(Task.status, Task.deadline)
-        )
-        tasks_result = await db.execute(tasks_stmt)
-        rows = tasks_result.all()
-
-        open_count = 0
-        in_progress_count = 0
-        done_count = 0
-        overdue_count = 0
-        for task_status, deadline, cnt in rows:
-            if task_status == "open":
-                open_count += cnt
-            elif task_status == "in_progress":
-                in_progress_count += cnt
-            elif task_status == "done":
-                done_count += cnt
-            if (
-                task_status in ("open", "in_progress")
-                and deadline is not None
-                and deadline < today
-            ):
-                overdue_count += cnt
-
-        by_person.append(
-            EenheidPersonTaskStats(
-                person_id=person.id,
-                person_naam=person.naam,
-                open_count=open_count,
-                in_progress_count=in_progress_count,
-                done_count=done_count,
-                overdue_count=overdue_count,
-            )
-        )
-
-    # Per-subeenheid stats: direct child units
-    children_stmt = (
-        select(OrganisatieEenheid)
-        .where(OrganisatieEenheid.parent_id == organisatie_eenheid_id)
-        .order_by(OrganisatieEenheid.naam)
-    )
-    children_result = await db.execute(children_stmt)
-    children = list(children_result.scalars().all())
-
-    by_subeenheid: list[EenheidSubeenheidStats] = []
-    for child in children:
-        # Get all descendant IDs for this child
-        child_cte = (
-            select(OrganisatieEenheid.id)
-            .where(OrganisatieEenheid.id == child.id)
-            .cte(name=f"child_desc_{child.id.hex[:8]}", recursive=True)
-        )
-        child_cte = child_cte.union_all(
-            select(OrganisatieEenheid.id).where(
-                OrganisatieEenheid.parent_id == child_cte.c.id
-            )
-        )
-        child_ids_stmt = select(child_cte.c.id)
-        child_ids_result = await db.execute(child_ids_stmt)
-        child_unit_ids = list(child_ids_result.scalars().all())
-
-        stats_stmt = (
-            select(Task.status, Task.deadline, func.count())
-            .where(Task.organisatie_eenheid_id.in_(child_unit_ids))
-            .group_by(Task.status, Task.deadline)
-        )
-        stats_result = await db.execute(stats_stmt)
-        stats_rows = stats_result.all()
-
-        open_c = 0
-        ip_c = 0
-        done_c = 0
-        overdue_c = 0
-        for s, dl, c in stats_rows:
-            if s == "open":
-                open_c += c
-            elif s == "in_progress":
-                ip_c += c
-            elif s == "done":
-                done_c += c
-            if s in ("open", "in_progress") and dl is not None and dl < today:
-                overdue_c += c
-
-        by_subeenheid.append(
-            EenheidSubeenheidStats(
-                eenheid_id=child.id,
-                eenheid_naam=child.naam,
-                eenheid_type=child.type,
-                open_count=open_c,
-                in_progress_count=ip_c,
-                done_count=done_c,
-                overdue_count=overdue_c,
-            )
-        )
-
-    no_unit_responses = [
-        TaskResponse.model_validate(t) for t in unassigned_no_unit_tasks
-    ]
-    no_person_responses = [
-        TaskResponse.model_validate(t) for t in unassigned_no_person_tasks
-    ]
-
-    return EenheidOverviewResponse(
-        unassigned_count=(unassigned_no_person_count + unassigned_no_unit_count),
-        unassigned_no_unit=no_unit_responses,
-        unassigned_no_unit_count=unassigned_no_unit_count,
-        unassigned_no_person=no_person_responses,
-        unassigned_no_person_count=unassigned_no_person_count,
-        by_person=by_person,
-        by_subeenheid=by_subeenheid,
-        eenheid_type=eenheid_type,
-    )
+    service = EenheidOverviewService(db)
+    return await service.get_overview(organisatie_eenheid_id)
 
 
 @router.get("/{id}", response_model=TaskResponse)

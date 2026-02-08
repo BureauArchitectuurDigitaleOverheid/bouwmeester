@@ -9,11 +9,17 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.database import get_db
 from bouwmeester.models.node_stakeholder import NodeStakeholder
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.person import (
     PersonCreate,
+    PersonDetailResponse,
+    PersonOrganisatieCreate,
+    PersonOrganisatieResponse,
+    PersonOrganisatieUpdate,
     PersonResponse,
     PersonStakeholderNode,
     PersonSummaryResponse,
@@ -35,11 +41,15 @@ async def list_people(
     return [PersonResponse.model_validate(p) for p in people]
 
 
-@router.post("", response_model=PersonResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=PersonDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_person(
     data: PersonCreate,
     db: AsyncSession = Depends(get_db),
-) -> PersonResponse:
+) -> PersonDetailResponse:
     # Agent names must be unique
     if data.is_agent:
         existing = await db.execute(
@@ -52,7 +62,7 @@ async def create_person(
             )
     repo = PersonRepository(db)
     person = await repo.create(data)
-    return PersonResponse.model_validate(person)
+    return PersonDetailResponse.model_validate(person)
 
 
 @router.get("/search", response_model=list[PersonResponse])
@@ -136,29 +146,29 @@ async def get_person_summary(
     )
 
 
-@router.get("/{id}", response_model=PersonResponse)
+@router.get("/{id}", response_model=PersonDetailResponse)
 async def get_person(
     id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> PersonResponse:
+) -> PersonDetailResponse:
     repo = PersonRepository(db)
     person = await repo.get(id)
     if person is None:
         raise HTTPException(status_code=404, detail="Person not found")
-    return PersonResponse.model_validate(person)
+    return PersonDetailResponse.model_validate(person)
 
 
-@router.put("/{id}", response_model=PersonResponse)
+@router.put("/{id}", response_model=PersonDetailResponse)
 async def update_person(
     id: UUID,
     data: PersonUpdate,
     db: AsyncSession = Depends(get_db),
-) -> PersonResponse:
+) -> PersonDetailResponse:
     repo = PersonRepository(db)
     person = await repo.update(id, data)
     if person is None:
         raise HTTPException(status_code=404, detail="Person not found")
-    return PersonResponse.model_validate(person)
+    return PersonDetailResponse.model_validate(person)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -170,3 +180,151 @@ async def delete_person(
     deleted = await repo.delete(id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Person not found")
+
+
+# --- Org placements ---
+
+
+@router.get("/{id}/organisaties", response_model=list[PersonOrganisatieResponse])
+async def list_person_organisaties(
+    id: UUID,
+    actief: bool = Query(True),
+    db: AsyncSession = Depends(get_db),
+) -> list[PersonOrganisatieResponse]:
+    person = await db.get(Person, id)
+    if person is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+
+    stmt = (
+        select(PersonOrganisatieEenheid, OrganisatieEenheid.naam)
+        .join(OrganisatieEenheid)
+        .where(PersonOrganisatieEenheid.person_id == id)
+    )
+    if actief:
+        stmt = stmt.where(PersonOrganisatieEenheid.eind_datum.is_(None))
+    stmt = stmt.order_by(PersonOrganisatieEenheid.start_datum.desc())
+    result = await db.execute(stmt)
+    return [
+        PersonOrganisatieResponse(
+            id=row.PersonOrganisatieEenheid.id,
+            person_id=row.PersonOrganisatieEenheid.person_id,
+            organisatie_eenheid_id=row.PersonOrganisatieEenheid.organisatie_eenheid_id,
+            organisatie_eenheid_naam=row.naam,
+            dienstverband=row.PersonOrganisatieEenheid.dienstverband,
+            start_datum=row.PersonOrganisatieEenheid.start_datum,
+            eind_datum=row.PersonOrganisatieEenheid.eind_datum,
+        )
+        for row in result.all()
+    ]
+
+
+@router.post(
+    "/{id}/organisaties",
+    response_model=PersonOrganisatieResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_person_organisatie(
+    id: UUID,
+    data: PersonOrganisatieCreate,
+    db: AsyncSession = Depends(get_db),
+) -> PersonOrganisatieResponse:
+    person = await db.get(Person, id)
+    if person is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+
+    eenheid = await db.get(OrganisatieEenheid, data.organisatie_eenheid_id)
+    if eenheid is None:
+        raise HTTPException(status_code=404, detail="Organisatie-eenheid not found")
+
+    # Check for existing active placement in same org unit
+    existing = await db.execute(
+        select(PersonOrganisatieEenheid).where(
+            PersonOrganisatieEenheid.person_id == id,
+            PersonOrganisatieEenheid.organisatie_eenheid_id
+            == data.organisatie_eenheid_id,
+            PersonOrganisatieEenheid.eind_datum.is_(None),
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Persoon heeft al een actieve plaatsing bij deze eenheid",
+        )
+
+    placement = PersonOrganisatieEenheid(
+        person_id=id,
+        organisatie_eenheid_id=data.organisatie_eenheid_id,
+        dienstverband=data.dienstverband,
+        start_datum=data.start_datum,
+    )
+    db.add(placement)
+    await db.flush()
+    await db.refresh(placement)
+
+    return PersonOrganisatieResponse(
+        id=placement.id,
+        person_id=placement.person_id,
+        organisatie_eenheid_id=placement.organisatie_eenheid_id,
+        organisatie_eenheid_naam=eenheid.naam,
+        dienstverband=placement.dienstverband,
+        start_datum=placement.start_datum,
+        eind_datum=placement.eind_datum,
+    )
+
+
+@router.put(
+    "/{id}/organisaties/{placement_id}",
+    response_model=PersonOrganisatieResponse,
+)
+async def update_person_organisatie(
+    id: UUID,
+    placement_id: UUID,
+    data: PersonOrganisatieUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> PersonOrganisatieResponse:
+    stmt = select(PersonOrganisatieEenheid).where(
+        PersonOrganisatieEenheid.id == placement_id,
+        PersonOrganisatieEenheid.person_id == id,
+    )
+    result = await db.execute(stmt)
+    placement = result.scalar_one_or_none()
+    if placement is None:
+        raise HTTPException(status_code=404, detail="Placement not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(placement, key, value)
+    await db.flush()
+    await db.refresh(placement)
+
+    eenheid = await db.get(OrganisatieEenheid, placement.organisatie_eenheid_id)
+    return PersonOrganisatieResponse(
+        id=placement.id,
+        person_id=placement.person_id,
+        organisatie_eenheid_id=placement.organisatie_eenheid_id,
+        organisatie_eenheid_naam=eenheid.naam if eenheid else "",
+        dienstverband=placement.dienstverband,
+        start_datum=placement.start_datum,
+        eind_datum=placement.eind_datum,
+    )
+
+
+@router.delete(
+    "/{id}/organisaties/{placement_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_person_organisatie(
+    id: UUID,
+    placement_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    stmt = select(PersonOrganisatieEenheid).where(
+        PersonOrganisatieEenheid.id == placement_id,
+        PersonOrganisatieEenheid.person_id == id,
+    )
+    result = await db.execute(stmt)
+    placement = result.scalar_one_or_none()
+    if placement is None:
+        raise HTTPException(status_code=404, detail="Placement not found")
+    await db.delete(placement)
+    await db.flush()

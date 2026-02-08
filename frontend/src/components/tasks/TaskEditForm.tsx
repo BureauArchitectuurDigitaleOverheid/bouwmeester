@@ -78,24 +78,11 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
     description: nodeLabel(n.node_type),
   }));
 
-  const personOptions: SelectOption[] = useMemo(() => {
-    const people = allPeople ?? [];
-    if (organisatieEenheidId) {
-      const filtered = people.filter((p) => p.organisatie_eenheid_id === organisatieEenheidId);
-      if (filtered.length > 0) {
-        return filtered.map((p) => ({
-          value: p.id,
-          label: p.naam,
-          description: p.functie ?? p.afdeling ?? undefined,
-        }));
-      }
-    }
-    return people.map((p) => ({
-      value: p.id,
-      label: p.naam,
-      description: p.functie ?? p.afdeling ?? undefined,
-    }));
-  }, [allPeople, organisatieEenheidId]);
+  const personOptions: SelectOption[] = (allPeople ?? []).map((p) => ({
+    value: p.id,
+    label: p.naam,
+    description: p.functie ?? undefined,
+  }));
 
   const eenheidOptions: SelectOption[] = useMemo(() => [
     { value: '', label: 'Geen' },
