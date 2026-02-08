@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.database import get_db
 from bouwmeester.models.node_stakeholder import NodeStakeholder
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.task import Task
@@ -189,8 +190,6 @@ async def list_person_organisaties(
     if person is None:
         raise HTTPException(status_code=404, detail="Person not found")
 
-    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-
     stmt = (
         select(PersonOrganisatieEenheid, OrganisatieEenheid.naam)
         .join(OrganisatieEenheid)
@@ -228,11 +227,24 @@ async def add_person_organisatie(
     if person is None:
         raise HTTPException(status_code=404, detail="Person not found")
 
-    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-
     eenheid = await db.get(OrganisatieEenheid, data.organisatie_eenheid_id)
     if eenheid is None:
         raise HTTPException(status_code=404, detail="Organisatie-eenheid not found")
+
+    # Check for existing active placement in same org unit
+    existing = await db.execute(
+        select(PersonOrganisatieEenheid).where(
+            PersonOrganisatieEenheid.person_id == id,
+            PersonOrganisatieEenheid.organisatie_eenheid_id
+            == data.organisatie_eenheid_id,
+            PersonOrganisatieEenheid.eind_datum.is_(None),
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Persoon heeft al een actieve plaatsing bij deze eenheid",
+        )
 
     placement = PersonOrganisatieEenheid(
         person_id=id,
@@ -265,8 +277,6 @@ async def update_person_organisatie(
     data: PersonOrganisatieUpdate,
     db: AsyncSession = Depends(get_db),
 ) -> PersonOrganisatieResponse:
-    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-
     stmt = select(PersonOrganisatieEenheid).where(
         PersonOrganisatieEenheid.id == placement_id,
         PersonOrganisatieEenheid.person_id == id,

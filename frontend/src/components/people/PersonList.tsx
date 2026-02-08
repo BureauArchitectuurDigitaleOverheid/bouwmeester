@@ -21,7 +21,8 @@ export function PersonList({ people, isLoading, onPersonClick }: PersonListProps
     return (
       person.naam.toLowerCase().includes(q) ||
       person.email?.toLowerCase().includes(q) ||
-      person.functie?.toLowerCase().includes(q)
+      person.functie?.toLowerCase().includes(q) ||
+      person.description?.toLowerCase().includes(q)
     );
   });
 

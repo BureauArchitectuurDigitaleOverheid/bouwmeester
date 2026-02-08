@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
@@ -20,6 +20,13 @@ export function PersonQuickCreateForm({
   const [naam, setNaam] = useState(initialName);
   const [email, setEmail] = useState('');
   const createPerson = useCreatePerson();
+
+  useEffect(() => {
+    if (open) {
+      setNaam(initialName);
+      setEmail('');
+    }
+  }, [open, initialName]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

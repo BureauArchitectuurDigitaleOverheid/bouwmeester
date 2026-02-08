@@ -50,6 +50,7 @@ async def seed(db: AsyncSession) -> None:
         "maatregel",
         "politieke_input",
         "corpus_node",
+        "person_organisatie_eenheid",
         "person",
         "organisatie_eenheid",
     ]:

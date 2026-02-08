@@ -95,12 +95,30 @@ export function OrganisatieForm({
     e.preventDefault();
     if (!naam.trim() || !type) return;
 
+    // Detect empty TipTap document — treat as null
+    let cleanBeschrijving: string | null = beschrijving.trim() || null;
+    if (cleanBeschrijving) {
+      try {
+        const parsed = JSON.parse(cleanBeschrijving);
+        if (
+          parsed?.type === 'doc' &&
+          Array.isArray(parsed.content) &&
+          parsed.content.length <= 1 &&
+          (!parsed.content[0]?.content || parsed.content[0].content.length === 0)
+        ) {
+          cleanBeschrijving = null;
+        }
+      } catch {
+        // plain text — keep as-is
+      }
+    }
+
     onSubmit({
       naam: naam.trim(),
       type,
       parent_id: parentId || null,
       manager_id: managerId || null,
-      beschrijving: beschrijving.trim() || null,
+      beschrijving: cleanBeschrijving,
     });
   };
 

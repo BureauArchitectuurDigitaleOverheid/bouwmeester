@@ -272,9 +272,26 @@ export function OrganisatieDetail({
               {eenheid.manager.naam}{eenheid.manager.functie ? ` — ${eenheid.manager.functie}` : ''}
             </p>
           )}
-          {eenheid.beschrijving && (
-            <p className="text-sm text-text-secondary mt-1">{eenheid.beschrijving}</p>
-          )}
+          {eenheid.beschrijving && (() => {
+            // Extract plain text from TipTap JSON, or show as-is for plain text
+            let displayText = eenheid.beschrijving;
+            try {
+              const parsed = JSON.parse(eenheid.beschrijving);
+              if (parsed?.type === 'doc' && Array.isArray(parsed.content)) {
+                displayText = parsed.content
+                  .map((block: { content?: { text?: string }[] }) =>
+                    block.content?.map((c) => c.text ?? '').join('') ?? ''
+                  )
+                  .filter(Boolean)
+                  .join('\n');
+              }
+            } catch {
+              // plain text — use as-is
+            }
+            return displayText ? (
+              <p className="text-sm text-text-secondary mt-1">{displayText}</p>
+            ) : null;
+          })()}
         </div>
         <div className="flex items-center gap-2">
           <Button

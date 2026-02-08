@@ -1,6 +1,7 @@
 """Pydantic schemas for Person."""
 
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -79,14 +80,17 @@ class PersonSummaryResponse(BaseModel):
     stakeholder_nodes: list[PersonStakeholderNode]
 
 
+Dienstverband = Literal["in_dienst", "ingehuurd", "extern"]
+
+
 class PersonOrganisatieCreate(BaseModel):
     organisatie_eenheid_id: UUID
-    dienstverband: str = "in_dienst"
+    dienstverband: Dienstverband = "in_dienst"
     start_datum: date
 
 
 class PersonOrganisatieUpdate(BaseModel):
-    dienstverband: str | None = None
+    dienstverband: Dienstverband | None = None
     eind_datum: date | None = None
 
 
@@ -98,5 +102,3 @@ class PersonOrganisatieResponse(BaseModel):
     dienstverband: str
     start_datum: date
     eind_datum: date | None = None
-
-    model_config = ConfigDict(from_attributes=True)

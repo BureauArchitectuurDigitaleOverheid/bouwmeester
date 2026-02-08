@@ -5,6 +5,7 @@ import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { usePeople } from '@/hooks/usePeople';
+import { FUNCTIE_LABELS } from '@/types';
 import type { Person, PersonCreate } from '@/types';
 
 // Character names from Bordewijk's novel "Karakter" — used as agent names
@@ -28,24 +29,9 @@ function generateMockApiKey(): string {
   ).join('-');
 }
 
-const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = [
-  { value: 'minister', label: 'Minister' },
-  { value: 'staatssecretaris', label: 'Staatssecretaris' },
-  { value: 'secretaris_generaal', label: 'Secretaris-Generaal' },
-  { value: 'plaatsvervangend_secretaris_generaal', label: 'Plaatsvervangend Secretaris-Generaal' },
-  { value: 'directeur_generaal', label: 'Directeur-Generaal' },
-  { value: 'plaatsvervangend_directeur_generaal', label: 'Plaatsvervangend Directeur-Generaal' },
-  { value: 'directeur', label: 'Directeur' },
-  { value: 'afdelingshoofd', label: 'Afdelingshoofd' },
-  { value: 'coordinator', label: 'Coördinator' },
-  { value: 'beleidsmedewerker', label: 'Beleidsmedewerker' },
-  { value: 'senior_beleidsmedewerker', label: 'Senior Beleidsmedewerker' },
-  { value: 'adviseur', label: 'Adviseur' },
-  { value: 'projectleider', label: 'Projectleider' },
-  { value: 'programmamanager', label: 'Programmamanager' },
-  { value: 'jurist', label: 'Jurist' },
-  { value: 'communicatieadviseur', label: 'Communicatieadviseur' },
-];
+const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS).map(
+  ([value, label]) => ({ value, label })
+);
 
 interface PersonEditFormProps {
   open: boolean;

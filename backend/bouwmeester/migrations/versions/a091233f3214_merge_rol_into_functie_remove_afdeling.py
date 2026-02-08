@@ -20,7 +20,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # Copy rol values into functie (where functie is currently empty)
-    op.execute("UPDATE person SET functie = rol WHERE rol IS NOT NULL")
+    op.execute(
+        "UPDATE person SET functie = rol WHERE rol IS NOT NULL AND functie IS NULL"
+    )
     op.drop_column("person", "afdeling")
     op.drop_column("person", "rol")
 

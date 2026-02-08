@@ -66,9 +66,7 @@ def upgrade() -> None:
     )
 
     # Drop old FK and column
-    op.drop_constraint(
-        op.f("fk_person_organisatie_eenheid"), "person", type_="foreignkey"
-    )
+    op.drop_constraint("fk_person_organisatie_eenheid", "person", type_="foreignkey")
     op.drop_column("person", "organisatie_eenheid_id")
 
 
@@ -83,7 +81,7 @@ def downgrade() -> None:
         ),
     )
     op.create_foreign_key(
-        op.f("fk_person_organisatie_eenheid"),
+        "fk_person_organisatie_eenheid",
         "person",
         "organisatie_eenheid",
         ["organisatie_eenheid_id"],

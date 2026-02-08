@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, Bot, MessageSquare, Terminal } from 'lucide-react';
+import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, Bot, MessageSquare, Terminal, Building2, X } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
-import { usePersonSummary } from '@/hooks/usePeople';
-import { FUNCTIE_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
+import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
+import { FUNCTIE_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import type { Person } from '@/types';
 
@@ -33,6 +33,9 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
   const navigate = useNavigate();
   const { nodeLabel } = useVocabulary();
   const { data: summary, isLoading: summaryLoading } = usePersonSummary(expanded ? person.id : null);
+  const { data: placements } = usePersonOrganisaties(expanded ? person.id : null);
+  const endPlacement = useUpdatePersonOrganisatie();
+  const removePlacement = useRemovePersonOrganisatie();
 
   const handleCopyEmail = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -200,9 +203,60 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 </div>
               )}
 
+              {/* Org placements section */}
+              {placements && placements.length > 0 && (
+                <div>
+                  <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
+                    <Building2 className="h-3 w-3" />
+                    Plaatsingen
+                  </p>
+                  <div className="space-y-1">
+                    {placements.map((p) => (
+                      <div key={p.id} className="flex items-center gap-2 text-text">
+                        <span className="truncate">{p.organisatie_eenheid_naam}</span>
+                        <Badge variant="gray" className="text-[10px] px-1.5 py-0 shrink-0">
+                          {DIENSTVERBAND_LABELS[p.dienstverband] || p.dienstverband}
+                        </Badge>
+                        <div className="flex items-center gap-1 shrink-0 ml-auto">
+                          {!p.eind_datum && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                endPlacement.mutate({
+                                  personId: person.id,
+                                  placementId: p.id,
+                                  data: { eind_datum: new Date().toISOString().split('T')[0] },
+                                });
+                              }}
+                              className="text-text-secondary hover:text-amber-600 transition-colors"
+                              title="Plaatsing beëindigen"
+                            >
+                              <CheckCircle2 className="h-3 w-3" />
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removePlacement.mutate({
+                                personId: person.id,
+                                placementId: p.id,
+                              });
+                            }}
+                            className="text-text-secondary hover:text-red-600 transition-colors"
+                            title="Plaatsing verwijderen"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* No tasks and no nodes */}
-              {summary.open_task_count === 0 && summary.done_task_count === 0 && summary.stakeholder_nodes.length === 0 && (
-                <p className="text-text-secondary">Geen taken of dossiers.</p>
+              {summary.open_task_count === 0 && summary.done_task_count === 0 && summary.stakeholder_nodes.length === 0 && (!placements || placements.length === 0) && (
+                <p className="text-text-secondary">Geen taken, dossiers of plaatsingen.</p>
               )}
             </div>
           ) : null}
