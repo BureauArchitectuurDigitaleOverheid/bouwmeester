@@ -4,6 +4,7 @@ import {
   getNodeNeighbors, getNodeStakeholders, addNodeStakeholder,
   updateNodeStakeholder, removeNodeStakeholder, getNodeMotieImport,
 } from '@/api/nodes';
+import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { CorpusNodeCreate, CorpusNodeUpdate, NodeType } from '@/types';
 
 export function useNodes(nodeType?: NodeType) {
@@ -22,14 +23,10 @@ export function useNode(id: string | undefined) {
 }
 
 export function useCreateNode() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (data: CorpusNodeCreate) => createNode(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nodes'] });
-      queryClient.invalidateQueries({ queryKey: ['graph'] });
-    },
+    errorMessage: 'Fout bij aanmaken node',
+    invalidateKeys: [['nodes'], ['graph']],
   });
 }
 
@@ -38,6 +35,9 @@ export function useUpdateNode() {
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: CorpusNodeUpdate }) => updateNode(id, data),
+    onError: (error: Error) => {
+      console.error('Fout bij bijwerken node:', error);
+    },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['nodes'] });
@@ -46,13 +46,10 @@ export function useUpdateNode() {
 }
 
 export function useDeleteNode() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (id: string) => deleteNode(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nodes'] });
-    },
+    errorMessage: 'Fout bij verwijderen node',
+    invalidateKeys: [['nodes']],
   });
 }
 
@@ -78,6 +75,9 @@ export function useAddNodeStakeholder() {
   return useMutation({
     mutationFn: ({ nodeId, data }: { nodeId: string; data: { person_id: string; rol: string } }) =>
       addNodeStakeholder(nodeId, data),
+    onError: (error: Error) => {
+      console.error('Fout bij toevoegen stakeholder:', error);
+    },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', variables.nodeId, 'stakeholders'] });
     },
@@ -90,6 +90,9 @@ export function useUpdateNodeStakeholder() {
   return useMutation({
     mutationFn: ({ nodeId, stakeholderId, data }: { nodeId: string; stakeholderId: string; data: { rol: string } }) =>
       updateNodeStakeholder(nodeId, stakeholderId, data),
+    onError: (error: Error) => {
+      console.error('Fout bij bijwerken stakeholder:', error);
+    },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', variables.nodeId, 'stakeholders'] });
     },
@@ -102,6 +105,9 @@ export function useRemoveNodeStakeholder() {
   return useMutation({
     mutationFn: ({ nodeId, stakeholderId }: { nodeId: string; stakeholderId: string }) =>
       removeNodeStakeholder(nodeId, stakeholderId),
+    onError: (error: Error) => {
+      console.error('Fout bij verwijderen stakeholder:', error);
+    },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', variables.nodeId, 'stakeholders'] });
     },

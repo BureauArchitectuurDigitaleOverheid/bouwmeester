@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.schema.organisatie_eenheid import (
@@ -16,8 +17,7 @@ from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidUpdate,
 )
 from bouwmeester.schema.person import PersonResponse
-from bouwmeester.services.mention_service import MentionService
-from bouwmeester.services.notification_service import NotificationService
+from bouwmeester.services.mention_helper import sync_and_notify_mentions
 
 router = APIRouter(prefix="/organisatie", tags=["organisatie"])
 
@@ -93,25 +93,16 @@ async def create_organisatie(
 ) -> OrganisatieEenheidResponse:
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
-        parent = await repo.get(data.parent_id)
-        if parent is None:
-            raise HTTPException(status_code=404, detail="Parent eenheid not found")
+        require_found(await repo.get(data.parent_id), "Parent eenheid")
     eenheid = await repo.create(data)
 
-    # Sync mentions from beschrijving
-    if data.beschrijving:
-        mention_svc = MentionService(db)
-        new_mentions = await mention_svc.sync_mentions(
-            "organisatie", eenheid.id, data.beschrijving, None
-        )
-        notif_svc = NotificationService(db)
-        for m in new_mentions:
-            if m.mention_type == "person":
-                await notif_svc.notify_mention(
-                    m.target_id,
-                    "organisatie",
-                    eenheid.naam,
-                )
+    await sync_and_notify_mentions(
+        db,
+        "organisatie",
+        eenheid.id,
+        data.beschrijving,
+        eenheid.naam,
+    )
 
     return OrganisatieEenheidResponse.model_validate(eenheid)
 
@@ -122,9 +113,7 @@ async def get_organisatie(
     db: AsyncSession = Depends(get_db),
 ) -> OrganisatieEenheidResponse:
     repo = OrganisatieEenheidRepository(db)
-    eenheid = await repo.get(id)
-    if eenheid is None:
-        raise HTTPException(status_code=404, detail="Eenheid not found")
+    eenheid = require_found(await repo.get(id), "Eenheid")
     return OrganisatieEenheidResponse.model_validate(eenheid)
 
 
@@ -135,24 +124,15 @@ async def update_organisatie(
     db: AsyncSession = Depends(get_db),
 ) -> OrganisatieEenheidResponse:
     repo = OrganisatieEenheidRepository(db)
-    eenheid = await repo.update(id, data)
-    if eenheid is None:
-        raise HTTPException(status_code=404, detail="Eenheid not found")
+    eenheid = require_found(await repo.update(id, data), "Eenheid")
 
-    # Sync mentions from beschrijving
-    if data.beschrijving is not None:
-        mention_svc = MentionService(db)
-        new_mentions = await mention_svc.sync_mentions(
-            "organisatie", eenheid.id, data.beschrijving, None
-        )
-        notif_svc = NotificationService(db)
-        for m in new_mentions:
-            if m.mention_type == "person":
-                await notif_svc.notify_mention(
-                    m.target_id,
-                    "organisatie",
-                    eenheid.naam,
-                )
+    await sync_and_notify_mentions(
+        db,
+        "organisatie",
+        eenheid.id,
+        data.beschrijving,
+        eenheid.naam,
+    )
 
     return OrganisatieEenheidResponse.model_validate(eenheid)
 
@@ -163,9 +143,7 @@ async def delete_organisatie(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = OrganisatieEenheidRepository(db)
-    eenheid = await repo.get(id)
-    if eenheid is None:
-        raise HTTPException(status_code=404, detail="Eenheid not found")
+    require_found(await repo.get(id), "Eenheid")
     if await repo.has_children(id):
         raise HTTPException(
             status_code=409,
@@ -186,9 +164,7 @@ async def get_organisatie_personen(
     db: AsyncSession = Depends(get_db),
 ) -> list[PersonResponse] | OrganisatieEenheidPersonenGroup:
     repo = OrganisatieEenheidRepository(db)
-    eenheid = await repo.get(id)
-    if eenheid is None:
-        raise HTTPException(status_code=404, detail="Eenheid not found")
+    require_found(await repo.get(id), "Eenheid")
 
     if not recursive:
         personen = await repo.get_personen(id)

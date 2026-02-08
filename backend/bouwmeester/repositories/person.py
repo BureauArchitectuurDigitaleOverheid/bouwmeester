@@ -3,18 +3,16 @@
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.person import Person
-from bouwmeester.schema.person import PersonCreate, PersonUpdate
+from bouwmeester.repositories.base import BaseRepository
 
 
-class PersonRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+class PersonRepository(BaseRepository[Person]):
+    model = Person
 
     async def get(self, id: UUID) -> Person | None:
-        return await self.session.get(Person, id)
+        return await self.get_by_id(id)
 
     async def get_all(
         self,
@@ -24,32 +22,6 @@ class PersonRepository:
         stmt = select(Person).offset(skip).limit(limit).order_by(Person.naam)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
-
-    async def create(self, data: PersonCreate) -> Person:
-        person = Person(**data.model_dump())
-        self.session.add(person)
-        await self.session.flush()
-        await self.session.refresh(person)
-        return person
-
-    async def update(self, id: UUID, data: PersonUpdate) -> Person | None:
-        person = await self.session.get(Person, id)
-        if person is None:
-            return None
-        update_data = data.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            setattr(person, key, value)
-        await self.session.flush()
-        await self.session.refresh(person)
-        return person
-
-    async def delete(self, id: UUID) -> bool:
-        person = await self.session.get(Person, id)
-        if person is None:
-            return False
-        await self.session.delete(person)
-        await self.session.flush()
-        return True
 
     async def get_by_email(self, email: str) -> Person | None:
         stmt = select(Person).where(Person.email == email)

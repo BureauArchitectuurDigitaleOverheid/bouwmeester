@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   getNotifications,
   getUnreadCount,
@@ -6,6 +6,7 @@ import {
   markAllNotificationsRead,
   sendMessage,
 } from '@/api/notifications';
+import { useMutationWithError } from '@/hooks/useMutationWithError';
 
 export function useNotifications(personId: string | undefined, unreadOnly = false) {
   return useQuery({
@@ -26,34 +27,25 @@ export function useUnreadCount(personId: string | undefined) {
 }
 
 export function useMarkNotificationRead() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (id: string) => markNotificationRead(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    },
+    errorMessage: 'Fout bij markeren als gelezen',
+    invalidateKeys: [['notifications']],
   });
 }
 
 export function useMarkAllNotificationsRead() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: (personId: string) => markAllNotificationsRead(personId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    },
+    errorMessage: 'Fout bij markeren notificaties',
+    invalidateKeys: [['notifications']],
   });
 }
 
 export function useSendMessage() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useMutationWithError({
     mutationFn: sendMessage,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    },
+    errorMessage: 'Fout bij verzenden bericht',
+    invalidateKeys: [['notifications']],
   });
 }

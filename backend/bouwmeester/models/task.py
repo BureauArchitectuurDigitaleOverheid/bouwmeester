@@ -29,6 +29,7 @@ class Task(Base):
         UUID(as_uuid=True),
         ForeignKey("corpus_node.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     title: Mapped[str] = mapped_column(nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -36,6 +37,7 @@ class Task(Base):
         UUID(as_uuid=True),
         ForeignKey("person.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     organisatie_eenheid_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
