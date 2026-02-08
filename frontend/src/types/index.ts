@@ -380,7 +380,7 @@ export interface NodeTagResponse {
 }
 
 // Motie Import
-export type MotieImportStatus = 'pending' | 'imported' | 'reviewed' | 'rejected';
+export type MotieImportStatus = 'pending' | 'imported' | 'reviewed' | 'rejected' | 'out_of_scope';
 export type SuggestedEdgeStatus = 'pending' | 'approved' | 'rejected';
 
 export interface MotieImport {
@@ -423,6 +423,7 @@ export const MOTIE_IMPORT_STATUS_LABELS: Record<MotieImportStatus, string> = {
   imported: 'Geïmporteerd',
   reviewed: 'Beoordeeld',
   rejected: 'Afgewezen',
+  out_of_scope: 'Buiten scope',
 };
 
 export const MOTIE_IMPORT_STATUS_COLORS: Record<MotieImportStatus, string> = {
@@ -430,4 +431,5 @@ export const MOTIE_IMPORT_STATUS_COLORS: Record<MotieImportStatus, string> = {
   imported: 'blue',
   reviewed: 'green',
   rejected: 'gray',
+  out_of_scope: 'gray',
 };
