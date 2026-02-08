@@ -9,11 +9,10 @@ import logging
 import uuid
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.config import get_settings
-from sqlalchemy import select
-
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.person import Person

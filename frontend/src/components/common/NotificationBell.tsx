@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Bell, Check, CheckCheck } from 'lucide-react';
 import { useNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNotificationsRead } from '@/hooks/useNotifications';
+import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import type { Notification } from '@/api/notifications';
 
 interface NotificationBellProps {
@@ -28,20 +30,24 @@ const TYPE_COLORS: Record<string, string> = {
   coverage_needed: 'bg-amber-100 text-amber-700',
   direct_message: 'bg-green-100 text-green-700',
   agent_prompt: 'bg-violet-100 text-violet-700',
+  mention: 'bg-cyan-100 text-cyan-700',
 };
 
 function NotificationItem({
   notification,
   onMarkRead,
+  onClick,
 }: {
   notification: Notification;
   onMarkRead: (id: string) => void;
+  onClick?: () => void;
 }) {
   return (
     <div
+      onClick={onClick}
       className={`flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors ${
         !notification.is_read ? 'bg-blue-50/50' : ''
-      }`}
+      } ${onClick ? 'cursor-pointer' : ''}`}
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
@@ -78,6 +84,8 @@ function NotificationItem({
 export function NotificationBell({ personId }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { openTaskDetail } = useTaskDetail();
+  const { openNodeDetail } = useNodeDetail();
 
   const { data: countData } = useUnreadCount(personId);
   const { data: notifications } = useNotifications(personId, false);
@@ -136,6 +144,17 @@ export function NotificationBell({ personId }: NotificationBellProps) {
                   key={notification.id}
                   notification={notification}
                   onMarkRead={(id) => markRead.mutate(id)}
+                  onClick={() => {
+                    if (notification.related_task_id) {
+                      openTaskDetail(notification.related_task_id);
+                      if (!notification.is_read) markRead.mutate(notification.id);
+                      setOpen(false);
+                    } else if (notification.related_node_id) {
+                      openNodeDetail(notification.related_node_id);
+                      if (!notification.is_read) markRead.mutate(notification.id);
+                      setOpen(false);
+                    }
+                  }}
                 />
               ))
             ) : (

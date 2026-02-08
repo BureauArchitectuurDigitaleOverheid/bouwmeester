@@ -55,6 +55,20 @@ async def create_person(
     return PersonResponse.model_validate(person)
 
 
+@router.get("/search", response_model=list[PersonResponse])
+async def search_people(
+    q: str = Query("", min_length=0),
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+) -> list[PersonResponse]:
+    repo = PersonRepository(db)
+    if not q.strip():
+        people = await repo.get_all(limit=limit)
+    else:
+        people = await repo.search(q.strip(), limit=limit)
+    return [PersonResponse.model_validate(p) for p in people]
+
+
 @router.get("/{id}/summary", response_model=PersonSummaryResponse)
 async def get_person_summary(
     id: UUID,

@@ -16,6 +16,7 @@ class NotificationType(enum.StrEnum):
     politieke_input_imported = "politieke_input_imported"
     direct_message = "direct_message"
     agent_prompt = "agent_prompt"
+    mention = "mention"
 
 
 class NotificationBase(BaseModel):

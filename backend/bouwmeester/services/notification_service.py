@@ -140,6 +140,27 @@ class NotificationService:
 
         return notifications
 
+    async def notify_mention(
+        self,
+        mentioned_person_id: UUID,
+        source_type: str,
+        source_title: str,
+        source_node_id: UUID | None = None,
+        source_task_id: UUID | None = None,
+        sender_id: UUID | None = None,
+    ) -> Notification:
+        """Notify a person they were @mentioned."""
+        data = NotificationCreate(
+            person_id=mentioned_person_id,
+            type="mention",
+            title=f"Je bent genoemd in: {source_title}",
+            message=f"Je bent vermeld in '{source_title}'.",
+            sender_id=sender_id,
+            related_node_id=source_node_id,
+            related_task_id=source_task_id,
+        )
+        return await self.repo.create(data)
+
     async def get_notifications(
         self,
         person_id: UUID,

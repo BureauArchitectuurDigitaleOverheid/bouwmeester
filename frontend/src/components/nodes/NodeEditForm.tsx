@@ -1,47 +1,54 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
-import { useCreateNode } from '@/hooks/useNodes';
+import { useUpdateNode } from '@/hooks/useNodes';
 import { NodeType } from '@/types';
+import type { CorpusNode } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 
-interface NodeCreateFormProps {
+interface NodeEditFormProps {
   open: boolean;
   onClose: () => void;
+  node: CorpusNode;
 }
 
-export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
+export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
   const { nodeLabel } = useVocabulary();
   const nodeTypeOptions: SelectOption[] = Object.values(NodeType).map((type) => ({
     value: type,
     label: nodeLabel(type),
   }));
-  const [title, setTitle] = useState('');
-  const [nodeType, setNodeType] = useState<string>(NodeType.DOSSIER);
-  const [description, setDescription] = useState('');
-  const [status, setStatus] = useState('');
-  const createNode = useCreateNode();
+
+  const [title, setTitle] = useState(node.title);
+  const [nodeType, setNodeType] = useState<string>(node.node_type);
+  const [description, setDescription] = useState(node.description ?? '');
+  const [status, setStatus] = useState(node.status ?? '');
+  const updateNode = useUpdateNode();
+
+  useEffect(() => {
+    setTitle(node.title);
+    setNodeType(node.node_type);
+    setDescription(node.description ?? '');
+    setStatus(node.status ?? '');
+  }, [node]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    await createNode.mutateAsync({
-      title: title.trim(),
-      node_type: nodeType as NodeType,
-      description: description.trim() || undefined,
-      status: status.trim() || undefined,
+    await updateNode.mutateAsync({
+      id: node.id,
+      data: {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        status: status.trim() || undefined,
+      },
     });
 
-    // Reset form
-    setTitle('');
-    setNodeType(NodeType.DOSSIER);
-    setDescription('');
-    setStatus('');
     onClose();
   };
 
@@ -49,20 +56,20 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
     <Modal
       open={open}
       onClose={onClose}
-      title="Nieuwe node aanmaken"
+      title="Node bewerken"
       footer={
-        <>
+        <div className="flex items-center justify-end w-full gap-3">
           <Button variant="secondary" onClick={onClose}>
             Annuleren
           </Button>
           <Button
             onClick={handleSubmit}
-            loading={createNode.isPending}
+            loading={updateNode.isPending}
             disabled={!title.trim()}
           >
-            Aanmaken
+            Opslaan
           </Button>
-        </>
+        </div>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -80,6 +87,7 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
           value={nodeType}
           onChange={setNodeType}
           options={nodeTypeOptions}
+          disabled
         />
 
         <div className="space-y-1.5">

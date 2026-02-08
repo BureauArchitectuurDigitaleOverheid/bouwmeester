@@ -7,12 +7,16 @@ import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
+import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
+import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
 import { TaskView } from '@/components/tasks/TaskView';
 import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeMotieImport } from '@/hooks/useNodes';
 import { useTasks } from '@/hooks/useTasks';
 import { useNodeTags, useAddTagToNode, useRemoveTagFromNode, useTags } from '@/hooks/useTags';
+import { useReferences } from '@/hooks/useMentions';
+import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 
@@ -33,6 +37,7 @@ interface NodeDetailProps {
 export function NodeDetail({ nodeId }: NodeDetailProps) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [showEditForm, setShowEditForm] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
   const [tagHighlightIdx, setTagHighlightIdx] = useState(0);
@@ -49,6 +54,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const removeTag = useRemoveTagFromNode();
   const { nodeLabel, nodeAltLabel } = useVocabulary();
   const { data: motieImport } = useNodeMotieImport(nodeId, node?.node_type);
+  const { data: references } = useReferences(nodeId);
+  const { openTaskDetail } = useTaskDetail();
 
   // Tag search: fetch all tags and filter client-side for instant results
   const { data: allTags } = useTags();
@@ -198,7 +205,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Button variant="secondary" size="sm" icon={<Pencil className="h-4 w-4" />}>
+          <Button variant="secondary" size="sm" icon={<Pencil className="h-4 w-4" />} onClick={() => setShowEditForm(true)}>
             Bewerken
           </Button>
           <Button
@@ -238,9 +245,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             {/* Description */}
             <Card>
               <h3 className="text-sm font-medium text-text mb-2">Beschrijving</h3>
-              <p className="text-sm text-text-secondary whitespace-pre-wrap">
-                {node.description || 'Geen beschrijving beschikbaar.'}
-              </p>
+              <RichTextDisplay content={node.description} />
             </Card>
 
             {/* Tags */}
@@ -316,6 +321,33 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                 )}
               </div>
             </Card>
+
+            {/* Verwijzingen (back-references from mentions) */}
+            {references && references.length > 0 && (
+              <Card>
+                <h3 className="text-sm font-medium text-text mb-3">
+                  <LinkIcon className="h-4 w-4 inline mr-1.5 -mt-0.5" />
+                  Verwijzingen ({references.length})
+                </h3>
+                <div className="space-y-1.5">
+                  {references.map((ref) => (
+                    <button
+                      key={`${ref.source_type}-${ref.source_id}`}
+                      onClick={() => {
+                        if (ref.source_type === 'node') navigate(`/nodes/${ref.source_id}`);
+                        else if (ref.source_type === 'task') openTaskDetail(ref.source_id);
+                      }}
+                      className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
+                    >
+                      <Badge variant="gray">
+                        {ref.source_type === 'node' ? 'Node' : ref.source_type === 'task' ? 'Taak' : ref.source_type}
+                      </Badge>
+                      <span className="text-sm text-text truncate">{ref.source_title}</span>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            )}
 
             {/* Metadata */}
             {node.metadata && Object.keys(node.metadata).length > 0 && (
@@ -445,6 +477,14 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
           />
         )}
       </div>
+
+      {showEditForm && (
+        <NodeEditForm
+          open={showEditForm}
+          onClose={() => setShowEditForm(false)}
+          node={node}
+        />
+      )}
     </div>
   );
 }

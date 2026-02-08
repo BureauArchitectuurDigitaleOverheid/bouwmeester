@@ -46,7 +46,7 @@ class TaskRepository:
         task = Task(**data.model_dump())
         self.session.add(task)
         await self.session.flush()
-        await self.session.refresh(task)
+        await self.session.refresh(task, attribute_names=["assignee"])
         return task
 
     async def update(self, id: UUID, data: TaskUpdate) -> Task | None:
@@ -57,7 +57,7 @@ class TaskRepository:
         for key, value in update_data.items():
             setattr(task, key, value)
         await self.session.flush()
-        await self.session.refresh(task)
+        await self.session.refresh(task, attribute_names=["updated_at", "assignee"])
         return task
 
     async def delete(self, id: UUID) -> bool:

@@ -10,6 +10,8 @@ from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.inbox import InboxResponse
 from bouwmeester.schema.task import TaskCreate, TaskResponse, TaskUpdate
 from bouwmeester.services.inbox_service import InboxService
+from bouwmeester.services.mention_service import MentionService
+from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -40,6 +42,23 @@ async def create_task(
 ) -> TaskResponse:
     repo = TaskRepository(db)
     task = await repo.create(data)
+
+    # Sync mentions from description
+    if data.description:
+        mention_svc = MentionService(db)
+        new_mentions = await mention_svc.sync_mentions(
+            "task", task.id, data.description, data.assignee_id
+        )
+        # Notify @mentioned persons
+        notif_svc = NotificationService(db)
+        for m in new_mentions:
+            if m.mention_type == "person":
+                await notif_svc.notify_mention(
+                    m.target_id, "task", task.title,
+                    source_task_id=task.id, source_node_id=task.node_id,
+                    sender_id=data.assignee_id,
+                )
+
     return TaskResponse.model_validate(task)
 
 
@@ -86,6 +105,22 @@ async def update_task(
     task = await repo.update(id, data)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    # Sync mentions from description
+    if data.description is not None:
+        mention_svc = MentionService(db)
+        new_mentions = await mention_svc.sync_mentions(
+            "task", task.id, data.description, data.assignee_id
+        )
+        notif_svc = NotificationService(db)
+        for m in new_mentions:
+            if m.mention_type == "person":
+                await notif_svc.notify_mention(
+                    m.target_id, "task", task.title,
+                    source_task_id=task.id, source_node_id=task.node_id,
+                    sender_id=data.assignee_id,
+                )
+
     return TaskResponse.model_validate(task)
 
 

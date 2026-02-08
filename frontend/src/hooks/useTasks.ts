@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getTasks, createTask, updateTask, deleteTask } from '@/api/tasks';
+import { getTasks, getTask, createTask, updateTask, deleteTask } from '@/api/tasks';
 import type { TaskCreate, TaskUpdate } from '@/types';
 import type { TaskFilters } from '@/api/tasks';
 
@@ -7,6 +7,14 @@ export function useTasks(filters?: TaskFilters) {
   return useQuery({
     queryKey: ['tasks', filters],
     queryFn: () => getTasks(filters),
+  });
+}
+
+export function useTask(id: string | null) {
+  return useQuery({
+    queryKey: ['tasks', id],
+    queryFn: () => getTask(id!),
+    enabled: !!id,
   });
 }
 

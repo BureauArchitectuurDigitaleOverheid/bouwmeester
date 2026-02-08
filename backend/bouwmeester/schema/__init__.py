@@ -24,6 +24,12 @@ from bouwmeester.schema.graph import (
     NeighborEntry,
 )
 from bouwmeester.schema.inbox import InboxItem, InboxResponse
+from bouwmeester.schema.mention import (
+    MentionCreate,
+    MentionReference,
+    MentionResponse,
+    MentionSearchResult,
+)
 from bouwmeester.schema.motie_import import (
     MotieImportResponse,
     ReviewAction,
@@ -126,6 +132,11 @@ __all__ = [
     "TagResponse",
     "TagTreeResponse",
     "TagUpdate",
+    # mention
+    "MentionCreate",
+    "MentionReference",
+    "MentionResponse",
+    "MentionSearchResult",
     # motie_import
     "MotieImportResponse",
     "ReviewAction",

@@ -1,4 +1,5 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -9,8 +10,6 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # Ensure all models are imported so their tables are registered on Base.metadata.
 import bouwmeester.models  # noqa: F401
 from bouwmeester.core.database import Base
-
-import os
 
 config = context.config
 
