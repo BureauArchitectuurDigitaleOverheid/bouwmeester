@@ -75,7 +75,7 @@ class Task(Base):
     )
     parent: Mapped[Optional["Task"]] = relationship(
         "Task",
-        remote_side="Task.id",
+        remote_side=[id],
         back_populates="subtasks",
     )
     subtasks: Mapped[list["Task"]] = relationship(

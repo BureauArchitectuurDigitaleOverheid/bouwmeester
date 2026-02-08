@@ -1,5 +1,6 @@
 """API routes for organisatie-eenheden (organizational hierarchy)."""
 
+from collections import defaultdict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -188,10 +189,8 @@ async def get_organisatie_personen(
     personen_with_units = await repo.get_personen_for_units(descendant_ids)
 
     # Index people by unit ID
-    personen_by_unit: dict[UUID, list[PersonResponse]] = {}
+    personen_by_unit: dict[UUID, list[PersonResponse]] = defaultdict(list)
     for person, unit_id in personen_with_units:
-        if unit_id not in personen_by_unit:
-            personen_by_unit[unit_id] = []
         personen_by_unit[unit_id].append(PersonResponse.model_validate(person))
 
     # Index units by ID
