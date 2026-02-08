@@ -4,6 +4,7 @@ import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
+import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
 import { usePeople } from '@/hooks/usePeople';
 import { FUNCTIE_LABELS } from '@/types';
 import type { Person, PersonCreate } from '@/types';
@@ -36,10 +37,12 @@ const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS).m
 interface PersonEditFormProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: PersonCreate) => void;
+  onSubmit: (data: PersonCreate, orgEenheidId?: string) => void;
   isLoading?: boolean;
   editData?: Person | null;
   defaultIsAgent?: boolean;
+  /** Pre-fill the org unit selector (e.g. when adding from within an org unit) */
+  defaultOrgEenheidId?: string;
 }
 
 export function PersonEditForm({
@@ -49,12 +52,14 @@ export function PersonEditForm({
   isLoading,
   editData,
   defaultIsAgent = false,
+  defaultOrgEenheidId,
 }: PersonEditFormProps) {
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
   const [functie, setFunctie] = useState('');
   const [description, setDescription] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [orgEenheidId, setOrgEenheidId] = useState('');
   const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
 
   const { data: allPeople = [] } = usePeople();
@@ -67,6 +72,7 @@ export function PersonEditForm({
         setFunctie(editData.functie || '');
         setDescription(editData.description || '');
         setApiKey(editData.api_key || '');
+        setOrgEenheidId('');
         // Ensure the existing functie value is in options
         if (editData.functie && !functieOptions.some((o) => o.value === editData.functie)) {
           setFunctieOptions((prev) => [...prev, { value: editData.functie!, label: editData.functie! }]);
@@ -84,6 +90,7 @@ export function PersonEditForm({
         setFunctie('');
         setDescription('');
         setApiKey(defaultIsAgent ? generateMockApiKey() : '');
+        setOrgEenheidId(defaultOrgEenheidId || '');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -96,14 +103,17 @@ export function PersonEditForm({
     e.preventDefault();
     if (!isValid) return;
 
-    onSubmit({
-      naam: naam.trim(),
-      email: email.trim() || undefined,
-      functie: isAgent ? undefined : (functie || undefined),
-      description: isAgent ? (description.trim() || undefined) : undefined,
-      is_agent: isAgent,
-      api_key: isAgent ? apiKey : undefined,
-    });
+    onSubmit(
+      {
+        naam: naam.trim(),
+        email: email.trim() || undefined,
+        functie: isAgent ? undefined : (functie || undefined),
+        description: isAgent ? (description.trim() || undefined) : undefined,
+        is_agent: isAgent,
+        api_key: isAgent ? apiKey : undefined,
+      },
+      orgEenheidId || undefined,
+    );
   };
 
   const handleCreateFunctie = async (text: string): Promise<string | null> => {
@@ -206,6 +216,12 @@ export function PersonEditForm({
             placeholder="Selecteer of maak functie..."
             onCreate={handleCreateFunctie}
             createLabel="Nieuwe functie aanmaken"
+          />
+        )}
+        {!editData && (
+          <CascadingOrgSelect
+            value={orgEenheidId}
+            onChange={setOrgEenheidId}
           />
         )}
       </form>

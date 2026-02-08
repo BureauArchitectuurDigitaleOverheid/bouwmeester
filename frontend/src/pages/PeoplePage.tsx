@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { PersonList } from '@/components/people/PersonList';
 import { PersonEditForm } from '@/components/people/PersonEditForm';
-import { usePeople, useCreatePerson, useUpdatePerson } from '@/hooks/usePeople';
+import { usePeople, useCreatePerson, useUpdatePerson, useAddPersonOrganisatie } from '@/hooks/usePeople';
 import type { Person, PersonCreate } from '@/types';
 
 export function PeoplePage() {
@@ -13,6 +13,7 @@ export function PeoplePage() {
   const { data: people = [], isLoading } = usePeople();
   const createPersonMutation = useCreatePerson();
   const updatePersonMutation = useUpdatePerson();
+  const addPlacementMutation = useAddPersonOrganisatie();
 
   const handleAddPerson = () => {
     setEditPerson(null);
@@ -24,7 +25,7 @@ export function PeoplePage() {
     setShowForm(true);
   };
 
-  const handleFormSubmit = (data: PersonCreate) => {
+  const handleFormSubmit = (data: PersonCreate, orgEenheidId?: string) => {
     if (editPerson) {
       updatePersonMutation.mutate(
         { id: editPerson.id, data },
@@ -32,7 +33,19 @@ export function PeoplePage() {
       );
     } else {
       createPersonMutation.mutate(data, {
-        onSuccess: () => setShowForm(false),
+        onSuccess: (person) => {
+          if (orgEenheidId) {
+            addPlacementMutation.mutate({
+              personId: person.id,
+              data: {
+                organisatie_eenheid_id: orgEenheidId,
+                dienstverband: 'in_dienst',
+                start_datum: new Date().toISOString().split('T')[0],
+              },
+            });
+          }
+          setShowForm(false);
+        },
       });
     }
   };

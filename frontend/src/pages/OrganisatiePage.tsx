@@ -100,7 +100,7 @@ export function OrganisatiePage() {
     setShowPersonForm(true);
   };
 
-  const handlePersonFormSubmit = (data: PersonCreate) => {
+  const handlePersonFormSubmit = (data: PersonCreate, orgEenheidId?: string) => {
     if (editPerson) {
       updatePersonMutation.mutate(
         { id: editPerson.id, data },
@@ -109,12 +109,11 @@ export function OrganisatiePage() {
     } else {
       createPersonMutation.mutate(data, {
         onSuccess: (person) => {
-          // Auto-create placement for current org unit
-          if (selectedId) {
+          if (orgEenheidId) {
             addPlacementMutation.mutate({
               personId: person.id,
               data: {
-                organisatie_eenheid_id: selectedId,
+                organisatie_eenheid_id: orgEenheidId,
                 dienstverband: 'in_dienst',
                 start_datum: new Date().toISOString().split('T')[0],
               },
@@ -250,6 +249,7 @@ export function OrganisatiePage() {
         isLoading={createPersonMutation.isPending || updatePersonMutation.isPending}
         editData={editPerson}
         defaultIsAgent={defaultIsAgent}
+        defaultOrgEenheidId={selectedId || undefined}
       />
     </div>
   );
