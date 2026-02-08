@@ -91,6 +91,22 @@ format:
 test:
     cd backend && uv run pytest
 
+# Run backend tests with coverage report
+test-cov:
+    cd backend && uv run pytest --cov --cov-report=term-missing
+
+# Run backend tests for CI (with coverage XML output)
+test-ci:
+    cd backend && uv run pytest --cov --cov-report=xml --cov-fail-under=80
+
+# Run frontend tests
+test-frontend:
+    cd frontend && npx vitest run
+
+# Run frontend tests with coverage
+test-frontend-cov:
+    cd frontend && npx vitest run --coverage
+
 # ---------------------------------------------------------------------------
 # Frontend
 # ---------------------------------------------------------------------------
