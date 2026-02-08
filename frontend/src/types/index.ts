@@ -160,6 +160,7 @@ export interface Task {
   organisatie_eenheid_id?: string;
   organisatie_eenheid?: TaskOrgEenheidSummary;
   parent_id?: string;
+  motie_import_id?: string;
   subtasks?: TaskSubtask[];
   node_id?: string;
   node?: CorpusNode;
@@ -176,6 +177,7 @@ export interface TaskCreate {
   assignee_id?: string;
   organisatie_eenheid_id?: string;
   parent_id?: string;
+  motie_import_id?: string;
   node_id: string;
 }
 
@@ -206,12 +208,18 @@ export interface EenheidSubeenheidStats {
   open_count: number;
   in_progress_count: number;
   done_count: number;
+  overdue_count: number;
 }
 
 export interface EenheidOverviewResponse {
   unassigned_count: number;
+  unassigned_no_unit: Task[];
+  unassigned_no_unit_count: number;
+  unassigned_no_person: Task[];
+  unassigned_no_person_count: number;
   by_person: EenheidPersonTaskStats[];
   by_subeenheid: EenheidSubeenheidStats[];
+  eenheid_type: string;
 }
 
 // Organisatie Eenheid

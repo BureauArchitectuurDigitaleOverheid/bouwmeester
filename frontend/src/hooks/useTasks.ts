@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks } from '@/api/tasks';
+import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks, getTasksByPerson } from '@/api/tasks';
 import type { TaskCreate, TaskUpdate } from '@/types';
 import type { TaskFilters } from '@/api/tasks';
 
@@ -71,5 +71,13 @@ export function useTaskSubtasks(taskId: string | null) {
     queryKey: ['tasks', taskId, 'subtasks'],
     queryFn: () => getTaskSubtasks(taskId!),
     enabled: !!taskId,
+  });
+}
+
+export function useTasksByPerson(personId: string | null) {
+  return useQuery({
+    queryKey: ['tasks', 'by-person', personId],
+    queryFn: () => getTasksByPerson(personId!),
+    enabled: !!personId,
   });
 }

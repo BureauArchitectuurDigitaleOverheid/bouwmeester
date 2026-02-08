@@ -154,6 +154,16 @@ class OrganisatieEenheidRepository:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_by_manager(self, person_id: UUID) -> list[OrganisatieEenheid]:
+        """Get all eenheden where this person is manager."""
+        stmt = (
+            select(OrganisatieEenheid)
+            .where(OrganisatieEenheid.manager_id == person_id)
+            .order_by(OrganisatieEenheid.naam)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_personen_for_units(self, unit_ids: list[UUID]) -> list[Person]:
         """Fetch all people for a list of unit IDs in one query."""
         if not unit_ids:

@@ -22,8 +22,13 @@ export async function rejectMotieImport(id: string): Promise<MotieImport> {
   return apiPut<MotieImport>(`/api/moties/imports/${id}/reject`);
 }
 
-export async function completeMotieReview(id: string): Promise<MotieImport> {
-  return apiPost<MotieImport>(`/api/moties/imports/${id}/complete`);
+export interface CompleteReviewData {
+  eigenaar_id: string;
+  tasks?: { title: string; description?: string; assignee_id?: string; deadline?: string }[];
+}
+
+export async function completeMotieReview(id: string, data: CompleteReviewData): Promise<MotieImport> {
+  return apiPost<MotieImport>(`/api/moties/imports/${id}/complete`, data);
 }
 
 export async function getReviewQueue(): Promise<MotieImport[]> {
