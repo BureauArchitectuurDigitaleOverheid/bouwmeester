@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.task import Task
 from bouwmeester.schema.task import TaskCreate, TaskUpdate
 
@@ -195,16 +194,6 @@ class TaskRepository:
 
     async def _get_descendant_ids(self, root_id: UUID) -> list[UUID]:
         """Get all descendant unit IDs (including root) using a recursive CTE."""
-        cte = (
-            select(OrganisatieEenheid.id)
-            .where(OrganisatieEenheid.id == root_id)
-            .cte(name="descendants", recursive=True)
-        )
-        cte = cte.union_all(
-            select(OrganisatieEenheid.id).where(
-                OrganisatieEenheid.parent_id == cte.c.id
-            )
-        )
-        stmt = select(cte.c.id)
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        from bouwmeester.repositories.org_tree import get_descendant_ids
+
+        return await get_descendant_ids(self.session, root_id)

@@ -128,19 +128,9 @@ class OrganisatieEenheidRepository:
 
     async def get_descendant_ids(self, root_id: UUID) -> list[UUID]:
         """Get all descendant unit IDs (including root) using a recursive CTE."""
-        cte = (
-            select(OrganisatieEenheid.id)
-            .where(OrganisatieEenheid.id == root_id)
-            .cte(name="descendants", recursive=True)
-        )
-        cte = cte.union_all(
-            select(OrganisatieEenheid.id).where(
-                OrganisatieEenheid.parent_id == cte.c.id
-            )
-        )
-        stmt = select(cte.c.id)
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        from bouwmeester.repositories.org_tree import get_descendant_ids
+
+        return await get_descendant_ids(self.session, root_id)
 
     async def get_units_by_ids(self, unit_ids: list[UUID]) -> list[OrganisatieEenheid]:
         """Fetch all units for given IDs, with manager eager-loaded."""
