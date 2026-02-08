@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
@@ -8,9 +8,11 @@ import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm
 import { useCreateTask } from '@/hooks/useTasks';
 import { useNodes, useCreateNode } from '@/hooks/useNodes';
 import { usePeople } from '@/hooks/usePeople';
+import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import {
   TaskPriority,
   TASK_PRIORITY_LABELS,
+  ORGANISATIE_TYPE_LABELS,
   NodeType,
 } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
@@ -20,6 +22,7 @@ interface TaskCreateFormProps {
   open: boolean;
   onClose: () => void;
   nodeId?: string;
+  parentId?: string;
 }
 
 const priorityOptions: SelectOption[] = Object.values(TaskPriority).map((p) => ({
@@ -27,13 +30,14 @@ const priorityOptions: SelectOption[] = Object.values(TaskPriority).map((p) => (
   label: TASK_PRIORITY_LABELS[p],
 }));
 
-export function TaskCreateForm({ open, onClose, nodeId }: TaskCreateFormProps) {
+export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<string>(TaskPriority.NORMAAL);
   const [dueDate, setDueDate] = useState('');
   const [selectedNodeId, setSelectedNodeId] = useState(nodeId ?? '');
   const [assigneeId, setAssigneeId] = useState('');
+  const [organisatieEenheidId, setOrganisatieEenheidId] = useState('');
   const [personCreateName, setPersonCreateName] = useState('');
   const [showPersonCreate, setShowPersonCreate] = useState(false);
 
@@ -42,6 +46,7 @@ export function TaskCreateForm({ open, onClose, nodeId }: TaskCreateFormProps) {
   const createNode = useCreateNode();
   const { data: allNodes } = useNodes();
   const { data: allPeople } = usePeople();
+  const { data: eenheden } = useOrganisatieFlat();
 
   const nodeOptions: SelectOption[] = (allNodes ?? []).map((n) => ({
     value: n.id,
@@ -54,6 +59,15 @@ export function TaskCreateForm({ open, onClose, nodeId }: TaskCreateFormProps) {
     label: p.naam,
     description: p.functie ?? undefined,
   }));
+
+  const eenheidOptions: SelectOption[] = useMemo(() => [
+    { value: '', label: 'Geen' },
+    ...(eenheden ?? []).map((e) => ({
+      value: e.id,
+      label: e.naam,
+      description: ORGANISATIE_TYPE_LABELS[e.type] ?? e.type,
+    })),
+  ], [eenheden]);
 
   const handleCreateNode = useCallback(
     async (text: string): Promise<string | null> => {
@@ -90,6 +104,8 @@ export function TaskCreateForm({ open, onClose, nodeId }: TaskCreateFormProps) {
       due_date: dueDate || undefined,
       node_id: selectedNodeId,
       assignee_id: assigneeId || undefined,
+      organisatie_eenheid_id: organisatieEenheidId || undefined,
+      parent_id: parentId || undefined,
     });
 
     setTitle('');
@@ -98,6 +114,7 @@ export function TaskCreateForm({ open, onClose, nodeId }: TaskCreateFormProps) {
     setDueDate('');
     setSelectedNodeId(nodeId ?? '');
     setAssigneeId('');
+    setOrganisatieEenheidId('');
     onClose();
   };
 
@@ -106,7 +123,7 @@ export function TaskCreateForm({ open, onClose, nodeId }: TaskCreateFormProps) {
       <Modal
         open={open}
         onClose={onClose}
-        title="Nieuwe taak aanmaken"
+        title={parentId ? 'Subtaak aanmaken' : 'Nieuwe taak aanmaken'}
         footer={
           <>
             <Button variant="secondary" onClick={onClose}>
@@ -154,6 +171,14 @@ export function TaskCreateForm({ open, onClose, nodeId }: TaskCreateFormProps) {
             createLabel="Nieuw aanmaken"
             required
             error={!selectedNodeId && createTask.isError ? 'Node is verplicht' : undefined}
+          />
+
+          <CreatableSelect
+            label="Verantwoordelijke eenheid"
+            value={organisatieEenheidId}
+            onChange={setOrganisatieEenheidId}
+            options={eenheidOptions}
+            placeholder="Selecteer een eenheid..."
           />
 
           <CreatableSelect

@@ -26,6 +26,8 @@ class TaskBase(BaseModel):
     description: str | None = None
     node_id: UUID
     assignee_id: UUID | None = None
+    organisatie_eenheid_id: UUID | None = None
+    parent_id: UUID | None = None
     status: TaskStatus = TaskStatus.open
     priority: TaskPriority = TaskPriority.normaal
     deadline: date | None = Field(None, alias="due_date")
@@ -42,6 +44,8 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     node_id: UUID | None = None
     assignee_id: UUID | None = None
+    organisatie_eenheid_id: UUID | None = None
+    parent_id: UUID | None = None
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     deadline: date | None = Field(None, alias="due_date")
@@ -57,6 +61,25 @@ class TaskAssigneeSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TaskOrgEenheidSummary(BaseModel):
+    id: UUID
+    naam: str
+    type: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskSubtaskSummary(BaseModel):
+    id: UUID
+    title: str
+    status: TaskStatus
+    priority: TaskPriority
+    assignee: TaskAssigneeSummary | None = None
+    due_date: date | None = Field(None, validation_alias="deadline")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TaskResponse(BaseModel):
     id: UUID
     title: str
@@ -64,6 +87,10 @@ class TaskResponse(BaseModel):
     node_id: UUID
     assignee_id: UUID | None = None
     assignee: TaskAssigneeSummary | None = None
+    organisatie_eenheid_id: UUID | None = None
+    organisatie_eenheid: TaskOrgEenheidSummary | None = None
+    parent_id: UUID | None = None
+    subtasks: list[TaskSubtaskSummary] = []
     status: TaskStatus
     priority: TaskPriority
     due_date: date | None = Field(None, validation_alias="deadline")
@@ -71,3 +98,27 @@ class TaskResponse(BaseModel):
     updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class EenheidPersonTaskStats(BaseModel):
+    person_id: UUID
+    person_naam: str
+    open_count: int = 0
+    in_progress_count: int = 0
+    done_count: int = 0
+    overdue_count: int = 0
+
+
+class EenheidSubeenheidStats(BaseModel):
+    eenheid_id: UUID
+    eenheid_naam: str
+    eenheid_type: str
+    open_count: int = 0
+    in_progress_count: int = 0
+    done_count: int = 0
+
+
+class EenheidOverviewResponse(BaseModel):
+    unassigned_count: int
+    by_person: list[EenheidPersonTaskStats]
+    by_subeenheid: list[EenheidSubeenheidStats]

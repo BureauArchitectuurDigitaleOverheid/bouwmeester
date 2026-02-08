@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
@@ -9,11 +9,13 @@ import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm
 import { useUpdateTask, useDeleteTask } from '@/hooks/useTasks';
 import { useNodes, useCreateNode } from '@/hooks/useNodes';
 import { usePeople } from '@/hooks/usePeople';
+import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import {
   TaskStatus,
   TaskPriority,
   TASK_PRIORITY_LABELS,
   TASK_STATUS_LABELS,
+  ORGANISATIE_TYPE_LABELS,
   NodeType,
 } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
@@ -44,6 +46,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
   const [dueDate, setDueDate] = useState(task.due_date?.split('T')[0] ?? '');
   const [selectedNodeId, setSelectedNodeId] = useState(task.node_id ?? '');
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
+  const [organisatieEenheidId, setOrganisatieEenheidId] = useState(task.organisatie_eenheid_id ?? '');
   const [personCreateName, setPersonCreateName] = useState('');
   const [showPersonCreate, setShowPersonCreate] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -54,6 +57,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
   const createNode = useCreateNode();
   const { data: allNodes } = useNodes();
   const { data: allPeople } = usePeople();
+  const { data: eenheden } = useOrganisatieFlat();
 
   // Reset form when task changes
   useEffect(() => {
@@ -64,6 +68,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
     setDueDate(task.due_date?.split('T')[0] ?? '');
     setSelectedNodeId(task.node_id ?? '');
     setAssigneeId(task.assignee_id ?? '');
+    setOrganisatieEenheidId(task.organisatie_eenheid_id ?? '');
     setShowDeleteConfirm(false);
   }, [task]);
 
@@ -78,6 +83,15 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
     label: p.naam,
     description: p.functie ?? undefined,
   }));
+
+  const eenheidOptions: SelectOption[] = useMemo(() => [
+    { value: '', label: 'Geen' },
+    ...(eenheden ?? []).map((e) => ({
+      value: e.id,
+      label: e.naam,
+      description: ORGANISATIE_TYPE_LABELS[e.type] ?? e.type,
+    })),
+  ], [eenheden]);
 
   const handleCreateNode = useCallback(
     async (text: string): Promise<string | null> => {
@@ -116,6 +130,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
         status: status as TaskStatus,
         due_date: dueDate || undefined,
         assignee_id: assigneeId || undefined,
+        organisatie_eenheid_id: organisatieEenheidId || undefined,
       },
     });
 
@@ -227,6 +242,14 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
             placeholder="Koppel aan een node..."
             onCreate={handleCreateNode}
             createLabel="Nieuw aanmaken"
+          />
+
+          <CreatableSelect
+            label="Verantwoordelijke eenheid"
+            value={organisatieEenheidId}
+            onChange={setOrganisatieEenheidId}
+            options={eenheidOptions}
+            placeholder="Selecteer een eenheid..."
           />
 
           <CreatableSelect

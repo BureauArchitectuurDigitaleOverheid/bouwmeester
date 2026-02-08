@@ -14,6 +14,7 @@ import { PeoplePage } from '@/pages/PeoplePage';
 import { OrganisatiePage } from '@/pages/OrganisatiePage';
 import { SearchPage } from '@/pages/SearchPage';
 import { MotiesPage } from '@/pages/MotiesPage';
+import { EenheidOverzichtPage } from '@/pages/EenheidOverzichtPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +42,7 @@ export default function App() {
                 <Route path="/tasks" element={<TasksPage />} />
                 <Route path="/people" element={<PeoplePage />} />
                 <Route path="/organisatie" element={<OrganisatiePage />} />
+                <Route path="/eenheid-overzicht" element={<EenheidOverzichtPage />} />
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/moties" element={<MotiesPage />} />
               </Route>

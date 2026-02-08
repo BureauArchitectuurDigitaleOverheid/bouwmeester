@@ -1,9 +1,11 @@
 import { useState, useMemo, useCallback } from 'react';
+import { Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ReactFlow, {
   Background,
   Controls,
   MiniMap,
+  MarkerType,
   useNodesState,
   useEdgesState,
   type Node as RFNode,
@@ -17,25 +19,50 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
+import { Input } from '@/components/common/Input';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { useGraphView } from '@/hooks/useGraph';
 import { useCreateEdge } from '@/hooks/useEdges';
+import { useCreateNode } from '@/hooks/useNodes';
 import { NodeType } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 import type { CorpusNode, Edge } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
+import { generateBridgeEdges, type BridgeEdge } from '@/utils/bridgeEdges';
 
 // Edge type options are built dynamically in the component using vocabulary
 
-// ---- Layout algorithm (simple layered / force-directed) ----
+// ---- Layout algorithm using dagre ----
+
+import dagre from 'dagre';
 
 /**
- * Simple hierarchical layout using topological sorting with BFS layers.
- * Nodes with no incoming edges are placed at the top. Edges flow downward.
- * Within each layer, nodes are distributed horizontally.
+ * Conceptual rank for each node type. Lower rank = higher on screen.
+ * Problemen & politieke input at the top, maatregelen & effecten at the bottom.
+ */
+const NODE_TYPE_RANK: Record<string, number> = {
+  [NodeType.PROBLEEM]: 0,
+  [NodeType.POLITIEKE_INPUT]: 0,
+  [NodeType.DOSSIER]: 1,
+  [NodeType.DOEL]: 2,
+  [NodeType.BELEIDSKADER]: 2,
+  [NodeType.BELEIDSOPTIE]: 3,
+  [NodeType.INSTRUMENT]: 4,
+  [NodeType.MAATREGEL]: 4,
+  [NodeType.EFFECT]: 5,
+  [NodeType.NOTITIE]: 3,
+  [NodeType.OVERIG]: 3,
+};
+
+/**
+ * Hierarchical layout using dagre (Sugiyama-style).
+ * Edges are oriented for dagre so that nodes with lower conceptual rank
+ * (problemen, politieke input) are placed higher. The original edge
+ * directions are NOT changed — only dagre sees the reoriented edges.
+ * React Flow still draws arrows in the original from→to direction.
  */
 function computeLayout(
   nodes: CorpusNode[],
@@ -46,81 +73,46 @@ function computeLayout(
   if (nodes.length === 0) return positions;
 
   const nodeIds = new Set(nodes.map((n) => n.id));
+  const nodeTypeMap = new Map(nodes.map((n) => [n.id, n.node_type]));
 
-  // Build adjacency lists
-  const inDegree = new Map<string, number>();
-  const outEdges = new Map<string, string[]>();
-  for (const id of nodeIds) {
-    inDegree.set(id, 0);
-    outEdges.set(id, []);
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setGraph({
+    rankdir: 'TB',
+    nodesep: 40,
+    ranksep: 100,
+    edgesep: 20,
+    marginx: 40,
+    marginy: 40,
+  });
+
+  for (const node of nodes) {
+    g.setNode(node.id, { width: 220, height: 80 });
   }
 
+  // Orient edges for dagre: always point from lower rank (top) to higher rank
+  // (bottom). When both endpoints have the same rank, keep original direction.
   for (const edge of edges) {
-    const src = edge.from_node_id;
-    const tgt = edge.to_node_id;
-    if (nodeIds.has(src) && nodeIds.has(tgt)) {
-      inDegree.set(tgt, (inDegree.get(tgt) ?? 0) + 1);
-      outEdges.get(src)?.push(tgt);
-    }
-  }
-
-  // BFS-based layer assignment
-  const layers: string[][] = [];
-  const assigned = new Set<string>();
-
-  // Start with nodes having in-degree 0
-  let currentLayer = [...nodeIds].filter((id) => (inDegree.get(id) ?? 0) === 0);
-
-  // If no roots found (cycle), just pick all nodes
-  if (currentLayer.length === 0) {
-    currentLayer = [...nodeIds];
-  }
-
-  while (currentLayer.length > 0 && assigned.size < nodeIds.size) {
-    const layer: string[] = [];
-    const nextLayer: string[] = [];
-
-    for (const id of currentLayer) {
-      if (!assigned.has(id)) {
-        assigned.add(id);
-        layer.push(id);
-
-        for (const targetId of outEdges.get(id) ?? []) {
-          if (!assigned.has(targetId)) {
-            nextLayer.push(targetId);
-          }
-        }
+    if (nodeIds.has(edge.from_node_id) && nodeIds.has(edge.to_node_id)) {
+      const fromRank = NODE_TYPE_RANK[nodeTypeMap.get(edge.from_node_id) ?? ''] ?? 3;
+      const toRank = NODE_TYPE_RANK[nodeTypeMap.get(edge.to_node_id) ?? ''] ?? 3;
+      if (fromRank <= toRank) {
+        g.setEdge(edge.from_node_id, edge.to_node_id);
+      } else {
+        g.setEdge(edge.to_node_id, edge.from_node_id);
       }
     }
-
-    if (layer.length > 0) {
-      layers.push(layer);
-    }
-    currentLayer = [...new Set(nextLayer)];
   }
 
-  // Assign any remaining unassigned nodes to the last layer
-  const remaining = [...nodeIds].filter((id) => !assigned.has(id));
-  if (remaining.length > 0) {
-    layers.push(remaining);
-  }
+  dagre.layout(g);
 
-  // Position nodes
-  const nodeWidth = 220;
-  const nodeHeight = 80;
-  const horizontalGap = 60;
-  const verticalGap = 120;
-
-  for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
-    const layer = layers[layerIdx];
-    const layerWidth = layer.length * nodeWidth + (layer.length - 1) * horizontalGap;
-    const startX = -layerWidth / 2;
-
-    for (let nodeIdx = 0; nodeIdx < layer.length; nodeIdx++) {
-      const nodeId = layer[nodeIdx];
-      positions.set(nodeId, {
-        x: startX + nodeIdx * (nodeWidth + horizontalGap),
-        y: layerIdx * (nodeHeight + verticalGap),
+  for (const node of nodes) {
+    const n = g.node(node.id);
+    if (n) {
+      // dagre returns center positions; React Flow uses top-left
+      positions.set(node.id, {
+        x: n.x - 110,
+        y: n.y - 40,
       });
     }
   }
@@ -183,6 +175,13 @@ export function CorpusGraph() {
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
   const [newEdgeType, setNewEdgeType] = useState('');
 
+  // Node creation state
+  const createNodeMutation = useCreateNode();
+  const [showCreateNode, setShowCreateNode] = useState(false);
+  const [newNodeTitle, setNewNodeTitle] = useState('');
+  const [newNodeType, setNewNodeType] = useState('');
+  const [newNodeDescription, setNewNodeDescription] = useState('');
+
   // Extract available edge types from data
   const availableEdgeTypes = useMemo(() => {
     if (!data?.edges) return [];
@@ -207,19 +206,19 @@ export function CorpusGraph() {
 
     // Filter nodes by enabled types
     const filteredNodes = data.nodes.filter((n) => enabledNodeTypes.has(n.node_type));
-    const filteredNodeIds = new Set(filteredNodes.map((n) => n.id));
 
-    // Filter edges: both endpoints must be visible, and edge type must be enabled
-    const filteredEdges = data.edges.filter((e) => {
-      return (
-        filteredNodeIds.has(e.from_node_id) &&
-        filteredNodeIds.has(e.to_node_id) &&
-        enabledEdgeTypes.has(e.edge_type_id)
-      );
-    });
+    // Filter edges by enabled edge types only (not by visible node endpoints)
+    const typeFilteredEdges = data.edges.filter((e) => enabledEdgeTypes.has(e.edge_type_id));
 
-    // Compute layout
-    const positions = computeLayout(filteredNodes, filteredEdges);
+    // Generate bridge edges for nodes hidden by the node-type filter
+    const { visibleEdges, bridgeEdges } = generateBridgeEdges(
+      data.nodes,
+      typeFilteredEdges,
+      filteredNodes,
+    );
+
+    // Compute layout using only the direct visible edges
+    const positions = computeLayout(filteredNodes, visibleEdges);
 
     // Map to React Flow nodes
     const rfNodes: RFNode<GraphNodeData>[] = filteredNodes.map((node) => {
@@ -236,19 +235,30 @@ export function CorpusGraph() {
       };
     });
 
-    // Map to React Flow edges
-    const rfEdges: RFEdge[] = filteredEdges.map((edge) => {
+    // Map normal edges to React Flow edges.
+    // When the source is placed below the target by dagre, we swap
+    // source/target for React Flow routing and use markerStart so the
+    // arrow still points in the original semantic direction.
+    const rfNormalEdges: RFEdge[] = visibleEdges.map((edge) => {
       const isDashed = DASHED_EDGE_TYPES.has(edge.edge_type_id);
+      const fromPos = positions.get(edge.from_node_id);
+      const toPos = positions.get(edge.to_node_id);
+      const goesUpward = fromPos && toPos && fromPos.y > toPos.y;
+      const color = isDashed ? '#F43F5E' : '#94a3b8';
+      const marker = { type: MarkerType.ArrowClosed, width: 16, height: 16, color };
 
       return {
         id: edge.id,
-        source: edge.from_node_id,
-        target: edge.to_node_id,
+        source: goesUpward ? edge.to_node_id : edge.from_node_id,
+        target: goesUpward ? edge.from_node_id : edge.to_node_id,
         label: vocabEdgeLabel(edge.edge_type_id),
-        type: 'default',
+        type: 'bezier',
         animated: isDashed,
+        ...(goesUpward
+          ? { markerStart: marker }
+          : { markerEnd: marker }),
         style: {
-          stroke: isDashed ? '#F43F5E' : '#94a3b8',
+          stroke: color,
           strokeWidth: 1.5,
           strokeDasharray: isDashed ? '5 5' : undefined,
         },
@@ -265,6 +275,43 @@ export function CorpusGraph() {
         labelBgBorderRadius: 4,
       };
     });
+
+    // Map bridge edges to React Flow edges with dashed bridge styling
+    const rfBridgeEdges: RFEdge[] = bridgeEdges.map((bridge: BridgeEdge) => {
+      const fromPos = positions.get(bridge.from_node_id);
+      const toPos = positions.get(bridge.to_node_id);
+      const goesUp = fromPos && toPos && fromPos.y > toPos.y;
+      const bMarker = { type: MarkerType.ArrowClosed, width: 14, height: 14, color: '#94a3b8' };
+      return {
+      id: bridge.id,
+      source: goesUp ? bridge.to_node_id : bridge.from_node_id,
+      target: goesUp ? bridge.from_node_id : bridge.to_node_id,
+      label: `via ${bridge.bridgedThrough.length} node(s)`,
+      type: 'bezier',
+      animated: false,
+      ...(goesUp ? { markerStart: bMarker } : { markerEnd: bMarker }),
+      style: {
+        stroke: '#94a3b8',
+        strokeWidth: 1.5,
+        strokeDasharray: '3 3',
+        opacity: 0.6,
+      },
+      labelStyle: {
+        fontSize: 9,
+        fill: '#94a3b8',
+        fontStyle: 'italic',
+        fontWeight: 400,
+      },
+      labelBgStyle: {
+        fill: '#ffffff',
+        fillOpacity: 0.9,
+      },
+      labelBgPadding: [4, 2] as [number, number],
+      labelBgBorderRadius: 4,
+    };
+    });
+
+    const rfEdges: RFEdge[] = [...rfNormalEdges, ...rfBridgeEdges];
 
     return { rfNodes, rfEdges };
   }, [data, enabledNodeTypes, enabledEdgeTypes, navigate, vocabEdgeLabel]);
@@ -308,6 +355,29 @@ export function CorpusGraph() {
     setPendingConnection(null);
     setNewEdgeType('');
   }, [pendingConnection, newEdgeType, createEdge]);
+
+  // Node type options for create modal
+  const nodeTypeCreateOptions: SelectOption[] = Object.values(NodeType).map((t) => ({
+    value: t,
+    label: nodeLabel(t),
+  }));
+
+  const handleOpenCreateNode = useCallback(() => {
+    setNewNodeTitle('');
+    setNewNodeType('');
+    setNewNodeDescription('');
+    setShowCreateNode(true);
+  }, []);
+
+  const handleCreateNode = useCallback(async () => {
+    if (!newNodeTitle.trim() || !newNodeType) return;
+    await createNodeMutation.mutateAsync({
+      title: newNodeTitle.trim(),
+      node_type: newNodeType as NodeType,
+      description: newNodeDescription.trim() || undefined,
+    });
+    setShowCreateNode(false);
+  }, [newNodeTitle, newNodeType, newNodeDescription, createNodeMutation]);
 
   // Minimap node color
   const minimapNodeColor = useCallback((node: RFNode) => {
@@ -359,6 +429,10 @@ export function CorpusGraph() {
             />
           </div>
         )}
+        <Button onClick={handleOpenCreateNode} size="sm">
+          <Plus className="h-4 w-4 mr-1" />
+          Node toevoegen
+        </Button>
       </div>
 
       {/* Graph canvas */}
@@ -375,7 +449,7 @@ export function CorpusGraph() {
           minZoom={0.1}
           maxZoom={3}
           defaultEdgeOptions={{
-            type: 'default',
+            type: 'bezier',
           }}
           proOptions={{ hideAttribution: true }}
         >
@@ -429,6 +503,56 @@ export function CorpusGraph() {
           placeholder="Selecteer een type..."
           required
         />
+      </Modal>
+
+      {/* Create node modal */}
+      <Modal
+        open={showCreateNode}
+        onClose={() => setShowCreateNode(false)}
+        title="Nieuwe node aanmaken"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowCreateNode(false)}>
+              Annuleren
+            </Button>
+            <Button
+              onClick={handleCreateNode}
+              loading={createNodeMutation.isPending}
+              disabled={!newNodeTitle.trim() || !newNodeType}
+            >
+              Aanmaken
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Input
+            label="Titel"
+            value={newNodeTitle}
+            onChange={(e) => setNewNodeTitle(e.target.value)}
+            placeholder="Naam van de node..."
+            required
+          />
+          <CreatableSelect
+            label="Type"
+            value={newNodeType}
+            onChange={setNewNodeType}
+            options={nodeTypeCreateOptions}
+            placeholder="Selecteer een type..."
+            required
+          />
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-text">Beschrijving</label>
+            <textarea
+              className="block w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm text-text placeholder:text-text-secondary/50 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 hover:border-border-hover"
+              value={newNodeDescription}
+              onChange={(e) => setNewNodeDescription(e.target.value)}
+              placeholder="Optionele beschrijving..."
+              rows={3}
+            />
+          </div>
+        </div>
       </Modal>
     </div>
   );

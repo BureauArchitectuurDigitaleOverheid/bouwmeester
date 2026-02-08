@@ -133,6 +133,21 @@ export const TASK_PRIORITY_COLORS: Record<TaskPriority, string> = {
   [TaskPriority.LAAG]: 'gray',
 };
 
+export interface TaskOrgEenheidSummary {
+  id: string;
+  naam: string;
+  type: string;
+}
+
+export interface TaskSubtask {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assignee?: { id: string; naam: string; is_agent: boolean };
+  due_date?: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -142,6 +157,10 @@ export interface Task {
   due_date?: string;
   assignee_id?: string;
   assignee?: Person;
+  organisatie_eenheid_id?: string;
+  organisatie_eenheid?: TaskOrgEenheidSummary;
+  parent_id?: string;
+  subtasks?: TaskSubtask[];
   node_id?: string;
   node?: CorpusNode;
   created_at: string;
@@ -155,6 +174,8 @@ export interface TaskCreate {
   priority?: TaskPriority;
   due_date?: string;
   assignee_id?: string;
+  organisatie_eenheid_id?: string;
+  parent_id?: string;
   node_id: string;
 }
 
@@ -165,6 +186,32 @@ export interface TaskUpdate {
   priority?: TaskPriority;
   due_date?: string;
   assignee_id?: string;
+  organisatie_eenheid_id?: string;
+  parent_id?: string;
+}
+
+export interface EenheidPersonTaskStats {
+  person_id: string;
+  person_naam: string;
+  open_count: number;
+  in_progress_count: number;
+  done_count: number;
+  overdue_count: number;
+}
+
+export interface EenheidSubeenheidStats {
+  eenheid_id: string;
+  eenheid_naam: string;
+  eenheid_type: string;
+  open_count: number;
+  in_progress_count: number;
+  done_count: number;
+}
+
+export interface EenheidOverviewResponse {
+  unassigned_count: number;
+  by_person: EenheidPersonTaskStats[];
+  by_subeenheid: EenheidSubeenheidStats[];
 }
 
 // Organisatie Eenheid
