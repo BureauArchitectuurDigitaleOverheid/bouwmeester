@@ -141,7 +141,9 @@ async def sample_edge_type(db_session: AsyncSession):
 
 
 @pytest.fixture
-async def sample_edge(db_session: AsyncSession, sample_node, second_node, sample_edge_type):
+async def sample_edge(
+    db_session: AsyncSession, sample_node, second_node, sample_edge_type
+):
     """Create an edge between sample_node and second_node."""
     from bouwmeester.models.edge import Edge
 

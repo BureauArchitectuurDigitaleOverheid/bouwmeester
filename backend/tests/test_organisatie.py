@@ -5,7 +5,6 @@ from datetime import date
 
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 
-
 # ---------------------------------------------------------------------------
 # List organisatie
 # ---------------------------------------------------------------------------
@@ -27,7 +26,9 @@ async def test_list_organisatie_flat_includes_created(client, sample_organisatie
     assert str(sample_organisatie.id) in ids
 
 
-async def test_list_organisatie_tree_format(client, sample_organisatie, child_organisatie):
+async def test_list_organisatie_tree_format(
+    client, sample_organisatie, child_organisatie
+):
     """GET /api/organisatie?format=tree returns a tree structure with children."""
     resp = await client.get("/api/organisatie", params={"format": "tree"})
     assert resp.status_code == 200
@@ -210,7 +211,7 @@ async def test_managed_by_with_manager(
 
 
 async def test_managed_by_without_data(client):
-    """GET /api/organisatie/managed-by/{person_id} returns empty list for non-manager."""
+    """Managed-by returns empty list for non-manager."""
     fake_person_id = uuid.uuid4()
     resp = await client.get(f"/api/organisatie/managed-by/{fake_person_id}")
     assert resp.status_code == 200

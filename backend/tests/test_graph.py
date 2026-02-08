@@ -30,9 +30,7 @@ async def test_graph_search_with_data(client, sample_node, sample_edge):
 
 async def test_graph_search_filter_by_node_type(client, sample_node):
     """GET /api/graph/search?node_types=dossier filters by node type."""
-    resp = await client.get(
-        "/api/graph/search", params={"node_types": "dossier"}
-    )
+    resp = await client.get("/api/graph/search", params={"node_types": "dossier"})
     assert resp.status_code == 200
     data = resp.json()
     for n in data["nodes"]:

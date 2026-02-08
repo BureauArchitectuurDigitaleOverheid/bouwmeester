@@ -2,7 +2,6 @@
 
 import uuid
 
-
 # ---------------------------------------------------------------------------
 # List edges
 # ---------------------------------------------------------------------------
@@ -28,9 +27,7 @@ async def test_list_edges_filtered_by_from_node_id(
     client, sample_edge, sample_node, second_node
 ):
     """GET /api/edges?from_node_id=... returns only edges originating from that node."""
-    resp = await client.get(
-        "/api/edges", params={"from_node_id": str(sample_node.id)}
-    )
+    resp = await client.get("/api/edges", params={"from_node_id": str(sample_node.id)})
     assert resp.status_code == 200
     data = resp.json()
     # All returned edges must have from_node_id matching the filter
@@ -44,9 +41,7 @@ async def test_list_edges_filtered_by_to_node_id(
     client, sample_edge, sample_node, second_node
 ):
     """GET /api/edges?to_node_id=... returns only edges pointing to that node."""
-    resp = await client.get(
-        "/api/edges", params={"to_node_id": str(second_node.id)}
-    )
+    resp = await client.get("/api/edges", params={"to_node_id": str(second_node.id)})
     assert resp.status_code == 200
     data = resp.json()
     assert all(e["to_node_id"] == str(second_node.id) for e in data)
@@ -59,17 +54,13 @@ async def test_list_edges_filtered_by_node_id(
 ):
     """GET /api/edges?node_id=... returns edges where the node is either from or to."""
     # Filter by sample_node (from side)
-    resp = await client.get(
-        "/api/edges", params={"node_id": str(sample_node.id)}
-    )
+    resp = await client.get("/api/edges", params={"node_id": str(sample_node.id)})
     assert resp.status_code == 200
     ids = {e["id"] for e in resp.json()}
     assert str(sample_edge.id) in ids
 
     # Filter by second_node (to side) should also find it
-    resp2 = await client.get(
-        "/api/edges", params={"node_id": str(second_node.id)}
-    )
+    resp2 = await client.get("/api/edges", params={"node_id": str(second_node.id)})
     assert resp2.status_code == 200
     ids2 = {e["id"] for e in resp2.json()}
     assert str(sample_edge.id) in ids2
@@ -161,9 +152,7 @@ async def test_update_edge_description(client, sample_edge):
 async def test_update_edge_not_found(client):
     """PUT /api/edges/{id} returns 404 for a non-existent edge."""
     fake_id = uuid.uuid4()
-    resp = await client.put(
-        f"/api/edges/{fake_id}", json={"weight": 3.0}
-    )
+    resp = await client.put(f"/api/edges/{fake_id}", json={"weight": 3.0})
     assert resp.status_code == 404
 
 

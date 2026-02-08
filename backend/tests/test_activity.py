@@ -2,7 +2,6 @@
 
 import uuid
 
-
 # ---------------------------------------------------------------------------
 # Activity feed
 # ---------------------------------------------------------------------------
@@ -32,9 +31,7 @@ async def test_inbox_returns_200(client, sample_person):
 
 
 async def test_inbox_unknown_person(client):
-    """GET /api/activity/inbox?person_id=... returns 200 with empty inbox for unknown person."""
+    """Inbox returns 200 with empty data for unknown person."""
     fake_id = uuid.uuid4()
-    resp = await client.get(
-        "/api/activity/inbox", params={"person_id": str(fake_id)}
-    )
+    resp = await client.get("/api/activity/inbox", params={"person_id": str(fake_id)})
     assert resp.status_code == 200

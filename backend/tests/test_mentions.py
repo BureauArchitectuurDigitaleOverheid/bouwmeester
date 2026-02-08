@@ -2,7 +2,6 @@
 
 import uuid
 
-
 # ---------------------------------------------------------------------------
 # Search mentionables
 # ---------------------------------------------------------------------------
@@ -46,7 +45,7 @@ async def test_get_references_returns_200(client, sample_node):
 
 
 async def test_get_references_unknown_target(client):
-    """GET /api/mentions/references/{target_id} returns empty list for unknown target."""
+    """References returns empty list for unknown target."""
     fake_id = uuid.uuid4()
     resp = await client.get(f"/api/mentions/references/{fake_id}")
     assert resp.status_code == 200

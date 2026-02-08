@@ -2,7 +2,6 @@
 
 import uuid
 
-
 # ---------------------------------------------------------------------------
 # List tags
 # ---------------------------------------------------------------------------
@@ -52,9 +51,7 @@ async def test_search_tags_by_name(client, sample_tag):
 
 async def test_search_tags_no_match(client):
     """GET /api/tags/search?q=... returns empty list when nothing matches."""
-    resp = await client.get(
-        "/api/tags/search", params={"q": "xyznonexistent999"}
-    )
+    resp = await client.get("/api/tags/search", params={"q": "xyznonexistent999"})
     assert resp.status_code == 200
     assert resp.json() == []
 

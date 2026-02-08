@@ -3,7 +3,6 @@
 import uuid
 from datetime import date
 
-
 # ---------------------------------------------------------------------------
 # Fixtures (local to moties tests)
 # ---------------------------------------------------------------------------
@@ -149,9 +148,7 @@ async def test_complete_review(client, db_session, sample_node, sample_person):
         "eigenaar_id": str(sample_person.id),
         "tasks": [],
     }
-    resp = await client.post(
-        f"/api/moties/imports/{motie.id}/complete", json=payload
-    )
+    resp = await client.post(f"/api/moties/imports/{motie.id}/complete", json=payload)
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "reviewed"
@@ -161,9 +158,7 @@ async def test_complete_review_not_found(client, sample_person):
     """POST /api/moties/imports/{id}/complete returns 404 for non-existent."""
     fake_id = uuid.uuid4()
     payload = {"eigenaar_id": str(sample_person.id), "tasks": []}
-    resp = await client.post(
-        f"/api/moties/imports/{fake_id}/complete", json=payload
-    )
+    resp = await client.post(f"/api/moties/imports/{fake_id}/complete", json=payload)
     assert resp.status_code == 404
 
 
