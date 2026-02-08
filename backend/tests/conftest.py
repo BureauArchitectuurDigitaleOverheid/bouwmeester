@@ -57,7 +57,7 @@ async def client(db_session: AsyncSession):
 
 @pytest.fixture
 async def sample_node(db_session: AsyncSession):
-    """Create a corpus node for testing."""
+    """Create a corpus node (dossier) for testing."""
     from bouwmeester.models.corpus_node import CorpusNode
 
     node = CorpusNode(
@@ -65,6 +65,23 @@ async def sample_node(db_session: AsyncSession):
         title="Test dossier",
         node_type="dossier",
         description="Testomschrijving",
+        status="actief",
+    )
+    db_session.add(node)
+    await db_session.flush()
+    return node
+
+
+@pytest.fixture
+async def second_node(db_session: AsyncSession):
+    """Create a second corpus node (doel) for testing."""
+    from bouwmeester.models.corpus_node import CorpusNode
+
+    node = CorpusNode(
+        id=uuid.uuid4(),
+        title="Test doel",
+        node_type="doel",
+        description="Doelomschrijving",
         status="actief",
     )
     db_session.add(node)
@@ -104,3 +121,126 @@ async def second_person(db_session: AsyncSession):
     db_session.add(person)
     await db_session.flush()
     return person
+
+
+@pytest.fixture
+async def sample_edge_type(db_session: AsyncSession):
+    """Create an edge type for testing."""
+    from bouwmeester.models.edge_type import EdgeType
+
+    et = EdgeType(
+        id="test_relatie",
+        label_nl="Test relatie",
+        label_en="Test relation",
+        description="Een test relatie",
+        is_custom=True,
+    )
+    db_session.add(et)
+    await db_session.flush()
+    return et
+
+
+@pytest.fixture
+async def sample_edge(
+    db_session: AsyncSession, sample_node, second_node, sample_edge_type
+):
+    """Create an edge between sample_node and second_node."""
+    from bouwmeester.models.edge import Edge
+
+    edge = Edge(
+        id=uuid.uuid4(),
+        from_node_id=sample_node.id,
+        to_node_id=second_node.id,
+        edge_type_id=sample_edge_type.id,
+        weight=1.0,
+        description="Test edge",
+    )
+    db_session.add(edge)
+    await db_session.flush()
+    return edge
+
+
+@pytest.fixture
+async def sample_organisatie(db_session: AsyncSession):
+    """Create an organisatie-eenheid for testing."""
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    org = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Test Ministerie",
+        type="ministerie",
+        beschrijving="Een test ministerie",
+    )
+    db_session.add(org)
+    await db_session.flush()
+    return org
+
+
+@pytest.fixture
+async def child_organisatie(db_session: AsyncSession, sample_organisatie):
+    """Create a child organisatie-eenheid for testing."""
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    org = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Test Directie",
+        type="directie",
+        parent_id=sample_organisatie.id,
+        beschrijving="Een test directie",
+    )
+    db_session.add(org)
+    await db_session.flush()
+    return org
+
+
+@pytest.fixture
+async def sample_task(db_session: AsyncSession, sample_node, sample_person):
+    """Create a task for testing."""
+    from bouwmeester.models.task import Task
+
+    task = Task(
+        id=uuid.uuid4(),
+        title="Test taak",
+        description="Een test taak",
+        node_id=sample_node.id,
+        assignee_id=sample_person.id,
+        status="open",
+        priority="normaal",
+    )
+    db_session.add(task)
+    await db_session.flush()
+    return task
+
+
+@pytest.fixture
+async def sample_tag(db_session: AsyncSession):
+    """Create a tag for testing."""
+    from bouwmeester.models.tag import Tag
+
+    tag = Tag(
+        id=uuid.uuid4(),
+        name="Test tag",
+        description="Een test tag",
+    )
+    db_session.add(tag)
+    await db_session.flush()
+    return tag
+
+
+@pytest.fixture
+async def sample_notification(db_session: AsyncSession, sample_person, second_person):
+    """Create a notification for testing."""
+    from bouwmeester.models.notification import Notification
+
+    notif = Notification(
+        id=uuid.uuid4(),
+        person_id=sample_person.id,
+        type="direct_message",
+        title="Test notificatie",
+        message="Een test bericht",
+        sender_id=second_person.id,
+        is_read=False,
+    )
+    db_session.add(notif)
+    await db_session.flush()
+    return notif
