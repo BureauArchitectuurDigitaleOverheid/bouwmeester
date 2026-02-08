@@ -139,7 +139,7 @@ class MotieImportService:
         matched_nodes = await self._find_matching_nodes(matched_tag_names)
 
         if not matched_nodes:
-            # No matches - create import record as rejected
+            # No matches - create import record as out_of_scope
             await self.import_repo.create(
                 zaak_id=motie.zaak_id,
                 zaak_nummer=motie.zaak_nummer,
@@ -147,14 +147,16 @@ class MotieImportService:
                 onderwerp=motie.onderwerp,
                 bron=motie.bron,
                 datum=motie.datum.date() if motie.datum else None,
-                status="rejected",
+                status="out_of_scope",
                 indieners=motie.indieners,
                 document_tekst=motie.document_tekst,
                 document_url=motie.document_url,
                 llm_samenvatting=samenvatting,
                 matched_tags=matched_tag_names,
             )
-            logger.info(f"Motie {motie.zaak_nummer} rejected: no matching corpus nodes")
+            logger.info(
+                f"Motie {motie.zaak_nummer} out_of_scope: no matching corpus nodes"
+            )
             return False
 
         # Step 4: Create any newly suggested tags (only for imported moties)
