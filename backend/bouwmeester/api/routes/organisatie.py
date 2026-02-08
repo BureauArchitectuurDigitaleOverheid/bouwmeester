@@ -185,15 +185,14 @@ async def get_organisatie_personen(
     # Recursive mode: get all descendants and build grouped tree
     descendant_ids = await repo.get_descendant_ids(id)
     all_units = await repo.get_units_by_ids(descendant_ids)
-    all_personen = await repo.get_personen_for_units(descendant_ids)
+    personen_with_units = await repo.get_personen_for_units(descendant_ids)
 
     # Index people by unit ID
     personen_by_unit: dict[UUID, list[PersonResponse]] = {}
-    for p in all_personen:
-        uid = p.organisatie_eenheid_id
-        if uid not in personen_by_unit:
-            personen_by_unit[uid] = []
-        personen_by_unit[uid].append(PersonResponse.model_validate(p))
+    for person, unit_id in personen_with_units:
+        if unit_id not in personen_by_unit:
+            personen_by_unit[unit_id] = []
+        personen_by_unit[unit_id].append(PersonResponse.model_validate(person))
 
     # Index units by ID
     units_by_id = {u.id: u for u in all_units}

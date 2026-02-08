@@ -165,12 +165,14 @@ class OrganisatieEenheidRepository:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_personen_for_units(self, unit_ids: list[UUID]) -> list[Person]:
-        """Fetch all active people for a list of unit IDs in one query."""
+    async def get_personen_for_units(
+        self, unit_ids: list[UUID]
+    ) -> list[tuple[Person, UUID]]:
+        """Fetch all active (person, unit_id) pairs for a list of unit IDs."""
         if not unit_ids:
             return []
         stmt = (
-            select(Person)
+            select(Person, PersonOrganisatieEenheid.organisatie_eenheid_id)
             .join(PersonOrganisatieEenheid)
             .where(
                 PersonOrganisatieEenheid.organisatie_eenheid_id.in_(unit_ids),
@@ -179,4 +181,4 @@ class OrganisatieEenheidRepository:
             .order_by(Person.naam)
         )
         result = await self.session.execute(stmt)
-        return list(result.unique().scalars().all())
+        return [(row[0], row[1]) for row in result.all()]
