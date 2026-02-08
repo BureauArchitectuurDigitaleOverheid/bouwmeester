@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getMotieImports,
   getMotieImport,
-  getMotieImportByNode,
   triggerMotieImport,
   rejectMotieImport,
   completeMotieReview,
@@ -10,7 +9,7 @@ import {
   approveSuggestedEdge,
   rejectSuggestedEdge,
 } from '@/api/moties';
-import type { MotieImportFilters } from '@/api/moties';
+import type { MotieImportFilters, CompleteReviewData } from '@/api/moties';
 
 export function useMotieImports(filters?: MotieImportFilters) {
   return useQuery({
@@ -24,14 +23,6 @@ export function useMotieImport(id: string) {
     queryKey: ['motie-imports', id],
     queryFn: () => getMotieImport(id),
     enabled: !!id,
-  });
-}
-
-export function useMotieImportByNode(nodeId: string | null | undefined) {
-  return useQuery({
-    queryKey: ['motie-imports', 'by-node', nodeId],
-    queryFn: () => getMotieImportByNode(nodeId!),
-    enabled: !!nodeId,
   });
 }
 
@@ -70,10 +61,13 @@ export function useCompleteMotieReview() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => completeMotieReview(id),
+    mutationFn: ({ id, data }: { id: string; data: CompleteReviewData }) =>
+      completeMotieReview(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['motie-imports'] });
       queryClient.invalidateQueries({ queryKey: ['motie-review-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['nodes'] });
     },
   });
 }

@@ -1,20 +1,36 @@
 """API routes for motie imports and review."""
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
 from bouwmeester.models.edge import Edge
+from bouwmeester.models.node_stakeholder import NodeStakeholder
+from bouwmeester.models.person import Person
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.motie_import import (
     MotieImportRepository,
     SuggestedEdgeRepository,
 )
 from bouwmeester.schema.motie_import import MotieImportResponse, SuggestedEdgeResponse
+
+
+class FollowUpTask(BaseModel):
+    title: str
+    description: str | None = None
+    assignee_id: UUID | None = None
+    deadline: date | None = None
+
+
+class CompleteReviewRequest(BaseModel):
+    eigenaar_id: UUID
+    tasks: list[FollowUpTask] = []
+
 
 router = APIRouter(prefix="/moties", tags=["moties"])
 
@@ -32,18 +48,6 @@ async def list_imports(
         status=status_filter, bron=bron, skip=skip, limit=limit
     )
     return [MotieImportResponse.model_validate(i) for i in imports]
-
-
-@router.get("/imports/by-node/{node_id}", response_model=MotieImportResponse)
-async def get_import_by_node(
-    node_id: UUID,
-    db: AsyncSession = Depends(get_db),
-) -> MotieImportResponse:
-    repo = MotieImportRepository(db)
-    motie_import = await repo.get_by_corpus_node_id(node_id)
-    if motie_import is None:
-        raise HTTPException(status_code=404, detail="No import for this node")
-    return MotieImportResponse.model_validate(motie_import)
 
 
 @router.get("/imports/{import_id}", response_model=MotieImportResponse)
@@ -97,26 +101,71 @@ async def reject_import(
 @router.post("/imports/{import_id}/complete", response_model=MotieImportResponse)
 async def complete_review(
     import_id: UUID,
+    body: CompleteReviewRequest,
     db: AsyncSession = Depends(get_db),
 ) -> MotieImportResponse:
     repo = MotieImportRepository(db)
+    motie_import = await repo.get_by_id(import_id)
+    if motie_import is None:
+        raise HTTPException(status_code=404, detail="Import not found")
+    if motie_import.corpus_node_id is None:
+        raise HTTPException(
+            status_code=400, detail="Motie import has no linked corpus node"
+        )
+
+    # Validate eigenaar person exists
+    person = await db.get(Person, body.eigenaar_id)
+    if person is None:
+        raise HTTPException(status_code=404, detail="Eigenaar person not found")
+
+    # Upsert eigenaar stakeholder on the corpus node
+    stmt = select(NodeStakeholder).where(
+        NodeStakeholder.node_id == motie_import.corpus_node_id,
+        NodeStakeholder.rol == "eigenaar",
+    )
+    result = await db.execute(stmt)
+    existing = result.scalar_one_or_none()
+    if existing is None:
+        db.add(
+            NodeStakeholder(
+                node_id=motie_import.corpus_node_id,
+                person_id=body.eigenaar_id,
+                rol="eigenaar",
+            )
+        )
+    elif existing.person_id != body.eigenaar_id:
+        existing.person_id = body.eigenaar_id
+    await db.flush()
+
+    # Auto-complete existing review tasks before creating new ones
+    stmt = select(Task).where(
+        Task.motie_import_id == import_id,
+        Task.status.notin_(["done", "cancelled"]),
+    )
+    result = await db.execute(stmt)
+    for task in result.scalars().all():
+        task.status = "done"
+    await db.flush()
+
+    # Create optional follow-up tasks
+    for t in body.tasks:
+        db.add(
+            Task(
+                node_id=motie_import.corpus_node_id,
+                motie_import_id=import_id,
+                title=t.title,
+                description=t.description,
+                assignee_id=t.assignee_id,
+                deadline=t.deadline,
+                priority="normaal",
+            )
+        )
+    await db.flush()
+
+    # Update motie status to reviewed
     motie_import = await repo.update_status(
         import_id, "reviewed", reviewed_at=datetime.utcnow()
     )
-    if motie_import is None:
-        raise HTTPException(status_code=404, detail="Import not found")
-
-    # Auto-complete the review task linked to this motie's corpus node
-    if motie_import.corpus_node_id:
-        stmt = select(Task).where(
-            Task.node_id == motie_import.corpus_node_id,
-            Task.title.startswith("Beoordeel motie:"),
-            Task.status.notin_(["done", "cancelled"]),
-        )
-        result = await db.execute(stmt)
-        for task in result.scalars().all():
-            task.status = "done"
-        await db.flush()
 
     return MotieImportResponse.model_validate(motie_import)
 

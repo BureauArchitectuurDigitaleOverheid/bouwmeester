@@ -288,6 +288,7 @@ class MotieImportService:
                 deadline=deadline,
                 organisatie_eenheid_id=review_unit_id,
                 assignee_id=None,
+                motie_import_id=motie_import.id,
             )
             self.session.add(task)
             await self.session.flush()
@@ -328,12 +329,14 @@ class MotieImportService:
         if not stakeholders:
             return None
 
-        # Get organisatie_eenheid_id for each stakeholder's person
-        unit_ids: list[uuid.UUID] = []
-        for sh in stakeholders:
-            person = await self.session.get(Person, sh.person_id)
-            if person and person.organisatie_eenheid_id:
-                unit_ids.append(person.organisatie_eenheid_id)
+        # Batch-query organisatie_eenheid_id for all stakeholder persons
+        person_ids = [sh.person_id for sh in stakeholders]
+        person_stmt = select(Person.organisatie_eenheid_id).where(
+            Person.id.in_(person_ids),
+            Person.organisatie_eenheid_id.isnot(None),
+        )
+        person_result = await self.session.execute(person_stmt)
+        unit_ids: list[uuid.UUID] = list(person_result.scalars().all())
 
         if not unit_ids:
             return None

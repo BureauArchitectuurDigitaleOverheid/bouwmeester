@@ -9,7 +9,6 @@ import { ReferencesList } from '@/components/common/ReferencesList';
 import { TaskEditForm } from './TaskEditForm';
 import { TaskCreateForm } from './TaskCreateForm';
 import { useTask } from '@/hooks/useTasks';
-import { useMotieImportByNode } from '@/hooks/useMoties';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import {
@@ -39,11 +38,6 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
   const { openNodeDetail } = useNodeDetail();
   const { openTaskDetail } = useTaskDetail();
   const navigate = useNavigate();
-
-  const isPolitiekeInput = task?.node?.node_type === 'politieke_input';
-  const { data: motieImport } = useMotieImportByNode(
-    isPolitiekeInput ? task?.node_id : undefined
-  );
 
   if (!open) return null;
 
@@ -194,7 +188,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
               </div>
 
               {/* Motie review link */}
-              {motieImport && (
+              {task.motie_import_id && (
                 <div>
                   <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
                     Motiebeoordeling
@@ -202,7 +196,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
                   <button
                     onClick={() => {
                       onClose();
-                      navigate(`/moties?motie=${motieImport.id}`);
+                      navigate(`/moties?motie=${task.motie_import_id}`);
                     }}
                     className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-sm"
                   >

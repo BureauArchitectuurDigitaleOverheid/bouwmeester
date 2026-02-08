@@ -56,19 +56,6 @@ class MotieImportRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_by_corpus_node_id(self, node_id: UUID) -> MotieImport | None:
-        stmt = (
-            select(MotieImport)
-            .where(MotieImport.corpus_node_id == node_id)
-            .options(
-                selectinload(MotieImport.suggested_edges).selectinload(
-                    SuggestedEdge.target_node
-                )
-            )
-        )
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
-
     async def create(self, **kwargs) -> MotieImport:
         motie_import = MotieImport(**kwargs)
         self.session.add(motie_import)

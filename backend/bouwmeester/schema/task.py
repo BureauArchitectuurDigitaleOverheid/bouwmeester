@@ -28,6 +28,7 @@ class TaskBase(BaseModel):
     assignee_id: UUID | None = None
     organisatie_eenheid_id: UUID | None = None
     parent_id: UUID | None = None
+    motie_import_id: UUID | None = None
     status: TaskStatus = TaskStatus.open
     priority: TaskPriority = TaskPriority.normaal
     deadline: date | None = Field(None, alias="due_date")
@@ -46,6 +47,7 @@ class TaskUpdate(BaseModel):
     assignee_id: UUID | None = None
     organisatie_eenheid_id: UUID | None = None
     parent_id: UUID | None = None
+    motie_import_id: UUID | None = None
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     deadline: date | None = Field(None, alias="due_date")
@@ -99,6 +101,7 @@ class TaskResponse(BaseModel):
     organisatie_eenheid_id: UUID | None = None
     organisatie_eenheid: TaskOrgEenheidSummary | None = None
     parent_id: UUID | None = None
+    motie_import_id: UUID | None = None
     subtasks: list[TaskSubtaskSummary] = []
     status: TaskStatus
     priority: TaskPriority

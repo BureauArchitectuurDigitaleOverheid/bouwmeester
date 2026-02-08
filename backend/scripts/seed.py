@@ -4564,6 +4564,7 @@ async def seed(db: AsyncSession) -> None:
             deadline=date(2026, 2, 4),
             organisatie_eenheid_id=afd_ai_data.id,
             assignee_id=None,
+            motie_import_id=mi_1.id,
         )
     )
 
@@ -4653,6 +4654,7 @@ async def seed(db: AsyncSession) -> None:
             deadline=date(2026, 2, 11),
             organisatie_eenheid_id=afd_id_toegang.id,
             assignee_id=None,
+            motie_import_id=mi_2.id,
         )
     )
 
@@ -4738,6 +4740,7 @@ async def seed(db: AsyncSession) -> None:
             deadline=date(2026, 2, 17),
             organisatie_eenheid_id=None,
             assignee_id=None,
+            motie_import_id=mi_3.id,
         )
     )
 

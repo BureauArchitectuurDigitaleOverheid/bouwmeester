@@ -160,6 +160,7 @@ export interface Task {
   organisatie_eenheid_id?: string;
   organisatie_eenheid?: TaskOrgEenheidSummary;
   parent_id?: string;
+  motie_import_id?: string;
   subtasks?: TaskSubtask[];
   node_id?: string;
   node?: CorpusNode;
@@ -176,6 +177,7 @@ export interface TaskCreate {
   assignee_id?: string;
   organisatie_eenheid_id?: string;
   parent_id?: string;
+  motie_import_id?: string;
   node_id: string;
 }
 

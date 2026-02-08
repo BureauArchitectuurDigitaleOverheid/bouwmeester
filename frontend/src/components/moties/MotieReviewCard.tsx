@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, ChevronUp, Check, X, ExternalLink, Users, Calendar } from 'lucide-react';
+import { ChevronDown, ChevronUp, Check, X, ExternalLink, Users, Calendar, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
 import {
   useApproveSuggestedEdge,
   useRejectSuggestedEdge,
   useRejectMotieImport,
   useCompleteMotieReview,
 } from '@/hooks/useMoties';
+import { usePeople } from '@/hooks/usePeople';
 import type { MotieImport } from '@/types';
 import {
   MOTIE_IMPORT_STATUS_LABELS,
@@ -17,6 +19,13 @@ import {
   NODE_TYPE_COLORS,
 } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
+import type { CompleteReviewData } from '@/api/moties';
+
+interface FollowUpTaskRow {
+  title: string;
+  assignee_id: string;
+  deadline: string;
+}
 
 interface MotieReviewCardProps {
   motie: MotieImport;
@@ -25,6 +34,9 @@ interface MotieReviewCardProps {
 
 export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [showCompleteForm, setShowCompleteForm] = useState(false);
+  const [eigenaarId, setEigenaarId] = useState('');
+  const [followUpTasks, setFollowUpTasks] = useState<FollowUpTaskRow[]>([]);
   const cardRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -38,6 +50,42 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
   const rejectEdge = useRejectSuggestedEdge();
   const rejectMotie = useRejectMotieImport();
   const completeReview = useCompleteMotieReview();
+  const { data: people } = usePeople();
+
+  const handleCompleteSubmit = () => {
+    const data: CompleteReviewData = {
+      eigenaar_id: eigenaarId,
+      tasks: followUpTasks
+        .filter((t) => t.title.trim())
+        .map((t) => ({
+          title: t.title,
+          assignee_id: t.assignee_id || undefined,
+          deadline: t.deadline || undefined,
+        })),
+    };
+    completeReview.mutate(
+      { id: motie.id, data },
+      {
+        onSuccess: () => {
+          setShowCompleteForm(false);
+          setEigenaarId('');
+          setFollowUpTasks([]);
+        },
+      },
+    );
+  };
+
+  const addTaskRow = () => {
+    setFollowUpTasks([...followUpTasks, { title: '', assignee_id: '', deadline: '' }]);
+  };
+
+  const updateTaskRow = (index: number, field: keyof FollowUpTaskRow, value: string) => {
+    setFollowUpTasks(followUpTasks.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
+  };
+
+  const removeTaskRow = (index: number) => {
+    setFollowUpTasks(followUpTasks.filter((_, i) => i !== index));
+  };
 
   const pendingEdges = motie.suggested_edges?.filter((e) => e.status === 'pending') ?? [];
   const allEdgesReviewed = motie.suggested_edges
@@ -229,10 +277,10 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
 
           {/* Actions */}
           <div className="flex items-center gap-2 pt-2">
-            {motie.status === 'imported' && allEdgesReviewed && (
+            {motie.status === 'imported' && allEdgesReviewed && !showCompleteForm && (
               <Button
                 size="sm"
-                onClick={() => completeReview.mutate(motie.id)}
+                onClick={() => setShowCompleteForm(true)}
               >
                 Beoordeling afronden
               </Button>
@@ -273,6 +321,110 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
               </a>
             )}
           </div>
+
+          {/* Inline completion form */}
+          {showCompleteForm && (
+            <div className="mt-4 p-4 rounded-xl border border-primary-200 bg-primary-50/50 space-y-4">
+              <h4 className="text-sm font-semibold text-text">Beoordeling afronden</h4>
+
+              {/* Eigenaar selector */}
+              <div className="max-w-sm">
+                <CreatableSelect
+                  label="Eigenaar toewijzen"
+                  value={eigenaarId}
+                  onChange={setEigenaarId}
+                  options={(people ?? []).map((p) => ({
+                    value: p.id,
+                    label: p.naam,
+                    description: p.functie || undefined,
+                  }))}
+                  placeholder="Selecteer eigenaar..."
+                  required
+                />
+              </div>
+
+              {/* Follow-up tasks */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h5 className="text-xs font-medium text-text">Vervolgacties</h5>
+                  <button
+                    onClick={addTaskRow}
+                    className="text-xs text-primary-700 hover:text-primary-800 flex items-center gap-1"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Taak toevoegen
+                  </button>
+                </div>
+                {followUpTasks.length > 0 && (
+                  <div className="space-y-2">
+                    {followUpTasks.map((task, index) => (
+                      <div key={index} className="flex items-start gap-2 p-2 rounded-lg bg-white border border-border">
+                        <div className="flex-1 space-y-2">
+                          <input
+                            type="text"
+                            value={task.title}
+                            onChange={(e) => updateTaskRow(index, 'title', e.target.value)}
+                            placeholder="Omschrijving taak..."
+                            className="w-full rounded-lg border border-border px-3 py-1.5 text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <CreatableSelect
+                                value={task.assignee_id}
+                                onChange={(v) => updateTaskRow(index, 'assignee_id', v)}
+                                options={(people ?? []).map((p) => ({
+                                  value: p.id,
+                                  label: p.naam,
+                                  description: p.functie || undefined,
+                                }))}
+                                placeholder="Toewijzen aan..."
+                              />
+                            </div>
+                            <input
+                              type="date"
+                              value={task.deadline}
+                              onChange={(e) => updateTaskRow(index, 'deadline', e.target.value)}
+                              className="rounded-lg border border-border px-3 py-1.5 text-sm"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeTaskRow(index)}
+                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors mt-1"
+                          title="Verwijderen"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Form buttons */}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleCompleteSubmit}
+                  disabled={!eigenaarId || completeReview.isPending}
+                  loading={completeReview.isPending}
+                >
+                  Afronden
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowCompleteForm(false);
+                    setEigenaarId('');
+                    setFollowUpTasks([]);
+                  }}
+                >
+                  Annuleren
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </Card>
