@@ -28,6 +28,7 @@ export function useCreateNode() {
     mutationFn: (data: CorpusNodeCreate) => createNode(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nodes'] });
+      queryClient.invalidateQueries({ queryKey: ['graph'] });
     },
   });
 }

@@ -12,6 +12,7 @@ from bouwmeester.core.database import Base
 
 if TYPE_CHECKING:
     from bouwmeester.models.corpus_node import CorpusNode
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
     from bouwmeester.models.person import Person
 
 
@@ -35,6 +36,18 @@ class Task(Base):
         ForeignKey("person.id", ondelete="SET NULL"),
         nullable=True,
     )
+    organisatie_eenheid_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organisatie_eenheid.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("task.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(
         default="open",
         server_default="open",
@@ -57,3 +70,16 @@ class Task(Base):
         back_populates="tasks",
     )
     assignee: Mapped[Optional["Person"]] = relationship("Person")
+    organisatie_eenheid: Mapped[Optional["OrganisatieEenheid"]] = relationship(
+        "OrganisatieEenheid",
+    )
+    parent: Mapped[Optional["Task"]] = relationship(
+        "Task",
+        remote_side="Task.id",
+        back_populates="subtasks",
+    )
+    subtasks: Mapped[list["Task"]] = relationship(
+        "Task",
+        back_populates="parent",
+        cascade="all, delete-orphan",
+    )
