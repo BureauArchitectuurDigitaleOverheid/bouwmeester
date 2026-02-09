@@ -43,6 +43,8 @@ class NotificationResponse(NotificationBase):
     id: UUID
     is_read: bool = False
     created_at: datetime
+    last_activity_at: datetime | None = None
+    last_message: str | None = None
     sender_name: str | None = None
     reply_count: int = 0
 

@@ -42,6 +42,10 @@ async def _enrich_response(
         # For DM roots, replies are parented to thread_id (the recipient's root)
         count_id = notification.thread_id if notification.thread_id else notification.id
         resp.reply_count = await service.repo.count_replies(count_id)
+        activity = await service.repo.last_activity_batch([count_id])
+        if count_id in activity:
+            resp.last_activity_at = activity[count_id][0]
+            resp.last_message = activity[count_id][1]
     return resp
 
 
@@ -62,13 +66,14 @@ async def _enrich_batch(
         result = await db.execute(stmt)
         sender_map = {row.id: row.naam for row in result.all()}
 
-    # Batch-load reply counts for root notifications
+    # Batch-load reply counts and last activity for root notifications
     # For DM roots, replies are parented to thread_id (the recipient's root)
     count_ids = []
     for n in notifications:
         if n.parent_id is None:
             count_ids.append(n.thread_id if n.thread_id else n.id)
     reply_counts = await service.repo.count_replies_batch(count_ids)
+    last_activity = await service.repo.last_activity_batch(count_ids)
 
     responses = []
     for n in notifications:
@@ -78,7 +83,11 @@ async def _enrich_batch(
         if n.parent_id is None:
             count_id = n.thread_id if n.thread_id else n.id
             resp.reply_count = reply_counts.get(count_id, 0)
+            if count_id in last_activity:
+                resp.last_activity_at = last_activity[count_id][0]
+                resp.last_message = last_activity[count_id][1]
         responses.append(resp)
+
     return responses
 
 
@@ -94,7 +103,12 @@ async def list_notifications(
     notifications = await service.get_notifications(
         person_id, unread_only=unread_only, skip=skip, limit=limit
     )
-    return await _enrich_batch(notifications, service, db)
+    responses = await _enrich_batch(notifications, service, db)
+    # Re-sort so threads with recent replies bubble to the top
+    responses.sort(
+        key=lambda r: r.last_activity_at or r.created_at, reverse=True
+    )
+    return responses
 
 
 @router.get("/count", response_model=UnreadCountResponse)

@@ -5,24 +5,12 @@ import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { Button } from '@/components/common/Button';
 import { useNotification, useReplies, useReplyToNotification, useMarkNotificationRead } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { timeAgo } from '@/utils/dates';
 import type { Notification } from '@/api/notifications';
 
 interface MessageThreadProps {
   notificationId: string;
   onClose: () => void;
-}
-
-function timeAgo(dateStr: string): string {
-  const now = new Date();
-  const then = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
-  const diffMs = now.getTime() - then.getTime();
-  const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return 'Zojuist';
-  if (diffMin < 60) return `${diffMin}m geleden`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}u geleden`;
-  const diffDays = Math.floor(diffHr / 24);
-  return `${diffDays}d geleden`;
 }
 
 function MessageBubble({ message, isCurrentUser }: { message: Notification; isCurrentUser: boolean }) {
@@ -38,7 +26,7 @@ function MessageBubble({ message, isCurrentUser }: { message: Notification; isCu
         {!isCurrentUser && message.sender_name && (
           <p className="text-xs font-medium mb-1 opacity-70">{message.sender_name}</p>
         )}
-        <div className={`text-sm ${isCurrentUser ? '[&_*]:text-white' : ''}`}>
+        <div className={`text-sm ${isCurrentUser ? '[&_*]:text-white [&_button]:bg-white/20 [&_button]:text-white' : ''}`}>
           <RichTextDisplay content={message.message} fallback="" />
         </div>
         <p className={`text-[10px] mt-1 ${isCurrentUser ? 'text-white/60' : 'text-text-secondary'}`}>

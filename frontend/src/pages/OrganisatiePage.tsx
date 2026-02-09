@@ -16,6 +16,7 @@ import {
   useDeleteOrganisatieEenheid,
 } from '@/hooks/useOrganisatie';
 import { useCreatePerson, useUpdatePerson, useAddPersonOrganisatie } from '@/hooks/usePeople';
+import { todayISO } from '@/utils/dates';
 import type { OrganisatieEenheid, OrganisatieEenheidCreate, OrganisatieEenheidUpdate, Person, PersonCreate } from '@/types';
 
 export function OrganisatiePage() {
@@ -127,7 +128,7 @@ export function OrganisatiePage() {
                 data: {
                   organisatie_eenheid_id: orgEenheidId,
                   dienstverband: dienstverband || 'in_dienst',
-                  start_datum: new Date().toISOString().split('T')[0],
+                  start_datum: todayISO(),
                 },
               },
               { onSettled: () => setShowPersonForm(false) },
@@ -152,7 +153,7 @@ export function OrganisatiePage() {
         data: {
           organisatie_eenheid_id: targetNodeId,
           dienstverband: 'in_dienst',
-          start_datum: new Date().toISOString().split('T')[0],
+          start_datum: todayISO(),
         },
       },
       {

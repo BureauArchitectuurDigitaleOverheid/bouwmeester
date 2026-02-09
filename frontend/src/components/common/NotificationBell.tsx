@@ -3,24 +3,13 @@ import { Bell, Check, CheckCheck } from 'lucide-react';
 import { useNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNotificationsRead } from '@/hooks/useNotifications';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
+import { timeAgo } from '@/utils/dates';
 import type { Notification } from '@/api/notifications';
 import { richTextToPlain } from '@/utils/richtext';
+import { MessageThread } from '@/components/inbox/MessageThread';
 
 interface NotificationBellProps {
   personId: string | undefined;
-}
-
-function timeAgo(dateStr: string): string {
-  const now = new Date();
-  const then = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
-  const diffMs = now.getTime() - then.getTime();
-  const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return 'Zojuist';
-  if (diffMin < 60) return `${diffMin}m geleden`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}u geleden`;
-  const diffDays = Math.floor(diffHr / 24);
-  return `${diffDays}d geleden`;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -64,11 +53,11 @@ function NotificationItem({
           >
             {notification.type.replace(/_/g, ' ')}
           </span>
-          <span className="text-xs text-text-secondary">{timeAgo(notification.created_at)}</span>
+          <span className="text-xs text-text-secondary">{timeAgo(notification.last_activity_at ?? notification.created_at)}</span>
         </div>
         <p className="text-sm font-medium text-text truncate">{notification.title}</p>
-        {notification.message && (
-          <p className="text-xs text-text-secondary truncate mt-0.5">{richTextToPlain(notification.message)}</p>
+        {(notification.last_message || notification.message) && (
+          <p className="text-xs text-text-secondary truncate mt-0.5">{richTextToPlain(notification.last_message ?? notification.message ?? '')}</p>
         )}
       </div>
       {!notification.is_read && (
@@ -89,6 +78,7 @@ function NotificationItem({
 
 export function NotificationBell({ personId }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
@@ -151,7 +141,10 @@ export function NotificationBell({ personId }: NotificationBellProps) {
                   notification={notification}
                   onMarkRead={(id) => markRead.mutate(id)}
                   onClick={() => {
-                    if (notification.related_task_id) {
+                    if (notification.type === 'direct_message' || notification.type === 'agent_prompt') {
+                      setThreadId(notification.id);
+                      setOpen(false);
+                    } else if (notification.related_task_id) {
                       openTaskDetail(notification.related_task_id);
                       if (!notification.is_read) markRead.mutate(notification.id);
                       setOpen(false);
@@ -171,6 +164,10 @@ export function NotificationBell({ personId }: NotificationBellProps) {
             )}
           </div>
         </div>
+      )}
+
+      {threadId && (
+        <MessageThread notificationId={threadId} onClose={() => setThreadId(null)} />
       )}
     </div>
   );

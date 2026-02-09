@@ -4,6 +4,7 @@ import { Badge } from '@/components/common/Badge';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
+import { formatDateTimeShort } from '@/utils/dates';
 import type { InboxItem as InboxItemType } from '@/types';
 
 interface InboxItemProps {
@@ -87,12 +88,7 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
               </span>
             )}
             <span className="text-xs text-text-secondary">
-              {new Date(item.created_at.endsWith('Z') ? item.created_at : item.created_at + 'Z').toLocaleDateString('nl-NL', {
-                day: 'numeric',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+              {formatDateTimeShort(item.created_at)}
             </span>
           </div>
         </div>

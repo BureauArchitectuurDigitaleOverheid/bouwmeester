@@ -1,5 +1,6 @@
 """Repository for Notification CRUD."""
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -65,6 +66,46 @@ class NotificationRepository(BaseRepository[Notification]):
         )
         result = await self.session.execute(stmt)
         return {row.parent_id: row.cnt for row in result.all()}
+
+    async def last_activity_batch(
+        self, parent_ids: list[UUID]
+    ) -> dict[UUID, tuple[datetime, str | None]]:
+        """Get latest reply timestamp and message per parent."""
+        if not parent_ids:
+            return {}
+
+        from sqlalchemy import and_
+
+        # Subquery: max created_at per parent_id
+        max_sub = (
+            select(
+                Notification.parent_id.label("pid"),
+                func.max(Notification.created_at).label("max_at"),
+            )
+            .where(Notification.parent_id.in_(parent_ids))
+            .group_by(Notification.parent_id)
+            .subquery()
+        )
+
+        # Join back to get the message of the latest reply
+        stmt = (
+            select(
+                Notification.parent_id,
+                Notification.created_at,
+                Notification.message,
+            )
+            .join(
+                max_sub,
+                and_(
+                    Notification.parent_id == max_sub.c.pid,
+                    Notification.created_at == max_sub.c.max_at,
+                ),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return {
+            row.parent_id: (row.created_at, row.message) for row in result.all()
+        }
 
     async def mark_read(self, notification_id: UUID) -> Notification | None:
         notification = await self.session.get(Notification, notification_id)

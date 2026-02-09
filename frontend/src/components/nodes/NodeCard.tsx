@@ -6,6 +6,7 @@ import type { CorpusNode } from '@/types';
 import { NODE_TYPE_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { richTextToPlain } from '@/utils/richtext';
+import { formatDateShort } from '@/utils/dates';
 
 interface NodeCardProps {
   node: CorpusNode;
@@ -55,10 +56,7 @@ export function NodeCard({ node }: NodeCardProps) {
           </span>
         )}
         <span className="text-xs text-text-secondary ml-auto">
-          {new Date(node.updated_at).toLocaleDateString('nl-NL', {
-            day: 'numeric',
-            month: 'short',
-          })}
+          {formatDateShort(node.updated_at)}
         </span>
       </div>
     </Card>

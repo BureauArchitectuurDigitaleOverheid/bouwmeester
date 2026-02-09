@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import ForeignKey, func, text
+from sqlalchemy import DateTime, ForeignKey, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,7 +35,9 @@ class OrganisatieEenheidManager(Base):
     )
     geldig_van: Mapped[date] = mapped_column(nullable=False)
     geldig_tot: Mapped[date | None] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     eenheid: Mapped["OrganisatieEenheid"] = relationship(
         "OrganisatieEenheid",

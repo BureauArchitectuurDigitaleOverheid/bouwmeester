@@ -15,6 +15,8 @@ export interface Notification {
   thread_id?: string;
   reply_count: number;
   created_at: string;
+  last_activity_at?: string;
+  last_message?: string;
 }
 
 export interface UnreadCountResponse {
