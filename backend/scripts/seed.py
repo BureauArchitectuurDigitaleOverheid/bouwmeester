@@ -6,7 +6,7 @@ Clears all existing data and populates organisatie, personen, corpus, edges, and
 
 import asyncio
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,8 @@ from bouwmeester.schema.task import TaskCreate
 async def seed(db: AsyncSession) -> None:
     # Clear existing data (order matters due to FKs)
     for table in [
+        "notification",
+        "mention",
         "suggested_edge",
         "parlementair_item",
         "node_tag",
@@ -4567,7 +4569,7 @@ async def seed(db: AsyncSession) -> None:
             "te registreren in het Algoritmeregister."
         ),
         matched_tags=["algoritmen", "ai"],
-        imported_at=datetime.utcnow() - timedelta(days=3),
+        imported_at=datetime.now(UTC) - timedelta(days=3),
     )
     db.add(mi_1)
     await db.flush()
@@ -4658,7 +4660,7 @@ async def seed(db: AsyncSession) -> None:
             "via eIDAS-koppeling."
         ),
         matched_tags=["digitale identiteit", "eIDAS"],
-        imported_at=datetime.utcnow() - timedelta(days=1),
+        imported_at=datetime.now(UTC) - timedelta(days=1),
     )
     db.add(mi_2)
     await db.flush()
@@ -4753,7 +4755,7 @@ async def seed(db: AsyncSession) -> None:
             "voor burgers die het Nederlands onvoldoende beheersen."
         ),
         matched_tags=["toegankelijkheid", "digitale kloof"],
-        imported_at=datetime.utcnow(),
+        imported_at=datetime.now(UTC),
     )
     db.add(mi_3)
     await db.flush()
@@ -4799,7 +4801,7 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
     from bouwmeester.models.notification import Notification
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     notifications = []
 
     # Find a few assigned tasks for notification references

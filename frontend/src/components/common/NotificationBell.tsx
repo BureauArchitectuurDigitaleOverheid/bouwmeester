@@ -36,6 +36,7 @@ const TYPE_COLORS: Record<string, string> = {
   direct_message: 'bg-green-100 text-green-700',
   agent_prompt: 'bg-violet-100 text-violet-700',
   mention: 'bg-cyan-100 text-cyan-700',
+  politieke_input_imported: 'bg-rose-100 text-rose-700',
 };
 
 function NotificationItem({

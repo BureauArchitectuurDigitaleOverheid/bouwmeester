@@ -9,6 +9,7 @@ import type { InboxItem as InboxItemType } from '@/types';
 interface InboxItemProps {
   item: InboxItemType;
   onOpenThread?: (id: string) => void;
+  onMarkRead?: (id: string) => void;
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -25,11 +26,14 @@ const typeColors: Record<string, string> = {
   message: 'green',
 };
 
-export function InboxItemCard({ item, onOpenThread }: InboxItemProps) {
+export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps) {
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
 
   const handleClick = () => {
+    if (!item.read && onMarkRead) {
+      onMarkRead(item.id);
+    }
     if (item.type === 'message' && onOpenThread) {
       onOpenThread(item.id);
     } else if (item.task_id) {

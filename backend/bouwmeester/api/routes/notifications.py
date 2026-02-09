@@ -211,7 +211,6 @@ async def send_message(
         exclude_person_id=body.person_id,
     )
 
-    await db.commit()
     return await _enrich_response(notification, service, db)
 
 
@@ -235,8 +234,15 @@ async def reply_to_notification(
     sender = require_found(await db.get(Person, body.sender_id), "Sender")
     title = f"Reactie van {sender.naam}"
 
+    # Create the reply in the thread. If the sender IS the root recipient,
+    # still create it (it's the reply record) but direct it to the other
+    # party (root.sender_id) instead of to yourself.
+    reply_recipient = root.person_id
+    if reply_recipient == body.sender_id and root.sender_id:
+        reply_recipient = root.sender_id
+
     data = NotificationCreate(
-        person_id=root.person_id,
+        person_id=reply_recipient,
         type="direct_message",
         title=title,
         message=body.message,
@@ -248,13 +254,11 @@ async def reply_to_notification(
     reply = await service.repo.create(data)
 
     # Also notify the original sender if they are different from the replier
-    # and different from the root recipient.
-    # Create as a standalone notification (no parent_id) so it doesn't
-    # pollute the thread view with duplicates.
+    # and haven't already received the reply above.
     should_notify_sender = (
         root.sender_id
         and root.sender_id != body.sender_id
-        and root.sender_id != root.person_id
+        and root.sender_id != reply_recipient
     )
     if should_notify_sender:
         notify_data = NotificationCreate(
@@ -263,6 +267,7 @@ async def reply_to_notification(
             title=title,
             message=body.message,
             sender_id=body.sender_id,
+            parent_id=root_id,
             related_node_id=root.related_node_id,
             related_task_id=root.related_task_id,
         )
@@ -278,5 +283,4 @@ async def reply_to_notification(
         exclude_person_id=root.person_id,
     )
 
-    await db.commit()
     return await _enrich_response(reply, service, db)

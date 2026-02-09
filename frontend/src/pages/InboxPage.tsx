@@ -6,11 +6,29 @@ import { Button } from '@/components/common/Button';
 import { InboxList } from '@/components/inbox/InboxList';
 import { MessageThread } from '@/components/inbox/MessageThread';
 import { EmptyState } from '@/components/common/EmptyState';
-import { useNotifications, useDashboardStats, useMarkAllNotificationsRead } from '@/hooks/useNotifications';
+import { useNotifications, useDashboardStats, useMarkAllNotificationsRead, useMarkNotificationRead } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { useEenheidOverview } from '@/hooks/useTasks';
 import type { InboxItem } from '@/types';
+
+const NOTIFICATION_TYPE_MAP: Record<string, string> = {
+  task_assigned: 'task',
+  task_reassigned: 'task',
+  task_completed: 'task',
+  task_overdue: 'task',
+  edge_created: 'node',
+  node_updated: 'node',
+  stakeholder_added: 'notification',
+  stakeholder_role_changed: 'notification',
+  coverage_needed: 'notification',
+  politieke_input_imported: 'notification',
+  mention: 'notification',
+  direct_message: 'message',
+  agent_prompt: 'message',
+};
+
+const PERSON_LEVEL_TYPES = new Set(['afdeling', 'team', 'cluster']);
 
 export function InboxPage() {
   const navigate = useNavigate();
@@ -20,32 +38,16 @@ export function InboxPage() {
   const { data: notifications } = useNotifications(currentPerson?.id);
   const { data: stats } = useDashboardStats(currentPerson?.id);
   const markAllRead = useMarkAllNotificationsRead();
+  const markRead = useMarkNotificationRead();
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
   const managedEenheid = managedEenheden?.[0] ?? null;
   const managedEenheidId = managedEenheid?.id ?? null;
   const { data: overview } = useEenheidOverview(managedEenheidId);
 
-  const PERSON_LEVEL_TYPES = new Set(['afdeling', 'team', 'cluster']);
   const visibleUnassignedCount = overview
     ? (overview.unassigned_no_unit_count ?? 0) +
       (PERSON_LEVEL_TYPES.has(overview.eenheid_type) ? (overview.unassigned_no_person_count ?? 0) : 0)
     : 0;
-
-  const NOTIFICATION_TYPE_MAP: Record<string, string> = {
-    task_assigned: 'task',
-    task_reassigned: 'task',
-    task_completed: 'task',
-    task_overdue: 'task',
-    edge_created: 'node',
-    node_updated: 'node',
-    stakeholder_added: 'notification',
-    stakeholder_role_changed: 'notification',
-    coverage_needed: 'notification',
-    politieke_input_imported: 'notification',
-    mention: 'notification',
-    direct_message: 'message',
-    agent_prompt: 'message',
-  };
 
   const inboxItems: InboxItem[] = (notifications ?? []).map((n) => ({
     id: n.id,
@@ -158,7 +160,7 @@ export function InboxPage() {
         </div>
 
         {inboxItems.length > 0 ? (
-          <InboxList items={inboxItems} onOpenThread={setOpenThreadId} />
+          <InboxList items={inboxItems} onOpenThread={setOpenThreadId} onMarkRead={(id) => markRead.mutate(id)} />
         ) : (
           <EmptyState
             icon={<Inbox className="h-16 w-16" />}

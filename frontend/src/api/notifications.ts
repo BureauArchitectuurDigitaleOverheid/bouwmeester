@@ -55,7 +55,7 @@ export async function markNotificationRead(id: string): Promise<Notification> {
 }
 
 export async function markAllNotificationsRead(personId: string): Promise<{ marked_read: number }> {
-  return apiPut<{ marked_read: number }>(`/api/notifications/read-all?person_id=${personId}`);
+  return apiPut<{ marked_read: number }>(`/api/notifications/read-all?person_id=${encodeURIComponent(personId)}`);
 }
 
 export async function sendMessage(data: {

@@ -6,9 +6,17 @@ import type { InboxItem } from '@/types';
 interface InboxListProps {
   items: InboxItem[];
   onOpenThread?: (id: string) => void;
+  onMarkRead?: (id: string) => void;
 }
 
-export function InboxList({ items, onOpenThread }: InboxListProps) {
+const GROUP_LABELS: Record<string, string> = {
+  task: 'Taken',
+  node: 'Corpus',
+  notification: 'Meldingen',
+  message: 'Berichten',
+};
+
+export function InboxList({ items, onOpenThread, onMarkRead }: InboxListProps) {
   if (items.length === 0) {
     return (
       <EmptyState
@@ -18,13 +26,6 @@ export function InboxList({ items, onOpenThread }: InboxListProps) {
       />
     );
   }
-
-  const GROUP_LABELS: Record<string, string> = {
-    task: 'Taken',
-    node: 'Corpus',
-    notification: 'Meldingen',
-    message: 'Berichten',
-  };
 
   // Group by type
   const grouped = items.reduce(
@@ -45,7 +46,7 @@ export function InboxList({ items, onOpenThread }: InboxListProps) {
           </h3>
           <div className="space-y-2">
             {groupItems.map((item) => (
-              <InboxItemCard key={item.id} item={item} onOpenThread={onOpenThread} />
+              <InboxItemCard key={item.id} item={item} onOpenThread={onOpenThread} onMarkRead={onMarkRead} />
             ))}
           </div>
         </div>

@@ -41,6 +41,7 @@ async def list_edges(
 @router.post("", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)
 async def create_edge(
     data: EdgeCreate,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> EdgeResponse:
     repo = EdgeRepository(db)
@@ -57,7 +58,7 @@ async def create_edge(
     to_node = await db.get(CorpusNode, data.to_node_id)
     if from_node and to_node:
         notif_svc = NotificationService(db)
-        await notif_svc.notify_edge_created(from_node, to_node)
+        await notif_svc.notify_edge_created(from_node, to_node, actor_id=actor_id)
 
     return EdgeResponse.model_validate(edge)
 

@@ -60,6 +60,7 @@ async def list_tasks(
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     data: TaskCreate,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
     repo = TaskRepository(db)
@@ -81,7 +82,7 @@ async def create_task(
     if task.assignee_id:
         assignee = await db.get(Person, task.assignee_id)
         if assignee:
-            await notif_svc.notify_task_assigned(task, assignee)
+            await notif_svc.notify_task_assigned(task, assignee, actor_id=actor_id)
 
     # Notify team manager
     if task.organisatie_eenheid_id:
@@ -157,6 +158,7 @@ async def get_task_subtasks(
 async def update_task(
     id: UUID,
     data: TaskUpdate,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
     repo = TaskRepository(db)
@@ -194,11 +196,13 @@ async def update_task(
                 )
             else:
                 # First assignment
-                await notif_svc.notify_task_assigned(task, new_assignee)
+                await notif_svc.notify_task_assigned(
+                    task, new_assignee, actor_id=actor_id
+                )
 
     # Detect status → done
     if task.status == "done" and old_status != "done":
-        await notif_svc.notify_task_completed(task)
+        await notif_svc.notify_task_completed(task, actor_id=actor_id)
 
     # Detect org unit change
     new_org_unit_id = task.organisatie_eenheid_id
