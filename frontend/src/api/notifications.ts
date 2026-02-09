@@ -12,6 +12,7 @@ export interface Notification {
   related_node_id?: string;
   related_task_id?: string;
   parent_id?: string;
+  thread_id?: string;
   reply_count: number;
   created_at: string;
 }

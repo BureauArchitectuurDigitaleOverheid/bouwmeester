@@ -12,7 +12,7 @@ interface NotificationBellProps {
 
 function timeAgo(dateStr: string): string {
   const now = new Date();
-  const then = new Date(dateStr);
+  const then = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
   const diffMs = now.getTime() - then.getTime();
   const diffMin = Math.floor(diffMs / 60_000);
   if (diffMin < 1) return 'Zojuist';

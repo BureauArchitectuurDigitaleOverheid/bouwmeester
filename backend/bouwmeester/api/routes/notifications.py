@@ -39,7 +39,9 @@ async def _enrich_response(
         if sender:
             resp.sender_name = sender.naam
     if notification.parent_id is None:
-        resp.reply_count = await service.repo.count_replies(notification.id)
+        # For DM roots, replies are parented to thread_id (the recipient's root)
+        count_id = notification.thread_id if notification.thread_id else notification.id
+        resp.reply_count = await service.repo.count_replies(count_id)
     return resp
 
 
@@ -61,8 +63,12 @@ async def _enrich_batch(
         sender_map = {row.id: row.naam for row in result.all()}
 
     # Batch-load reply counts for root notifications
-    root_ids = [n.id for n in notifications if n.parent_id is None]
-    reply_counts = await service.repo.count_replies_batch(root_ids)
+    # For DM roots, replies are parented to thread_id (the recipient's root)
+    count_ids = []
+    for n in notifications:
+        if n.parent_id is None:
+            count_ids.append(n.thread_id if n.thread_id else n.id)
+    reply_counts = await service.repo.count_replies_batch(count_ids)
 
     responses = []
     for n in notifications:
@@ -70,7 +76,8 @@ async def _enrich_batch(
         if n.sender_id and n.sender_id in sender_map:
             resp.sender_name = sender_map[n.sender_id]
         if n.parent_id is None:
-            resp.reply_count = reply_counts.get(n.id, 0)
+            count_id = n.thread_id if n.thread_id else n.id
+            resp.reply_count = reply_counts.get(count_id, 0)
         responses.append(resp)
     return responses
 
@@ -153,9 +160,10 @@ async def get_replies(
     db: AsyncSession = Depends(get_db),
 ) -> list[NotificationResponse]:
     service = NotificationService(db)
-    # Verify parent exists
-    require_found(await service.repo.get_by_id(id), "Notification")
-    replies = await service.repo.get_replies(id)
+    notification = require_found(await service.repo.get_by_id(id), "Notification")
+    # Use thread_id to fetch replies (replies are parented to the recipient's root)
+    reply_parent_id = notification.thread_id if notification.thread_id else id
+    replies = await service.repo.get_replies(reply_parent_id)
     return await _enrich_batch(replies, service, db)
 
 
@@ -192,26 +200,46 @@ async def send_message(
     title = f"{'Prompt' if is_agent else 'Bericht'} van {sender.naam}"
 
     service = NotificationService(db)
-    data = NotificationCreate(
+
+    # Create recipient's root (unread)
+    recipient_data = NotificationCreate(
         person_id=body.person_id,
         type=notif_type,
         title=title,
         message=body.message,
         sender_id=body.sender_id,
     )
-    notification = await service.repo.create(data)
+    recipient_root = await service.repo.create(recipient_data)
+    await db.flush()
+
+    # Set thread_id on recipient's root (points to itself)
+    recipient_root.thread_id = recipient_root.id
+    await db.flush()
+
+    # Create sender's root (read — they sent it)
+    sender_data = NotificationCreate(
+        person_id=body.sender_id,
+        type=notif_type,
+        title=f"{'Prompt' if is_agent else 'Bericht'} aan {recipient.naam}",
+        message=body.message,
+        sender_id=body.sender_id,
+        thread_id=recipient_root.id,
+    )
+    sender_root = await service.repo.create(sender_data)
+    sender_root.is_read = True
+    await db.flush()
 
     await sync_and_notify_mentions(
         db,
         "notification",
-        notification.id,
+        recipient_root.id,
         body.message,
         title,
         sender_id=body.sender_id,
         exclude_person_id=body.person_id,
     )
 
-    return await _enrich_response(notification, service, db)
+    return await _enrich_response(sender_root, service, db)
 
 
 @router.post("/{id}/reply", response_model=NotificationResponse)
@@ -224,22 +252,22 @@ async def reply_to_notification(
     parent = require_found(await service.repo.get_by_id(id), "Notification")
 
     # If replying to a reply, thread up to the root parent
-    root_id = parent.parent_id if parent.parent_id else parent.id
-    root = (
-        parent
-        if not parent.parent_id
-        else require_found(await service.repo.get_by_id(root_id), "Notification")
-    )
+    root = parent
+    if parent.parent_id:
+        root = require_found(
+            await service.repo.get_by_id(parent.parent_id), "Notification"
+        )
+
+    # Determine the thread_id — the recipient's root ID that all replies parent to
+    thread_id = root.thread_id if root.thread_id else root.id
 
     sender = require_found(await db.get(Person, body.sender_id), "Sender")
     title = f"Reactie van {sender.naam}"
 
-    # Create the reply in the thread. If the sender IS the root recipient,
-    # still create it (it's the reply record) but direct it to the other
-    # party (root.sender_id) instead of to yourself.
-    reply_recipient = root.person_id
-    if reply_recipient == body.sender_id and root.sender_id:
-        reply_recipient = root.sender_id
+    # Create ONE reply row, parented to thread_id
+    # The reply's person_id is the other party (not the sender)
+    other_root = await service.repo.get_other_root(thread_id, body.sender_id)
+    reply_recipient = other_root.person_id if other_root else root.person_id
 
     data = NotificationCreate(
         person_id=reply_recipient,
@@ -247,31 +275,16 @@ async def reply_to_notification(
         title=title,
         message=body.message,
         sender_id=body.sender_id,
-        parent_id=root_id,
+        parent_id=thread_id,
         related_node_id=root.related_node_id,
         related_task_id=root.related_task_id,
     )
     reply = await service.repo.create(data)
 
-    # Also notify the original sender if they are different from the replier
-    # and haven't already received the reply above.
-    should_notify_sender = (
-        root.sender_id
-        and root.sender_id != body.sender_id
-        and root.sender_id != reply_recipient
-    )
-    if should_notify_sender:
-        notify_data = NotificationCreate(
-            person_id=root.sender_id,
-            type="direct_message",
-            title=title,
-            message=body.message,
-            sender_id=body.sender_id,
-            parent_id=root_id,
-            related_node_id=root.related_node_id,
-            related_task_id=root.related_task_id,
-        )
-        await service.repo.create(notify_data)
+    # Mark the other party's root as unread
+    if other_root:
+        other_root.is_read = False
+        await db.flush()
 
     await sync_and_notify_mentions(
         db,
@@ -280,7 +293,7 @@ async def reply_to_notification(
         body.message,
         title,
         sender_id=body.sender_id,
-        exclude_person_id=root.person_id,
+        exclude_person_id=reply_recipient,
     )
 
     return await _enrich_response(reply, service, db)

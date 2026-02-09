@@ -210,7 +210,11 @@ async def test_mark_all_read(client, sample_person, sample_notification):
 
 
 async def test_send_message(client, sample_person, second_person):
-    """POST /api/notifications/send creates a direct message notification."""
+    """POST /api/notifications/send creates a direct message notification.
+
+    The endpoint returns the *sender's* root (so the sender can see it
+    in their inbox immediately).  The recipient also gets their own root.
+    """
     payload = {
         "person_id": str(sample_person.id),
         "sender_id": str(second_person.id),
@@ -219,9 +223,173 @@ async def test_send_message(client, sample_person, second_person):
     resp = await client.post("/api/notifications/send", json=payload)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["person_id"] == str(sample_person.id)
+    # Response is the sender's root
+    assert data["person_id"] == str(second_person.id)
     assert data["type"] == "direct_message"
-    assert "Bericht van" in data["title"]
+    assert "Bericht aan" in data["title"]
+
+    # Recipient should also have received their own root
+    inbox = await client.get(
+        "/api/notifications",
+        params={"person_id": str(sample_person.id)},
+    )
+    recipient_dm = [
+        n for n in inbox.json() if n["type"] == "direct_message" and not n["is_read"]
+    ]
+    assert len(recipient_dm) >= 1
+    assert any("Bericht van" in n["title"] for n in recipient_dm)
+
+
+async def test_dm_sender_sees_conversation_in_inbox(
+    client, sample_person, second_person
+):
+    """DM sender can see the conversation root in their inbox."""
+    # second_person sends DM to sample_person
+    payload = {
+        "person_id": str(sample_person.id),
+        "sender_id": str(second_person.id),
+        "message": "Hoi!",
+    }
+    resp = await client.post("/api/notifications/send", json=payload)
+    assert resp.status_code == 200
+
+    # Sender (second_person) should see the DM root in their inbox
+    resp = await client.get(
+        "/api/notifications",
+        params={"person_id": str(second_person.id)},
+    )
+    assert resp.status_code == 200
+    items = resp.json()
+    dm_items = [i for i in items if i["type"] == "direct_message"]
+    assert len(dm_items) >= 1
+    assert any(i["message"] == "Hoi!" for i in dm_items)
+
+
+async def test_dm_sender_unread_count_unchanged_recipient_increases(
+    client, sample_person, second_person
+):
+    """Sender's root is pre-read so their unread count stays the same.
+
+    The *recipient's* unread count should increase by 1.
+    """
+    # Baseline counts
+    resp = await client.get(
+        "/api/notifications/count",
+        params={"person_id": str(second_person.id)},
+    )
+    sender_baseline = resp.json()["count"]
+
+    resp = await client.get(
+        "/api/notifications/count",
+        params={"person_id": str(sample_person.id)},
+    )
+    recipient_baseline = resp.json()["count"]
+
+    # second_person sends DM to sample_person
+    payload = {
+        "person_id": str(sample_person.id),
+        "sender_id": str(second_person.id),
+        "message": "Test bericht",
+    }
+    await client.post("/api/notifications/send", json=payload)
+
+    # Sender's unread count should NOT increase (sender root is pre-read)
+    resp = await client.get(
+        "/api/notifications/count",
+        params={"person_id": str(second_person.id)},
+    )
+    assert resp.json()["count"] == sender_baseline
+
+    # Recipient's unread count should increase
+    resp = await client.get(
+        "/api/notifications/count",
+        params={"person_id": str(sample_person.id)},
+    )
+    assert resp.json()["count"] == recipient_baseline + 1
+
+
+async def test_dm_sender_sees_root_as_read_recipient_as_unread(
+    client, sample_person, second_person
+):
+    """DM root appears read for sender, unread for recipient in list endpoint."""
+    # second_person sends DM to sample_person
+    payload = {
+        "person_id": str(sample_person.id),
+        "sender_id": str(second_person.id),
+        "message": "Hallo!",
+    }
+    resp = await client.post("/api/notifications/send", json=payload)
+    assert resp.status_code == 200
+    sender_root_id = resp.json()["id"]
+
+    # Sender (second_person) sees their root as read
+    resp = await client.get(
+        "/api/notifications",
+        params={"person_id": str(second_person.id)},
+    )
+    dm_for_sender = next((i for i in resp.json() if i["id"] == sender_root_id), None)
+    assert dm_for_sender is not None
+    assert dm_for_sender["is_read"] is True
+
+    # Recipient (sample_person) has their own root which is unread
+    resp = await client.get(
+        "/api/notifications",
+        params={"person_id": str(sample_person.id)},
+    )
+    dm_for_recipient = next(
+        (i for i in resp.json() if i["type"] == "direct_message" and not i["is_read"]),
+        None,
+    )
+    assert dm_for_recipient is not None
+    assert dm_for_recipient["message"] == "Hallo!"
+
+
+async def test_reply_re_marks_root_unread_and_sender_still_sees_read(
+    client, sample_person, second_person
+):
+    """After a reply, recipient root becomes unread; sender root stays read."""
+    # second_person sends DM to sample_person
+    send_resp = await client.post(
+        "/api/notifications/send",
+        json={
+            "person_id": str(sample_person.id),
+            "sender_id": str(second_person.id),
+            "message": "Eerste bericht",
+        },
+    )
+    sender_root_id = send_resp.json()["id"]
+
+    # Find recipient's root
+    resp = await client.get(
+        "/api/notifications",
+        params={"person_id": str(sample_person.id)},
+    )
+    recipient_root = next(
+        i
+        for i in resp.json()
+        if i["type"] == "direct_message" and i["message"] == "Eerste bericht"
+    )
+    recipient_root_id = recipient_root["id"]
+
+    # Recipient marks it read
+    await client.put(f"/api/notifications/{recipient_root_id}/read")
+
+    # Sender replies (via their own root)
+    await client.post(
+        f"/api/notifications/{sender_root_id}/reply",
+        json={
+            "sender_id": str(second_person.id),
+            "message": "Nog iets",
+        },
+    )
+
+    # Recipient root should be unread again
+    resp = await client.get(f"/api/notifications/{recipient_root_id}")
+    assert resp.json()["is_read"] is False
+
+    # Sender root still read
+    resp = await client.get(f"/api/notifications/{sender_root_id}")
+    assert resp.json()["is_read"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +499,55 @@ async def test_get_replies_not_found(client):
     fake_id = uuid.uuid4()
     resp = await client.get(f"/api/notifications/{fake_id}/replies")
     assert resp.status_code == 404
+
+
+async def test_reply_marks_root_unread_for_recipient(
+    client, sample_person, second_person
+):
+    """Replying to a thread marks the other party's root as unread."""
+    # Create a DM thread via the API (so thread_id is set correctly)
+    send_resp = await client.post(
+        "/api/notifications/send",
+        json={
+            "person_id": str(sample_person.id),
+            "sender_id": str(second_person.id),
+            "message": "Start thread",
+        },
+    )
+    assert send_resp.status_code == 200
+    sender_root_id = send_resp.json()["id"]
+
+    # Find recipient's root
+    resp = await client.get(
+        "/api/notifications",
+        params={"person_id": str(sample_person.id)},
+    )
+    recipient_root = next(
+        i
+        for i in resp.json()
+        if i["type"] == "direct_message" and i["message"] == "Start thread"
+    )
+    recipient_root_id = recipient_root["id"]
+
+    # Mark recipient's root as read
+    resp = await client.put(f"/api/notifications/{recipient_root_id}/read")
+    assert resp.status_code == 200
+    assert resp.json()["is_read"] is True
+
+    # Recipient replies (sample_person)
+    resp = await client.post(
+        f"/api/notifications/{recipient_root_id}/reply",
+        json={
+            "sender_id": str(sample_person.id),
+            "message": "Antwoord!",
+        },
+    )
+    assert resp.status_code == 200
+
+    # Sender's root should now be unread (they got a reply)
+    resp = await client.get(f"/api/notifications/{sender_root_id}")
+    assert resp.status_code == 200
+    assert resp.json()["is_read"] is False
 
 
 async def test_list_notifications_includes_reply_count(

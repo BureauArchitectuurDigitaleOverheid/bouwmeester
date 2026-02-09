@@ -56,6 +56,11 @@ class Notification(Base):
         ForeignKey("notification.id", ondelete="CASCADE"),
         nullable=True,
     )
+    thread_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("notification.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     # Relationships

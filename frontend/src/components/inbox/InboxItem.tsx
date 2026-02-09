@@ -87,7 +87,7 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
               </span>
             )}
             <span className="text-xs text-text-secondary">
-              {new Date(item.created_at).toLocaleDateString('nl-NL', {
+              {new Date(item.created_at.endsWith('Z') ? item.created_at : item.created_at + 'Z').toLocaleDateString('nl-NL', {
                 day: 'numeric',
                 month: 'short',
                 hour: '2-digit',

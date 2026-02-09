@@ -5041,59 +5041,99 @@ async def seed(db: AsyncSession) -> None:
             )
         )
 
-    # --- direct_message: messages with a thread ---
-    dm_parent = Notification(
+    # --- direct_message: dual-root threads ---
+    # Thread 1: Art de Blaauw → Mark Vermeer
+    dm1_msg = (
+        "Hi, kunnen we morgen overleggen over de cloud-exit strategie? "
+        "Er zijn nieuwe inzichten vanuit het CIO-overleg."
+    )
+    # Recipient root (Mark — unread)
+    dm1_recipient_root = Notification(
         person_id=p_vermeer.id,
         type="direct_message",
         title="Bericht van " + p_deblaauw.naam,
-        message=(
-            "Hi, kunnen we morgen overleggen over de cloud-exit strategie? "
-            "Er zijn nieuwe inzichten vanuit het CIO-overleg."
-        ),
+        message=dm1_msg,
         is_read=False,
         sender_id=p_deblaauw.id,
         created_at=now - timedelta(hours=3),
     )
-    db.add(dm_parent)
+    db.add(dm1_recipient_root)
+    await db.flush()
+    dm1_recipient_root.thread_id = dm1_recipient_root.id
     await db.flush()
 
-    dm_reply = Notification(
+    # Sender root (Art — unread because Mark replied)
+    dm1_sender_root = Notification(
         person_id=p_deblaauw.id,
         type="direct_message",
-        title="Bericht van " + p_vermeer.naam,
+        title="Bericht aan " + p_vermeer.naam,
+        message=dm1_msg,
+        is_read=False,
+        sender_id=p_deblaauw.id,
+        thread_id=dm1_recipient_root.id,
+        created_at=now - timedelta(hours=3),
+    )
+    db.add(dm1_sender_root)
+    await db.flush()
+
+    # Reply from Mark (parented to thread_id)
+    dm1_reply = Notification(
+        person_id=p_deblaauw.id,
+        type="direct_message",
+        title="Reactie van " + p_vermeer.naam,
         message="Goed idee, ik plan een afspraak in voor morgenochtend.",
-        is_read=True,
+        is_read=False,
         sender_id=p_vermeer.id,
-        parent_id=dm_parent.id,
+        parent_id=dm1_recipient_root.id,
         created_at=now - timedelta(hours=2, minutes=45),
     )
-    notifications.append(dm_reply)
+    notifications.append(dm1_reply)
 
-    # Another DM thread
+    # Thread 2: Mark Vermeer → Linh Nguyen
     if p_nguyen:
-        dm2_parent = Notification(
+        dm2_msg = (
+            "Kun je de impact-analyse voor de NL Design System migratie "
+            "volgende week afronden?"
+        )
+        # Recipient root (Linh — unread)
+        dm2_recipient_root = Notification(
             person_id=p_nguyen.id,
             type="direct_message",
             title="Bericht van " + p_vermeer.naam,
-            message=(
-                "Kun je de impact-analyse voor de NL Design System migratie "
-                "volgende week afronden?"
-            ),
+            message=dm2_msg,
             is_read=False,
             sender_id=p_vermeer.id,
             created_at=now - timedelta(hours=5),
         )
-        db.add(dm2_parent)
+        db.add(dm2_recipient_root)
         await db.flush()
+        dm2_recipient_root.thread_id = dm2_recipient_root.id
+        await db.flush()
+
+        # Sender root (Mark — unread because Linh replied)
+        dm2_sender_root = Notification(
+            person_id=p_vermeer.id,
+            type="direct_message",
+            title="Bericht aan " + p_nguyen.naam,
+            message=dm2_msg,
+            is_read=False,
+            sender_id=p_vermeer.id,
+            thread_id=dm2_recipient_root.id,
+            created_at=now - timedelta(hours=5),
+        )
+        db.add(dm2_sender_root)
+        await db.flush()
+
+        # Reply from Linh (parented to thread_id)
         notifications.append(
             Notification(
                 person_id=p_vermeer.id,
                 type="direct_message",
-                title="Bericht van " + p_nguyen.naam,
+                title="Reactie van " + p_nguyen.naam,
                 message="Ik ga ermee aan de slag, deadline halen we.",
                 is_read=False,
                 sender_id=p_nguyen.id,
-                parent_id=dm2_parent.id,
+                parent_id=dm2_recipient_root.id,
                 created_at=now - timedelta(hours=4, minutes=30),
             )
         )

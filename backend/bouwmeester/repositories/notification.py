@@ -20,8 +20,10 @@ class NotificationRepository(BaseRepository[Notification]):
     ) -> list[Notification]:
         stmt = (
             select(Notification)
-            .where(Notification.person_id == person_id)
-            .where(Notification.parent_id.is_(None))
+            .where(
+                Notification.person_id == person_id,
+                Notification.parent_id.is_(None),
+            )
             .offset(skip)
             .limit(limit)
             .order_by(Notification.created_at.desc())
@@ -93,9 +95,21 @@ class NotificationRepository(BaseRepository[Notification]):
             .select_from(Notification)
             .where(
                 Notification.person_id == person_id,
-                Notification.is_read == False,  # noqa: E712
                 Notification.parent_id.is_(None),
+                Notification.is_read == False,  # noqa: E712
             )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one()
+
+    async def get_other_root(
+        self, thread_id: UUID, person_id: UUID
+    ) -> Notification | None:
+        """Find the other party's root notification in a DM thread."""
+        stmt = select(Notification).where(
+            Notification.thread_id == thread_id,
+            Notification.parent_id.is_(None),
+            Notification.person_id != person_id,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()

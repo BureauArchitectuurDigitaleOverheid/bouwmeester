@@ -14,7 +14,7 @@ interface MessageThreadProps {
 
 function timeAgo(dateStr: string): string {
   const now = new Date();
-  const then = new Date(dateStr);
+  const then = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
   const diffMs = now.getTime() - then.getTime();
   const diffMin = Math.floor(diffMs / 60_000);
   if (diffMin < 1) return 'Zojuist';
@@ -57,9 +57,15 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
   const replyMutation = useReplyToNotification();
   const markRead = useMarkNotificationRead();
 
-  // Mark as read when opened
+  // Mark as read when opened — only if current user is the recipient (person_id),
+  // not the sender.  After a reply the backend marks the root unread for the
+  // recipient; we must not immediately re-mark it read for the sender.
   useEffect(() => {
-    if (parentMessage && !parentMessage.is_read) {
+    if (
+      parentMessage &&
+      !parentMessage.is_read &&
+      currentPerson?.id === parentMessage.person_id
+    ) {
       markRead.mutate(parentMessage.id);
     }
   }, [parentMessage?.id, parentMessage?.is_read]); // eslint-disable-line react-hooks/exhaustive-deps
