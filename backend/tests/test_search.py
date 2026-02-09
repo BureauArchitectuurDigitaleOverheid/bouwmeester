@@ -35,13 +35,26 @@ async def test_search_no_match(client):
     assert data["results"] == []
 
 
-async def test_search_filter_by_node_type(client, sample_node):
-    """GET /api/search?q=...&node_types=dossier filters by node type."""
+async def test_search_filter_by_result_type(client, sample_node):
+    """GET /api/search?q=...&result_types=corpus_node filters by result type."""
     resp = await client.get(
-        "/api/search", params={"q": "Test", "node_types": "dossier"}
+        "/api/search", params={"q": "Test", "result_types": "corpus_node"}
     )
     assert resp.status_code == 200
     data = resp.json()
-    # All results should be of type dossier
     for r in data["results"]:
-        assert r["node_type"] == "dossier"
+        assert r["result_type"] == "corpus_node"
+
+
+async def test_search_result_has_required_fields(client, sample_node):
+    """Search results contain all required fields."""
+    resp = await client.get("/api/search", params={"q": "dossier"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] > 0
+    result = data["results"][0]
+    assert "id" in result
+    assert "result_type" in result
+    assert "title" in result
+    assert "score" in result
+    assert "url" in result

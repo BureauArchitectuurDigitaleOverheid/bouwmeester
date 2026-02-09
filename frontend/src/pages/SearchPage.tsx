@@ -7,34 +7,69 @@ import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useSearch } from '@/hooks/useSearch';
-import { NODE_TYPE_COLORS } from '@/types';
-import { useVocabulary } from '@/contexts/VocabularyContext';
+import { useNodeDetail } from '@/contexts/NodeDetailContext';
+import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import {
+  SEARCH_RESULT_TYPE_LABELS,
+  SEARCH_RESULT_TYPE_COLORS,
+  type SearchResultType,
+  type SearchResult,
+} from '@/types';
+
+const ALL_RESULT_TYPES: SearchResultType[] = [
+  'corpus_node',
+  'task',
+  'person',
+  'organisatie_eenheid',
+  'parlementair_item',
+  'tag',
+];
 
 export function SearchPage() {
   const [query, setQuery] = useState('');
+  const [activeTypes, setActiveTypes] = useState<SearchResultType[]>([]);
   const navigate = useNavigate();
-  const { nodeLabel } = useVocabulary();
-  const { data, isLoading, isFetched } = useSearch(query);
+  const { openNodeDetail } = useNodeDetail();
+  const { openTaskDetail } = useTaskDetail();
+
+  const filterTypes = activeTypes.length > 0 ? activeTypes : undefined;
+  const { data, isLoading, isFetched } = useSearch(query, filterTypes);
 
   const results = data?.results ?? [];
 
-  // Group by node type
+  const toggleType = (type: SearchResultType) => {
+    setActiveTypes((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
+    );
+  };
+
+  // Group results by result_type
   const grouped = results.reduce(
     (groups, result) => {
-      const key = result.node_type;
+      const key = result.result_type;
       if (!groups[key]) groups[key] = [];
       groups[key].push(result);
       return groups;
     },
-    {} as Record<string, typeof results>,
+    {} as Record<string, SearchResult[]>,
   );
+
+  const handleResultClick = (result: SearchResult) => {
+    if (result.result_type === 'corpus_node') {
+      openNodeDetail(result.id);
+    } else if (result.result_type === 'task') {
+      openTaskDetail(result.id);
+    } else {
+      navigate(result.url);
+    }
+  };
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Page header */}
       <div>
         <p className="text-sm text-text-secondary">
-          Doorzoek het volledige corpus op trefwoord.
+          Doorzoek alles: beleidscorpus, taken, personen, organisaties, parlementaire items en tags.
         </p>
       </div>
 
@@ -45,10 +80,30 @@ export function SearchPage() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Zoek op titel, beschrijving, trefwoord..."
+          placeholder="Zoek op titel, naam, beschrijving, trefwoord..."
           autoFocus
           className="block w-full rounded-2xl border border-border bg-white pl-12 pr-4 py-3.5 text-sm text-text placeholder:text-text-secondary/50 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 hover:border-border-hover shadow-sm"
         />
+      </div>
+
+      {/* Filter chips */}
+      <div className="flex flex-wrap gap-2">
+        {ALL_RESULT_TYPES.map((type) => {
+          const isActive = activeTypes.length === 0 || activeTypes.includes(type);
+          return (
+            <button
+              key={type}
+              onClick={() => toggleType(type)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors duration-150 ${
+                isActive
+                  ? 'bg-primary-50 border-primary-300 text-primary-700'
+                  : 'bg-white border-border text-text-secondary hover:border-border-hover'
+              }`}
+            >
+              {SEARCH_RESULT_TYPE_LABELS[type]}
+            </button>
+          );
+        })}
       </div>
 
       {/* Results */}
@@ -68,32 +123,34 @@ export function SearchPage() {
             {data?.total ?? results.length} resultaten voor &ldquo;{data?.query ?? query}&rdquo;
           </p>
 
-          {Object.entries(grouped).map(([nodeType, groupResults]) => (
-            <div key={nodeType}>
+          {Object.entries(grouped).map(([resultType, groupResults]) => (
+            <div key={resultType}>
               <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
-                {nodeLabel(nodeType)} (
-                {groupResults.length})
+                {SEARCH_RESULT_TYPE_LABELS[resultType as SearchResultType]} ({groupResults.length})
               </h3>
               <div className="space-y-2">
                 {groupResults.map((result) => (
                   <Card
-                    key={result.id}
+                    key={`${result.result_type}-${result.id}`}
                     hoverable
-                    onClick={() => navigate(`/nodes/${result.id}`)}
+                    onClick={() => handleResultClick(result)}
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <Badge
                             variant={
-                              NODE_TYPE_COLORS[
-                                result.node_type as keyof typeof NODE_TYPE_COLORS
-                              ] as 'blue'
+                              SEARCH_RESULT_TYPE_COLORS[result.result_type] as 'blue'
                             }
                             dot
                           >
-                            {nodeLabel(result.node_type)}
+                            {SEARCH_RESULT_TYPE_LABELS[result.result_type]}
                           </Badge>
+                          {result.subtitle && (
+                            <span className="text-xs text-text-secondary">
+                              {result.subtitle}
+                            </span>
+                          )}
                         </div>
                         <h4 className="text-sm font-medium text-text">
                           {result.title}
@@ -109,13 +166,17 @@ export function SearchPage() {
                               <p
                                 key={i}
                                 className="text-xs text-text-secondary italic"
-                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(h, { ALLOWED_TAGS: ['mark'] }) }}
+                                dangerouslySetInnerHTML={{
+                                  __html: DOMPurify.sanitize(h, {
+                                    ALLOWED_TAGS: ['mark'],
+                                  }),
+                                }}
                               />
                             ))}
                           </div>
                         )}
                       </div>
-                      {result.score && (
+                      {result.score > 0 && (
                         <span className="text-xs text-text-secondary shrink-0">
                           {Math.round(result.score * 100)}%
                         </span>
