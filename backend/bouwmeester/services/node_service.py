@@ -5,6 +5,8 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.node_status import CorpusNodeStatus
+from bouwmeester.models.node_title import CorpusNodeTitle
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.schema.corpus_node import CorpusNodeCreate, CorpusNodeUpdate
 
@@ -83,3 +85,9 @@ class NodeService:
 
     async def count(self, node_type: str | None = None) -> int:
         return await self.repo.count(node_type)
+
+    async def get_title_history(self, node_id: UUID) -> list[CorpusNodeTitle]:
+        return await self.repo.get_title_history(node_id)
+
+    async def get_status_history(self, node_id: UUID) -> list[CorpusNodeStatus]:
+        return await self.repo.get_status_history(node_id)

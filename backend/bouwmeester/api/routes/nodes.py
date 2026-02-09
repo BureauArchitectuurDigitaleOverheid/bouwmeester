@@ -15,6 +15,8 @@ from bouwmeester.schema.corpus_node import (
     CorpusNodeResponse,
     CorpusNodeUpdate,
     CorpusNodeWithEdges,
+    NodeStatusRecord,
+    NodeTitleRecord,
     NodeType,
 )
 from bouwmeester.schema.edge import EdgeResponse
@@ -87,6 +89,8 @@ async def get_node(
         description=node.description,
         node_type=node.node_type,
         status=node.status,
+        geldig_van=node.geldig_van,
+        geldig_tot=node.geldig_tot,
         created_at=node.created_at,
         updated_at=node.updated_at,
         edge_count=len(edges_from) + len(edges_to),
@@ -312,6 +316,28 @@ async def remove_tag_from_node(
 
     tag_repo = TagRepository(db)
     require_deleted(await tag_repo.remove_tag_from_node(id, tag_id), "Tag link")
+
+
+@router.get("/{id}/history/titles", response_model=list[NodeTitleRecord])
+async def get_node_title_history(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[NodeTitleRecord]:
+    service = NodeService(db)
+    require_found(await service.get(id), "Node")
+    records = await service.get_title_history(id)
+    return [NodeTitleRecord.model_validate(r) for r in records]
+
+
+@router.get("/{id}/history/statuses", response_model=list[NodeStatusRecord])
+async def get_node_status_history(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[NodeStatusRecord]:
+    service = NodeService(db)
+    require_found(await service.get(id), "Node")
+    records = await service.get_status_history(id)
+    return [NodeStatusRecord.model_validate(r) for r in records]
 
 
 @router.get("/{id}/parlementair-item")

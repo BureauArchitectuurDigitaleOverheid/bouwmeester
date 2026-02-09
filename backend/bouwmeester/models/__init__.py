@@ -15,6 +15,8 @@ from bouwmeester.models.instrument import Instrument  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
 from bouwmeester.models.mention import Mention  # noqa: F401
 from bouwmeester.models.node_stakeholder import NodeStakeholder  # noqa: F401
+from bouwmeester.models.node_status import CorpusNodeStatus  # noqa: F401
+from bouwmeester.models.node_title import CorpusNodeTitle  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
 from bouwmeester.models.org_manager import OrganisatieEenheidManager  # noqa: F401
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam  # noqa: F401
@@ -38,6 +40,8 @@ __all__ = [
     "Beleidskader",
     "Beleidsoptie",
     "CorpusNode",
+    "CorpusNodeStatus",
+    "CorpusNodeTitle",
     "Doel",
     "Dossier",
     "Edge",

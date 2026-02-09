@@ -13,7 +13,7 @@ import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm
 import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
 import { TaskView } from '@/components/tasks/TaskView';
-import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeParlementairItem, useAddNodeStakeholder, useUpdateNodeStakeholder, useRemoveNodeStakeholder } from '@/hooks/useNodes';
+import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeParlementairItem, useAddNodeStakeholder, useUpdateNodeStakeholder, useRemoveNodeStakeholder, useNodeTitleHistory, useNodeStatusHistory } from '@/hooks/useNodes';
 import { useTasks } from '@/hooks/useTasks';
 import { usePeople } from '@/hooks/usePeople';
 import { useNodeTags, useAddTagToNode, useRemoveTagFromNode, useTags } from '@/hooks/useTags';
@@ -58,6 +58,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const { nodeLabel, nodeAltLabel } = useVocabulary();
   const { data: parlementairItem } = useNodeParlementairItem(nodeId, node?.node_type);
   const { data: references } = useReferences(nodeId);
+  const { data: titleHistory } = useNodeTitleHistory(nodeId);
+  const { data: statusHistory } = useNodeStatusHistory(nodeId);
   const { openTaskDetail } = useTaskDetail();
   const addStakeholder = useAddNodeStakeholder();
   const updateStakeholder = useUpdateNodeStakeholder();
@@ -563,10 +565,71 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         )}
 
         {activeTab === 'activity' && (
-          <EmptyState
-            title="Activiteitentijdlijn"
-            description="Hier verschijnt de activiteitsgeschiedenis van deze node."
-          />
+          <div className="space-y-6">
+            {/* Title history */}
+            <Card>
+              <h3 className="text-sm font-medium text-text mb-3">Titelgeschiedenis</h3>
+              {titleHistory && titleHistory.length > 0 ? (
+                <div className="space-y-2">
+                  {titleHistory.map((record) => (
+                    <div
+                      key={record.id}
+                      className="flex items-center justify-between p-3 rounded-lg border border-border bg-gray-50/50"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {!record.geldig_tot ? (
+                          <span className="inline-block w-2 h-2 rounded-full bg-green-500 shrink-0" title="Huidig" />
+                        ) : (
+                          <span className="inline-block w-2 h-2 rounded-full bg-gray-300 shrink-0" title="Vorig" />
+                        )}
+                        <span className="text-sm text-text truncate">{record.title}</span>
+                      </div>
+                      <span className="text-xs text-text-secondary shrink-0 ml-3">
+                        {new Date(record.geldig_van).toLocaleDateString('nl-NL')}
+                        {record.geldig_tot
+                          ? ` — ${new Date(record.geldig_tot).toLocaleDateString('nl-NL')}`
+                          : ' — heden'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-text-secondary">Geen titelgeschiedenis beschikbaar.</p>
+              )}
+            </Card>
+
+            {/* Status history */}
+            <Card>
+              <h3 className="text-sm font-medium text-text mb-3">Statusgeschiedenis</h3>
+              {statusHistory && statusHistory.length > 0 ? (
+                <div className="space-y-2">
+                  {statusHistory.map((record) => (
+                    <div
+                      key={record.id}
+                      className="flex items-center justify-between p-3 rounded-lg border border-border bg-gray-50/50"
+                    >
+                      <div className="flex items-center gap-2">
+                        {!record.geldig_tot ? (
+                          <span className="inline-block w-2 h-2 rounded-full bg-green-500 shrink-0" title="Huidig" />
+                        ) : (
+                          <span className="inline-block w-2 h-2 rounded-full bg-gray-300 shrink-0" title="Vorig" />
+                        )}
+                        <Badge variant="gray">{record.status}</Badge>
+                      </div>
+                      <span className="text-xs text-text-secondary shrink-0 ml-3">
+                        {new Date(record.geldig_van).toLocaleDateString('nl-NL')}
+                        {record.geldig_tot
+                          ? ` — ${new Date(record.geldig_tot).toLocaleDateString('nl-NL')}`
+                          : ' — heden'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-text-secondary">Geen statusgeschiedenis beschikbaar.</p>
+              )}
+            </Card>
+          </div>
         )}
       </div>
 

@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
-import type { CorpusNode, CorpusNodeCreate, CorpusNodeUpdate, GraphViewResponse, NodeStakeholder, NodeType } from '@/types';
+import type { CorpusNode, CorpusNodeCreate, CorpusNodeUpdate, GraphViewResponse, NodeStakeholder, NodeTitleRecord, NodeStatusRecord, NodeType } from '@/types';
 
 export async function getNodes(nodeType?: NodeType): Promise<CorpusNode[]> {
   return apiGet<CorpusNode[]>('/api/nodes', {
@@ -55,6 +55,14 @@ export async function removeNodeStakeholder(
   stakeholderId: string,
 ): Promise<void> {
   return apiDelete(`/api/nodes/${nodeId}/stakeholders/${stakeholderId}`);
+}
+
+export async function getNodeTitleHistory(id: string): Promise<NodeTitleRecord[]> {
+  return apiGet<NodeTitleRecord[]>(`/api/nodes/${id}/history/titles`);
+}
+
+export async function getNodeStatusHistory(id: string): Promise<NodeStatusRecord[]> {
+  return apiGet<NodeStatusRecord[]>(`/api/nodes/${id}/history/statuses`);
 }
 
 export interface NodeParlementairItem {
