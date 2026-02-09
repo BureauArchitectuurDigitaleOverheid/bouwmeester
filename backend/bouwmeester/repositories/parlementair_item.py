@@ -1,4 +1,4 @@
-"""Repository for MotieImport and SuggestedEdge CRUD."""
+"""Repository for ParlementairItem and SuggestedEdge CRUD."""
 
 from uuid import UUID
 
@@ -6,10 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.models.motie_import import MotieImport, SuggestedEdge
+from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 
 
-class MotieImportRepository:
+class ParlementairItemRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
@@ -17,33 +17,36 @@ class MotieImportRepository:
         self,
         status: str | None = None,
         bron: str | None = None,
+        item_type: str | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> list[MotieImport]:
+    ) -> list[ParlementairItem]:
         stmt = (
-            select(MotieImport)
+            select(ParlementairItem)
             .options(
-                selectinload(MotieImport.suggested_edges).selectinload(
+                selectinload(ParlementairItem.suggested_edges).selectinload(
                     SuggestedEdge.target_node
                 )
             )
-            .order_by(MotieImport.created_at.desc())
+            .order_by(ParlementairItem.created_at.desc())
             .offset(skip)
             .limit(limit)
         )
         if status:
-            stmt = stmt.where(MotieImport.status == status)
+            stmt = stmt.where(ParlementairItem.status == status)
         if bron:
-            stmt = stmt.where(MotieImport.bron == bron)
+            stmt = stmt.where(ParlementairItem.bron == bron)
+        if item_type:
+            stmt = stmt.where(ParlementairItem.type == item_type)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_by_id(self, import_id: UUID) -> MotieImport | None:
+    async def get_by_id(self, import_id: UUID) -> ParlementairItem | None:
         stmt = (
-            select(MotieImport)
-            .where(MotieImport.id == import_id)
+            select(ParlementairItem)
+            .where(ParlementairItem.id == import_id)
             .options(
-                selectinload(MotieImport.suggested_edges).selectinload(
+                selectinload(ParlementairItem.suggested_edges).selectinload(
                     SuggestedEdge.target_node
                 )
             )
@@ -51,51 +54,55 @@ class MotieImportRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_by_zaak_id(self, zaak_id: str) -> MotieImport | None:
-        stmt = select(MotieImport).where(MotieImport.zaak_id == zaak_id)
+    async def get_by_zaak_id(self, zaak_id: str) -> ParlementairItem | None:
+        stmt = select(ParlementairItem).where(ParlementairItem.zaak_id == zaak_id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def create(self, **kwargs) -> MotieImport:
-        motie_import = MotieImport(**kwargs)
-        self.session.add(motie_import)
+    async def create(self, **kwargs) -> ParlementairItem:
+        item = ParlementairItem(**kwargs)
+        self.session.add(item)
         await self.session.flush()
-        await self.session.refresh(motie_import)
-        return motie_import
+        await self.session.refresh(item)
+        return item
 
     async def update_status(
         self, import_id: UUID, status: str, **kwargs
-    ) -> MotieImport | None:
-        motie_import = await self.session.get(MotieImport, import_id)
-        if motie_import is None:
+    ) -> ParlementairItem | None:
+        item = await self.session.get(ParlementairItem, import_id)
+        if item is None:
             return None
-        motie_import.status = status
+        item.status = status
         for key, value in kwargs.items():
-            setattr(motie_import, key, value)
+            setattr(item, key, value)
         await self.session.flush()
-        # Re-fetch with eager loading to avoid lazy-load in async context
         return await self.get_by_id(import_id)
 
-    async def get_review_queue(self) -> list[MotieImport]:
-        """Get imported moties that have pending suggested edges."""
+    async def get_review_queue(
+        self,
+        item_type: str | None = None,
+    ) -> list[ParlementairItem]:
+        """Get imported items that have pending suggested edges."""
         stmt = (
-            select(MotieImport)
-            .where(MotieImport.status == "imported")
+            select(ParlementairItem)
+            .where(ParlementairItem.status == "imported")
             .options(
-                selectinload(MotieImport.suggested_edges).selectinload(
+                selectinload(ParlementairItem.suggested_edges).selectinload(
                     SuggestedEdge.target_node
                 )
             )
-            .order_by(MotieImport.created_at.desc())
+            .order_by(ParlementairItem.created_at.desc())
         )
+        if item_type:
+            stmt = stmt.where(ParlementairItem.type == item_type)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_pending(self) -> list[MotieImport]:
+    async def get_pending(self) -> list[ParlementairItem]:
         stmt = (
-            select(MotieImport)
-            .where(MotieImport.status == "pending")
-            .order_by(MotieImport.created_at)
+            select(ParlementairItem)
+            .where(ParlementairItem.status == "pending")
+            .order_by(ParlementairItem.created_at)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -131,5 +138,4 @@ class SuggestedEdgeRepository:
         for key, value in kwargs.items():
             setattr(suggested_edge, key, value)
         await self.session.flush()
-        # Re-fetch with eager loading to avoid lazy-load in async context
         return await self.get_by_id(edge_id)

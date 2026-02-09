@@ -314,30 +314,33 @@ async def remove_tag_from_node(
     require_deleted(await tag_repo.remove_tag_from_node(id, tag_id), "Tag link")
 
 
-@router.get("/{id}/motie-import")
-async def get_node_motie_import(
+@router.get("/{id}/parlementair-item")
+async def get_node_parlementair_item(
     id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> dict | None:
-    """Get linked motie import data for a politieke_input node."""
+    """Get linked parliamentary item data for a politieke_input node."""
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 
-    from bouwmeester.models.motie_import import MotieImport
+    from bouwmeester.models.parlementair_item import ParlementairItem
 
     stmt = (
-        select(MotieImport)
-        .where(MotieImport.corpus_node_id == id)
-        .options(selectinload(MotieImport.suggested_edges))
+        select(ParlementairItem)
+        .where(ParlementairItem.corpus_node_id == id)
+        .options(selectinload(ParlementairItem.suggested_edges))
     )
     result = await db.execute(stmt)
-    motie_import = result.scalar_one_or_none()
-    if motie_import is None:
+    item = result.scalar_one_or_none()
+    if item is None:
         return None
     return {
-        "indieners": motie_import.indieners or [],
-        "document_url": motie_import.document_url,
-        "zaak_nummer": motie_import.zaak_nummer,
-        "bron": motie_import.bron,
-        "datum": str(motie_import.datum) if motie_import.datum else None,
+        "type": item.type,
+        "indieners": item.indieners or [],
+        "document_url": item.document_url,
+        "zaak_nummer": item.zaak_nummer,
+        "bron": item.bron,
+        "datum": str(item.datum) if item.datum else None,
+        "deadline": str(item.deadline) if item.deadline else None,
+        "ministerie": item.ministerie,
     }

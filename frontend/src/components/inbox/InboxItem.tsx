@@ -1,11 +1,13 @@
 import { useNavigate } from 'react-router-dom';
-import { FileText, CheckSquare, Bell, MessageSquare } from 'lucide-react';
+import { FileText, CheckSquare, Bell, MessageSquare, MessageCircle } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
+import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import type { InboxItem as InboxItemType } from '@/types';
 
 interface InboxItemProps {
   item: InboxItemType;
+  onOpenThread?: (id: string) => void;
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -22,17 +24,21 @@ const typeColors: Record<string, string> = {
   message: 'green',
 };
 
-export function InboxItemCard({ item }: InboxItemProps) {
+export function InboxItemCard({ item, onOpenThread }: InboxItemProps) {
   const navigate = useNavigate();
 
   const handleClick = () => {
-    if (item.node_id) {
+    if (item.type === 'message' && onOpenThread) {
+      onOpenThread(item.id);
+    } else if (item.node_id) {
       navigate(`/nodes/${item.node_id}`);
     }
   };
 
+  const isClickable = item.type === 'message' || !!item.node_id;
+
   return (
-    <Card hoverable={!!item.node_id} onClick={handleClick}>
+    <Card hoverable={isClickable} onClick={handleClick}>
       <div className="flex items-start gap-3">
         <div
           className={`flex items-center justify-center h-8 w-8 rounded-lg shrink-0 ${
@@ -57,15 +63,21 @@ export function InboxItemCard({ item }: InboxItemProps) {
           </div>
 
           {item.description && (
-            <p className="text-xs text-text-secondary line-clamp-2 mb-2">
-              {item.description}
-            </p>
+            <div className="text-xs line-clamp-2 mb-2">
+              <RichTextDisplay content={item.description} fallback="" />
+            </div>
           )}
 
           <div className="flex items-center gap-2">
             <Badge variant={typeColors[item.type] as 'blue'}>
               {item.type}
             </Badge>
+            {item.reply_count != null && item.reply_count > 0 && (
+              <span className="flex items-center gap-1 text-xs text-primary-600">
+                <MessageCircle className="h-3 w-3" />
+                {item.reply_count} {item.reply_count === 1 ? 'reactie' : 'reacties'}
+              </span>
+            )}
             <span className="text-xs text-text-secondary">
               {new Date(item.created_at).toLocaleDateString('nl-NL', {
                 day: 'numeric',

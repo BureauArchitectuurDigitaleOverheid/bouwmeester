@@ -36,7 +36,7 @@ async def seed(db: AsyncSession) -> None:
     # Clear existing data (order matters due to FKs)
     for table in [
         "suggested_edge",
-        "motie_import",
+        "parlementair_item",
         "node_tag",
         "tag",
         "task",
@@ -4445,7 +4445,7 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
     from datetime import timedelta
 
-    from bouwmeester.models.motie_import import MotieImport, SuggestedEdge
+    from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 
     # Motie 1: routed to afd_ai_data (eigenaar of matched nodes is in that unit)
     mi_node_1 = await node_repo.create(
@@ -4477,7 +4477,7 @@ async def seed(db: AsyncSession) -> None:
     for tag in [tag_algoritmen, tag_ai]:
         await tag_repo.add_tag_to_node(mi_node_1.id, tag.id)
 
-    mi_1 = MotieImport(
+    mi_1 = ParlementairItem(
         zaak_id="mi-seed-kathmann-algoritmen",
         zaak_nummer="36560-45",
         titel=(
@@ -4502,7 +4502,7 @@ async def seed(db: AsyncSession) -> None:
     # Suggested edges for motie 1
     db.add(
         SuggestedEdge(
-            motie_import_id=mi_1.id,
+            parlementair_item_id=mi_1.id,
             target_node_id=instr_algo_register.id,
             edge_type_id="adresseert",
             confidence=0.9,
@@ -4512,7 +4512,7 @@ async def seed(db: AsyncSession) -> None:
     )
     db.add(
         SuggestedEdge(
-            motie_import_id=mi_1.id,
+            parlementair_item_id=mi_1.id,
             target_node_id=bk_algo_kader.id,
             edge_type_id="adresseert",
             confidence=0.8,
@@ -4539,7 +4539,7 @@ async def seed(db: AsyncSession) -> None:
             deadline=date(2026, 2, 4),
             organisatie_eenheid_id=afd_ai_data.id,
             assignee_id=None,
-            motie_import_id=mi_1.id,
+            parlementair_item_id=mi_1.id,
         )
     )
 
@@ -4570,7 +4570,7 @@ async def seed(db: AsyncSession) -> None:
     for tag in [tag_ident, tag_eidas]:
         await tag_repo.add_tag_to_node(mi_node_2.id, tag.id)
 
-    mi_2 = MotieImport(
+    mi_2 = ParlementairItem(
         zaak_id="mi-seed-dekker-digid-eu",
         zaak_nummer="36560-52",
         titel="Motie van het lid Dekker-Abdulaziz over DigiD voor EU-burgers",
@@ -4592,7 +4592,7 @@ async def seed(db: AsyncSession) -> None:
 
     db.add(
         SuggestedEdge(
-            motie_import_id=mi_2.id,
+            parlementair_item_id=mi_2.id,
             target_node_id=instr_digid.id,
             edge_type_id="adresseert",
             confidence=0.85,
@@ -4602,7 +4602,7 @@ async def seed(db: AsyncSession) -> None:
     )
     db.add(
         SuggestedEdge(
-            motie_import_id=mi_2.id,
+            parlementair_item_id=mi_2.id,
             target_node_id=instr_eidas_wallet.id,
             edge_type_id="adresseert",
             confidence=0.75,
@@ -4629,7 +4629,7 @@ async def seed(db: AsyncSession) -> None:
             deadline=date(2026, 2, 11),
             organisatie_eenheid_id=afd_id_toegang.id,
             assignee_id=None,
-            motie_import_id=mi_2.id,
+            parlementair_item_id=mi_2.id,
         )
     )
 
@@ -4662,7 +4662,7 @@ async def seed(db: AsyncSession) -> None:
     for tag in [tag_toegankelijkheid, tag_digitale_kloof]:
         await tag_repo.add_tag_to_node(mi_node_3.id, tag.id)
 
-    mi_3 = MotieImport(
+    mi_3 = ParlementairItem(
         zaak_id="mi-seed-vanbaarle-meertalig",
         zaak_nummer="36560-61",
         titel=(
@@ -4688,7 +4688,7 @@ async def seed(db: AsyncSession) -> None:
     # No suggested edges with clear eigenaar → lands in "Geen eenheid"
     db.add(
         SuggestedEdge(
-            motie_import_id=mi_3.id,
+            parlementair_item_id=mi_3.id,
             target_node_id=prob_digitale_kloof.id,
             edge_type_id="adresseert",
             confidence=0.7,
@@ -4715,7 +4715,7 @@ async def seed(db: AsyncSession) -> None:
             deadline=date(2026, 2, 17),
             organisatie_eenheid_id=None,
             assignee_id=None,
-            motie_import_id=mi_3.id,
+            parlementair_item_id=mi_3.id,
         )
     )
 
