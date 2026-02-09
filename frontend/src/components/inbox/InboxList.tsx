@@ -19,6 +19,13 @@ export function InboxList({ items, onOpenThread }: InboxListProps) {
     );
   }
 
+  const GROUP_LABELS: Record<string, string> = {
+    task: 'Taken',
+    node: 'Corpus',
+    notification: 'Meldingen',
+    message: 'Berichten',
+  };
+
   // Group by type
   const grouped = items.reduce(
     (groups, item) => {
@@ -34,7 +41,7 @@ export function InboxList({ items, onOpenThread }: InboxListProps) {
       {Object.entries(grouped).map(([type, groupItems]) => (
         <div key={type}>
           <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
-            {type} ({groupItems.length})
+            {GROUP_LABELS[type] ?? type} ({groupItems.length})
           </h3>
           <div className="space-y-2">
             {groupItems.map((item) => (

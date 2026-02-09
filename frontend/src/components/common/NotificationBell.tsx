@@ -26,9 +26,13 @@ function timeAgo(dateStr: string): string {
 const TYPE_COLORS: Record<string, string> = {
   task_assigned: 'bg-blue-100 text-blue-700',
   task_overdue: 'bg-red-100 text-red-700',
+  task_completed: 'bg-green-100 text-green-700',
+  task_reassigned: 'bg-orange-100 text-orange-700',
   node_updated: 'bg-green-100 text-green-700',
   edge_created: 'bg-purple-100 text-purple-700',
   coverage_needed: 'bg-amber-100 text-amber-700',
+  stakeholder_added: 'bg-teal-100 text-teal-700',
+  stakeholder_role_changed: 'bg-teal-100 text-teal-700',
   direct_message: 'bg-green-100 text-green-700',
   agent_prompt: 'bg-violet-100 text-violet-700',
   mention: 'bg-cyan-100 text-cyan-700',

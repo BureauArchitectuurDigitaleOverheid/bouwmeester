@@ -8,8 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.database import get_db
+from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.schema.edge import EdgeCreate, EdgeResponse, EdgeUpdate, EdgeWithNodes
+from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/edges", tags=["edges"])
 
@@ -49,6 +51,14 @@ async def create_edge(
             status_code=status.HTTP_409_CONFLICT,
             detail="Deze verbinding bestaat al.",
         )
+
+    # Notify stakeholders of both nodes
+    from_node = await db.get(CorpusNode, data.from_node_id)
+    to_node = await db.get(CorpusNode, data.to_node_id)
+    if from_node and to_node:
+        notif_svc = NotificationService(db)
+        await notif_svc.notify_edge_created(from_node, to_node, edge.id)
+
     return EdgeResponse.model_validate(edge)
 
 

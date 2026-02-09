@@ -10,9 +10,13 @@ from pydantic import BaseModel, ConfigDict
 class NotificationType(enum.StrEnum):
     task_assigned = "task_assigned"
     task_overdue = "task_overdue"
+    task_completed = "task_completed"
+    task_reassigned = "task_reassigned"
     node_updated = "node_updated"
     edge_created = "edge_created"
     coverage_needed = "coverage_needed"
+    stakeholder_added = "stakeholder_added"
+    stakeholder_role_changed = "stakeholder_role_changed"
     politieke_input_imported = "politieke_input_imported"
     direct_message = "direct_message"
     agent_prompt = "agent_prompt"
@@ -57,3 +61,9 @@ class ReplyRequest(BaseModel):
 
 class UnreadCountResponse(BaseModel):
     count: int
+
+
+class DashboardStatsResponse(BaseModel):
+    corpus_node_count: int
+    open_task_count: int
+    overdue_task_count: int

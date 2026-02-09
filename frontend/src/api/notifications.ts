@@ -20,6 +20,12 @@ export interface UnreadCountResponse {
   count: number;
 }
 
+export interface DashboardStats {
+  corpus_node_count: number;
+  open_task_count: number;
+  overdue_task_count: number;
+}
+
 export async function getNotifications(
   personId: string,
   unreadOnly = false,
@@ -65,4 +71,10 @@ export async function replyToNotification(
   data: { sender_id: string; message: string },
 ): Promise<Notification> {
   return apiPost<Notification>(`/api/notifications/${notificationId}/reply`, data);
+}
+
+export async function getDashboardStats(personId: string): Promise<DashboardStats> {
+  return apiGet<DashboardStats>('/api/notifications/dashboard-stats', {
+    person_id: personId,
+  });
 }
