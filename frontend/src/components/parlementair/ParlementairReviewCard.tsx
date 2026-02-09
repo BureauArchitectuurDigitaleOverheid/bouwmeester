@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronDown, ChevronUp, Check, X, ExternalLink, Users, Calendar, Plus, Trash2, Link } from 'lucide-react';
+import { ChevronDown, ChevronUp, Check, X, ExternalLink, Users, Calendar, Plus, Trash2, Link, Undo2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { Badge } from '@/components/common/Badge';
@@ -10,11 +10,14 @@ import type { SelectOption } from '@/components/common/CreatableSelect';
 import {
   useApproveSuggestedEdge,
   useRejectSuggestedEdge,
+  useResetSuggestedEdge,
   useUpdateSuggestedEdge,
   useRejectParlementairItem,
   useCompleteParlementairReview,
 } from '@/hooks/useParlementair';
-import { useCreateEdge } from '@/hooks/useEdges';
+import { useCreateEdge, useDeleteEdge } from '@/hooks/useEdges';
+import { useQuery } from '@tanstack/react-query';
+import { getEdges } from '@/api/edges';
 import { useNodes, useCreateNode } from '@/hooks/useNodes';
 import { usePeople } from '@/hooks/usePeople';
 import { useTags, useNodeTags, useAddTagToNode, useRemoveTagFromNode } from '@/hooks/useTags';
@@ -67,10 +70,12 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   const { nodeLabel, edgeLabel } = useVocabulary();
   const approveEdge = useApproveSuggestedEdge();
   const rejectEdge = useRejectSuggestedEdge();
+  const resetEdge = useResetSuggestedEdge();
   const updateSuggestedEdge = useUpdateSuggestedEdge();
   const rejectItem = useRejectParlementairItem();
   const completeReview = useCompleteParlementairReview();
   const createEdge = useCreateEdge();
+  const deleteEdge = useDeleteEdge();
   const createNode = useCreateNode();
   const { data: people } = usePeople();
   const { data: allNodes } = useNodes();
@@ -80,6 +85,11 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   const removeTag = useRemoveTagFromNode();
 
   const corpusNodeId = item.corpus_node_id;
+  const { data: nodeEdges } = useQuery({
+    queryKey: ['edges', { node_id: corpusNodeId }],
+    queryFn: () => getEdges({ node_id: corpusNodeId! }),
+    enabled: !!corpusNodeId,
+  });
 
   // Edge type options
   const edgeTypeOptions: SelectOption[] = Object.keys(EDGE_TYPE_VOCABULARY).map((key) => ({
@@ -205,14 +215,18 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
 
   const handleAddEdge = async () => {
     if (!corpusNodeId || !newEdgeTargetId || !newEdgeTypeId) return;
-    await createEdge.mutateAsync({
-      from_node_id: corpusNodeId,
-      to_node_id: newEdgeTargetId,
-      edge_type_id: newEdgeTypeId,
-    });
-    setNewEdgeTargetId('');
-    setNewEdgeTypeId('');
-    setShowAddEdge(false);
+    try {
+      await createEdge.mutateAsync({
+        from_node_id: corpusNodeId,
+        to_node_id: newEdgeTargetId,
+        edge_type_id: newEdgeTypeId,
+      });
+      setNewEdgeTargetId('');
+      setNewEdgeTypeId('');
+      setShowAddEdge(false);
+    } catch {
+      // Error already handled by useMutationWithError
+    }
   };
 
   const addTaskRow = () => {
@@ -227,7 +241,28 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
     setFollowUpTasks(followUpTasks.filter((_, i) => i !== index));
   };
 
-  const pendingEdges = item.suggested_edges?.filter((e) => e.status === 'pending') ?? [];
+  // Sort suggested edges: confidence desc, then node type alphabetically
+  const sortedSuggestedEdges = [...(item.suggested_edges ?? [])].sort((a, b) => {
+    if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+    const typeA = a.target_node?.node_type ?? '';
+    const typeB = b.target_node?.node_type ?? '';
+    return typeA.localeCompare(typeB);
+  });
+
+  const pendingEdges = sortedSuggestedEdges.filter((e) => e.status === 'pending');
+
+  // Edges manually added (not from suggested edges)
+  const suggestedEdgeIds = new Set(
+    (item.suggested_edges ?? []).filter((se) => se.edge_id).map((se) => se.edge_id),
+  );
+  const suggestedTargetNodeIds = new Set(
+    (item.suggested_edges ?? []).map((se) => se.target_node_id),
+  );
+  const manualEdges = (nodeEdges ?? []).filter(
+    (e) => !suggestedEdgeIds.has(e.id) && !suggestedTargetNodeIds.has(
+      e.from_node_id === corpusNodeId ? e.to_node_id : e.from_node_id,
+    ),
+  ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return null;
@@ -312,7 +347,31 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
       </div>
 
       {expanded && (
-        <div className="mt-4 pt-4 border-t border-border space-y-4">
+        <div className="mt-4 pt-4 border-t border-border space-y-5">
+          {/* Quick links bar */}
+          <div className="flex items-center gap-3">
+            {item.corpus_node_id && (
+              <button
+                onClick={() => navigate(`/nodes/${item.corpus_node_id}`)}
+                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 transition-colors"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Bekijk node
+              </button>
+            )}
+            {item.document_url && (
+              <a
+                href={item.document_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 transition-colors"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Bekijk op tweedekamer.nl
+              </a>
+            )}
+          </div>
+
           {/* Indieners */}
           {item.indieners && item.indieners.length > 0 && (
             <div>
@@ -381,7 +440,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                   <span className="text-xs text-text-secondary">Geen tags</span>
                 )}
               </div>
-              <div className="relative max-w-sm" ref={tagContainerRef}>
+              <div className="relative max-w-xs" ref={tagContainerRef}>
                 <input
                   ref={tagInputRef}
                   type="text"
@@ -434,38 +493,30 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           )}
 
           {/* Suggested edges + add new edges */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-medium text-text">
-                Verbindingen
-                {item.suggested_edges && item.suggested_edges.length > 0 && (
-                  <span className="text-text-secondary font-normal ml-1">
-                    ({item.suggested_edges.length} voorgesteld)
-                  </span>
-                )}
-              </h4>
-              {corpusNodeId && (
-                <button
-                  onClick={() => setShowAddEdge(!showAddEdge)}
-                  className="text-xs text-primary-700 hover:text-primary-800 flex items-center gap-1"
-                >
-                  <Plus className="h-3 w-3" />
-                  Verbinding toevoegen
-                </button>
+          <div className="max-w-2xl">
+            <h4 className="text-xs font-medium text-text mb-2">
+              Verbindingen
+              {(sortedSuggestedEdges.length + manualEdges.length > 0) && (
+                <span className="text-text-secondary font-normal ml-1">
+                  ({sortedSuggestedEdges.length + manualEdges.length})
+                </span>
               )}
-            </div>
+            </h4>
 
             {/* Suggested edges list */}
-            {item.suggested_edges && item.suggested_edges.length > 0 && (
-              <div className="space-y-2 mb-2">
-                {item.suggested_edges.map((edge) => (
+            {sortedSuggestedEdges.length > 0 && (
+              <div className="space-y-1.5 mb-2">
+                {sortedSuggestedEdges.map((edge) => (
                   <div
                     key={edge.id}
-                    className="flex items-center gap-3 p-2 rounded-lg bg-gray-50"
+                    className={clsx(
+                      'flex items-start gap-2 p-2 rounded-lg bg-gray-50',
+                      edge.status === 'rejected' && 'opacity-50',
+                    )}
                   >
                     <div className="flex-1 min-w-0">
                       {edge.target_node && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <Badge
                             variant={NODE_TYPE_COLORS[edge.target_node.node_type] as 'blue'}
                             dot
@@ -480,7 +531,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                           </button>
                         </div>
                       )}
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-1.5 mt-0.5">
                         {edge.status === 'pending' ? (
                           <select
                             value={edge.edge_type_id}
@@ -490,7 +541,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                                 data: { edge_type_id: e.target.value },
                               });
                             }}
-                            className="text-xs rounded-md border border-border bg-white px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                            className="text-xs rounded-md border border-border bg-white px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                           >
                             {Object.keys(EDGE_TYPE_VOCABULARY).map((key) => (
                               <option key={key} value={key}>
@@ -507,48 +558,114 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                           {Math.round(edge.confidence * 100)}%
                         </span>
                         {edge.reason && (
-                          <span className="text-xs text-text-secondary">
+                          <span className="text-xs text-text-secondary truncate">
                             — {edge.reason}
                           </span>
                         )}
                       </div>
                     </div>
 
-                    {edge.status === 'pending' ? (
-                      <div className="flex items-center gap-1 shrink-0">
+                    {/* Actions on the right */}
+                    <div className="flex items-center gap-0.5 shrink-0 mt-1">
+                      {edge.status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => approveEdge.mutate(edge.id)}
+                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-100 transition-colors"
+                            title="Goedkeuren"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => rejectEdge.mutate(edge.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Afwijzen"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      )}
+                      {edge.status !== 'pending' && (
                         <button
-                          onClick={() => approveEdge.mutate(edge.id)}
-                          className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
-                          title="Goedkeuren"
+                          onClick={() => resetEdge.mutate(edge.id)}
+                          className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="Ongedaan maken"
                         >
-                          <Check className="h-4 w-4" />
+                          <Undo2 className="h-3.5 w-3.5" />
                         </button>
-                        <button
-                          onClick={() => rejectEdge.mutate(edge.id)}
-                          className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                          title="Afwijzen"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <Badge variant={edge.status === 'approved' ? 'green' : 'gray'}>
-                        {edge.status === 'approved' ? 'Goedgekeurd' : 'Afgewezen'}
-                      </Badge>
-                    )}
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
 
+            {/* Manually added edges */}
+            {manualEdges.length > 0 && (
+              <div className="space-y-1.5 mb-2">
+                {manualEdges.map((edge) => {
+                  const otherNode = edge.from_node_id === corpusNodeId ? edge.to_node : edge.from_node;
+                  const otherNodeId = edge.from_node_id === corpusNodeId ? edge.to_node_id : edge.from_node_id;
+                  return (
+                    <div
+                      key={edge.id}
+                      className="flex items-start gap-2 p-2 rounded-lg bg-gray-50"
+                    >
+                      <div className="flex-1 min-w-0">
+                        {otherNode && (
+                          <div className="flex items-center gap-1.5">
+                            <Badge
+                              variant={NODE_TYPE_COLORS[otherNode.node_type] as 'blue'}
+                              dot
+                            >
+                              {nodeLabel(otherNode.node_type)}
+                            </Badge>
+                            <button
+                              onClick={() => navigate(`/nodes/${otherNodeId}`)}
+                              className="text-sm text-text hover:text-primary-700 truncate transition-colors"
+                            >
+                              {otherNode.title}
+                            </button>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <Badge variant="slate">
+                            {edgeLabel(edge.edge_type_id)}
+                          </Badge>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => deleteEdge.mutate(edge.id)}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0 mt-1"
+                        title="Verwijderen"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Add edge toggle */}
+            {corpusNodeId && !showAddEdge && (
+              <button
+                onClick={() => setShowAddEdge(true)}
+                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 transition-colors"
+              >
+                <Plus className="h-3 w-3" />
+                Verbinding toevoegen
+              </button>
+            )}
+
             {/* Add new edge form */}
             {showAddEdge && corpusNodeId && (
-              <div className="p-3 rounded-lg border border-border bg-gray-50/50 space-y-3">
+              <div className="p-3 rounded-lg border border-border bg-gray-50/50 space-y-2">
                 <div className="flex items-center gap-2 text-xs font-medium text-text">
                   <Link className="h-3.5 w-3.5" />
                   Nieuwe verbinding
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
                   <CreatableSelect
                     value={newEdgeTargetId}
                     onChange={setNewEdgeTargetId}
@@ -564,6 +681,11 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                     placeholder="Type verbinding..."
                   />
                 </div>
+                {createEdge.isError && (
+                  <p className="text-xs text-red-600">
+                    {(createEdge.error as { body?: { detail?: string } })?.body?.detail || 'Fout bij aanmaken verbinding'}
+                  </p>
+                )}
                 <div className="flex items-center gap-2">
                   <Button
                     size="sm"
@@ -580,6 +702,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                       setShowAddEdge(false);
                       setNewEdgeTargetId('');
                       setNewEdgeTypeId('');
+                      createEdge.reset();
                     }}
                   >
                     Annuleren
@@ -589,85 +712,84 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             )}
           </div>
 
-          {/* Eigenaar + follow-up tasks (inline, always visible for imported items) */}
+          {/* Follow-up tasks (right below verbindingen) */}
           {item.status === 'imported' && (
-            <div className="p-4 rounded-xl border border-primary-200 bg-primary-50/50 space-y-4">
-              <h4 className="text-sm font-semibold text-text">Beoordeling</h4>
-
-              {/* Eigenaar selector */}
-              <div className="max-w-sm">
-                <CreatableSelect
-                  label="Eigenaar toewijzen"
-                  value={eigenaarId}
-                  onChange={setEigenaarId}
-                  options={(people ?? []).map((p) => ({
-                    value: p.id,
-                    label: p.naam,
-                    description: p.functie || undefined,
-                  }))}
-                  placeholder="Selecteer eigenaar..."
-                />
-              </div>
-
-              {/* Follow-up tasks */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h5 className="text-xs font-medium text-text">Vervolgacties</h5>
-                  <button
-                    onClick={addTaskRow}
-                    className="text-xs text-primary-700 hover:text-primary-800 flex items-center gap-1"
-                  >
-                    <Plus className="h-3 w-3" />
-                    Taak toevoegen
-                  </button>
-                </div>
-                {followUpTasks.length > 0 && (
-                  <div className="space-y-2">
-                    {followUpTasks.map((task, index) => (
-                      <div key={index} className="flex items-start gap-2 p-2 rounded-lg bg-white border border-border">
-                        <div className="flex-1 space-y-2">
-                          <input
-                            type="text"
-                            value={task.title}
-                            onChange={(e) => updateTaskRow(index, 'title', e.target.value)}
-                            placeholder="Omschrijving taak..."
-                            className="w-full rounded-lg border border-border px-3 py-1.5 text-sm"
-                          />
-                          <div className="flex gap-2">
-                            <div className="flex-1">
-                              <CreatableSelect
-                                value={task.assignee_id}
-                                onChange={(v) => updateTaskRow(index, 'assignee_id', v)}
-                                options={(people ?? []).map((p) => ({
-                                  value: p.id,
-                                  label: p.naam,
-                                  description: p.functie || undefined,
-                                }))}
-                                placeholder="Toewijzen aan..."
-                              />
-                            </div>
-                            <input
-                              type="date"
-                              value={task.deadline}
-                              onChange={(e) => updateTaskRow(index, 'deadline', e.target.value)}
-                              className="rounded-lg border border-border px-3 py-1.5 text-sm"
+            <div className="max-w-2xl">
+              <h4 className="text-xs font-medium text-text mb-2">Vervolgacties</h4>
+              {followUpTasks.length > 0 && (
+                <div className="space-y-2 mb-2">
+                  {followUpTasks.map((task, index) => (
+                    <div key={index} className="flex items-start gap-2 p-2 rounded-lg bg-gray-50 border border-border">
+                      <div className="flex-1 space-y-2">
+                        <input
+                          type="text"
+                          value={task.title}
+                          onChange={(e) => updateTaskRow(index, 'title', e.target.value)}
+                          placeholder="Omschrijving taak..."
+                          className="w-full rounded-lg border border-border px-3 py-1.5 text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <CreatableSelect
+                              value={task.assignee_id}
+                              onChange={(v) => updateTaskRow(index, 'assignee_id', v)}
+                              options={(people ?? []).map((p) => ({
+                                value: p.id,
+                                label: p.naam,
+                                description: p.functie || undefined,
+                              }))}
+                              placeholder="Toewijzen aan..."
                             />
                           </div>
+                          <input
+                            type="date"
+                            value={task.deadline}
+                            onChange={(e) => updateTaskRow(index, 'deadline', e.target.value)}
+                            className="rounded-lg border border-border px-3 py-1.5 text-sm"
+                          />
                         </div>
-                        <button
-                          onClick={() => removeTaskRow(index)}
-                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors mt-1"
-                          title="Verwijderen"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      <button
+                        onClick={() => removeTaskRow(index)}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors mt-1"
+                        title="Verwijderen"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                onClick={addTaskRow}
+                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 transition-colors"
+              >
+                <Plus className="h-3 w-3" />
+                Taak toevoegen
+              </button>
+            </div>
+          )}
 
-              {/* Submit button */}
+          {/* Eigenaar — last decision before submit */}
+          {item.status === 'imported' && (
+            <div className="max-w-xs">
+              <CreatableSelect
+                label="Eigenaar"
+                value={eigenaarId}
+                onChange={setEigenaarId}
+                options={(people ?? []).map((p) => ({
+                  value: p.id,
+                  label: p.naam,
+                  description: p.functie || undefined,
+                }))}
+                placeholder="Selecteer eigenaar..."
+              />
+            </div>
+          )}
+
+          {/* Bottom actions */}
+          {item.status === 'imported' && (
+            <div className="flex items-center gap-3 pt-2 border-t border-border">
               <Button
                 size="sm"
                 onClick={handleCompleteSubmit}
@@ -676,47 +798,15 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
               >
                 Beoordeling afronden
               </Button>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 pt-2">
-            {item.status === 'imported' && (
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-red-500 hover:bg-red-50"
                 onClick={() => rejectItem.mutate(item.id)}
               >
                 Niet relevant
               </Button>
-            )}
-            {item.corpus_node_id && (
-              <Button
-                size="sm"
-                variant="secondary"
-                icon={<ExternalLink className="h-3.5 w-3.5" />}
-                onClick={() => navigate(`/nodes/${item.corpus_node_id}`)}
-              >
-                Bekijk node
-              </Button>
-            )}
-            {item.document_url && (
-              <a
-                href={item.document_url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon={<ExternalLink className="h-3.5 w-3.5" />}
-                >
-                  Bekijk op tweedekamer.nl
-                </Button>
-              </a>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </Card>
