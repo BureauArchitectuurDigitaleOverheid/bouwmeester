@@ -1,6 +1,6 @@
 """Toezegging import strategy — fetches government commitments from TK."""
 
-from datetime import date
+from datetime import date, datetime
 
 from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrategy
 from bouwmeester.services.tk_api_client import TweedeKamerClient
@@ -28,6 +28,14 @@ class ToezeggingStrategy(ImportStrategy):
     def requires_llm(self) -> bool:
         return False
 
+    @property
+    def supports_ek(self) -> bool:
+        return False
+
+    @property
+    def always_import(self) -> bool:
+        return True
+
     async def fetch_items(
         self,
         client: object,
@@ -37,9 +45,7 @@ class ToezeggingStrategy(ImportStrategy):
         if not isinstance(client, TweedeKamerClient):
             return []
 
-        from datetime import datetime as dt
-
-        since_dt = dt.combine(since, dt.min.time()) if since else None
+        since_dt = datetime.combine(since, datetime.min.time()) if since else None
         toezeggingen = await client.fetch_toezeggingen(
             ministerie=BZK_MINISTERIE,
             since=since_dt,
@@ -63,6 +69,15 @@ class ToezeggingStrategy(ImportStrategy):
             )
             for t in toezeggingen
         ]
+
+    def politieke_input_status(self, item: FetchedItem) -> str:
+        status = (item.extra_data or {}).get("status", "")
+        status_map = {
+            "Openstaand": "openstaand",
+            "Deels voldaan": "deels_voldaan",
+            "Voldaan": "voldaan",
+        }
+        return status_map.get(status, "openstaand")
 
     def task_title(self, item: FetchedItem) -> str:
         onderwerp = item.onderwerp[:80] if item.onderwerp else "onbekend"

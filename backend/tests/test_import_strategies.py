@@ -181,10 +181,14 @@ class TestKamervraagStrategy:
         assert items[0].deadline == date(2026, 3, 1)
         assert items[0].indieners == ["Kamerling"]
 
+        from bouwmeester.services.import_strategies.kamervraag import (
+            MAX_KAMERVRAAG_FETCH,
+        )
+
         mock_client.fetch_zaak_by_soort.assert_called_once_with(
             soort="Schriftelijke vragen",
             since=None,
-            limit=100,
+            limit=min(100, MAX_KAMERVRAAG_FETCH),
         )
 
     @pytest.mark.anyio
@@ -323,6 +327,146 @@ class TestBaseStrategyDefaults:
             onderwerp="O",
         )
         assert s.calculate_deadline(item) is None
+
+    def test_default_always_import_is_false(self):
+        s = MotieStrategy()
+        assert s.always_import is False
+
+    def test_default_supports_ek_is_true(self):
+        s = MotieStrategy()
+        assert s.supports_ek is True
+
+    def test_default_politieke_input_status(self):
+        s = MotieStrategy()
+        item = FetchedItem(zaak_id="z1", zaak_nummer="1", titel="T", onderwerp="O")
+        assert s.politieke_input_status(item) == "aangenomen"
+
+
+class TestToezeggingAlwaysImport:
+    """Test the always_import and politieke_input_status behavior."""
+
+    def test_always_import_is_true(self):
+        s = ToezeggingStrategy()
+        assert s.always_import is True
+
+    def test_supports_ek_is_false(self):
+        s = ToezeggingStrategy()
+        assert s.supports_ek is False
+
+    def test_politieke_input_status_openstaand(self):
+        s = ToezeggingStrategy()
+        item = FetchedItem(
+            zaak_id="t1",
+            zaak_nummer="1",
+            titel="T",
+            onderwerp="O",
+            extra_data={"status": "Openstaand"},
+        )
+        assert s.politieke_input_status(item) == "openstaand"
+
+    def test_politieke_input_status_deels_voldaan(self):
+        s = ToezeggingStrategy()
+        item = FetchedItem(
+            zaak_id="t1",
+            zaak_nummer="1",
+            titel="T",
+            onderwerp="O",
+            extra_data={"status": "Deels voldaan"},
+        )
+        assert s.politieke_input_status(item) == "deels_voldaan"
+
+    def test_politieke_input_status_voldaan(self):
+        s = ToezeggingStrategy()
+        item = FetchedItem(
+            zaak_id="t1",
+            zaak_nummer="1",
+            titel="T",
+            onderwerp="O",
+            extra_data={"status": "Voldaan"},
+        )
+        assert s.politieke_input_status(item) == "voldaan"
+
+    def test_politieke_input_status_unknown_defaults_to_openstaand(self):
+        s = ToezeggingStrategy()
+        item = FetchedItem(
+            zaak_id="t1",
+            zaak_nummer="1",
+            titel="T",
+            onderwerp="O",
+            extra_data={"status": "Onbekend"},
+        )
+        assert s.politieke_input_status(item) == "openstaand"
+
+    def test_politieke_input_status_no_extra_data(self):
+        s = ToezeggingStrategy()
+        item = FetchedItem(
+            zaak_id="t1",
+            zaak_nummer="1",
+            titel="T",
+            onderwerp="O",
+        )
+        assert s.politieke_input_status(item) == "openstaand"
+
+
+class TestKamervraagSupportsEk:
+    def test_supports_ek_is_false(self):
+        s = KamervraagStrategy()
+        assert s.supports_ek is False
+
+
+class TestKamervraagFetchLimit:
+    """Test that kamervragen are capped at MAX_KAMERVRAAG_FETCH."""
+
+    @pytest.mark.anyio
+    async def test_limit_capped_to_max(self):
+        from bouwmeester.services.import_strategies.kamervraag import (
+            MAX_KAMERVRAAG_FETCH,
+        )
+
+        mock_client = AsyncMock(spec=TweedeKamerClient)
+        mock_client.fetch_zaak_by_soort.return_value = []
+
+        strategy = KamervraagStrategy()
+        await strategy.fetch_items(mock_client, None, 1000)
+
+        mock_client.fetch_zaak_by_soort.assert_called_once_with(
+            soort="Schriftelijke vragen",
+            since=None,
+            limit=MAX_KAMERVRAAG_FETCH,
+        )
+
+    @pytest.mark.anyio
+    async def test_limit_below_max_unchanged(self):
+        mock_client = AsyncMock(spec=TweedeKamerClient)
+        mock_client.fetch_zaak_by_soort.return_value = []
+
+        strategy = KamervraagStrategy()
+        await strategy.fetch_items(mock_client, None, 10)
+
+        mock_client.fetch_zaak_by_soort.assert_called_once_with(
+            soort="Schriftelijke vragen",
+            since=None,
+            limit=10,
+        )
+
+
+class TestODataEscape:
+    """Test the _odata_escape helper."""
+
+    def test_no_quotes(self):
+        from bouwmeester.services.tk_api_client import _odata_escape
+
+        assert _odata_escape("Binnenlandse Zaken") == "Binnenlandse Zaken"
+
+    def test_single_quote_escaped(self):
+        from bouwmeester.services.tk_api_client import _odata_escape
+
+        assert _odata_escape("It's a test") == "It''s a test"
+
+    def test_multiple_quotes(self):
+        from bouwmeester.services.tk_api_client import _odata_escape
+
+        assert _odata_escape("a'b'c") == "a''b''c"
 
 
 # ---------------------------------------------------------------------------

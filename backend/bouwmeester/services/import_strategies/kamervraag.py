@@ -1,13 +1,21 @@
 """Kamervraag import strategy — fetches schriftelijke vragen from TK."""
 
-from datetime import date
+from datetime import date, datetime
 
 from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrategy
 from bouwmeester.services.tk_api_client import TweedeKamerClient
 
+# Cap kamervragen per poll to avoid excessive LLM calls
+MAX_KAMERVRAAG_FETCH = 25
+
 
 class KamervraagStrategy(ImportStrategy):
-    """Strategy for importing kamervragen (schriftelijke vragen)."""
+    """Strategy for importing kamervragen (schriftelijke vragen).
+
+    Fetches recent kamervragen from the TK API. Since there is no
+    relevance pre-filter (unlike moties which filter by 'aangenomen'),
+    the fetch limit is capped to avoid excessive LLM calls.
+    """
 
     @property
     def item_type(self) -> str:
@@ -21,6 +29,10 @@ class KamervraagStrategy(ImportStrategy):
     def requires_llm(self) -> bool:
         return True
 
+    @property
+    def supports_ek(self) -> bool:
+        return False
+
     async def fetch_items(
         self,
         client: object,
@@ -30,13 +42,12 @@ class KamervraagStrategy(ImportStrategy):
         if not isinstance(client, TweedeKamerClient):
             return []
 
-        from datetime import datetime as dt
-
-        since_dt = dt.combine(since, dt.min.time()) if since else None
+        since_dt = datetime.combine(since, datetime.min.time()) if since else None
+        effective_limit = min(limit, MAX_KAMERVRAAG_FETCH)
         zaken = await client.fetch_zaak_by_soort(
             soort="Schriftelijke vragen",
             since=since_dt,
-            limit=limit,
+            limit=effective_limit,
         )
         return [
             FetchedItem(
