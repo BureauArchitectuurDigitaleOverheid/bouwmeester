@@ -5,8 +5,10 @@ Clears all existing data and populates organisatie, personen, corpus, edges, and
 """
 
 import asyncio
+import json
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +32,174 @@ from bouwmeester.schema.organisatie_eenheid import (
 from bouwmeester.schema.person import PersonCreate
 from bouwmeester.schema.tag import TagCreate
 from bouwmeester.schema.task import TaskCreate
+
+
+def _generate_fallback_persons() -> dict:
+    """Generate obviously fake placeholder persons when seed_persons.json is missing.
+
+    This allows `just reset-db` to work without decryption keys (CI, new devs).
+    """
+    # Map of org_keys used by named persons
+    org_keys_named = [
+        "bzk",
+        "dgdoo",
+        "dir_ddo",
+        "dir_ds",
+        "dir_cio",
+        "dir_ao",
+        "dir_ifhr",
+        "prog_open",
+        "afd_basisinfra",
+        "afd_id_toegang",
+        "afd_wdo",
+        "afd_dienstverlening",
+        "bureau_arch",
+        "afd_ds_a",
+        "afd_ds_b",
+        "afd_ds_c",
+        "afd_ds_d",
+        "afd_ict_voorz",
+        "afd_istelsel",
+        "afd_infobev",
+        "afd_ambt_vak",
+        "afd_arbeidsmarkt",
+        "afd_inkoop",
+        "afd_fac_huisv",
+    ]
+    functies_named = [
+        "staatssecretaris",
+        "directeur_generaal",
+        "directeur",
+        "directeur",
+        "directeur",
+        "directeur",
+        "directeur",
+        "directeur",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "coordinator",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "afdelingshoofd",
+        "afdelingshoofd",
+    ]
+    keys_named = [
+        "p_vanmarum",
+        "p_dgdoo",
+        "p_vermeer",
+        "p_beentjes",
+        "p_deblaauw",
+        "p_weimar",
+        "p_hulzebosch",
+        "p_rutjens",
+        "p_westelaken",
+        "p_vanwissen",
+        "p_lucassen",
+        "p_olivers",
+        "p_keulemans",
+        "p_vanherwaarden",
+        "p_zondervan",
+        "p_geerts",
+        "p_kewal",
+        "p_terborg",
+        "p_brouwer",
+        "p_timmermans",
+        "p_vandegraaf",
+        "p_meijer",
+        "p_zwaans",
+        "p_coenen",
+    ]
+    named_persons = []
+    for i, key in enumerate(keys_named):
+        named_persons.append(
+            {
+                "key": key,
+                "naam": f"Persoon {key.removeprefix('p_').title()}",
+                "email": f"{key.removeprefix('p_')}@placeholder.example",
+                "functie": functies_named[i],
+                "org_key": org_keys_named[i],
+            }
+        )
+
+    tl_keys = [
+        ("p_tl_digid", "team_digid"),
+        ("p_tl_eudiw", "team_eudiw"),
+        ("p_tl_mijnov", "team_mijnoverheid"),
+        ("p_tl_gdi", "team_gdi"),
+        ("p_tl_algo", "team_algo"),
+        ("p_tl_aiact", "team_ai_act"),
+        ("p_tl_data", "team_data"),
+        ("p_tl_incl", "team_inclusie"),
+        ("p_tl_eu", "team_eu_intl"),
+        ("p_tl_comm", "team_comm"),
+        ("p_tl_cloud", "team_cloud"),
+        ("p_tl_sourc", "team_sourcing"),
+        ("p_tl_arch", "team_arch"),
+        ("p_tl_ciostel", "team_cio_stelsel"),
+        ("p_tl_bio", "team_bio"),
+        ("p_tl_cao", "team_cao"),
+        ("p_tl_div", "team_diversiteit"),
+        ("p_tl_woo", "team_woo"),
+        ("p_tl_actie", "team_actieplan"),
+    ]
+    team_leaders = [
+        {
+            "key": k,
+            "naam": f"Teamleider {k.removeprefix('p_tl_').title()}",
+            "functie": "coordinator",
+            "org_key": org,
+        }
+        for k, org in tl_keys
+    ]
+
+    # Minimal bulk people — just enough to satisfy the named_bulk_refs
+    bulk_names = {
+        "Persoon Kaya": ("senior_beleidsmedewerker", "afd_id_toegang", "p_kaya"),
+        "Persoon Nguyen": ("beleidsmedewerker", "team_digid", "p_nguyen"),
+        "Persoon Visser": ("projectleider", "team_mijnoverheid", "p_visser"),
+        "Persoon DeJong": ("senior_beleidsmedewerker", "team_ai_act", "p_dejong"),
+        "Persoon Kumar": ("senior_beleidsmedewerker", "team_data", "p_kumar"),
+        "Persoon Hendriks": ("beleidsmedewerker", "team_inclusie", "p_hendriks"),
+        "Persoon DeVries": ("senior_beleidsmedewerker", "team_cloud", "p_devries"),
+        "Persoon VanDenBerg": ("senior_beleidsmedewerker", "team_bio", "p_berg"),
+        "Persoon Peeters": (
+            "senior_beleidsmedewerker",
+            "afd_arbeidsmarkt",
+            "p_peeters",
+        ),
+        "Persoon Achterberg": ("jurist", "afd_wdo", "p_achterberg"),
+    }
+    bulk_people = [
+        {
+            "naam": naam,
+            "email_prefix": naam.lower().replace(" ", "."),
+            "functie": functie,
+            "org_key": org,
+        }
+        for naam, (functie, org, _) in bulk_names.items()
+    ]
+    named_bulk_refs = {naam: ref for naam, (_, _, ref) in bulk_names.items()}
+
+    return {
+        "named_persons": named_persons,
+        "team_leaders": team_leaders,
+        "bulk_people": bulk_people,
+        "named_bulk_refs": named_bulk_refs,
+        "team_leader_aliases": {
+            "p_tl_algo": "p_bakker",
+            "p_tl_arch": "p_smit",
+            "p_tl_sourc": "p_jansen",
+        },
+    }
 
 
 async def seed(db: AsyncSession) -> None:
@@ -650,7 +820,7 @@ async def seed(db: AsyncSession) -> None:
     print(f"  Organisatie: ~{org_count} eenheden aangemaakt")
 
     # =========================================================================
-    # 2. PERSONEN (~200 medewerkers)
+    # 2. PERSONEN (~200 medewerkers) — loaded from seed_persons.json
     # =========================================================================
 
     # Helper to create people in bulk
@@ -686,1259 +856,123 @@ async def seed(db: AsyncSession) -> None:
         await db.flush()
         return person
 
-    # --- Bewindspersoon en ambtelijke top (echte namen) ---
-    p_vanmarum = await cp(
-        "Eddie van Marum",
-        "eddie.vanmarum@minbzk.nl",
-        "staatssecretaris",
-        bzk,
-    )
-    p_dgdoo = await cp(
-        "Eva den Dunnen-Heijblom",
-        "eva.heijblom@minbzk.nl",
-        "directeur_generaal",
-        dgdoo,
-    )
+    # Build org_map: string keys → org unit objects
+    org_map = {
+        "bzk": bzk,
+        "dgdoo": dgdoo,
+        "dir_ddo": dir_ddo,
+        "dir_ds": dir_ds,
+        "dir_cio": dir_cio,
+        "dir_ao": dir_ao,
+        "dir_ifhr": dir_ifhr,
+        "prog_open": prog_open,
+        "afd_basisinfra": afd_basisinfra,
+        "afd_id_toegang": afd_id_toegang,
+        "afd_wdo": afd_wdo,
+        "afd_dienstverlening": afd_dienstverlening,
+        "bureau_arch": bureau_arch,
+        "afd_ds_a": afd_ds_a,
+        "afd_ds_b": afd_ds_b,
+        "afd_ds_c": afd_ds_c,
+        "afd_ds_d": afd_ds_d,
+        "afd_ict_voorz": afd_ict_voorz,
+        "afd_istelsel": afd_istelsel,
+        "afd_infobev": afd_infobev,
+        "afd_ambt_vak": afd_ambt_vak,
+        "afd_arbeidsmarkt": afd_arbeidsmarkt,
+        "afd_inkoop": afd_inkoop,
+        "afd_fac_huisv": afd_fac_huisv,
+        "afd_ai_data": afd_ai_data,
+        "afd_strat_intl": afd_strat_intl,
+        "team_digid": team_digid,
+        "team_eudiw": team_eudiw,
+        "team_mijnoverheid": team_mijnoverheid,
+        "team_gdi": team_gdi,
+        "team_algo": team_algo,
+        "team_ai_act": team_ai_act,
+        "team_data": team_data,
+        "team_inclusie": team_inclusie,
+        "team_eu_intl": team_eu_intl,
+        "team_comm": team_comm,
+        "team_cloud": team_cloud,
+        "team_sourcing": team_sourcing,
+        "team_arch": team_arch,
+        "team_cio_stelsel": team_cio_stelsel,
+        "team_bio": team_bio,
+        "team_cao": team_cao,
+        "team_diversiteit": team_diversiteit,
+        "team_woo": team_woo,
+        "team_actieplan": team_actieplan,
+        "staf_bzk": staf_bzk,
+        "dienst_dd": dienst_dd,
+        "afd_zonder_mensen": afd_zonder_mensen,
+    }
 
-    # --- Directeuren (echte namen via ABD) ---
-    p_vermeer = await cp(
-        "Mark Vermeer",
-        "mark.vermeer@minbzk.nl",
-        "directeur",
-        dir_ddo,
-    )
-    p_beentjes = await cp(
-        "Hillie Beentjes",
-        "hillie.beentjes@minbzk.nl",
-        "directeur",
-        dir_ds,
-    )
-    p_deblaauw = await cp(
-        "Art de Blaauw",
-        "art.deblaauw@minbzk.nl",
-        "directeur",
-        dir_cio,
-    )
-    p_weimar = await cp(
-        "André Weimar",
-        "andre.weimar@minbzk.nl",
-        "directeur",
-        dir_ao,
-    )
-    p_hulzebosch = await cp(
-        "Mariya Hulzebosch",
-        "mariya.hulzebosch@minbzk.nl",
-        "directeur",
-        dir_ifhr,
-    )
-    p_rutjens = await cp(
-        "Jacqueline Rutjens",
-        "jacqueline.rutjens@minbzk.nl",
-        "directeur",
-        prog_open,
-    )
+    # Load person data from JSON (or generate fallback)
+    persons_json_path = Path(__file__).parent / "seed_persons.json"
+    if persons_json_path.exists():
+        with open(persons_json_path) as f:
+            persons_data = json.load(f)
+        print("  Personen: laden uit seed_persons.json")
+    else:
+        print(
+            "  ⚠ seed_persons.json niet gevonden — gebruik placeholder-personen. "
+            "Decrypt met: just decrypt-seed"
+        )
+        # Generate fake placeholder data with the same structure
+        persons_data = _generate_fallback_persons()
 
-    # --- Afdelingshoofden (ABD-benoemd, echte namen) ---
-    # Digitale Overheid
-    p_westelaken = await cp(
-        "Lindy van de Westelaken",
-        "lindy.vandewestelaken@minbzk.nl",
-        "afdelingshoofd",
-        afd_basisinfra,
-    )
-    p_vanwissen = await cp(
-        "Lissy van Wissen",
-        "lissy.vanwissen@minbzk.nl",
-        "afdelingshoofd",
-        afd_id_toegang,
-    )
-    p_lucassen = await cp(
-        "Hetty Lucassen",
-        "hetty.lucassen@minbzk.nl",
-        "afdelingshoofd",
-        afd_wdo,
-    )
-    p_olivers = await cp(
-        "Christel Olivers",
-        "christel.olivers@minbzk.nl",
-        "afdelingshoofd",
-        afd_dienstverlening,
-    )
-    p_keulemans = await cp(
-        "Kees Keulemans",
-        "kees.keulemans@minbzk.nl",
-        "coordinator",
-        bureau_arch,
-    )
+    person_map: dict[str, object] = {}
 
-    # Digitale Samenleving
-    p_vanherwaarden = await cp(
-        "Digna van Herwaarden",
-        "digna.vanherwaarden@minbzk.nl",
-        "afdelingshoofd",
-        afd_ds_a,
-    )
-    p_zondervan = await cp(
-        "Ingrid Zondervan",
-        "ingrid.zondervan@minbzk.nl",
-        "afdelingshoofd",
-        afd_ds_b,
-    )
-    p_geerts = await cp(
-        "Desiree Geerts",
-        "desiree.geerts@minbzk.nl",
-        "afdelingshoofd",
-        afd_ds_c,
-    )
-    p_kewal = await cp(
-        "Suzie Kewal",
-        "suzie.kewal@minbzk.nl",
-        "afdelingshoofd",
-        afd_ds_d,
-    )
+    # Create named persons (bewindspersonen, directeuren, afdelingshoofden)
+    for entry in persons_data["named_persons"]:
+        p = await cp(
+            entry["naam"],
+            entry["email"],
+            entry["functie"],
+            org_map[entry["org_key"]],
+        )
+        person_map[entry["key"]] = p
 
-    # CIO Rijk
-    p_terborg = await cp(
-        "Fleur ter Borg",
-        "fleur.terborg@minbzk.nl",
-        "afdelingshoofd",
-        afd_ict_voorz,
-    )
-    # I-Stelsel en Vakmanschap — fictief
-    p_brouwer = await cp(
-        "Stefan Brouwer",
-        "stefan.brouwer@minbzk.nl",
-        "afdelingshoofd",
-        afd_istelsel,
-    )
-    # Informatiebeveiliging — fictief
-    p_timmermans = await cp(
-        "Renate Timmermans",
-        "renate.timmermans@minbzk.nl",
-        "afdelingshoofd",
-        afd_infobev,
-    )
+    # Create team leaders
+    for entry in persons_data["team_leaders"]:
+        p = await cp(
+            entry["naam"],
+            None,
+            entry["functie"],
+            org_map[entry["org_key"]],
+        )
+        person_map[entry["key"]] = p
 
-    # Ambtenaar & Organisatie
-    p_vandegraaf = await cp(
-        "Hester van de Graaf",
-        "hester.vandegraaf@minbzk.nl",
-        "afdelingshoofd",
-        afd_ambt_vak,
-    )
-    # Arbeidsmarkt — fictief
-    p_meijer = await cp(
-        "Wouter Meijer",
-        "wouter.meijer@minbzk.nl",
-        "afdelingshoofd",
-        afd_arbeidsmarkt,
-    )
+    # Create bulk people and track named references
+    named_bulk_refs = persons_data.get("named_bulk_refs", {})
+    for entry in persons_data["bulk_people"]:
+        p = await cp(
+            entry["naam"],
+            None,
+            entry["functie"],
+            org_map[entry["org_key"]],
+        )
+        # If this person has a named reference, store it
+        ref_key = named_bulk_refs.get(entry["naam"])
+        if ref_key:
+            person_map[ref_key] = p
 
-    # IFHR
-    p_zwaans = await cp(
-        "David Zwaans",
-        "david.zwaans@minbzk.nl",
-        "afdelingshoofd",
-        afd_inkoop,
-    )
-    p_coenen = await cp(
-        "Irene Coenen",
-        "irene.coenen@minbzk.nl",
-        "afdelingshoofd",
-        afd_fac_huisv,
-    )
-
-    # --- Teamleiders (fictief) ---
-    p_tl_digid = await cp(
-        "Priya Sharma",
-        None,
-        "coordinator",
-        team_digid,
-    )
-    p_tl_eudiw = await cp(
-        "Joost van Dijk",
-        None,
-        "coordinator",
-        team_eudiw,
-    )
-    p_tl_mijnov = await cp(
-        "Nienke Postma",
-        None,
-        "coordinator",
-        team_mijnoverheid,
-    )
-    p_tl_gdi = await cp(
-        "Rick Janssen",
-        None,
-        "coordinator",
-        team_gdi,
-    )
-    p_tl_algo = await cp(
-        "Fatima Bakker-El Idrissi",
-        None,
-        "coordinator",
-        team_algo,
-    )
-    p_tl_aiact = await cp(
-        "Daan Vermeulen",
-        None,
-        "coordinator",
-        team_ai_act,
-    )
-    p_tl_data = await cp(
-        "Samira El Amrani",
-        None,
-        "coordinator",
-        team_data,
-    )
-    p_tl_incl = await cp(
-        "Marjolein de Wit",
-        None,
-        "coordinator",
-        team_inclusie,
-    )
-    p_tl_eu = await cp(
-        "Pieter-Jan Hofstra",
-        None,
-        "coordinator",
-        team_eu_intl,
-    )
-    p_tl_comm = await cp(
-        "Lisa van Beek",
-        None,
-        "coordinator",
-        team_comm,
-    )
-    p_tl_cloud = await cp(
-        "Bas Hendriks",
-        None,
-        "coordinator",
-        team_cloud,
-    )
-    p_tl_sourc = await cp(
-        "Eva Jansen",
-        None,
-        "coordinator",
-        team_sourcing,
-    )
-    p_tl_arch = await cp(
-        "Jeroen Smit",
-        None,
-        "coordinator",
-        team_arch,
-    )
-    p_tl_ciostel = await cp(
-        "Annemiek Vos",
-        None,
-        "coordinator",
-        team_cio_stelsel,
-    )
-    p_tl_bio = await cp(
-        "Sander Kuijpers",
-        None,
-        "coordinator",
-        team_bio,
-    )
-    p_tl_cao = await cp(
-        "Mirjam Schouten",
-        None,
-        "coordinator",
-        team_cao,
-    )
-    p_tl_div = await cp(
-        "Omar Yilmaz",
-        None,
-        "coordinator",
-        team_diversiteit,
-    )
-    p_tl_woo = await cp(
-        "Charlotte Dekker",
-        None,
-        "coordinator",
-        team_woo,
-    )
-    p_tl_actie = await cp(
-        "Tim Groenewegen",
-        None,
-        "coordinator",
-        team_actieplan,
-    )
-
-    # --- Senior beleidsmedewerkers en beleidsmedewerkers (fictief, ~150 personen) ---
-    # Bulk data: (naam, email prefix, functie, eenheid)
-    bulk_people = [
-        # === Directie Digitale Overheid — Afd Basisinfra (~12) ===
-        (
-            "Sophie van der Linden",
-            "s.vanderlinden",
-            "senior_beleidsmedewerker",
-            team_gdi,
-        ),
-        (
-            "Thomas Bakker",
-            "t.bakker",
-            "beleidsmedewerker",
-            team_gdi,
-        ),
-        (
-            "Anouk Willems",
-            "a.willems",
-            "beleidsmedewerker",
-            team_gdi,
-        ),
-        (
-            "Marloes Visser",
-            "m.visser",
-            "projectleider",
-            team_mijnoverheid,
-        ),
-        (
-            "Ravi Patel",
-            "r.patel",
-            "senior_beleidsmedewerker",
-            team_mijnoverheid,
-        ),
-        (
-            "Dominique Leroy",
-            "d.leroy",
-            "beleidsmedewerker",
-            team_mijnoverheid,
-        ),
-        (
-            "Fleur Mulder",
-            "f.mulder",
-            "beleidsmedewerker",
-            team_mijnoverheid,
-        ),
-        (
-            "Youssef Amrani",
-            "y.amrani",
-            "beleidsmedewerker",
-            afd_basisinfra,
-        ),
-        (
-            "Wietske Nauta",
-            "w.nauta",
-            "beleidsmedewerker",
-            afd_basisinfra,
-        ),
-        (
-            "Jasper van Leeuwen",
-            "j.vanleeuwen",
-            "beleidsmedewerker",
-            afd_basisinfra,
-        ),
-        # === Afd Identiteit en Toegang (~14) ===
-        (
-            "Deniz Kaya",
-            "d.kaya",
-            "senior_beleidsmedewerker",
-            afd_id_toegang,
-        ),
-        (
-            "Floor Dijkstra",
-            "f.dijkstra",
-            "senior_beleidsmedewerker",
-            afd_id_toegang,
-        ),
-        (
-            "Linh Nguyen",
-            "l.nguyen",
-            "beleidsmedewerker",
-            team_digid,
-        ),
-        (
-            "Koen Janssen",
-            "k.janssen",
-            "beleidsmedewerker",
-            team_digid,
-        ),
-        (
-            "Sara Molenaar",
-            "s.molenaar",
-            "beleidsmedewerker",
-            team_digid,
-        ),
-        (
-            "Thijs de Boer",
-            "th.deboer",
-            "senior_beleidsmedewerker",
-            team_eudiw,
-        ),
-        (
-            "Nina Aerts",
-            "n.aerts",
-            "beleidsmedewerker",
-            team_eudiw,
-        ),
-        (
-            "Maarten Vos",
-            "m.vos",
-            "beleidsmedewerker",
-            team_eudiw,
-        ),
-        (
-            "Emma van Dalen",
-            "e.vandalen",
-            "beleidsmedewerker",
-            team_eudiw,
-        ),
-        (
-            "Ruben Groen",
-            "r.groen",
-            "beleidsmedewerker",
-            afd_id_toegang,
-        ),
-        # === Afd WDO (~8) ===
-        (
-            "Lisa Achterberg",
-            "l.achterberg",
-            "jurist",
-            afd_wdo,
-        ),
-        (
-            "Vincent Bos",
-            "v.bos",
-            "senior_beleidsmedewerker",
-            afd_wdo,
-        ),
-        (
-            "Manon Kuiper",
-            "m.kuiper",
-            "beleidsmedewerker",
-            afd_wdo,
-        ),
-        (
-            "Alexander Scholten",
-            "a.scholten",
-            "beleidsmedewerker",
-            afd_wdo,
-        ),
-        (
-            "Julia van Houten",
-            "j.vanhouten",
-            "jurist",
-            afd_wdo,
-        ),
-        (
-            "Bart Koster",
-            "b.koster",
-            "beleidsmedewerker",
-            afd_wdo,
-        ),
-        # === Directie Digitale Samenleving — Afd AI/Data/Inclusie (~20) ===
-        (
-            "Bram de Jong",
-            "b.dejong",
-            "senior_beleidsmedewerker",
-            team_ai_act,
-        ),
-        (
-            "Raj Kumar",
-            "r.kumar",
-            "senior_beleidsmedewerker",
-            team_data,
-        ),
-        (
-            "Anne Hendriks",
-            "a.hendriks",
-            "beleidsmedewerker",
-            team_inclusie,
-        ),
-        (
-            "Naomi Osei",
-            "n.osei",
-            "beleidsmedewerker",
-            team_algo,
-        ),
-        (
-            "Sven Berger",
-            "s.berger",
-            "beleidsmedewerker",
-            team_algo,
-        ),
-        (
-            "Iris van Dam",
-            "i.vandam",
-            "beleidsmedewerker",
-            team_algo,
-        ),
-        (
-            "Mike Koopman",
-            "m.koopman",
-            "senior_beleidsmedewerker",
-            team_ai_act,
-        ),
-        (
-            "Femke Admiraal",
-            "f.admiraal",
-            "beleidsmedewerker",
-            team_ai_act,
-        ),
-        (
-            "Leon Groot",
-            "l.groot",
-            "beleidsmedewerker",
-            team_ai_act,
-        ),
-        (
-            "Carmen Torres",
-            "c.torres",
-            "senior_beleidsmedewerker",
-            team_data,
-        ),
-        (
-            "Jesse van Rijn",
-            "j.vanrijn",
-            "beleidsmedewerker",
-            team_data,
-        ),
-        (
-            "Esra Yildirim",
-            "e.yildirim",
-            "beleidsmedewerker",
-            team_data,
-        ),
-        (
-            "Hanneke Prins",
-            "h.prins",
-            "senior_beleidsmedewerker",
-            team_inclusie,
-        ),
-        (
-            "Jan-Willem Moerman",
-            "jw.moerman",
-            "beleidsmedewerker",
-            team_inclusie,
-        ),
-        (
-            "Lot van Dongen",
-            "l.vandongen",
-            "beleidsmedewerker",
-            team_inclusie,
-        ),
-        # === Afd Strategie/Internationaal/Communicatie (~10) ===
-        (
-            "Mees Hoekstra",
-            "m.hoekstra",
-            "senior_beleidsmedewerker",
-            team_comm,
-        ),
-        (
-            "Luuk Driessen",
-            "l.driessen",
-            "communicatieadviseur",
-            team_comm,
-        ),
-        (
-            "Petra Claassen",
-            "p.claassen",
-            "senior_beleidsmedewerker",
-            team_eu_intl,
-        ),
-        (
-            "Freek van der Heijden",
-            "f.vanderheijden",
-            "beleidsmedewerker",
-            team_eu_intl,
-        ),
-        (
-            "Lieke Vermolen",
-            "l.vermolen",
-            "beleidsmedewerker",
-            team_eu_intl,
-        ),
-        (
-            "Bob Gerrits",
-            "b.gerrits",
-            "beleidsmedewerker",
-            team_comm,
-        ),
-        (
-            "Nikki Rodenburg",
-            "n.rodenburg",
-            "beleidsmedewerker",
-            afd_strat_intl,
-        ),
-        (
-            "Matthijs Born",
-            "m.born",
-            "beleidsmedewerker",
-            afd_strat_intl,
-        ),
-        # === Directie CIO Rijk — Afd ICT-diensten (~12) ===
-        (
-            "Karin de Vries",
-            "k.devries",
-            "senior_beleidsmedewerker",
-            team_cloud,
-        ),
-        (
-            "Patrick Oomen",
-            "p.oomen",
-            "beleidsmedewerker",
-            team_cloud,
-        ),
-        (
-            "Daniëlle Moerland",
-            "d.moerland",
-            "beleidsmedewerker",
-            team_cloud,
-        ),
-        (
-            "Tom Willemse",
-            "t.willemse",
-            "beleidsmedewerker",
-            team_cloud,
-        ),
-        (
-            "Inge Westra",
-            "i.westra",
-            "senior_beleidsmedewerker",
-            team_sourcing,
-        ),
-        (
-            "Arjan de Haan",
-            "a.dehaan",
-            "beleidsmedewerker",
-            team_sourcing,
-        ),
-        (
-            "Sandra Muijs",
-            "s.muijs",
-            "beleidsmedewerker",
-            team_sourcing,
-        ),
-        (
-            "Wesley Kort",
-            "w.kort",
-            "adviseur",
-            afd_ict_voorz,
-        ),
-        # === Afd I-Stelsel en Vakmanschap (~10) ===
-        (
-            "Michelle Langenberg",
-            "m.langenberg",
-            "senior_beleidsmedewerker",
-            team_arch,
-        ),
-        ("Robert Kok", "r.kok", "adviseur", team_arch),
-        (
-            "Vera Gielen",
-            "v.gielen",
-            "beleidsmedewerker",
-            team_arch,
-        ),
-        (
-            "Frank Polman",
-            "f.polman",
-            "senior_beleidsmedewerker",
-            team_cio_stelsel,
-        ),
-        (
-            "Greta van Rooij",
-            "g.vanrooij",
-            "beleidsmedewerker",
-            team_cio_stelsel,
-        ),
-        (
-            "Henri Manders",
-            "h.manders",
-            "beleidsmedewerker",
-            team_cio_stelsel,
-        ),
-        (
-            "Annelies Boom",
-            "a.boom",
-            "beleidsmedewerker",
-            afd_istelsel,
-        ),
-        # === Afd Informatiebeveiliging (~8) ===
-        (
-            "Thomas van den Berg",
-            "t.vandenberg",
-            "senior_beleidsmedewerker",
-            team_bio,
-        ),
-        (
-            "Erik Huizen",
-            "e.huizen",
-            "beleidsmedewerker",
-            team_bio,
-        ),
-        (
-            "Linda Verhoeven",
-            "l.verhoeven",
-            "beleidsmedewerker",
-            team_bio,
-        ),
-        (
-            "Marco Fontein",
-            "m.fontein",
-            "senior_beleidsmedewerker",
-            afd_infobev,
-        ),
-        (
-            "Yvette Claessens",
-            "y.claessens",
-            "beleidsmedewerker",
-            afd_infobev,
-        ),
-        (
-            "Niels Borgman",
-            "n.borgman",
-            "beleidsmedewerker",
-            afd_infobev,
-        ),
-        # === Directie A&O (~15) ===
-        (
-            "Maarten Peeters",
-            "m.peeters",
-            "senior_beleidsmedewerker",
-            afd_arbeidsmarkt,
-        ),
-        (
-            "Leonie Mulder",
-            "l.mulder",
-            "beleidsmedewerker",
-            afd_arbeidsmarkt,
-        ),
-        (
-            "Jasper Hoekman",
-            "j.hoekman",
-            "beleidsmedewerker",
-            afd_arbeidsmarkt,
-        ),
-        (
-            "Monique Geerts",
-            "m.geerts",
-            "senior_beleidsmedewerker",
-            team_cao,
-        ),
-        (
-            "Arno Willems",
-            "a2.willems",
-            "beleidsmedewerker",
-            team_cao,
-        ),
-        (
-            "Claire van Beek",
-            "c.vanbeek",
-            "beleidsmedewerker",
-            team_cao,
-        ),
-        (
-            "Said Benali",
-            "s.benali",
-            "senior_beleidsmedewerker",
-            afd_ambt_vak,
-        ),
-        (
-            "Tanja Veldkamp",
-            "t.veldkamp",
-            "jurist",
-            afd_ambt_vak,
-        ),
-        (
-            "Kim Janson",
-            "k.janson",
-            "beleidsmedewerker",
-            afd_ambt_vak,
-        ),
-        (
-            "Yusuf Arslan",
-            "y.arslan",
-            "senior_beleidsmedewerker",
-            team_diversiteit,
-        ),
-        (
-            "Noor de Groot",
-            "n.degroot",
-            "beleidsmedewerker",
-            team_diversiteit,
-        ),
-        (
-            "Dirk Aalbers",
-            "d.aalbers",
-            "beleidsmedewerker",
-            afd_arbeidsmarkt,
-        ),
-        (
-            "Patricia Volkers",
-            "p.volkers",
-            "beleidsmedewerker",
-            dir_ao,
-        ),
-        # === Directie IFHR (~15) ===
-        (
-            "Chantal Gorter",
-            "c.gorter",
-            "senior_beleidsmedewerker",
-            afd_inkoop,
-        ),
-        (
-            "Hugo Verwey",
-            "h.verwey",
-            "beleidsmedewerker",
-            afd_inkoop,
-        ),
-        (
-            "Renée van Vliet",
-            "r.vanvliet",
-            "beleidsmedewerker",
-            afd_inkoop,
-        ),
-        (
-            "Stan Molenaar",
-            "s2.molenaar",
-            "beleidsmedewerker",
-            afd_inkoop,
-        ),
-        (
-            "Wendy Driessen",
-            "w.driessen",
-            "senior_beleidsmedewerker",
-            afd_fac_huisv,
-        ),
-        (
-            "Karel Mertens",
-            "k.mertens",
-            "beleidsmedewerker",
-            afd_fac_huisv,
-        ),
-        (
-            "Astrid van Hoorn",
-            "a.vanhoorn",
-            "beleidsmedewerker",
-            afd_fac_huisv,
-        ),
-        (
-            "Rutger Bosman",
-            "r.bosman",
-            "beleidsmedewerker",
-            afd_fac_huisv,
-        ),
-        (
-            "Debby Konings",
-            "d.konings",
-            "beleidsmedewerker",
-            dir_ifhr,
-        ),
-        # === Programma Open Overheid (~10) ===
-        (
-            "Mireille Pastoor",
-            "m.pastoor",
-            "senior_beleidsmedewerker",
-            team_woo,
-        ),
-        (
-            "Gerben Zijlstra",
-            "g.zijlstra",
-            "beleidsmedewerker",
-            team_woo,
-        ),
-        (
-            "Ilse Vermeer",
-            "i.vermeer",
-            "beleidsmedewerker",
-            team_woo,
-        ),
-        (
-            "Robin van Es",
-            "r.vanes",
-            "senior_beleidsmedewerker",
-            team_actieplan,
-        ),
-        (
-            "Sanne Lammers",
-            "s.lammers",
-            "beleidsmedewerker",
-            team_actieplan,
-        ),
-        (
-            "Max Verbeek",
-            "m.verbeek",
-            "beleidsmedewerker",
-            team_actieplan,
-        ),
-        (
-            "Lotte Verduin",
-            "l.verduin",
-            "beleidsmedewerker",
-            prog_open,
-        ),
-        # === DG-staf / overkoepelend (~8) ===
-        ("Eline Modderman", "e.modderman", "adviseur", dgdoo),
-        ("Derk Ottens", "d.ottens", "adviseur", dgdoo),
-        (
-            "Felien de Vos",
-            "f.devos",
-            "beleidsmedewerker",
-            dgdoo,
-        ),
-        (
-            "Huub Geelen",
-            "h.geelen",
-            "adviseur",
-            dgdoo,
-        ),
-        ("Willeke Post", "w.post", "adviseur", dgdoo),
-        (
-            "Jacob Tervoort",
-            "j.tervoort",
-            "communicatieadviseur",
-            dgdoo,
-        ),
-        # === Extra beleidsmedewerkers Digitale Overheid (~10) ===
-        (
-            "Wouter van Eijk",
-            "w.vaneijk",
-            "beleidsmedewerker",
-            team_digid,
-        ),
-        (
-            "Rosa Bakker",
-            "r.bakker",
-            "beleidsmedewerker",
-            team_digid,
-        ),
-        (
-            "Amir Hassan",
-            "a.hassan",
-            "beleidsmedewerker",
-            team_eudiw,
-        ),
-        (
-            "Tineke van der Wal",
-            "t.vanderwal",
-            "beleidsmedewerker",
-            team_gdi,
-        ),
-        (
-            "Stefan Groot",
-            "s.groot",
-            "beleidsmedewerker",
-            team_gdi,
-        ),
-        (
-            "Naomi Veen",
-            "n.veen",
-            "beleidsmedewerker",
-            team_mijnoverheid,
-        ),
-        (
-            "Jip Aldenberg",
-            "j.aldenberg",
-            "beleidsmedewerker",
-            afd_wdo,
-        ),
-        (
-            "Lara Koppers",
-            "l.koppers",
-            "beleidsmedewerker",
-            afd_wdo,
-        ),
-        (
-            "Daan van Houten",
-            "d.vanhouten",
-            "beleidsmedewerker",
-            afd_basisinfra,
-        ),
-        (
-            "Merel Franken",
-            "m.franken",
-            "beleidsmedewerker",
-            afd_basisinfra,
-        ),
-        # === Extra beleidsmedewerkers Digitale Samenleving (~10) ===
-        (
-            "Khalid Bensaid",
-            "k.bensaid",
-            "beleidsmedewerker",
-            team_ai_act,
-        ),
-        (
-            "Jolien Verstappen",
-            "j.verstappen",
-            "beleidsmedewerker",
-            team_ai_act,
-        ),
-        (
-            "Olaf Kuijpers",
-            "o.kuijpers",
-            "beleidsmedewerker",
-            team_algo,
-        ),
-        (
-            "Isa de Bruijn",
-            "i.debruijn",
-            "beleidsmedewerker",
-            team_algo,
-        ),
-        (
-            "Timo van Dijk",
-            "t.vandijk",
-            "beleidsmedewerker",
-            team_data,
-        ),
-        (
-            "Femke Bierens",
-            "f.bierens",
-            "beleidsmedewerker",
-            team_data,
-        ),
-        (
-            "Yousra El Moussaoui",
-            "y.elmoussaoui",
-            "beleidsmedewerker",
-            team_inclusie,
-        ),
-        (
-            "Pieter Voogd",
-            "p.voogd",
-            "beleidsmedewerker",
-            team_comm,
-        ),
-        (
-            "Karlijn Oomen",
-            "k.oomen",
-            "beleidsmedewerker",
-            team_eu_intl,
-        ),
-        (
-            "Florian Gerritse",
-            "f.gerritse",
-            "beleidsmedewerker",
-            team_eu_intl,
-        ),
-        # === Extra beleidsmedewerkers CIO Rijk (~10) ===
-        (
-            "Sietse Hoekema",
-            "s.hoekema",
-            "beleidsmedewerker",
-            team_cloud,
-        ),
-        (
-            "Nadia Soufiani",
-            "n.soufiani",
-            "beleidsmedewerker",
-            team_cloud,
-        ),
-        (
-            "Victor Blom",
-            "v.blom",
-            "beleidsmedewerker",
-            team_sourcing,
-        ),
-        (
-            "Britt Aalders",
-            "b.aalders",
-            "beleidsmedewerker",
-            team_cio_stelsel,
-        ),
-        (
-            "Ruud Janssen",
-            "r2.janssen",
-            "beleidsmedewerker",
-            team_arch,
-        ),
-        (
-            "Elise van Rooijen",
-            "e.vanrooijen",
-            "beleidsmedewerker",
-            team_bio,
-        ),
-        (
-            "Maurice Franssen",
-            "m.franssen",
-            "beleidsmedewerker",
-            afd_infobev,
-        ),
-        (
-            "Daphne Kramer",
-            "d.kramer",
-            "beleidsmedewerker",
-            afd_infobev,
-        ),
-        (
-            "Joris de Lange",
-            "j.delange",
-            "beleidsmedewerker",
-            team_cio_stelsel,
-        ),
-        (
-            "Imke Verhagen",
-            "i.verhagen",
-            "beleidsmedewerker",
-            afd_istelsel,
-        ),
-        # === Extra beleidsmedewerkers A&O (~8) ===
-        (
-            "Stefan Kamp",
-            "s.kamp",
-            "beleidsmedewerker",
-            afd_arbeidsmarkt,
-        ),
-        (
-            "Liza Veldman",
-            "l.veldman",
-            "beleidsmedewerker",
-            afd_ambt_vak,
-        ),
-        (
-            "Dennis Roelofs",
-            "d.roelofs",
-            "beleidsmedewerker",
-            afd_ambt_vak,
-        ),
-        (
-            "Wilma Koetse",
-            "w.koetse",
-            "beleidsmedewerker",
-            afd_arbeidsmarkt,
-        ),
-        (
-            "Thom Dijkema",
-            "t.dijkema",
-            "beleidsmedewerker",
-            team_diversiteit,
-        ),
-        (
-            "Samantha Pool",
-            "s.pool",
-            "beleidsmedewerker",
-            team_diversiteit,
-        ),
-        (
-            "Kevin Bakx",
-            "k.bakx",
-            "beleidsmedewerker",
-            team_cao,
-        ),
-        (
-            "Nienke Dijkhuizen",
-            "n.dijkhuizen",
-            "beleidsmedewerker",
-            team_cao,
-        ),
-        # === Extra beleidsmedewerkers IFHR + Open Overheid (~8) ===
-        (
-            "Laura Bontekoe",
-            "l.bontekoe",
-            "beleidsmedewerker",
-            afd_inkoop,
-        ),
-        (
-            "Gijs Schuurman",
-            "g.schuurman",
-            "beleidsmedewerker",
-            afd_fac_huisv,
-        ),
-        (
-            "Marleen Jonker",
-            "m.jonker",
-            "beleidsmedewerker",
-            afd_fac_huisv,
-        ),
-        (
-            "Otto Prins",
-            "o.prins",
-            "beleidsmedewerker",
-            team_woo,
-        ),
-        (
-            "Nathalie Hendriks",
-            "n2.hendriks",
-            "beleidsmedewerker",
-            team_woo,
-        ),
-        (
-            "Casper Bloemendaal",
-            "c.bloemendaal",
-            "beleidsmedewerker",
-            team_actieplan,
-        ),
-        (
-            "Elisabeth Vink",
-            "e.vink",
-            "beleidsmedewerker",
-            team_actieplan,
-        ),
-        (
-            "Mark de Wolf",
-            "m.dewolf",
-            "beleidsmedewerker",
-            afd_inkoop,
-        ),
-        # === Bestuursstaf BZK (~4) ===
-        (
-            "Marie-Claire Bouwhuis",
-            "mc.bouwhuis",
-            "adviseur",
-            staf_bzk,
-        ),
-        (
-            "Hans Rietdijk",
-            "h.rietdijk",
-            "communicatieadviseur",
-            staf_bzk,
-        ),
-        (
-            "Bert Kamphuis",
-            "b.kamphuis",
-            "jurist",
-            staf_bzk,
-        ),
-        (
-            "Anke Tersteeg",
-            "a.tersteeg",
-            "adviseur",
-            staf_bzk,
-        ),
-    ]
-
-    p_kaya = None
-    p_nguyen = None
-    p_visser = None
-    p_dejong = None
-    p_bakker = p_tl_algo
-    p_kumar = None
-    p_hendriks = None
-    p_smit = p_tl_arch
-    p_devries = None
-    p_berg = None
-    p_jansen = p_tl_sourc
-    p_peeters = None
-    p_achterberg = None
-
-    for naam, _email_prefix, functie, eenheid in bulk_people:
-        p = await cp(naam, None, functie, eenheid)
-        # Keep references to key people for tasks
-        if naam == "Deniz Kaya":
-            p_kaya = p
-        elif naam == "Linh Nguyen":
-            p_nguyen = p
-        elif naam == "Marloes Visser":
-            p_visser = p
-        elif naam == "Bram de Jong":
-            p_dejong = p
-        elif naam == "Raj Kumar":
-            p_kumar = p
-        elif naam == "Anne Hendriks":
-            p_hendriks = p
-        elif naam == "Karin de Vries":
-            p_devries = p
-        elif naam == "Thomas van den Berg":
-            p_berg = p
-        elif naam == "Maarten Peeters":
-            p_peeters = p
-        elif naam == "Lisa Achterberg":
-            p_achterberg = p
+    # Set up team leader aliases (e.g. p_bakker = p_tl_algo)
+    for tl_key, alias_key in persons_data.get("team_leader_aliases", {}).items():
+        person_map.setdefault(alias_key, person_map[tl_key])
 
     person_count = (
-        8 + 11 + 20 + len(bulk_people)
-    )  # top + afdelingshoofden + teamleiders + bulk
+        len(persons_data["named_persons"])
+        + len(persons_data["team_leaders"])
+        + len(persons_data["bulk_people"])
+    )
     print(f"  Personen: {person_count} personen aangemaakt")
+
+    # Convenience accessor — returns None for missing keys (needed for
+    # nullable bulk refs that may not exist in fallback mode)
+    def pm(key: str):
+        return person_map.get(key)
 
     # =========================================================================
     # 2a. AGENTS
@@ -2002,51 +1036,51 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
 
     manager_assignments = [
-        (bzk, p_vanmarum),
-        (dgdoo, p_dgdoo),
-        (dir_ddo, p_vermeer),
-        (dir_ds, p_beentjes),
-        (dir_cio, p_deblaauw),
-        (dir_ao, p_weimar),
-        (dir_ifhr, p_hulzebosch),
-        (prog_open, p_rutjens),
+        (bzk, pm("p_vanmarum")),
+        (dgdoo, pm("p_dgdoo")),
+        (dir_ddo, pm("p_vermeer")),
+        (dir_ds, pm("p_beentjes")),
+        (dir_cio, pm("p_deblaauw")),
+        (dir_ao, pm("p_weimar")),
+        (dir_ifhr, pm("p_hulzebosch")),
+        (prog_open, pm("p_rutjens")),
         # Afdelingshoofden (ABD-benoemd)
-        (afd_basisinfra, p_westelaken),
-        (afd_id_toegang, p_vanwissen),
-        (afd_wdo, p_lucassen),
-        (afd_dienstverlening, p_olivers),
-        (bureau_arch, p_keulemans),
-        (afd_ds_a, p_vanherwaarden),
-        (afd_ds_b, p_zondervan),
-        (afd_ds_c, p_geerts),
-        (afd_ds_d, p_kewal),
-        (afd_ict_voorz, p_terborg),
-        (afd_istelsel, p_brouwer),
-        (afd_infobev, p_timmermans),
-        (afd_ambt_vak, p_vandegraaf),
-        (afd_arbeidsmarkt, p_meijer),
-        (afd_inkoop, p_zwaans),
-        (afd_fac_huisv, p_coenen),
+        (afd_basisinfra, pm("p_westelaken")),
+        (afd_id_toegang, pm("p_vanwissen")),
+        (afd_wdo, pm("p_lucassen")),
+        (afd_dienstverlening, pm("p_olivers")),
+        (bureau_arch, pm("p_keulemans")),
+        (afd_ds_a, pm("p_vanherwaarden")),
+        (afd_ds_b, pm("p_zondervan")),
+        (afd_ds_c, pm("p_geerts")),
+        (afd_ds_d, pm("p_kewal")),
+        (afd_ict_voorz, pm("p_terborg")),
+        (afd_istelsel, pm("p_brouwer")),
+        (afd_infobev, pm("p_timmermans")),
+        (afd_ambt_vak, pm("p_vandegraaf")),
+        (afd_arbeidsmarkt, pm("p_meijer")),
+        (afd_inkoop, pm("p_zwaans")),
+        (afd_fac_huisv, pm("p_coenen")),
         # Teamleiders
-        (team_digid, p_tl_digid),
-        (team_eudiw, p_tl_eudiw),
-        (team_mijnoverheid, p_tl_mijnov),
-        (team_gdi, p_tl_gdi),
-        (team_algo, p_tl_algo),
-        (team_ai_act, p_tl_aiact),
-        (team_data, p_tl_data),
-        (team_inclusie, p_tl_incl),
-        (team_eu_intl, p_tl_eu),
-        (team_comm, p_tl_comm),
-        (team_cloud, p_tl_cloud),
-        (team_sourcing, p_tl_sourc),
-        (team_arch, p_tl_arch),
-        (team_cio_stelsel, p_tl_ciostel),
-        (team_bio, p_tl_bio),
-        (team_cao, p_tl_cao),
-        (team_diversiteit, p_tl_div),
-        (team_woo, p_tl_woo),
-        (team_actieplan, p_tl_actie),
+        (team_digid, pm("p_tl_digid")),
+        (team_eudiw, pm("p_tl_eudiw")),
+        (team_mijnoverheid, pm("p_tl_mijnov")),
+        (team_gdi, pm("p_tl_gdi")),
+        (team_algo, pm("p_tl_algo")),
+        (team_ai_act, pm("p_tl_aiact")),
+        (team_data, pm("p_tl_data")),
+        (team_inclusie, pm("p_tl_incl")),
+        (team_eu_intl, pm("p_tl_eu")),
+        (team_comm, pm("p_tl_comm")),
+        (team_cloud, pm("p_tl_cloud")),
+        (team_sourcing, pm("p_tl_sourc")),
+        (team_arch, pm("p_tl_arch")),
+        (team_cio_stelsel, pm("p_tl_ciostel")),
+        (team_bio, pm("p_tl_bio")),
+        (team_cao, pm("p_tl_cao")),
+        (team_diversiteit, pm("p_tl_div")),
+        (team_woo, pm("p_tl_woo")),
+        (team_actieplan, pm("p_tl_actie")),
         (afd_zonder_mensen, agent_identiteit),
     ]
     for unit, manager in manager_assignments:
@@ -3410,7 +2444,7 @@ async def seed(db: AsyncSession) -> None:
                 "Inventariseer technische mogelijkheden en beperkingen van "
                 "NFC-uitlezing van identiteitsdocumenten voor DigiD Hoog."
             ),
-            p_nguyen,
+            pm("p_nguyen"),
             "in_progress",
             "hoog",
             date(2026, 3, 15),
@@ -3418,14 +2452,14 @@ async def seed(db: AsyncSession) -> None:
             [
                 (
                     "Inventarisatie NFC-chip types in omloop",
-                    p_nguyen,
+                    pm("p_nguyen"),
                     "done",
                     "normaal",
                     date(2026, 2, 15),
                 ),
                 (
                     "Test NFC-uitlezing op Android-toestellen",
-                    p_nguyen,
+                    pm("p_nguyen"),
                     "in_progress",
                     "hoog",
                     date(2026, 3, 1),
@@ -3446,7 +2480,7 @@ async def seed(db: AsyncSession) -> None:
                 "Voer een DPIA uit op de inzet van gezichtsherkenning bij DigiD Hoog "
                 "authenticatie."
             ),
-            p_kaya,
+            pm("p_kaya"),
             "open",
             "hoog",
             date(2026, 4, 1),
@@ -3460,7 +2494,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel concept-antwoorden op voor de Kamervragen over DigiD-storingen "
                 "december 2025."
             ),
-            p_nguyen,
+            pm("p_nguyen"),
             "done",
             "kritiek",
             date(2026, 1, 20),
@@ -3474,7 +2508,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel de kwartaalrapportage op met gebruikscijfers, beschikbaarheid en "
                 "incidenten DigiD Q4."
             ),
-            p_nguyen,
+            pm("p_nguyen"),
             "done",
             "normaal",
             date(2026, 1, 31),
@@ -3504,7 +2538,7 @@ async def seed(db: AsyncSession) -> None:
                 "Definieer 3 pilot use-cases voor de Nederlandse EUDIW: "
                 "leeftijdsverificatie, diploma's en overheidsinlog."
             ),
-            p_kaya,
+            pm("p_kaya"),
             "in_progress",
             "hoog",
             date(2026, 6, 1),
@@ -3518,7 +2552,7 @@ async def seed(db: AsyncSession) -> None:
                 "Neem een architectuurbesluit over de technische opzet van de "
                 "Nederlandse wallet-app (native vs. PWA)."
             ),
-            p_smit,
+            pm("p_smit"),
             "open",
             "hoog",
             date(2026, 4, 15),
@@ -3534,7 +2568,7 @@ async def seed(db: AsyncSession) -> None:
                 " uitvoeringsorganisaties om aan"
                 " WDO-vereisten te voldoen."
             ),
-            p_lucassen,
+            pm("p_lucassen"),
             "in_progress",
             "normaal",
             date(2026, 5, 1),
@@ -3546,7 +2580,7 @@ async def seed(db: AsyncSession) -> None:
                 "Analyseer de juridische implicaties van de verlengde "
                 "WDO-overgangstermijn tot 1 juli 2028."
             ),
-            p_achterberg,
+            pm("p_achterberg"),
             "done",
             "normaal",
             date(2026, 1, 15),
@@ -3559,7 +2593,7 @@ async def seed(db: AsyncSession) -> None:
                 "Voer het jaarlijkse gebruikersonderzoek uit en rapporteer resultaten "
                 "met aanbevelingen."
             ),
-            p_visser,
+            pm("p_visser"),
             "open",
             "normaal",
             date(2026, 4, 30),
@@ -3571,7 +2605,7 @@ async def seed(db: AsyncSession) -> None:
                 "Laat een externe audit uitvoeren op WCAG 2.2 AA-compliance van "
                 "MijnOverheid."
             ),
-            p_visser,
+            pm("p_visser"),
             "open",
             "hoog",
             date(2026, 3, 31),
@@ -3584,7 +2618,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel de concept-AMvB op die publicatie van impactvolle algoritmen "
                 "wettelijk verplicht."
             ),
-            p_dejong,
+            pm("p_dejong"),
             "in_progress",
             "kritiek",
             date(2026, 6, 30),
@@ -3598,7 +2632,7 @@ async def seed(db: AsyncSession) -> None:
                 "Coördineer de doorontwikkeling met verbeterde zoekfunctie, "
                 "impactclassificatie en API-koppeling."
             ),
-            p_bakker,
+            pm("p_bakker"),
             "in_progress",
             "hoog",
             date(2026, 5, 15),
@@ -3612,7 +2646,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel een interdepartementaal implementatieplan op voor AI Act "
                 "verplichtingen per augustus 2026."
             ),
-            p_dejong,
+            pm("p_dejong"),
             "open",
             "kritiek",
             date(2026, 3, 1),
@@ -3627,7 +2661,7 @@ async def seed(db: AsyncSession) -> None:
                 " structureel meegenomen kunnen worden"
                 " in het wetgevingsproces."
             ),
-            p_dejong,
+            pm("p_dejong"),
             "open",
             "normaal",
             date(2026, 5, 1),
@@ -3639,7 +2673,7 @@ async def seed(db: AsyncSession) -> None:
                 "Verwerk de motie Six Dijkstra (lokaal draaien) in een geactualiseerde "
                 "versie van de GenAI richtlijn."
             ),
-            p_bakker,
+            pm("p_bakker"),
             "open",
             "hoog",
             date(2026, 3, 15),
@@ -3652,7 +2686,7 @@ async def seed(db: AsyncSession) -> None:
                 "Selecteer in overleg met VNG en IPO 10 concrete use-cases voor het "
                 "Federatief Datastelsel."
             ),
-            p_kumar,
+            pm("p_kumar"),
             "in_progress",
             "hoog",
             date(2026, 4, 1),
@@ -3664,7 +2698,7 @@ async def seed(db: AsyncSession) -> None:
                 "Verken met VWS de technische en juridische vereisten voor aansluiting "
                 "op de European Health Data Space."
             ),
-            p_kumar,
+            pm("p_kumar"),
             "open",
             "normaal",
             date(2026, 6, 1),
@@ -3673,7 +2707,7 @@ async def seed(db: AsyncSession) -> None:
             bk_ibds,
             "IBDS voortgangsrapportage Tweede Kamer",
             "Stel de halfjaarlijkse voortgangsrapportage IBDS op voor de Tweede Kamer.",
-            p_kumar,
+            pm("p_kumar"),
             "open",
             "normaal",
             date(2026, 5, 15),
@@ -3686,7 +2720,7 @@ async def seed(db: AsyncSession) -> None:
                 "Actualiseer het cloud classificatiemodel met nieuwe categorieën voor "
                 "GenAI-workloads en soevereine cloud."
             ),
-            p_devries,
+            pm("p_devries"),
             "in_progress",
             "hoog",
             date(2026, 4, 15),
@@ -3698,7 +2732,7 @@ async def seed(db: AsyncSession) -> None:
                 "Ontwikkel een standaard template voor exit-strategieën bij "
                 "cloudcontracten voor gebruik door alle departementen."
             ),
-            p_devries,
+            pm("p_devries"),
             "open",
             "normaal",
             date(2026, 5, 1),
@@ -3710,7 +2744,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel concept-antwoorden op voor de Kamervragen over Microsoft "
                 "Azure/O365-afhankelijkheid."
             ),
-            p_devries,
+            pm("p_devries"),
             "done",
             "kritiek",
             date(2026, 2, 1),
@@ -3722,7 +2756,7 @@ async def seed(db: AsyncSession) -> None:
                 "Begeleid de benoeming van CDO, CPO en CTO bij alle departementen "
                 "conform het nieuwe CIO-stelsel."
             ),
-            p_deblaauw,
+            pm("p_deblaauw"),
             "in_progress",
             "hoog",
             date(2026, 6, 30),
@@ -3734,7 +2768,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel de agenda op voor het CIO-Overleg met onderwerpen: GenAI "
                 "governance, cloud soevereiniteit en BIO-voortgang."
             ),
-            p_smit,
+            pm("p_smit"),
             "open",
             "normaal",
             date(2026, 2, 28),
@@ -3747,7 +2781,7 @@ async def seed(db: AsyncSession) -> None:
                 "Voer de jaarlijkse nulmeting BIO-compliance uit bij alle ministeries "
                 "en rapporteer gaps."
             ),
-            p_berg,
+            pm("p_berg"),
             "open",
             "hoog",
             date(2026, 3, 31),
@@ -3759,7 +2793,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel per ministerie een roadmap op voor volledige BIO-compliance met "
                 "kwartaalmijlpalen."
             ),
-            p_berg,
+            pm("p_berg"),
             "open",
             "hoog",
             date(2026, 4, 30),
@@ -3772,7 +2806,7 @@ async def seed(db: AsyncSession) -> None:
                 "Actualiseer de NORA met nieuwe principes voor cloud-native "
                 "architectuur en containerisatie."
             ),
-            p_smit,
+            pm("p_smit"),
             "open",
             "normaal",
             date(2026, 6, 1),
@@ -3785,7 +2819,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel een businesscase op voor de NDD met governance, mandaat, "
                 "financiering en fasering."
             ),
-            p_vermeer,
+            pm("p_vermeer"),
             "in_progress",
             "kritiek",
             date(2026, 3, 31),
@@ -3797,7 +2831,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel een kabinetsreactie op de motie Rajkowski op met een versneld "
                 "tijdpad voor NDD-oprichting."
             ),
-            p_lucassen,
+            pm("p_lucassen"),
             "open",
             "hoog",
             date(2026, 2, 28),
@@ -3810,7 +2844,7 @@ async def seed(db: AsyncSession) -> None:
                 "Breng de huidige omvang van externe IT-inhuur per ministerie in kaart "
                 "als nulmeting."
             ),
-            p_jansen,
+            pm("p_jansen"),
             "in_progress",
             "hoog",
             date(2026, 3, 15),
@@ -3822,7 +2856,7 @@ async def seed(db: AsyncSession) -> None:
                 "Ontwikkel een actieplan met concurrerende arbeidsvoorwaarden en "
                 "traineeprogramma's voor IT-talent."
             ),
-            p_peeters,
+            pm("p_peeters"),
             "open",
             "hoog",
             date(2026, 4, 30),
@@ -3835,7 +2869,7 @@ async def seed(db: AsyncSession) -> None:
                 "Inventariseer het energieverbruik en de PUE-scores van alle "
                 "overheidsdatacenters."
             ),
-            p_devries,
+            pm("p_devries"),
             "open",
             "normaal",
             date(2026, 5, 31),
@@ -3848,7 +2882,7 @@ async def seed(db: AsyncSession) -> None:
                 "Voer de jaarlijkse monitor digitale zelfredzaamheid uit in "
                 "samenwerking met CBS."
             ),
-            p_hendriks,
+            pm("p_hendriks"),
             "open",
             "normaal",
             date(2026, 6, 30),
@@ -3860,7 +2894,7 @@ async def seed(db: AsyncSession) -> None:
                 "Bereid verlenging voor van de subsidieregeling voor bibliotheken en "
                 "buurthuizen die digibetencursussen aanbieden."
             ),
-            p_hendriks,
+            pm("p_hendriks"),
             "open",
             "normaal",
             date(2026, 4, 15),
@@ -3873,7 +2907,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel de spreekpunten en Q&A op voor het Commissiedebat Digitale Zaken "
                 "van februari 2026."
             ),
-            p_beentjes,
+            pm("p_beentjes"),
             "in_progress",
             "kritiek",
             date(2026, 2, 14),
@@ -3882,7 +2916,7 @@ async def seed(db: AsyncSession) -> None:
             pi_verzamelbrief_q4,
             "Verzamelbrief Digitalisering Q1 2026 opstellen",
             "Coördineer de bijdragen van alle directies voor de verzamelbrief Q1 2026.",
-            p_lucassen,
+            pm("p_lucassen"),
             "open",
             "hoog",
             date(2026, 3, 31),
@@ -3894,7 +2928,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel briefing en antwoorden op voor de deskundigenbijeenkomst van de "
                 "Eerste Kamer over de NDS."
             ),
-            p_dgdoo,
+            pm("p_dgdoo"),
             "open",
             "hoog",
             date(2026, 2, 10),
@@ -3907,7 +2941,7 @@ async def seed(db: AsyncSession) -> None:
                 "Coördineer de eerste evaluatie van de Woo en stel een rapportage op "
                 "met aanbevelingen."
             ),
-            p_rutjens,
+            pm("p_rutjens"),
             "in_progress",
             "normaal",
             date(2026, 4, 30),
@@ -3920,7 +2954,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel de investeringsagenda op voor de NDS met prioritering van de 1 "
                 "miljard euro jaarlijks budget."
             ),
-            p_dgdoo,
+            pm("p_dgdoo"),
             "open",
             "kritiek",
             date(2026, 6, 30),
@@ -3932,7 +2966,7 @@ async def seed(db: AsyncSession) -> None:
                 "Stel de eerste halfjaarlijkse voortgangsrapportage NDS op voor de "
                 "Tweede Kamer."
             ),
-            p_beentjes,
+            pm("p_beentjes"),
             "open",
             "hoog",
             date(2026, 7, 15),
@@ -4228,74 +3262,74 @@ async def seed(db: AsyncSession) -> None:
 
     stakeholders_data = [
         # Directeuren als eigenaar van koepeldossiers
-        (dos_digi_overheid, p_vermeer, "eigenaar"),
-        (dos_digi_samenleving, p_beentjes, "eigenaar"),
-        (dos_cio_rijk, p_deblaauw, "eigenaar"),
-        (dos_ai, p_beentjes, "eigenaar"),
-        (dos_data, p_kewal, "eigenaar"),
+        (dos_digi_overheid, pm("p_vermeer"), "eigenaar"),
+        (dos_digi_samenleving, pm("p_beentjes"), "eigenaar"),
+        (dos_cio_rijk, pm("p_deblaauw"), "eigenaar"),
+        (dos_ai, pm("p_beentjes"), "eigenaar"),
+        (dos_data, pm("p_kewal"), "eigenaar"),
         # DigiD / Identiteit
-        (maatr_digid_upgrade, p_nguyen, "betrokken"),
-        (maatr_digid_upgrade, p_kaya, "betrokken"),
-        (maatr_digid_upgrade, p_vanwissen, "eigenaar"),
-        (instr_digid, p_tl_digid, "eigenaar"),
-        (instr_digid, p_nguyen, "betrokken"),
-        (doel_digid_nieuw, p_vanwissen, "eigenaar"),
-        (doel_digid_nieuw, p_kaya, "adviseur"),
+        (maatr_digid_upgrade, pm("p_nguyen"), "betrokken"),
+        (maatr_digid_upgrade, pm("p_kaya"), "betrokken"),
+        (maatr_digid_upgrade, pm("p_vanwissen"), "eigenaar"),
+        (instr_digid, pm("p_tl_digid"), "eigenaar"),
+        (instr_digid, pm("p_nguyen"), "betrokken"),
+        (doel_digid_nieuw, pm("p_vanwissen"), "eigenaar"),
+        (doel_digid_nieuw, pm("p_kaya"), "adviseur"),
         # EUDIW
-        (instr_eidas_wallet, p_tl_eudiw, "eigenaar"),
-        (instr_eidas_wallet, p_kaya, "betrokken"),
-        (doel_eudiw, p_tl_eudiw, "eigenaar"),
+        (instr_eidas_wallet, pm("p_tl_eudiw"), "eigenaar"),
+        (instr_eidas_wallet, pm("p_kaya"), "betrokken"),
+        (doel_eudiw, pm("p_tl_eudiw"), "eigenaar"),
         # WDO
-        (bk_wdo, p_lucassen, "eigenaar"),
-        (maatr_wdo_transitie, p_lucassen, "eigenaar"),
-        (maatr_wdo_transitie, p_achterberg, "adviseur"),
+        (bk_wdo, pm("p_lucassen"), "eigenaar"),
+        (maatr_wdo_transitie, pm("p_lucassen"), "eigenaar"),
+        (maatr_wdo_transitie, pm("p_achterberg"), "adviseur"),
         # MijnOverheid
-        (instr_mijnoverheid, p_tl_mijnov, "eigenaar"),
-        (instr_mijnoverheid, p_visser, "betrokken"),
+        (instr_mijnoverheid, pm("p_tl_mijnov"), "eigenaar"),
+        (instr_mijnoverheid, pm("p_visser"), "betrokken"),
         # AI en Algoritmen
-        (bk_ai_act, p_dejong, "eigenaar"),
-        (bk_ai_act, p_tl_aiact, "betrokken"),
-        (instr_algo_register, p_bakker, "eigenaar"),
-        (maatr_algo_verpl, p_dejong, "eigenaar"),
-        (bk_algo_kader, p_dejong, "betrokken"),
-        (bk_algo_kader, p_tl_algo, "eigenaar"),
-        (maatr_genai, p_bakker, "betrokken"),
-        (dos_ai, p_dejong, "betrokken"),
+        (bk_ai_act, pm("p_dejong"), "eigenaar"),
+        (bk_ai_act, pm("p_tl_aiact"), "betrokken"),
+        (instr_algo_register, pm("p_bakker"), "eigenaar"),
+        (maatr_algo_verpl, pm("p_dejong"), "eigenaar"),
+        (bk_algo_kader, pm("p_dejong"), "betrokken"),
+        (bk_algo_kader, pm("p_tl_algo"), "eigenaar"),
+        (maatr_genai, pm("p_bakker"), "betrokken"),
+        (dos_ai, pm("p_dejong"), "betrokken"),
         # Data
-        (bk_ibds, p_kumar, "eigenaar"),
-        (doel_fed_data, p_kumar, "eigenaar"),
-        (maatr_data_spaces, p_kumar, "betrokken"),
-        (dos_data, p_tl_data, "betrokken"),
+        (bk_ibds, pm("p_kumar"), "eigenaar"),
+        (doel_fed_data, pm("p_kumar"), "eigenaar"),
+        (maatr_data_spaces, pm("p_kumar"), "betrokken"),
+        (dos_data, pm("p_tl_data"), "betrokken"),
         # Cloud / CIO
-        (bk_cloudbeleid, p_devries, "eigenaar"),
-        (maatr_cloud_exit, p_devries, "eigenaar"),
-        (bk_cio_stelsel, p_deblaauw, "eigenaar"),
-        (bk_cio_stelsel, p_tl_ciostel, "betrokken"),
-        (instr_cio_overleg, p_smit, "betrokken"),
-        (instr_nora, p_smit, "eigenaar"),
-        (maatr_genai, p_devries, "adviseur"),
+        (bk_cloudbeleid, pm("p_devries"), "eigenaar"),
+        (maatr_cloud_exit, pm("p_devries"), "eigenaar"),
+        (bk_cio_stelsel, pm("p_deblaauw"), "eigenaar"),
+        (bk_cio_stelsel, pm("p_tl_ciostel"), "betrokken"),
+        (instr_cio_overleg, pm("p_smit"), "betrokken"),
+        (instr_nora, pm("p_smit"), "eigenaar"),
+        (maatr_genai, pm("p_devries"), "adviseur"),
         # Informatiebeveiliging
-        (instr_bio, p_berg, "eigenaar"),
-        (instr_bio, p_tl_bio, "betrokken"),
-        (doel_bio_compliance, p_berg, "eigenaar"),
-        (doel_bio_compliance, p_timmermans, "eigenaar"),
+        (instr_bio, pm("p_berg"), "eigenaar"),
+        (instr_bio, pm("p_tl_bio"), "betrokken"),
+        (doel_bio_compliance, pm("p_berg"), "eigenaar"),
+        (doel_bio_compliance, pm("p_timmermans"), "eigenaar"),
         # NDD
-        (instr_ndd, p_vermeer, "eigenaar"),
-        (instr_ndd, p_lucassen, "betrokken"),
+        (instr_ndd, pm("p_vermeer"), "eigenaar"),
+        (instr_ndd, pm("p_lucassen"), "betrokken"),
         # Vendor reductie
-        (maatr_it_inhuur, p_jansen, "eigenaar"),
-        (doel_vendor_reductie, p_peeters, "betrokken"),
-        (doel_vendor_reductie, p_jansen, "betrokken"),
+        (maatr_it_inhuur, pm("p_jansen"), "eigenaar"),
+        (doel_vendor_reductie, pm("p_peeters"), "betrokken"),
+        (doel_vendor_reductie, pm("p_jansen"), "betrokken"),
         # NDS breed
-        (bk_nds, p_dgdoo, "eigenaar"),
-        (bk_nds, p_vermeer, "betrokken"),
-        (bk_nds, p_beentjes, "betrokken"),
-        (bk_nds, p_deblaauw, "betrokken"),
+        (bk_nds, pm("p_dgdoo"), "eigenaar"),
+        (bk_nds, pm("p_vermeer"), "betrokken"),
+        (bk_nds, pm("p_beentjes"), "betrokken"),
+        (bk_nds, pm("p_deblaauw"), "betrokken"),
         # Inclusie
-        (doel_inclusie, p_hendriks, "eigenaar"),
-        (doel_inclusie, p_tl_incl, "betrokken"),
+        (doel_inclusie, pm("p_hendriks"), "eigenaar"),
+        (doel_inclusie, pm("p_tl_incl"), "betrokken"),
         # Open Overheid
-        (dos_digi_overheid, p_rutjens, "betrokken"),
+        (dos_digi_overheid, pm("p_rutjens"), "betrokken"),
         # Agent stakeholder koppelingen
         (instr_digid, agent_identiteit, "betrokken"),
         (instr_eidas_wallet, agent_identiteit, "betrokken"),
@@ -4819,7 +3853,7 @@ async def seed(db: AsyncSession) -> None:
                 is_read=False,
                 related_task_id=t.id,
                 related_node_id=n.id,
-                sender_id=p_vermeer.id,
+                sender_id=pm("p_vermeer").id,
                 created_at=now - timedelta(hours=2),
             )
         )
@@ -4833,7 +3867,7 @@ async def seed(db: AsyncSession) -> None:
                 is_read=True,
                 related_task_id=t2.id,
                 related_node_id=n2.id,
-                sender_id=p_beentjes.id,
+                sender_id=pm("p_beentjes").id,
                 created_at=now - timedelta(days=1),
             )
         )
@@ -4845,12 +3879,12 @@ async def seed(db: AsyncSession) -> None:
                 title=f"Taak toegewezen: {t3.title}",
                 message=(
                     f"De taak '{t3.title}' is aan jou "
-                    f"toegewezen door {p_deblaauw.naam}."
+                    f"toegewezen door {pm('p_deblaauw').naam}."
                 ),
                 is_read=False,
                 related_task_id=t3.id,
                 related_node_id=n3.id,
-                sender_id=p_deblaauw.id,
+                sender_id=pm("p_deblaauw").id,
                 created_at=now - timedelta(hours=6),
             )
         )
@@ -4862,7 +3896,7 @@ async def seed(db: AsyncSession) -> None:
         # Notify stakeholders of the node
         notifications.append(
             Notification(
-                person_id=p_vermeer.id,
+                person_id=pm("p_vermeer").id,
                 type="task_completed",
                 title=f"Taak afgerond: {t.title}",
                 message=f"{a.naam} heeft de taak '{t.title}' afgerond.",
@@ -4875,15 +3909,15 @@ async def seed(db: AsyncSession) -> None:
         )
 
     # --- task_reassigned: someone was reassigned ---
-    if p_nguyen and p_kaya and len(assigned_tasks) >= 4:
+    if pm("p_nguyen") and pm("p_kaya") and len(assigned_tasks) >= 4:
         t4, _, n4 = assigned_tasks[3]
         notifications.append(
             Notification(
-                person_id=p_nguyen.id,
+                person_id=pm("p_nguyen").id,
                 type="task_reassigned",
                 title=f"Taak overgedragen: {t4.title}",
                 message=(
-                    f"De taak '{t4.title}' is overgedragen aan {p_kaya.naam}. "
+                    f"De taak '{t4.title}' is overgedragen aan {pm('p_kaya').naam}. "
                     "Je bent niet langer verantwoordelijk."
                 ),
                 is_read=False,
@@ -4894,12 +3928,12 @@ async def seed(db: AsyncSession) -> None:
         )
         notifications.append(
             Notification(
-                person_id=p_kaya.id,
+                person_id=pm("p_kaya").id,
                 type="task_assigned",
                 title=f"Taak toegewezen: {t4.title}",
                 message=(
                     f"De taak '{t4.title}' is aan jou overgedragen "
-                    f"(voorheen: {p_nguyen.naam})."
+                    f"(voorheen: {pm('p_nguyen').naam})."
                 ),
                 is_read=False,
                 related_task_id=t4.id,
@@ -4909,39 +3943,40 @@ async def seed(db: AsyncSession) -> None:
         )
 
     # --- node_updated: corpus node was edited ---
-    if p_dejong:
+    if pm("p_dejong"):
         notifications.append(
             Notification(
-                person_id=p_vermeer.id,
+                person_id=pm("p_vermeer").id,
                 type="node_updated",
                 title=f"Node bijgewerkt: {dos_digi_overheid.title}",
                 message=(
-                    f"{p_dejong.naam} heeft '{dos_digi_overheid.title}' bijgewerkt."
+                    f"{pm('p_dejong').naam} heeft "
+                    f"'{dos_digi_overheid.title}' bijgewerkt."
                 ),
                 is_read=True,
                 related_node_id=dos_digi_overheid.id,
-                sender_id=p_dejong.id,
+                sender_id=pm("p_dejong").id,
                 created_at=now - timedelta(days=2),
             )
         )
     notifications.append(
         Notification(
-            person_id=p_beentjes.id,
+            person_id=pm("p_beentjes").id,
             type="node_updated",
             title=f"Node bijgewerkt: {dos_ai.title}",
-            message=f"{p_vermeer.naam} heeft '{dos_ai.title}' bijgewerkt.",
+            message=f"{pm('p_vermeer').naam} heeft '{dos_ai.title}' bijgewerkt.",
             is_read=False,
             related_node_id=dos_ai.id,
-            sender_id=p_vermeer.id,
+            sender_id=pm("p_vermeer").id,
             created_at=now - timedelta(hours=5),
         )
     )
 
     # --- edge_created: new edges between nodes ---
-    if p_devries:
+    if pm("p_devries"):
         notifications.append(
             Notification(
-                person_id=p_devries.id,
+                person_id=pm("p_devries").id,
                 type="edge_created",
                 title="Nieuwe relatie aangemaakt",
                 message=(
@@ -4955,7 +3990,7 @@ async def seed(db: AsyncSession) -> None:
         )
     notifications.append(
         Notification(
-            person_id=p_vermeer.id,
+            person_id=pm("p_vermeer").id,
             type="edge_created",
             title="Nieuwe relatie aangemaakt",
             message=(
@@ -4969,26 +4004,26 @@ async def seed(db: AsyncSession) -> None:
     )
 
     # --- stakeholder_added: person added as stakeholder ---
-    if p_kumar:
+    if pm("p_kumar"):
         notifications.append(
             Notification(
-                person_id=p_kumar.id,
+                person_id=pm("p_kumar").id,
                 type="stakeholder_added",
                 title=f"Toegevoegd als betrokkene: {dos_data.title}",
                 message=(
                     f"Je bent toegevoegd als betrokkene aan '{dos_data.title}' "
-                    f"door {p_beentjes.naam}."
+                    f"door {pm('p_beentjes').naam}."
                 ),
                 is_read=False,
                 related_node_id=dos_data.id,
-                sender_id=p_beentjes.id,
+                sender_id=pm("p_beentjes").id,
                 created_at=now - timedelta(hours=1),
             )
         )
-    if p_nguyen:
+    if pm("p_nguyen"):
         notifications.append(
             Notification(
-                person_id=p_nguyen.id,
+                person_id=pm("p_nguyen").id,
                 type="stakeholder_added",
                 title=f"Toegevoegd als adviseur: {dos_digi_overheid.title}",
                 message=(
@@ -4996,16 +4031,16 @@ async def seed(db: AsyncSession) -> None:
                 ),
                 is_read=True,
                 related_node_id=dos_digi_overheid.id,
-                sender_id=p_vermeer.id,
+                sender_id=pm("p_vermeer").id,
                 created_at=now - timedelta(days=1, hours=4),
             )
         )
 
     # --- stakeholder_role_changed ---
-    if p_dejong:
+    if pm("p_dejong"):
         notifications.append(
             Notification(
-                person_id=p_dejong.id,
+                person_id=pm("p_dejong").id,
                 type="stakeholder_role_changed",
                 title=f"Rol gewijzigd: {dos_digi_overheid.title}",
                 message=(
@@ -5019,19 +4054,19 @@ async def seed(db: AsyncSession) -> None:
         )
 
     # --- mention: @mentions in descriptions ---
-    if p_kaya:
+    if pm("p_kaya"):
         notifications.append(
             Notification(
-                person_id=p_kaya.id,
+                person_id=pm("p_kaya").id,
                 type="mention",
                 title="Genoemd in een beschrijving",
                 message=(
                     f"Je bent genoemd in de beschrijving van '{dos_ai.title}' "
-                    f"door {p_beentjes.naam}."
+                    f"door {pm('p_beentjes').naam}."
                 ),
                 is_read=False,
                 related_node_id=dos_ai.id,
-                sender_id=p_beentjes.id,
+                sender_id=pm("p_beentjes").id,
                 created_at=now - timedelta(hours=7),
             )
         )
@@ -5044,12 +4079,12 @@ async def seed(db: AsyncSession) -> None:
     )
     # Recipient root (Mark — unread)
     dm1_recipient_root = Notification(
-        person_id=p_vermeer.id,
+        person_id=pm("p_vermeer").id,
         type="direct_message",
-        title="Bericht van " + p_deblaauw.naam,
+        title="Bericht van " + pm("p_deblaauw").naam,
         message=dm1_msg,
         is_read=False,
-        sender_id=p_deblaauw.id,
+        sender_id=pm("p_deblaauw").id,
         created_at=now - timedelta(hours=3),
     )
     db.add(dm1_recipient_root)
@@ -5059,12 +4094,12 @@ async def seed(db: AsyncSession) -> None:
 
     # Sender root (Art — unread because Mark replied)
     dm1_sender_root = Notification(
-        person_id=p_deblaauw.id,
+        person_id=pm("p_deblaauw").id,
         type="direct_message",
-        title="Bericht aan " + p_vermeer.naam,
+        title="Bericht aan " + pm("p_vermeer").naam,
         message=dm1_msg,
         is_read=False,
-        sender_id=p_deblaauw.id,
+        sender_id=pm("p_deblaauw").id,
         thread_id=dm1_recipient_root.id,
         created_at=now - timedelta(hours=3),
     )
@@ -5073,31 +4108,31 @@ async def seed(db: AsyncSession) -> None:
 
     # Reply from Mark (parented to thread_id)
     dm1_reply = Notification(
-        person_id=p_deblaauw.id,
+        person_id=pm("p_deblaauw").id,
         type="direct_message",
-        title="Reactie van " + p_vermeer.naam,
+        title="Reactie van " + pm("p_vermeer").naam,
         message="Goed idee, ik plan een afspraak in voor morgenochtend.",
         is_read=False,
-        sender_id=p_vermeer.id,
+        sender_id=pm("p_vermeer").id,
         parent_id=dm1_recipient_root.id,
         created_at=now - timedelta(hours=2, minutes=45),
     )
     notifications.append(dm1_reply)
 
     # Thread 2: Mark Vermeer → Linh Nguyen
-    if p_nguyen:
+    if pm("p_nguyen"):
         dm2_msg = (
             "Kun je de impact-analyse voor de NL Design System migratie "
             "volgende week afronden?"
         )
         # Recipient root (Linh — unread)
         dm2_recipient_root = Notification(
-            person_id=p_nguyen.id,
+            person_id=pm("p_nguyen").id,
             type="direct_message",
-            title="Bericht van " + p_vermeer.naam,
+            title="Bericht van " + pm("p_vermeer").naam,
             message=dm2_msg,
             is_read=False,
-            sender_id=p_vermeer.id,
+            sender_id=pm("p_vermeer").id,
             created_at=now - timedelta(hours=5),
         )
         db.add(dm2_recipient_root)
@@ -5107,12 +4142,12 @@ async def seed(db: AsyncSession) -> None:
 
         # Sender root (Mark — unread because Linh replied)
         dm2_sender_root = Notification(
-            person_id=p_vermeer.id,
+            person_id=pm("p_vermeer").id,
             type="direct_message",
-            title="Bericht aan " + p_nguyen.naam,
+            title="Bericht aan " + pm("p_nguyen").naam,
             message=dm2_msg,
             is_read=False,
-            sender_id=p_vermeer.id,
+            sender_id=pm("p_vermeer").id,
             thread_id=dm2_recipient_root.id,
             created_at=now - timedelta(hours=5),
         )
@@ -5122,12 +4157,12 @@ async def seed(db: AsyncSession) -> None:
         # Reply from Linh (parented to thread_id)
         notifications.append(
             Notification(
-                person_id=p_vermeer.id,
+                person_id=pm("p_vermeer").id,
                 type="direct_message",
-                title="Reactie van " + p_nguyen.naam,
+                title="Reactie van " + pm("p_nguyen").naam,
                 message="Ik ga ermee aan de slag, deadline halen we.",
                 is_read=False,
-                sender_id=p_nguyen.id,
+                sender_id=pm("p_nguyen").id,
                 parent_id=dm2_recipient_root.id,
                 created_at=now - timedelta(hours=4, minutes=30),
             )
@@ -5136,7 +4171,7 @@ async def seed(db: AsyncSession) -> None:
     # --- politieke_input_imported ---
     notifications.append(
         Notification(
-            person_id=p_beentjes.id,
+            person_id=pm("p_beentjes").id,
             type="politieke_input_imported",
             title="Nieuwe motie geïmporteerd",
             message=(
@@ -5150,7 +4185,7 @@ async def seed(db: AsyncSession) -> None:
     )
     notifications.append(
         Notification(
-            person_id=p_vermeer.id,
+            person_id=pm("p_vermeer").id,
             type="politieke_input_imported",
             title="Nieuwe motie geïmporteerd",
             message=(
@@ -5168,7 +4203,7 @@ async def seed(db: AsyncSession) -> None:
     await db.flush()
 
     notif_count = len(notifications) + 1  # +1 for dm_parent added separately
-    if p_nguyen:
+    if pm("p_nguyen"):
         notif_count += 1  # dm2_parent
     print(f"  Notificaties: {notif_count} notificaties aangemaakt")
 

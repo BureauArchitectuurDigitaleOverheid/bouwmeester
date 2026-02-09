@@ -137,3 +137,22 @@ import-type TYPE:
 
 # Backward-compatible alias
 import-moties: import-parlementair
+
+# ---------------------------------------------------------------------------
+# Seed data encryption (age)
+# ---------------------------------------------------------------------------
+
+# Decrypt seed_persons.json from the committed .age file
+decrypt-seed:
+    age -d -i ~/.age/key.txt -o backend/scripts/seed_persons.json backend/scripts/seed_persons.json.age
+    @echo "Decrypted → backend/scripts/seed_persons.json"
+
+# Encrypt seed_persons.json for committing (requires both public keys)
+# TODO: Replace <ANNE_AGE_PUBKEY> and <EELCO_AGE_PUBKEY> with actual age public keys
+#       Generate with: age-keygen -o ~/.age/key.txt  (prints public key)
+encrypt-seed:
+    age -r <ANNE_AGE_PUBKEY> \
+        -r <EELCO_AGE_PUBKEY> \
+        -o backend/scripts/seed_persons.json.age \
+        backend/scripts/seed_persons.json
+    @echo "Encrypted → backend/scripts/seed_persons.json.age"
