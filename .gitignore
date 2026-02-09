@@ -55,5 +55,8 @@ htmlcov/
 *.db
 *.sqlite3
 
+# Seed person data (PII — encrypted version .age is committed)
+backend/scripts/seed_persons.json
+
 # Alembic
 alembic/versions/__pycache__/

@@ -137,3 +137,20 @@ import-type TYPE:
 
 # Backward-compatible alias
 import-moties: import-parlementair
+
+# ---------------------------------------------------------------------------
+# Seed data encryption (age)
+# ---------------------------------------------------------------------------
+
+# Decrypt seed_persons.json from the committed .age file
+decrypt-seed:
+    age -d -i ~/.age/key.txt -o backend/scripts/seed_persons.json backend/scripts/seed_persons.json.age
+    @echo "Decrypted → backend/scripts/seed_persons.json"
+
+# Encrypt seed_persons.json for committing (add more -r flags for additional recipients)
+encrypt-seed:
+    age -r age1t3gkzgkgy9r05zutg2xws33xv42gyagk7wty5pqqa9apn5vrjsgsf0s4ha \
+        -r age1ugedsnl8qs5rjll3nfqw0uw4ue4dvznsndnwjnduklskxzmhzyvqsapkdk \
+        -o backend/scripts/seed_persons.json.age \
+        backend/scripts/seed_persons.json
+    @echo "Encrypted → backend/scripts/seed_persons.json.age"
