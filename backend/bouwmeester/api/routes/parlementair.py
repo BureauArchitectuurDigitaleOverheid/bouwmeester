@@ -252,3 +252,29 @@ async def reject_edge(
     if updated is None:
         raise HTTPException(status_code=404, detail="Suggested edge not found")
     return SuggestedEdgeResponse.model_validate(updated)
+
+
+@router.put("/edges/{edge_id}/reset", response_model=SuggestedEdgeResponse)
+async def reset_suggested_edge(
+    edge_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> SuggestedEdgeResponse:
+    """Reset a suggested edge back to pending, undoing approve/reject."""
+    repo = SuggestedEdgeRepository(db)
+    suggested_edge = await repo.get_by_id(edge_id)
+    if suggested_edge is None:
+        raise HTTPException(status_code=404, detail="Suggested edge not found")
+
+    # If it was approved, delete the actual edge that was created
+    if suggested_edge.status == "approved" and suggested_edge.edge_id is not None:
+        actual_edge = await db.get(Edge, suggested_edge.edge_id)
+        if actual_edge is not None:
+            await db.delete(actual_edge)
+
+    suggested_edge.edge_id = None
+    updated = await repo.update_status(
+        edge_id,
+        "pending",
+        reviewed_at=None,
+    )
+    return SuggestedEdgeResponse.model_validate(updated)

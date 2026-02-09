@@ -47,3 +47,7 @@ export async function approveSuggestedEdge(id: string): Promise<SuggestedEdge> {
 export async function rejectSuggestedEdge(id: string): Promise<SuggestedEdge> {
   return apiPut<SuggestedEdge>(`/api/parlementair/edges/${id}/reject`);
 }
+
+export async function resetSuggestedEdge(id: string): Promise<SuggestedEdge> {
+  return apiPut<SuggestedEdge>(`/api/parlementair/edges/${id}/reset`);
+}

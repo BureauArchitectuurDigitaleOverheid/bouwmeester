@@ -9,6 +9,7 @@ import {
   updateSuggestedEdge,
   approveSuggestedEdge,
   rejectSuggestedEdge,
+  resetSuggestedEdge,
 } from '@/api/parlementair';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { ParlementairItemFilters, CompleteReviewData } from '@/api/parlementair';
@@ -84,5 +85,13 @@ export function useRejectSuggestedEdge() {
     mutationFn: (id: string) => rejectSuggestedEdge(id),
     errorMessage: 'Fout bij afwijzen relatie',
     invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
+  });
+}
+
+export function useResetSuggestedEdge() {
+  return useMutationWithError({
+    mutationFn: (id: string) => resetSuggestedEdge(id),
+    errorMessage: 'Fout bij ongedaan maken',
+    invalidateKeys: [...PARLEMENTAIR_INVALIDATE_KEYS, ['edges']],
   });
 }
