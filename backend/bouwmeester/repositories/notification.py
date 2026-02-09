@@ -49,6 +49,21 @@ class NotificationRepository(BaseRepository[Notification]):
         result = await self.session.execute(stmt)
         return result.scalar_one()
 
+    async def count_replies_batch(self, parent_ids: list[UUID]) -> dict[UUID, int]:
+        """Count replies for multiple parent notifications in a single query."""
+        if not parent_ids:
+            return {}
+        stmt = (
+            select(
+                Notification.parent_id,
+                func.count().label("cnt"),
+            )
+            .where(Notification.parent_id.in_(parent_ids))
+            .group_by(Notification.parent_id)
+        )
+        result = await self.session.execute(stmt)
+        return {row.parent_id: row.cnt for row in result.all()}
+
     async def mark_read(self, notification_id: UUID) -> Notification | None:
         notification = await self.session.get(Notification, notification_id)
         if notification is None:
@@ -72,12 +87,14 @@ class NotificationRepository(BaseRepository[Notification]):
         return result.rowcount
 
     async def count_unread(self, person_id: UUID) -> int:
+        """Count unread root notifications (excludes replies to match list view)."""
         stmt = (
             select(func.count())
             .select_from(Notification)
             .where(
                 Notification.person_id == person_id,
                 Notification.is_read == False,  # noqa: E712
+                Notification.parent_id.is_(None),
             )
         )
         result = await self.session.execute(stmt)
