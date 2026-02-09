@@ -223,3 +223,128 @@ async def test_reject_edge_not_found(client):
     fake_id = uuid.uuid4()
     resp = await client.put(f"/api/parlementair/edges/{fake_id}/reject")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Update suggested edge type
+# ---------------------------------------------------------------------------
+
+
+async def test_update_suggested_edge_type(
+    client, db_session, sample_node, second_node, sample_edge_type
+):
+    """PATCH /api/parlementair/edges/{id} changes the edge_type_id."""
+    from bouwmeester.models.edge_type import EdgeType
+
+    item = await _create_parlementair_item(
+        db_session, corpus_node_id=sample_node.id, status="imported"
+    )
+    se = await _create_suggested_edge(
+        db_session, item.id, second_node.id, sample_edge_type.id
+    )
+    # Create a second edge type to switch to
+    et2 = EdgeType(
+        id="andere_relatie",
+        label_nl="Andere relatie",
+        label_en="Other relation",
+        description="Een andere relatie",
+        is_custom=True,
+    )
+    db_session.add(et2)
+    await db_session.flush()
+
+    resp = await client.patch(
+        f"/api/parlementair/edges/{se.id}",
+        json={"edge_type_id": "andere_relatie"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["edge_type_id"] == "andere_relatie"
+    assert data["status"] == "pending"
+
+
+async def test_update_suggested_edge_not_found(client):
+    """PATCH /api/parlementair/edges/{id} returns 404 for non-existent."""
+    fake_id = uuid.uuid4()
+    resp = await client.patch(
+        f"/api/parlementair/edges/{fake_id}",
+        json={"edge_type_id": "some_type"},
+    )
+    assert resp.status_code == 404
+
+
+async def test_update_suggested_edge_only_pending(
+    client, db_session, sample_node, second_node, sample_edge_type
+):
+    """PATCH /api/parlementair/edges/{id} rejects update if edge is not pending."""
+    item = await _create_parlementair_item(
+        db_session, corpus_node_id=sample_node.id, status="imported"
+    )
+    se = await _create_suggested_edge(
+        db_session, item.id, second_node.id, sample_edge_type.id
+    )
+    # Approve it first
+    await client.put(f"/api/parlementair/edges/{se.id}/approve")
+
+    # Try to update the now-approved edge
+    resp = await client.patch(
+        f"/api/parlementair/edges/{se.id}",
+        json={"edge_type_id": "some_other_type"},
+    )
+    assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Reset suggested edge
+# ---------------------------------------------------------------------------
+
+
+async def test_reset_suggested_edge_from_approved(
+    client, db_session, sample_node, second_node, sample_edge_type
+):
+    """PUT /api/parlementair/edges/{id}/reset reverts approved edge to pending."""
+    item = await _create_parlementair_item(
+        db_session, corpus_node_id=sample_node.id, status="imported"
+    )
+    se = await _create_suggested_edge(
+        db_session, item.id, second_node.id, sample_edge_type.id
+    )
+    # Approve first
+    approve_resp = await client.put(f"/api/parlementair/edges/{se.id}/approve")
+    assert approve_resp.status_code == 200
+    assert approve_resp.json()["status"] == "approved"
+    assert approve_resp.json()["edge_id"] is not None
+
+    # Reset back to pending
+    resp = await client.put(f"/api/parlementair/edges/{se.id}/reset")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "pending"
+    assert data["edge_id"] is None
+
+
+async def test_reset_suggested_edge_from_rejected(
+    client, db_session, sample_node, second_node, sample_edge_type
+):
+    """PUT /api/parlementair/edges/{id}/reset reverts rejected edge to pending."""
+    item = await _create_parlementair_item(
+        db_session, corpus_node_id=sample_node.id, status="imported"
+    )
+    se = await _create_suggested_edge(
+        db_session, item.id, second_node.id, sample_edge_type.id
+    )
+    # Reject first
+    await client.put(f"/api/parlementair/edges/{se.id}/reject")
+
+    # Reset back to pending
+    resp = await client.put(f"/api/parlementair/edges/{se.id}/reset")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "pending"
+
+
+async def test_reset_suggested_edge_not_found(client):
+    """PUT /api/parlementair/edges/{id}/reset returns 404 for non-existent."""
+    fake_id = uuid.uuid4()
+    resp = await client.put(f"/api/parlementair/edges/{fake_id}/reset")
+    assert resp.status_code == 404
