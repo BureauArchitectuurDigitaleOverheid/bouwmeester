@@ -1,8 +1,9 @@
 """
-Tweede Kamer and Eerste Kamer API clients for fetching moties.
+Tweede Kamer and Eerste Kamer API clients for parliamentary data.
 
-Integrates with the official OData APIs to retrieve adopted moties (motions)
-from both chambers of Dutch parliament.
+Integrates with the official OData APIs to retrieve parliamentary items
+(moties, kamervragen, toezeggingen, etc.) from both chambers of Dutch
+parliament.
 """
 
 import logging
@@ -14,6 +15,11 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+
+def _odata_escape(value: str) -> str:
+    """Escape a string value for use in OData filter expressions."""
+    return value.replace("'", "''")
 
 
 class MotieData(BaseModel):
@@ -29,6 +35,36 @@ class MotieData(BaseModel):
     document_url: str | None = None
     kabinetsappreciatie: str | None = None
     bron: str  # "tweede_kamer" or "eerste_kamer"
+
+
+class ZaakData(BaseModel):
+    """Structured data for a generic Zaak (parliamentary case)."""
+
+    zaak_id: str
+    zaak_nummer: str
+    titel: str
+    onderwerp: str
+    soort: str
+    datum: datetime | None = None
+    indieners: list[str] = []
+    document_tekst: str | None = None
+    document_url: str | None = None
+    termijn: datetime | None = None
+    bron: str = "tweede_kamer"
+
+
+class ToezeggingData(BaseModel):
+    """Structured data for a toezegging (government commitment)."""
+
+    toezegging_id: str
+    nummer: str
+    tekst: str
+    naam_bewindspersoon: str | None = None
+    ministerie: str | None = None
+    status: str | None = None
+    datum_nakoming: datetime | None = None
+    activiteit_nummer: str | None = None
+    bron: str = "tweede_kamer"
 
 
 class TweedeKamerClient:
@@ -82,44 +118,87 @@ class TweedeKamerClient:
     async def fetch_moties(
         self, since: datetime | None = None, limit: int = 100
     ) -> list[MotieData]:
-        """
-        Fetch adopted moties from Tweede Kamer API.
+        """Fetch adopted moties from Tweede Kamer API.
 
-        Strategy: query Besluit for 'aangenomen' decisions, then expand Zaak
-        to get the motie details. This is more efficient than querying all
-        Zaak records and checking each one individually.
+        Delegates to fetch_zaak_by_soort with 'aangenomen' besluit filter,
+        then converts ZaakData to MotieData for backward compatibility.
+        """
+        zaken = await self.fetch_zaak_by_soort(
+            soort="Motie",
+            since=since,
+            limit=limit,
+            besluit_filter="contains(BesluitSoort,'aangenomen')",
+        )
+        return [
+            MotieData(
+                zaak_id=z.zaak_id,
+                zaak_nummer=z.zaak_nummer,
+                titel=z.titel,
+                onderwerp=z.onderwerp,
+                datum=z.datum,
+                indieners=z.indieners,
+                document_tekst=z.document_tekst,
+                document_url=z.document_url,
+                kabinetsappreciatie=None,
+                bron=z.bron,
+            )
+            for z in zaken
+        ]
+
+    async def fetch_zaak_by_soort(
+        self,
+        soort: str,
+        since: datetime | None = None,
+        limit: int = 100,
+        besluit_filter: str | None = None,
+    ) -> list[ZaakData]:
+        """Fetch Zaak records of a given Soort (type).
 
         Args:
-            since: Optional datetime to fetch only moties modified after this
-            limit: Maximum number of results to fetch (default 100)
-
-        Returns:
-            List of MotieData objects for adopted moties
+            soort: Zaak type to query (e.g. 'Schriftelijke vragen')
+            since: Optional datetime to filter by GewijzigdOp
+            limit: Maximum number of results
+            besluit_filter: Optional Besluit filter
+                (e.g. "contains(BesluitSoort,'aangenomen')")
         """
         client = self._get_http_client()
 
-        # Query Besluit for aangenomen moties directly
-        filters = [
-            "contains(BesluitSoort,'aangenomen')",
-            "Zaak/any(z:z/Soort eq 'Motie')",
-        ]
-        if since:
-            since_str = since.strftime("%Y-%m-%dT%H:%M:%SZ")
-            filters.append(f"GewijzigdOp gt {since_str}")
+        escaped_soort = _odata_escape(soort)
 
-        filter_query = " and ".join(filters)
+        if besluit_filter:
+            # Query via Besluit, expanding Zaak (like fetch_moties)
+            filters = [
+                besluit_filter,
+                f"Zaak/any(z:z/Soort eq '{escaped_soort}')",
+            ]
+            if since:
+                since_str = since.strftime("%Y-%m-%dT%H:%M:%SZ")
+                filters.append(f"GewijzigdOp gt {since_str}")
 
-        params = {
-            "$filter": filter_query,
-            "$orderby": "GewijzigdOp desc",
-            "$top": str(limit),
-            "$expand": "Zaak($select=Id,Nummer,Titel,Onderwerp,GestartOp)",
-        }
+            params = {
+                "$filter": " and ".join(filters),
+                "$orderby": "GewijzigdOp desc",
+                "$top": str(limit),
+                "$expand": "Zaak($select=Id,Nummer,Titel,Onderwerp,GestartOp)",
+            }
+            url = f"{self.base_url}/Besluit"
+        else:
+            # Query Zaak directly
+            filters = [f"Soort eq '{escaped_soort}'"]
+            if since:
+                since_str = since.strftime("%Y-%m-%dT%H:%M:%SZ")
+                filters.append(f"GewijzigdOp gt {since_str}")
 
-        url = f"{self.base_url}/Besluit"
+            params = {
+                "$filter": " and ".join(filters),
+                "$orderby": "GewijzigdOp desc",
+                "$top": str(limit),
+                "$select": "Id,Nummer,Titel,Onderwerp,GestartOp,Termijn",
+            }
+            url = f"{self.base_url}/Zaak"
 
         logger.info(
-            f"Fetching aangenomen moties from TK API (since={since}, limit={limit})"
+            f"Fetching Zaak soort='{soort}' from TK API (since={since}, limit={limit})"
         )
 
         try:
@@ -127,116 +206,172 @@ class TweedeKamerClient:
             response.raise_for_status()
             data = response.json()
 
-            besluiten = data.get("value", [])
-            logger.info(f"Retrieved {len(besluiten)} aangenomen besluit records")
-
-            # Process each besluit → zaak
-            moties: list[MotieData] = []
+            results: list[ZaakData] = []
             seen_zaak_ids: set[str] = set()
 
-            for besluit in besluiten:
-                zaken = besluit.get("Zaak", [])
-                for zaak in zaken:
+            if besluit_filter:
+                # Besluit-based: extract Zaak from expansion
+                for besluit in data.get("value", []):
+                    for zaak in besluit.get("Zaak", []):
+                        zaak_id = zaak.get("Id")
+                        if not zaak_id or zaak_id in seen_zaak_ids:
+                            continue
+                        seen_zaak_ids.add(zaak_id)
+                        results.append(await self._zaak_to_data(zaak, soort))
+            else:
+                # Direct Zaak query
+                for zaak in data.get("value", []):
                     zaak_id = zaak.get("Id")
                     if not zaak_id or zaak_id in seen_zaak_ids:
                         continue
                     seen_zaak_ids.add(zaak_id)
+                    results.append(await self._zaak_to_data(zaak, soort))
 
-                    # Fetch additional details
-                    zaak_nummer = zaak.get("Nummer", "")
-                    indieners = await self._fetch_indieners(zaak_id)
-                    document_tekst, document_url = await self._fetch_document_text(
-                        zaak_id, zaak_nummer
-                    )
-
-                    # Parse datum
-                    datum = None
-                    if zaak.get("GestartOp"):
-                        try:
-                            datum = datetime.fromisoformat(
-                                zaak["GestartOp"].replace("Z", "+00:00")
-                            )
-                        except (ValueError, AttributeError):
-                            pass
-
-                    motie = MotieData(
-                        zaak_id=zaak_id,
-                        zaak_nummer=zaak_nummer,
-                        titel=zaak.get("Titel", ""),
-                        onderwerp=zaak.get("Onderwerp", ""),
-                        datum=datum,
-                        indieners=indieners,
-                        document_tekst=document_tekst,
-                        document_url=document_url,
-                        kabinetsappreciatie=None,
-                        bron="tweede_kamer",
-                    )
-                    moties.append(motie)
-
-            logger.info(f"Successfully processed {len(moties)} aangenomen moties")
-            return moties
+            logger.info(f"Fetched {len(results)} Zaak records (soort='{soort}')")
+            return results
 
         except httpx.HTTPStatusError as e:
             logger.error(
-                f"HTTP error fetching moties: "
+                f"HTTP error fetching Zaak soort='{soort}': "
                 f"{e.response.status_code} {e.response.text}"
             )
             raise
         except httpx.RequestError as e:
-            logger.error(f"Request error fetching moties: {e}")
+            logger.error(f"Request error fetching Zaak soort='{soort}': {e}")
             raise
 
-    async def _is_aangenomen(self, zaak_id: str) -> bool:
-        """
-        Check if a motie was adopted (aangenomen).
+    async def _zaak_to_data(self, zaak: dict[str, Any], soort: str) -> ZaakData:
+        """Convert a raw Zaak dict to ZaakData with enrichment."""
+        zaak_id = zaak["Id"]
+        zaak_nummer = zaak.get("Nummer", "")
+
+        indieners = await self._fetch_indieners(zaak_id)
+        document_tekst, document_url = await self._fetch_document_text(
+            zaak_id, zaak_nummer
+        )
+
+        datum = None
+        if zaak.get("GestartOp"):
+            try:
+                datum = datetime.fromisoformat(zaak["GestartOp"].replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                pass
+
+        termijn = None
+        if zaak.get("Termijn"):
+            try:
+                termijn = datetime.fromisoformat(zaak["Termijn"].replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                pass
+
+        return ZaakData(
+            zaak_id=zaak_id,
+            zaak_nummer=zaak_nummer,
+            titel=zaak.get("Titel", ""),
+            onderwerp=zaak.get("Onderwerp", ""),
+            soort=soort,
+            datum=datum,
+            indieners=indieners,
+            document_tekst=document_tekst,
+            document_url=document_url,
+            termijn=termijn,
+            bron="tweede_kamer",
+        )
+
+    async def fetch_toezeggingen(
+        self,
+        ministerie: str | None = None,
+        since: datetime | None = None,
+        limit: int = 100,
+    ) -> list[ToezeggingData]:
+        """Fetch toezeggingen (government commitments) from TK API.
 
         Args:
-            zaak_id: The Zaak identifier
-
-        Returns:
-            True if the motie was adopted, False otherwise
+            ministerie: Filter by ministry (e.g. 'Binnenlandse Zaken')
+            since: Optional datetime to filter by GewijzigdOp
+            limit: Maximum number of results
         """
         client = self._get_http_client()
 
-        # Query Besluit entities related to this Zaak via navigation property
+        filters = ["Verwijderd eq false"]
+        if ministerie:
+            filters.append(f"contains(Ministerie,'{_odata_escape(ministerie)}')")
+        if since:
+            since_str = since.strftime("%Y-%m-%dT%H:%M:%SZ")
+            filters.append(f"GewijzigdOp gt {since_str}")
+
         params = {
-            "$filter": f"Zaak/any(z:z/Id eq {zaak_id})",
-            "$select": "BesluitSoort,BesluitTekst",
+            "$filter": " and ".join(filters),
+            "$orderby": "GewijzigdOp desc",
+            "$top": str(limit),
+            "$select": (
+                "Id,Nummer,Tekst,Naam,Achternaam,Initialen,"
+                "Ministerie,Status,DatumNakoming,ActiviteitNummer"
+            ),
         }
 
-        url = f"{self.base_url}/Besluit"
+        url = f"{self.base_url}/Toezegging"
+
+        logger.info(
+            f"Fetching toezeggingen from TK API "
+            f"(ministerie={ministerie}, since={since}, limit={limit})"
+        )
 
         try:
             response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
 
-            besluiten = data.get("value", [])
+            results: list[ToezeggingData] = []
+            for item in data.get("value", []):
+                toezegging_id = item.get("Id")
+                if not toezegging_id:
+                    continue
 
-            if not besluiten:
-                logger.debug(f"No besluit found for zaak {zaak_id}")
-                return False
+                datum_nakoming = None
+                if item.get("DatumNakoming"):
+                    try:
+                        datum_nakoming = datetime.fromisoformat(
+                            item["DatumNakoming"].replace("Z", "+00:00")
+                        )
+                    except (ValueError, AttributeError):
+                        pass
 
-            # Check if any besluit indicates adoption
-            for besluit in besluiten:
-                besluit_soort = (besluit.get("BesluitSoort") or "").lower()
-                besluit_tekst = (besluit.get("BesluitTekst") or "").lower()
+                # Build bewindspersoon name
+                naam_parts = [
+                    item.get("Initialen", ""),
+                    item.get("Achternaam", ""),
+                ]
+                naam = " ".join(p for p in naam_parts if p).strip()
+                if not naam:
+                    naam = item.get("Naam")
 
-                # Simple heuristics for adoption
-                if "aangenomen" in besluit_soort or "aangenomen" in besluit_tekst:
-                    return True
+                results.append(
+                    ToezeggingData(
+                        toezegging_id=str(toezegging_id),
+                        nummer=item.get("Nummer") or str(toezegging_id),
+                        tekst=item.get("Tekst", ""),
+                        naam_bewindspersoon=naam,
+                        ministerie=item.get("Ministerie"),
+                        status=item.get("Status"),
+                        datum_nakoming=datum_nakoming,
+                        activiteit_nummer=item.get("ActiviteitNummer"),
+                        bron="tweede_kamer",
+                    )
+                )
 
-            return False
+            logger.info(f"Fetched {len(results)} toezeggingen")
+            return results
 
         except httpx.HTTPStatusError as e:
-            logger.warning(
-                "HTTP error checking besluit for zaak"
-                f" {zaak_id}: {e.response.status_code}"
+            logger.error(
+                f"HTTP error fetching toezeggingen: "
+                f"{e.response.status_code} {e.response.text}"
             )
-            return False
-        except Exception as e:
-            logger.warning(f"Error checking besluit for zaak {zaak_id}: {e}")
-            return False
+            raise
+        except httpx.RequestError as e:
+            logger.error(f"Request error fetching toezeggingen: {e}")
+            raise
 
     async def _fetch_document_text(
         self, zaak_id: str, zaak_nummer: str
@@ -282,11 +417,10 @@ class TweedeKamerClient:
                 full_text = doc.get("Onderwerp") or doc.get("Titel")
 
             # Construct URL to the document on tweedekamer.nl
-            # Format: /kamerstukken/moties/detail?id={zaak_nummer}&did={doc_nummer}
             doc_url = None
             if zaak_nummer and doc_nummer:
                 doc_url = (
-                    f"https://www.tweedekamer.nl/kamerstukken/moties/"
+                    f"https://www.tweedekamer.nl/kamerstukken/"
                     f"detail?id={zaak_nummer}&did={doc_nummer}"
                 )
 

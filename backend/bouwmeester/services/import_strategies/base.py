@@ -49,6 +49,25 @@ class ImportStrategy(ABC):
         """Whether a CorpusNode should be created for matched items."""
         return True
 
+    @property
+    def supports_ek(self) -> bool:
+        """Whether this type exists in the Eerste Kamer API.
+
+        When False, _import_type skips polling EK entirely.
+        """
+        return True
+
+    @property
+    def always_import(self) -> bool:
+        """Whether to import even without matched corpus nodes.
+
+        When True, items are imported with status 'imported' and get a
+        CorpusNode + review task, but may have zero suggested edges.
+        Use for pre-filtered items (e.g. toezeggingen filtered by BZK).
+        When False, items without matched nodes are marked 'out_of_scope'.
+        """
+        return False
+
     @abstractmethod
     async def fetch_items(
         self,
@@ -80,6 +99,10 @@ class ImportStrategy(ABC):
     def default_edge_type(self) -> str:
         """Default edge type ID for suggested edges."""
         return "adresseert"
+
+    def politieke_input_status(self, item: FetchedItem) -> str:
+        """Status value for the PolitiekeInput record."""
+        return "aangenomen"
 
     def context_hint(self) -> str:
         """Hint passed to LLM for prompt customization."""

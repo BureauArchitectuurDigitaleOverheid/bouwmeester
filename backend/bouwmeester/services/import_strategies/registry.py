@@ -1,10 +1,14 @@
 """Registry of available import strategies."""
 
 from bouwmeester.services.import_strategies.base import ImportStrategy
+from bouwmeester.services.import_strategies.kamervraag import KamervraagStrategy
 from bouwmeester.services.import_strategies.motie import MotieStrategy
+from bouwmeester.services.import_strategies.toezegging import ToezeggingStrategy
 
 STRATEGIES: dict[str, type[ImportStrategy]] = {
     "motie": MotieStrategy,
+    "kamervraag": KamervraagStrategy,
+    "toezegging": ToezeggingStrategy,
 }
 
 
