@@ -9,7 +9,8 @@ import {
   useParlementairItems,
   useTriggerParlementairImport,
 } from '@/hooks/useParlementair';
-import type { ParlementairItemStatus } from '@/types';
+import type { ParlementairItemStatus, ParlementairItemType } from '@/types';
+import { PARLEMENTAIR_TYPE_LABELS } from '@/types';
 
 const statusFilters: { value: ParlementairItemStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'Alles' },
@@ -20,14 +21,27 @@ const statusFilters: { value: ParlementairItemStatus | 'all'; label: string }[] 
   { value: 'pending', label: 'In wachtrij' },
 ];
 
+const typeFilters: { value: ParlementairItemType | 'all'; label: string }[] = [
+  { value: 'all', label: 'Alle typen' },
+  ...(['motie', 'kamervraag', 'toezegging'] as ParlementairItemType[]).map((t) => ({
+    value: t,
+    label: PARLEMENTAIR_TYPE_LABELS[t] ?? t,
+  })),
+];
+
 export function ParlementairPage() {
   const [searchParams] = useSearchParams();
   const highlightItemId = searchParams.get('item') || searchParams.get('motie');
   const [statusFilter, setStatusFilter] = useState<ParlementairItemStatus | 'all'>(
     highlightItemId ? 'all' : 'imported'
   );
+  const [typeFilter, setTypeFilter] = useState<ParlementairItemType | 'all'>('all');
+  const filters = {
+    ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+    ...(typeFilter !== 'all' ? { type: typeFilter } : {}),
+  };
   const { data: imports, isLoading } = useParlementairItems(
-    statusFilter === 'all' ? undefined : { status: statusFilter }
+    Object.keys(filters).length > 0 ? filters : undefined
   );
   const triggerImport = useTriggerParlementairImport();
 
@@ -47,21 +61,32 @@ export function ParlementairPage() {
         </Button>
       </div>
 
-      {/* Status filter tabs */}
-      <div className="flex items-center gap-1 border-b border-border">
-        {statusFilters.map((filter) => (
-          <button
-            key={filter.value}
-            onClick={() => setStatusFilter(filter.value)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              statusFilter === filter.value
-                ? 'border-primary-900 text-primary-900'
-                : 'border-transparent text-text-secondary hover:text-text hover:border-border'
-            }`}
-          >
-            {filter.label}
-          </button>
-        ))}
+      {/* Filters */}
+      <div className="flex items-center gap-4 border-b border-border">
+        <div className="flex items-center gap-1">
+          {statusFilters.map((filter) => (
+            <button
+              key={filter.value}
+              onClick={() => setStatusFilter(filter.value)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                statusFilter === filter.value
+                  ? 'border-primary-900 text-primary-900'
+                  : 'border-transparent text-text-secondary hover:text-text hover:border-border'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value as ParlementairItemType | 'all')}
+          className="ml-auto text-sm border border-border rounded-lg px-3 py-1.5 bg-white text-text-secondary -mb-px"
+        >
+          {typeFilters.map((f) => (
+            <option key={f.value} value={f.value}>{f.label}</option>
+          ))}
+        </select>
       </div>
 
       {/* Content */}
