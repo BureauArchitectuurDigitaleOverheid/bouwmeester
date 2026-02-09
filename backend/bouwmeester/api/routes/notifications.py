@@ -248,7 +248,9 @@ async def reply_to_notification(
     reply = await service.repo.create(data)
 
     # Also notify the original sender if they are different from the replier
-    # and different from the root recipient
+    # and different from the root recipient.
+    # Create as a standalone notification (no parent_id) so it doesn't
+    # pollute the thread view with duplicates.
     should_notify_sender = (
         root.sender_id
         and root.sender_id != body.sender_id
@@ -261,7 +263,6 @@ async def reply_to_notification(
             title=title,
             message=body.message,
             sender_id=body.sender_id,
-            parent_id=root_id,
             related_node_id=root.related_node_id,
             related_task_id=root.related_task_id,
         )
