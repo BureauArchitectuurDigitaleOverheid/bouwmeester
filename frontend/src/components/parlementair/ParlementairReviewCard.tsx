@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Check, X, ExternalLink, Users, Calendar, Plus, Trash2, Link, Undo2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
@@ -96,12 +96,13 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   });
 
   // Fetch stakeholders for the corpus node and all connected nodes
-  const connectedNodeIds = corpusNodeId
-    ? [corpusNodeId, ...(nodeEdges ?? []).map((e) =>
-        e.from_node_id === corpusNodeId ? e.to_node_id : e.from_node_id,
-      )]
-    : [];
-  const uniqueNodeIds = [...new Set(connectedNodeIds)];
+  const uniqueNodeIds = useMemo(() => {
+    if (!corpusNodeId) return [];
+    const ids = [corpusNodeId, ...(nodeEdges ?? []).map((e) =>
+      e.from_node_id === corpusNodeId ? e.to_node_id : e.from_node_id,
+    )];
+    return [...new Set(ids)];
+  }, [corpusNodeId, nodeEdges]);
   const stakeholderQueries = useQueries({
     queries: uniqueNodeIds.map((nodeId) => ({
       queryKey: ['node-stakeholders', nodeId],

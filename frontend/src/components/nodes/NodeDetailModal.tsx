@@ -20,7 +20,8 @@ import { ReferencesList } from '@/components/common/ReferencesList';
 import { NodeEditForm } from './NodeEditForm';
 import { useNode, useNodeStakeholders, useNodeNeighbors, useNodeParlementairItem } from '@/hooks/useNodes';
 import { useNodeTags } from '@/hooks/useTags';
-import { useTasks } from '@/hooks/useTasks';
+import { useQuery } from '@tanstack/react-query';
+import { getTasks } from '@/api/tasks';
 import {
   NODE_TYPE_COLORS,
   STAKEHOLDER_ROL_LABELS,
@@ -42,7 +43,11 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
   const { data: stakeholders } = useNodeStakeholders(nodeId ?? undefined);
   const { data: neighbors } = useNodeNeighbors(nodeId ?? undefined);
   const { data: nodeTags } = useNodeTags(nodeId ?? '');
-  const { data: tasks } = useTasks(nodeId ? { node_id: nodeId } : undefined);
+  const { data: tasks } = useQuery({
+    queryKey: ['tasks', 'list', { node_id: nodeId }],
+    queryFn: () => getTasks({ node_id: nodeId! }),
+    enabled: !!nodeId,
+  });
   const { data: parlementairItem } = useNodeParlementairItem(
     nodeId ?? undefined,
     node?.node_type,
