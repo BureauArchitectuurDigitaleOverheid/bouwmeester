@@ -21,6 +21,7 @@ class SearchRepository:
         Uses to_tsvector/to_tsquery with ts_rank on title and description.
         """
         # Build the tsvector from title (weight A) and description (weight B)
+        # setweight() requires PG "char" type — use literal SQL casts
         ts_vector = func.setweight(
             func.to_tsvector("dutch", func.coalesce(CorpusNode.title, "")),
             literal_column("'A'"),
