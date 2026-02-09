@@ -88,24 +88,19 @@ class NotificationRepository(BaseRepository[Notification]):
         )
 
         # Join back to get the message of the latest reply
-        stmt = (
-            select(
-                Notification.parent_id,
-                Notification.created_at,
-                Notification.message,
-            )
-            .join(
-                max_sub,
-                and_(
-                    Notification.parent_id == max_sub.c.pid,
-                    Notification.created_at == max_sub.c.max_at,
-                ),
-            )
+        stmt = select(
+            Notification.parent_id,
+            Notification.created_at,
+            Notification.message,
+        ).join(
+            max_sub,
+            and_(
+                Notification.parent_id == max_sub.c.pid,
+                Notification.created_at == max_sub.c.max_at,
+            ),
         )
         result = await self.session.execute(stmt)
-        return {
-            row.parent_id: (row.created_at, row.message) for row in result.all()
-        }
+        return {row.parent_id: (row.created_at, row.message) for row in result.all()}
 
     async def mark_read(self, notification_id: UUID) -> Notification | None:
         notification = await self.session.get(Notification, notification_id)

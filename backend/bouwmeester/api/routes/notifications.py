@@ -105,9 +105,7 @@ async def list_notifications(
     )
     responses = await _enrich_batch(notifications, service, db)
     # Re-sort so threads with recent replies bubble to the top
-    responses.sort(
-        key=lambda r: r.last_activity_at or r.created_at, reverse=True
-    )
+    responses.sort(key=lambda r: r.last_activity_at or r.created_at, reverse=True)
     return responses
 
 
