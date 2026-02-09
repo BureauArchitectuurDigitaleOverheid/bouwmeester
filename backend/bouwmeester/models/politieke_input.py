@@ -19,7 +19,7 @@ class PolitiekeInput(Base):
         primary_key=True,
     )
     type: Mapped[str] = mapped_column(
-        comment="coalitieakkoord|motie|kamerbrief|toezegging|amendement",
+        comment="coalitieakkoord|motie|kamerbrief|toezegging|amendement|kamervraag|commissiedebat|schriftelijk_overleg|interpellatie",
         nullable=False,
     )
     referentie: Mapped[str | None] = mapped_column(

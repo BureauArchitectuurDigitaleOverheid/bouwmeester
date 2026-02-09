@@ -127,6 +127,9 @@ install-frontend:
 worker-logs:
     docker compose logs -f worker
 
-# Manually trigger motie import (via API)
-import-moties:
-    curl -X POST http://localhost:8000/api/moties/imports/trigger
+# Manually trigger parliamentary item import (via API)
+import-parlementair:
+    curl -X POST http://localhost:8000/api/parlementair/imports/trigger
+
+# Backward-compatible alias
+import-moties: import-parlementair

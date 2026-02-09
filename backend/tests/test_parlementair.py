@@ -1,19 +1,20 @@
-"""Comprehensive API tests for the moties router."""
+"""Comprehensive API tests for the parlementair router."""
 
 import uuid
 from datetime import date
 
 # ---------------------------------------------------------------------------
-# Fixtures (local to moties tests)
+# Fixtures (local to parlementair tests)
 # ---------------------------------------------------------------------------
 
 
-async def _create_motie_import(db_session, corpus_node_id=None, status="pending"):
-    """Helper to create a MotieImport record."""
-    from bouwmeester.models.motie_import import MotieImport
+async def _create_parlementair_item(db_session, corpus_node_id=None, status="pending"):
+    """Helper to create a ParlementairItem record."""
+    from bouwmeester.models.parlementair_item import ParlementairItem
 
-    motie = MotieImport(
+    item = ParlementairItem(
         id=uuid.uuid4(),
+        type="motie",
         zaak_id=f"zaak-{uuid.uuid4().hex[:8]}",
         zaak_nummer="36200-VII-42",
         titel="Test motie",
@@ -23,20 +24,20 @@ async def _create_motie_import(db_session, corpus_node_id=None, status="pending"
         status=status,
         corpus_node_id=corpus_node_id,
     )
-    db_session.add(motie)
+    db_session.add(item)
     await db_session.flush()
-    return motie
+    return item
 
 
 async def _create_suggested_edge(
-    db_session, motie_import_id, target_node_id, edge_type_id
+    db_session, parlementair_item_id, target_node_id, edge_type_id
 ):
     """Helper to create a SuggestedEdge record."""
-    from bouwmeester.models.motie_import import SuggestedEdge
+    from bouwmeester.models.parlementair_item import SuggestedEdge
 
     se = SuggestedEdge(
         id=uuid.uuid4(),
-        motie_import_id=motie_import_id,
+        parlementair_item_id=parlementair_item_id,
         target_node_id=target_node_id,
         edge_type_id=edge_type_id,
         confidence=0.85,
@@ -54,25 +55,25 @@ async def _create_suggested_edge(
 
 
 async def test_list_imports_returns_200(client):
-    """GET /api/moties/imports returns 200 and a list."""
-    resp = await client.get("/api/moties/imports")
+    """GET /api/parlementair/imports returns 200 and a list."""
+    resp = await client.get("/api/parlementair/imports")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
 
 
 async def test_list_imports_includes_fixture(client, db_session):
-    """GET /api/moties/imports includes a created import."""
-    motie = await _create_motie_import(db_session)
-    resp = await client.get("/api/moties/imports")
+    """GET /api/parlementair/imports includes a created import."""
+    item = await _create_parlementair_item(db_session)
+    resp = await client.get("/api/parlementair/imports")
     assert resp.status_code == 200
     ids = {m["id"] for m in resp.json()}
-    assert str(motie.id) in ids
+    assert str(item.id) in ids
 
 
 async def test_list_imports_filter_by_status(client, db_session):
-    """GET /api/moties/imports?status=pending filters by status."""
-    await _create_motie_import(db_session, status="pending")
-    resp = await client.get("/api/moties/imports", params={"status": "pending"})
+    """GET /api/parlementair/imports?status=pending filters by status."""
+    await _create_parlementair_item(db_session, status="pending")
+    resp = await client.get("/api/parlementair/imports", params={"status": "pending"})
     assert resp.status_code == 200
     data = resp.json()
     assert all(m["status"] == "pending" for m in data)
@@ -84,19 +85,20 @@ async def test_list_imports_filter_by_status(client, db_session):
 
 
 async def test_get_import_by_id(client, db_session):
-    """GET /api/moties/imports/{id} returns the import."""
-    motie = await _create_motie_import(db_session)
-    resp = await client.get(f"/api/moties/imports/{motie.id}")
+    """GET /api/parlementair/imports/{id} returns the import."""
+    item = await _create_parlementair_item(db_session)
+    resp = await client.get(f"/api/parlementair/imports/{item.id}")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["id"] == str(motie.id)
+    assert data["id"] == str(item.id)
     assert data["titel"] == "Test motie"
+    assert data["type"] == "motie"
 
 
 async def test_get_import_not_found(client):
-    """GET /api/moties/imports/{id} returns 404 for non-existent."""
+    """GET /api/parlementair/imports/{id} returns 404 for non-existent."""
     fake_id = uuid.uuid4()
-    resp = await client.get(f"/api/moties/imports/{fake_id}")
+    resp = await client.get(f"/api/parlementair/imports/{fake_id}")
     assert resp.status_code == 404
 
 
@@ -106,8 +108,8 @@ async def test_get_import_not_found(client):
 
 
 async def test_review_queue_returns_200(client):
-    """GET /api/moties/review-queue returns 200 and a list."""
-    resp = await client.get("/api/moties/review-queue")
+    """GET /api/parlementair/review-queue returns 200 and a list."""
+    resp = await client.get("/api/parlementair/review-queue")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
 
@@ -118,9 +120,9 @@ async def test_review_queue_returns_200(client):
 
 
 async def test_reject_import(client, db_session):
-    """PUT /api/moties/imports/{id}/reject changes status to rejected."""
-    motie = await _create_motie_import(db_session, status="imported")
-    resp = await client.put(f"/api/moties/imports/{motie.id}/reject")
+    """PUT /api/parlementair/imports/{id}/reject changes status to rejected."""
+    item = await _create_parlementair_item(db_session, status="imported")
+    resp = await client.put(f"/api/parlementair/imports/{item.id}/reject")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "rejected"
@@ -128,9 +130,9 @@ async def test_reject_import(client, db_session):
 
 
 async def test_reject_import_not_found(client):
-    """PUT /api/moties/imports/{id}/reject returns 404 for non-existent."""
+    """PUT /api/parlementair/imports/{id}/reject returns 404 for non-existent."""
     fake_id = uuid.uuid4()
-    resp = await client.put(f"/api/moties/imports/{fake_id}/reject")
+    resp = await client.put(f"/api/parlementair/imports/{fake_id}/reject")
     assert resp.status_code == 404
 
 
@@ -140,25 +142,29 @@ async def test_reject_import_not_found(client):
 
 
 async def test_complete_review(client, db_session, sample_node, sample_person):
-    """POST /api/moties/imports/{id}/complete sets status to reviewed."""
-    motie = await _create_motie_import(
+    """POST /api/parlementair/imports/{id}/complete sets status to reviewed."""
+    item = await _create_parlementair_item(
         db_session, corpus_node_id=sample_node.id, status="imported"
     )
     payload = {
         "eigenaar_id": str(sample_person.id),
         "tasks": [],
     }
-    resp = await client.post(f"/api/moties/imports/{motie.id}/complete", json=payload)
+    resp = await client.post(
+        f"/api/parlementair/imports/{item.id}/complete", json=payload
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "reviewed"
 
 
 async def test_complete_review_not_found(client, sample_person):
-    """POST /api/moties/imports/{id}/complete returns 404 for non-existent."""
+    """POST /api/parlementair/imports/{id}/complete returns 404 for non-existent."""
     fake_id = uuid.uuid4()
     payload = {"eigenaar_id": str(sample_person.id), "tasks": []}
-    resp = await client.post(f"/api/moties/imports/{fake_id}/complete", json=payload)
+    resp = await client.post(
+        f"/api/parlementair/imports/{fake_id}/complete", json=payload
+    )
     assert resp.status_code == 404
 
 
@@ -170,14 +176,14 @@ async def test_complete_review_not_found(client, sample_person):
 async def test_approve_edge(
     client, db_session, sample_node, second_node, sample_edge_type
 ):
-    """PUT /api/moties/edges/{id}/approve creates an actual edge."""
-    motie = await _create_motie_import(
+    """PUT /api/parlementair/edges/{id}/approve creates an actual edge."""
+    item = await _create_parlementair_item(
         db_session, corpus_node_id=sample_node.id, status="imported"
     )
     se = await _create_suggested_edge(
-        db_session, motie.id, second_node.id, sample_edge_type.id
+        db_session, item.id, second_node.id, sample_edge_type.id
     )
-    resp = await client.put(f"/api/moties/edges/{se.id}/approve")
+    resp = await client.put(f"/api/parlementair/edges/{se.id}/approve")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "approved"
@@ -185,9 +191,9 @@ async def test_approve_edge(
 
 
 async def test_approve_edge_not_found(client):
-    """PUT /api/moties/edges/{id}/approve returns 404 for non-existent."""
+    """PUT /api/parlementair/edges/{id}/approve returns 404 for non-existent."""
     fake_id = uuid.uuid4()
-    resp = await client.put(f"/api/moties/edges/{fake_id}/approve")
+    resp = await client.put(f"/api/parlementair/edges/{fake_id}/approve")
     assert resp.status_code == 404
 
 
@@ -199,21 +205,21 @@ async def test_approve_edge_not_found(client):
 async def test_reject_edge(
     client, db_session, sample_node, second_node, sample_edge_type
 ):
-    """PUT /api/moties/edges/{id}/reject marks edge as rejected."""
-    motie = await _create_motie_import(
+    """PUT /api/parlementair/edges/{id}/reject marks edge as rejected."""
+    item = await _create_parlementair_item(
         db_session, corpus_node_id=sample_node.id, status="imported"
     )
     se = await _create_suggested_edge(
-        db_session, motie.id, second_node.id, sample_edge_type.id
+        db_session, item.id, second_node.id, sample_edge_type.id
     )
-    resp = await client.put(f"/api/moties/edges/{se.id}/reject")
+    resp = await client.put(f"/api/parlementair/edges/{se.id}/reject")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "rejected"
 
 
 async def test_reject_edge_not_found(client):
-    """PUT /api/moties/edges/{id}/reject returns 404 for non-existent."""
+    """PUT /api/parlementair/edges/{id}/reject returns 404 for non-existent."""
     fake_id = uuid.uuid4()
-    resp = await client.put(f"/api/moties/edges/{fake_id}/reject")
+    resp = await client.put(f"/api/parlementair/edges/{fake_id}/reject")
     assert resp.status_code == 404

@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     TK_POLL_INTERVAL_SECONDS: int = 3600
     TK_IMPORT_LIMIT: int = 100
     LLM_MODEL: str = "claude-haiku-4-5-20251001"
+    ENABLED_IMPORT_TYPES: list[str] = ["motie"]
 
 
 @lru_cache
