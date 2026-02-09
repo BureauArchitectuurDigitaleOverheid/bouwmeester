@@ -148,9 +148,9 @@ decrypt-seed:
     @echo "Decrypted → backend/scripts/seed_persons.json"
 
 # Encrypt seed_persons.json for committing (add more -r flags for additional recipients)
-# To add Eelco: append -r <his-age-public-key> below
 encrypt-seed:
     age -r age1t3gkzgkgy9r05zutg2xws33xv42gyagk7wty5pqqa9apn5vrjsgsf0s4ha \
+        -r age1ugedsnl8qs5rjll3nfqw0uw4ue4dvznsndnwjnduklskxzmhzyvqsapkdk \
         -o backend/scripts/seed_persons.json.age \
         backend/scripts/seed_persons.json
     @echo "Encrypted → backend/scripts/seed_persons.json.age"
