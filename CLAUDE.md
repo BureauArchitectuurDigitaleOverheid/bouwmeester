@@ -31,6 +31,8 @@ Run `just` to see all available commands. Key ones:
 | `just db-shell` | Open psql shell |
 | `just worker-logs` | Follow worker service logs |
 | `just import-parlementair` | Manually trigger parlementair import via API |
+| `just decrypt-seed` | Decrypt seed person data (.age → .json) |
+| `just encrypt-seed` | Encrypt seed person data (.json → .age) |
 
 ## Architecture
 
@@ -129,6 +131,31 @@ ParlementairItem (tracks imported parliamentary items: moties, kamervragen, toez
 ├── CorpusNode (corpus_node_id, the created politieke_input node)
 └── type discriminator (motie, kamervraag, toezegging, amendement, ...)
 ```
+
+## Seed data and PII
+
+Person data in the seed script is **not** stored in git as plaintext. Instead:
+
+- `backend/scripts/seed_persons.json` — plaintext person data, **gitignored**
+- `backend/scripts/seed_persons.json.age` — age-encrypted version, **committed**
+- The seed script (`backend/scripts/seed.py`) loads from the JSON file. If missing, it generates placeholder persons with a warning.
+
+### Working with seed person data
+
+```bash
+just decrypt-seed    # Decrypt .age → .json (needs ~/.age/key.txt)
+just encrypt-seed    # Encrypt .json → .age (uses public keys from justfile)
+```
+
+To edit person data: decrypt, edit the JSON, re-encrypt, commit the `.age` file.
+
+### New developer setup
+
+1. `brew install age`
+2. `age-keygen -o ~/.age/key.txt` — send the public key to a team member
+3. Team member adds your public key to `encrypt-seed` in `justfile` and re-encrypts
+4. `just decrypt-seed` to get the person data
+5. `just reset-db` works without decryption too (uses placeholder persons)
 
 ## Database
 
