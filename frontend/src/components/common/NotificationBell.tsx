@@ -28,6 +28,22 @@ const TYPE_COLORS: Record<string, string> = {
   politieke_input_imported: 'bg-rose-100 text-rose-700',
 };
 
+const TYPE_LABELS: Record<string, string> = {
+  task_assigned: 'taak toegewezen',
+  task_overdue: 'taak verlopen',
+  task_completed: 'taak afgerond',
+  task_reassigned: 'taak overgedragen',
+  node_updated: 'node bijgewerkt',
+  edge_created: 'relatie aangemaakt',
+  coverage_needed: 'vervanging nodig',
+  stakeholder_added: 'betrokkene toegevoegd',
+  stakeholder_role_changed: 'rol gewijzigd',
+  direct_message: 'bericht',
+  agent_prompt: 'agent prompt',
+  mention: 'vermelding',
+  politieke_input_imported: 'parlementair item',
+};
+
 function NotificationItem({
   notification,
   onMarkRead,
@@ -51,7 +67,7 @@ function NotificationItem({
               TYPE_COLORS[notification.type] || 'bg-gray-100 text-gray-700'
             }`}
           >
-            {notification.type.replace(/_/g, ' ')}
+            {TYPE_LABELS[notification.type] || notification.type.replace(/_/g, ' ')}
           </span>
           <span className="text-xs text-text-secondary">{timeAgo(notification.last_activity_at ?? notification.created_at)}</span>
         </div>
