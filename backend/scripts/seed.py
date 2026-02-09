@@ -6,7 +6,7 @@ Clears all existing data and populates organisatie, personen, corpus, edges, and
 
 import asyncio
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,8 @@ from bouwmeester.schema.task import TaskCreate
 async def seed(db: AsyncSession) -> None:
     # Clear existing data (order matters due to FKs)
     for table in [
+        "notification",
+        "mention",
         "suggested_edge",
         "parlementair_item",
         "node_tag",
@@ -4174,6 +4176,7 @@ async def seed(db: AsyncSession) -> None:
     ]
 
     subtask_count = 0
+    created_tasks: list = []
     for entry in tasks_data:
         node = entry[0]
         title = entry[1]
@@ -4213,6 +4216,8 @@ async def seed(db: AsyncSession) -> None:
                 )
             )
             subtask_count += 1
+
+        created_tasks.append((parent, assignee, node))
 
     print(f"  Taken: {len(tasks_data)} taken + {subtask_count} subtaken aangemaakt")
 
@@ -4514,7 +4519,6 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
     # 9. MOTIE IMPORTS — Seeded imports with review tasks
     # =========================================================================
-    from datetime import timedelta
 
     from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 
@@ -4565,7 +4569,7 @@ async def seed(db: AsyncSession) -> None:
             "te registreren in het Algoritmeregister."
         ),
         matched_tags=["algoritmen", "ai"],
-        imported_at=datetime.utcnow() - timedelta(days=3),
+        imported_at=datetime.now(UTC) - timedelta(days=3),
     )
     db.add(mi_1)
     await db.flush()
@@ -4656,7 +4660,7 @@ async def seed(db: AsyncSession) -> None:
             "via eIDAS-koppeling."
         ),
         matched_tags=["digitale identiteit", "eIDAS"],
-        imported_at=datetime.utcnow() - timedelta(days=1),
+        imported_at=datetime.now(UTC) - timedelta(days=1),
     )
     db.add(mi_2)
     await db.flush()
@@ -4751,7 +4755,7 @@ async def seed(db: AsyncSession) -> None:
             "voor burgers die het Nederlands onvoldoende beheersen."
         ),
         matched_tags=["toegankelijkheid", "digitale kloof"],
-        imported_at=datetime.utcnow(),
+        imported_at=datetime.now(UTC),
     )
     db.add(mi_3)
     await db.flush()
@@ -4791,6 +4795,382 @@ async def seed(db: AsyncSession) -> None:
     )
 
     print("  Motie imports: 3 moties met review-taken aangemaakt")
+
+    # =========================================================================
+    # 10. NOTIFICATIONS
+    # =========================================================================
+    from bouwmeester.models.notification import Notification
+
+    now = datetime.now(UTC)
+    notifications = []
+
+    # Find a few assigned tasks for notification references
+    assigned_tasks = [(t, a, n) for t, a, n in created_tasks if a is not None]
+
+    # --- task_assigned: new tasks assigned to people ---
+    if len(assigned_tasks) >= 3:
+        t, a, n = assigned_tasks[0]
+        notifications.append(
+            Notification(
+                person_id=a.id,
+                type="task_assigned",
+                title=f"Taak toegewezen: {t.title}",
+                message=f"De taak '{t.title}' op '{n.title}' is aan jou toegewezen.",
+                is_read=False,
+                related_task_id=t.id,
+                related_node_id=n.id,
+                sender_id=p_vermeer.id,
+                created_at=now - timedelta(hours=2),
+            )
+        )
+        t2, a2, n2 = assigned_tasks[1]
+        notifications.append(
+            Notification(
+                person_id=a2.id,
+                type="task_assigned",
+                title=f"Taak toegewezen: {t2.title}",
+                message=f"De taak '{t2.title}' op '{n2.title}' is aan jou toegewezen.",
+                is_read=True,
+                related_task_id=t2.id,
+                related_node_id=n2.id,
+                sender_id=p_beentjes.id,
+                created_at=now - timedelta(days=1),
+            )
+        )
+        t3, a3, n3 = assigned_tasks[2]
+        notifications.append(
+            Notification(
+                person_id=a3.id,
+                type="task_assigned",
+                title=f"Taak toegewezen: {t3.title}",
+                message=(
+                    f"De taak '{t3.title}' is aan jou "
+                    f"toegewezen door {p_deblaauw.naam}."
+                ),
+                is_read=False,
+                related_task_id=t3.id,
+                related_node_id=n3.id,
+                sender_id=p_deblaauw.id,
+                created_at=now - timedelta(hours=6),
+            )
+        )
+
+    # --- task_completed: completed task notifications ---
+    done_tasks = [(t, a, n) for t, a, n in created_tasks if t.status == "done" and a]
+    if done_tasks:
+        t, a, n = done_tasks[0]
+        # Notify stakeholders of the node
+        notifications.append(
+            Notification(
+                person_id=p_vermeer.id,
+                type="task_completed",
+                title=f"Taak afgerond: {t.title}",
+                message=f"{a.naam} heeft de taak '{t.title}' afgerond.",
+                is_read=False,
+                related_task_id=t.id,
+                related_node_id=n.id,
+                sender_id=a.id,
+                created_at=now - timedelta(hours=4),
+            )
+        )
+
+    # --- task_reassigned: someone was reassigned ---
+    if p_nguyen and p_kaya and len(assigned_tasks) >= 4:
+        t4, _, n4 = assigned_tasks[3]
+        notifications.append(
+            Notification(
+                person_id=p_nguyen.id,
+                type="task_reassigned",
+                title=f"Taak overgedragen: {t4.title}",
+                message=(
+                    f"De taak '{t4.title}' is overgedragen aan {p_kaya.naam}. "
+                    "Je bent niet langer verantwoordelijk."
+                ),
+                is_read=False,
+                related_task_id=t4.id,
+                related_node_id=n4.id,
+                created_at=now - timedelta(hours=3),
+            )
+        )
+        notifications.append(
+            Notification(
+                person_id=p_kaya.id,
+                type="task_assigned",
+                title=f"Taak toegewezen: {t4.title}",
+                message=(
+                    f"De taak '{t4.title}' is aan jou overgedragen "
+                    f"(voorheen: {p_nguyen.naam})."
+                ),
+                is_read=False,
+                related_task_id=t4.id,
+                related_node_id=n4.id,
+                created_at=now - timedelta(hours=3),
+            )
+        )
+
+    # --- node_updated: corpus node was edited ---
+    if p_dejong:
+        notifications.append(
+            Notification(
+                person_id=p_vermeer.id,
+                type="node_updated",
+                title=f"Node bijgewerkt: {dos_digi_overheid.title}",
+                message=(
+                    f"{p_dejong.naam} heeft '{dos_digi_overheid.title}' bijgewerkt."
+                ),
+                is_read=True,
+                related_node_id=dos_digi_overheid.id,
+                sender_id=p_dejong.id,
+                created_at=now - timedelta(days=2),
+            )
+        )
+    notifications.append(
+        Notification(
+            person_id=p_beentjes.id,
+            type="node_updated",
+            title=f"Node bijgewerkt: {dos_ai.title}",
+            message=f"{p_vermeer.naam} heeft '{dos_ai.title}' bijgewerkt.",
+            is_read=False,
+            related_node_id=dos_ai.id,
+            sender_id=p_vermeer.id,
+            created_at=now - timedelta(hours=5),
+        )
+    )
+
+    # --- edge_created: new edges between nodes ---
+    if p_devries:
+        notifications.append(
+            Notification(
+                person_id=p_devries.id,
+                type="edge_created",
+                title="Nieuwe relatie aangemaakt",
+                message=(
+                    f"Er is een relatie gelegd tussen "
+                    f"'{dos_digi_overheid.title}' en '{bk_nds.title}'."
+                ),
+                is_read=False,
+                related_node_id=dos_digi_overheid.id,
+                created_at=now - timedelta(hours=8),
+            )
+        )
+    notifications.append(
+        Notification(
+            person_id=p_vermeer.id,
+            type="edge_created",
+            title="Nieuwe relatie aangemaakt",
+            message=(
+                f"Er is een relatie gelegd tussen "
+                f"'{dos_ai.title}' en '{bk_algo_kader.title}'."
+            ),
+            is_read=True,
+            related_node_id=dos_ai.id,
+            created_at=now - timedelta(days=3),
+        )
+    )
+
+    # --- stakeholder_added: person added as stakeholder ---
+    if p_kumar:
+        notifications.append(
+            Notification(
+                person_id=p_kumar.id,
+                type="stakeholder_added",
+                title=f"Toegevoegd als betrokkene: {dos_data.title}",
+                message=(
+                    f"Je bent toegevoegd als betrokkene aan '{dos_data.title}' "
+                    f"door {p_beentjes.naam}."
+                ),
+                is_read=False,
+                related_node_id=dos_data.id,
+                sender_id=p_beentjes.id,
+                created_at=now - timedelta(hours=1),
+            )
+        )
+    if p_nguyen:
+        notifications.append(
+            Notification(
+                person_id=p_nguyen.id,
+                type="stakeholder_added",
+                title=f"Toegevoegd als adviseur: {dos_digi_overheid.title}",
+                message=(
+                    f"Je bent toegevoegd als adviseur aan '{dos_digi_overheid.title}'."
+                ),
+                is_read=True,
+                related_node_id=dos_digi_overheid.id,
+                sender_id=p_vermeer.id,
+                created_at=now - timedelta(days=1, hours=4),
+            )
+        )
+
+    # --- stakeholder_role_changed ---
+    if p_dejong:
+        notifications.append(
+            Notification(
+                person_id=p_dejong.id,
+                type="stakeholder_role_changed",
+                title=f"Rol gewijzigd: {dos_digi_overheid.title}",
+                message=(
+                    f"Je rol op '{dos_digi_overheid.title}' is "
+                    "gewijzigd van betrokkene naar eigenaar."
+                ),
+                is_read=False,
+                related_node_id=dos_digi_overheid.id,
+                created_at=now - timedelta(hours=12),
+            )
+        )
+
+    # --- mention: @mentions in descriptions ---
+    if p_kaya:
+        notifications.append(
+            Notification(
+                person_id=p_kaya.id,
+                type="mention",
+                title="Genoemd in een beschrijving",
+                message=(
+                    f"Je bent genoemd in de beschrijving van '{dos_ai.title}' "
+                    f"door {p_beentjes.naam}."
+                ),
+                is_read=False,
+                related_node_id=dos_ai.id,
+                sender_id=p_beentjes.id,
+                created_at=now - timedelta(hours=7),
+            )
+        )
+
+    # --- direct_message: dual-root threads ---
+    # Thread 1: Art de Blaauw → Mark Vermeer
+    dm1_msg = (
+        "Hi, kunnen we morgen overleggen over de cloud-exit strategie? "
+        "Er zijn nieuwe inzichten vanuit het CIO-overleg."
+    )
+    # Recipient root (Mark — unread)
+    dm1_recipient_root = Notification(
+        person_id=p_vermeer.id,
+        type="direct_message",
+        title="Bericht van " + p_deblaauw.naam,
+        message=dm1_msg,
+        is_read=False,
+        sender_id=p_deblaauw.id,
+        created_at=now - timedelta(hours=3),
+    )
+    db.add(dm1_recipient_root)
+    await db.flush()
+    dm1_recipient_root.thread_id = dm1_recipient_root.id
+    await db.flush()
+
+    # Sender root (Art — unread because Mark replied)
+    dm1_sender_root = Notification(
+        person_id=p_deblaauw.id,
+        type="direct_message",
+        title="Bericht aan " + p_vermeer.naam,
+        message=dm1_msg,
+        is_read=False,
+        sender_id=p_deblaauw.id,
+        thread_id=dm1_recipient_root.id,
+        created_at=now - timedelta(hours=3),
+    )
+    db.add(dm1_sender_root)
+    await db.flush()
+
+    # Reply from Mark (parented to thread_id)
+    dm1_reply = Notification(
+        person_id=p_deblaauw.id,
+        type="direct_message",
+        title="Reactie van " + p_vermeer.naam,
+        message="Goed idee, ik plan een afspraak in voor morgenochtend.",
+        is_read=False,
+        sender_id=p_vermeer.id,
+        parent_id=dm1_recipient_root.id,
+        created_at=now - timedelta(hours=2, minutes=45),
+    )
+    notifications.append(dm1_reply)
+
+    # Thread 2: Mark Vermeer → Linh Nguyen
+    if p_nguyen:
+        dm2_msg = (
+            "Kun je de impact-analyse voor de NL Design System migratie "
+            "volgende week afronden?"
+        )
+        # Recipient root (Linh — unread)
+        dm2_recipient_root = Notification(
+            person_id=p_nguyen.id,
+            type="direct_message",
+            title="Bericht van " + p_vermeer.naam,
+            message=dm2_msg,
+            is_read=False,
+            sender_id=p_vermeer.id,
+            created_at=now - timedelta(hours=5),
+        )
+        db.add(dm2_recipient_root)
+        await db.flush()
+        dm2_recipient_root.thread_id = dm2_recipient_root.id
+        await db.flush()
+
+        # Sender root (Mark — unread because Linh replied)
+        dm2_sender_root = Notification(
+            person_id=p_vermeer.id,
+            type="direct_message",
+            title="Bericht aan " + p_nguyen.naam,
+            message=dm2_msg,
+            is_read=False,
+            sender_id=p_vermeer.id,
+            thread_id=dm2_recipient_root.id,
+            created_at=now - timedelta(hours=5),
+        )
+        db.add(dm2_sender_root)
+        await db.flush()
+
+        # Reply from Linh (parented to thread_id)
+        notifications.append(
+            Notification(
+                person_id=p_vermeer.id,
+                type="direct_message",
+                title="Reactie van " + p_nguyen.naam,
+                message="Ik ga ermee aan de slag, deadline halen we.",
+                is_read=False,
+                sender_id=p_nguyen.id,
+                parent_id=dm2_recipient_root.id,
+                created_at=now - timedelta(hours=4, minutes=30),
+            )
+        )
+
+    # --- politieke_input_imported ---
+    notifications.append(
+        Notification(
+            person_id=p_beentjes.id,
+            type="politieke_input_imported",
+            title="Nieuwe motie geïmporteerd",
+            message=(
+                "Motie 'Versterking digitale autonomie van de overheid' is "
+                "automatisch geïmporteerd uit de Tweede Kamer API."
+            ),
+            is_read=False,
+            related_node_id=mi_node_1.id,
+            created_at=now - timedelta(hours=1, minutes=30),
+        )
+    )
+    notifications.append(
+        Notification(
+            person_id=p_vermeer.id,
+            type="politieke_input_imported",
+            title="Nieuwe motie geïmporteerd",
+            message=(
+                "Motie 'Digitale dienstverlening in meerdere talen' is "
+                "automatisch geïmporteerd."
+            ),
+            is_read=True,
+            related_node_id=mi_node_3.id,
+            created_at=now - timedelta(days=2, hours=6),
+        )
+    )
+
+    for n in notifications:
+        db.add(n)
+    await db.flush()
+
+    notif_count = len(notifications) + 1  # +1 for dm_parent added separately
+    if p_nguyen:
+        notif_count += 1  # dm2_parent
+    print(f"  Notificaties: {notif_count} notificaties aangemaakt")
 
     await db.commit()
     print("\nSeed voltooid!")

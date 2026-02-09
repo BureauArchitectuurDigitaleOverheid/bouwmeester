@@ -31,6 +31,7 @@ import {
 import type { Task } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { formatDateLong } from '@/utils/dates';
 
 interface NodeDetailModalProps {
   nodeId: string | null;
@@ -342,11 +343,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
               </h4>
               <span className="inline-flex items-center gap-1.5 text-text-secondary">
                 <Calendar className="h-4 w-4" />
-                {new Date(node.created_at).toLocaleDateString('nl-NL', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })}
+                {formatDateLong(node.created_at)}
               </span>
             </div>
 
@@ -356,11 +353,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
               </h4>
               <span className="inline-flex items-center gap-1.5 text-text-secondary">
                 <Calendar className="h-4 w-4" />
-                {new Date(node.updated_at).toLocaleDateString('nl-NL', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })}
+                {formatDateLong(node.updated_at)}
               </span>
             </div>
           </div>

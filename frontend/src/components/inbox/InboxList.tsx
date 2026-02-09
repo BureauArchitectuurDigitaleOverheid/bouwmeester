@@ -6,9 +6,17 @@ import type { InboxItem } from '@/types';
 interface InboxListProps {
   items: InboxItem[];
   onOpenThread?: (id: string) => void;
+  onMarkRead?: (id: string) => void;
 }
 
-export function InboxList({ items, onOpenThread }: InboxListProps) {
+const GROUP_LABELS: Record<string, string> = {
+  task: 'Taken',
+  node: 'Corpus',
+  notification: 'Meldingen',
+  message: 'Berichten',
+};
+
+export function InboxList({ items, onOpenThread, onMarkRead }: InboxListProps) {
   if (items.length === 0) {
     return (
       <EmptyState
@@ -34,11 +42,11 @@ export function InboxList({ items, onOpenThread }: InboxListProps) {
       {Object.entries(grouped).map(([type, groupItems]) => (
         <div key={type}>
           <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
-            {type} ({groupItems.length})
+            {GROUP_LABELS[type] ?? type} ({groupItems.length})
           </h3>
           <div className="space-y-2">
             {groupItems.map((item) => (
-              <InboxItemCard key={item.id} item={item} onOpenThread={onOpenThread} />
+              <InboxItemCard key={item.id} item={item} onOpenThread={onOpenThread} onMarkRead={onMarkRead} />
             ))}
           </div>
         </div>

@@ -11,6 +11,7 @@ import { TaskCreateForm } from './TaskCreateForm';
 import { useTask } from '@/hooks/useTasks';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { isOverdue as checkOverdue, formatDateLong, formatDateShort } from '@/utils/dates';
 import {
   TASK_STATUS_LABELS,
   TASK_PRIORITY_LABELS,
@@ -56,7 +57,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
 
   const isOverdue =
     task?.due_date &&
-    new Date(task.due_date) < new Date() &&
+    checkOverdue(task.due_date) &&
     task.status !== TaskStatus.DONE;
 
   const subtasks = task?.subtasks ?? [];
@@ -110,11 +111,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
                   }`}
                 >
                   <Clock className="h-4 w-4" />
-                  {new Date(task.due_date).toLocaleDateString('nl-NL', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })}
+                  {formatDateLong(task.due_date)}
                 </span>
               )}
             </div>
@@ -213,11 +210,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
                 </h4>
                 <span className="inline-flex items-center gap-1.5 text-text-secondary">
                   <Calendar className="h-4 w-4" />
-                  {new Date(task.created_at).toLocaleDateString('nl-NL', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })}
+                  {formatDateLong(task.created_at)}
                 </span>
               </div>
             </div>
@@ -264,7 +257,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
                         )}
                         {sub.due_date && (
                           <span className="text-xs text-text-secondary">
-                            {new Date(sub.due_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
+                            {formatDateShort(sub.due_date)}
                           </span>
                         )}
                       </button>

@@ -1,13 +1,16 @@
-import { useNavigate } from 'react-router-dom';
 import { FileText, CheckSquare, Bell, MessageSquare, MessageCircle } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
+import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { useNodeDetail } from '@/contexts/NodeDetailContext';
+import { formatDateTimeShort } from '@/utils/dates';
 import type { InboxItem as InboxItemType } from '@/types';
 
 interface InboxItemProps {
   item: InboxItemType;
   onOpenThread?: (id: string) => void;
+  onMarkRead?: (id: string) => void;
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -24,18 +27,24 @@ const typeColors: Record<string, string> = {
   message: 'green',
 };
 
-export function InboxItemCard({ item, onOpenThread }: InboxItemProps) {
-  const navigate = useNavigate();
+export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps) {
+  const { openTaskDetail } = useTaskDetail();
+  const { openNodeDetail } = useNodeDetail();
 
   const handleClick = () => {
+    if (!item.read && onMarkRead) {
+      onMarkRead(item.id);
+    }
     if (item.type === 'message' && onOpenThread) {
       onOpenThread(item.id);
+    } else if (item.task_id) {
+      openTaskDetail(item.task_id);
     } else if (item.node_id) {
-      navigate(`/nodes/${item.node_id}`);
+      openNodeDetail(item.node_id);
     }
   };
 
-  const isClickable = item.type === 'message' || !!item.node_id;
+  const isClickable = item.type === 'message' || !!item.task_id || !!item.node_id;
 
   return (
     <Card hoverable={isClickable} onClick={handleClick}>
@@ -79,12 +88,7 @@ export function InboxItemCard({ item, onOpenThread }: InboxItemProps) {
               </span>
             )}
             <span className="text-xs text-text-secondary">
-              {new Date(item.created_at).toLocaleDateString('nl-NL', {
-                day: 'numeric',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+              {formatDateTimeShort(item.created_at)}
             </span>
           </div>
         </div>

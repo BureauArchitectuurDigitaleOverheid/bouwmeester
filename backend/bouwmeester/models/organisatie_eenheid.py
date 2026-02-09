@@ -10,7 +10,7 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import ForeignKey, Text, func, text
+from sqlalchemy import DateTime, ForeignKey, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -59,7 +59,9 @@ class OrganisatieEenheid(Base):
         server_default=text("CURRENT_DATE"),
     )
     geldig_tot: Mapped[date | None] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     # Legacy self-referential relationships (still used during transition)
     parent: Mapped[Optional["OrganisatieEenheid"]] = relationship(

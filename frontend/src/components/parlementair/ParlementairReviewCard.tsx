@@ -35,6 +35,7 @@ import {
 import { NodeDetailModal } from '@/components/nodes/NodeDetailModal';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
+import { formatDateLong } from '@/utils/dates';
 import type { CompleteReviewData } from '@/api/parlementair';
 
 interface FollowUpTaskRow {
@@ -307,19 +308,6 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
     ),
   ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return null;
-    try {
-      return new Date(dateStr).toLocaleDateString('nl-NL', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      });
-    } catch {
-      return dateStr;
-    }
-  };
-
   const typeLabel = PARLEMENTAIR_TYPE_LABELS[item.type] ?? item.type;
   const typeColor = PARLEMENTAIR_TYPE_COLORS[item.type] ?? 'gray';
 
@@ -346,13 +334,13 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             {item.datum && (
               <span className="text-xs text-text-secondary flex items-center gap-0.5">
                 <Calendar className="h-3 w-3" />
-                {formatDate(item.datum)}
+                {formatDateLong(item.datum)}
               </span>
             )}
             {item.deadline && (
               <span className="text-xs text-orange-600 flex items-center gap-0.5">
                 <Calendar className="h-3 w-3" />
-                Deadline: {formatDate(item.deadline)}
+                Deadline: {formatDateLong(item.deadline)}
               </span>
             )}
             {item.ministerie && (

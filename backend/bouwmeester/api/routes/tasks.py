@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.database import get_db
+from bouwmeester.models.person import Person
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.inbox import InboxResponse
 from bouwmeester.schema.task import (
@@ -19,6 +20,7 @@ from bouwmeester.schema.task import (
 from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
+from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -58,6 +60,7 @@ async def list_tasks(
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     data: TaskCreate,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
     repo = TaskRepository(db)
@@ -73,6 +76,19 @@ async def create_task(
         source_task_id=task.id,
         source_node_id=task.node_id,
     )
+
+    # Notify assignee
+    notif_svc = NotificationService(db)
+    if task.assignee_id:
+        assignee = await db.get(Person, task.assignee_id)
+        if assignee:
+            await notif_svc.notify_task_assigned(task, assignee, actor_id=actor_id)
+
+    # Notify team manager
+    if task.organisatie_eenheid_id:
+        await notif_svc.notify_team_manager(
+            task, task.organisatie_eenheid_id, exclude_person_id=task.assignee_id
+        )
 
     return TaskResponse.model_validate(task)
 
@@ -142,9 +158,17 @@ async def get_task_subtasks(
 async def update_task(
     id: UUID,
     data: TaskUpdate,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
     repo = TaskRepository(db)
+
+    # Capture old state before update
+    old_task = await repo.get(id)
+    old_assignee_id = old_task.assignee_id if old_task else None
+    old_status = old_task.status if old_task else None
+    old_org_unit_id = old_task.organisatie_eenheid_id if old_task else None
+
     task = require_found(await repo.update(id, data), "Task")
 
     await sync_and_notify_mentions(
@@ -157,6 +181,35 @@ async def update_task(
         source_task_id=task.id,
         source_node_id=task.node_id,
     )
+
+    notif_svc = NotificationService(db)
+
+    # Detect assignee changes
+    new_assignee_id = task.assignee_id
+    if new_assignee_id and new_assignee_id != old_assignee_id:
+        new_assignee = await db.get(Person, new_assignee_id)
+        if new_assignee:
+            if old_assignee_id:
+                # Reassignment: notify both
+                await notif_svc.notify_task_reassigned(
+                    task, old_assignee_id, new_assignee
+                )
+            else:
+                # First assignment
+                await notif_svc.notify_task_assigned(
+                    task, new_assignee, actor_id=actor_id
+                )
+
+    # Detect status → done
+    if task.status == "done" and old_status != "done":
+        await notif_svc.notify_task_completed(task, actor_id=actor_id)
+
+    # Detect org unit change
+    new_org_unit_id = task.organisatie_eenheid_id
+    if new_org_unit_id and new_org_unit_id != old_org_unit_id:
+        await notif_svc.notify_team_manager(
+            task, new_org_unit_id, exclude_person_id=task.assignee_id
+        )
 
     return TaskResponse.model_validate(task)
 

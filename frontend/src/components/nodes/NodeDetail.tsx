@@ -22,6 +22,7 @@ import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
+import { formatDate } from '@/utils/dates';
 
 type TabId = 'overview' | 'connections' | 'stakeholders' | 'tasks' | 'activity';
 
@@ -197,7 +198,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
           <div className="flex items-center gap-4 mt-2 text-xs text-text-secondary">
             <span className="inline-flex items-center gap-1">
               <Calendar className="h-3.5 w-3.5" />
-              Aangemaakt: {new Date(node.created_at).toLocaleDateString('nl-NL')}
+              Aangemaakt: {formatDate(node.created_at)}
             </span>
             <span className="inline-flex items-center gap-1">
               <LinkIcon className="h-3.5 w-3.5" />
@@ -585,9 +586,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                         <span className="text-sm text-text truncate">{record.title}</span>
                       </div>
                       <span className="text-xs text-text-secondary shrink-0 ml-3">
-                        {new Date(record.geldig_van).toLocaleDateString('nl-NL')}
+                        {formatDate(record.geldig_van)}
                         {record.geldig_tot
-                          ? ` — ${new Date(record.geldig_tot).toLocaleDateString('nl-NL')}`
+                          ? ` — ${formatDate(record.geldig_tot)}`
                           : ' — heden'}
                       </span>
                     </div>
@@ -617,9 +618,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                         <Badge variant="gray">{record.status}</Badge>
                       </div>
                       <span className="text-xs text-text-secondary shrink-0 ml-3">
-                        {new Date(record.geldig_van).toLocaleDateString('nl-NL')}
+                        {formatDate(record.geldig_van)}
                         {record.geldig_tot
-                          ? ` — ${new Date(record.geldig_tot).toLocaleDateString('nl-NL')}`
+                          ? ` — ${formatDate(record.geldig_tot)}`
                           : ' — heden'}
                       </span>
                     </div>

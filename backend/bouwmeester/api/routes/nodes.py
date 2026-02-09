@@ -34,6 +34,7 @@ from bouwmeester.schema.tag import NodeTagCreate, NodeTagResponse, TagCreate
 from bouwmeester.schema.task import TaskResponse
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.node_service import NodeService
+from bouwmeester.services.notification_service import NotificationService
 
 # Resolve forward reference to EdgeResponse in CorpusNodeWithEdges.
 CorpusNodeWithEdges.model_rebuild()
@@ -103,6 +104,7 @@ async def get_node(
 async def update_node(
     id: UUID,
     data: CorpusNodeUpdate,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> CorpusNodeResponse:
     service = NodeService(db)
@@ -116,6 +118,13 @@ async def update_node(
         node.title,
         source_node_id=node.id,
     )
+
+    # Notify stakeholders of this node update (excluding the actor)
+    if actor_id:
+        actor = await db.get(Person, actor_id)
+        if actor:
+            notif_svc = NotificationService(db)
+            await notif_svc.notify_node_updated(node, actor)
 
     return CorpusNodeResponse.model_validate(node)
 
@@ -201,14 +210,22 @@ async def get_node_stakeholders(
 async def add_node_stakeholder(
     id: UUID,
     data: NodeStakeholderCreate,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> NodeStakeholderResponse:
     service = NodeService(db)
-    require_found(await service.get(id), "Node")
+    node = require_found(await service.get(id), "Node")
     require_found(await db.get(Person, data.person_id), "Person")
 
     repo = NodeStakeholderRepository(db)
     stakeholder = await repo.create_stakeholder(id, data.person_id, data.rol)
+
+    # Notify the newly added person (skip if they added themselves)
+    notif_svc = NotificationService(db)
+    await notif_svc.notify_stakeholder_added(
+        node, data.person_id, data.rol, actor_id=actor_id
+    )
+
     await db.commit()
 
     return NodeStakeholderResponse.model_validate(stakeholder)
@@ -230,9 +247,21 @@ async def update_node_stakeholder(
         "Stakeholder",
     )
 
+    old_rol = stakeholder.rol
     stakeholder.rol = data.rol
     await db.flush()
     await db.refresh(stakeholder)
+
+    # Notify if role actually changed
+    if old_rol != data.rol:
+        service = NodeService(db)
+        node = await service.get(id)
+        if node:
+            notif_svc = NotificationService(db)
+            await notif_svc.notify_stakeholder_role_changed(
+                node, stakeholder.person_id, old_rol, data.rol
+            )
+
     await db.commit()
 
     return NodeStakeholderResponse.model_validate(stakeholder)

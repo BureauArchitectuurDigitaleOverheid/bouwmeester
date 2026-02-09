@@ -5,7 +5,7 @@ so tests never commit real data.
 """
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -267,3 +267,75 @@ async def sample_notification(db_session: AsyncSession, sample_person, second_pe
     db_session.add(notif)
     await db_session.flush()
     return notif
+
+
+@pytest.fixture
+async def third_person(db_session: AsyncSession):
+    """Create a third person (manager) for testing."""
+    from bouwmeester.models.person import Person
+
+    person = Person(
+        id=uuid.uuid4(),
+        naam="Klaas Manager",
+        email="klaas@example.com",
+        functie="manager",
+        is_active=True,
+    )
+    db_session.add(person)
+    await db_session.flush()
+    return person
+
+
+@pytest.fixture
+async def org_with_manager(db_session: AsyncSession, third_person):
+    """Create an org unit with a temporal manager record."""
+    from bouwmeester.models.org_manager import OrganisatieEenheidManager
+    from bouwmeester.models.org_naam import OrganisatieEenheidNaam
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    org = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Test Afdeling",
+        type="afdeling",
+        beschrijving="Afdeling met manager",
+    )
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(
+        OrganisatieEenheidNaam(
+            eenheid_id=org.id, naam=org.naam, geldig_van=date.today()
+        )
+    )
+    db_session.add(
+        OrganisatieEenheidManager(
+            eenheid_id=org.id,
+            manager_id=third_person.id,
+            geldig_van=date.today() - timedelta(days=30),
+        )
+    )
+    await db_session.flush()
+    return org
+
+
+@pytest.fixture
+async def org_with_legacy_manager(db_session: AsyncSession, third_person):
+    """Create an org unit with only legacy manager_id (no temporal record)."""
+    from bouwmeester.models.org_naam import OrganisatieEenheidNaam
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    org = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Legacy Afdeling",
+        type="afdeling",
+        beschrijving="Afdeling met legacy manager",
+        manager_id=third_person.id,
+    )
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(
+        OrganisatieEenheidNaam(
+            eenheid_id=org.id, naam=org.naam, geldig_van=date.today()
+        )
+    )
+    await db_session.flush()
+    return org

@@ -11,6 +11,7 @@ import {
 } from '@/types';
 import type { Task } from '@/types';
 import { richTextToPlain } from '@/utils/richtext';
+import { isOverdue as checkOverdue, formatDateShort } from '@/utils/dates';
 
 interface TaskCardProps {
   task: Task;
@@ -29,7 +30,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
   const updateTask = useUpdateTask();
   const isDone = task.status === TaskStatus.DONE;
   const isOverdue =
-    task.due_date && new Date(task.due_date) < new Date() && !isDone;
+    task.due_date && checkOverdue(task.due_date) && !isDone;
 
   const subtasks = task.subtasks ?? [];
   const doneSubtasks = subtasks.filter((s) => s.status === TaskStatus.DONE).length;
@@ -108,10 +109,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
                 }`}
               >
                 <Clock className="h-3 w-3" />
-                {new Date(task.due_date).toLocaleDateString('nl-NL', {
-                  day: 'numeric',
-                  month: 'short',
-                })}
+                {formatDateShort(task.due_date)}
               </span>
             )}
 
