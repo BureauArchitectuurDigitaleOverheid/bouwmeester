@@ -1,4 +1,4 @@
-"""API routes for motie imports and review."""
+"""API routes for parliamentary item imports and review."""
 
 from datetime import date, datetime
 from uuid import UUID
@@ -13,13 +13,16 @@ from bouwmeester.models.edge import Edge
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.person import Person
 from bouwmeester.models.task import Task
-from bouwmeester.repositories.motie_import import (
-    MotieImportRepository,
+from bouwmeester.repositories.parlementair_item import (
+    ParlementairItemRepository,
     SuggestedEdgeRepository,
 )
-from bouwmeester.schema.motie_import import MotieImportResponse, SuggestedEdgeResponse
+from bouwmeester.schema.parlementair_item import (
+    ParlementairItemResponse,
+    SuggestedEdgeResponse,
+)
 
-SUGGESTED_EDGE_DESCRIPTION = "Automatisch voorgesteld vanuit motie-import"
+SUGGESTED_EDGE_DESCRIPTION = "Automatisch voorgesteld vanuit parlementaire import"
 
 
 class FollowUpTask(BaseModel):
@@ -34,86 +37,88 @@ class CompleteReviewRequest(BaseModel):
     tasks: list[FollowUpTask] = []
 
 
-router = APIRouter(prefix="/moties", tags=["moties"])
+router = APIRouter(prefix="/parlementair", tags=["parlementair"])
 
 
-@router.get("/imports", response_model=list[MotieImportResponse])
+@router.get("/imports", response_model=list[ParlementairItemResponse])
 async def list_imports(
     status_filter: str | None = Query(None, alias="status"),
     bron: str | None = None,
+    type_filter: str | None = Query(None, alias="type"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-) -> list[MotieImportResponse]:
-    repo = MotieImportRepository(db)
+) -> list[ParlementairItemResponse]:
+    repo = ParlementairItemRepository(db)
     imports = await repo.get_all(
-        status=status_filter, bron=bron, skip=skip, limit=limit
+        status=status_filter, bron=bron, item_type=type_filter, skip=skip, limit=limit
     )
-    return [MotieImportResponse.model_validate(i) for i in imports]
+    return [ParlementairItemResponse.model_validate(i) for i in imports]
 
 
-@router.get("/imports/{import_id}", response_model=MotieImportResponse)
+@router.get("/imports/{import_id}", response_model=ParlementairItemResponse)
 async def get_import(
     import_id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> MotieImportResponse:
-    repo = MotieImportRepository(db)
-    motie_import = await repo.get_by_id(import_id)
-    if motie_import is None:
+) -> ParlementairItemResponse:
+    repo = ParlementairItemRepository(db)
+    item = await repo.get_by_id(import_id)
+    if item is None:
         raise HTTPException(status_code=404, detail="Import not found")
-    return MotieImportResponse.model_validate(motie_import)
+    return ParlementairItemResponse.model_validate(item)
 
 
 @router.post("/imports/trigger")
 async def trigger_import(
+    item_types: list[str] | None = Query(None, alias="types"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Trigger a manual motie import poll."""
-    # Import here to avoid circular imports at module level
-    from bouwmeester.services.motie_import_service import MotieImportService
+    """Trigger a manual parliamentary item import poll."""
+    from bouwmeester.services.parlementair_import_service import (
+        ParlementairImportService,
+    )
 
-    service = MotieImportService(db)
-    count = await service.poll_and_import()
-    return {"message": f"{count} moties geïmporteerd", "imported": count}
+    service = ParlementairImportService(db)
+    count = await service.poll_and_import(item_types=item_types)
+    return {"message": f"{count} items geïmporteerd", "imported": count}
 
 
-@router.get("/review-queue", response_model=list[MotieImportResponse])
+@router.get("/review-queue", response_model=list[ParlementairItemResponse])
 async def get_review_queue(
+    type_filter: str | None = Query(None, alias="type"),
     db: AsyncSession = Depends(get_db),
-) -> list[MotieImportResponse]:
-    repo = MotieImportRepository(db)
-    imports = await repo.get_review_queue()
-    return [MotieImportResponse.model_validate(i) for i in imports]
+) -> list[ParlementairItemResponse]:
+    repo = ParlementairItemRepository(db)
+    imports = await repo.get_review_queue(item_type=type_filter)
+    return [ParlementairItemResponse.model_validate(i) for i in imports]
 
 
-@router.put("/imports/{import_id}/reject", response_model=MotieImportResponse)
+@router.put("/imports/{import_id}/reject", response_model=ParlementairItemResponse)
 async def reject_import(
     import_id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> MotieImportResponse:
-    repo = MotieImportRepository(db)
-    motie_import = await repo.update_status(
+) -> ParlementairItemResponse:
+    repo = ParlementairItemRepository(db)
+    item = await repo.update_status(
         import_id, "rejected", reviewed_at=datetime.utcnow()
     )
-    if motie_import is None:
+    if item is None:
         raise HTTPException(status_code=404, detail="Import not found")
-    return MotieImportResponse.model_validate(motie_import)
+    return ParlementairItemResponse.model_validate(item)
 
 
-@router.post("/imports/{import_id}/complete", response_model=MotieImportResponse)
+@router.post("/imports/{import_id}/complete", response_model=ParlementairItemResponse)
 async def complete_review(
     import_id: UUID,
     body: CompleteReviewRequest,
     db: AsyncSession = Depends(get_db),
-) -> MotieImportResponse:
-    repo = MotieImportRepository(db)
-    motie_import = await repo.get_by_id(import_id)
-    if motie_import is None:
+) -> ParlementairItemResponse:
+    repo = ParlementairItemRepository(db)
+    item = await repo.get_by_id(import_id)
+    if item is None:
         raise HTTPException(status_code=404, detail="Import not found")
-    if motie_import.corpus_node_id is None:
-        raise HTTPException(
-            status_code=400, detail="Motie import has no linked corpus node"
-        )
+    if item.corpus_node_id is None:
+        raise HTTPException(status_code=400, detail="Import has no linked corpus node")
 
     # Validate eigenaar person exists
     person = await db.get(Person, body.eigenaar_id)
@@ -122,7 +127,7 @@ async def complete_review(
 
     # Upsert eigenaar stakeholder on the corpus node
     stmt = select(NodeStakeholder).where(
-        NodeStakeholder.node_id == motie_import.corpus_node_id,
+        NodeStakeholder.node_id == item.corpus_node_id,
         NodeStakeholder.rol == "eigenaar",
     )
     result = await db.execute(stmt)
@@ -130,7 +135,7 @@ async def complete_review(
     if existing is None:
         db.add(
             NodeStakeholder(
-                node_id=motie_import.corpus_node_id,
+                node_id=item.corpus_node_id,
                 person_id=body.eigenaar_id,
                 rol="eigenaar",
             )
@@ -141,7 +146,7 @@ async def complete_review(
 
     # Auto-complete existing review tasks before creating new ones
     stmt = select(Task).where(
-        Task.motie_import_id == import_id,
+        Task.parlementair_item_id == import_id,
         Task.status.notin_(["done", "cancelled"]),
     )
     result = await db.execute(stmt)
@@ -153,8 +158,8 @@ async def complete_review(
     for t in body.tasks:
         db.add(
             Task(
-                node_id=motie_import.corpus_node_id,
-                motie_import_id=import_id,
+                node_id=item.corpus_node_id,
+                parlementair_item_id=import_id,
                 title=t.title,
                 description=t.description,
                 assignee_id=t.assignee_id,
@@ -164,12 +169,12 @@ async def complete_review(
         )
     await db.flush()
 
-    # Update motie status to reviewed
-    motie_import = await repo.update_status(
+    # Update item status to reviewed
+    item = await repo.update_status(
         import_id, "reviewed", reviewed_at=datetime.utcnow()
     )
 
-    return MotieImportResponse.model_validate(motie_import)
+    return ParlementairItemResponse.model_validate(item)
 
 
 @router.put("/edges/{edge_id}/approve", response_model=SuggestedEdgeResponse)
@@ -182,18 +187,18 @@ async def approve_edge(
     if suggested_edge is None:
         raise HTTPException(status_code=404, detail="Suggested edge not found")
 
-    # Fetch the parent motie_import to get corpus_node_id
-    motie_import_repo = MotieImportRepository(db)
-    motie_import = await motie_import_repo.get_by_id(suggested_edge.motie_import_id)
-    if motie_import is None or motie_import.corpus_node_id is None:
+    # Fetch the parent item to get corpus_node_id
+    item_repo = ParlementairItemRepository(db)
+    item = await item_repo.get_by_id(suggested_edge.parlementair_item_id)
+    if item is None or item.corpus_node_id is None:
         raise HTTPException(
             status_code=400,
-            detail="Motie import has no linked corpus node",
+            detail="Import has no linked corpus node",
         )
 
     # Create actual Edge
     edge = Edge(
-        from_node_id=motie_import.corpus_node_id,
+        from_node_id=item.corpus_node_id,
         to_node_id=suggested_edge.target_node_id,
         edge_type_id=suggested_edge.edge_type_id,
         description=SUGGESTED_EDGE_DESCRIPTION,
@@ -202,8 +207,6 @@ async def approve_edge(
     await db.flush()
 
     # Update suggested edge status
-    # Note: use the SuggestedEdge's id (not the path param) and set
-    # the created Edge's id via the 'edge_id' column
     suggested_edge.status = "approved"
     suggested_edge.edge_id = edge.id
     suggested_edge.reviewed_at = datetime.utcnow()

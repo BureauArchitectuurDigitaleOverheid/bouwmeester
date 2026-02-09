@@ -4,14 +4,14 @@ import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { MotieReviewCard } from '@/components/moties/MotieReviewCard';
+import { ParlementairReviewCard } from '@/components/parlementair/ParlementairReviewCard';
 import {
-  useMotieImports,
-  useTriggerMotieImport,
-} from '@/hooks/useMoties';
-import type { MotieImportStatus } from '@/types';
+  useParlementairItems,
+  useTriggerParlementairImport,
+} from '@/hooks/useParlementair';
+import type { ParlementairItemStatus } from '@/types';
 
-const statusFilters: { value: MotieImportStatus | 'all'; label: string }[] = [
+const statusFilters: { value: ParlementairItemStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'Alles' },
   { value: 'imported', label: 'Te beoordelen' },
   { value: 'reviewed', label: 'Beoordeeld' },
@@ -20,30 +20,30 @@ const statusFilters: { value: MotieImportStatus | 'all'; label: string }[] = [
   { value: 'pending', label: 'In wachtrij' },
 ];
 
-export function MotiesPage() {
+export function ParlementairPage() {
   const [searchParams] = useSearchParams();
-  const highlightMotieId = searchParams.get('motie');
-  const [statusFilter, setStatusFilter] = useState<MotieImportStatus | 'all'>(
-    highlightMotieId ? 'all' : 'imported'
+  const highlightItemId = searchParams.get('item') || searchParams.get('motie');
+  const [statusFilter, setStatusFilter] = useState<ParlementairItemStatus | 'all'>(
+    highlightItemId ? 'all' : 'imported'
   );
-  const { data: imports, isLoading } = useMotieImports(
+  const { data: imports, isLoading } = useParlementairItems(
     statusFilter === 'all' ? undefined : { status: statusFilter }
   );
-  const triggerImport = useTriggerMotieImport();
+  const triggerImport = useTriggerParlementairImport();
 
   return (
     <div className="space-y-6">
       {/* Page header */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-text-secondary">
-          Beheer geïmporteerde moties uit de Tweede en Eerste Kamer.
+          Beheer geïmporteerde kamerstukken uit de Tweede en Eerste Kamer.
         </p>
         <Button
           icon={<RefreshCw className={`h-4 w-4 ${triggerImport.isPending ? 'animate-spin' : ''}`} />}
           onClick={() => triggerImport.mutate()}
           disabled={triggerImport.isPending}
         >
-          {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe moties'}
+          {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
         </Button>
       </div>
 
@@ -69,20 +69,20 @@ export function MotiesPage() {
         <LoadingSpinner className="py-16" />
       ) : !imports || imports.length === 0 ? (
         <EmptyState
-          title="Geen moties gevonden"
+          title="Geen kamerstukken gevonden"
           description={
             statusFilter === 'imported'
-              ? 'Er zijn geen moties die beoordeeld moeten worden.'
-              : 'Er zijn geen moties met deze status.'
+              ? 'Er zijn geen kamerstukken die beoordeeld moeten worden.'
+              : 'Er zijn geen kamerstukken met deze status.'
           }
         />
       ) : (
         <div className="space-y-3">
-          {imports.map((motie) => (
-            <MotieReviewCard
-              key={motie.id}
-              motie={motie}
-              defaultExpanded={motie.id === highlightMotieId}
+          {imports.map((item) => (
+            <ParlementairReviewCard
+              key={item.id}
+              item={item}
+              defaultExpanded={item.id === highlightItemId}
             />
           ))}
         </div>

@@ -12,8 +12,8 @@ from bouwmeester.core.database import Base
 
 if TYPE_CHECKING:
     from bouwmeester.models.corpus_node import CorpusNode
-    from bouwmeester.models.motie_import import MotieImport
     from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+    from bouwmeester.models.parlementair_item import ParlementairItem
     from bouwmeester.models.person import Person
 
 
@@ -51,9 +51,9 @@ class Task(Base):
         nullable=True,
         index=True,
     )
-    motie_import_id: Mapped[uuid.UUID | None] = mapped_column(
+    parlementair_item_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("motie_import.id", ondelete="SET NULL"),
+        ForeignKey("parlementair_item.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -92,4 +92,6 @@ class Task(Base):
         back_populates="parent",
         cascade="all, delete-orphan",
     )
-    motie_import: Mapped[Optional["MotieImport"]] = relationship("MotieImport")
+    parlementair_item: Mapped[Optional["ParlementairItem"]] = relationship(
+        "ParlementairItem",
+    )

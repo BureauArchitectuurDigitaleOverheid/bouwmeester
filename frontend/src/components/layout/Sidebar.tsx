@@ -34,7 +34,7 @@ export function Sidebar() {
     { to: '/tasks', icon: CheckSquare, label: 'Taken' },
     { to: '/organisatie', icon: Building2, label: 'Organisatie' },
     { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel },
-    { to: '/moties', icon: ScrollText, label: 'Kamermoties' },
+    { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken' },
     { to: '/search', icon: Search, label: 'Zoeken' },
   ], [eenheidLabel]);
 

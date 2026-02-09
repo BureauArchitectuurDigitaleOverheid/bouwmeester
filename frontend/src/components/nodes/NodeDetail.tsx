@@ -13,7 +13,7 @@ import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm
 import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
 import { TaskView } from '@/components/tasks/TaskView';
-import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeMotieImport, useAddNodeStakeholder, useUpdateNodeStakeholder, useRemoveNodeStakeholder } from '@/hooks/useNodes';
+import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeParlementairItem, useAddNodeStakeholder, useUpdateNodeStakeholder, useRemoveNodeStakeholder } from '@/hooks/useNodes';
 import { useTasks } from '@/hooks/useTasks';
 import { usePeople } from '@/hooks/usePeople';
 import { useNodeTags, useAddTagToNode, useRemoveTagFromNode, useTags } from '@/hooks/useTags';
@@ -56,7 +56,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const addTag = useAddTagToNode();
   const removeTag = useRemoveTagFromNode();
   const { nodeLabel, nodeAltLabel } = useVocabulary();
-  const { data: motieImport } = useNodeMotieImport(nodeId, node?.node_type);
+  const { data: parlementairItem } = useNodeParlementairItem(nodeId, node?.node_type);
   const { data: references } = useReferences(nodeId);
   const { openTaskDetail } = useTaskDetail();
   const addStakeholder = useAddNodeStakeholder();
@@ -201,9 +201,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
               <LinkIcon className="h-3.5 w-3.5" />
               {node.edge_count ?? 0} verbindingen
             </span>
-            {motieImport?.document_url && (
+            {parlementairItem?.document_url && (
               <a
-                href={motieImport.document_url}
+                href={parlementairItem.document_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-primary-700 hover:text-primary-900 transition-colors"

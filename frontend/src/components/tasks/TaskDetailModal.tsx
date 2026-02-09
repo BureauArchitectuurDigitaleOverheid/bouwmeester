@@ -187,16 +187,16 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
                 )}
               </div>
 
-              {/* Motie review link */}
-              {task.motie_import_id && (
+              {/* Parlementair review link */}
+              {task.parlementair_item_id && (
                 <div>
                   <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
-                    Motiebeoordeling
+                    Beoordeling
                   </h4>
                   <button
                     onClick={() => {
                       onClose();
-                      navigate(`/moties?motie=${task.motie_import_id}`);
+                      navigate(`/parlementair?item=${task.parlementair_item_id}`);
                     }}
                     className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-sm"
                   >

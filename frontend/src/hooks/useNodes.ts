@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getNodes, getNode, createNode, updateNode, deleteNode,
   getNodeNeighbors, getNodeStakeholders, addNodeStakeholder,
-  updateNodeStakeholder, removeNodeStakeholder, getNodeMotieImport,
+  updateNodeStakeholder, removeNodeStakeholder, getNodeParlementairItem,
 } from '@/api/nodes';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { CorpusNodeCreate, CorpusNodeUpdate, NodeType } from '@/types';
@@ -114,10 +114,10 @@ export function useRemoveNodeStakeholder() {
   });
 }
 
-export function useNodeMotieImport(id: string | undefined, nodeType?: string) {
+export function useNodeParlementairItem(id: string | undefined, nodeType?: string) {
   return useQuery({
-    queryKey: ['nodes', 'detail', id, 'motie-import'],
-    queryFn: () => getNodeMotieImport(id!),
+    queryKey: ['nodes', 'detail', id, 'parlementair-item'],
+    queryFn: () => getNodeParlementairItem(id!),
     enabled: !!id && nodeType === 'politieke_input',
   });
 }

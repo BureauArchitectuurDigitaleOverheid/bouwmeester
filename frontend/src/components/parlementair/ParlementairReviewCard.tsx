@@ -8,18 +8,20 @@ import { CreatableSelect } from '@/components/common/CreatableSelect';
 import {
   useApproveSuggestedEdge,
   useRejectSuggestedEdge,
-  useRejectMotieImport,
-  useCompleteMotieReview,
-} from '@/hooks/useMoties';
+  useRejectParlementairItem,
+  useCompleteParlementairReview,
+} from '@/hooks/useParlementair';
 import { usePeople } from '@/hooks/usePeople';
-import type { MotieImport } from '@/types';
+import type { ParlementairItem } from '@/types';
 import {
-  MOTIE_IMPORT_STATUS_LABELS,
-  MOTIE_IMPORT_STATUS_COLORS,
+  PARLEMENTAIR_ITEM_STATUS_LABELS,
+  PARLEMENTAIR_ITEM_STATUS_COLORS,
+  PARLEMENTAIR_TYPE_LABELS,
+  PARLEMENTAIR_TYPE_COLORS,
   NODE_TYPE_COLORS,
 } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
-import type { CompleteReviewData } from '@/api/moties';
+import type { CompleteReviewData } from '@/api/parlementair';
 
 interface FollowUpTaskRow {
   title: string;
@@ -27,12 +29,12 @@ interface FollowUpTaskRow {
   deadline: string;
 }
 
-interface MotieReviewCardProps {
-  motie: MotieImport;
+interface ParlementairReviewCardProps {
+  item: ParlementairItem;
   defaultExpanded?: boolean;
 }
 
-export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewCardProps) {
+export function ParlementairReviewCard({ item, defaultExpanded = false }: ParlementairReviewCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [showCompleteForm, setShowCompleteForm] = useState(false);
   const [eigenaarId, setEigenaarId] = useState('');
@@ -48,8 +50,8 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
   const { nodeLabel, edgeLabel } = useVocabulary();
   const approveEdge = useApproveSuggestedEdge();
   const rejectEdge = useRejectSuggestedEdge();
-  const rejectMotie = useRejectMotieImport();
-  const completeReview = useCompleteMotieReview();
+  const rejectItem = useRejectParlementairItem();
+  const completeReview = useCompleteParlementairReview();
   const { data: people } = usePeople();
 
   const handleCompleteSubmit = () => {
@@ -64,7 +66,7 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
         })),
     };
     completeReview.mutate(
-      { id: motie.id, data },
+      { id: item.id, data },
       {
         onSuccess: () => {
           setShowCompleteForm(false);
@@ -87,9 +89,9 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
     setFollowUpTasks(followUpTasks.filter((_, i) => i !== index));
   };
 
-  const pendingEdges = motie.suggested_edges?.filter((e) => e.status === 'pending') ?? [];
-  const allEdgesReviewed = motie.suggested_edges
-    ? motie.suggested_edges.every((e) => e.status !== 'pending')
+  const pendingEdges = item.suggested_edges?.filter((e) => e.status === 'pending') ?? [];
+  const allEdgesReviewed = item.suggested_edges
+    ? item.suggested_edges.every((e) => e.status !== 'pending')
     : true;
 
   const formatDate = (dateStr?: string) => {
@@ -105,31 +107,37 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
     }
   };
 
+  const typeLabel = PARLEMENTAIR_TYPE_LABELS[item.type] ?? item.type;
+  const typeColor = PARLEMENTAIR_TYPE_COLORS[item.type] ?? 'gray';
+
   return (
     <div ref={cardRef}>
     <Card>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <Badge
-              variant={MOTIE_IMPORT_STATUS_COLORS[motie.status] as 'blue'}
-            >
-              {MOTIE_IMPORT_STATUS_LABELS[motie.status]}
+            <Badge variant={typeColor as 'blue'}>
+              {typeLabel}
             </Badge>
-            <span className="text-xs text-text-secondary">{motie.bron === 'tweede_kamer' ? 'Tweede Kamer' : 'Eerste Kamer'}</span>
-            <span className="text-xs text-text-secondary">{motie.zaak_nummer}</span>
-            {motie.datum && (
+            <Badge
+              variant={PARLEMENTAIR_ITEM_STATUS_COLORS[item.status] as 'blue'}
+            >
+              {PARLEMENTAIR_ITEM_STATUS_LABELS[item.status]}
+            </Badge>
+            <span className="text-xs text-text-secondary">{item.bron === 'tweede_kamer' ? 'Tweede Kamer' : 'Eerste Kamer'}</span>
+            <span className="text-xs text-text-secondary">{item.zaak_nummer}</span>
+            {item.datum && (
               <span className="text-xs text-text-secondary flex items-center gap-0.5">
                 <Calendar className="h-3 w-3" />
-                {formatDate(motie.datum)}
+                {formatDate(item.datum)}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-sm font-semibold text-text">{motie.onderwerp}</h3>
-            {motie.document_url && (
+            <h3 className="text-sm font-semibold text-text">{item.onderwerp}</h3>
+            {item.document_url && (
               <a
-                href={motie.document_url}
+                href={item.document_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary-600 hover:text-primary-700 shrink-0"
@@ -139,10 +147,11 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
               </a>
             )}
           </div>
-          <p className="text-xs text-text-secondary">Zaak: {motie.titel}</p>        </div>
+          <p className="text-xs text-text-secondary">Zaak: {item.titel}</p>
+        </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {motie.suggested_edges && motie.suggested_edges.length > 0 && (
+          {item.suggested_edges && item.suggested_edges.length > 0 && (
             <span className="text-xs text-text-secondary">
               {pendingEdges.length} te beoordelen
             </span>
@@ -159,14 +168,14 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
       {expanded && (
         <div className="mt-4 pt-4 border-t border-border space-y-4">
           {/* Indieners */}
-          {motie.indieners && motie.indieners.length > 0 && (
+          {item.indieners && item.indieners.length > 0 && (
             <div>
               <h4 className="text-xs font-medium text-text mb-1.5 flex items-center gap-1">
                 <Users className="h-3.5 w-3.5" />
                 Indieners
               </h4>
               <div className="flex flex-wrap gap-1">
-                {motie.indieners.map((indiener) => (
+                {item.indieners.map((indiener) => (
                   <Badge key={indiener} variant="purple">{indiener}</Badge>
                 ))}
               </div>
@@ -174,29 +183,29 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
           )}
 
           {/* Summary */}
-          {motie.llm_samenvatting && (
+          {item.llm_samenvatting && (
             <div>
               <h4 className="text-xs font-medium text-text mb-1">Samenvatting</h4>
-              <p className="text-sm text-text-secondary">{motie.llm_samenvatting}</p>
+              <p className="text-sm text-text-secondary">{item.llm_samenvatting}</p>
             </div>
           )}
 
           {/* Document text */}
-          {motie.document_tekst && (
+          {item.document_tekst && (
             <div>
-              <h4 className="text-xs font-medium text-text mb-1">Motietekst</h4>
+              <h4 className="text-xs font-medium text-text mb-1">Tekst</h4>
               <p className="text-sm text-text-secondary whitespace-pre-wrap bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto">
-                {motie.document_tekst}
+                {item.document_tekst}
               </p>
             </div>
           )}
 
           {/* Matched tags */}
-          {motie.matched_tags && motie.matched_tags.length > 0 && (
+          {item.matched_tags && item.matched_tags.length > 0 && (
             <div>
               <h4 className="text-xs font-medium text-text mb-1.5">Gematchte tags</h4>
               <div className="flex flex-wrap gap-1">
-                {motie.matched_tags.map((tag) => (
+                {item.matched_tags.map((tag) => (
                   <Badge key={tag} variant="slate">{tag}</Badge>
                 ))}
               </div>
@@ -204,13 +213,13 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
           )}
 
           {/* Suggested edges */}
-          {motie.suggested_edges && motie.suggested_edges.length > 0 && (
+          {item.suggested_edges && item.suggested_edges.length > 0 && (
             <div>
               <h4 className="text-xs font-medium text-text mb-2">
-                Voorgestelde verbindingen ({motie.suggested_edges.length})
+                Voorgestelde verbindingen ({item.suggested_edges.length})
               </h4>
               <div className="space-y-2">
-                {motie.suggested_edges.map((edge) => (
+                {item.suggested_edges.map((edge) => (
                   <div
                     key={edge.id}
                     className="flex items-center gap-3 p-2 rounded-lg bg-gray-50"
@@ -277,7 +286,7 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
 
           {/* Actions */}
           <div className="flex items-center gap-2 pt-2">
-            {motie.status === 'imported' && allEdgesReviewed && !showCompleteForm && (
+            {item.status === 'imported' && allEdgesReviewed && !showCompleteForm && (
               <Button
                 size="sm"
                 onClick={() => setShowCompleteForm(true)}
@@ -285,29 +294,29 @@ export function MotieReviewCard({ motie, defaultExpanded = false }: MotieReviewC
                 Beoordeling afronden
               </Button>
             )}
-            {motie.status === 'imported' && (
+            {item.status === 'imported' && (
               <Button
                 size="sm"
                 variant="ghost"
                 className="text-red-500 hover:bg-red-50"
-                onClick={() => rejectMotie.mutate(motie.id)}
+                onClick={() => rejectItem.mutate(item.id)}
               >
                 Niet relevant
               </Button>
             )}
-            {motie.corpus_node_id && (
+            {item.corpus_node_id && (
               <Button
                 size="sm"
                 variant="secondary"
                 icon={<ExternalLink className="h-3.5 w-3.5" />}
-                onClick={() => navigate(`/nodes/${motie.corpus_node_id}`)}
+                onClick={() => navigate(`/nodes/${item.corpus_node_id}`)}
               >
                 Bekijk node
               </Button>
             )}
-            {motie.document_url && (
+            {item.document_url && (
               <a
-                href={motie.document_url}
+                href={item.document_url}
                 target="_blank"
                 rel="noopener noreferrer"
               >
