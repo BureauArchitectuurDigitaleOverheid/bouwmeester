@@ -111,24 +111,29 @@ class ParlementairImportService:
             logger.exception(f"Error fetching {strategy.item_type} from Tweede Kamer")
             tk_items = []
 
-        # Poll Eerste Kamer
-        ek_client = EersteKamerClient(
-            base_url=self.settings.EK_API_BASE_URL,
-            session=self.session,
-        )
-        try:
-            async with ek_client:
-                ek_items = await strategy.fetch_items(
-                    client=ek_client,
-                    since=None,
-                    limit=self.settings.TK_IMPORT_LIMIT,
-                )
-            logger.info(
-                f"Fetched {len(ek_items)} {strategy.item_type} items from Eerste Kamer"
+        # Poll Eerste Kamer (only if strategy supports it)
+        ek_items: list[FetchedItem] = []
+        if strategy.supports_ek:
+            ek_client = EersteKamerClient(
+                base_url=self.settings.EK_API_BASE_URL,
+                session=self.session,
             )
-        except (httpx.HTTPError, NotImplementedError):
-            logger.exception(f"Error fetching {strategy.item_type} from Eerste Kamer")
-            ek_items = []
+            try:
+                async with ek_client:
+                    ek_items = await strategy.fetch_items(
+                        client=ek_client,
+                        since=None,
+                        limit=self.settings.TK_IMPORT_LIMIT,
+                    )
+                logger.info(
+                    f"Fetched {len(ek_items)} {strategy.item_type} "
+                    f"items from Eerste Kamer"
+                )
+            except (httpx.HTTPError, NotImplementedError):
+                logger.exception(
+                    f"Error fetching {strategy.item_type} from Eerste Kamer"
+                )
+                ek_items = []
 
         all_items = tk_items + ek_items
 
@@ -196,8 +201,8 @@ class ParlementairImportService:
         # Step 3: Find matching corpus nodes via tag overlap
         matched_nodes = await self._find_matching_nodes(matched_tag_names)
 
-        if not matched_nodes:
-            # No matches - create import record as out_of_scope
+        if not matched_nodes and not strategy.always_import:
+            # No matches and not pre-filtered — mark as out_of_scope
             await self.import_repo.create(
                 type=strategy.item_type,
                 zaak_id=item.zaak_id,
@@ -249,7 +254,7 @@ class ParlementairImportService:
             type=strategy.politieke_input_type,
             referentie=item.zaak_nummer,
             datum=item.datum,
-            status="aangenomen",
+            status=strategy.politieke_input_status(item),
         )
         self.session.add(pi)
         await self.session.flush()

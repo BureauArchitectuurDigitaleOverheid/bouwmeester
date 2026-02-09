@@ -132,6 +132,15 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                 {formatDate(item.datum)}
               </span>
             )}
+            {item.deadline && (
+              <span className="text-xs text-orange-600 flex items-center gap-0.5">
+                <Calendar className="h-3 w-3" />
+                Deadline: {formatDate(item.deadline)}
+              </span>
+            )}
+            {item.ministerie && (
+              <span className="text-xs text-text-secondary">{item.ministerie}</span>
+            )}
           </div>
           <div className="flex items-center gap-2 mb-1">
             <h3 className="text-sm font-semibold text-text">{item.onderwerp}</h3>

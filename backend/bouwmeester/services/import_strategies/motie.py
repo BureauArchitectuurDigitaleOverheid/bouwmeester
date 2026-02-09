@@ -1,6 +1,6 @@
 """Motie import strategy — fetches adopted moties from TK/EK."""
 
-from datetime import date
+from datetime import date, datetime
 
 from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrategy
 from bouwmeester.services.tk_api_client import TweedeKamerClient
@@ -23,9 +23,7 @@ class MotieStrategy(ImportStrategy):
         since: date | None,
         limit: int,
     ) -> list[FetchedItem]:
-        from datetime import datetime as dt
-
-        since_dt = dt.combine(since, dt.min.time()) if since else None
+        since_dt = datetime.combine(since, datetime.min.time()) if since else None
         moties = await client.fetch_moties(since=since_dt, limit=limit)
         return [
             FetchedItem(
