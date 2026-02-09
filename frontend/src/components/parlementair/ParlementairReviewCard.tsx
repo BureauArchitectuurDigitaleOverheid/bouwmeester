@@ -32,6 +32,7 @@ import {
   NODE_TYPE_COLORS,
   FUNCTIE_LABELS,
 } from '@/types';
+import { NodeDetailModal } from '@/components/nodes/NodeDetailModal';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 import type { CompleteReviewData } from '@/api/parlementair';
@@ -56,6 +57,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   const [newEdgeTypeId, setNewEdgeTypeId] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
+  const [modalNodeId, setModalNodeId] = useState<string | null>(null);
   const [tagHighlightIdx, setTagHighlightIdx] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
   const tagContainerRef = useRef<HTMLDivElement>(null);
@@ -555,23 +557,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                     )}
                   >
                     <div className="flex-1 min-w-0">
-                      {edge.target_node && (
-                        <div className="flex items-center gap-1.5">
-                          <Badge
-                            variant={NODE_TYPE_COLORS[edge.target_node.node_type] as 'blue'}
-                            dot
-                          >
-                            {nodeLabel(edge.target_node.node_type)}
-                          </Badge>
-                          <button
-                            onClick={() => navigate(`/nodes/${edge.target_node_id}`)}
-                            className="text-sm text-text hover:text-primary-700 truncate transition-colors"
-                          >
-                            {edge.target_node.title}
-                          </button>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex items-center gap-1.5">
                         {edge.status === 'pending' ? (
                           <select
                             value={edge.edge_type_id}
@@ -594,8 +580,26 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                             {edgeLabel(edge.edge_type_id)}
                           </Badge>
                         )}
+                      </div>
+                      {edge.target_node && (
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <Badge
+                            variant={NODE_TYPE_COLORS[edge.target_node.node_type] as 'blue'}
+                            dot
+                          >
+                            {nodeLabel(edge.target_node.node_type)}
+                          </Badge>
+                          <button
+                            onClick={() => setModalNodeId(edge.target_node_id)}
+                            className="text-sm text-text hover:text-primary-700 truncate transition-colors"
+                          >
+                            {edge.target_node.title}
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5 mt-0.5">
                         <span className="text-xs text-text-secondary">
-                          {Math.round(edge.confidence * 100)}%
+                          {Math.round(edge.confidence * 100)}% match
                         </span>
                         {edge.reason && (
                           <span className="text-xs text-text-secondary truncate">
@@ -644,16 +648,22 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             {manualEdges.length > 0 && (
               <div className="space-y-1.5 mb-2">
                 {manualEdges.map((edge) => {
-                  const otherNode = edge.from_node_id === corpusNodeId ? edge.to_node : edge.from_node;
-                  const otherNodeId = edge.from_node_id === corpusNodeId ? edge.to_node_id : edge.from_node_id;
+                  const isOutgoing = edge.from_node_id === corpusNodeId;
+                  const otherNode = isOutgoing ? edge.to_node : edge.from_node;
+                  const otherNodeId = isOutgoing ? edge.to_node_id : edge.from_node_id;
                   return (
                     <div
                       key={edge.id}
                       className="flex items-start gap-2 p-2 rounded-lg bg-gray-50"
                     >
                       <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="slate">
+                            {edgeLabel(edge.edge_type_id)}
+                          </Badge>
+                        </div>
                         {otherNode && (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 mt-0.5">
                             <Badge
                               variant={NODE_TYPE_COLORS[otherNode.node_type] as 'blue'}
                               dot
@@ -661,18 +671,13 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                               {nodeLabel(otherNode.node_type)}
                             </Badge>
                             <button
-                              onClick={() => navigate(`/nodes/${otherNodeId}`)}
+                              onClick={() => setModalNodeId(otherNodeId)}
                               className="text-sm text-text hover:text-primary-700 truncate transition-colors"
                             >
                               {otherNode.title}
                             </button>
                           </div>
                         )}
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <Badge variant="slate">
-                            {edgeLabel(edge.edge_type_id)}
-                          </Badge>
-                        </div>
                       </div>
                       <button
                         onClick={() => deleteEdge.mutate(edge.id)}
@@ -842,6 +847,11 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
         </div>
       )}
     </Card>
+    <NodeDetailModal
+      nodeId={modalNodeId}
+      open={modalNodeId !== null}
+      onClose={() => setModalNodeId(null)}
+    />
     </div>
   );
 }
