@@ -246,7 +246,7 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         query: str,
         limit: int = 10,
     ) -> list[OrganisatieEenheid]:
-        """Search across all names (historical + current)."""
+        """Search across all names (historical + current), active units only."""
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         stmt = (
             select(OrganisatieEenheid)
@@ -254,7 +254,10 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
                 OrganisatieEenheidNaam,
                 OrganisatieEenheidNaam.eenheid_id == OrganisatieEenheid.id,
             )
-            .where(OrganisatieEenheidNaam.naam.ilike(f"%{escaped}%"))
+            .where(
+                OrganisatieEenheidNaam.naam.ilike(f"%{escaped}%"),
+                OrganisatieEenheid.geldig_tot.is_(None),
+            )
             .distinct()
             .order_by(OrganisatieEenheid.naam)
             .limit(limit)

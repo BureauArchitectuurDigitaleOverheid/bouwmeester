@@ -30,7 +30,11 @@ def _build_tree(
     personen_counts: dict[UUID, int],
     parent_id: UUID | None = None,
 ) -> list[OrganisatieEenheidTreeNode]:
-    """Build a tree from a flat list."""
+    """Build a tree from a flat list.
+
+    Uses the legacy parent_id column which is dual-written by the repository
+    to stay in sync with the temporal OrganisatieEenheidParent records.
+    """
     children = [item for item in all_items if item.parent_id == parent_id]
     return [
         OrganisatieEenheidTreeNode(
@@ -223,6 +227,11 @@ async def get_organisatie_personen(
     units_by_id = {u.id: u for u in all_units}
 
     def build_group(unit_id: UUID) -> OrganisatieEenheidPersonenGroup:
+        """Build a grouped tree.
+
+        Uses the legacy parent_id column which is dual-written by the
+        repository to stay in sync with temporal parent records.
+        """
         unit = units_by_id[unit_id]
         direct_children = sorted(
             [u for u in all_units if u.parent_id == unit_id],
