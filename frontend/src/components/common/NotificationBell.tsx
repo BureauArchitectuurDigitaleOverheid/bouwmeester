@@ -7,42 +7,11 @@ import { timeAgo } from '@/utils/dates';
 import type { Notification } from '@/api/notifications';
 import { richTextToPlain } from '@/utils/richtext';
 import { MessageThread } from '@/components/inbox/MessageThread';
+import { NOTIFICATION_TYPE_COLORS, NOTIFICATION_TYPE_LABELS } from '@/types';
 
 interface NotificationBellProps {
   personId: string | undefined;
 }
-
-const TYPE_COLORS: Record<string, string> = {
-  task_assigned: 'bg-blue-100 text-blue-700',
-  task_overdue: 'bg-red-100 text-red-700',
-  task_completed: 'bg-green-100 text-green-700',
-  task_reassigned: 'bg-orange-100 text-orange-700',
-  node_updated: 'bg-green-100 text-green-700',
-  edge_created: 'bg-purple-100 text-purple-700',
-  coverage_needed: 'bg-amber-100 text-amber-700',
-  stakeholder_added: 'bg-teal-100 text-teal-700',
-  stakeholder_role_changed: 'bg-teal-100 text-teal-700',
-  direct_message: 'bg-green-100 text-green-700',
-  agent_prompt: 'bg-violet-100 text-violet-700',
-  mention: 'bg-cyan-100 text-cyan-700',
-  politieke_input_imported: 'bg-rose-100 text-rose-700',
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  task_assigned: 'taak toegewezen',
-  task_overdue: 'taak verlopen',
-  task_completed: 'taak afgerond',
-  task_reassigned: 'taak overgedragen',
-  node_updated: 'node bijgewerkt',
-  edge_created: 'relatie aangemaakt',
-  coverage_needed: 'vervanging nodig',
-  stakeholder_added: 'betrokkene toegevoegd',
-  stakeholder_role_changed: 'rol gewijzigd',
-  direct_message: 'bericht',
-  agent_prompt: 'agent prompt',
-  mention: 'vermelding',
-  politieke_input_imported: 'parlementair item',
-};
 
 function NotificationItem({
   notification,
@@ -64,10 +33,10 @@ function NotificationItem({
         <div className="flex items-center gap-2 mb-0.5">
           <span
             className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-              TYPE_COLORS[notification.type] || 'bg-gray-100 text-gray-700'
+              NOTIFICATION_TYPE_COLORS[notification.type] || 'bg-gray-100 text-gray-700'
             }`}
           >
-            {TYPE_LABELS[notification.type] || notification.type.replace(/_/g, ' ')}
+            {NOTIFICATION_TYPE_LABELS[notification.type] || notification.type.replace(/_/g, ' ')}
           </span>
           <span className="text-xs text-text-secondary">{timeAgo(notification.last_activity_at ?? notification.created_at)}</span>
         </div>
