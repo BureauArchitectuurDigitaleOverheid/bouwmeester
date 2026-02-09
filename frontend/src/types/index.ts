@@ -414,6 +414,8 @@ export interface InboxItem {
   description?: string;
   source?: string;
   node_id?: string;
+  sender_name?: string;
+  reply_count?: number;
   created_at: string;
   read: boolean;
 }
