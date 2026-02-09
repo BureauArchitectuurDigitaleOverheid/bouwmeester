@@ -4,12 +4,15 @@ export interface Notification {
   id: string;
   person_id: string;
   sender_id?: string;
+  sender_name?: string;
   type: string;
   title: string;
   message?: string;
   is_read: boolean;
   related_node_id?: string;
   related_task_id?: string;
+  parent_id?: string;
+  reply_count: number;
   created_at: string;
 }
 
@@ -27,10 +30,18 @@ export async function getNotifications(
   });
 }
 
+export async function getNotification(id: string): Promise<Notification> {
+  return apiGet<Notification>(`/api/notifications/${id}`);
+}
+
 export async function getUnreadCount(personId: string): Promise<UnreadCountResponse> {
   return apiGet<UnreadCountResponse>('/api/notifications/count', {
     person_id: personId,
   });
+}
+
+export async function getReplies(notificationId: string): Promise<Notification[]> {
+  return apiGet<Notification[]>(`/api/notifications/${notificationId}/replies`);
 }
 
 export async function markNotificationRead(id: string): Promise<Notification> {
@@ -47,4 +58,11 @@ export async function sendMessage(data: {
   message: string;
 }): Promise<Notification> {
   return apiPost<Notification>('/api/notifications/send', data);
+}
+
+export async function replyToNotification(
+  notificationId: string,
+  data: { sender_id: string; message: string },
+): Promise<Notification> {
+  return apiPost<Notification>(`/api/notifications/${notificationId}/reply`, data);
 }

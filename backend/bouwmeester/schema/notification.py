@@ -27,6 +27,7 @@ class NotificationBase(BaseModel):
     sender_id: UUID | None = None
     related_node_id: UUID | None = None
     related_task_id: UUID | None = None
+    parent_id: UUID | None = None
 
 
 class NotificationCreate(NotificationBase):
@@ -37,12 +38,19 @@ class NotificationResponse(NotificationBase):
     id: UUID
     is_read: bool = False
     created_at: datetime
+    sender_name: str | None = None
+    reply_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class SendMessageRequest(BaseModel):
     person_id: UUID
+    sender_id: UUID
+    message: str
+
+
+class ReplyRequest(BaseModel):
     sender_id: UUID
     message: str
 

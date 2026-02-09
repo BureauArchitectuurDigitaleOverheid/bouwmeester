@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from './client';
+import { apiGet, apiPost, apiPut, apiPatch } from './client';
 import type { ParlementairItem, SuggestedEdge } from '@/types';
 
 export interface ParlementairItemFilters {
@@ -36,10 +36,18 @@ export async function getReviewQueue(): Promise<ParlementairItem[]> {
   return apiGet<ParlementairItem[]>('/api/parlementair/review-queue');
 }
 
+export async function updateSuggestedEdge(id: string, data: { edge_type_id: string }): Promise<SuggestedEdge> {
+  return apiPatch<SuggestedEdge>(`/api/parlementair/edges/${id}`, data);
+}
+
 export async function approveSuggestedEdge(id: string): Promise<SuggestedEdge> {
   return apiPut<SuggestedEdge>(`/api/parlementair/edges/${id}/approve`);
 }
 
 export async function rejectSuggestedEdge(id: string): Promise<SuggestedEdge> {
   return apiPut<SuggestedEdge>(`/api/parlementair/edges/${id}/reject`);
+}
+
+export async function resetSuggestedEdge(id: string): Promise<SuggestedEdge> {
+  return apiPut<SuggestedEdge>(`/api/parlementair/edges/${id}/reset`);
 }

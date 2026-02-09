@@ -6,8 +6,10 @@ import {
   rejectParlementairItem,
   completeParlementairReview,
   getReviewQueue,
+  updateSuggestedEdge,
   approveSuggestedEdge,
   rejectSuggestedEdge,
+  resetSuggestedEdge,
 } from '@/api/parlementair';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { ParlementairItemFilters, CompleteReviewData } from '@/api/parlementair';
@@ -61,6 +63,15 @@ export function useCompleteParlementairReview() {
   });
 }
 
+export function useUpdateSuggestedEdge() {
+  return useMutationWithError({
+    mutationFn: ({ id, data }: { id: string; data: { edge_type_id: string } }) =>
+      updateSuggestedEdge(id, data),
+    errorMessage: 'Fout bij bijwerken relatie',
+    invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
+  });
+}
+
 export function useApproveSuggestedEdge() {
   return useMutationWithError({
     mutationFn: (id: string) => approveSuggestedEdge(id),
@@ -74,5 +85,13 @@ export function useRejectSuggestedEdge() {
     mutationFn: (id: string) => rejectSuggestedEdge(id),
     errorMessage: 'Fout bij afwijzen relatie',
     invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
+  });
+}
+
+export function useResetSuggestedEdge() {
+  return useMutationWithError({
+    mutationFn: (id: string) => resetSuggestedEdge(id),
+    errorMessage: 'Fout bij ongedaan maken',
+    invalidateKeys: [...PARLEMENTAIR_INVALIDATE_KEYS, ['edges']],
   });
 }

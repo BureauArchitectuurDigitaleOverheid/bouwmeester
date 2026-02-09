@@ -77,6 +77,7 @@ class ParlementairItem(Base):
         "SuggestedEdge",
         back_populates="parlementair_item",
         cascade="all, delete-orphan",
+        order_by="SuggestedEdge.confidence.desc()",
     )
 
 
