@@ -68,6 +68,8 @@ export interface CorpusNode {
   description?: string;
   status?: string;
   metadata?: Record<string, unknown>;
+  geldig_van?: string | null;
+  geldig_tot?: string | null;
   created_at: string;
   updated_at: string;
   edge_count?: number;
@@ -79,6 +81,7 @@ export interface CorpusNodeCreate {
   description?: string;
   status?: string;
   metadata?: Record<string, unknown>;
+  geldig_van?: string | null;
 }
 
 export interface CorpusNodeUpdate {
@@ -86,6 +89,22 @@ export interface CorpusNodeUpdate {
   description?: string;
   status?: string;
   metadata?: Record<string, unknown>;
+  geldig_tot?: string | null;
+  wijzig_datum?: string | null;
+}
+
+export interface NodeTitleRecord {
+  id: string;
+  title: string;
+  geldig_van: string;
+  geldig_tot?: string | null;
+}
+
+export interface NodeStatusRecord {
+  id: string;
+  status: string;
+  geldig_van: string;
+  geldig_tot?: string | null;
 }
 
 // Edge Types

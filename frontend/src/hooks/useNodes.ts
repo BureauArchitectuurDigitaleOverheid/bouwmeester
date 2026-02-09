@@ -3,6 +3,7 @@ import {
   getNodes, getNode, createNode, updateNode, deleteNode,
   getNodeNeighbors, getNodeStakeholders, addNodeStakeholder,
   updateNodeStakeholder, removeNodeStakeholder, getNodeParlementairItem,
+  getNodeTitleHistory, getNodeStatusHistory,
 } from '@/api/nodes';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { CorpusNodeCreate, CorpusNodeUpdate, NodeType } from '@/types';
@@ -111,6 +112,22 @@ export function useRemoveNodeStakeholder() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', 'detail', variables.nodeId, 'stakeholders'] });
     },
+  });
+}
+
+export function useNodeTitleHistory(id: string | undefined) {
+  return useQuery({
+    queryKey: ['nodes', 'detail', id, 'history', 'titles'],
+    queryFn: () => getNodeTitleHistory(id!),
+    enabled: !!id,
+  });
+}
+
+export function useNodeStatusHistory(id: string | undefined) {
+  return useQuery({
+    queryKey: ['nodes', 'detail', id, 'history', 'statuses'],
+    queryFn: () => getNodeStatusHistory(id!),
+    enabled: !!id,
   });
 }
 

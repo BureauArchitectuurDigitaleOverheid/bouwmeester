@@ -7,6 +7,8 @@ from bouwmeester.schema.corpus_node import (
     CorpusNodeResponse,
     CorpusNodeUpdate,
     CorpusNodeWithEdges,
+    NodeStatusRecord,
+    NodeTitleRecord,
     NodeType,
 )
 from bouwmeester.schema.edge import (
@@ -90,6 +92,8 @@ __all__ = [
     "CorpusNodeResponse",
     "CorpusNodeUpdate",
     "CorpusNodeWithEdges",
+    "NodeStatusRecord",
+    "NodeTitleRecord",
     "NodeType",
     # edge
     "EdgeBase",
