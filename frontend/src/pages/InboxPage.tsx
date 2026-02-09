@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Inbox, CheckSquare, Network, TrendingUp, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { InboxList } from '@/components/inbox/InboxList';
+import { MessageThread } from '@/components/inbox/MessageThread';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -12,6 +14,7 @@ import type { InboxItem } from '@/types';
 
 export function InboxPage() {
   const navigate = useNavigate();
+  const [openThreadId, setOpenThreadId] = useState<string | null>(null);
 
   const { currentPerson } = useCurrentPerson();
   const { data: notifications } = useNotifications(currentPerson?.id);
@@ -32,6 +35,8 @@ export function InboxPage() {
     title: n.title,
     description: n.message,
     node_id: n.related_node_id,
+    sender_name: n.sender_name,
+    reply_count: n.reply_count,
     created_at: n.created_at,
     read: n.is_read,
   }));
@@ -123,7 +128,7 @@ export function InboxPage() {
         </div>
 
         {inboxItems.length > 0 ? (
-          <InboxList items={inboxItems} />
+          <InboxList items={inboxItems} onOpenThread={setOpenThreadId} />
         ) : (
           <EmptyState
             icon={<Inbox className="h-16 w-16" />}
@@ -142,6 +147,14 @@ export function InboxPage() {
           />
         )}
       </div>
+
+      {/* Thread modal */}
+      {openThreadId && (
+        <MessageThread
+          notificationId={openThreadId}
+          onClose={() => setOpenThreadId(null)}
+        />
+      )}
     </div>
   );
 }

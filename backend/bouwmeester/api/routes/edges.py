@@ -2,7 +2,8 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found
@@ -41,7 +42,13 @@ async def create_edge(
     db: AsyncSession = Depends(get_db),
 ) -> EdgeResponse:
     repo = EdgeRepository(db)
-    edge = await repo.create(data)
+    try:
+        edge = await repo.create(data)
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Deze verbinding bestaat al.",
+        )
     return EdgeResponse.model_validate(edge)
 
 
