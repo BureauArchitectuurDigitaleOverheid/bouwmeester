@@ -21,11 +21,13 @@ interface BadgeProps {
   variant?: BadgeVariant;
   dot?: boolean;
   className?: string;
+  title?: string;
 }
 
-export function Badge({ children, variant = 'gray', dot = false, className }: BadgeProps) {
+export function Badge({ children, variant = 'gray', dot = false, className, title }: BadgeProps) {
   return (
     <span
+      title={title}
       className={twMerge(
         clsx(
           'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset whitespace-nowrap',

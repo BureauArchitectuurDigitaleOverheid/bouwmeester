@@ -270,7 +270,8 @@ const PersonMention = Mention.extend({
   },
   suggestion: {
     ...createSuggestionConfig(fetchPeopleAndOrgs),
-    command: ({ editor, range, props }: { editor: Editor; range: { from: number; to: number }; props: SuggestionItem }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    command: ({ editor, range, props }: { editor: Editor; range: { from: number; to: number }; props: any }) => {
       editor
         .chain()
         .focus()
@@ -314,7 +315,8 @@ const HashtagMention = Mention.extend({
   suggestion: {
     char: '#',
     ...createSuggestionConfig(fetchMentionables),
-    command: ({ editor, range, props }: { editor: Editor; range: { from: number; to: number }; props: SuggestionItem }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    command: ({ editor, range, props }: { editor: Editor; range: { from: number; to: number }; props: any }) => {
       editor
         .chain()
         .focus()
