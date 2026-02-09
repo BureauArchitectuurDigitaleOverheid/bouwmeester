@@ -1,18 +1,15 @@
 """API routes for notifications."""
 
-from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.database import get_db
-from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.notification import Notification
 from bouwmeester.models.person import Person
-from bouwmeester.models.task import Task
 from bouwmeester.schema.notification import (
     DashboardStatsResponse,
     NotificationCreate,
@@ -125,35 +122,9 @@ async def get_dashboard_stats(
     db: AsyncSession = Depends(get_db),
 ) -> DashboardStatsResponse:
     """Return dashboard statistics for a person."""
-    # Total corpus nodes
-    node_count_result = await db.execute(select(func.count(CorpusNode.id)))
-    corpus_node_count = node_count_result.scalar_one()
-
-    # Open tasks assigned to this person
-    open_count_result = await db.execute(
-        select(func.count(Task.id)).where(
-            Task.assignee_id == person_id,
-            Task.status.in_(["open", "in_progress"]),
-        )
-    )
-    open_task_count = open_count_result.scalar_one()
-
-    # Overdue tasks assigned to this person
-    today = date.today()
-    overdue_count_result = await db.execute(
-        select(func.count(Task.id)).where(
-            Task.assignee_id == person_id,
-            Task.deadline < today,
-            Task.status.notin_(["done", "cancelled"]),
-        )
-    )
-    overdue_task_count = overdue_count_result.scalar_one()
-
-    return DashboardStatsResponse(
-        corpus_node_count=corpus_node_count,
-        open_task_count=open_task_count,
-        overdue_task_count=overdue_task_count,
-    )
+    service = NotificationService(db)
+    stats = await service.get_dashboard_stats(person_id)
+    return DashboardStatsResponse(**stats)
 
 
 @router.get("/{id}", response_model=NotificationResponse)
@@ -276,8 +247,11 @@ async def reply_to_notification(
     sender = require_found(await db.get(Person, body.sender_id), "Sender")
     title = f"Reactie van {sender.naam}"
 
-    # Create ONE reply row, parented to thread_id
-    # The reply's person_id is the other party (not the sender)
+    # Find the other party's root so we can mark it unread.
+    # get_other_root queries for thread_id=thread_id AND person_id != sender_id,
+    # which works regardless of whether the sender replies from their own root
+    # or from the recipient's root — in both cases sender_id identifies the
+    # replier and the "other" root belongs to the counterparty.
     other_root = await service.repo.get_other_root(thread_id, body.sender_id)
     reply_recipient = other_root.person_id if other_root else root.person_id
 

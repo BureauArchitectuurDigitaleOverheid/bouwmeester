@@ -70,34 +70,27 @@ class NotificationRepository(BaseRepository[Notification]):
     async def last_activity_batch(
         self, parent_ids: list[UUID]
     ) -> dict[UUID, tuple[datetime, str | None]]:
-        """Get latest reply timestamp and message per parent."""
+        """Get latest reply timestamp and message per parent.
+
+        Uses PostgreSQL DISTINCT ON to guarantee exactly one row per
+        parent_id, even when two replies share the same created_at.
+        """
         if not parent_ids:
             return {}
 
-        from sqlalchemy import and_
-
-        # Subquery: max created_at per parent_id
-        max_sub = (
+        stmt = (
             select(
-                Notification.parent_id.label("pid"),
-                func.max(Notification.created_at).label("max_at"),
+                Notification.parent_id,
+                Notification.created_at,
+                Notification.message,
             )
             .where(Notification.parent_id.in_(parent_ids))
-            .group_by(Notification.parent_id)
-            .subquery()
-        )
-
-        # Join back to get the message of the latest reply
-        stmt = select(
-            Notification.parent_id,
-            Notification.created_at,
-            Notification.message,
-        ).join(
-            max_sub,
-            and_(
-                Notification.parent_id == max_sub.c.pid,
-                Notification.created_at == max_sub.c.max_at,
-            ),
+            .order_by(
+                Notification.parent_id,
+                Notification.created_at.desc(),
+                Notification.id.desc(),
+            )
+            .distinct(Notification.parent_id)
         )
         result = await self.session.execute(stmt)
         return {row.parent_id: (row.created_at, row.message) for row in result.all()}

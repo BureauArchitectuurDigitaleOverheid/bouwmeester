@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
@@ -404,3 +404,35 @@ class NotificationService:
 
     async def count_unread(self, person_id: UUID) -> int:
         return await self.repo.count_unread(person_id)
+
+    async def get_dashboard_stats(self, person_id: UUID) -> dict[str, int]:
+        """Return dashboard statistics for a person."""
+        # Total corpus nodes
+        node_result = await self.session.execute(select(func.count(CorpusNode.id)))
+        corpus_node_count = node_result.scalar_one()
+
+        # Open tasks assigned to this person
+        open_result = await self.session.execute(
+            select(func.count(Task.id)).where(
+                Task.assignee_id == person_id,
+                Task.status.in_(["open", "in_progress"]),
+            )
+        )
+        open_task_count = open_result.scalar_one()
+
+        # Overdue tasks assigned to this person
+        today = date.today()
+        overdue_result = await self.session.execute(
+            select(func.count(Task.id)).where(
+                Task.assignee_id == person_id,
+                Task.deadline < today,
+                Task.status.notin_(["done", "cancelled"]),
+            )
+        )
+        overdue_task_count = overdue_result.scalar_one()
+
+        return {
+            "corpus_node_count": corpus_node_count,
+            "open_task_count": open_task_count,
+            "overdue_task_count": overdue_task_count,
+        }

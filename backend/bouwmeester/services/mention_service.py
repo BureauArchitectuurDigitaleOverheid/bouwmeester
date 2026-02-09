@@ -94,9 +94,19 @@ class MentionService:
             if (m.mention_type, str(m.target_id)) not in existing_keys
         ]
 
+    # Only these source types should appear as public back-references.
+    # DMs, org descriptions, and any future private source types are excluded.
+    _PUBLIC_SOURCE_TYPES = ["node", "task"]
+
     async def get_references(self, target_id: UUID) -> list[MentionReference]:
-        """Get all places where target_id is mentioned, with source titles."""
-        mentions = await self.repo.get_by_target(target_id)
+        """Get all places where target_id is mentioned, with source titles.
+
+        Only includes public source types (nodes, tasks) — private content
+        like DMs and org descriptions should not leak as back-references.
+        """
+        mentions = await self.repo.get_by_target(
+            target_id, allowed_source_types=self._PUBLIC_SOURCE_TYPES
+        )
         if not mentions:
             return []
 

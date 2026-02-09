@@ -210,6 +210,7 @@ async def get_node_stakeholders(
 async def add_node_stakeholder(
     id: UUID,
     data: NodeStakeholderCreate,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> NodeStakeholderResponse:
     service = NodeService(db)
@@ -219,9 +220,11 @@ async def add_node_stakeholder(
     repo = NodeStakeholderRepository(db)
     stakeholder = await repo.create_stakeholder(id, data.person_id, data.rol)
 
-    # Notify the newly added person
+    # Notify the newly added person (skip if they added themselves)
     notif_svc = NotificationService(db)
-    await notif_svc.notify_stakeholder_added(node, data.person_id, data.rol)
+    await notif_svc.notify_stakeholder_added(
+        node, data.person_id, data.rol, actor_id=actor_id
+    )
 
     await db.commit()
 

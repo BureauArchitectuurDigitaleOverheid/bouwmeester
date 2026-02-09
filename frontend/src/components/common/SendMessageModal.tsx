@@ -68,6 +68,7 @@ export function SendMessageModal({ open, onClose, recipient }: SendMessageModalP
             onChange={setText}
             placeholder={isAgent ? 'Typ je prompt... Gebruik @ voor personen, # voor nodes' : 'Typ je bericht... Gebruik @ voor personen, # voor nodes'}
             rows={8}
+            autoFocus
           />
         </div>
 

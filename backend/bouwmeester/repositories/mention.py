@@ -33,12 +33,16 @@ class MentionRepository:
         result = await self.session.execute(stmt)
         return result.rowcount
 
-    async def get_by_target(self, target_id: UUID) -> list[Mention]:
+    async def get_by_target(
+        self, target_id: UUID, allowed_source_types: list[str] | None = None
+    ) -> list[Mention]:
         stmt = (
             select(Mention)
             .where(Mention.target_id == target_id)
             .order_by(Mention.created_at.desc())
         )
+        if allowed_source_types:
+            stmt = stmt.where(Mention.source_type.in_(allowed_source_types))
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
