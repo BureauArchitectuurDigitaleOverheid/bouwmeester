@@ -4,6 +4,7 @@ import { Button } from '@/components/common/Button';
 import { PersonList } from '@/components/people/PersonList';
 import { PersonEditForm } from '@/components/people/PersonEditForm';
 import { usePeople, useCreatePerson, useUpdatePerson, useAddPersonOrganisatie } from '@/hooks/usePeople';
+import { todayISO } from '@/utils/dates';
 import type { Person, PersonCreate } from '@/types';
 
 export function PeoplePage() {
@@ -41,7 +42,7 @@ export function PeoplePage() {
                 data: {
                   organisatie_eenheid_id: orgEenheidId,
                   dienstverband: dienstverband || 'in_dienst',
-                  start_datum: new Date().toISOString().split('T')[0],
+                  start_datum: todayISO(),
                 },
               },
               { onSettled: () => setShowForm(false) },

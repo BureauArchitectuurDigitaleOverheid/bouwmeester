@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Text, func, text
+from sqlalchemy import DateTime, ForeignKey, Text, func, text
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -59,14 +59,20 @@ class ParlementairItem(Base):
     extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     deadline: Mapped[date | None] = mapped_column(nullable=True)
     ministerie: Mapped[str | None] = mapped_column(nullable=True)
-    imported_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    reviewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("person.id", ondelete="SET NULL"),
         nullable=True,
     )
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     # Relationships
     corpus_node: Mapped["CorpusNode | None"] = relationship("CorpusNode")
@@ -116,13 +122,17 @@ class SuggestedEdge(Base):
         ForeignKey("edge.id", ondelete="SET NULL"),
         nullable=True,
     )
-    reviewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("person.id", ondelete="SET NULL"),
         nullable=True,
     )
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     # Relationships
     parlementair_item: Mapped["ParlementairItem"] = relationship(

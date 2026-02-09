@@ -32,17 +32,10 @@ export function useCreateNode() {
 }
 
 export function useUpdateNode() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: CorpusNodeUpdate }) => updateNode(id, data),
-    onError: (error: Error) => {
-      console.error('Fout bij bijwerken node:', error);
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['nodes', 'detail', variables.id] });
-      queryClient.invalidateQueries({ queryKey: ['nodes', 'list'] });
-    },
+  return useMutationWithError({
+    mutationFn: ({ id, data, actorId }: { id: string; data: CorpusNodeUpdate; actorId?: string }) => updateNode(id, data, actorId),
+    errorMessage: 'Fout bij bijwerken node',
+    invalidateKeys: [['nodes', 'detail'], ['nodes', 'list']],
   });
 }
 

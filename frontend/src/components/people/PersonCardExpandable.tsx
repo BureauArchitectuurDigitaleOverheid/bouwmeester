@@ -7,6 +7,7 @@ import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
 import { FUNCTIE_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
+import { formatDateShort, todayISO } from '@/utils/dates';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import type { Person } from '@/types';
@@ -174,7 +175,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                         <span className="truncate">{task.title}</span>
                         {task.due_date && (
                           <span className="text-text-secondary shrink-0 ml-auto">
-                            {new Date(task.due_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
+                            {formatDateShort(task.due_date)}
                           </span>
                         )}
                       </button>
@@ -236,7 +237,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                                   {
                                     personId: person.id,
                                     placementId: p.id,
-                                    data: { eind_datum: new Date().toISOString().split('T')[0] },
+                                    data: { eind_datum: todayISO() },
                                   },
                                   { onError: () => alert('Plaatsing beëindigen mislukt.') },
                                 );

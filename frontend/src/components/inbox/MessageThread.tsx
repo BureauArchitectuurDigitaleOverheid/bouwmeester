@@ -5,24 +5,12 @@ import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { Button } from '@/components/common/Button';
 import { useNotification, useReplies, useReplyToNotification, useMarkNotificationRead } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { timeAgo } from '@/utils/dates';
 import type { Notification } from '@/api/notifications';
 
 interface MessageThreadProps {
   notificationId: string;
   onClose: () => void;
-}
-
-function timeAgo(dateStr: string): string {
-  const now = new Date();
-  const then = new Date(dateStr);
-  const diffMs = now.getTime() - then.getTime();
-  const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return 'Zojuist';
-  if (diffMin < 60) return `${diffMin}m geleden`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}u geleden`;
-  const diffDays = Math.floor(diffHr / 24);
-  return `${diffDays}d geleden`;
 }
 
 function MessageBubble({ message, isCurrentUser }: { message: Notification; isCurrentUser: boolean }) {
@@ -38,7 +26,7 @@ function MessageBubble({ message, isCurrentUser }: { message: Notification; isCu
         {!isCurrentUser && message.sender_name && (
           <p className="text-xs font-medium mb-1 opacity-70">{message.sender_name}</p>
         )}
-        <div className={`text-sm ${isCurrentUser ? '[&_*]:text-white' : ''}`}>
+        <div className={`text-sm ${isCurrentUser ? '[&_*]:text-white [&_button]:bg-white/20 [&_button]:text-white' : ''}`}>
           <RichTextDisplay content={message.message} fallback="" />
         </div>
         <p className={`text-[10px] mt-1 ${isCurrentUser ? 'text-white/60' : 'text-text-secondary'}`}>
@@ -57,9 +45,15 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
   const replyMutation = useReplyToNotification();
   const markRead = useMarkNotificationRead();
 
-  // Mark as read when opened
+  // Mark as read when opened — only if current user is the recipient (person_id),
+  // not the sender.  After a reply the backend marks the root unread for the
+  // recipient; we must not immediately re-mark it read for the sender.
   useEffect(() => {
-    if (parentMessage && !parentMessage.is_read) {
+    if (
+      parentMessage &&
+      !parentMessage.is_read &&
+      currentPerson?.id === parentMessage.person_id
+    ) {
       markRead.mutate(parentMessage.id);
     }
   }, [parentMessage?.id, parentMessage?.is_read]); // eslint-disable-line react-hooks/exhaustive-deps

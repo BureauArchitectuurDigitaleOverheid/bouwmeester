@@ -1,5 +1,6 @@
 """Repository for Notification CRUD."""
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -20,8 +21,10 @@ class NotificationRepository(BaseRepository[Notification]):
     ) -> list[Notification]:
         stmt = (
             select(Notification)
-            .where(Notification.person_id == person_id)
-            .where(Notification.parent_id.is_(None))
+            .where(
+                Notification.person_id == person_id,
+                Notification.parent_id.is_(None),
+            )
             .offset(skip)
             .limit(limit)
             .order_by(Notification.created_at.desc())
@@ -64,6 +67,34 @@ class NotificationRepository(BaseRepository[Notification]):
         result = await self.session.execute(stmt)
         return {row.parent_id: row.cnt for row in result.all()}
 
+    async def last_activity_batch(
+        self, parent_ids: list[UUID]
+    ) -> dict[UUID, tuple[datetime, str | None]]:
+        """Get latest reply timestamp and message per parent.
+
+        Uses PostgreSQL DISTINCT ON to guarantee exactly one row per
+        parent_id, even when two replies share the same created_at.
+        """
+        if not parent_ids:
+            return {}
+
+        stmt = (
+            select(
+                Notification.parent_id,
+                Notification.created_at,
+                Notification.message,
+            )
+            .where(Notification.parent_id.in_(parent_ids))
+            .order_by(
+                Notification.parent_id,
+                Notification.created_at.desc(),
+                Notification.id.desc(),
+            )
+            .distinct(Notification.parent_id)
+        )
+        result = await self.session.execute(stmt)
+        return {row.parent_id: (row.created_at, row.message) for row in result.all()}
+
     async def mark_read(self, notification_id: UUID) -> Notification | None:
         notification = await self.session.get(Notification, notification_id)
         if notification is None:
@@ -93,9 +124,21 @@ class NotificationRepository(BaseRepository[Notification]):
             .select_from(Notification)
             .where(
                 Notification.person_id == person_id,
-                Notification.is_read == False,  # noqa: E712
                 Notification.parent_id.is_(None),
+                Notification.is_read == False,  # noqa: E712
             )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one()
+
+    async def get_other_root(
+        self, thread_id: UUID, person_id: UUID
+    ) -> Notification | None:
+        """Find the other party's root notification in a DM thread."""
+        stmt = select(Notification).where(
+            Notification.thread_id == thread_id,
+            Notification.parent_id.is_(None),
+            Notification.person_id != person_id,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()

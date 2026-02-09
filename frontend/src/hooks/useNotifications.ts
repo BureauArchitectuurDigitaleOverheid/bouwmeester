@@ -8,6 +8,7 @@ import {
   markAllNotificationsRead,
   sendMessage,
   replyToNotification,
+  getDashboardStats,
 } from '@/api/notifications';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 
@@ -66,6 +67,15 @@ export function useSendMessage() {
     mutationFn: sendMessage,
     errorMessage: 'Fout bij verzenden bericht',
     invalidateKeys: [['notifications']],
+  });
+}
+
+export function useDashboardStats(personId: string | undefined) {
+  return useQuery({
+    queryKey: ['dashboard-stats', personId],
+    queryFn: () => getDashboardStats(personId!),
+    enabled: !!personId,
+    refetchInterval: 60_000,
   });
 }
 

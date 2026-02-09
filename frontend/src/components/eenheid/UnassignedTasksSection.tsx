@@ -6,6 +6,7 @@ import { useUpdateTask } from '@/hooks/useTasks';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { usePeople } from '@/hooks/usePeople';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { isOverdue as checkOverdue, formatDateShort } from '@/utils/dates';
 import {
   TASK_PRIORITY_LABELS,
   TASK_PRIORITY_COLORS,
@@ -47,7 +48,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId }: { task: Task; sh
   const { data: eenheden } = useOrganisatieFlat();
   const { data: allPeople } = usePeople();
 
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date();
+  const isOverdue = task.due_date && checkOverdue(task.due_date);
 
   const eenheidOptions: SelectOption[] = useMemo(() => {
     const all = eenheden ?? [];
@@ -111,10 +112,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId }: { task: Task; sh
               }`}
             >
               <Clock className="h-3 w-3" />
-              {new Date(task.due_date).toLocaleDateString('nl-NL', {
-                day: 'numeric',
-                month: 'short',
-              })}
+              {formatDateShort(task.due_date)}
             </span>
           )}
         </div>

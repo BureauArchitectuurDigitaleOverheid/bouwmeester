@@ -12,12 +12,21 @@ export interface Notification {
   related_node_id?: string;
   related_task_id?: string;
   parent_id?: string;
+  thread_id?: string;
   reply_count: number;
   created_at: string;
+  last_activity_at?: string;
+  last_message?: string;
 }
 
 export interface UnreadCountResponse {
   count: number;
+}
+
+export interface DashboardStats {
+  corpus_node_count: number;
+  open_task_count: number;
+  overdue_task_count: number;
 }
 
 export async function getNotifications(
@@ -49,7 +58,7 @@ export async function markNotificationRead(id: string): Promise<Notification> {
 }
 
 export async function markAllNotificationsRead(personId: string): Promise<{ marked_read: number }> {
-  return apiPut<{ marked_read: number }>(`/api/notifications/read-all?person_id=${personId}`);
+  return apiPut<{ marked_read: number }>(`/api/notifications/read-all?person_id=${encodeURIComponent(personId)}`);
 }
 
 export async function sendMessage(data: {
@@ -65,4 +74,10 @@ export async function replyToNotification(
   data: { sender_id: string; message: string },
 ): Promise<Notification> {
   return apiPost<Notification>(`/api/notifications/${notificationId}/reply`, data);
+}
+
+export async function getDashboardStats(personId: string): Promise<DashboardStats> {
+  return apiGet<DashboardStats>('/api/notifications/dashboard-stats', {
+    person_id: personId,
+  });
 }

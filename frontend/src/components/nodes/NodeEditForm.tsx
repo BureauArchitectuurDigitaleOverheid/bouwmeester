@@ -7,6 +7,7 @@ import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useUpdateNode } from '@/hooks/useNodes';
 import { useNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { NODE_STATUS_LABELS } from '@/types';
 import type { CorpusNode } from '@/types';
 
@@ -18,6 +19,7 @@ interface NodeEditFormProps {
 
 export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
   const nodeTypeOptions = useNodeTypeOptions();
+  const { currentPerson } = useCurrentPerson();
 
   const [title, setTitle] = useState(node.title);
   const [nodeType, setNodeType] = useState<string>(node.node_type);
@@ -43,6 +45,7 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
         description: description.trim() || undefined,
         status: status.trim() || undefined,
       },
+      actorId: currentPerson?.id,
     });
 
     onClose();

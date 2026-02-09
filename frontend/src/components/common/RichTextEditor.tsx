@@ -18,6 +18,7 @@ interface RichTextEditorProps {
   rows?: number;
   readOnly?: boolean;
   id?: string;
+  autoFocus?: boolean;
 }
 
 interface SuggestionItem {
@@ -363,6 +364,7 @@ export function RichTextEditor({
   rows = 3,
   readOnly = false,
   id,
+  autoFocus = false,
 }: RichTextEditorProps) {
   const initialContent = useRef(parseContent(value));
   const skipUpdate = useRef(false);
@@ -390,6 +392,13 @@ export function RichTextEditor({
       onChange(json);
     },
   });
+
+  // Focus editor when autoFocus is set (delayed to work inside modals)
+  useEffect(() => {
+    if (autoFocus && editor && !readOnly) {
+      requestAnimationFrame(() => editor.commands.focus('end'));
+    }
+  }, [editor, autoFocus, readOnly]);
 
   // Sync editable state
   useEffect(() => {
