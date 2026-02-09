@@ -177,6 +177,29 @@ async def complete_review(
     return ParlementairItemResponse.model_validate(item)
 
 
+class UpdateSuggestedEdgeRequest(BaseModel):
+    edge_type_id: str
+
+
+@router.patch("/edges/{edge_id}", response_model=SuggestedEdgeResponse)
+async def update_suggested_edge(
+    edge_id: UUID,
+    body: UpdateSuggestedEdgeRequest,
+    db: AsyncSession = Depends(get_db),
+) -> SuggestedEdgeResponse:
+    """Update a suggested edge (e.g. change its edge type) before approval."""
+    repo = SuggestedEdgeRepository(db)
+    suggested_edge = await repo.get_by_id(edge_id)
+    if suggested_edge is None:
+        raise HTTPException(status_code=404, detail="Suggested edge not found")
+    if suggested_edge.status != "pending":
+        raise HTTPException(status_code=400, detail="Can only update pending edges")
+    suggested_edge.edge_type_id = body.edge_type_id
+    await db.flush()
+    updated = await repo.get_by_id(edge_id)
+    return SuggestedEdgeResponse.model_validate(updated)
+
+
 @router.put("/edges/{edge_id}/approve", response_model=SuggestedEdgeResponse)
 async def approve_edge(
     edge_id: UUID,

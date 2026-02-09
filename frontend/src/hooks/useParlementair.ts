@@ -6,6 +6,7 @@ import {
   rejectParlementairItem,
   completeParlementairReview,
   getReviewQueue,
+  updateSuggestedEdge,
   approveSuggestedEdge,
   rejectSuggestedEdge,
 } from '@/api/parlementair';
@@ -58,6 +59,15 @@ export function useCompleteParlementairReview() {
       completeParlementairReview(id, data),
     errorMessage: 'Fout bij afronden review',
     invalidateKeys: [...PARLEMENTAIR_INVALIDATE_KEYS, ['tasks', 'list'], ['nodes', 'list']],
+  });
+}
+
+export function useUpdateSuggestedEdge() {
+  return useMutationWithError({
+    mutationFn: ({ id, data }: { id: string; data: { edge_type_id: string } }) =>
+      updateSuggestedEdge(id, data),
+    errorMessage: 'Fout bij bijwerken relatie',
+    invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
   });
 }
 

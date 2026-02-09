@@ -51,6 +51,11 @@ class Notification(Base):
         ForeignKey("person.id", ondelete="SET NULL"),
         nullable=True,
     )
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("notification.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     # Relationships
@@ -60,3 +65,9 @@ class Notification(Base):
     )
     related_node: Mapped[Optional["CorpusNode"]] = relationship("CorpusNode")
     related_task: Mapped[Optional["Task"]] = relationship("Task")
+    replies: Mapped[list["Notification"]] = relationship(
+        "Notification",
+        foreign_keys=[parent_id],
+        order_by="Notification.created_at",
+        cascade="all, delete-orphan",
+    )
