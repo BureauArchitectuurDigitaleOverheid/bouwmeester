@@ -283,9 +283,7 @@ async def test_reply_threads_to_root(
         "sender_id": str(second_person.id),
         "message": "Reactie op reactie",
     }
-    resp = await client.post(
-        f"/api/notifications/{first_reply.id}/reply", json=payload
-    )
+    resp = await client.post(f"/api/notifications/{first_reply.id}/reply", json=payload)
     assert resp.status_code == 200
     data = resp.json()
     # Should be threaded to root, not to the first reply
@@ -316,9 +314,7 @@ async def test_get_replies(
     db_session.add(reply)
     await db_session.flush()
 
-    resp = await client.get(
-        f"/api/notifications/{sample_notification.id}/replies"
-    )
+    resp = await client.get(f"/api/notifications/{sample_notification.id}/replies")
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) >= 1
