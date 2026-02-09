@@ -16,6 +16,9 @@ from bouwmeester.models.maatregel import Maatregel  # noqa: F401
 from bouwmeester.models.mention import Mention  # noqa: F401
 from bouwmeester.models.node_stakeholder import NodeStakeholder  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
+from bouwmeester.models.org_manager import OrganisatieEenheidManager  # noqa: F401
+from bouwmeester.models.org_naam import OrganisatieEenheidNaam  # noqa: F401
+from bouwmeester.models.org_parent import OrganisatieEenheidParent  # noqa: F401
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid  # noqa: F401
 from bouwmeester.models.parlementair_item import (  # noqa: F401
     ParlementairItem,
@@ -47,6 +50,9 @@ __all__ = [
     "NodeStakeholder",
     "NodeTag",
     "Notification",
+    "OrganisatieEenheidManager",
+    "OrganisatieEenheidNaam",
+    "OrganisatieEenheidParent",
     "OrganisatieEenheid",
     "Person",
     "PersonOrganisatieEenheid",

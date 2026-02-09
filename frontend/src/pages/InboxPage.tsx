@@ -23,7 +23,7 @@ export function InboxPage() {
   const managedEenheidId = managedEenheid?.id ?? null;
   const { data: overview } = useEenheidOverview(managedEenheidId);
 
-  const PERSON_LEVEL_TYPES = new Set(['afdeling', 'team']);
+  const PERSON_LEVEL_TYPES = new Set(['afdeling', 'team', 'cluster']);
   const visibleUnassignedCount = overview
     ? (overview.unassigned_no_unit_count ?? 0) +
       (PERSON_LEVEL_TYPES.has(overview.eenheid_type) ? (overview.unassigned_no_person_count ?? 0) : 0)

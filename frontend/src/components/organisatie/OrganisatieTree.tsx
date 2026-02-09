@@ -15,6 +15,7 @@ const TYPE_BADGE_COLORS: Record<string, 'blue' | 'purple' | 'amber' | 'cyan' | '
   directie: 'amber',
   dienst: 'gray',
   bureau: 'gray',
+  cluster: 'gray',
   afdeling: 'cyan',
   team: 'green',
 };

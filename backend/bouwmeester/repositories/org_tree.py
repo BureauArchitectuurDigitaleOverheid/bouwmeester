@@ -1,10 +1,15 @@
-"""Shared recursive CTE for organisatie-eenheid descendant queries."""
+"""Shared recursive CTE for organisatie-eenheid descendant queries.
+
+Uses the temporal OrganisatieEenheidParent table (active records only)
+instead of the legacy parent_id column.
+"""
 
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.models.org_parent import OrganisatieEenheidParent
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 
 
@@ -21,7 +26,10 @@ async def get_descendant_ids(
         .cte(name=cte_name, recursive=True)
     )
     cte = cte.union_all(
-        select(OrganisatieEenheid.id).where(OrganisatieEenheid.parent_id == cte.c.id)
+        select(OrganisatieEenheidParent.eenheid_id).where(
+            OrganisatieEenheidParent.parent_id == cte.c.id,
+            OrganisatieEenheidParent.geldig_tot.is_(None),
+        )
     )
     stmt = select(cte.c.id)
     result = await session.execute(stmt)
