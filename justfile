@@ -147,12 +147,10 @@ decrypt-seed:
     age -d -i ~/.age/key.txt -o backend/scripts/seed_persons.json backend/scripts/seed_persons.json.age
     @echo "Decrypted → backend/scripts/seed_persons.json"
 
-# Encrypt seed_persons.json for committing (requires both public keys)
-# TODO: Replace <ANNE_AGE_PUBKEY> and <EELCO_AGE_PUBKEY> with actual age public keys
-#       Generate with: age-keygen -o ~/.age/key.txt  (prints public key)
+# Encrypt seed_persons.json for committing (add more -r flags for additional recipients)
+# To add Eelco: append -r <his-age-public-key> below
 encrypt-seed:
-    age -r <ANNE_AGE_PUBKEY> \
-        -r <EELCO_AGE_PUBKEY> \
+    age -r age1t3gkzgkgy9r05zutg2xws33xv42gyagk7wty5pqqa9apn5vrjsgsf0s4ha \
         -o backend/scripts/seed_persons.json.age \
         backend/scripts/seed_persons.json
     @echo "Encrypted → backend/scripts/seed_persons.json.age"
