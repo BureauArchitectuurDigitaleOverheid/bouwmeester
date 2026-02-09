@@ -214,11 +214,11 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setTagHighlightIdx((i) => (i + 1) % tagTotalItems);
+        if (tagTotalItems > 0) setTagHighlightIdx((i) => (i + 1) % tagTotalItems);
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setTagHighlightIdx((i) => (i - 1 + tagTotalItems) % tagTotalItems);
+        if (tagTotalItems > 0) setTagHighlightIdx((i) => (i - 1 + tagTotalItems) % tagTotalItems);
         break;
       case 'Enter':
         e.preventDefault();

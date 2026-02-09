@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
@@ -27,7 +28,7 @@ async def _enrich_response(
     service: NotificationService,
     db: AsyncSession,
 ) -> NotificationResponse:
-    """Build NotificationResponse with sender_name and reply_count."""
+    """Build NotificationResponse with sender_name and reply_count (single item)."""
     resp = NotificationResponse.model_validate(notification)
     if notification.sender_id:
         sender = await db.get(Person, notification.sender_id)
@@ -36,6 +37,38 @@ async def _enrich_response(
     if notification.parent_id is None:
         resp.reply_count = await service.repo.count_replies(notification.id)
     return resp
+
+
+async def _enrich_batch(
+    notifications: list[Notification],
+    service: NotificationService,
+    db: AsyncSession,
+) -> list[NotificationResponse]:
+    """Batch-enrich notifications: load sender names and reply counts in bulk."""
+    if not notifications:
+        return []
+
+    # Batch-load sender names
+    sender_ids = {n.sender_id for n in notifications if n.sender_id}
+    sender_map: dict[UUID, str] = {}
+    if sender_ids:
+        stmt = select(Person.id, Person.naam).where(Person.id.in_(sender_ids))
+        result = await db.execute(stmt)
+        sender_map = {row.id: row.naam for row in result.all()}
+
+    # Batch-load reply counts for root notifications
+    root_ids = [n.id for n in notifications if n.parent_id is None]
+    reply_counts = await service.repo.count_replies_batch(root_ids)
+
+    responses = []
+    for n in notifications:
+        resp = NotificationResponse.model_validate(n)
+        if n.sender_id and n.sender_id in sender_map:
+            resp.sender_name = sender_map[n.sender_id]
+        if n.parent_id is None:
+            resp.reply_count = reply_counts.get(n.id, 0)
+        responses.append(resp)
+    return responses
 
 
 @router.get("", response_model=list[NotificationResponse])
@@ -50,7 +83,7 @@ async def list_notifications(
     notifications = await service.get_notifications(
         person_id, unread_only=unread_only, skip=skip, limit=limit
     )
-    return [await _enrich_response(n, service, db) for n in notifications]
+    return await _enrich_batch(notifications, service, db)
 
 
 @router.get("/count", response_model=UnreadCountResponse)
@@ -82,7 +115,7 @@ async def get_replies(
     # Verify parent exists
     require_found(await service.repo.get_by_id(id), "Notification")
     replies = await service.repo.get_replies(id)
-    return [await _enrich_response(r, service, db) for r in replies]
+    return await _enrich_batch(replies, service, db)
 
 
 @router.put("/{id}/read", response_model=NotificationResponse)
