@@ -32,6 +32,11 @@ from bouwmeester.schema.tag import TagCreate
 from bouwmeester.schema.task import TaskCreate
 
 
+def _utcnow() -> datetime:
+    """UTC now as naive datetime for TIMESTAMP WITHOUT TIME ZONE."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 async def seed(db: AsyncSession) -> None:
     # Clear existing data (order matters due to FKs)
     for table in [
@@ -4569,7 +4574,7 @@ async def seed(db: AsyncSession) -> None:
             "te registreren in het Algoritmeregister."
         ),
         matched_tags=["algoritmen", "ai"],
-        imported_at=datetime.now(UTC) - timedelta(days=3),
+        imported_at=_utcnow() - timedelta(days=3),
     )
     db.add(mi_1)
     await db.flush()
@@ -4660,7 +4665,7 @@ async def seed(db: AsyncSession) -> None:
             "via eIDAS-koppeling."
         ),
         matched_tags=["digitale identiteit", "eIDAS"],
-        imported_at=datetime.now(UTC) - timedelta(days=1),
+        imported_at=_utcnow() - timedelta(days=1),
     )
     db.add(mi_2)
     await db.flush()
@@ -4755,7 +4760,7 @@ async def seed(db: AsyncSession) -> None:
             "voor burgers die het Nederlands onvoldoende beheersen."
         ),
         matched_tags=["toegankelijkheid", "digitale kloof"],
-        imported_at=datetime.now(UTC),
+        imported_at=_utcnow(),
     )
     db.add(mi_3)
     await db.flush()
@@ -4801,7 +4806,7 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
     from bouwmeester.models.notification import Notification
 
-    now = datetime.now(UTC)
+    now = _utcnow()
     notifications = []
 
     # Find a few assigned tasks for notification references
