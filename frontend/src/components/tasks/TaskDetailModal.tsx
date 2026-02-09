@@ -177,9 +177,9 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
                       onClose();
                       openNodeDetail(task.node_id!);
                     }}
-                    className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 transition-colors"
+                    className="inline-flex items-start gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-left"
                   >
-                    <LinkIcon className="h-4 w-4" />
+                    <LinkIcon className="h-4 w-4 shrink-0 mt-0.5" />
                     {task.node.title}
                   </button>
                 ) : (
