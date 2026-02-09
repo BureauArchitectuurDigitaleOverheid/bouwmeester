@@ -14,10 +14,13 @@ from bouwmeester.models.effect import Effect  # noqa: F401
 from bouwmeester.models.instrument import Instrument  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
 from bouwmeester.models.mention import Mention  # noqa: F401
-from bouwmeester.models.motie_import import MotieImport, SuggestedEdge  # noqa: F401
 from bouwmeester.models.node_stakeholder import NodeStakeholder  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid  # noqa: F401
+from bouwmeester.models.parlementair_item import (  # noqa: F401
+    ParlementairItem,
+    SuggestedEdge,
+)
 from bouwmeester.models.person import Person  # noqa: F401
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid  # noqa: F401
 from bouwmeester.models.politieke_input import PolitiekeInput  # noqa: F401
@@ -40,7 +43,7 @@ __all__ = [
     "Instrument",
     "Maatregel",
     "Mention",
-    "MotieImport",
+    "ParlementairItem",
     "NodeStakeholder",
     "NodeTag",
     "Notification",

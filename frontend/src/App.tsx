@@ -13,7 +13,7 @@ import { TasksPage } from '@/pages/TasksPage';
 import { PeoplePage } from '@/pages/PeoplePage';
 import { OrganisatiePage } from '@/pages/OrganisatiePage';
 import { SearchPage } from '@/pages/SearchPage';
-import { MotiesPage } from '@/pages/MotiesPage';
+import { ParlementairPage } from '@/pages/ParlementairPage';
 import { EenheidOverzichtPage } from '@/pages/EenheidOverzichtPage';
 
 const queryClient = new QueryClient({
@@ -44,7 +44,7 @@ export default function App() {
                 <Route path="/organisatie" element={<OrganisatiePage />} />
                 <Route path="/eenheid-overzicht" element={<EenheidOverzichtPage />} />
                 <Route path="/search" element={<SearchPage />} />
-                <Route path="/moties" element={<MotiesPage />} />
+                <Route path="/parlementair" element={<ParlementairPage />} />
               </Route>
             </Routes>
             <DetailModals />

@@ -57,14 +57,17 @@ export async function removeNodeStakeholder(
   return apiDelete(`/api/nodes/${nodeId}/stakeholders/${stakeholderId}`);
 }
 
-export interface NodeMotieImport {
+export interface NodeParlementairItem {
+  type: string;
   indieners: string[];
   document_url: string | null;
   zaak_nummer: string;
   bron: string;
   datum: string | null;
+  deadline: string | null;
+  ministerie: string | null;
 }
 
-export async function getNodeMotieImport(id: string): Promise<NodeMotieImport | null> {
-  return apiGet<NodeMotieImport | null>(`/api/nodes/${id}/motie-import`);
+export async function getNodeParlementairItem(id: string): Promise<NodeParlementairItem | null> {
+  return apiGet<NodeParlementairItem | null>(`/api/nodes/${id}/parlementair-item`);
 }

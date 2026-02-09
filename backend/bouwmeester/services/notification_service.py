@@ -107,12 +107,23 @@ class NotificationService:
                 notifications.append(notification)
         return notifications
 
-    async def notify_motie_imported(
-        self, motie_node: CorpusNode, affected_nodes: list[CorpusNode]
+    async def notify_parlementair_item_imported(
+        self,
+        item_node: CorpusNode,
+        affected_nodes: list[CorpusNode],
+        item_type: str = "motie",
     ) -> list[Notification]:
-        """Notify stakeholders of affected nodes about a new imported motie."""
+        """Notify stakeholders about a new parliamentary item."""
         if not affected_nodes:
             return []
+
+        type_labels: dict[str, str] = {
+            "motie": "aangenomen motie",
+            "kamervraag": "kamervraag",
+            "toezegging": "toezegging",
+            "amendement": "amendement",
+        }
+        type_label = type_labels.get(item_type, item_type)
 
         node_ids = [node.id for node in affected_nodes]
         node_map = {node.id: node for node in affected_nodes}
@@ -140,13 +151,13 @@ class NotificationService:
                 data = NotificationCreate(
                     person_id=sh.person_id,
                     type="politieke_input_imported",
-                    title=f"Nieuwe aangenomen motie: {motie_node.title}",
+                    title=f"Nieuw(e) {type_label}: {item_node.title}",
                     message=(
-                        f"Aangenomen motie '{motie_node.title}' is mogelijk "
+                        f"{type_label.capitalize()} '{item_node.title}' is mogelijk "
                         f"relevant voor '{node.title}'. "
                         f"Beoordeel de voorgestelde verbindingen."
                     ),
-                    related_node_id=motie_node.id,
+                    related_node_id=item_node.id,
                 )
                 notification = await self.repo.create(data)
                 notifications.append(notification)

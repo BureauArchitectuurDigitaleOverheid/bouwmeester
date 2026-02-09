@@ -1,4 +1,4 @@
-"""Background worker for polling TK/EK APIs and importing moties."""
+"""Background worker for polling TK/EK APIs and importing parliamentary items."""
 
 import asyncio
 import logging
@@ -16,23 +16,23 @@ logger = logging.getLogger(__name__)
 async def main() -> None:
     settings = get_settings()
     logger.info(
-        f"Motie import worker started. Poll interval: "
+        f"Parlementair import worker started. Poll interval: "
         f"{settings.TK_POLL_INTERVAL_SECONDS}s"
     )
 
     while True:
         try:
             async with async_session() as session:
-                from bouwmeester.services.motie_import_service import (
-                    MotieImportService,
+                from bouwmeester.services.parlementair_import_service import (
+                    ParlementairImportService,
                 )
 
-                service = MotieImportService(session)
+                service = ParlementairImportService(session)
                 count = await service.poll_and_import()
                 await session.commit()
-                logger.info(f"Import cycle complete: {count} moties imported")
+                logger.info(f"Import cycle complete: {count} items imported")
         except Exception:
-            logger.exception("Error in motie import cycle")
+            logger.exception("Error in parlementair import cycle")
 
         await asyncio.sleep(settings.TK_POLL_INTERVAL_SECONDS)
 
