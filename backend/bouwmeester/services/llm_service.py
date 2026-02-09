@@ -31,33 +31,43 @@ class LLMService:
             content = content.split("```")[1].split("```")[0]
         return json.loads(content.strip())
 
+    _TYPE_LABELS: dict[str, str] = {
+        "motie": "aangenomen motie",
+        "kamervraag": "schriftelijke kamervraag",
+        "toezegging": "toezegging",
+        "amendement": "amendement",
+        "commissiedebat": "commissiedebat",
+    }
+
     async def extract_tags(
         self,
         titel: str,
         onderwerp: str,
         document_tekst: str | None,
         bestaande_tags: list[str],
+        context_hint: str = "motie",
     ) -> TagExtractionResult:
-        """Extract relevant tags from a motie text.
+        """Extract relevant tags from a parliamentary item text.
 
-        Only public motie text and tag names (strings) are sent to Claude.
+        Only public text and tag names (strings) are sent to Claude.
         No corpus node content or personal data is included.
         """
-        motie_content = f"TITEL: {titel}\nONDERWERP: {onderwerp}"
+        type_label = self._TYPE_LABELS.get(context_hint, context_hint)
+        item_content = f"TITEL: {titel}\nONDERWERP: {onderwerp}"
         if document_tekst:
-            motie_content += f"\n\nDOCUMENTTEKST:\n{document_tekst}"
+            item_content += f"\n\nDOCUMENTTEKST:\n{document_tekst}"
 
         tags_json = json.dumps(bestaande_tags, ensure_ascii=False)
         prompt = (
             "Je bent een beleidsanalist van het ministerie van BZK"
             " (Binnenlandse Zaken en Koninkrijksrelaties)."
-            " Analyseer deze aangenomen motie en bepaal welke"
+            f" Analyseer deze {type_label} en bepaal welke"
             " beleidstags relevant zijn.\n\n"
-            f"MOTIE:\n{motie_content}\n\n"
+            f"{type_label.upper()}:\n{item_content}\n\n"
             f"BESTAANDE TAGS IN HET SYSTEEM:\n{tags_json}\n\n"
             "Instructies:\n"
             "- Selecteer ALLEEN tags die specifiek relevant"
-            " zijn voor deze motie\n"
+            f" zijn voor deze {type_label}\n"
             "- Vermijd te brede/generieke tags. Tags als"
             ' "overheid", "data", "digitalisering" op zichzelf'
             " zijn te breed — gebruik altijd de meest specifieke"
@@ -65,14 +75,14 @@ class LLMService:
             ' "digitalisering/AI/generatieve-AI"'
             ' in plaats van "digitalisering")\n'
             "- Selecteer een brede parent-tag ALLEEN als de"
-            " motie echt over het hele brede onderwerp gaat\n"
+            f" {type_label} echt over het hele brede onderwerp gaat\n"
             "- Stel maximaal 3 nieuwe tags voor als de"
             " bestaande tags het onderwerp niet dekken\n"
             "- Nieuwe tags moeten het hiërarchische"
             " pad-formaat volgen"
             ' (bijv. "digitalisering/AI/privacy")\n'
             "- Geef een korte samenvatting (max 2 zinnen)"
-            " van wat de motie vraagt en waarom\n\n"
+            f" van wat de {type_label} vraagt en waarom\n\n"
             "Geef je analyse als JSON"
             " (en ALLEEN JSON, geen andere tekst):\n"
             "{\n"

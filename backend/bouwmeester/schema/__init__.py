@@ -30,11 +30,6 @@ from bouwmeester.schema.mention import (
     MentionResponse,
     MentionSearchResult,
 )
-from bouwmeester.schema.motie_import import (
-    MotieImportResponse,
-    ReviewAction,
-    SuggestedEdgeResponse,
-)
 from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidCreate,
     OrganisatieEenheidPersonenGroup,
@@ -44,6 +39,11 @@ from bouwmeester.schema.organisatie_eenheid import (
     OrgManagerRecord,
     OrgNaamRecord,
     OrgParentRecord,
+)
+from bouwmeester.schema.parlementair_item import (
+    ParlementairItemResponse,
+    ReviewAction,
+    SuggestedEdgeResponse,
 )
 from bouwmeester.schema.person import (
     PersonBase,
@@ -155,8 +155,8 @@ __all__ = [
     "MentionReference",
     "MentionResponse",
     "MentionSearchResult",
-    # motie_import
-    "MotieImportResponse",
+    # parlementair_item
+    "ParlementairItemResponse",
     "ReviewAction",
     "SuggestedEdgeResponse",
 ]

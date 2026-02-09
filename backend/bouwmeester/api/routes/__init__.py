@@ -9,10 +9,10 @@ from bouwmeester.api.routes.edges import router as edges_router
 from bouwmeester.api.routes.graph import router as graph_router
 from bouwmeester.api.routes.import_export import router as import_export_router
 from bouwmeester.api.routes.mentions import router as mentions_router
-from bouwmeester.api.routes.moties import router as moties_router
 from bouwmeester.api.routes.nodes import router as nodes_router
 from bouwmeester.api.routes.notifications import router as notifications_router
 from bouwmeester.api.routes.organisatie import router as organisatie_router
+from bouwmeester.api.routes.parlementair import router as parlementair_router
 from bouwmeester.api.routes.people import router as people_router
 from bouwmeester.api.routes.search import router as search_router
 from bouwmeester.api.routes.tags import router as tags_router
@@ -34,4 +34,4 @@ api_router.include_router(mentions_router)
 api_router.include_router(notifications_router)
 api_router.include_router(organisatie_router)
 api_router.include_router(tags_router)
-api_router.include_router(moties_router)
+api_router.include_router(parlementair_router)

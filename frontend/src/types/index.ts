@@ -179,7 +179,7 @@ export interface Task {
   organisatie_eenheid_id?: string;
   organisatie_eenheid?: TaskOrgEenheidSummary;
   parent_id?: string;
-  motie_import_id?: string;
+  parlementair_item_id?: string;
   subtasks?: TaskSubtask[];
   node_id?: string;
   node?: CorpusNode;
@@ -196,7 +196,7 @@ export interface TaskCreate {
   assignee_id?: string;
   organisatie_eenheid_id?: string;
   parent_id?: string;
-  motie_import_id?: string;
+  parlementair_item_id?: string;
   node_id: string;
 }
 
@@ -447,6 +447,8 @@ export interface InboxItem {
   description?: string;
   source?: string;
   node_id?: string;
+  sender_name?: string;
+  reply_count?: number;
   created_at: string;
   read: boolean;
 }
@@ -501,25 +503,50 @@ export interface NodeTagResponse {
   created_at: string;
 }
 
-// Motie Import
-export type MotieImportStatus = 'pending' | 'imported' | 'reviewed' | 'rejected' | 'out_of_scope';
+// Parlementair Item
+export type ParlementairItemType = 'motie' | 'kamervraag' | 'toezegging' | 'amendement' | 'commissiedebat' | 'schriftelijk_overleg' | 'interpellatie';
+export type ParlementairItemStatus = 'pending' | 'imported' | 'reviewed' | 'rejected' | 'out_of_scope';
 export type SuggestedEdgeStatus = 'pending' | 'approved' | 'rejected';
 
-export interface MotieImport {
+export const PARLEMENTAIR_TYPE_LABELS: Record<string, string> = {
+  motie: 'Motie',
+  kamervraag: 'Kamervraag',
+  toezegging: 'Toezegging',
+  amendement: 'Amendement',
+  commissiedebat: 'Commissiedebat',
+  schriftelijk_overleg: 'Schriftelijk Overleg',
+  interpellatie: 'Interpellatie',
+};
+
+export const PARLEMENTAIR_TYPE_COLORS: Record<string, string> = {
+  motie: 'rose',
+  kamervraag: 'blue',
+  toezegging: 'amber',
+  amendement: 'purple',
+  commissiedebat: 'cyan',
+  schriftelijk_overleg: 'slate',
+  interpellatie: 'red',
+};
+
+export interface ParlementairItem {
   id: string;
+  type: ParlementairItemType;
   zaak_id: string;
   zaak_nummer: string;
   titel: string;
   onderwerp: string;
   bron: string;
   datum?: string;
-  status: MotieImportStatus;
+  status: ParlementairItemStatus;
   corpus_node_id?: string;
   indieners?: string[];
   document_tekst?: string;
   document_url?: string;
   llm_samenvatting?: string;
   matched_tags?: string[];
+  deadline?: string;
+  ministerie?: string;
+  extra_data?: Record<string, unknown>;
   imported_at?: string;
   reviewed_at?: string;
   created_at: string;
@@ -528,7 +555,7 @@ export interface MotieImport {
 
 export interface SuggestedEdge {
   id: string;
-  motie_import_id: string;
+  parlementair_item_id: string;
   target_node_id: string;
   target_node?: CorpusNode;
   edge_type_id: string;
@@ -540,7 +567,7 @@ export interface SuggestedEdge {
   created_at: string;
 }
 
-export const MOTIE_IMPORT_STATUS_LABELS: Record<MotieImportStatus, string> = {
+export const PARLEMENTAIR_ITEM_STATUS_LABELS: Record<ParlementairItemStatus, string> = {
   pending: 'In wachtrij',
   imported: 'Geïmporteerd',
   reviewed: 'Beoordeeld',
@@ -548,7 +575,7 @@ export const MOTIE_IMPORT_STATUS_LABELS: Record<MotieImportStatus, string> = {
   out_of_scope: 'Buiten scope',
 };
 
-export const MOTIE_IMPORT_STATUS_COLORS: Record<MotieImportStatus, string> = {
+export const PARLEMENTAIR_ITEM_STATUS_COLORS: Record<ParlementairItemStatus, string> = {
   pending: 'amber',
   imported: 'blue',
   reviewed: 'green',

@@ -30,7 +30,7 @@ Run `just` to see all available commands. Key ones:
 | `just logs` | Follow all service logs |
 | `just db-shell` | Open psql shell |
 | `just worker-logs` | Follow worker service logs |
-| `just import-moties` | Manually trigger motie import via API |
+| `just import-parlementair` | Manually trigger parlementair import via API |
 
 ## Architecture
 
@@ -124,9 +124,10 @@ CorpusNode (dossier/doel/instrument/beleidskader/maatregel/politieke_input/probl
 Tag (hierarchical, parent_id self-ref)
 └── NodeTag (many-to-many with CorpusNode)
 
-MotieImport (tracks imported TK/EK moties)
+ParlementairItem (tracks imported parliamentary items: moties, kamervragen, toezeggingen, etc.)
 ├── SuggestedEdge (proposed edges to corpus nodes, pending review)
-└── CorpusNode (corpus_node_id, the created politieke_input node)
+├── CorpusNode (corpus_node_id, the created politieke_input node)
+└── type discriminator (motie, kamervraag, toezegging, amendement, ...)
 ```
 
 ## Database
