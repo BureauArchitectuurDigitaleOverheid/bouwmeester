@@ -88,7 +88,7 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
         <Select
           label="Status"
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => setStatus(e.target.value as NodeStatus)}
           options={Object.entries(NODE_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
         />
       </form>

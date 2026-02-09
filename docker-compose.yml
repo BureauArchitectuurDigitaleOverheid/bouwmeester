@@ -28,6 +28,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ./backend:/app
+    entrypoint: []
     command: uv run uvicorn bouwmeester.core.app:create_app --factory --host 0.0.0.0 --port 8000 --reload
 
   frontend:
@@ -55,6 +56,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ./backend:/app
+    entrypoint: []
     command: uv run python -m bouwmeester.worker
 
 volumes:

@@ -151,6 +151,7 @@ decrypt-seed:
 encrypt-seed:
     age -r age1t3gkzgkgy9r05zutg2xws33xv42gyagk7wty5pqqa9apn5vrjsgsf0s4ha \
         -r age1ugedsnl8qs5rjll3nfqw0uw4ue4dvznsndnwjnduklskxzmhzyvqsapkdk \
+        -r age17w8fqjs4paklc8mhmseslq006au7ua9zhstn5y8ya7k7nu9r7u5q9kfly8 \
         -o backend/scripts/seed_persons.json.age \
         backend/scripts/seed_persons.json
     @echo "Encrypted → backend/scripts/seed_persons.json.age"

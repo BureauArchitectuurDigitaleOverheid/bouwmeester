@@ -50,7 +50,7 @@ http {
     keepalive_timeout 65;
 
     server {
-        listen 8000;
+        listen 8080;
         server_name _;
 
         root /usr/share/nginx/html;
@@ -63,6 +63,6 @@ http {
 }
 NGINX
 
-EXPOSE 8000
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

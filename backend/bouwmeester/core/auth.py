@@ -22,6 +22,18 @@ from bouwmeester.models.person import Person
 
 logger = logging.getLogger(__name__)
 
+
+def _get_discovery_url(settings: Settings) -> str:
+    """Return the OIDC discovery URL from settings.
+
+    Prefers ``OIDC_DISCOVERY_URL`` (set by ZAD platform), falls back to
+    constructing it from ``OIDC_ISSUER``.
+    """
+    if settings.OIDC_DISCOVERY_URL:
+        return settings.OIDC_DISCOVERY_URL
+    return f"{settings.OIDC_ISSUER.rstrip('/')}/.well-known/openid-configuration"
+
+
 # ---------------------------------------------------------------------------
 # OAuth / OIDC client singleton
 # ---------------------------------------------------------------------------
@@ -46,15 +58,11 @@ def get_oauth(settings: Settings | None = None) -> OAuth | None:
 
     _oauth = OAuth()
 
-    server_metadata_url = (
-        f"{settings.OIDC_ISSUER.rstrip('/')}/.well-known/openid-configuration"
-    )
-
     _oauth.register(
         name="keycloak",
         client_id=settings.OIDC_CLIENT_ID,
         client_secret=settings.OIDC_CLIENT_SECRET,
-        server_metadata_url=server_metadata_url,
+        server_metadata_url=_get_discovery_url(settings),
         client_kwargs={"scope": "openid email profile"},
     )
 
@@ -133,9 +141,7 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
     # approach and works with opaque tokens as well as JWTs.
     import httpx
 
-    metadata_url = (
-        f"{settings.OIDC_ISSUER.rstrip('/')}/.well-known/openid-configuration"
-    )
+    metadata_url = _get_discovery_url(settings)
     async with httpx.AsyncClient() as client:
         try:
             meta_resp = await client.get(metadata_url)

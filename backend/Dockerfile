@@ -13,12 +13,16 @@ RUN uv sync --frozen
 
 FROM python:3.13-slim
 
+RUN useradd --create-home --uid 1001 appuser
+
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-COPY --from=builder /app /app
+COPY --from=builder --chown=appuser:appuser /app /app
 
-EXPOSE 8000
+USER 1001
 
-CMD ["uv", "run", "uvicorn", "bouwmeester.core.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8080
+
+ENTRYPOINT ["sh", "/app/entrypoint.sh"]

@@ -55,7 +55,7 @@ patches:
                     service:
                       name: bouwmeester-backend
                       port:
-                        number: 8000
+                        number: 8080
                 - path: /
                   pathType: Prefix
                   backend:
