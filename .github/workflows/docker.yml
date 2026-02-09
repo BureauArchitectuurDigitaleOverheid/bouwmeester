@@ -74,7 +74,7 @@ jobs:
         uses: RijksICTGilde/zad-actions/deploy@v2
         with:
           api-key: ${{ secrets.ZAD_API_KEY }}
-          project-id: bouwm-75c
+          project-id: bouwm-6gn
           deployment-name: main
           component: component-2
           image: ${{ env.IMAGE_PREFIX }}/backend:main
@@ -83,7 +83,7 @@ jobs:
         uses: RijksICTGilde/zad-actions/deploy@v2
         with:
           api-key: ${{ secrets.ZAD_API_KEY }}
-          project-id: bouwm-75c
+          project-id: bouwm-6gn
           deployment-name: main
           component: component-1
           image: ${{ env.IMAGE_PREFIX }}/frontend:main
