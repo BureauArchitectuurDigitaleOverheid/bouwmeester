@@ -55,7 +55,7 @@ from bouwmeester.schema.person import (
     PersonSummaryResponse,
     PersonUpdate,
 )
-from bouwmeester.schema.search import SearchResponse, SearchResult
+from bouwmeester.schema.search import SearchResponse, SearchResult, SearchResultType
 from bouwmeester.schema.tag import (
     NodeTagCreate,
     NodeTagResponse,
@@ -146,6 +146,7 @@ __all__ = [
     # search
     "SearchResponse",
     "SearchResult",
+    "SearchResultType",
     # tag
     "NodeTagCreate",
     "NodeTagResponse",

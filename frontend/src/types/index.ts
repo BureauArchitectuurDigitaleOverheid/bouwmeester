@@ -509,13 +509,41 @@ export interface InboxResponse {
 }
 
 // Search
+export type SearchResultType =
+  | 'corpus_node'
+  | 'task'
+  | 'person'
+  | 'organisatie_eenheid'
+  | 'parlementair_item'
+  | 'tag';
+
+export const SEARCH_RESULT_TYPE_LABELS: Record<SearchResultType, string> = {
+  corpus_node: 'Beleidscorpus',
+  task: 'Taak',
+  person: 'Persoon',
+  organisatie_eenheid: 'Organisatie',
+  parlementair_item: 'Parlementair',
+  tag: 'Tag',
+};
+
+export const SEARCH_RESULT_TYPE_COLORS: Record<SearchResultType, string> = {
+  corpus_node: 'blue',
+  task: 'amber',
+  person: 'green',
+  organisatie_eenheid: 'purple',
+  parlementair_item: 'rose',
+  tag: 'cyan',
+};
+
 export interface SearchResult {
   id: string;
+  result_type: SearchResultType;
   title: string;
-  node_type: NodeType;
+  subtitle?: string;
   description?: string;
   score: number;
   highlights?: string[];
+  url: string;
 }
 
 export interface SearchResponse {
