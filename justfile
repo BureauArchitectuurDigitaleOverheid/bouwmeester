@@ -12,9 +12,9 @@ default:
 dev:
     docker compose up --build
 
-# Start all services in background
+# Start all services in background (with rebuild)
 up:
-    docker compose up -d
+    docker compose up -d --build
 
 # Stop all services (keeps data)
 down:
@@ -59,12 +59,12 @@ seed:
 # Full database reset: nuke → start db → wait → migrate → seed → start services
 reset-db:
     docker compose down -v
-    docker compose up -d db
+    docker compose up -d --build db
     @echo "Wachten op database..."
     @sleep 3
     cd backend && uv run alembic upgrade head
     cd backend && uv run python scripts/seed.py
-    docker compose up -d backend frontend
+    docker compose up -d --build backend frontend
     @echo "Klaar! Alle services draaien."
 
 # Open a psql shell in the database container
