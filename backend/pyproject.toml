@@ -15,6 +15,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "authlib>=1.3",
     "httpx>=0.27",
+    "pyrage>=1.3.0",
 ]
 
 [dependency-groups]

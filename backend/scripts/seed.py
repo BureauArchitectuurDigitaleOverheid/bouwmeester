@@ -6,6 +6,7 @@ Clears all existing data and populates organisatie, personen, corpus, edges, and
 
 import asyncio
 import json
+import os
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -908,12 +909,21 @@ async def seed(db: AsyncSession) -> None:
         "afd_zonder_mensen": afd_zonder_mensen,
     }
 
-    # Load person data from JSON (or generate fallback)
+    # Load person data from JSON (or decrypt from .age, or generate fallback)
     persons_json_path = Path(__file__).parent / "seed_persons.json"
+    age_path = Path(__file__).parent / "seed_persons.json.age"
     if persons_json_path.exists():
         with open(persons_json_path) as f:
             persons_data = json.load(f)
         print("  Personen: laden uit seed_persons.json")
+    elif os.environ.get("AGE_SECRET_KEY") and age_path.exists():
+        from pyrage import decrypt as age_decrypt
+        from pyrage import x25519
+
+        identity = x25519.Identity.from_str(os.environ["AGE_SECRET_KEY"])
+        decrypted = age_decrypt(age_path.read_bytes(), [identity])
+        persons_data = json.loads(decrypted)
+        print("  Personen: gedecrypt uit seed_persons.json.age (AGE_SECRET_KEY)")
     else:
         print(
             "  ⚠ seed_persons.json niet gevonden — gebruik placeholder-personen. "
