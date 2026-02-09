@@ -404,6 +404,19 @@ class TestSearch:
         )
         assert resp.json() == []
 
+    async def test_search_excludes_dissolved(self, client, sample_eenheid):
+        """Search excludes dissolved units."""
+        eid = sample_eenheid["id"]
+        await client.put(
+            f"/api/organisatie/{eid}",
+            json={"geldig_tot": "2025-11-01"},
+        )
+        resp = await client.get(
+            "/api/organisatie/search",
+            params={"q": "Ministerie Test"},
+        )
+        assert len(resp.json()) == 0
+
 
 # ---------------------------------------------------------------------------
 # Tree structure

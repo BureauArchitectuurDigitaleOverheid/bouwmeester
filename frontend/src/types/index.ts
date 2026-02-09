@@ -281,7 +281,6 @@ export interface OrganisatieEenheidUpdate {
 
 export interface OrgNaamRecord {
   id: string;
-  eenheid_id: string;
   naam: string;
   geldig_van: string;
   geldig_tot?: string | null;
@@ -289,18 +288,15 @@ export interface OrgNaamRecord {
 
 export interface OrgParentRecord {
   id: string;
-  eenheid_id: string;
   parent_id: string;
-  parent_naam?: string | null;
   geldig_van: string;
   geldig_tot?: string | null;
 }
 
 export interface OrgManagerRecord {
   id: string;
-  eenheid_id: string;
-  manager_id: string;
-  manager_naam?: string | null;
+  manager_id?: string | null;
+  manager?: Person | null;
   geldig_van: string;
   geldig_tot?: string | null;
 }
