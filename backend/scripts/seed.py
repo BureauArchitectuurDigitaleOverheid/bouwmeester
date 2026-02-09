@@ -20,7 +20,7 @@ from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepos
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.repositories.task import TaskRepository
-from bouwmeester.schema.corpus_node import CorpusNodeCreate
+from bouwmeester.schema.corpus_node import CorpusNodeCreate, CorpusNodeUpdate
 from bouwmeester.schema.edge import EdgeCreate
 from bouwmeester.schema.edge_type import EdgeTypeCreate
 from bouwmeester.schema.organisatie_eenheid import (
@@ -52,6 +52,8 @@ async def seed(db: AsyncSession) -> None:
         "beleidskader",
         "maatregel",
         "politieke_input",
+        "corpus_node_title",
+        "corpus_node_status",
         "corpus_node",
         "person_organisatie_eenheid",
         "organisatie_eenheid_manager",
@@ -2183,12 +2185,13 @@ async def seed(db: AsyncSession) -> None:
     )
     dos_ai = await node_repo.create(
         CorpusNodeCreate(
-            title="Dossier AI en Algoritmen",
+            title="Dossier AI-regulering",
             node_type="dossier",
             description=(
                 "Overheidsinzet van AI, algoritmetoezicht,"
                 " AI-verordening implementatie en verantwoord gebruik."
             ),
+            geldig_van=date(2023, 6, 1),
         )
     )
     dos_data = await node_repo.create(
@@ -2231,12 +2234,14 @@ async def seed(db: AsyncSession) -> None:
         CorpusNodeCreate(
             title="Wet Digitale Overheid (WDO)",
             node_type="beleidskader",
+            status="concept",
             description=(
                 "Wettelijk kader voor veilig inloggen bij de overheid en "
                 "beveiligingsnormen. Gefaseerd van kracht sinds 1 juli 2023. "
                 "Overgangstermijn verlengd tot 1 juli 2028."
                 " DigiD Machtigen als publiek machtigingsstelsel."
             ),
+            geldig_van=date(2021, 3, 1),
         )
     )
     bk_ai_act = await node_repo.create(
@@ -2267,13 +2272,14 @@ async def seed(db: AsyncSession) -> None:
     )
     bk_cloudbeleid = await node_repo.create(
         CorpusNodeCreate(
-            title="Rijksbreed Cloudbeleid 2024",
+            title="Cloudbeleid Rijksoverheid (concept)",
             node_type="beleidskader",
             description=(
                 "Kader voor verantwoord cloudgebruik door de rijksoverheid. "
                 "Classificatiemodel voor gegevens, soevereiniteitsvereisten en "
                 "exit-strategieën. Basis voor NDS-pijler Cloud."
             ),
+            geldig_van=date(2023, 4, 1),
         )
     )
     bk_coalitie = await node_repo.create(
@@ -2315,23 +2321,26 @@ async def seed(db: AsyncSession) -> None:
     )
     doel_algo_register = await node_repo.create(
         CorpusNodeCreate(
-            title="1500 algoritmen geregistreerd in Algoritmeregister",
+            title="1000 algoritmen geregistreerd in Algoritmeregister",
             node_type="doel",
             description=(
                 "Doelstelling om per eind 2026 minimaal 1500"
                 " impactvolle algoritmen van overheidsorganisaties"
                 " gepubliceerd te hebben in het Algoritmeregister."
             ),
+            geldig_van=date(2023, 6, 1),
         )
     )
     doel_eudiw = await node_repo.create(
         CorpusNodeCreate(
             title="Europese Digitale Identiteit Wallet (EUDIW) gereed",
             node_type="doel",
+            status="concept",
             description=(
                 "Nederland levert een werkende EUDIW-implementatie conform de herziene "
                 "eIDAS2-verordening, uiterlijk 2027. Pilot in 2026."
             ),
+            geldig_van=date(2024, 1, 1),
         )
     )
     doel_fed_data = await node_repo.create(
@@ -2349,12 +2358,14 @@ async def seed(db: AsyncSession) -> None:
         CorpusNodeCreate(
             title="30% minder afhankelijkheid externe IT-inhuur",
             node_type="doel",
+            status="concept",
             description=(
                 "Rijksbreed 30% reductie in afhankelijkheid van"
                 " externe IT-leveranciers door structurele"
                 " versterking van interne IT-capaciteit. Onderdeel"
                 "regeerprogramma."
             ),
+            geldig_van=date(2024, 9, 1),
         )
     )
     doel_duurzaam_digi = await node_repo.create(
@@ -2817,6 +2828,66 @@ async def seed(db: AsyncSession) -> None:
     )
 
     print(f"  Corpus: {61} nodes aangemaakt")
+
+    # =========================================================================
+    # 4b. TEMPORAL HISTORY — simulate realistic title/status changes
+    # =========================================================================
+
+    # Dossier AI: created as "AI-regulering" (2023-06), renamed to current (2025-01)
+    await node_repo.update(
+        dos_ai.id,
+        CorpusNodeUpdate(
+            title="Dossier AI en Algoritmen",
+            wijzig_datum=date(2025, 1, 15),
+        ),
+    )
+
+    # WDO: created as concept (2021-03), became actief (2023-07)
+    await node_repo.update(
+        bk_wdo.id,
+        CorpusNodeUpdate(
+            status="actief",
+            wijzig_datum=date(2023, 7, 1),
+        ),
+    )
+
+    # Cloudbeleid: created as concept title (2023-04), finalized (2024-01)
+    await node_repo.update(
+        bk_cloudbeleid.id,
+        CorpusNodeUpdate(
+            title="Rijksbreed Cloudbeleid 2024",
+            wijzig_datum=date(2024, 1, 15),
+        ),
+    )
+
+    # EUDIW doel: created as concept (2024-01), became actief (2025-03)
+    await node_repo.update(
+        doel_eudiw.id,
+        CorpusNodeUpdate(
+            status="actief",
+            wijzig_datum=date(2025, 3, 1),
+        ),
+    )
+
+    # Algoritmeregister doel: target raised from 1000 (2023-06) to 1500 (2025-06)
+    await node_repo.update(
+        doel_algo_register.id,
+        CorpusNodeUpdate(
+            title="1500 algoritmen geregistreerd in Algoritmeregister",
+            wijzig_datum=date(2025, 6, 1),
+        ),
+    )
+
+    # Vendor reductie: created as concept (2024-09), became actief (2025-01)
+    await node_repo.update(
+        doel_vendor_reductie.id,
+        CorpusNodeUpdate(
+            status="actief",
+            wijzig_datum=date(2025, 1, 1),
+        ),
+    )
+
+    print("  Temporeel: 6 historische wijzigingen aangemaakt")
 
     # =========================================================================
     # 5. EDGES
