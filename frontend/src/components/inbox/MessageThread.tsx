@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Send, ArrowLeft } from 'lucide-react';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
@@ -58,9 +58,11 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
   const markRead = useMarkNotificationRead();
 
   // Mark as read when opened
-  if (parentMessage && !parentMessage.is_read) {
-    markRead.mutate(parentMessage.id);
-  }
+  useEffect(() => {
+    if (parentMessage && !parentMessage.is_read) {
+      markRead.mutate(parentMessage.id);
+    }
+  }, [parentMessage?.id, parentMessage?.is_read]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSendReply = () => {
     if (!currentPerson || !replyText.trim()) return;
