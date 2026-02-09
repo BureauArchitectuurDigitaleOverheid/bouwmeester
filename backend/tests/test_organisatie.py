@@ -197,9 +197,20 @@ async def test_managed_by_with_manager(
     client, db_session, sample_organisatie, sample_person
 ):
     """GET /api/organisatie/managed-by/{person_id} returns units managed by person."""
-    # Set sample_person as manager
+    from datetime import date
+
+    from bouwmeester.models.org_manager import OrganisatieEenheidManager
+
+    # Set sample_person as manager (legacy column + temporal record)
     sample_organisatie.manager_id = sample_person.id
     db_session.add(sample_organisatie)
+    db_session.add(
+        OrganisatieEenheidManager(
+            eenheid_id=sample_organisatie.id,
+            manager_id=sample_person.id,
+            geldig_van=date.today(),
+        )
+    )
     await db_session.flush()
 
     resp = await client.get(f"/api/organisatie/managed-by/{sample_person.id}")

@@ -15,6 +15,9 @@ from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidResponse,
     OrganisatieEenheidTreeNode,
     OrganisatieEenheidUpdate,
+    OrgManagerRecord,
+    OrgNaamRecord,
+    OrgParentRecord,
 )
 from bouwmeester.schema.person import PersonResponse
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
@@ -27,7 +30,11 @@ def _build_tree(
     personen_counts: dict[UUID, int],
     parent_id: UUID | None = None,
 ) -> list[OrganisatieEenheidTreeNode]:
-    """Build a tree from a flat list."""
+    """Build a tree from a flat list.
+
+    Uses the legacy parent_id column which is dual-written by the repository
+    to stay in sync with the temporal OrganisatieEenheidParent records.
+    """
     children = [item for item in all_items if item.parent_id == parent_id]
     return [
         OrganisatieEenheidTreeNode(
@@ -130,7 +137,7 @@ async def update_organisatie(
         db,
         "organisatie",
         eenheid.id,
-        data.beschrijving,
+        eenheid.beschrijving,
         eenheid.naam,
     )
 
@@ -157,7 +164,43 @@ async def delete_organisatie(
     await repo.delete(id)
 
 
-@router.get("/{id}/personen")
+@router.get("/{id}/history/namen", response_model=list[OrgNaamRecord])
+async def get_naam_history(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[OrgNaamRecord]:
+    repo = OrganisatieEenheidRepository(db)
+    require_found(await repo.get(id), "Eenheid")
+    records = await repo.get_naam_history(id)
+    return [OrgNaamRecord.model_validate(r) for r in records]
+
+
+@router.get("/{id}/history/parents", response_model=list[OrgParentRecord])
+async def get_parent_history(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[OrgParentRecord]:
+    repo = OrganisatieEenheidRepository(db)
+    require_found(await repo.get(id), "Eenheid")
+    records = await repo.get_parent_history(id)
+    return [OrgParentRecord.model_validate(r) for r in records]
+
+
+@router.get("/{id}/history/managers", response_model=list[OrgManagerRecord])
+async def get_manager_history(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[OrgManagerRecord]:
+    repo = OrganisatieEenheidRepository(db)
+    require_found(await repo.get(id), "Eenheid")
+    records = await repo.get_manager_history(id)
+    return [OrgManagerRecord.model_validate(r) for r in records]
+
+
+@router.get(
+    "/{id}/personen",
+    response_model=list[PersonResponse] | OrganisatieEenheidPersonenGroup,
+)
 async def get_organisatie_personen(
     id: UUID,
     recursive: bool = Query(False),
@@ -184,6 +227,11 @@ async def get_organisatie_personen(
     units_by_id = {u.id: u for u in all_units}
 
     def build_group(unit_id: UUID) -> OrganisatieEenheidPersonenGroup:
+        """Build a grouped tree.
+
+        Uses the legacy parent_id column which is dual-written by the
+        repository to stay in sync with temporal parent records.
+        """
         unit = units_by_id[unit_id]
         direct_children = sorted(
             [u for u in all_units if u.parent_id == unit_id],
