@@ -4082,12 +4082,12 @@ async def seed(db: AsyncSession) -> None:
         )
 
     # --- direct_message: dual-root threads ---
-    # Thread 1: Willem van Dijk → Pieter Bakker
+    # Thread 1: p_dir_cio → p_dir_ddo
     dm1_msg = (
         "Hi, kunnen we morgen overleggen over de cloud-exit strategie? "
         "Er zijn nieuwe inzichten vanuit het CIO-overleg."
     )
-    # Recipient root (Mark — unread)
+    # Recipient root (unread)
     dm1_recipient_root = Notification(
         person_id=pm("p_dir_ddo").id,
         type="direct_message",
@@ -4102,7 +4102,7 @@ async def seed(db: AsyncSession) -> None:
     dm1_recipient_root.thread_id = dm1_recipient_root.id
     await db.flush()
 
-    # Sender root (Art — unread because Mark replied)
+    # Sender root (unread because recipient replied)
     dm1_sender_root = Notification(
         person_id=pm("p_dir_cio").id,
         type="direct_message",
@@ -4116,7 +4116,7 @@ async def seed(db: AsyncSession) -> None:
     db.add(dm1_sender_root)
     await db.flush()
 
-    # Reply from Mark (parented to thread_id)
+    # Reply (parented to thread_id)
     dm1_reply = Notification(
         person_id=pm("p_dir_cio").id,
         type="direct_message",
@@ -4129,13 +4129,13 @@ async def seed(db: AsyncSession) -> None:
     )
     notifications.append(dm1_reply)
 
-    # Thread 2: Pieter Bakker → Linh Nguyen
+    # Thread 2: p_dir_ddo → p_nguyen
     if pm("p_nguyen"):
         dm2_msg = (
             "Kun je de impact-analyse voor de NL Design System migratie "
             "volgende week afronden?"
         )
-        # Recipient root (Linh — unread)
+        # Recipient root (unread)
         dm2_recipient_root = Notification(
             person_id=pm("p_nguyen").id,
             type="direct_message",
