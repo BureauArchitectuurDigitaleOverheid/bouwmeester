@@ -16,8 +16,9 @@ import {
   useCompleteParlementairReview,
 } from '@/hooks/useParlementair';
 import { useCreateEdge, useDeleteEdge } from '@/hooks/useEdges';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { getEdges } from '@/api/edges';
+import { getNodeStakeholders } from '@/api/nodes';
 import { useNodes, useCreateNode } from '@/hooks/useNodes';
 import { usePeople } from '@/hooks/usePeople';
 import { useTags, useNodeTags, useAddTagToNode, useRemoveTagFromNode } from '@/hooks/useTags';
@@ -29,6 +30,7 @@ import {
   PARLEMENTAIR_TYPE_LABELS,
   PARLEMENTAIR_TYPE_COLORS,
   NODE_TYPE_COLORS,
+  FUNCTIE_LABELS,
 } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
@@ -90,6 +92,44 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
     queryFn: () => getEdges({ node_id: corpusNodeId! }),
     enabled: !!corpusNodeId,
   });
+
+  // Fetch stakeholders for the corpus node and all connected nodes
+  const connectedNodeIds = corpusNodeId
+    ? [corpusNodeId, ...(nodeEdges ?? []).map((e) =>
+        e.from_node_id === corpusNodeId ? e.to_node_id : e.from_node_id,
+      )]
+    : [];
+  const uniqueNodeIds = [...new Set(connectedNodeIds)];
+  const stakeholderQueries = useQueries({
+    queries: uniqueNodeIds.map((nodeId) => ({
+      queryKey: ['node-stakeholders', nodeId],
+      queryFn: () => getNodeStakeholders(nodeId),
+    })),
+  });
+  const relevantPersonIds = new Set(
+    stakeholderQueries
+      .flatMap((q) => q.data ?? [])
+      .filter((s) => s.rol === 'eigenaar')
+      .map((s) => s.person.id),
+  );
+
+  // Helper for functie display
+  const functieLabel = (functie?: string) =>
+    functie ? (FUNCTIE_LABELS[functie] ?? functie.replace(/_/g, ' ')) : undefined;
+
+  // People options sorted: relevant eigenaren first, then the rest
+  const sortedPeopleOptions: SelectOption[] = (people ?? [])
+    .map((p) => ({
+      value: p.id,
+      label: p.naam,
+      description: functieLabel(p.functie),
+      _relevant: relevantPersonIds.has(p.id),
+    }))
+    .sort((a, b) => {
+      if (a._relevant !== b._relevant) return a._relevant ? -1 : 1;
+      return a.label.localeCompare(b.label);
+    })
+    .map(({ _relevant, ...rest }) => rest);
 
   // Edge type options
   const edgeTypeOptions: SelectOption[] = Object.keys(EDGE_TYPE_VOCABULARY).map((key) => ({
@@ -733,11 +773,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                             <CreatableSelect
                               value={task.assignee_id}
                               onChange={(v) => updateTaskRow(index, 'assignee_id', v)}
-                              options={(people ?? []).map((p) => ({
-                                value: p.id,
-                                label: p.naam,
-                                description: p.functie || undefined,
-                              }))}
+                              options={sortedPeopleOptions}
                               placeholder="Toewijzen aan..."
                             />
                           </div>
@@ -777,11 +813,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                 label="Eigenaar"
                 value={eigenaarId}
                 onChange={setEigenaarId}
-                options={(people ?? []).map((p) => ({
-                  value: p.id,
-                  label: p.naam,
-                  description: p.functie || undefined,
-                }))}
+                options={sortedPeopleOptions}
                 placeholder="Selecteer eigenaar..."
               />
             </div>
