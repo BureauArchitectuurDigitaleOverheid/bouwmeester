@@ -104,6 +104,7 @@ async def get_node(
 async def update_node(
     id: UUID,
     data: CorpusNodeUpdate,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> CorpusNodeResponse:
     service = NodeService(db)
@@ -117,6 +118,13 @@ async def update_node(
         node.title,
         source_node_id=node.id,
     )
+
+    # Notify stakeholders of this node update (excluding the actor)
+    if actor_id:
+        actor = await db.get(Person, actor_id)
+        if actor:
+            notif_svc = NotificationService(db)
+            await notif_svc.notify_node_updated(node, actor)
 
     return CorpusNodeResponse.model_validate(node)
 

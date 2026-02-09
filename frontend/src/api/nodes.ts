@@ -15,8 +15,9 @@ export async function createNode(data: CorpusNodeCreate): Promise<CorpusNode> {
   return apiPost<CorpusNode>('/api/nodes', data);
 }
 
-export async function updateNode(id: string, data: CorpusNodeUpdate): Promise<CorpusNode> {
-  return apiPut<CorpusNode>(`/api/nodes/${id}`, data);
+export async function updateNode(id: string, data: CorpusNodeUpdate, actorId?: string): Promise<CorpusNode> {
+  const url = actorId ? `/api/nodes/${id}?actor_id=${actorId}` : `/api/nodes/${id}`;
+  return apiPut<CorpusNode>(url, data);
 }
 
 export async function deleteNode(id: string): Promise<void> {

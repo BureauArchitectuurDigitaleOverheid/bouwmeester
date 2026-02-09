@@ -23,7 +23,12 @@ class NotificationService:
         self.session = session
         self.repo = NotificationRepository(session)
 
-    async def notify_task_assigned(self, task: Task, assignee: Person) -> Notification:
+    async def notify_task_assigned(
+        self, task: Task, assignee: Person, actor_id: UUID | None = None
+    ) -> Notification | None:
+        # Don't notify if the actor is the assignee (self-assignment)
+        if actor_id and assignee.id == actor_id:
+            return None
         data = NotificationCreate(
             person_id=assignee.id,
             type="task_assigned",
@@ -168,15 +173,15 @@ class NotificationService:
         return notifications
 
     async def notify_task_completed(
-        self, task: Task, completed_by: Person | None = None
+        self, task: Task, actor_id: UUID | None = None
     ) -> list[Notification]:
         """Notify assignee + node stakeholders when a task is completed."""
         notifications: list[Notification] = []
         notified_ids: set[UUID] = set()
 
         # Skip the person who completed the task
-        if completed_by:
-            notified_ids.add(completed_by.id)
+        if actor_id:
+            notified_ids.add(actor_id)
 
         # Notify assignee
         if task.assignee_id and task.assignee_id not in notified_ids:
@@ -243,7 +248,10 @@ class NotificationService:
         return notifications
 
     async def notify_edge_created(
-        self, from_node: CorpusNode, to_node: CorpusNode, edge_id: UUID
+        self,
+        from_node: CorpusNode,
+        to_node: CorpusNode,
+        actor_id: UUID | None = None,
     ) -> list[Notification]:
         """Notify stakeholders of both nodes about a new edge."""
         node_ids = [from_node.id, to_node.id]
@@ -255,6 +263,8 @@ class NotificationService:
 
         notifications: list[Notification] = []
         notified_ids: set[UUID] = set()
+        if actor_id:
+            notified_ids.add(actor_id)
 
         for sh in all_stakeholders:
             if sh.person_id in notified_ids:
@@ -275,9 +285,16 @@ class NotificationService:
         return notifications
 
     async def notify_stakeholder_added(
-        self, node: CorpusNode, person_id: UUID, rol: str
-    ) -> Notification:
+        self,
+        node: CorpusNode,
+        person_id: UUID,
+        rol: str,
+        actor_id: UUID | None = None,
+    ) -> Notification | None:
         """Notify a person that they were added as stakeholder."""
+        # Don't notify if person added themselves
+        if actor_id and person_id == actor_id:
+            return None
         data = NotificationCreate(
             person_id=person_id,
             type="stakeholder_added",

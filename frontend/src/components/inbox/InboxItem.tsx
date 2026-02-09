@@ -1,8 +1,9 @@
-import { useNavigate } from 'react-router-dom';
 import { FileText, CheckSquare, Bell, MessageSquare, MessageCircle } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
+import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import type { InboxItem as InboxItemType } from '@/types';
 
 interface InboxItemProps {
@@ -25,17 +26,20 @@ const typeColors: Record<string, string> = {
 };
 
 export function InboxItemCard({ item, onOpenThread }: InboxItemProps) {
-  const navigate = useNavigate();
+  const { openTaskDetail } = useTaskDetail();
+  const { openNodeDetail } = useNodeDetail();
 
   const handleClick = () => {
     if (item.type === 'message' && onOpenThread) {
       onOpenThread(item.id);
+    } else if (item.task_id) {
+      openTaskDetail(item.task_id);
     } else if (item.node_id) {
-      navigate(`/nodes/${item.node_id}`);
+      openNodeDetail(item.node_id);
     }
   };
 
-  const isClickable = item.type === 'message' || !!item.node_id;
+  const isClickable = item.type === 'message' || !!item.task_id || !!item.node_id;
 
   return (
     <Card hoverable={isClickable} onClick={handleClick}>

@@ -57,7 +57,7 @@ async def create_edge(
     to_node = await db.get(CorpusNode, data.to_node_id)
     if from_node and to_node:
         notif_svc = NotificationService(db)
-        await notif_svc.notify_edge_created(from_node, to_node, edge.id)
+        await notif_svc.notify_edge_created(from_node, to_node)
 
     return EdgeResponse.model_validate(edge)
 

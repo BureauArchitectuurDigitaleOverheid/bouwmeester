@@ -35,7 +35,7 @@ export function useUpdateNode() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: CorpusNodeUpdate }) => updateNode(id, data),
+    mutationFn: ({ id, data, actorId }: { id: string; data: CorpusNodeUpdate; actorId?: string }) => updateNode(id, data, actorId),
     onError: (error: Error) => {
       console.error('Fout bij bijwerken node:', error);
     },
