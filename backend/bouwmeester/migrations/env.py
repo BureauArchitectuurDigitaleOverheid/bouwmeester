@@ -19,7 +19,8 @@ if config.config_file_name is not None:
 # Use Settings to derive DATABASE_URL (handles both direct URL and ZAD env vars)
 _settings = get_settings()
 if _settings.DATABASE_URL:
-    config.set_main_option("sqlalchemy.url", _settings.DATABASE_URL)
+    # Escape % for configparser interpolation (e.g. %3D in search_path)
+    config.set_main_option("sqlalchemy.url", _settings.DATABASE_URL.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
