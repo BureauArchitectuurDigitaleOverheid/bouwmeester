@@ -1,4 +1,5 @@
 from functools import lru_cache
+from urllib.parse import quote_plus
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     DATABASE_SERVER_USER: str = ""
     DATABASE_PASSWORD: str = ""
     DATABASE_DB: str = ""
+    DATABASE_SCHEMA: str = ""
 
     APP_NAME: str = "Bouwmeester"
     DEBUG: bool = False
@@ -46,13 +48,17 @@ class Settings(BaseSettings):
     def _derive_database_url(self) -> "Settings":
         """Build DATABASE_URL from ZAD individual env vars if not set."""
         if not self.DATABASE_URL and self.DATABASE_SERVER_HOST:
-            self.DATABASE_URL = (
+            password = quote_plus(self.DATABASE_PASSWORD)
+            url = (
                 f"postgresql+asyncpg://{self.DATABASE_SERVER_USER}"
-                f":{self.DATABASE_PASSWORD}"
+                f":{password}"
                 f"@{self.DATABASE_SERVER_HOST}"
                 f":{self.DATABASE_SERVER_PORT}"
                 f"/{self.DATABASE_DB}"
             )
+            if self.DATABASE_SCHEMA:
+                url += f"?options=-csearch_path%3D{self.DATABASE_SCHEMA}"
+            self.DATABASE_URL = url
         if not self.DATABASE_URL:
             self.DATABASE_URL = "postgresql+asyncpg://bouwmeester:bouwmeester@localhost:5432/bouwmeester"
         return self
