@@ -137,9 +137,7 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
 
     # 2. Fall back to session token
     if token is None:
-        session = getattr(request, "session", None) or request.scope.get(
-            "session", {}
-        )
+        session = getattr(request, "session", None) or request.scope.get("session", {})
         token = session.get("access_token") if session else None
 
     if not token:

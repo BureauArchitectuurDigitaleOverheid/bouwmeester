@@ -96,10 +96,10 @@ class Settings(BaseSettings):
 
             # Derive FRONTEND_URL: component-2 → component-1 (or strip prefix)
             if not self.FRONTEND_URL and hostname.startswith("component-2."):
-                base_domain = hostname[len("component-2."):]
+                base_domain = hostname[len("component-2.") :]
                 self.FRONTEND_URL = f"https://{base_domain}"
             elif not self.FRONTEND_URL and hostname.startswith("component-2-"):
-                base_domain = hostname[len("component-2-"):]
+                base_domain = hostname[len("component-2-") :]
                 self.FRONTEND_URL = f"https://{base_domain}"
 
             # Derive cookie domain: use registrable domain with leading dot
