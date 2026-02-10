@@ -1,23 +1,31 @@
-"""Auth routes -- OIDC login / callback / logout / status / me."""
+"""Auth routes -- OIDC login / callback / logout / status / me / onboarding."""
 
 from __future__ import annotations
 
 import logging
 import time
 from collections import OrderedDict
+from datetime import date
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import (
     CurrentUser,
     get_oauth,
+    get_or_create_person,
     revoke_tokens,
     validate_session_token,
 )
 from bouwmeester.core.config import Settings, get_settings
-from bouwmeester.schema.person import PersonDetailResponse
+from bouwmeester.core.database import get_db
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.models.person import Person
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.schema.person import OnboardingRequest, PersonDetailResponse
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +201,23 @@ async def logout(
 
 
 # ---------------------------------------------------------------------------
+# Helper: check whether a person still needs onboarding
+# ---------------------------------------------------------------------------
+
+
+async def _check_needs_onboarding(db: AsyncSession, person: Person) -> bool:
+    """Return True if the person is missing functie or an active org placement."""
+    if not person.functie:
+        return True
+    stmt = select(PersonOrganisatieEenheid.id).where(
+        PersonOrganisatieEenheid.person_id == person.id,
+        PersonOrganisatieEenheid.eind_datum.is_(None),
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none() is None
+
+
+# ---------------------------------------------------------------------------
 # GET /status -- check auth status (used by frontend on load)
 # ---------------------------------------------------------------------------
 
@@ -200,6 +225,7 @@ async def logout(
 @router.get("/status")
 async def auth_status(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     """Return authentication status for the current session."""
@@ -216,10 +242,30 @@ async def auth_status(
     }
 
     if authenticated:
+        sub = request.session.get("person_sub", "")
+        email = request.session.get("person_email", "")
+        name = request.session.get("person_name", "")
+
+        # Use cached values from session to avoid DB queries on every page load.
+        person_id = request.session.get("person_db_id")
+        needs_onboarding = request.session.get("needs_onboarding")
+
+        # Resolve from DB only on first call (or after cache invalidation).
+        if person_id is None and sub and email:
+            person = await get_or_create_person(db, sub=sub, email=email, name=name)
+            person_id = str(person.id)
+            needs_onboarding = await _check_needs_onboarding(db, person)
+
+            # Cache in session.
+            request.session["person_db_id"] = person_id
+            request.session["needs_onboarding"] = needs_onboarding
+
         result["person"] = {
-            "sub": request.session.get("person_sub", ""),
-            "email": request.session.get("person_email", ""),
-            "name": request.session.get("person_name", ""),
+            "sub": sub,
+            "email": email,
+            "name": name,
+            "id": person_id,
+            "needs_onboarding": bool(needs_onboarding),
         }
 
     return result
@@ -233,4 +279,60 @@ async def auth_status(
 @router.get("/me", response_model=PersonDetailResponse)
 async def me(current_user: CurrentUser) -> PersonDetailResponse:
     """Return information about the currently authenticated user."""
+    return PersonDetailResponse.model_validate(current_user)
+
+
+# ---------------------------------------------------------------------------
+# POST /onboarding -- complete onboarding for a new SSO user
+# ---------------------------------------------------------------------------
+
+
+@router.post("/onboarding", response_model=PersonDetailResponse)
+async def complete_onboarding(
+    request: Request,
+    body: OnboardingRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> PersonDetailResponse:
+    """Complete the onboarding flow for a newly-created SSO user.
+
+    Updates the person's name and functie, and creates an org placement.
+    Rejects the request if the user has already completed onboarding.
+    """
+    # Guard: reject if already onboarded.
+    if not await _check_needs_onboarding(db, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Onboarding is al voltooid",
+        )
+
+    # Validate that the org unit exists.
+    org_stmt = select(OrganisatieEenheid.id).where(
+        OrganisatieEenheid.id == body.organisatie_eenheid_id
+    )
+    org_result = await db.execute(org_stmt)
+    if org_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Organisatie-eenheid niet gevonden",
+        )
+
+    current_user.naam = body.naam
+    current_user.functie = body.functie
+
+    # Create org placement (start today)
+    placement = PersonOrganisatieEenheid(
+        person_id=current_user.id,
+        organisatie_eenheid_id=body.organisatie_eenheid_id,
+        dienstverband=body.dienstverband,
+        start_datum=date.today(),
+    )
+    db.add(placement)
+    await db.flush()
+    await db.refresh(current_user)
+
+    # Invalidate the session cache so /status re-checks from DB.
+    request.session.pop("needs_onboarding", None)
+    request.session.pop("person_db_id", None)
+
     return PersonDetailResponse.model_validate(current_user)

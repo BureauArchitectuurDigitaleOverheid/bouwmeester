@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, User, ChevronDown, Check, LogOut } from 'lucide-react';
+import { Search, User, ChevronDown, Check, LogOut, Eye, X } from 'lucide-react';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,12 +19,22 @@ const pageTitles: Record<string, string> = {
   '/search': 'Zoeken',
 };
 
+function getInitials(naam: string): string {
+  return naam
+    .split(' ')
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
+
 export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentPerson, setCurrentPersonId, people } = useCurrentPerson();
+  const { currentPerson, setCurrentPersonId, people, isViewingAsOther, resetToSelf } =
+    useCurrentPerson();
   const { vocabularyId, setVocabularyId } = useVocabulary();
-  const { authenticated, logout } = useAuth();
+  const { authenticated, oidcConfigured, person: authPerson, logout } = useAuth();
   const [showPersonPicker, setShowPersonPicker] = useState(false);
   const [search, setSearch] = useState('');
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -69,14 +79,10 @@ export function Header() {
     p.naam.toLowerCase().includes(search.toLowerCase()),
   );
 
-  const initials = currentPerson
-    ? currentPerson.naam
-        .split(' ')
-        .map((n) => n[0])
-        .slice(0, 2)
-        .join('')
-        .toUpperCase()
-    : null;
+  const initials = currentPerson ? getInitials(currentPerson.naam) : null;
+
+  // In SSO mode, determine the authenticated user's display name
+  const authDisplayName = oidcConfigured ? (authPerson?.name || authPerson?.email || '') : '';
 
   return (
     <header className="flex items-center justify-between h-16 px-6 bg-surface border-b border-border shrink-0">
@@ -139,6 +145,21 @@ export function Header() {
           </kbd>
         </button>
 
+        {/* "Viewing as" indicator (SSO mode only) */}
+        {isViewingAsOther && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700">
+            <Eye className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Bekijk als {currentPerson?.naam}</span>
+            <button
+              onClick={resetToSelf}
+              className="ml-0.5 p-0.5 rounded hover:bg-amber-100 transition-colors"
+              title="Terug naar eigen profiel"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+
         {/* Person picker */}
         <div className="relative" ref={pickerRef}>
           <button
@@ -158,12 +179,19 @@ export function Header() {
 
           {showPersonPicker && (
             <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-border rounded-xl shadow-lg z-50 overflow-hidden">
+              {/* SSO mode label */}
+              {oidcConfigured && authDisplayName && (
+                <div className="px-3 py-2 bg-gray-50 border-b border-border">
+                  <p className="text-xs text-text-secondary">Ingelogd als</p>
+                  <p className="text-sm text-text font-medium truncate">{authDisplayName}</p>
+                </div>
+              )}
               <div className="p-2 border-b border-border">
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Zoek persoon..."
+                  placeholder={oidcConfigured ? 'Bekijk als...' : 'Zoek persoon...'}
                   className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
                   autoFocus
                 />
@@ -180,12 +208,7 @@ export function Header() {
                     className="flex items-center gap-3 w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex items-center justify-center h-7 w-7 rounded-full bg-primary-100 text-primary-700 text-xs font-medium shrink-0">
-                      {person.naam
-                        .split(' ')
-                        .map((n) => n[0])
-                        .slice(0, 2)
-                        .join('')
-                        .toUpperCase()}
+                      {getInitials(person.naam)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-text truncate">{person.naam}</p>

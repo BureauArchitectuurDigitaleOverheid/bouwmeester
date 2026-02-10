@@ -248,7 +248,7 @@ def get_oauth(settings: Settings | None = None) -> OAuth | None:
 # ---------------------------------------------------------------------------
 
 
-async def _get_or_create_person(
+async def get_or_create_person(
     db: AsyncSession,
     sub: str,
     email: str,
@@ -614,7 +614,7 @@ async def _person_from_claims(
     if not sub or not email:
         return None
 
-    return await _get_or_create_person(
+    return await get_or_create_person(
         db, sub=sub, email=email, name=name, email_verified=email_verified
     )
 

@@ -48,6 +48,7 @@ from bouwmeester.schema.parlementair_item import (
     SuggestedEdgeResponse,
 )
 from bouwmeester.schema.person import (
+    OnboardingRequest,
     PersonBase,
     PersonCreate,
     PersonDetailResponse,
@@ -127,6 +128,7 @@ __all__ = [
     "OrganisatieEenheidTreeNode",
     "OrganisatieEenheidUpdate",
     # person
+    "OnboardingRequest",
     "PersonBase",
     "PersonCreate",
     "PersonDetailResponse",

@@ -16,6 +16,7 @@ import { OrganisatiePage } from '@/pages/OrganisatiePage';
 import { SearchPage } from '@/pages/SearchPage';
 import { ParlementairPage } from '@/pages/ParlementairPage';
 import { EenheidOverzichtPage } from '@/pages/EenheidOverzichtPage';
+import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { LoginPage } from '@/pages/LoginPage';
 
 const queryClient = new QueryClient({
@@ -66,11 +67,22 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function OnboardingGate({ children }: { children: React.ReactNode }) {
+  const { oidcConfigured, authenticated, person } = useAuth();
+
+  if (oidcConfigured && authenticated && person?.needs_onboarding) {
+    return <OnboardingModal />;
+  }
+
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <AuthGate>
+          <OnboardingGate>
           <CurrentPersonProvider>
             <VocabularyProvider>
             <BrowserRouter>
@@ -95,6 +107,7 @@ export default function App() {
             </BrowserRouter>
             </VocabularyProvider>
           </CurrentPersonProvider>
+          </OnboardingGate>
         </AuthGate>
       </AuthProvider>
     </QueryClientProvider>

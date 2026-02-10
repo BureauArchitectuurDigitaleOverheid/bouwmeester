@@ -1,10 +1,12 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { BASE_URL } from '@/api/client';
 
 interface AuthPerson {
   sub: string;
   email: string;
   name: string;
+  id: string | null;
+  needs_onboarding: boolean;
 }
 
 interface AuthState {
@@ -18,9 +20,31 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   login: () => void;
   logout: () => void;
+  refreshAuthStatus: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+async function fetchAuthStatus(): Promise<AuthState> {
+  const res = await fetch(`${BASE_URL}/api/auth/status`, { credentials: 'include' });
+  if (!res.ok) throw new Error(`Auth status check failed: ${res.status}`);
+  const data = await res.json();
+  return {
+    loading: false,
+    authenticated: data.authenticated,
+    oidcConfigured: data.oidc_configured,
+    person: data.person
+      ? {
+          sub: data.person.sub ?? '',
+          email: data.person.email ?? '',
+          name: data.person.name ?? '',
+          id: data.person.id ?? null,
+          needs_onboarding: data.person.needs_onboarding ?? false,
+        }
+      : null,
+    error: null,
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -32,39 +56,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    fetch(`${BASE_URL}/api/auth/status`, { credentials: 'include' })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Auth status check failed: ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
-        setState({
-          loading: false,
-          authenticated: data.authenticated,
-          oidcConfigured: data.oidc_configured,
-          person: data.person ?? null,
-          error: null,
-        });
-      })
+    fetchAuthStatus()
+      .then((s) => setState(s))
       .catch((err) => {
-        setState((s) => ({
-          ...s,
+        setState((prev) => ({
+          ...prev,
           loading: false,
           error: err instanceof Error ? err.message : 'Kon authenticatiestatus niet ophalen',
         }));
       });
   }, []);
 
-  const login = () => {
-    window.location.href = `${BASE_URL}/api/auth/login`;
-  };
+  const refreshAuthStatus = useCallback(async () => {
+    try {
+      const s = await fetchAuthStatus();
+      setState(s);
+    } catch {
+      // Silently ignore refresh errors — the stale state is still usable
+    }
+  }, []);
 
-  const logout = () => {
+  const login = useCallback(() => {
+    window.location.href = `${BASE_URL}/api/auth/login`;
+  }, []);
+
+  const logout = useCallback(() => {
     window.location.href = `${BASE_URL}/api/auth/logout`;
-  };
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout }}>
+    <AuthContext.Provider value={{ ...state, login, logout, refreshAuthStatus }}>
       {children}
     </AuthContext.Provider>
   );
