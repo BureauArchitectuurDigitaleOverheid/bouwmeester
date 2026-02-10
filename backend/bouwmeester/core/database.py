@@ -11,10 +11,15 @@ from bouwmeester.core.config import get_settings
 
 settings = get_settings()
 
+_connect_args: dict = {}
+if settings.DATABASE_SCHEMA:
+    _connect_args["server_settings"] = {"search_path": settings.DATABASE_SCHEMA}
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
     pool_pre_ping=True,
+    connect_args=_connect_args,
 )
 
 async_session = async_sessionmaker(
