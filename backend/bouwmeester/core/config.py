@@ -126,9 +126,8 @@ class Settings(BaseSettings):
             # SECURITY NOTE: This allows cookies to be shared across ALL
             # subdomains of bouwmeester.rijks.app. This is required because
             # the frontend (component-1) and backend (component-2) are on
-            # different subdomains. The session cookie is HttpOnly+SameSite=Lax
-            # and the CSRF cookie uses __Host- prefix in production to mitigate
-            # subdomain attack risks.
+            # different subdomains. Both the session cookie (HttpOnly) and
+            # the CSRF cookie (readable by JS) use SameSite=Lax + Secure.
             if not self.SESSION_COOKIE_DOMAIN and "." in hostname:
                 # Strip first subdomain (component-N)
                 parts = hostname.split(".", 1)

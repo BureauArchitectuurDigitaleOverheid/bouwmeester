@@ -39,10 +39,14 @@ class CSRFMiddleware:
         self.app = app
         self.cookie_domain = cookie_domain
         self.cookie_secure = cookie_secure
-        # Use __Host- prefix when Secure is set to prevent subdomain overrides.
-        self._cookie_name = (
-            f"__Host-{_CSRF_COOKIE_NAME}" if cookie_secure else _CSRF_COOKIE_NAME
-        )
+        # NOTE: We intentionally do NOT use the __Host- prefix here.
+        # __Host- cookies cannot have a Domain attribute, which means they
+        # are bound to the exact origin that set them. In our deployment the
+        # backend (component-2.bouwmeester.rijks.app) and frontend
+        # (bouwmeester.rijks.app) are on different subdomains, so the
+        # frontend JS cannot read a __Host- cookie set by the backend.
+        # Instead we use the shared parent domain with SameSite=Lax + Secure.
+        self._cookie_name = _CSRF_COOKIE_NAME
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket"):
@@ -113,8 +117,7 @@ class CSRFMiddleware:
                     "Path=/",
                     "SameSite=Lax",
                 ]
-                # __Host- cookies must NOT have a Domain attribute.
-                if not self.cookie_secure and self.cookie_domain:
+                if self.cookie_domain:
                     cookie_parts.append(f"Domain={self.cookie_domain}")
                 if self.cookie_secure:
                     cookie_parts.append("Secure")
