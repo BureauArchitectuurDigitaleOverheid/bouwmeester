@@ -87,11 +87,10 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               </Badge>
             )}
             {isManager && (() => {
-              const isBewindspersoon = person.functie === 'minister' || person.functie === 'staatssecretaris';
-              const label = isBewindspersoon ? 'Bewindspersoon' : (managerLabel ?? 'Manager');
+              const label = managerLabel ?? 'Manager';
               return (
                 <Badge
-                  variant={isBewindspersoon ? 'purple' : 'blue'}
+                  variant={label === 'Bewindspersoon' ? 'purple' : 'blue'}
                   className="text-[10px] px-1.5 py-0 shrink-0"
                 >
                   {label}

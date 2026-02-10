@@ -11,8 +11,10 @@ import type { Person, OrganisatieEenheidPersonenGroup } from '@/types';
 
 /** Org types where the manager role is labeled "Coördinator" instead of "Manager". */
 const COORDINATOR_TYPES = new Set(['cluster', 'team']);
+const BEWINDSPERSOON_FUNCTIES = new Set(['minister', 'staatssecretaris']);
 
-function managerLabelForType(orgType: string): string {
+function managerLabelForType(orgType: string, functie?: string | null): string {
+  if (functie && BEWINDSPERSOON_FUNCTIES.has(functie)) return 'Bewindspersoon';
   return COORDINATOR_TYPES.has(orgType) ? 'Coördinator' : 'Manager';
 }
 
@@ -118,7 +120,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
             onEditPerson={onEditPerson}
             onDragStartPerson={onDragStartPerson}
             isManager
-            managerLabel={managerLabelForType(group.eenheid.type)}
+            managerLabel={managerLabelForType(group.eenheid.type, managerPerson.functie)}
           />
         )}
 
@@ -189,7 +191,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
               onEditPerson={onEditPerson}
               onDragStartPerson={onDragStartPerson}
               isManager
-              managerLabel={managerLabelForType(group.eenheid.type)}
+              managerLabel={managerLabelForType(group.eenheid.type, managerPerson.functie)}
             />
           )}
 
