@@ -9,3 +9,4 @@ htmlcov
 .mypy_cache
 *.egg-info
 tests
+scripts/access_whitelist.json

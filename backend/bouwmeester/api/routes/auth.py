@@ -22,6 +22,7 @@ from bouwmeester.core.auth import (
 )
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.core.database import get_db
+from bouwmeester.core.whitelist import is_email_allowed
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
@@ -245,6 +246,16 @@ async def auth_status(
         sub = request.session.get("person_sub", "")
         email = request.session.get("person_email", "")
         name = request.session.get("person_name", "")
+
+        if not is_email_allowed(email):
+            logger.warning("Access denied for %s — not on whitelist", email)
+            request.session.clear()
+            return {
+                "authenticated": False,
+                "oidc_configured": oidc_configured,
+                "access_denied": True,
+                "denied_email": email,
+            }
 
         # Use cached values from session to avoid DB queries on every page load.
         person_id = request.session.get("person_db_id")

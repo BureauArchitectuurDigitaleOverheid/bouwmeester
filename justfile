@@ -155,3 +155,21 @@ encrypt-seed:
         -o backend/scripts/seed_persons.json.age \
         backend/scripts/seed_persons.json
     @echo "Encrypted → backend/scripts/seed_persons.json.age"
+
+# ---------------------------------------------------------------------------
+# Access whitelist encryption (age)
+# ---------------------------------------------------------------------------
+
+# Decrypt access_whitelist.json from the committed .age file
+decrypt-whitelist:
+    age -d -i ~/.age/key.txt -o backend/scripts/access_whitelist.json backend/scripts/access_whitelist.json.age
+    @echo "Decrypted → backend/scripts/access_whitelist.json"
+
+# Encrypt access_whitelist.json for committing (same recipients as seed data)
+encrypt-whitelist:
+    age -r age1t3gkzgkgy9r05zutg2xws33xv42gyagk7wty5pqqa9apn5vrjsgsf0s4ha \
+        -r age1ugedsnl8qs5rjll3nfqw0uw4ue4dvznsndnwjnduklskxzmhzyvqsapkdk \
+        -r age17w8fqjs4paklc8mhmseslq006au7ua9zhstn5y8ya7k7nu9r7u5q9kfly8 \
+        -o backend/scripts/access_whitelist.json.age \
+        backend/scripts/access_whitelist.json
+    @echo "Encrypted → backend/scripts/access_whitelist.json.age"
