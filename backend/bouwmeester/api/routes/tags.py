@@ -15,11 +15,7 @@ from bouwmeester.schema.tag import (
     TagTreeResponse,
     TagUpdate,
 )
-from bouwmeester.services.activity_service import (
-    ActivityService,
-    resolve_actor_id,
-    resolve_actor_naam_from_db,
-)
+from bouwmeester.services.activity_service import ActivityService, resolve_actor
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -63,10 +59,11 @@ async def create_tag(
     repo = TagRepository(db)
     tag = await repo.create(data)
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "tag.created",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"tag_id": str(tag.id), "name": tag.name},
     )
 
@@ -93,10 +90,11 @@ async def update_tag(
     repo = TagRepository(db)
     tag = require_found(await repo.update(tag_id, data), "Tag")
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "tag.updated",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"tag_id": str(tag.id), "name": tag.name},
     )
 
@@ -114,9 +112,10 @@ async def delete_tag(
     tag = await repo.get_by_id(tag_id)
     tag_name = tag.name if tag else None
     require_deleted(await repo.delete(tag_id), "Tag")
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "tag.deleted",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"tag_id": str(tag_id), "name": tag_name},
     )

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, ForeignKey, func, text
+from sqlalchemy import DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,13 @@ if TYPE_CHECKING:
 
 class Activity(Base):
     __tablename__ = "activity"
+    __table_args__ = (
+        Index(
+            "ix_activity_event_type_pattern",
+            "event_type",
+            postgresql_ops={"event_type": "text_pattern_ops"},
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -23,6 +30,7 @@ class Activity(Base):
         server_default=text("gen_random_uuid()"),
     )
     event_type: Mapped[str] = mapped_column(
+        String,
         nullable=False,
         comment=(
             "Prefix-based categories: node, task, edge, person, "

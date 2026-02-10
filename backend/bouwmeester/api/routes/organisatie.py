@@ -21,11 +21,7 @@ from bouwmeester.schema.organisatie_eenheid import (
     OrgParentRecord,
 )
 from bouwmeester.schema.person import PersonResponse
-from bouwmeester.services.activity_service import (
-    ActivityService,
-    resolve_actor_id,
-    resolve_actor_naam_from_db,
-)
+from bouwmeester.services.activity_service import ActivityService, resolve_actor
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 
 router = APIRouter(prefix="/organisatie", tags=["organisatie"])
@@ -122,10 +118,11 @@ async def create_organisatie(
         eenheid.naam,
     )
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "organisatie.created",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"organisatie_id": str(eenheid.id), "naam": eenheid.naam},
     )
 
@@ -171,10 +168,11 @@ async def update_organisatie(
         eenheid.naam,
     )
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "organisatie.updated",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"organisatie_id": str(eenheid.id), "naam": eenheid.naam},
     )
 
@@ -203,10 +201,11 @@ async def delete_organisatie(
     eenheid_naam = eenheid.naam
     await repo.delete(id)
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "organisatie.deleted",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"organisatie_id": str(id), "naam": eenheid_naam},
     )
 

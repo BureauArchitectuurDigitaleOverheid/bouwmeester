@@ -22,11 +22,7 @@ from bouwmeester.schema.parlementair_item import (
     ParlementairItemResponse,
     SuggestedEdgeResponse,
 )
-from bouwmeester.services.activity_service import (
-    ActivityService,
-    resolve_actor_id,
-    resolve_actor_naam_from_db,
-)
+from bouwmeester.services.activity_service import ActivityService, resolve_actor
 
 SUGGESTED_EDGE_DESCRIPTION = "Automatisch voorgesteld vanuit parlementaire import"
 
@@ -91,10 +87,11 @@ async def trigger_import(
     service = ParlementairImportService(db)
     count = await service.poll_and_import(item_types=item_types)
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "parlementair.import_triggered",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"count": count},
     )
 
@@ -126,10 +123,11 @@ async def reject_import(
     if item is None:
         raise HTTPException(status_code=404, detail="Import not found")
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "parlementair.rejected",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"item_id": str(import_id)},
     )
 
@@ -205,10 +203,11 @@ async def complete_review(
         import_id, "reviewed", reviewed_at=datetime.utcnow()
     )
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "parlementair.reviewed",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"item_id": str(import_id), "eigenaar_id": str(body.eigenaar_id)},
     )
 
@@ -276,10 +275,11 @@ async def approve_edge(
     suggested_edge.reviewed_at = datetime.utcnow()
     await db.flush()
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "parlementair.edge_approved",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"suggested_edge_id": str(edge_id)},
     )
 
@@ -303,10 +303,11 @@ async def reject_edge(
     if updated is None:
         raise HTTPException(status_code=404, detail="Suggested edge not found")
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "parlementair.edge_rejected",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"suggested_edge_id": str(edge_id)},
     )
 
@@ -339,10 +340,11 @@ async def reset_suggested_edge(
         reviewed_at=None,
     )
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "parlementair.edge_reset",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"suggested_edge_id": str(edge_id)},
     )
 

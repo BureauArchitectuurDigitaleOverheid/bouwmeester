@@ -28,11 +28,7 @@ from bouwmeester.schema.person import (
     PersonTaskSummary,
     PersonUpdate,
 )
-from bouwmeester.services.activity_service import (
-    ActivityService,
-    resolve_actor_id,
-    resolve_actor_naam_from_db,
-)
+from bouwmeester.services.activity_service import ActivityService, resolve_actor
 
 router = APIRouter(prefix="/people", tags=["people"])
 
@@ -73,10 +69,11 @@ async def create_person(
     repo = PersonRepository(db)
     person = await repo.create(data)
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "person.created",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"person_id": str(person.id), "naam": person.naam},
     )
 
@@ -186,10 +183,11 @@ async def update_person(
     repo = PersonRepository(db)
     person = require_found(await repo.update(id, data), "Person")
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "person.updated",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"person_id": str(person.id), "naam": person.naam},
     )
 
@@ -207,10 +205,11 @@ async def delete_person(
     person = await repo.get(id)
     person_naam = person.naam if person else None
     require_deleted(await repo.delete(id), "Person")
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "person.deleted",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"person_id": str(id), "naam": person_naam},
     )
 
@@ -294,10 +293,11 @@ async def add_person_organisatie(
     await db.flush()
     await db.refresh(placement)
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "person.organisatie_added",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={
             "person_id": str(id),
             "organisatie_eenheid_id": str(data.organisatie_eenheid_id),
@@ -340,10 +340,11 @@ async def update_person_organisatie(
     await db.flush()
     await db.refresh(placement)
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "person.organisatie_updated",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"person_id": str(id), "placement_id": str(placement_id)},
     )
 
@@ -379,9 +380,10 @@ async def delete_person_organisatie(
     await db.delete(placement)
     await db.flush()
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "person.organisatie_removed",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
         details={"person_id": str(id), "placement_id": str(placement_id)},
     )

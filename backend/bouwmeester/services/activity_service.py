@@ -9,28 +9,26 @@ from bouwmeester.models.activity import Activity
 from bouwmeester.repositories.activity import ActivityRepository
 
 
-def resolve_actor_id(current_user: Any, actor_id: UUID | None) -> UUID | None:
-    """Prefer authenticated user's ID; fall back to query param for dev mode."""
-    if current_user is not None:
-        return current_user.id
-    return actor_id
-
-
-async def resolve_actor_naam_from_db(
+async def resolve_actor(
     current_user: Any,
     actor_id: UUID | None,
     db: AsyncSession,
-) -> str | None:
-    """Return actor name: prefer authenticated user, fall back to DB lookup."""
+) -> tuple[UUID | None, str | None]:
+    """Resolve actor id and name in a single pass.
+
+    Prefers authenticated user; falls back to actor_id query param with DB
+    lookup for the name (dev mode).
+    """
     if current_user is not None:
-        return current_user.naam
+        return current_user.id, current_user.naam
     if actor_id is not None:
         from bouwmeester.models.person import Person
 
         person = await db.get(Person, actor_id)
         if person is not None:
-            return person.naam
-    return None
+            return actor_id, person.naam
+        return actor_id, None
+    return None, None
 
 
 class ActivityService:
