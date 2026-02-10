@@ -2,7 +2,6 @@
 
 import uuid
 
-
 # ---------------------------------------------------------------------------
 # Activity feed – basic
 # ---------------------------------------------------------------------------
@@ -280,7 +279,7 @@ async def test_node_create_without_actor(client):
 
 
 async def test_node_update_generates_activity(client, sample_person, sample_node):
-    """PUT /api/nodes/{id} should create an activity entry with event_type node.updated."""
+    """PUT /api/nodes/{id} should create a node.updated activity."""
     node_id = str(sample_node.id)
 
     resp = await client.put(
@@ -602,7 +601,7 @@ async def test_edge_update_generates_activity(
 async def test_edge_delete_generates_activity(
     client, sample_person, sample_node, second_node, sample_edge_type
 ):
-    """DELETE /api/edges/{id} should create edge.deleted activity with IDs in details."""
+    """DELETE /api/edges/{id} should create edge.deleted activity."""
     # Create an edge to delete
     create_resp = await client.post(
         "/api/edges",
@@ -674,7 +673,7 @@ async def test_task_update_generates_activity(client, sample_person, sample_node
 
 
 async def test_task_delete_generates_activity(client, sample_person, sample_node):
-    """DELETE /api/tasks/{id} should create task.deleted activity with IDs in details."""
+    """DELETE /api/tasks/{id} should create task.deleted activity."""
     # Create a task first
     create_resp = await client.post(
         "/api/tasks",

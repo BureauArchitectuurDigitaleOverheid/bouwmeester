@@ -61,28 +61,6 @@ function humanizeValue(key: string, value: unknown): string {
   return str;
 }
 
-/** Keys we never show in the details column. */
-const HIDDEN_KEYS = new Set([
-  'actor_naam',
-  // UUIDs that we show as named entities instead
-  'person_id',
-  'tag_id',
-  'from_node_id',
-  'to_node_id',
-  'assignee_id',
-  'old_assignee_id',
-  'new_assignee_id',
-  'eigenaar_id',
-  'organisatie_eenheid_id',
-  'organisatie_id',
-  'node_id',
-  'task_id',
-  'edge_id',
-  'suggested_edge_id',
-  'item_id',
-  'placement_id',
-]);
-
 /** Presentable detail chips: label → display value. */
 function buildChips(
   item: Activity,
