@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "https://component-1.bouwmeester.rijks.app",
+        "https://bouwmeester.rijks.app",
     ]
 
     ANTHROPIC_API_KEY: str = ""
