@@ -23,7 +23,8 @@ COPY --from=builder --chown=appuser:appuser /app /app
 
 USER 1001
 
-ENV UV_NO_CACHE=1 UV_FROZEN=1
+# Activate venv via PATH — entrypoint uses python/alembic/uvicorn directly
+ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8080
 
