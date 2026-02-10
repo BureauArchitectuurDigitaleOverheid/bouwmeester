@@ -36,8 +36,19 @@ class ActivityService:
         self,
         skip: int = 0,
         limit: int = 50,
+        event_type: str | None = None,
+        actor_id: UUID | None = None,
     ) -> list[Activity]:
-        return await self.repo.get_recent(skip=skip, limit=limit)
+        return await self.repo.get_recent(
+            skip=skip, limit=limit, event_type=event_type, actor_id=actor_id
+        )
+
+    async def count(
+        self,
+        event_type: str | None = None,
+        actor_id: UUID | None = None,
+    ) -> int:
+        return await self.repo.count(event_type=event_type, actor_id=actor_id)
 
     async def get_by_node(
         self,

@@ -2,13 +2,16 @@
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import DateTime, ForeignKey, func, text
 from sqlalchemy.dialects.postgresql import JSON, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from bouwmeester.core.database import Base
+
+if TYPE_CHECKING:
+    from bouwmeester.models.person import Person
 
 
 class Activity(Base):
@@ -50,3 +53,5 @@ class Activity(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    actor: Mapped["Person | None"] = relationship("Person", lazy="noload")

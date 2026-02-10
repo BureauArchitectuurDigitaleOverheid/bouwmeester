@@ -3,8 +3,9 @@
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.activity import Activity
 
@@ -44,6 +45,7 @@ class ActivityRepository:
         stmt = (
             select(Activity)
             .where(Activity.node_id == node_id)
+            .options(selectinload(Activity.actor))
             .offset(skip)
             .limit(limit)
             .order_by(Activity.created_at.desc())
@@ -60,6 +62,7 @@ class ActivityRepository:
         stmt = (
             select(Activity)
             .where(Activity.actor_id == person_id)
+            .options(selectinload(Activity.actor))
             .offset(skip)
             .limit(limit)
             .order_by(Activity.created_at.desc())
@@ -71,12 +74,31 @@ class ActivityRepository:
         self,
         skip: int = 0,
         limit: int = 50,
+        event_type: str | None = None,
+        actor_id: UUID | None = None,
     ) -> list[Activity]:
         stmt = (
             select(Activity)
-            .offset(skip)
-            .limit(limit)
+            .options(selectinload(Activity.actor))
             .order_by(Activity.created_at.desc())
         )
+        if event_type:
+            stmt = stmt.where(Activity.event_type.startswith(event_type))
+        if actor_id:
+            stmt = stmt.where(Activity.actor_id == actor_id)
+        stmt = stmt.offset(skip).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def count(
+        self,
+        event_type: str | None = None,
+        actor_id: UUID | None = None,
+    ) -> int:
+        stmt = select(func.count()).select_from(Activity)
+        if event_type:
+            stmt = stmt.where(Activity.event_type.startswith(event_type))
+        if actor_id:
+            stmt = stmt.where(Activity.actor_id == actor_id)
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0

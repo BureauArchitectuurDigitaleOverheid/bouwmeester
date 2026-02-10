@@ -28,6 +28,7 @@ from bouwmeester.schema.person import (
     PersonTaskSummary,
     PersonUpdate,
 )
+from bouwmeester.services.activity_service import ActivityService
 
 router = APIRouter(prefix="/people", tags=["people"])
 
@@ -52,6 +53,7 @@ async def list_people(
 async def create_person(
     data: PersonCreate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
     # Agent names must be unique
@@ -66,6 +68,13 @@ async def create_person(
             )
     repo = PersonRepository(db)
     person = await repo.create(data)
+
+    await ActivityService(db).log_event(
+        "person.created",
+        actor_id=actor_id,
+        details={"person_id": str(person.id), "naam": person.naam},
+    )
+
     return PersonDetailResponse.model_validate(person)
 
 
@@ -166,10 +175,18 @@ async def update_person(
     id: UUID,
     data: PersonUpdate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
     repo = PersonRepository(db)
     person = require_found(await repo.update(id, data), "Person")
+
+    await ActivityService(db).log_event(
+        "person.updated",
+        actor_id=actor_id,
+        details={"person_id": str(person.id), "naam": person.naam},
+    )
+
     return PersonDetailResponse.model_validate(person)
 
 
@@ -177,10 +194,18 @@ async def update_person(
 async def delete_person(
     id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = PersonRepository(db)
+    person = await repo.get(id)
+    person_naam = person.naam if person else None
     require_deleted(await repo.delete(id), "Person")
+    await ActivityService(db).log_event(
+        "person.deleted",
+        actor_id=actor_id,
+        details={"person_id": str(id), "naam": person_naam},
+    )
 
 
 # --- Org placements ---
@@ -227,6 +252,7 @@ async def add_person_organisatie(
     id: UUID,
     data: PersonOrganisatieCreate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> PersonOrganisatieResponse:
     require_found(await db.get(Person, id), "Person")
@@ -261,6 +287,15 @@ async def add_person_organisatie(
     await db.flush()
     await db.refresh(placement)
 
+    await ActivityService(db).log_event(
+        "person.organisatie_added",
+        actor_id=actor_id,
+        details={
+            "person_id": str(id),
+            "organisatie_eenheid_id": str(data.organisatie_eenheid_id),
+        },
+    )
+
     return PersonOrganisatieResponse(
         id=placement.id,
         person_id=placement.person_id,
@@ -281,6 +316,7 @@ async def update_person_organisatie(
     placement_id: UUID,
     data: PersonOrganisatieUpdate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> PersonOrganisatieResponse:
     stmt = select(PersonOrganisatieEenheid).where(
@@ -295,6 +331,12 @@ async def update_person_organisatie(
         setattr(placement, key, value)
     await db.flush()
     await db.refresh(placement)
+
+    await ActivityService(db).log_event(
+        "person.organisatie_updated",
+        actor_id=actor_id,
+        details={"person_id": str(id), "placement_id": str(placement_id)},
+    )
 
     eenheid = await db.get(OrganisatieEenheid, placement.organisatie_eenheid_id)
     return PersonOrganisatieResponse(
@@ -316,6 +358,7 @@ async def delete_person_organisatie(
     id: UUID,
     placement_id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     stmt = select(PersonOrganisatieEenheid).where(
@@ -326,3 +369,9 @@ async def delete_person_organisatie(
     placement = require_found(result.scalar_one_or_none(), "Placement")
     await db.delete(placement)
     await db.flush()
+
+    await ActivityService(db).log_event(
+        "person.organisatie_removed",
+        actor_id=actor_id,
+        details={"person_id": str(id), "placement_id": str(placement_id)},
+    )

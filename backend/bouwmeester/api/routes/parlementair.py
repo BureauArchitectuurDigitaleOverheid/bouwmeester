@@ -22,6 +22,7 @@ from bouwmeester.schema.parlementair_item import (
     ParlementairItemResponse,
     SuggestedEdgeResponse,
 )
+from bouwmeester.services.activity_service import ActivityService
 
 SUGGESTED_EDGE_DESCRIPTION = "Automatisch voorgesteld vanuit parlementaire import"
 
@@ -75,6 +76,7 @@ async def get_import(
 async def trigger_import(
     current_user: OptionalUser,
     item_types: list[str] | None = Query(None, alias="types"),
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Trigger a manual parliamentary item import poll."""
@@ -84,6 +86,13 @@ async def trigger_import(
 
     service = ParlementairImportService(db)
     count = await service.poll_and_import(item_types=item_types)
+
+    await ActivityService(db).log_event(
+        "parlementair.import_triggered",
+        actor_id=actor_id,
+        details={"count": count},
+    )
+
     return {"message": f"{count} items geïmporteerd", "imported": count}
 
 
@@ -102,6 +111,7 @@ async def get_review_queue(
 async def reject_import(
     import_id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> ParlementairItemResponse:
     repo = ParlementairItemRepository(db)
@@ -110,6 +120,13 @@ async def reject_import(
     )
     if item is None:
         raise HTTPException(status_code=404, detail="Import not found")
+
+    await ActivityService(db).log_event(
+        "parlementair.rejected",
+        actor_id=actor_id,
+        details={"item_id": str(import_id)},
+    )
+
     return ParlementairItemResponse.model_validate(item)
 
 
@@ -118,6 +135,7 @@ async def complete_review(
     import_id: UUID,
     body: CompleteReviewRequest,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> ParlementairItemResponse:
     repo = ParlementairItemRepository(db)
@@ -181,6 +199,12 @@ async def complete_review(
         import_id, "reviewed", reviewed_at=datetime.utcnow()
     )
 
+    await ActivityService(db).log_event(
+        "parlementair.reviewed",
+        actor_id=actor_id,
+        details={"item_id": str(import_id), "eigenaar_id": str(body.eigenaar_id)},
+    )
+
     return ParlementairItemResponse.model_validate(item)
 
 
@@ -212,6 +236,7 @@ async def update_suggested_edge(
 async def approve_edge(
     edge_id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> SuggestedEdgeResponse:
     suggested_edge_repo = SuggestedEdgeRepository(db)
@@ -243,6 +268,13 @@ async def approve_edge(
     suggested_edge.edge_id = edge.id
     suggested_edge.reviewed_at = datetime.utcnow()
     await db.flush()
+
+    await ActivityService(db).log_event(
+        "parlementair.edge_approved",
+        actor_id=actor_id,
+        details={"suggested_edge_id": str(edge_id)},
+    )
+
     updated = await suggested_edge_repo.get_by_id(edge_id)
     return SuggestedEdgeResponse.model_validate(updated)
 
@@ -251,6 +283,7 @@ async def approve_edge(
 async def reject_edge(
     edge_id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> SuggestedEdgeResponse:
     repo = SuggestedEdgeRepository(db)
@@ -261,6 +294,13 @@ async def reject_edge(
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Suggested edge not found")
+
+    await ActivityService(db).log_event(
+        "parlementair.edge_rejected",
+        actor_id=actor_id,
+        details={"suggested_edge_id": str(edge_id)},
+    )
+
     return SuggestedEdgeResponse.model_validate(updated)
 
 
@@ -268,6 +308,7 @@ async def reject_edge(
 async def reset_suggested_edge(
     edge_id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> SuggestedEdgeResponse:
     """Reset a suggested edge back to pending, undoing approve/reject."""
@@ -288,4 +329,11 @@ async def reset_suggested_edge(
         "pending",
         reviewed_at=None,
     )
+
+    await ActivityService(db).log_event(
+        "parlementair.edge_reset",
+        actor_id=actor_id,
+        details={"suggested_edge_id": str(edge_id)},
+    )
+
     return SuggestedEdgeResponse.model_validate(updated)

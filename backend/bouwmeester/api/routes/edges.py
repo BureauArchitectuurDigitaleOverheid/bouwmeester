@@ -12,6 +12,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.schema.edge import EdgeCreate, EdgeResponse, EdgeUpdate, EdgeWithNodes
+from bouwmeester.services.activity_service import ActivityService
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/edges", tags=["edges"])
@@ -63,6 +64,17 @@ async def create_edge(
         notif_svc = NotificationService(db)
         await notif_svc.notify_edge_created(from_node, to_node, actor_id=actor_id)
 
+    await ActivityService(db).log_event(
+        "edge.created",
+        actor_id=actor_id,
+        edge_id=edge.id,
+        details={
+            "from_node_id": str(data.from_node_id),
+            "to_node_id": str(data.to_node_id),
+            "edge_type_id": data.edge_type_id,
+        },
+    )
+
     return EdgeResponse.model_validate(edge)
 
 
@@ -82,10 +94,19 @@ async def update_edge(
     id: UUID,
     data: EdgeUpdate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> EdgeResponse:
     repo = EdgeRepository(db)
     edge = require_found(await repo.update(id, data), "Edge")
+
+    await ActivityService(db).log_event(
+        "edge.updated",
+        actor_id=actor_id,
+        edge_id=edge.id,
+        details={"edge_type_id": edge.edge_type_id},
+    )
+
     return EdgeResponse.model_validate(edge)
 
 
@@ -93,7 +114,22 @@ async def update_edge(
 async def delete_edge(
     id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = EdgeRepository(db)
+    edge = await repo.get(id)
+    edge_details = (
+        {
+            "from_node_id": str(edge.from_node_id),
+            "to_node_id": str(edge.to_node_id),
+        }
+        if edge
+        else {}
+    )
     require_deleted(await repo.delete(id), "Edge")
+    await ActivityService(db).log_event(
+        "edge.deleted",
+        actor_id=actor_id,
+        details={**edge_details, "edge_id": str(id)},
+    )

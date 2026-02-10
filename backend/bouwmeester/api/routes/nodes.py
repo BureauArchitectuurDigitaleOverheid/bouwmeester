@@ -33,6 +33,7 @@ from bouwmeester.schema.person import (
 )
 from bouwmeester.schema.tag import NodeTagCreate, NodeTagResponse, TagCreate
 from bouwmeester.schema.task import TaskResponse
+from bouwmeester.services.activity_service import ActivityService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.node_service import NodeService
 from bouwmeester.services.notification_service import NotificationService
@@ -61,6 +62,7 @@ async def list_nodes(
 async def create_node(
     data: CorpusNodeCreate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> CorpusNodeResponse:
     service = NodeService(db)
@@ -73,6 +75,13 @@ async def create_node(
         data.description,
         node.title,
         source_node_id=node.id,
+    )
+
+    await ActivityService(db).log_event(
+        "node.created",
+        actor_id=actor_id,
+        node_id=node.id,
+        details={"title": node.title, "node_type": node.node_type},
     )
 
     return CorpusNodeResponse.model_validate(node)
@@ -131,6 +140,13 @@ async def update_node(
             notif_svc = NotificationService(db)
             await notif_svc.notify_node_updated(node, actor)
 
+    await ActivityService(db).log_event(
+        "node.updated",
+        actor_id=actor_id,
+        node_id=node.id,
+        details={"title": node.title},
+    )
+
     return CorpusNodeResponse.model_validate(node)
 
 
@@ -138,10 +154,19 @@ async def update_node(
 async def delete_node(
     id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     service = NodeService(db)
+    node = await service.get(id)
+    node_title = node.title if node else None
+    node_type = node.node_type if node else None
     require_deleted(await service.delete(id), "Node")
+    await ActivityService(db).log_event(
+        "node.deleted",
+        actor_id=actor_id,
+        details={"node_id": str(id), "title": node_title, "node_type": node_type},
+    )
 
 
 @router.get("/{id}/neighbors", response_model=GraphNeighborsResponse)
@@ -239,6 +264,13 @@ async def add_node_stakeholder(
 
     await db.commit()
 
+    await ActivityService(db).log_event(
+        "stakeholder.added",
+        actor_id=actor_id,
+        node_id=id,
+        details={"person_id": str(data.person_id), "rol": data.rol},
+    )
+
     return NodeStakeholderResponse.model_validate(stakeholder)
 
 
@@ -251,6 +283,7 @@ async def update_node_stakeholder(
     stakeholder_id: UUID,
     data: NodeStakeholderUpdate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> NodeStakeholderResponse:
     repo = NodeStakeholderRepository(db)
@@ -276,6 +309,13 @@ async def update_node_stakeholder(
 
     await db.commit()
 
+    await ActivityService(db).log_event(
+        "stakeholder.updated",
+        actor_id=actor_id,
+        node_id=id,
+        details={"old_rol": old_rol, "new_rol": data.rol},
+    )
+
     return NodeStakeholderResponse.model_validate(stakeholder)
 
 
@@ -287,6 +327,7 @@ async def remove_node_stakeholder(
     id: UUID,
     stakeholder_id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = NodeStakeholderRepository(db)
@@ -295,8 +336,17 @@ async def remove_node_stakeholder(
         "Stakeholder",
     )
 
+    stakeholder_person_id = str(stakeholder.person_id)
+    stakeholder_rol = stakeholder.rol
     await db.delete(stakeholder)
     await db.commit()
+
+    await ActivityService(db).log_event(
+        "stakeholder.removed",
+        actor_id=actor_id,
+        node_id=id,
+        details={"person_id": stakeholder_person_id, "rol": stakeholder_rol},
+    )
 
 
 @router.get("/{id}/tags", response_model=list[NodeTagResponse])
@@ -324,6 +374,7 @@ async def add_tag_to_node(
     id: UUID,
     data: NodeTagCreate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> NodeTagResponse:
     from bouwmeester.repositories.tag import TagRepository
@@ -347,6 +398,14 @@ async def add_tag_to_node(
         raise HTTPException(status_code=400, detail="Provide tag_id or tag_name")
 
     node_tag = await tag_repo.add_tag_to_node(id, tag_id)
+
+    await ActivityService(db).log_event(
+        "tag.added",
+        actor_id=actor_id,
+        node_id=id,
+        details={"tag_id": str(tag_id)},
+    )
+
     return NodeTagResponse.model_validate(node_tag)
 
 
@@ -355,12 +414,20 @@ async def remove_tag_from_node(
     id: UUID,
     tag_id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     from bouwmeester.repositories.tag import TagRepository
 
     tag_repo = TagRepository(db)
     require_deleted(await tag_repo.remove_tag_from_node(id, tag_id), "Tag link")
+
+    await ActivityService(db).log_event(
+        "tag.removed",
+        actor_id=actor_id,
+        node_id=id,
+        details={"tag_id": str(tag_id)},
+    )
 
 
 @router.get("/{id}/history/titles", response_model=list[NodeTitleRecord])

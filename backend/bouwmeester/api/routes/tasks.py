@@ -18,6 +18,7 @@ from bouwmeester.schema.task import (
     TaskStatus,
     TaskUpdate,
 )
+from bouwmeester.services.activity_service import ActivityService
 from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
@@ -92,6 +93,17 @@ async def create_task(
         await notif_svc.notify_team_manager(
             task, task.organisatie_eenheid_id, exclude_person_id=task.assignee_id
         )
+
+    await ActivityService(db).log_event(
+        "task.created",
+        actor_id=actor_id,
+        task_id=task.id,
+        node_id=task.node_id,
+        details={
+            "title": task.title,
+            "assignee_id": str(task.assignee_id) if task.assignee_id else None,
+        },
+    )
 
     return TaskResponse.model_validate(task)
 
@@ -227,6 +239,14 @@ async def update_task(
             task, new_org_unit_id, exclude_person_id=task.assignee_id
         )
 
+    await ActivityService(db).log_event(
+        "task.updated",
+        actor_id=actor_id,
+        task_id=task.id,
+        node_id=task.node_id,
+        details={"title": task.title},
+    )
+
     return TaskResponse.model_validate(task)
 
 
@@ -234,7 +254,20 @@ async def update_task(
 async def delete_task(
     id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = TaskRepository(db)
+    task = await repo.get(id)
+    task_title = task.title if task else None
+    task_node_id = task.node_id if task else None
     require_deleted(await repo.delete(id), "Task")
+    await ActivityService(db).log_event(
+        "task.deleted",
+        actor_id=actor_id,
+        details={
+            "task_id": str(id),
+            "node_id": str(task_node_id) if task_node_id else None,
+            "title": task_title,
+        },
+    )

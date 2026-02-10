@@ -1,10 +1,15 @@
 import { apiGet } from './client';
-import type { Activity } from '@/types';
+import type { ActivityFeedResponse } from '@/types';
 
-export async function getActivityFeed(limit?: number): Promise<Activity[]> {
-  return apiGet<Activity[]>('/api/activity', { limit });
+export interface ActivityFeedParams {
+  skip?: number;
+  limit?: number;
+  event_type?: string;
+  actor_id?: string;
 }
 
-export async function getNodeActivity(nodeId: string): Promise<Activity[]> {
-  return apiGet<Activity[]>(`/api/nodes/${nodeId}/activity`);
+export async function getActivityFeed(
+  params?: ActivityFeedParams,
+): Promise<ActivityFeedResponse> {
+  return apiGet<ActivityFeedResponse>('/api/activity/feed', params);
 }
