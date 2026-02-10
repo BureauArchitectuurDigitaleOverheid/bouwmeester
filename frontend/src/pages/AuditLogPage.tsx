@@ -51,11 +51,11 @@ function humanizeValue(key: string, value: unknown): string {
   }
 
   if (key === 'priority') {
-    return TASK_PRIORITY_LABELS?.[str] || str;
+    return (TASK_PRIORITY_LABELS as Record<string, string>)[str] || str;
   }
 
   if (key === 'old_status' || key === 'new_status') {
-    return TASK_STATUS_LABELS?.[str] || str;
+    return (TASK_STATUS_LABELS as Record<string, string>)[str] || str;
   }
 
   return str;
@@ -170,7 +170,7 @@ function DetailCell({
   onOpenTask: (id: string) => void;
 }) {
   const d = item.details || {};
-  const subject = d.title || d.naam || d.name;
+  const subject = (d.title || d.naam || d.name) as string | undefined;
   const chips = buildChips(item);
 
   // Determine what clicking the subject should do
