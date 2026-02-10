@@ -52,6 +52,7 @@ export function InboxPage() {
   const inboxItems: InboxItem[] = (notifications ?? []).map((n) => ({
     id: n.id,
     type: NOTIFICATION_TYPE_MAP[n.type] ?? 'notification',
+    notification_type: n.type,
     title: n.title,
     description: n.message,
     node_id: n.related_node_id,
