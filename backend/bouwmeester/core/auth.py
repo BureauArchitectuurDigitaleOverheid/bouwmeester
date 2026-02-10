@@ -672,5 +672,16 @@ async def get_optional_user(
 
 
 # Type aliases for convenient use in route signatures.
+#
+# NOTE ON AUTHORIZATION:
+# - CurrentUser: raises 401 when OIDC is not configured.  Use this to
+#   **enforce** authentication (blocks unauthenticated access).
+# - OptionalUser: returns None when OIDC is not configured (dev mode).
+#   It does NOT enforce authentication — it only provides identity context
+#   so handlers can apply authorization logic (e.g. prevent sender spoofing)
+#   when a user *is* authenticated.  All endpoints currently use OptionalUser
+#   so the app keeps working in dev without an OIDC provider.  When deployed
+#   behind the Keycloak gateway, every request carries a valid token and
+#   OptionalUser returns the authenticated Person.
 CurrentUser = Annotated[Person, Depends(get_current_user)]
 OptionalUser = Annotated[Person | None, Depends(get_optional_user)]

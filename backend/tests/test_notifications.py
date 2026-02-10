@@ -3,6 +3,15 @@
 import uuid
 from datetime import date, timedelta
 
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from bouwmeester.core.auth import get_optional_user
+from bouwmeester.core.config import get_settings
+from bouwmeester.core.database import get_db
+
+settings = get_settings()
+
 # ---------------------------------------------------------------------------
 # List notifications
 # ---------------------------------------------------------------------------
@@ -989,3 +998,118 @@ async def test_dashboard_stats_overdue_excludes_done(
     data = resp.json()
     # The done task should not count as overdue
     assert data["overdue_task_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Sender spoofing prevention
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def authenticated_client(db_session, second_person):
+    """Client where get_optional_user returns second_person (simulating auth)."""
+    from bouwmeester.core.app import create_app
+    from tests.conftest import InMemorySessionStore
+
+    app = create_app()
+
+    async def _override_get_db():
+        yield db_session
+
+    async def _override_get_optional_user():
+        return second_person
+
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_optional_user] = _override_get_optional_user
+
+    mem_store = InMemorySessionStore()
+    app.state.session_store = mem_store
+    for mw in app.user_middleware:
+        if hasattr(mw, "kwargs") and "store" in mw.kwargs:
+            mw.kwargs["store"] = mem_store
+
+    app.middleware_stack = app.build_middleware_stack()
+
+    csrf = {"token": ""}
+
+    async def _inject_csrf(request):
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and csrf["token"]:
+            request.headers["X-CSRF-Token"] = csrf["token"]
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        event_hooks={"request": [_inject_csrf]},
+    ) as ac:
+        init_resp = await ac.get("/api/auth/status")
+        for cookie_header in init_resp.headers.get_list("set-cookie"):
+            if cookie_header.startswith("bm_csrf="):
+                csrf["token"] = cookie_header.split("=", 1)[1].split(";")[0]
+                break
+        yield ac
+
+    app.dependency_overrides.clear()
+
+
+async def test_send_message_spoofing_rejected(
+    authenticated_client, sample_person, second_person
+):
+    """POST /api/notifications/send rejects sender_id != authenticated user."""
+    # authenticated_client is logged in as second_person.
+    # Try sending a message with sample_person as sender → spoofing.
+    payload = {
+        "person_id": str(second_person.id),
+        "sender_id": str(sample_person.id),  # Not the authenticated user
+        "message": "Spoofed bericht",
+    }
+    resp = await authenticated_client.post("/api/notifications/send", json=payload)
+    assert resp.status_code == 403
+    assert "Sender" in resp.json()["detail"]
+
+
+async def test_send_message_allowed_when_sender_matches(
+    authenticated_client, sample_person, second_person
+):
+    """POST /api/notifications/send succeeds when sender_id matches auth user."""
+    # authenticated_client is logged in as second_person.
+    # Send with second_person as sender → valid.
+    payload = {
+        "person_id": str(sample_person.id),
+        "sender_id": str(second_person.id),
+        "message": "Legit bericht",
+    }
+    resp = await authenticated_client.post("/api/notifications/send", json=payload)
+    assert resp.status_code == 200
+
+
+async def test_reply_spoofing_rejected(
+    authenticated_client, sample_person, second_person, sample_notification
+):
+    """POST /api/notifications/{id}/reply rejects sender_id != auth user."""
+    # authenticated_client is logged in as second_person.
+    # Try replying with sample_person as sender → spoofing.
+    payload = {
+        "sender_id": str(sample_person.id),  # Not the authenticated user
+        "message": "Spoofed reactie",
+    }
+    resp = await authenticated_client.post(
+        f"/api/notifications/{sample_notification.id}/reply", json=payload
+    )
+    assert resp.status_code == 403
+    assert "Sender" in resp.json()["detail"]
+
+
+async def test_reply_allowed_when_sender_matches(
+    authenticated_client, sample_person, second_person, sample_notification
+):
+    """POST /api/notifications/{id}/reply succeeds when sender matches auth."""
+    # authenticated_client is logged in as second_person.
+    payload = {
+        "sender_id": str(second_person.id),
+        "message": "Legit reactie",
+    }
+    resp = await authenticated_client.post(
+        f"/api/notifications/{sample_notification.id}/reply", json=payload
+    )
+    assert resp.status_code == 200
