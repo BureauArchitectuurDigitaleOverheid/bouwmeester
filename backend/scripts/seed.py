@@ -277,7 +277,7 @@ async def seed(db: AsyncSession) -> None:
     # --- Directie Digitale Overheid (~50 FTE) ---
     dir_ddo = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Directie Digitale Overheid",
+            naam="Digitale Overheid",
             type="directie",
             parent_id=dgdoo.id,
             beschrijving=(
@@ -289,7 +289,7 @@ async def seed(db: AsyncSession) -> None:
 
     afd_basisinfra = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Basisinfrastructuur",
+            naam="Basisinfrastructuur",
             type="afdeling",
             parent_id=dir_ddo.id,
             beschrijving=("GDI, standaarden, architectuur en basisregistraties."),
@@ -297,7 +297,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_id_toegang = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Identiteit en BRP",
+            naam="Identiteit en BRP",
             type="afdeling",
             parent_id=dir_ddo.id,
             beschrijving=(
@@ -308,7 +308,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_wdo = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Data en Toegang",
+            naam="Data en Toegang",
             type="afdeling",
             parent_id=dir_ddo.id,
             beschrijving=(
@@ -318,7 +318,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_dienstverlening = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Dienstverlening",
+            naam="Dienstverlening",
             type="afdeling",
             parent_id=dir_ddo.id,
             beschrijving=(
@@ -330,7 +330,7 @@ async def seed(db: AsyncSession) -> None:
     # --- Bureau Architectuur (under Basisinfrastructuur) ---
     bureau_arch = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Bureau Architectuur",
+            naam="Architectuur",
             type="bureau",
             parent_id=afd_basisinfra.id,
             beschrijving=(
@@ -340,7 +340,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_standaarden = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Standaarden",
+            naam="Standaardisatie en Interoperabiliteit",
             type="team",
             parent_id=bureau_arch.id,
             beschrijving="Standaarden en interoperabiliteit.",
@@ -348,7 +348,7 @@ async def seed(db: AsyncSession) -> None:
     )
     await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Architectuur",
+            naam="Architectuur",
             type="team",
             parent_id=bureau_arch.id,
             beschrijving="Enterprise-architectuur, NORA en referentie-architecturen.",
@@ -356,7 +356,7 @@ async def seed(db: AsyncSession) -> None:
     )
     await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Strategie",
+            naam="Strategie",
             type="team",
             parent_id=bureau_arch.id,
             beschrijving="Strategisch advies digitale overheid.",
@@ -366,7 +366,7 @@ async def seed(db: AsyncSession) -> None:
     # --- Bureau MIDO (under Basisinfrastructuur) ---
     await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Bureau MIDO",
+            naam="MIDO",
             type="bureau",
             parent_id=afd_basisinfra.id,
             beschrijving=("Meerjarige Investeringsplanning Digitale Overheid."),
@@ -376,7 +376,7 @@ async def seed(db: AsyncSession) -> None:
     # --- Cluster MijnOverheid (under Basisinfrastructuur) ---
     cluster_mijnoverheid = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Cluster MijnOverheid",
+            naam="MijnOverheid",
             type="cluster",
             parent_id=afd_basisinfra.id,
             beschrijving="Doorontwikkeling en beheer van het MijnOverheid-portaal.",
@@ -386,7 +386,7 @@ async def seed(db: AsyncSession) -> None:
     # --- Clusters under Data en Toegang ---
     await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Cluster Data",
+            naam="Data",
             type="cluster",
             parent_id=afd_wdo.id,
             beschrijving="Databeleid en datastrategie.",
@@ -394,7 +394,7 @@ async def seed(db: AsyncSession) -> None:
     )
     await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Cluster Toegang",
+            naam="Toegang",
             type="cluster",
             parent_id=afd_wdo.id,
             beschrijving="Toegangsbeleid en authenticatie.",
@@ -402,7 +402,7 @@ async def seed(db: AsyncSession) -> None:
     )
     await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Cluster WDO",
+            naam="WDO",
             type="cluster",
             parent_id=afd_wdo.id,
             beschrijving="Wet Digitale Overheid en stelselwetgeving.",
@@ -410,7 +410,7 @@ async def seed(db: AsyncSession) -> None:
     )
     await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Cluster Digitale Identiteit",
+            naam="Digitale Identiteit",
             type="cluster",
             parent_id=afd_wdo.id,
             beschrijving=(
@@ -422,7 +422,7 @@ async def seed(db: AsyncSession) -> None:
     # --- Teams under Identiteit en BRP ---
     team_digid = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team DigiD Beleid",
+            naam="DigiD Beleid",
             type="team",
             parent_id=afd_id_toegang.id,
             beschrijving="Beleidsregie op DigiD als publieke authenticatievoorziening.",
@@ -430,7 +430,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_eudiw = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team EUDIW",
+            naam="EUDIW",
             type="team",
             parent_id=afd_id_toegang.id,
             beschrijving=(
@@ -447,7 +447,7 @@ async def seed(db: AsyncSession) -> None:
     # --- Directie Digitale Samenleving (~50 FTE) ---
     dir_ds = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Directie Digitale Samenleving",
+            naam="Digitale Samenleving",
             type="directie",
             parent_id=dgdoo.id,
             beschrijving=(
@@ -459,7 +459,7 @@ async def seed(db: AsyncSession) -> None:
 
     afd_ds_a = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling A",
+            naam="Bedrijfsvoering en Control",
             type="afdeling",
             parent_id=dir_ds.id,
             beschrijving=(
@@ -470,7 +470,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_ds_b = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling B",
+            naam="Strategie en Internationaal",
             type="afdeling",
             parent_id=dir_ds.id,
             beschrijving=(
@@ -481,7 +481,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_ds_c = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling C",
+            naam="Publieke Waarden en Veiligheid",
             type="afdeling",
             parent_id=dir_ds.id,
             beschrijving=(
@@ -492,7 +492,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_ds_d = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling D",
+            naam="Data, AI en Inclusie",
             type="afdeling",
             parent_id=dir_ds.id,
             beschrijving=("Data, AI en algoritmen, digitale inclusie."),
@@ -504,7 +504,7 @@ async def seed(db: AsyncSession) -> None:
     afd_strat_intl = afd_ds_b
     team_algo = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Algoritmeregister",
+            naam="Algoritmeregister",
             type="team",
             parent_id=afd_ai_data.id,
             beschrijving=(
@@ -514,7 +514,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_ai_act = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team AI Act Implementatie",
+            naam="AI Act Implementatie",
             type="team",
             parent_id=afd_ai_data.id,
             beschrijving=(
@@ -524,7 +524,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_data = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Data en IBDS",
+            naam="Data en IBDS",
             type="team",
             parent_id=afd_ai_data.id,
             beschrijving=(
@@ -534,7 +534,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_inclusie = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Digitale Inclusie",
+            naam="Digitale Inclusie",
             type="team",
             parent_id=afd_ai_data.id,
             beschrijving=(
@@ -545,7 +545,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_eu_intl = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team EU en Internationaal",
+            naam="EU en Internationaal",
             type="team",
             parent_id=afd_strat_intl.id,
             beschrijving=(
@@ -555,7 +555,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_comm = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Communicatie en Strategie",
+            naam="Communicatie en Strategie",
             type="team",
             parent_id=afd_strat_intl.id,
             beschrijving=(
@@ -567,7 +567,7 @@ async def seed(db: AsyncSession) -> None:
     # --- Directie CIO Rijk (~45 FTE) ---
     dir_cio = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Directie CIO Rijk",
+            naam="CIO Rijk",
             type="directie",
             parent_id=dgdoo.id,
             beschrijving=(
@@ -579,7 +579,7 @@ async def seed(db: AsyncSession) -> None:
 
     afd_ict_voorz = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling ICT-diensten en Voorzieningen",
+            naam="ICT-diensten en Voorzieningen",
             type="afdeling",
             parent_id=dir_cio.id,
             beschrijving=(
@@ -590,7 +590,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_istelsel = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling I-Stelsel en Vakmanschap",
+            naam="I-Stelsel en Vakmanschap",
             type="afdeling",
             parent_id=dir_cio.id,
             beschrijving=(
@@ -600,7 +600,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_infobev = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Informatiebeveiliging",
+            naam="Informatiebeveiliging",
             type="afdeling",
             parent_id=dir_cio.id,
             beschrijving=(
@@ -610,7 +610,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_cloud = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Cloud en Soevereiniteit",
+            naam="Cloud en Soevereiniteit",
             type="team",
             parent_id=afd_ict_voorz.id,
             beschrijving=(
@@ -620,7 +620,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_sourcing = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Sourcing en Leveranciersmanagement",
+            naam="Sourcing en Leveranciersmanagement",
             type="team",
             parent_id=afd_ict_voorz.id,
             beschrijving=(
@@ -630,7 +630,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_arch = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Architectuur en NORA",
+            naam="Architectuur en NORA",
             type="team",
             parent_id=afd_istelsel.id,
             beschrijving=(
@@ -640,7 +640,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_cio_stelsel = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team CIO-stelsel",
+            naam="CIO-stelsel",
             type="team",
             parent_id=afd_istelsel.id,
             beschrijving=(
@@ -650,7 +650,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_bio = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team BIO en Cyberveiligheid",
+            naam="BIO en Cyberveiligheid",
             type="team",
             parent_id=afd_infobev.id,
             beschrijving=(
@@ -662,7 +662,7 @@ async def seed(db: AsyncSession) -> None:
     # --- Directie Ambtenaar & Organisatie (~30 FTE) ---
     dir_ao = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Directie Ambtenaar en Organisatie",
+            naam="Ambtenaar en Organisatie",
             type="directie",
             parent_id=dgdoo.id,
             beschrijving=(
@@ -673,7 +673,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_ambt_vak = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Ambtelijk Vakmanschap en Rechtspositie",
+            naam="Ambtelijk Vakmanschap en Rechtspositie",
             type="afdeling",
             parent_id=dir_ao.id,
             beschrijving=(
@@ -684,7 +684,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_arbeidsmarkt = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Arbeidsmarkt en Organisatie",
+            naam="Arbeidsmarkt en Organisatie",
             type="afdeling",
             parent_id=dir_ao.id,
             beschrijving=(
@@ -695,7 +695,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_cao = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team CAO en Arbeidsvoorwaarden",
+            naam="CAO en Arbeidsvoorwaarden",
             type="team",
             parent_id=afd_ambt_vak.id,
             beschrijving=(
@@ -706,7 +706,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_diversiteit = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Diversiteit en Inclusie",
+            naam="Diversiteit en Inclusie",
             type="team",
             parent_id=afd_arbeidsmarkt.id,
             beschrijving=(
@@ -719,7 +719,7 @@ async def seed(db: AsyncSession) -> None:
     # --- Directie IFHR (~30 FTE) ---
     dir_ifhr = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Directie Inkoop-, Facilitair en Huisvestingsbeleid Rijk",
+            naam="Inkoop-, Facilitair en Huisvestingsbeleid Rijk",
             type="directie",
             parent_id=dgdoo.id,
             beschrijving=(
@@ -730,7 +730,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_inkoop = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Inkoop- en Aanbestedingsbeleid Rijk",
+            naam="Inkoop- en Aanbestedingsbeleid Rijk",
             type="afdeling",
             parent_id=dir_ifhr.id,
             beschrijving=(
@@ -741,7 +741,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_fac_huisv = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Faciliteiten- en Huisvestingsbeleid",
+            naam="Faciliteiten- en Huisvestingsbeleid",
             type="afdeling",
             parent_id=dir_ifhr.id,
             beschrijving=(
@@ -765,7 +765,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_woo = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Woo en Informatiehuishouding",
+            naam="Woo en Informatiehuishouding",
             type="team",
             parent_id=prog_open.id,
             beschrijving=(
@@ -776,7 +776,7 @@ async def seed(db: AsyncSession) -> None:
     )
     team_actieplan = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Team Actieplan Open Overheid",
+            naam="Actieplan Open Overheid",
             type="team",
             parent_id=prog_open.id,
             beschrijving=(
@@ -798,7 +798,7 @@ async def seed(db: AsyncSession) -> None:
     )
     afd_zonder_mensen = await org_repo.create(
         OrganisatieEenheidCreate(
-            naam="Afdeling Zonder Mensen",
+            naam="Zonder Mensen",
             type="afdeling",
             parent_id=dienst_dd.id,
             beschrijving="Geautomatiseerde processen en zelfbedieningsoplossingen.",
