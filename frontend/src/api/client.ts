@@ -20,6 +20,12 @@ function getBaseUrl(): string {
     return `${window.location.protocol}//component-2-${host.slice('component-1-'.length)}`;
   }
 
+  // Vanity domain (e.g. bouwmeester.rijks.app without component-1 prefix):
+  // the backend lives at component-2.<domain>
+  if (host.endsWith('.rijks.app') && !host.startsWith('component-')) {
+    return `${window.location.protocol}//component-2.${host}`;
+  }
+
   // Default: same origin (works with nginx proxy or Vite dev proxy)
   return '';
 }
