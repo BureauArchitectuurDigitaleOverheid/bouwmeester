@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -20,6 +19,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -28,8 +29,21 @@ logger = logging.getLogger(__name__)
 
 
 def _derive_fernet_key(secret: str) -> bytes:
-    """Derive a 32-byte Fernet key from an arbitrary secret string."""
-    raw = hashlib.sha256(secret.encode()).digest()
+    """Derive a 32-byte Fernet key from an arbitrary secret string using HKDF.
+
+    HKDF (HMAC-based Key Derivation Function) is the proper way to derive
+    a cryptographic key from a secret.  A fixed salt is used here (rather
+    than a random one) because we need deterministic derivation — the same
+    secret must always produce the same key so existing sessions remain
+    readable after a backend restart.
+    """
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b"bouwmeester-session-encryption-v1",
+        info=b"fernet-key",
+    )
+    raw = hkdf.derive(secret.encode())
     return base64.urlsafe_b64encode(raw)
 
 

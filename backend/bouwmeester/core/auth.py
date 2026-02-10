@@ -15,6 +15,9 @@ from typing import Annotated, Any
 
 import httpx
 from authlib.integrations.starlette_client import OAuth
+from authlib.jose import JsonWebKey
+from authlib.jose import jwt as authlib_jwt
+from authlib.jose.errors import JoseError
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -28,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 # Revalidate the access token against Keycloak at most every 5 minutes.
 _TOKEN_REVALIDATION_INTERVAL = 300
+
+# Grace period: if Keycloak is unreachable, allow recently-validated sessions
+# for up to this many seconds beyond the last successful validation.
+_NETWORK_ERROR_GRACE_SECONDS = 600
 
 # Shared httpx client for outbound OIDC requests (connection pooling).
 _http_client: httpx.AsyncClient | None = None
@@ -47,6 +54,14 @@ async def close_http_client() -> None:
     if _http_client and not _http_client.is_closed:
         await _http_client.aclose()
         _http_client = None
+
+
+def _require_https(url: str, label: str) -> bool:
+    """Return True if the URL uses HTTPS.  Log a warning and return False otherwise."""
+    if url.startswith("https://"):
+        return True
+    logger.warning("%s is not HTTPS, refusing to send credentials: %s", label, url)
+    return False
 
 
 def _get_discovery_url(settings: Settings) -> str:
@@ -88,12 +103,106 @@ async def get_oidc_metadata(settings: Settings) -> dict[str, Any] | None:
             return _oidc_metadata
 
         url = _get_discovery_url(settings)
+        if not _require_https(url, "OIDC discovery URL"):
+            return None
         client = _get_http_client()
         resp = await client.get(url)
         resp.raise_for_status()
         _oidc_metadata = resp.json()
         _oidc_metadata_fetched_at = now
         return _oidc_metadata
+
+
+# ---------------------------------------------------------------------------
+# Cached JWKS keys for local JWT validation
+# ---------------------------------------------------------------------------
+
+_jwks_keys: Any | None = None
+_jwks_fetched_at: float = 0
+_jwks_lock = asyncio.Lock()
+_JWKS_TTL = 3600  # Re-fetch JWKS every hour
+
+
+async def _get_jwks(settings: Settings) -> Any | None:
+    """Return cached JWKS key set, fetching if stale."""
+    global _jwks_keys, _jwks_fetched_at  # noqa: PLW0603
+
+    now = time.monotonic()
+    if _jwks_keys and (now - _jwks_fetched_at) < _JWKS_TTL:
+        return _jwks_keys
+
+    async with _jwks_lock:
+        now = time.monotonic()
+        if _jwks_keys and (now - _jwks_fetched_at) < _JWKS_TTL:
+            return _jwks_keys
+
+        metadata = await get_oidc_metadata(settings)
+        if not metadata:
+            return None
+
+        jwks_uri = metadata.get("jwks_uri")
+        if not jwks_uri:
+            return None
+
+        if not _require_https(jwks_uri, "JWKS URI"):
+            return None
+
+        client = _get_http_client()
+        try:
+            resp = await client.get(jwks_uri)
+            resp.raise_for_status()
+            _jwks_keys = JsonWebKey.import_key_set(resp.json())
+            _jwks_fetched_at = now
+            return _jwks_keys
+        except (httpx.HTTPError, Exception) as exc:
+            logger.warning("Failed to fetch JWKS: %s", exc)
+            return _jwks_keys  # Return stale keys if available
+
+
+def _validate_jwt_locally(
+    token: str,
+    jwks: Any,
+    settings: Settings,
+) -> dict[str, Any] | None:
+    """Validate a JWT access token locally using cached JWKS keys.
+
+    Returns the decoded claims on success, or ``None`` if validation fails.
+    """
+    try:
+        claims = authlib_jwt.decode(token, jwks)
+        claims.validate()
+
+        # Verify issuer matches our configured OIDC_ISSUER.
+        if claims.get("iss") != settings.OIDC_ISSUER:
+            logger.debug(
+                "JWT issuer mismatch: %s != %s",
+                claims.get("iss"),
+                settings.OIDC_ISSUER,
+            )
+            return None
+
+        # Verify audience — the token must be intended for this client.
+        # Keycloak puts the client_id in ``azp`` (authorized party) for
+        # access tokens and in ``aud`` for ID tokens.
+        aud = claims.get("aud")
+        azp = claims.get("azp")
+        client_id = settings.OIDC_CLIENT_ID
+
+        # ``aud`` can be a string or a list.
+        aud_list = [aud] if isinstance(aud, str) else (aud or [])
+        if client_id not in aud_list and azp != client_id:
+            logger.debug(
+                "JWT audience mismatch: aud=%s, azp=%s, expected=%s",
+                aud,
+                azp,
+                client_id,
+            )
+            return None
+
+        return dict(claims)
+    except JoseError as exc:
+        logger.debug("Local JWT validation failed: %s", exc)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -144,11 +253,15 @@ async def _get_or_create_person(
     sub: str,
     email: str,
     name: str,
+    email_verified: bool = False,
 ) -> Person:
     """Return existing ``Person`` by ``oidc_subject``, or create a new one.
 
     Handles race conditions where two concurrent requests might try to
     create the same person simultaneously.
+
+    Only links an existing Person by email if ``email_verified`` is True,
+    to prevent account takeover via unverified email claims.
     """
     stmt = select(Person).where(Person.oidc_subject == sub)
     result = await db.execute(stmt)
@@ -157,19 +270,19 @@ async def _get_or_create_person(
     if person is not None:
         return person
 
-    # Also check by email -- the record may already exist from a manual
-    # import without OIDC subject.
-    stmt_email = select(Person).where(Person.email == email)
-    result_email = await db.execute(stmt_email)
-    person = result_email.scalar_one_or_none()
+    # Only link by email if the OIDC provider has verified the email address.
+    if email_verified:
+        stmt_email = select(Person).where(Person.email == email)
+        result_email = await db.execute(stmt_email)
+        person = result_email.scalar_one_or_none()
 
-    if person is not None:
-        person.oidc_subject = sub
-        if name and not person.naam:
-            person.naam = name
-        await db.flush()
-        await db.refresh(person)
-        return person
+        if person is not None:
+            person.oidc_subject = sub
+            if name and not person.naam:
+                person.naam = name
+            await db.flush()
+            await db.refresh(person)
+            return person
 
     # Create brand-new person from OIDC claims.
     try:
@@ -184,12 +297,18 @@ async def _get_or_create_person(
         return person
     except IntegrityError:
         # Concurrent insert — roll back and re-fetch.
+        # Prefer matching by oidc_subject to avoid returning the wrong
+        # person when two different subjects share the same email.
         await db.rollback()
-        stmt = select(Person).where(
-            (Person.oidc_subject == sub) | (Person.email == email)
-        )
+        stmt = select(Person).where(Person.oidc_subject == sub)
         result = await db.execute(stmt)
         person = result.scalar_one_or_none()
+        if person is None:
+            # Fall back to email match (the IntegrityError may have been
+            # caused by a duplicate email rather than duplicate subject).
+            stmt = select(Person).where(Person.email == email)
+            result = await db.execute(stmt)
+            person = result.scalar_one_or_none()
         if person is None:
             raise  # Unexpected — re-raise the original error.
         return person
@@ -220,9 +339,7 @@ async def _try_refresh_token(
     if not token_url:
         return False
 
-    # Refuse to send client_secret over plain HTTP.
-    if not token_url.startswith("https://"):
-        logger.warning("Token endpoint is not HTTPS, refusing refresh: %s", token_url)
+    if not _require_https(token_url, "Token endpoint"):
         return False
 
     client = _get_http_client()
@@ -278,12 +395,25 @@ async def validate_session_token(
     if recently_validated:
         return True
 
+    # Try local JWT validation first (no network call).
+    jwks = await _get_jwks(settings)
+    if jwks:
+        claims = _validate_jwt_locally(access_token, jwks, settings)
+        if claims:
+            session["token_validated_at"] = time.time()
+            return True
+        # Local validation failed — token might be expired or keys rotated.
+        # Fall through to userinfo check / refresh.
+
     metadata = await get_oidc_metadata(settings)
     if not metadata:
         return False
 
     userinfo_url = metadata.get("userinfo_endpoint")
     if not userinfo_url:
+        return False
+
+    if not _require_https(userinfo_url, "Userinfo endpoint"):
         return False
 
     client = _get_http_client()
@@ -294,8 +424,14 @@ async def validate_session_token(
         )
     except httpx.HTTPError as exc:
         logger.warning("Token validation HTTP error: %s", exc)
-        # Network error — don't clear session, allow stale validation.
-        return True
+        # Network error — only allow if validated within the grace period.
+        if validated_at and (time.time() - validated_at) < _NETWORK_ERROR_GRACE_SECONDS:
+            logger.info("Keycloak unreachable, allowing session within grace period")
+            return True
+        logger.warning(
+            "Keycloak unreachable and grace period expired, rejecting session"
+        )
+        return False
 
     if resp.status_code == 200:
         session["token_validated_at"] = time.time()
@@ -318,16 +454,23 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
     1. ``Authorization: Bearer`` header (for API clients)
     2. ``request.session["access_token"]`` (for browser sessions)
 
+    For session-based tokens, if the token is expired this function attempts
+    a refresh before giving up — mirroring the behaviour of
+    :func:`validate_session_token`.
+
     Returns the userinfo claims dict on success, or ``None`` when no token is
     present.  Raises ``HTTPException(401)`` when the token is invalid.
     """
     # 1. Check Authorization header
     auth_header = request.headers.get("Authorization")
     token: str | None = None
+    is_bearer = False
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.removeprefix("Bearer ").strip() or None
+        is_bearer = token is not None
 
     # 2. Fall back to session token
+    session: dict | None = None
     if token is None:
         session = getattr(request, "session", None) or request.scope.get("session", {})
         token = session.get("access_token") if session else None
@@ -335,6 +478,14 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
     if not token:
         return None
 
+    # Try local JWT validation first (avoids network call).
+    jwks = await _get_jwks(settings)
+    if jwks:
+        claims = _validate_jwt_locally(token, jwks, settings)
+        if claims:
+            return claims
+
+    # Fall back to userinfo endpoint.
     metadata = await get_oidc_metadata(settings)
     if not metadata:
         return None
@@ -343,28 +494,103 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
     if not userinfo_url:
         return None
 
+    if not _require_https(userinfo_url, "Userinfo endpoint"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="OIDC userinfo endpoint is not HTTPS",
+        )
+
     client = _get_http_client()
     try:
         resp = await client.get(
             userinfo_url,
             headers={"Authorization": f"Bearer {token}"},
         )
-        if resp.status_code != 200:
-            # Token expired or invalid — clear session if present
-            session = request.scope.get("session")
-            if session and "access_token" in session:
-                session.clear()
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired token",
-            )
-        return resp.json()
+        if resp.status_code == 200:
+            return resp.json()
+
+        # Token invalid/expired — try refresh for session-based tokens.
+        if not is_bearer and session and session.get("refresh_token"):
+            if await _try_refresh_token(session, settings):
+                # Re-validate with the refreshed token.
+                new_token = session.get("access_token")
+                if new_token:
+                    resp2 = await client.get(
+                        userinfo_url,
+                        headers={"Authorization": f"Bearer {new_token}"},
+                    )
+                    if resp2.status_code == 200:
+                        return resp2.json()
+
+        # All attempts failed — clear session if present.
+        if session and "access_token" in session:
+            session.clear()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
     except httpx.HTTPError as exc:
         logger.warning("OIDC token validation failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token validation failed",
         ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Token revocation (best-effort, for logout)
+# ---------------------------------------------------------------------------
+
+
+async def revoke_tokens(
+    settings: Settings,
+    access_token: str | None = None,
+    refresh_token: str | None = None,
+) -> None:
+    """Revoke access and/or refresh tokens at Keycloak (best-effort).
+
+    Failures are logged but never raised — logout should always succeed locally.
+    """
+    if not access_token and not refresh_token:
+        return
+
+    metadata = await get_oidc_metadata(settings)
+    if not metadata:
+        return
+
+    # Use the revocation_endpoint from discovery, or fall back to the
+    # standard Keycloak revocation path.
+    revocation_url = metadata.get(
+        "revocation_endpoint",
+        f"{settings.OIDC_ISSUER.rstrip('/')}/protocol/openid-connect/revoke",
+    )
+
+    if not _require_https(revocation_url, "Revocation endpoint"):
+        return
+
+    client = _get_http_client()
+    for token_value, token_type in [
+        (refresh_token, "refresh_token"),
+        (access_token, "access_token"),
+    ]:
+        if not token_value:
+            continue
+        try:
+            resp = await client.post(
+                revocation_url,
+                data={
+                    "token": token_value,
+                    "token_type_hint": token_type,
+                    "client_id": settings.OIDC_CLIENT_ID,
+                    "client_secret": settings.OIDC_CLIENT_SECRET,
+                },
+            )
+            if resp.status_code != 200:
+                logger.info(
+                    "Token revocation returned %d for %s", resp.status_code, token_type
+                )
+        except httpx.HTTPError as exc:
+            logger.warning("Token revocation failed for %s: %s", token_type, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +625,7 @@ async def get_current_user(
     sub: str = claims.get("sub", "")
     email: str = claims.get("email", "")
     name: str = claims.get("name", claims.get("preferred_username", ""))
+    email_verified: bool = claims.get("email_verified", False)
 
     if not sub or not email:
         raise HTTPException(
@@ -406,7 +633,9 @@ async def get_current_user(
             detail="OIDC claims missing 'sub' or 'email'",
         )
 
-    person = await _get_or_create_person(db, sub=sub, email=email, name=name)
+    person = await _get_or_create_person(
+        db, sub=sub, email=email, name=name, email_verified=email_verified
+    )
     return person
 
 
@@ -429,11 +658,14 @@ async def get_optional_user(
     sub: str = claims.get("sub", "")
     email: str = claims.get("email", "")
     name: str = claims.get("name", claims.get("preferred_username", ""))
+    email_verified: bool = claims.get("email_verified", False)
 
     if not sub or not email:
         return None
 
-    person = await _get_or_create_person(db, sub=sub, email=email, name=name)
+    person = await _get_or_create_person(
+        db, sub=sub, email=email, name=name, email_verified=email_verified
+    )
     return person
 
 

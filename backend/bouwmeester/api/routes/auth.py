@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import defaultdict
+from collections import OrderedDict
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
-from bouwmeester.core.auth import CurrentUser, get_oauth, validate_session_token
+from bouwmeester.core.auth import (
+    CurrentUser,
+    get_oauth,
+    revoke_tokens,
+    validate_session_token,
+)
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.schema.person import PersonDetailResponse
 
@@ -19,30 +24,50 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ---------------------------------------------------------------------------
-# Simple in-memory rate limiter for auth endpoints
+# In-memory rate limiter for auth endpoints (login/callback/logout only)
 # ---------------------------------------------------------------------------
 
-_rate_limit_window = 60  # seconds
-_rate_limit_max = 30  # requests per window per IP
-_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_MAX = 30  # requests per window per IP
+_RATE_LIMIT_MAX_KEYS = 10_000  # max tracked IPs (LRU eviction)
+_rate_limit_store: OrderedDict[str, list[float]] = OrderedDict()
+
+
+def _get_client_ip(request: Request) -> str:
+    """Extract the client IP from the ASGI connection.
+
+    We intentionally do NOT trust X-Forwarded-For here because any client can
+    spoof that header.  The reverse proxy (nginx / k8s ingress) should be
+    configured to set the real remote address on the ASGI connection instead
+    (e.g. uvicorn ``--proxy-headers`` with ``--forwarded-allow-ips``).
+    """
+    return request.client.host if request.client else "unknown"
 
 
 def _check_rate_limit(request: Request) -> None:
     """Raise 429 if the client IP has exceeded the rate limit."""
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     now = time.monotonic()
-    window_start = now - _rate_limit_window
+    window_start = now - _RATE_LIMIT_WINDOW
 
-    # Prune old entries.
-    timestamps = _rate_limit_store[client_ip]
-    _rate_limit_store[client_ip] = [t for t in timestamps if t > window_start]
+    # Prune old entries for this IP.
+    timestamps = _rate_limit_store.get(client_ip, [])
+    pruned = [t for t in timestamps if t > window_start]
 
-    if len(_rate_limit_store[client_ip]) >= _rate_limit_max:
+    if len(pruned) >= _RATE_LIMIT_MAX:
+        _rate_limit_store[client_ip] = pruned
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many requests, try again later",
         )
-    _rate_limit_store[client_ip].append(now)
+
+    pruned.append(now)
+    _rate_limit_store[client_ip] = pruned
+    _rate_limit_store.move_to_end(client_ip)
+
+    # Evict oldest entries if we exceed the max tracked keys.
+    while len(_rate_limit_store) > _RATE_LIMIT_MAX_KEYS:
+        _rate_limit_store.popitem(last=False)
 
 
 # ---------------------------------------------------------------------------
@@ -95,11 +120,17 @@ async def callback(
 
     token = await oauth.keycloak.authorize_access_token(request)
 
-    # Store tokens in the server-side session.
+    # Rotate the session ID to prevent session fixation attacks.
+    # Clear the old session and populate a fresh one (the session middleware
+    # will detect the clear + re-population and issue a new session ID).
     session = request.session
+    session.clear()
+
     session["access_token"] = token.get("access_token")
     session["refresh_token"] = token.get("refresh_token")
     session["id_token"] = token.get("id_token")
+    # Mark session as needing a new ID (picked up by session middleware).
+    session["_rotate"] = True
 
     # Extract user info for quick access.
     userinfo = token.get("userinfo", {})
@@ -128,12 +159,21 @@ async def logout(
     """Clear local session state and redirect to the OIDC end-session endpoint."""
     _check_rate_limit(request)
     id_token = request.session.get("id_token")
+    access_token = request.session.get("access_token")
+    refresh_token = request.session.get("refresh_token")
 
     # Clear all session data.
     request.session.clear()
 
     if not settings.OIDC_ISSUER:
         return RedirectResponse(url=settings.FRONTEND_URL, status_code=302)
+
+    # Best-effort token revocation (don't block logout on failure).
+    await revoke_tokens(
+        settings=settings,
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
 
     # Build the OIDC end-session URL.
     end_session_url = (
@@ -163,7 +203,7 @@ async def auth_status(
     settings: Settings = Depends(get_settings),
 ) -> dict:
     """Return authentication status for the current session."""
-    _check_rate_limit(request)
+    # No rate limit here — this is called on every page load by the frontend.
     oidc_configured = bool(settings.OIDC_ISSUER)
     authenticated = False
 

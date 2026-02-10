@@ -1,20 +1,25 @@
 """Global authentication middleware.
 
 When OIDC is configured, this middleware rejects unauthenticated requests to
-``/api/`` routes with a 401 response — except for public paths like
+``/api/`` routes with a 401 response -- except for public paths like
 ``/api/auth/*`` and ``/api/health/*``.
 
 When OIDC is *not* configured (local development) the middleware is a no-op.
 
-Token validation is performed periodically (every 5 minutes) against the
-Keycloak userinfo endpoint.  If the access token has expired, the middleware
-attempts a refresh using the stored refresh token before rejecting the request.
+Bearer tokens are validated via the shared :func:`~bouwmeester.core.auth`
+helpers (local JWT check first, then userinfo endpoint).  Session-based
+tokens are validated via :func:`~bouwmeester.core.auth.validate_session_token`
+which includes periodic revalidation, refresh, and a grace period.
+
+On success the middleware sets ``scope["_auth_validated"] = True`` so that
+downstream FastAPI dependencies can skip redundant validation.
 """
 
 from __future__ import annotations
 
 import json
 
+import httpx
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from bouwmeester.core.config import Settings
@@ -50,18 +55,38 @@ class AuthRequiredMiddleware:
         self.settings = settings
 
     async def _validate_bearer(self, token: str) -> bool:
-        """Validate a Bearer token against the OIDC userinfo endpoint."""
+        """Validate a Bearer token using the shared auth helpers.
+
+        Tries local JWT validation first (no network call), then falls back
+        to the OIDC userinfo endpoint with HTTPS enforcement.
+        """
         if not self.settings:
             return False
-        from bouwmeester.core.auth import _get_http_client, get_oidc_metadata
 
+        from bouwmeester.core.auth import (
+            _get_http_client,
+            _get_jwks,
+            _require_https,
+            _validate_jwt_locally,
+            get_oidc_metadata,
+        )
+
+        # 1. Try local JWT validation (fast, no network).
+        jwks = await _get_jwks(self.settings)
+        if jwks:
+            claims = _validate_jwt_locally(token, jwks, self.settings)
+            if claims:
+                return True
+
+        # 2. Fall back to userinfo endpoint.
         metadata = await get_oidc_metadata(self.settings)
         if not metadata:
             return False
         userinfo_url = metadata.get("userinfo_endpoint")
         if not userinfo_url:
             return False
-        import httpx
+        if not _require_https(userinfo_url, "Userinfo endpoint"):
+            return False
 
         client = _get_http_client()
         try:
@@ -94,6 +119,7 @@ class AuthRequiredMiddleware:
         bearer_token = _get_bearer_token(scope)
         if bearer_token:
             if await self._validate_bearer(bearer_token):
+                scope["_auth_validated"] = True
                 await self.app(scope, receive, send)
                 return
 
@@ -103,10 +129,11 @@ class AuthRequiredMiddleware:
             from bouwmeester.core.auth import validate_session_token
 
             if await validate_session_token(session, self.settings):
+                scope["_auth_validated"] = True
                 await self.app(scope, receive, send)
                 return
 
-        # No valid session or Bearer token — return 401.
+        # No valid session or Bearer token -- return 401.
         body = json.dumps({"detail": "Authentication required"}).encode("utf-8")
         await send(
             {
