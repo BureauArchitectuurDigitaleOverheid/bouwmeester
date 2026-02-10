@@ -59,7 +59,7 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
             {person.functie && (
               <div className="flex items-center gap-1.5 text-xs text-text-secondary">
                 <Briefcase className="h-3 w-3 shrink-0" />
-                <span className="truncate">{FUNCTIE_LABELS[person.functie] || person.functie}</span>
+                <span className="truncate">{FUNCTIE_LABELS[person.functie] || person.functie.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
               </div>
             )}
             {person.is_agent && person.description && (
