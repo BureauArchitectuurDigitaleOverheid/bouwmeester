@@ -29,9 +29,10 @@ class PersonRepository(BaseRepository[Person]):
         return result.scalar_one_or_none()
 
     async def search(self, query: str, limit: int = 10) -> list[Person]:
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         stmt = (
             select(Person)
-            .where(Person.naam.ilike(f"%{query}%"))
+            .where(Person.naam.ilike(f"%{escaped}%"))
             .order_by(Person.naam)
             .limit(limit)
         )

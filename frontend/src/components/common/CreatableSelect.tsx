@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, Plus } from 'lucide-react';
+import { ChevronDown, Plus, X } from 'lucide-react';
 
 export interface SelectOption {
   value: string;
@@ -18,6 +18,20 @@ interface CreatableSelectProps {
   error?: string;
   disabled?: boolean;
   required?: boolean;
+  /** Called when the search query changes (for API-driven filtering) */
+  onQueryChange?: (query: string) => void;
+  /**
+   * When false, skip client-side filtering — show options as-is.
+   * Use this when options are already filtered by an API call.
+   * @default true
+   */
+  filterLocally?: boolean;
+  /** Text to display when no option is selected (e.g. after creating a new item) */
+  displayValue?: string;
+  /** Called when the user clears the selection. Shows an X button when provided and a value is set. */
+  onClear?: () => void;
+  /** Message to show when the dropdown is open but has no results (default: "Geen resultaten") */
+  emptyMessage?: string;
 }
 
 export function CreatableSelect({
@@ -31,6 +45,11 @@ export function CreatableSelect({
   error,
   disabled,
   required,
+  onQueryChange,
+  filterLocally = true,
+  displayValue,
+  onClear,
+  emptyMessage = 'Geen resultaten',
 }: CreatableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -42,7 +61,7 @@ export function CreatableSelect({
 
   const selectedOption = options.find((o) => o.value === value);
 
-  const filtered = query
+  const filtered = filterLocally && query
     ? options.filter(
         (o) =>
           o.label.toLowerCase().includes(query.toLowerCase()) ||
@@ -140,6 +159,7 @@ export function CreatableSelect({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
+    onQueryChange?.(e.target.value);
     if (!isOpen) setIsOpen(true);
   };
 
@@ -152,6 +172,10 @@ export function CreatableSelect({
   };
 
   const selectId = label?.toLowerCase().replace(/\s+/g, '-');
+
+  // What to show when closed: selected option label, displayValue fallback, or placeholder
+  const closedDisplayText = selectedOption?.label || displayValue || '';
+  const hasDisplay = !!closedDisplayText;
 
   return (
     <div className="space-y-1.5" ref={containerRef}>
@@ -180,16 +204,31 @@ export function CreatableSelect({
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               className="flex-1 outline-none bg-transparent text-text placeholder:text-text-secondary/50"
-              placeholder={selectedOption?.label || placeholder}
+              placeholder={closedDisplayText || placeholder}
               autoFocus
             />
           ) : (
-            <span className={`flex-1 truncate ${selectedOption ? 'text-text' : 'text-text-secondary/50'}`}>
-              {selectedOption?.label || placeholder}
+            <span className={`flex-1 truncate ${hasDisplay ? 'text-text' : 'text-text-secondary/50'}`}>
+              {closedDisplayText || placeholder}
             </span>
           )}
+          {onClear && hasDisplay && !isOpen && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+                onClear();
+                onQueryChange?.('');
+              }}
+              className="shrink-0 ml-1 p-0.5 rounded hover:bg-gray-100 transition-colors"
+              title="Selectie wissen"
+            >
+              <X className="h-3.5 w-3.5 text-text-secondary" />
+            </button>
+          )}
           <ChevronDown
-            className={`h-4 w-4 text-text-secondary shrink-0 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            className={`h-4 w-4 text-text-secondary shrink-0 ml-1 transition-transform ${isOpen ? 'rotate-180' : ''}`}
           />
         </div>
 
@@ -200,7 +239,7 @@ export function CreatableSelect({
             className="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-xl border border-border bg-white shadow-lg py-1"
           >
             {filtered.length === 0 && !showCreateOption && (
-              <li className="px-3.5 py-2.5 text-sm text-text-secondary">Geen resultaten</li>
+              <li className="px-3.5 py-2.5 text-sm text-text-secondary">{emptyMessage}</li>
             )}
 
             {filtered.map((opt, idx) => (

@@ -390,6 +390,32 @@ export interface PersonCreate {
   api_key?: string;
 }
 
+// PersonEditForm submit discriminated union
+/** Create a new person (optionally link to org) */
+interface PersonFormCreate {
+  kind: 'create';
+  data: PersonCreate;
+  orgEenheidId?: string;
+  dienstverband?: string;
+}
+
+/** Link an existing person to an org */
+interface PersonFormLink {
+  kind: 'link';
+  existingPersonId: string;
+  orgEenheidId?: string;
+  dienstverband?: string;
+}
+
+/** Edit an existing person's fields */
+interface PersonFormEdit {
+  kind: 'edit';
+  personId: string;
+  data: PersonCreate;
+}
+
+export type PersonFormSubmitParams = PersonFormCreate | PersonFormLink | PersonFormEdit;
+
 // Person ↔ OrganisatieEenheid placements
 export interface PersonOrganisatie {
   id: string;

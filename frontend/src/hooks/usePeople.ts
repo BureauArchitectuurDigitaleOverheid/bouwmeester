@@ -8,7 +8,9 @@ import {
   addPersonOrganisatie,
   updatePersonOrganisatie,
   removePersonOrganisatie,
+  searchPeople,
 } from '@/api/people';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { PersonCreate } from '@/types';
 
@@ -95,5 +97,14 @@ export function useRemovePersonOrganisatie() {
     }) => removePersonOrganisatie(personId, placementId),
     errorMessage: 'Fout bij verwijderen plaatsing',
     invalidateKeys: [['people'], ['organisatie']],
+  });
+}
+
+export function useSearchPeople(query: string) {
+  const debouncedQuery = useDebounce(query, 300);
+  return useQuery({
+    queryKey: ['people', 'search', debouncedQuery],
+    queryFn: () => searchPeople(debouncedQuery),
+    enabled: debouncedQuery.length >= 2,
   });
 }

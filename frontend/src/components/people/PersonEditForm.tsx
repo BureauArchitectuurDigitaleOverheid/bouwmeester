@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Copy, RefreshCw } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
-import { usePeople } from '@/hooks/usePeople';
+import { usePeople, useSearchPeople } from '@/hooks/usePeople';
 import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS } from '@/types';
-import type { Person, PersonCreate } from '@/types';
+import type { Person, PersonCreate, PersonFormSubmitParams } from '@/types';
 
 // Character names from Bordewijk's novel "Karakter" — used as agent names
 const KARAKTER_NAMEN = [
@@ -37,7 +37,7 @@ const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS).m
 interface PersonEditFormProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: PersonCreate, orgEenheidId?: string, dienstverband?: string) => void;
+  onSubmit: (params: PersonFormSubmitParams) => void;
   isLoading?: boolean;
   editData?: Person | null;
   defaultIsAgent?: boolean;
@@ -63,7 +63,33 @@ export function PersonEditForm({
   const [dienstverband, setDienstverband] = useState('in_dienst');
   const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
 
+  // Search/select existing person state (create mode, non-agent only)
+  const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
+  const [naamQuery, setNaamQuery] = useState('');
+
   const { data: allPeople = [] } = usePeople();
+  const { data: searchResults = [] } = useSearchPeople(naamQuery);
+
+  // Cache all persons we've ever seen from search results so lookups
+  // remain stable even when the debounced query changes (Fix #3).
+  const personCacheRef = useRef<Map<string, Person>>(new Map());
+  for (const p of searchResults) {
+    personCacheRef.current.set(p.id, p);
+  }
+
+  // Filter out agents from search results
+  const personResults = searchResults.filter(p => !p.is_agent);
+
+  // Build options for the naam CreatableSelect
+  const naamOptions: SelectOption[] = personResults.map(p => ({
+    value: p.id,
+    label: p.naam,
+    description: p.email || undefined,
+  }));
+
+  const naamEmptyMessage = naamQuery.length < 2
+    ? 'Typ minimaal 2 tekens om te zoeken...'
+    : 'Geen personen gevonden';
 
   useEffect(() => {
     if (open) {
@@ -97,30 +123,59 @@ export function PersonEditForm({
         setApiKey(defaultIsAgent ? generateMockApiKey() : '');
         setOrgEenheidId(defaultOrgEenheidId || '');
         setDienstverband('in_dienst');
+        setSelectedPerson(null);
+        setNaamQuery('');
+        personCacheRef.current.clear();
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editData, defaultIsAgent, defaultOrgEenheidId, allPeople]);
 
   const isAgent = editData ? editData.is_agent : defaultIsAgent;
-  const isValid = naam.trim() && (isAgent || email.trim());
+  const isCreateMode = !editData;
+  const isValid = selectedPerson
+    ? true // existing person is always valid
+    : naam.trim() && (isAgent || email.trim());
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValid) return;
 
-    onSubmit(
-      {
-        naam: naam.trim(),
-        email: email.trim() || undefined,
-        functie: isAgent ? undefined : (functie || undefined),
-        description: isAgent ? (description.trim() || undefined) : undefined,
-        is_agent: isAgent,
-        api_key: isAgent ? apiKey : undefined,
-      },
-      orgEenheidId || undefined,
-      orgEenheidId ? dienstverband : undefined,
-    );
+    if (editData) {
+      onSubmit({
+        kind: 'edit',
+        personId: editData.id,
+        data: {
+          naam: naam.trim(),
+          email: email.trim() || undefined,
+          functie: isAgent ? undefined : (functie || undefined),
+          description: isAgent ? (description.trim() || undefined) : undefined,
+          is_agent: isAgent,
+          api_key: isAgent ? apiKey : undefined,
+        },
+      });
+    } else if (selectedPerson) {
+      onSubmit({
+        kind: 'link',
+        existingPersonId: selectedPerson.id,
+        orgEenheidId: orgEenheidId || undefined,
+        dienstverband: orgEenheidId ? dienstverband : undefined,
+      });
+    } else {
+      onSubmit({
+        kind: 'create',
+        data: {
+          naam: naam.trim(),
+          email: email.trim() || undefined,
+          functie: isAgent ? undefined : (functie || undefined),
+          description: isAgent ? (description.trim() || undefined) : undefined,
+          is_agent: isAgent,
+          api_key: isAgent ? apiKey : undefined,
+        },
+        orgEenheidId: orgEenheidId || undefined,
+        dienstverband: orgEenheidId ? dienstverband : undefined,
+      });
+    }
   };
 
   const handleCreateFunctie = async (text: string): Promise<string | null> => {
@@ -130,9 +185,55 @@ export function PersonEditForm({
     return value;
   };
 
+  // Handle selecting an existing person from the search dropdown
+  const handleNaamSelect = (personId: string) => {
+    // Look up in cache first (stable across debounce cycles), then fallback to current results
+    const person = personCacheRef.current.get(personId) || personResults.find(p => p.id === personId);
+    if (person) {
+      setSelectedPerson(person);
+      setNaam(person.naam);
+      setEmail(person.email || '');
+      setFunctie(person.functie || '');
+      // Ensure the functie value is in options
+      if (person.functie) {
+        setFunctieOptions((prev) =>
+          prev.some((o) => o.value === person.functie)
+            ? prev
+            : [...prev, { value: person.functie!, label: person.functie! }],
+        );
+      }
+    }
+  };
+
+  // Handle creating a new person (typed name not found in results)
+  const handleNaamCreate = async (text: string): Promise<string | null> => {
+    setSelectedPerson(null);
+    setNaam(text);
+    setEmail('');
+    setFunctie('');
+    return null; // don't set a value — we switch to create mode
+  };
+
+  // Clear selected person and return to search/create mode
+  const handleNaamClear = () => {
+    setSelectedPerson(null);
+    setNaam('');
+    setEmail('');
+    setFunctie('');
+    setNaamQuery('');
+  };
+
   const title = editData
     ? (isAgent ? 'Agent bewerken' : 'Persoon bewerken')
-    : (isAgent ? 'Agent toevoegen' : 'Persoon toevoegen');
+    : selectedPerson
+      ? 'Persoon koppelen'
+      : (isAgent ? 'Agent toevoegen' : 'Persoon toevoegen');
+
+  const submitLabel = editData
+    ? 'Opslaan'
+    : selectedPerson
+      ? 'Koppelen'
+      : 'Toevoegen';
 
   return (
     <Modal
@@ -149,21 +250,49 @@ export function PersonEditForm({
             loading={isLoading}
             disabled={!isValid}
           >
-            {editData ? 'Opslaan' : 'Toevoegen'}
+            {submitLabel}
           </Button>
         </>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          label="Naam"
-          value={naam}
-          onChange={(e) => setNaam(e.target.value)}
-          placeholder="Volledige naam"
-          required
-          autoFocus
-        />
-        {!isAgent && (
+        {/* Naam field: search+select in create mode for non-agents, plain Input otherwise */}
+        {isCreateMode && !isAgent ? (
+          <CreatableSelect
+            label="Naam"
+            value={selectedPerson?.id || ''}
+            onChange={handleNaamSelect}
+            options={naamOptions}
+            placeholder="Zoek persoon of typ nieuwe naam..."
+            onCreate={handleNaamCreate}
+            createLabel="Nieuwe persoon aanmaken"
+            onQueryChange={setNaamQuery}
+            filterLocally={false}
+            displayValue={naam}
+            onClear={selectedPerson ? handleNaamClear : undefined}
+            emptyMessage={naamEmptyMessage}
+            required
+          />
+        ) : (
+          <Input
+            label="Naam"
+            value={naam}
+            onChange={(e) => setNaam(e.target.value)}
+            placeholder="Volledige naam"
+            required
+            autoFocus
+          />
+        )}
+        {!isAgent && selectedPerson && (
+          <Input
+            label="E-mail"
+            type="email"
+            value={email || 'Geen e-mail'}
+            onChange={() => {}}
+            disabled
+          />
+        )}
+        {!isAgent && !selectedPerson && (
           <Input
             label="E-mail"
             type="email"
@@ -223,6 +352,7 @@ export function PersonEditForm({
             placeholder="Selecteer of maak functie..."
             onCreate={handleCreateFunctie}
             createLabel="Nieuwe functie aanmaken"
+            disabled={!!selectedPerson}
           />
         )}
         {!editData && (
