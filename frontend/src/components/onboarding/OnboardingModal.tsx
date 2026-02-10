@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiPost } from '@/api/client';
+import { apiPost, ApiError } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Modal } from '@/components/common/Modal';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
@@ -9,7 +9,6 @@ interface OnboardingPayload {
   naam: string;
   functie: string;
   organisatie_eenheid_id: string;
-  dienstverband: string;
 }
 
 export function OnboardingModal() {
@@ -28,8 +27,12 @@ export function OnboardingModal() {
       await queryClient.invalidateQueries({ queryKey: ['people'] });
       await refreshAuthStatus();
     },
-    onError: () => {
-      setError('Er is iets misgegaan. Probeer het opnieuw.');
+    onError: (err) => {
+      if (err instanceof ApiError && err.body && typeof err.body === 'object' && 'detail' in err.body) {
+        setError(String((err.body as { detail: string }).detail));
+      } else {
+        setError('Er is iets misgegaan. Probeer het opnieuw.');
+      }
     },
   });
 
@@ -42,7 +45,6 @@ export function OnboardingModal() {
       naam: naam.trim(),
       functie: functie.trim(),
       organisatie_eenheid_id: orgId,
-      dienstverband: 'in_dienst',
     });
   };
 

@@ -72,7 +72,10 @@ export function CurrentPersonProvider({ children }: { children: ReactNode }) {
     [people, effectiveId],
   );
 
-  const isViewingAsOther = oidcConfigured && !!overrideId && overrideId !== authPersonId;
+  const isViewingAsOther = useMemo(
+    () => oidcConfigured && !!overrideId && overrideId !== authPersonId,
+    [oidcConfigured, overrideId, authPersonId],
+  );
 
   const value = useMemo(
     () => ({
