@@ -23,7 +23,7 @@ COPY --from=builder --chown=appuser:appuser /app /app
 
 USER 1001
 
-ENV UV_NO_CACHE=1
+ENV UV_NO_CACHE=1 UV_FROZEN=1
 
 EXPOSE 8080
 
