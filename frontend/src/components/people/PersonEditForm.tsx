@@ -7,7 +7,7 @@ import { CreatableSelect, type SelectOption } from '@/components/common/Creatabl
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
 import { usePeople, useSearchPeople } from '@/hooks/usePeople';
 import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS } from '@/types';
-import type { Person, PersonCreate, PersonFormSubmitParams } from '@/types';
+import type { Person, PersonFormSubmitParams } from '@/types';
 
 // Character names from Bordewijk's novel "Karakter" — used as agent names
 const KARAKTER_NAMEN = [
