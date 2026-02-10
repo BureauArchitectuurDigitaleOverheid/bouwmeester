@@ -121,6 +121,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
             onDragStartPerson={onDragStartPerson}
             isManager
             managerLabel={managerLabelForType(group.eenheid.type, managerPerson.functie)}
+            showPlacementActions
           />
         )}
 
@@ -131,6 +132,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
             person={person}
             onEditPerson={onEditPerson}
             onDragStartPerson={onDragStartPerson}
+            showPlacementActions
           />
         ))}
 
@@ -192,6 +194,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
               onDragStartPerson={onDragStartPerson}
               isManager
               managerLabel={managerLabelForType(group.eenheid.type, managerPerson.functie)}
+              showPlacementActions
             />
           )}
 
@@ -202,6 +205,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
               person={person}
               onEditPerson={onEditPerson}
               onDragStartPerson={onDragStartPerson}
+              showPlacementActions
             />
           ))}
 
