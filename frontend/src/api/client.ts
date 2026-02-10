@@ -1,3 +1,8 @@
+function getCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)(?:__Host-)?bm_csrf=([^;]*)/);
+  return match ? match[1] : '';
+}
+
 function getBaseUrl(): string {
   // Check runtime config (injected via config.js)
   const config = (window as unknown as Record<string, unknown>).__CONFIG__ as Record<string, string> | undefined;
@@ -19,7 +24,7 @@ function getBaseUrl(): string {
   return '';
 }
 
-const BASE_URL = getBaseUrl();
+export const BASE_URL = getBaseUrl();
 
 export class ApiError extends Error {
   constructor(
@@ -63,11 +68,20 @@ function buildUrl(path: string, params?: Record<string, string | number | boolea
   return url.toString();
 }
 
+/** Headers for read-only requests. */
+const readHeaders: HeadersInit = { 'Content-Type': 'application/json' };
+
+/** Headers for state-changing requests (includes CSRF token). */
+function mutationHeaders(): HeadersInit {
+  return { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() };
+}
+
 export async function apiGet<T>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
   const url = buildUrl(path, params);
   const response = await fetch(url, {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
+    headers: readHeaders,
+    credentials: 'include',
   });
   return handleResponse<T>(response);
 }
@@ -76,8 +90,9 @@ export async function apiPost<T>(path: string, data?: unknown): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: mutationHeaders(),
     body: data ? JSON.stringify(data) : undefined,
+    credentials: 'include',
   });
   return handleResponse<T>(response);
 }
@@ -86,8 +101,9 @@ export async function apiPut<T>(path: string, data?: unknown): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: mutationHeaders(),
     body: data ? JSON.stringify(data) : undefined,
+    credentials: 'include',
   });
   return handleResponse<T>(response);
 }
@@ -96,8 +112,9 @@ export async function apiPatch<T>(path: string, data?: unknown): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: mutationHeaders(),
     body: data ? JSON.stringify(data) : undefined,
+    credentials: 'include',
   });
   return handleResponse<T>(response);
 }
@@ -106,7 +123,8 @@ export async function apiDelete<T = void>(path: string): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
+    headers: mutationHeaders(),
+    credentials: 'include',
   });
   return handleResponse<T>(response);
 }

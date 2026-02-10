@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CurrentPersonProvider } from '@/contexts/CurrentPersonContext';
 import { VocabularyProvider } from '@/contexts/VocabularyContext';
 import { TaskDetailProvider } from '@/contexts/TaskDetailContext';
@@ -15,6 +16,7 @@ import { OrganisatiePage } from '@/pages/OrganisatiePage';
 import { SearchPage } from '@/pages/SearchPage';
 import { ParlementairPage } from '@/pages/ParlementairPage';
 import { EenheidOverzichtPage } from '@/pages/EenheidOverzichtPage';
+import { LoginPage } from '@/pages/LoginPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,33 +28,75 @@ const queryClient = new QueryClient({
   },
 });
 
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { loading, authenticated, oidcConfigured, error } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-text-secondary">Laden...</div>
+      </div>
+    );
+  }
+
+  // Show error state when auth status check failed
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-sm w-full space-y-4 text-center">
+          <h1 className="text-xl font-semibold text-text">Verbindingsfout</h1>
+          <p className="text-sm text-text-secondary">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-gray-100 transition-colors"
+          >
+            Opnieuw proberen
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // If OIDC is configured and user is not authenticated, show login
+  if (oidcConfigured && !authenticated) {
+    return <LoginPage />;
+  }
+
+  // No OIDC configured (local dev) or authenticated — continue
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <CurrentPersonProvider>
-        <VocabularyProvider>
-        <BrowserRouter>
-          <TaskDetailProvider>
-          <NodeDetailProvider>
-            <Routes>
-              <Route element={<AppLayout />}>
-                <Route path="/" element={<InboxPage />} />
-                <Route path="/corpus" element={<CorpusPage />} />
-                <Route path="/nodes/:id" element={<NodeDetailPage />} />
-                <Route path="/tasks" element={<TasksPage />} />
-                <Route path="/people" element={<PeoplePage />} />
-                <Route path="/organisatie" element={<OrganisatiePage />} />
-                <Route path="/eenheid-overzicht" element={<EenheidOverzichtPage />} />
-                <Route path="/search" element={<SearchPage />} />
-                <Route path="/parlementair" element={<ParlementairPage />} />
-              </Route>
-            </Routes>
-            <DetailModals />
-          </NodeDetailProvider>
-          </TaskDetailProvider>
-        </BrowserRouter>
-        </VocabularyProvider>
-      </CurrentPersonProvider>
+      <AuthProvider>
+        <AuthGate>
+          <CurrentPersonProvider>
+            <VocabularyProvider>
+            <BrowserRouter>
+              <TaskDetailProvider>
+              <NodeDetailProvider>
+                <Routes>
+                  <Route element={<AppLayout />}>
+                    <Route path="/" element={<InboxPage />} />
+                    <Route path="/corpus" element={<CorpusPage />} />
+                    <Route path="/nodes/:id" element={<NodeDetailPage />} />
+                    <Route path="/tasks" element={<TasksPage />} />
+                    <Route path="/people" element={<PeoplePage />} />
+                    <Route path="/organisatie" element={<OrganisatiePage />} />
+                    <Route path="/eenheid-overzicht" element={<EenheidOverzichtPage />} />
+                    <Route path="/search" element={<SearchPage />} />
+                    <Route path="/parlementair" element={<ParlementairPage />} />
+                  </Route>
+                </Routes>
+                <DetailModals />
+              </NodeDetailProvider>
+              </TaskDetailProvider>
+            </BrowserRouter>
+            </VocabularyProvider>
+          </CurrentPersonProvider>
+        </AuthGate>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
