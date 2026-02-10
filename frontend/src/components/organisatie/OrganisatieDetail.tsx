@@ -174,7 +174,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
         )}
         <Badge
           variant={TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}
-          className="text-[10px] px-1.5 py-0"
+          className="text-xs px-2 py-0.5"
         >
           {ORGANISATIE_TYPE_LABELS[group.eenheid.type] || group.eenheid.type}
         </Badge>
