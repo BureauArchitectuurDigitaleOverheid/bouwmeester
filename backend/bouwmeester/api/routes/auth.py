@@ -21,8 +21,8 @@ from bouwmeester.core.auth import (
     validate_session_token,
 )
 from bouwmeester.core.config import Settings, get_settings
-from bouwmeester.core.whitelist import is_email_allowed
 from bouwmeester.core.database import get_db
+from bouwmeester.core.whitelist import is_email_allowed
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid

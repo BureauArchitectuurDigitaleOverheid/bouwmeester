@@ -81,9 +81,7 @@ def load_whitelist() -> None:
 
     _allowed_emails = None
     _whitelist_active = False
-    logger.info(
-        "No access whitelist found — all emails allowed (backwards compatible)"
-    )
+    logger.info("No access whitelist found — all emails allowed (backwards compatible)")
 
 
 def is_email_allowed(email: str) -> bool:
