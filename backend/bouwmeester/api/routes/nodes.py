@@ -82,7 +82,10 @@ async def create_node(
     )
 
     await log_activity(
-        db, current_user, actor_id, "node.created",
+        db,
+        current_user,
+        actor_id,
+        "node.created",
         node_id=node.id,
         details={"title": node.title, "node_type": node.node_type},
     )
@@ -168,7 +171,10 @@ async def delete_node(
     node_type = node.node_type if node else None
     require_deleted(await service.delete(id), "Node")
     await log_activity(
-        db, current_user, actor_id, "node.deleted",
+        db,
+        current_user,
+        actor_id,
+        "node.deleted",
         details={"node_id": str(id), "title": node_title, "node_type": node_type},
     )
 
@@ -324,7 +330,10 @@ async def update_node_stakeholder(
 
     person = await db.get(Person, stakeholder.person_id)
     await log_activity(
-        db, current_user, actor_id, "stakeholder.updated",
+        db,
+        current_user,
+        actor_id,
+        "stakeholder.updated",
         node_id=id,
         details={
             "person_id": str(stakeholder.person_id),
@@ -363,7 +372,10 @@ async def remove_node_stakeholder(
     await db.delete(stakeholder)
 
     await log_activity(
-        db, current_user, actor_id, "stakeholder.removed",
+        db,
+        current_user,
+        actor_id,
+        "stakeholder.removed",
         node_id=id,
         details={
             "person_id": stakeholder_person_id,
@@ -427,7 +439,10 @@ async def add_tag_to_node(
     tag = await tag_repo.get_by_id(tag_id)
 
     await log_activity(
-        db, current_user, actor_id, "node_tag.added",
+        db,
+        current_user,
+        actor_id,
+        "node_tag.added",
         node_id=id,
         details={"tag_id": str(tag_id), "tag_name": tag.name if tag else None},
     )
@@ -451,7 +466,10 @@ async def remove_tag_from_node(
     require_deleted(await tag_repo.remove_tag_from_node(id, tag_id), "Tag link")
 
     await log_activity(
-        db, current_user, actor_id, "node_tag.removed",
+        db,
+        current_user,
+        actor_id,
+        "node_tag.removed",
         node_id=id,
         details={"tag_id": str(tag_id), "tag_name": tag_name},
     )

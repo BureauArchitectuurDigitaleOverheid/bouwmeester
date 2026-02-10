@@ -92,9 +92,7 @@ async def create_task(
     if task.assignee_id:
         assignee = await db.get(Person, task.assignee_id)
         if assignee:
-            await notif_svc.notify_task_assigned(
-                task, assignee, actor_id=resolved_id
-            )
+            await notif_svc.notify_task_assigned(task, assignee, actor_id=resolved_id)
 
     # Notify team manager
     if task.organisatie_eenheid_id:
@@ -291,7 +289,10 @@ async def delete_task(
     task_node_id = task.node_id if task else None
     require_deleted(await repo.delete(id), "Task")
     await log_activity(
-        db, current_user, actor_id, "task.deleted",
+        db,
+        current_user,
+        actor_id,
+        "task.deleted",
         details={
             "task_id": str(id),
             "node_id": str(task_node_id) if task_node_id else None,

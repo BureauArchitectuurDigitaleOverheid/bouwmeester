@@ -68,9 +68,7 @@ async def create_edge(
     to_node = await db.get(CorpusNode, data.to_node_id)
     if from_node and to_node:
         notif_svc = NotificationService(db)
-        await notif_svc.notify_edge_created(
-            from_node, to_node, actor_id=resolved_id
-        )
+        await notif_svc.notify_edge_created(from_node, to_node, actor_id=resolved_id)
 
     await ActivityService(db).log_event(
         "edge.created",
@@ -112,7 +110,10 @@ async def update_edge(
     edge = require_found(await repo.update(id, data), "Edge")
 
     await log_activity(
-        db, current_user, actor_id, "edge.updated",
+        db,
+        current_user,
+        actor_id,
+        "edge.updated",
         edge_id=edge.id,
         details={"edge_type": edge.edge_type_id},
     )
@@ -142,6 +143,9 @@ async def delete_edge(
         }
     require_deleted(await repo.delete(id), "Edge")
     await log_activity(
-        db, current_user, actor_id, "edge.deleted",
+        db,
+        current_user,
+        actor_id,
+        "edge.deleted",
         details={**edge_details, "edge_id": str(id)},
     )

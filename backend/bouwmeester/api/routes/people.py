@@ -70,7 +70,10 @@ async def create_person(
     person = await repo.create(data)
 
     await log_activity(
-        db, current_user, actor_id, "person.created",
+        db,
+        current_user,
+        actor_id,
+        "person.created",
         details={"person_id": str(person.id), "naam": person.naam},
     )
 
@@ -181,7 +184,10 @@ async def update_person(
     person = require_found(await repo.update(id, data), "Person")
 
     await log_activity(
-        db, current_user, actor_id, "person.updated",
+        db,
+        current_user,
+        actor_id,
+        "person.updated",
         details={"person_id": str(person.id), "naam": person.naam},
     )
 
@@ -200,7 +206,10 @@ async def delete_person(
     person_naam = person.naam if person else None
     require_deleted(await repo.delete(id), "Person")
     await log_activity(
-        db, current_user, actor_id, "person.deleted",
+        db,
+        current_user,
+        actor_id,
+        "person.deleted",
         details={"person_id": str(id), "naam": person_naam},
     )
 
@@ -285,7 +294,10 @@ async def add_person_organisatie(
     await db.refresh(placement)
 
     await log_activity(
-        db, current_user, actor_id, "person.organisatie_added",
+        db,
+        current_user,
+        actor_id,
+        "person.organisatie_added",
         details={
             "person_id": str(id),
             "organisatie_eenheid_id": str(data.organisatie_eenheid_id),
@@ -333,7 +345,10 @@ async def update_person_organisatie(
     eenheid = await db.get(OrganisatieEenheid, placement.organisatie_eenheid_id)
 
     await log_activity(
-        db, current_user, actor_id, "person.organisatie_updated",
+        db,
+        current_user,
+        actor_id,
+        "person.organisatie_updated",
         details={
             "person_id": str(id),
             "placement_id": str(placement_id),
@@ -372,6 +387,9 @@ async def delete_person_organisatie(
     await db.flush()
 
     await log_activity(
-        db, current_user, actor_id, "person.organisatie_removed",
+        db,
+        current_user,
+        actor_id,
+        "person.organisatie_removed",
         details={"person_id": str(id), "placement_id": str(placement_id)},
     )

@@ -119,7 +119,10 @@ async def create_organisatie(
     )
 
     await log_activity(
-        db, current_user, actor_id, "organisatie.created",
+        db,
+        current_user,
+        actor_id,
+        "organisatie.created",
         details={"organisatie_id": str(eenheid.id), "naam": eenheid.naam},
     )
 
@@ -166,7 +169,10 @@ async def update_organisatie(
     )
 
     await log_activity(
-        db, current_user, actor_id, "organisatie.updated",
+        db,
+        current_user,
+        actor_id,
+        "organisatie.updated",
         details={"organisatie_id": str(eenheid.id), "naam": eenheid.naam},
     )
 
@@ -196,7 +202,10 @@ async def delete_organisatie(
     await repo.delete(id)
 
     await log_activity(
-        db, current_user, actor_id, "organisatie.deleted",
+        db,
+        current_user,
+        actor_id,
+        "organisatie.deleted",
         details={"organisatie_id": str(id), "naam": eenheid_naam},
     )
 

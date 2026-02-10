@@ -60,7 +60,10 @@ async def create_tag(
     tag = await repo.create(data)
 
     await log_activity(
-        db, current_user, actor_id, "tag.created",
+        db,
+        current_user,
+        actor_id,
+        "tag.created",
         details={"tag_id": str(tag.id), "name": tag.name},
     )
 
@@ -88,7 +91,10 @@ async def update_tag(
     tag = require_found(await repo.update(tag_id, data), "Tag")
 
     await log_activity(
-        db, current_user, actor_id, "tag.updated",
+        db,
+        current_user,
+        actor_id,
+        "tag.updated",
         details={"tag_id": str(tag.id), "name": tag.name},
     )
 
@@ -107,6 +113,9 @@ async def delete_tag(
     tag_name = tag.name if tag else None
     require_deleted(await repo.delete(tag_id), "Tag")
     await log_activity(
-        db, current_user, actor_id, "tag.deleted",
+        db,
+        current_user,
+        actor_id,
+        "tag.deleted",
         details={"tag_id": str(tag_id), "name": tag_name},
     )
