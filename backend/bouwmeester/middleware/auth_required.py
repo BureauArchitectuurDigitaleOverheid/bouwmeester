@@ -103,6 +103,12 @@ class AuthRequiredMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # Let CORS preflight (OPTIONS) requests through so CORSMiddleware
+        # can respond with the appropriate headers.
+        if scope.get("method") == "OPTIONS":
+            await self.app(scope, receive, send)
+            return
+
         # Only enforce on /api/ routes (not static files, etc.)
         path: str = scope.get("path", "")
 
