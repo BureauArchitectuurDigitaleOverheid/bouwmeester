@@ -5,6 +5,7 @@ import { CurrentPersonProvider } from '@/contexts/CurrentPersonContext';
 import { VocabularyProvider } from '@/contexts/VocabularyContext';
 import { TaskDetailProvider } from '@/contexts/TaskDetailContext';
 import { NodeDetailProvider } from '@/contexts/NodeDetailContext';
+import { ToastProvider } from '@/contexts/ToastContext';
 import { DetailModals } from '@/components/common/DetailModals';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { InboxPage } from '@/pages/InboxPage';
@@ -80,6 +81,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <ToastProvider>
       <AuthProvider>
         <AuthGate>
           <OnboardingGate>
@@ -110,6 +112,7 @@ export default function App() {
           </OnboardingGate>
         </AuthGate>
       </AuthProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

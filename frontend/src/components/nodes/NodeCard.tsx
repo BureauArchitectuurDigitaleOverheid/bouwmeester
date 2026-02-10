@@ -56,7 +56,7 @@ export function NodeCard({ node }: NodeCardProps) {
           </span>
         )}
         <span className="text-xs text-text-secondary ml-auto">
-          {formatDateShort(node.updated_at)}
+          {formatDateShort(node.updated_at ?? node.created_at)}
         </span>
       </div>
     </Card>
