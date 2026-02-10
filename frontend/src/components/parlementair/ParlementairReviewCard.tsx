@@ -119,7 +119,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
 
   // Helper for functie display
   const functieLabel = (functie?: string) =>
-    functie ? (FUNCTIE_LABELS[functie] ?? functie.replace(/_/g, ' ')) : undefined;
+    functie ? (FUNCTIE_LABELS[functie] ?? functie.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())) : undefined;
 
   // People options sorted: relevant eigenaren first, then the rest
   const sortedPeopleOptions: SelectOption[] = (people ?? [])

@@ -108,7 +108,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             {person.functie && !person.is_agent && (
               <span className="flex items-center gap-1">
                 <Briefcase className="h-3 w-3" />
-                {FUNCTIE_LABELS[person.functie] || person.functie}
+                {FUNCTIE_LABELS[person.functie] || person.functie.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
               </span>
             )}
             {person.description && person.is_agent && (

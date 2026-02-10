@@ -365,6 +365,7 @@ export const FUNCTIE_LABELS: Record<string, string> = {
   programmamanager: 'Programmamanager',
   jurist: 'Jurist',
   communicatieadviseur: 'Communicatieadviseur',
+  staff_engineer: 'Staff Engineer',
 };
 
 // People
