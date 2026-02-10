@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Plus } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import ReactFlow, {
   Background,
   Controls,
@@ -149,6 +149,7 @@ const nodeTypes = {
 
 export function CorpusGraph() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { nodeLabel, edgeLabel: vocabEdgeLabel } = useVocabulary();
   const { data, isLoading, error } = useGraphView();
 
@@ -232,7 +233,7 @@ export function CorpusGraph() {
         data: {
           label: node.title,
           nodeType: node.node_type,
-          onClick: () => navigate(`/nodes/${node.id}`),
+          onClick: () => navigate(`/nodes/${node.id}`, { state: { fromCorpus: location.pathname + location.search } }),
         },
       };
     });

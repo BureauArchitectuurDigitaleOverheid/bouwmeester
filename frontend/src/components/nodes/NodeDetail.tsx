@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { clsx } from 'clsx';
 import { ArrowLeft, Pencil, Trash2, Calendar, Link as LinkIcon, Users, X, ExternalLink, Plus } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
@@ -40,6 +40,8 @@ interface NodeDetailProps {
 
 export function NodeDetail({ nodeId }: NodeDetailProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const corpusUrl = (location.state as { fromCorpus?: string } | null)?.fromCorpus ?? '/corpus';
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [showEditForm, setShowEditForm] = useState(false);
   const [tagInput, setTagInput] = useState('');
@@ -178,7 +180,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
     <div className="space-y-6">
       {/* Back button */}
       <button
-        onClick={() => navigate('/corpus')}
+        onClick={() => navigate(corpusUrl)}
         className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />

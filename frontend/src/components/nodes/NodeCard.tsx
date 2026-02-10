@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowRight, Link as LinkIcon } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
@@ -14,13 +14,14 @@ interface NodeCardProps {
 
 export function NodeCard({ node }: NodeCardProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { nodeLabel, nodeAltLabel } = useVocabulary();
   const color = NODE_TYPE_COLORS[node.node_type];
 
   return (
     <Card
       hoverable
-      onClick={() => navigate(`/nodes/${node.id}`)}
+      onClick={() => navigate(`/nodes/${node.id}`, { state: { fromCorpus: location.pathname + location.search } })}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
