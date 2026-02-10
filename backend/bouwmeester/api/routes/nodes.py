@@ -36,7 +36,7 @@ from bouwmeester.schema.task import TaskResponse
 from bouwmeester.services.activity_service import (
     ActivityService,
     resolve_actor_id,
-    resolve_actor_naam,
+    resolve_actor_naam_from_db,
 )
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.node_service import NodeService
@@ -84,7 +84,7 @@ async def create_node(
     await ActivityService(db).log_event(
         "node.created",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         node_id=node.id,
         details={"title": node.title, "node_type": node.node_type},
     )
@@ -148,8 +148,8 @@ async def update_node(
 
     await ActivityService(db).log_event(
         "node.updated",
-        actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_id=resolved_actor,
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         node_id=node.id,
         details={"title": node.title},
     )
@@ -172,7 +172,7 @@ async def delete_node(
     await ActivityService(db).log_event(
         "node.deleted",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         details={"node_id": str(id), "title": node_title, "node_type": node_type},
     )
 
@@ -273,15 +273,15 @@ async def add_node_stakeholder(
         actor_id=resolve_actor_id(current_user, actor_id),
     )
 
-    await db.commit()
-
     await ActivityService(db).log_event(
         "stakeholder.added",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         node_id=id,
         details={"person_id": str(data.person_id), "rol": data.rol},
     )
+
+    await db.commit()
 
     return NodeStakeholderResponse.model_validate(stakeholder)
 
@@ -319,15 +319,15 @@ async def update_node_stakeholder(
                 node, stakeholder.person_id, old_rol, data.rol
             )
 
-    await db.commit()
-
     await ActivityService(db).log_event(
         "stakeholder.updated",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         node_id=id,
         details={"old_rol": old_rol, "new_rol": data.rol},
     )
+
+    await db.commit()
 
     return NodeStakeholderResponse.model_validate(stakeholder)
 
@@ -352,15 +352,16 @@ async def remove_node_stakeholder(
     stakeholder_person_id = str(stakeholder.person_id)
     stakeholder_rol = stakeholder.rol
     await db.delete(stakeholder)
-    await db.commit()
 
     await ActivityService(db).log_event(
         "stakeholder.removed",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         node_id=id,
         details={"person_id": stakeholder_person_id, "rol": stakeholder_rol},
     )
+
+    await db.commit()
 
 
 @router.get("/{id}/tags", response_model=list[NodeTagResponse])
@@ -416,7 +417,7 @@ async def add_tag_to_node(
     await ActivityService(db).log_event(
         "tag.added",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         node_id=id,
         details={"tag_id": str(tag_id)},
     )
@@ -440,7 +441,7 @@ async def remove_tag_from_node(
     await ActivityService(db).log_event(
         "tag.removed",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         node_id=id,
         details={"tag_id": str(tag_id)},
     )

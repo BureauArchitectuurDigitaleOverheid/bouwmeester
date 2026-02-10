@@ -18,7 +18,7 @@ from bouwmeester.schema.tag import (
 from bouwmeester.services.activity_service import (
     ActivityService,
     resolve_actor_id,
-    resolve_actor_naam,
+    resolve_actor_naam_from_db,
 )
 
 router = APIRouter(prefix="/tags", tags=["tags"])
@@ -66,7 +66,7 @@ async def create_tag(
     await ActivityService(db).log_event(
         "tag.created",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         details={"tag_id": str(tag.id), "name": tag.name},
     )
 
@@ -96,7 +96,7 @@ async def update_tag(
     await ActivityService(db).log_event(
         "tag.updated",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         details={"tag_id": str(tag.id), "name": tag.name},
     )
 
@@ -117,6 +117,6 @@ async def delete_tag(
     await ActivityService(db).log_event(
         "tag.deleted",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         details={"tag_id": str(tag_id), "name": tag_name},
     )

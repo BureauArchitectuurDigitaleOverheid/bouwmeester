@@ -1219,12 +1219,11 @@ async def test_parlementair_edge_approve_generates_activity(
 
 
 async def test_actor_naam_stored_in_details(client, sample_person):
-    """Activity actor_naam comes from the actor relationship.
+    """Activity details should include actor_naam for attribution durability.
 
-    In test mode (no OIDC), current_user is None, so resolve_actor_naam()
-    returns None and actor_naam is NOT denormalized into details.  However
-    the top-level actor_naam response field is populated via the ORM
-    relationship (Activity → Person).
+    resolve_actor_naam_from_db looks up the person via actor_id when
+    current_user is None (dev mode), so actor_naam is denormalized into
+    details regardless of auth mode.
     """
     resp = await client.post(
         "/api/nodes",
@@ -1240,7 +1239,5 @@ async def test_actor_naam_stored_in_details(client, sample_person):
     assert len(activities) == 1
     # Top-level actor_naam is resolved via the Person relationship
     assert activities[0]["actor_naam"] == "Jan Tester"
-    # In dev/test mode (no authenticated user), actor_naam is NOT in details
-    # because resolve_actor_naam(None) returns None.  In production with OIDC,
-    # actor_naam would also be denormalized into details for durability.
-    assert activities[0]["actor_id"] == str(sample_person.id)
+    # actor_naam is also denormalized into details for durability
+    assert activities[0]["details"].get("actor_naam") == "Jan Tester"

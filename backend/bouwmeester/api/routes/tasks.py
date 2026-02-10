@@ -21,7 +21,7 @@ from bouwmeester.schema.task import (
 from bouwmeester.services.activity_service import (
     ActivityService,
     resolve_actor_id,
-    resolve_actor_naam,
+    resolve_actor_naam_from_db,
 )
 from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
@@ -103,7 +103,7 @@ async def create_task(
     await ActivityService(db).log_event(
         "task.created",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         task_id=task.id,
         node_id=task.node_id,
         details={
@@ -253,7 +253,7 @@ async def update_task(
     await ActivityService(db).log_event(
         "task.updated",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         task_id=task.id,
         node_id=task.node_id,
         details={"title": task.title},
@@ -277,7 +277,7 @@ async def delete_task(
     await ActivityService(db).log_event(
         "task.deleted",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         details={
             "task_id": str(id),
             "node_id": str(task_node_id) if task_node_id else None,

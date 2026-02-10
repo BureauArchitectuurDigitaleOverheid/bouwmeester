@@ -55,3 +55,8 @@ class Activity(Base):
     )
 
     actor: Mapped["Person | None"] = relationship("Person", lazy="noload")
+
+    @property
+    def actor_naam(self) -> str | None:
+        """Resolve actor name from eager-loaded relationship."""
+        return self.actor.naam if self.actor else None

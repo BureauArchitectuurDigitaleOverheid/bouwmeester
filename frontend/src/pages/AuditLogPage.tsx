@@ -24,10 +24,13 @@ function formatDate(iso: string): string {
   });
 }
 
+/** Keys already shown in other columns or not useful to display. */
+const HIDDEN_DETAIL_KEYS = new Set(['actor_naam']);
+
 function formatDetails(details?: Record<string, unknown>): string {
   if (!details) return '';
   return Object.entries(details)
-    .filter(([, v]) => v != null)
+    .filter(([k, v]) => v != null && !HIDDEN_DETAIL_KEYS.has(k))
     .map(([k, v]) => `${k}: ${v}`)
     .join(', ');
 }

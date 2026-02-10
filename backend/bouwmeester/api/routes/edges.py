@@ -15,7 +15,7 @@ from bouwmeester.schema.edge import EdgeCreate, EdgeResponse, EdgeUpdate, EdgeWi
 from bouwmeester.services.activity_service import (
     ActivityService,
     resolve_actor_id,
-    resolve_actor_naam,
+    resolve_actor_naam_from_db,
 )
 from bouwmeester.services.notification_service import NotificationService
 
@@ -73,7 +73,7 @@ async def create_edge(
     await ActivityService(db).log_event(
         "edge.created",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         edge_id=edge.id,
         details={
             "from_node_id": str(data.from_node_id),
@@ -110,7 +110,7 @@ async def update_edge(
     await ActivityService(db).log_event(
         "edge.updated",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         edge_id=edge.id,
         details={"edge_type_id": edge.edge_type_id},
     )
@@ -139,6 +139,6 @@ async def delete_edge(
     await ActivityService(db).log_event(
         "edge.deleted",
         actor_id=resolve_actor_id(current_user, actor_id),
-        actor_naam=resolve_actor_naam(current_user),
+        actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         details={**edge_details, "edge_id": str(id)},
     )

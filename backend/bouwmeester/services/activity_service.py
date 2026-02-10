@@ -16,10 +16,20 @@ def resolve_actor_id(current_user: Any, actor_id: UUID | None) -> UUID | None:
     return actor_id
 
 
-def resolve_actor_naam(current_user: Any) -> str | None:
-    """Return the authenticated user's name, or None."""
+async def resolve_actor_naam_from_db(
+    current_user: Any,
+    actor_id: UUID | None,
+    db: AsyncSession,
+) -> str | None:
+    """Return actor name: prefer authenticated user, fall back to DB lookup."""
     if current_user is not None:
         return current_user.naam
+    if actor_id is not None:
+        from bouwmeester.models.person import Person
+
+        person = await db.get(Person, actor_id)
+        if person is not None:
+            return person.naam
     return None
 
 
