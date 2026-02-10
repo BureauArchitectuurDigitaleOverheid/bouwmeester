@@ -15,9 +15,10 @@ import {
   useUpdateOrganisatieEenheid,
   useDeleteOrganisatieEenheid,
 } from '@/hooks/useOrganisatie';
-import { useCreatePerson, useUpdatePerson, useAddPersonOrganisatie } from '@/hooks/usePeople';
+import { useAddPersonOrganisatie } from '@/hooks/usePeople';
+import { usePersonFormSubmit } from '@/hooks/usePersonFormSubmit';
 import { todayISO } from '@/utils/dates';
-import type { OrganisatieEenheid, OrganisatieEenheidCreate, OrganisatieEenheidUpdate, Person, PersonCreate } from '@/types';
+import type { OrganisatieEenheid, OrganisatieEenheidCreate, OrganisatieEenheidUpdate, Person } from '@/types';
 
 export function OrganisatiePage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -43,9 +44,10 @@ export function OrganisatiePage() {
   const createMutation = useCreateOrganisatieEenheid();
   const updateMutation = useUpdateOrganisatieEenheid();
   const deleteMutation = useDeleteOrganisatieEenheid();
-  const createPersonMutation = useCreatePerson();
-  const updatePersonMutation = useUpdatePerson();
   const addPlacementMutation = useAddPersonOrganisatie();
+  const { handleSubmit: handlePersonFormSubmit, isPending: isPersonPending } = usePersonFormSubmit(
+    () => setShowPersonForm(false),
+  );
 
   const handleAdd = (parentId: string | null) => {
     setEditData(null);
@@ -110,35 +112,6 @@ export function OrganisatiePage() {
   const handleEditPerson = (person: Person) => {
     setEditPerson(person);
     setShowPersonForm(true);
-  };
-
-  const handlePersonFormSubmit = (data: PersonCreate, orgEenheidId?: string, dienstverband?: string) => {
-    if (editPerson) {
-      updatePersonMutation.mutate(
-        { id: editPerson.id, data },
-        { onSuccess: () => setShowPersonForm(false) },
-      );
-    } else {
-      createPersonMutation.mutate(data, {
-        onSuccess: (person) => {
-          if (orgEenheidId) {
-            addPlacementMutation.mutate(
-              {
-                personId: person.id,
-                data: {
-                  organisatie_eenheid_id: orgEenheidId,
-                  dienstverband: dienstverband || 'in_dienst',
-                  start_datum: todayISO(),
-                },
-              },
-              { onSettled: () => setShowPersonForm(false) },
-            );
-          } else {
-            setShowPersonForm(false);
-          }
-        },
-      });
-    }
   };
 
   const handleDragStartPerson = (e: React.DragEvent, person: Person) => {
@@ -262,7 +235,7 @@ export function OrganisatiePage() {
         open={showPersonForm}
         onClose={() => setShowPersonForm(false)}
         onSubmit={handlePersonFormSubmit}
-        isLoading={createPersonMutation.isPending || updatePersonMutation.isPending || addPlacementMutation.isPending}
+        isLoading={isPersonPending}
         editData={editPerson}
         defaultIsAgent={defaultIsAgent}
         defaultOrgEenheidId={selectedId || undefined}

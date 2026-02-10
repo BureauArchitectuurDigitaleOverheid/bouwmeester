@@ -55,3 +55,7 @@ export async function removePersonOrganisatie(
 ): Promise<void> {
   return apiDelete(`/api/people/${personId}/organisaties/${placementId}`);
 }
+
+export async function searchPeople(q: string, limit = 10): Promise<Person[]> {
+  return apiGet<Person[]>('/api/people/search', { q, limit: String(limit) });
+}

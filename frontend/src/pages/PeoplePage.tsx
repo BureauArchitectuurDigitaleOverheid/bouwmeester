@@ -3,18 +3,16 @@ import { Plus } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { PersonList } from '@/components/people/PersonList';
 import { PersonEditForm } from '@/components/people/PersonEditForm';
-import { usePeople, useCreatePerson, useUpdatePerson, useAddPersonOrganisatie } from '@/hooks/usePeople';
-import { todayISO } from '@/utils/dates';
-import type { Person, PersonCreate } from '@/types';
+import { usePeople } from '@/hooks/usePeople';
+import { usePersonFormSubmit } from '@/hooks/usePersonFormSubmit';
+import type { Person } from '@/types';
 
 export function PeoplePage() {
   const [showForm, setShowForm] = useState(false);
   const [editPerson, setEditPerson] = useState<Person | null>(null);
 
   const { data: people = [], isLoading } = usePeople();
-  const createPersonMutation = useCreatePerson();
-  const updatePersonMutation = useUpdatePerson();
-  const addPlacementMutation = useAddPersonOrganisatie();
+  const { handleSubmit: handleFormSubmit, isPending } = usePersonFormSubmit(() => setShowForm(false));
 
   const handleAddPerson = () => {
     setEditPerson(null);
@@ -24,35 +22,6 @@ export function PeoplePage() {
   const handleEditPerson = (person: Person) => {
     setEditPerson(person);
     setShowForm(true);
-  };
-
-  const handleFormSubmit = (data: PersonCreate, orgEenheidId?: string, dienstverband?: string) => {
-    if (editPerson) {
-      updatePersonMutation.mutate(
-        { id: editPerson.id, data },
-        { onSuccess: () => setShowForm(false) },
-      );
-    } else {
-      createPersonMutation.mutate(data, {
-        onSuccess: (person) => {
-          if (orgEenheidId) {
-            addPlacementMutation.mutate(
-              {
-                personId: person.id,
-                data: {
-                  organisatie_eenheid_id: orgEenheidId,
-                  dienstverband: dienstverband || 'in_dienst',
-                  start_datum: todayISO(),
-                },
-              },
-              { onSettled: () => setShowForm(false) },
-            );
-          } else {
-            setShowForm(false);
-          }
-        },
-      });
-    }
   };
 
   return (
@@ -84,7 +53,7 @@ export function PeoplePage() {
         open={showForm}
         onClose={() => setShowForm(false)}
         onSubmit={handleFormSubmit}
-        isLoading={createPersonMutation.isPending || updatePersonMutation.isPending || addPlacementMutation.isPending}
+        isLoading={isPending}
         editData={editPerson}
       />
     </div>
