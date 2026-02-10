@@ -49,16 +49,13 @@ class Settings(BaseSettings):
         """Build DATABASE_URL from ZAD individual env vars if not set."""
         if not self.DATABASE_URL and self.DATABASE_SERVER_HOST:
             password = quote_plus(self.DATABASE_PASSWORD)
-            url = (
+            self.DATABASE_URL = (
                 f"postgresql+asyncpg://{self.DATABASE_SERVER_USER}"
                 f":{password}"
                 f"@{self.DATABASE_SERVER_HOST}"
                 f":{self.DATABASE_SERVER_PORT}"
                 f"/{self.DATABASE_DB}"
             )
-            if self.DATABASE_SCHEMA:
-                url += f"?options=-csearch_path%3D{self.DATABASE_SCHEMA}"
-            self.DATABASE_URL = url
         if not self.DATABASE_URL:
             self.DATABASE_URL = "postgresql+asyncpg://bouwmeester:bouwmeester@localhost:5432/bouwmeester"
         return self

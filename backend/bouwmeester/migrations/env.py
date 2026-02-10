@@ -19,8 +19,11 @@ if config.config_file_name is not None:
 # Use Settings to derive DATABASE_URL (handles both direct URL and ZAD env vars)
 _settings = get_settings()
 if _settings.DATABASE_URL:
-    # Escape % for configparser interpolation (e.g. %3D in search_path)
-    config.set_main_option("sqlalchemy.url", _settings.DATABASE_URL.replace("%", "%%"))
+    config.set_main_option("sqlalchemy.url", _settings.DATABASE_URL)
+
+_connect_args: dict = {}
+if _settings.DATABASE_SCHEMA:
+    _connect_args["server_settings"] = {"search_path": _settings.DATABASE_SCHEMA}
 
 target_metadata = Base.metadata
 
@@ -61,6 +64,7 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=_connect_args,
     )
 
     async with connectable.connect() as connection:
