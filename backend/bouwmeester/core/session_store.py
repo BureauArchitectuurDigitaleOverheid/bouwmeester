@@ -11,17 +11,26 @@ all actual data lives server-side in the database.
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 logger = logging.getLogger(__name__)
+
+
+def _derive_fernet_key(secret: str) -> bytes:
+    """Derive a 32-byte Fernet key from an arbitrary secret string."""
+    raw = hashlib.sha256(secret.encode()).digest()
+    return base64.urlsafe_b64encode(raw)
 
 
 class SessionStore(ABC):
@@ -55,9 +64,13 @@ class DatabaseSessionStore(SessionStore):
         self,
         session_factory: async_sessionmaker[AsyncSession],
         ttl_seconds: int = 3600,
+        encryption_key: str = "",
     ) -> None:
         self._session_factory = session_factory
         self._ttl = ttl_seconds
+        self._fernet: Fernet | None = None
+        if encryption_key:
+            self._fernet = Fernet(_derive_fernet_key(encryption_key))
 
     async def get(self, session_id: str) -> dict[str, Any] | None:
         from bouwmeester.models.http_session import HttpSession
@@ -72,7 +85,16 @@ class DatabaseSessionStore(SessionStore):
                 await db.delete(row)
                 await db.commit()
                 return None
-            return json.loads(row.data)
+            raw = row.data
+            if self._fernet:
+                try:
+                    raw = self._fernet.decrypt(raw.encode()).decode()
+                except InvalidToken:
+                    logger.warning("Failed to decrypt session %s", session_id)
+                    await db.delete(row)
+                    await db.commit()
+                    return None
+            return json.loads(raw)
 
     async def set(self, session_id: str, data: dict[str, Any]) -> None:
         from bouwmeester.models.http_session import HttpSession
@@ -80,6 +102,8 @@ class DatabaseSessionStore(SessionStore):
         async with self._session_factory() as db:
             expires_at = datetime.now(UTC) + timedelta(seconds=self._ttl)
             data_json = json.dumps(data)
+            if self._fernet:
+                data_json = self._fernet.encrypt(data_json.encode()).decode()
             stmt = (
                 pg_insert(HttpSession)
                 .values(
@@ -126,9 +150,19 @@ async def run_cleanup_loop(
     interval_seconds: int = 300,
 ) -> None:
     """Background task that periodically cleans up expired sessions."""
+    consecutive_failures = 0
+    max_backoff = 3600  # Cap at 1 hour
     while True:
         await asyncio.sleep(interval_seconds)
         try:
             await store.cleanup()
+            consecutive_failures = 0
         except Exception:
-            logger.exception("Session cleanup failed")
+            consecutive_failures += 1
+            backoff = min(interval_seconds * (2**consecutive_failures), max_backoff)
+            logger.exception(
+                "Session cleanup failed (%d consecutive), next attempt in %ds",
+                consecutive_failures,
+                backoff,
+            )
+            await asyncio.sleep(backoff)

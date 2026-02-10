@@ -1,3 +1,8 @@
+function getCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)bm_csrf=([^;]*)/);
+  return match ? match[1] : '';
+}
+
 function getBaseUrl(): string {
   // Check runtime config (injected via config.js)
   const config = (window as unknown as Record<string, unknown>).__CONFIG__ as Record<string, string> | undefined;
@@ -91,7 +96,7 @@ export async function apiPost<T>(path: string, data?: unknown): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
     body: data ? JSON.stringify(data) : undefined,
     credentials: 'include',
   });
@@ -102,7 +107,7 @@ export async function apiPut<T>(path: string, data?: unknown): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
     body: data ? JSON.stringify(data) : undefined,
     credentials: 'include',
   });
@@ -113,7 +118,7 @@ export async function apiPatch<T>(path: string, data?: unknown): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
     body: data ? JSON.stringify(data) : undefined,
     credentials: 'include',
   });
@@ -124,7 +129,7 @@ export async function apiDelete<T = void>(path: string): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
     credentials: 'include',
   });
   return handleResponse<T>(response);

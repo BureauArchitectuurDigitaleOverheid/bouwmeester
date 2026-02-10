@@ -6,6 +6,7 @@ so tests never commit real data.
 
 import uuid
 from datetime import date, timedelta
+from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -14,8 +15,28 @@ from sqlalchemy.pool import NullPool
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import get_db
+from bouwmeester.core.session_store import SessionStore
 
 settings = get_settings()
+
+
+class InMemorySessionStore(SessionStore):
+    """Simple in-memory session store for tests (no DB connections)."""
+
+    def __init__(self) -> None:
+        self._data: dict[str, dict[str, Any]] = {}
+
+    async def get(self, session_id: str) -> dict[str, Any] | None:
+        return self._data.get(session_id)
+
+    async def set(self, session_id: str, data: dict[str, Any]) -> None:
+        self._data[session_id] = data
+
+    async def delete(self, session_id: str) -> None:
+        self._data.pop(session_id, None)
+
+    async def cleanup(self) -> int:
+        return 0
 
 
 @pytest.fixture
@@ -39,7 +60,11 @@ async def db_session():
 
 @pytest.fixture
 async def client(db_session: AsyncSession):
-    """HTTPX async client talking to the FastAPI app with overridden DB session."""
+    """HTTPX async client talking to the FastAPI app with overridden DB session.
+
+    Automatically obtains a CSRF token and injects it into all
+    state-changing requests so existing tests pass without modification.
+    """
     from bouwmeester.core.app import create_app
 
     app = create_app()
@@ -50,7 +75,35 @@ async def client(db_session: AsyncSession):
     app.dependency_overrides[get_db] = _override_get_db
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    # Use an in-memory session store to avoid opening extra DB connections
+    # (which exhaust the pool during parallel test runs).
+    mem_store = InMemorySessionStore()
+    app.state.session_store = mem_store
+    # Also patch the session middleware's store reference.
+    for mw in app.user_middleware:
+        if hasattr(mw, "kwargs") and "store" in mw.kwargs:
+            mw.kwargs["store"] = mem_store
+
+    # Rebuild the middleware stack after patching.
+    app.middleware_stack = app.build_middleware_stack()
+
+    csrf = {"token": ""}
+
+    async def _inject_csrf(request):
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and csrf["token"]:
+            request.headers["X-CSRF-Token"] = csrf["token"]
+
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        event_hooks={"request": [_inject_csrf]},
+    ) as ac:
+        # Bootstrap: GET to obtain CSRF cookie (uses in-memory store, no DB).
+        init_resp = await ac.get("/api/auth/status")
+        for cookie_header in init_resp.headers.get_list("set-cookie"):
+            if cookie_header.startswith("bm_csrf="):
+                csrf["token"] = cookie_header.split("=", 1)[1].split(";")[0]
+                break
         yield ac
 
     app.dependency_overrides.clear()

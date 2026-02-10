@@ -29,12 +29,30 @@ const queryClient = new QueryClient({
 });
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { loading, authenticated, oidcConfigured } = useAuth();
+  const { loading, authenticated, oidcConfigured, error } = useAuth();
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-text-secondary">Laden...</div>
+      </div>
+    );
+  }
+
+  // Show error state when auth status check failed
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-sm w-full space-y-4 text-center">
+          <h1 className="text-xl font-semibold text-text">Verbindingsfout</h1>
+          <p className="text-sm text-text-secondary">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-gray-100 transition-colors"
+          >
+            Opnieuw proberen
+          </button>
+        </div>
       </div>
     );
   }

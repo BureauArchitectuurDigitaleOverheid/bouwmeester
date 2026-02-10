@@ -12,6 +12,7 @@ interface AuthState {
   authenticated: boolean;
   oidcConfigured: boolean;
   person: AuthPerson | null;
+  error: string | null;
 }
 
 interface AuthContextValue extends AuthState {
@@ -27,21 +28,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authenticated: false,
     oidcConfigured: false,
     person: null,
+    error: null,
   });
 
   useEffect(() => {
     fetch(`${BASE_URL}/api/auth/status`, { credentials: 'include' })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`Auth status check failed: ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
         setState({
           loading: false,
           authenticated: data.authenticated,
           oidcConfigured: data.oidc_configured,
           person: data.person ?? null,
+          error: null,
         });
       })
-      .catch(() => {
-        setState((s) => ({ ...s, loading: false }));
+      .catch((err) => {
+        setState((s) => ({
+          ...s,
+          loading: false,
+          error: err instanceof Error ? err.message : 'Kon authenticatiestatus niet ophalen',
+        }));
       });
   }, []);
 

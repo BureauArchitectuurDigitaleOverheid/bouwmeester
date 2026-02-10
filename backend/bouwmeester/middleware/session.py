@@ -14,7 +14,7 @@ from __future__ import annotations
 import secrets
 from typing import Any
 
-from itsdangerous import BadSignature, TimestampSigner
+from itsdangerous import BadSignature, SignatureExpired, TimestampSigner
 from starlette.datastructures import MutableHeaders
 from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -57,13 +57,15 @@ class ServerSideSessionMiddleware:
 
         if cookie_value:
             try:
-                session_id = self.signer.unsign(cookie_value).decode("utf-8")
+                session_id = self.signer.unsign(
+                    cookie_value, max_age=self.cookie_max_age
+                ).decode("utf-8")
                 data = await self.store.get(session_id)
                 if data is not None:
                     session_data = data
                 else:
                     session_id = None
-            except BadSignature:
+            except (BadSignature, SignatureExpired):
                 session_id = None
 
         scope["session"] = session_data

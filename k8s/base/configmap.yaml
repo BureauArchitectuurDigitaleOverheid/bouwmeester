@@ -8,6 +8,5 @@ metadata:
 data:
   APP_NAME: "Bouwmeester"
   DEBUG: "false"
-  DATABASE_URL: "postgresql+asyncpg://bouwmeester:bouwmeester@postgres:5432/bouwmeester"
   OIDC_ISSUER: "https://login.rijkscloud.nl/realms/bouwmeester"
   OIDC_CLIENT_ID: "bouwmeester"

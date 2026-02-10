@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     SESSION_SECRET_KEY: str = "change-me-in-production"
     PUBLIC_HOST: str = ""  # Injected by ZAD per component
     FRONTEND_URL: str = ""
+    BACKEND_URL: str = ""  # Used for OIDC redirect URIs
     SESSION_COOKIE_DOMAIN: str = ""
     SESSION_COOKIE_SECURE: bool = False
     SESSION_TTL_SECONDS: int = 86400
@@ -79,6 +80,16 @@ class Settings(BaseSettings):
         """Build OIDC_ISSUER from ZAD env vars if not set."""
         if not self.OIDC_ISSUER and self.OIDC_URL and self.OIDC_REALM:
             self.OIDC_ISSUER = f"{self.OIDC_URL.rstrip('/')}/realms/{self.OIDC_REALM}"
+        return self
+
+    @model_validator(mode="after")
+    def _validate_session_secret(self) -> "Settings":
+        """Reject insecure default SESSION_SECRET_KEY when OIDC is enabled."""
+        if self.OIDC_ISSUER and self.SESSION_SECRET_KEY == "change-me-in-production":
+            raise ValueError(
+                "SESSION_SECRET_KEY must be set to a secure random value "
+                "when OIDC is configured. Do not use the default."
+            )
         return self
 
     @model_validator(mode="after")
@@ -116,6 +127,11 @@ class Settings(BaseSettings):
 
         if not self.FRONTEND_URL:
             self.FRONTEND_URL = "http://localhost:5173"
+        # Derive BACKEND_URL from PUBLIC_HOST (which is the backend's URL on ZAD).
+        if not self.BACKEND_URL and self.PUBLIC_HOST:
+            self.BACKEND_URL = self.PUBLIC_HOST.rstrip("/")
+        if not self.BACKEND_URL:
+            self.BACKEND_URL = "http://localhost:8000"
         return self
 
 
