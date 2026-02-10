@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.models.activity import Activity
 from bouwmeester.schema.activity import ActivityFeedResponse, ActivityResponse
 from bouwmeester.schema.inbox import InboxResponse
 from bouwmeester.services.activity_service import ActivityService
@@ -15,7 +16,8 @@ from bouwmeester.services.inbox_service import InboxService
 router = APIRouter(prefix="/activity", tags=["activity"])
 
 
-def _activity_to_response(a) -> ActivityResponse:
+def _activity_to_response(a: Activity) -> ActivityResponse:
+    """Map ORM Activity to response, resolving actor_naam from relationship."""
     return ActivityResponse(
         id=a.id,
         event_type=a.event_type,
@@ -42,6 +44,8 @@ async def get_activity_feed(
     activities = await service.get_recent(
         skip=skip, limit=limit, event_type=event_type, actor_id=actor_id
     )
+    # Note: items and total are fetched separately; count may differ slightly
+    # under concurrent writes. Acceptable for audit log pagination.
     total = await service.count(event_type=event_type, actor_id=actor_id)
     return ActivityFeedResponse(
         items=[_activity_to_response(a) for a in activities],

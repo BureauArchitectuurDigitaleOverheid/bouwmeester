@@ -538,3 +538,709 @@ async def test_inbox_requires_person_id(client):
     """Inbox without person_id returns 422 (validation error)."""
     resp = await client.get("/api/activity/inbox")
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Edge CRUD generates activity
+# ---------------------------------------------------------------------------
+
+
+async def test_edge_create_generates_activity(
+    client, sample_person, sample_node, second_node, sample_edge_type
+):
+    """POST /api/edges should create edge.created activity."""
+    resp = await client.post(
+        "/api/edges",
+        json={
+            "from_node_id": str(sample_node.id),
+            "to_node_id": str(second_node.id),
+            "edge_type_id": sample_edge_type.id,
+        },
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 201
+    edge_id = resp.json()["id"]
+
+    feed = await client.get("/api/activity/feed", params={"event_type": "edge.created"})
+    data = feed.json()
+    activities = [a for a in data["items"] if a.get("edge_id") == edge_id]
+    assert len(activities) == 1
+    assert activities[0]["details"]["from_node_id"] == str(sample_node.id)
+    assert activities[0]["details"]["to_node_id"] == str(second_node.id)
+    assert activities[0]["details"]["edge_type_id"] == sample_edge_type.id
+
+
+async def test_edge_update_generates_activity(
+    client, sample_person, sample_edge, sample_edge_type
+):
+    """PUT /api/edges/{id} should create edge.updated activity."""
+    resp = await client.put(
+        f"/api/edges/{sample_edge.id}",
+        json={"edge_type_id": sample_edge_type.id},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 200
+
+    feed = await client.get("/api/activity/feed", params={"event_type": "edge.updated"})
+    data = feed.json()
+    activities = [a for a in data["items"] if a.get("edge_id") == str(sample_edge.id)]
+    assert len(activities) == 1
+    assert activities[0]["details"]["edge_type_id"] == sample_edge_type.id
+
+
+async def test_edge_delete_generates_activity(
+    client, sample_person, sample_node, second_node, sample_edge_type
+):
+    """DELETE /api/edges/{id} should create edge.deleted activity with IDs in details."""
+    # Create an edge to delete
+    create_resp = await client.post(
+        "/api/edges",
+        json={
+            "from_node_id": str(sample_node.id),
+            "to_node_id": str(second_node.id),
+            "edge_type_id": sample_edge_type.id,
+        },
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert create_resp.status_code == 201
+    edge_id = create_resp.json()["id"]
+
+    del_resp = await client.delete(
+        f"/api/edges/{edge_id}",
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert del_resp.status_code == 204
+
+    feed = await client.get("/api/activity/feed", params={"event_type": "edge.deleted"})
+    data = feed.json()
+    deleted = [
+        a
+        for a in data["items"]
+        if a["event_type"] == "edge.deleted"
+        and a.get("details", {}).get("edge_id") == edge_id
+    ]
+    assert len(deleted) == 1
+    assert deleted[0]["details"]["from_node_id"] == str(sample_node.id)
+    assert deleted[0]["details"]["to_node_id"] == str(second_node.id)
+    # edge_id FK column is NULL after deletion
+    assert deleted[0]["edge_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# Task update / delete generate activity
+# ---------------------------------------------------------------------------
+
+
+async def test_task_update_generates_activity(client, sample_person, sample_node):
+    """PUT /api/tasks/{id} should create task.updated activity."""
+    # Create a task first
+    create_resp = await client.post(
+        "/api/tasks",
+        json={
+            "title": "Update test task",
+            "node_id": str(sample_node.id),
+            "status": "open",
+            "priority": "normaal",
+        },
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert create_resp.status_code == 201
+    task_id = create_resp.json()["id"]
+
+    # Update the task
+    update_resp = await client.put(
+        f"/api/tasks/{task_id}",
+        json={"title": "Updated task title"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert update_resp.status_code == 200
+
+    feed = await client.get("/api/activity/feed", params={"event_type": "task.updated"})
+    data = feed.json()
+    activities = [a for a in data["items"] if a.get("task_id") == task_id]
+    assert len(activities) == 1
+    assert activities[0]["details"]["title"] == "Updated task title"
+
+
+async def test_task_delete_generates_activity(client, sample_person, sample_node):
+    """DELETE /api/tasks/{id} should create task.deleted activity with IDs in details."""
+    # Create a task first
+    create_resp = await client.post(
+        "/api/tasks",
+        json={
+            "title": "Delete test task",
+            "node_id": str(sample_node.id),
+            "status": "open",
+            "priority": "normaal",
+        },
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert create_resp.status_code == 201
+    task_id = create_resp.json()["id"]
+
+    del_resp = await client.delete(
+        f"/api/tasks/{task_id}",
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert del_resp.status_code == 204
+
+    feed = await client.get("/api/activity/feed", params={"event_type": "task.deleted"})
+    data = feed.json()
+    deleted = [
+        a
+        for a in data["items"]
+        if a["event_type"] == "task.deleted"
+        and a.get("details", {}).get("task_id") == task_id
+    ]
+    assert len(deleted) == 1
+    assert deleted[0]["details"]["title"] == "Delete test task"
+
+
+# ---------------------------------------------------------------------------
+# Person CRUD generates activity
+# ---------------------------------------------------------------------------
+
+
+async def test_person_create_generates_activity(client, sample_person):
+    """POST /api/people should create person.created activity."""
+    resp = await client.post(
+        "/api/people",
+        json={"naam": "Audit Persoon", "email": "audit@example.com"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 201
+    person_id = resp.json()["id"]
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "person.created"}
+    )
+    data = feed.json()
+    activities = [
+        a for a in data["items"] if a.get("details", {}).get("person_id") == person_id
+    ]
+    assert len(activities) == 1
+    assert activities[0]["details"]["naam"] == "Audit Persoon"
+
+
+async def test_person_update_generates_activity(client, sample_person):
+    """PUT /api/people/{id} should create person.updated activity."""
+    resp = await client.put(
+        f"/api/people/{sample_person.id}",
+        json={"naam": "Jan Gewijzigd"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 200
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "person.updated"}
+    )
+    data = feed.json()
+    activities = [
+        a
+        for a in data["items"]
+        if a.get("details", {}).get("person_id") == str(sample_person.id)
+    ]
+    assert len(activities) >= 1
+    assert activities[0]["details"]["naam"] == "Jan Gewijzigd"
+
+
+async def test_person_delete_generates_activity(client, sample_person):
+    """DELETE /api/people/{id} should create person.deleted activity."""
+    # Create a person to delete (don't delete fixtures)
+    create_resp = await client.post(
+        "/api/people",
+        json={"naam": "Te Verwijderen", "email": "del@example.com"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert create_resp.status_code == 201
+    person_id = create_resp.json()["id"]
+
+    del_resp = await client.delete(
+        f"/api/people/{person_id}",
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert del_resp.status_code == 204
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "person.deleted"}
+    )
+    data = feed.json()
+    deleted = [
+        a for a in data["items"] if a.get("details", {}).get("person_id") == person_id
+    ]
+    assert len(deleted) == 1
+    assert deleted[0]["details"]["naam"] == "Te Verwijderen"
+
+
+# ---------------------------------------------------------------------------
+# Organisatie CRUD generates activity
+# ---------------------------------------------------------------------------
+
+
+async def test_organisatie_create_generates_activity(client, sample_person):
+    """POST /api/organisatie should create organisatie.created activity."""
+    resp = await client.post(
+        "/api/organisatie",
+        json={"naam": "Audit Ministerie", "type": "ministerie"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 201
+    org_id = resp.json()["id"]
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "organisatie.created"}
+    )
+    data = feed.json()
+    activities = [
+        a for a in data["items"] if a.get("details", {}).get("organisatie_id") == org_id
+    ]
+    assert len(activities) == 1
+    assert activities[0]["details"]["naam"] == "Audit Ministerie"
+
+
+async def test_organisatie_update_generates_activity(
+    client, sample_person, sample_organisatie
+):
+    """PUT /api/organisatie/{id} should create organisatie.updated activity."""
+    resp = await client.put(
+        f"/api/organisatie/{sample_organisatie.id}",
+        json={"naam": "Gewijzigd Ministerie"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 200
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "organisatie.updated"}
+    )
+    data = feed.json()
+    activities = [
+        a
+        for a in data["items"]
+        if a.get("details", {}).get("organisatie_id") == str(sample_organisatie.id)
+    ]
+    assert len(activities) >= 1
+    assert activities[0]["details"]["naam"] == "Gewijzigd Ministerie"
+
+
+async def test_organisatie_delete_generates_activity(client, sample_person):
+    """DELETE /api/organisatie/{id} should create organisatie.deleted activity."""
+    # Create an org unit to delete (no children, no personen)
+    create_resp = await client.post(
+        "/api/organisatie",
+        json={"naam": "Te Verwijderen Org", "type": "afdeling"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert create_resp.status_code == 201
+    org_id = create_resp.json()["id"]
+
+    del_resp = await client.delete(
+        f"/api/organisatie/{org_id}",
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert del_resp.status_code == 204
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "organisatie.deleted"}
+    )
+    data = feed.json()
+    deleted = [
+        a for a in data["items"] if a.get("details", {}).get("organisatie_id") == org_id
+    ]
+    assert len(deleted) == 1
+    assert deleted[0]["details"]["naam"] == "Te Verwijderen Org"
+
+
+# ---------------------------------------------------------------------------
+# Tag CRUD generates activity
+# ---------------------------------------------------------------------------
+
+
+async def test_tag_create_generates_activity(client, sample_person):
+    """POST /api/tags should create tag.created activity."""
+    resp = await client.post(
+        "/api/tags",
+        json={"name": "Audit Tag"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 201
+    tag_id = resp.json()["id"]
+
+    feed = await client.get("/api/activity/feed", params={"event_type": "tag.created"})
+    data = feed.json()
+    activities = [
+        a for a in data["items"] if a.get("details", {}).get("tag_id") == tag_id
+    ]
+    assert len(activities) == 1
+    assert activities[0]["details"]["name"] == "Audit Tag"
+
+
+async def test_tag_update_generates_activity(client, sample_person, sample_tag):
+    """PUT /api/tags/{id} should create tag.updated activity."""
+    resp = await client.put(
+        f"/api/tags/{sample_tag.id}",
+        json={"name": "Updated Tag"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 200
+
+    feed = await client.get("/api/activity/feed", params={"event_type": "tag.updated"})
+    data = feed.json()
+    activities = [
+        a
+        for a in data["items"]
+        if a.get("details", {}).get("tag_id") == str(sample_tag.id)
+    ]
+    assert len(activities) >= 1
+    assert activities[0]["details"]["name"] == "Updated Tag"
+
+
+async def test_tag_delete_generates_activity(client, sample_person):
+    """DELETE /api/tags/{id} should create tag.deleted activity."""
+    # Create a tag to delete
+    create_resp = await client.post(
+        "/api/tags",
+        json={"name": "Te Verwijderen Tag"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert create_resp.status_code == 201
+    tag_id = create_resp.json()["id"]
+
+    del_resp = await client.delete(
+        f"/api/tags/{tag_id}",
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert del_resp.status_code == 204
+
+    feed = await client.get("/api/activity/feed", params={"event_type": "tag.deleted"})
+    data = feed.json()
+    deleted = [a for a in data["items"] if a.get("details", {}).get("tag_id") == tag_id]
+    assert len(deleted) == 1
+    assert deleted[0]["details"]["name"] == "Te Verwijderen Tag"
+
+
+# ---------------------------------------------------------------------------
+# Node tag add/remove generates activity
+# ---------------------------------------------------------------------------
+
+
+async def test_node_tag_add_generates_activity(
+    client, sample_person, sample_node, sample_tag
+):
+    """POST /api/nodes/{id}/tags should create tag.added activity."""
+    resp = await client.post(
+        f"/api/nodes/{sample_node.id}/tags",
+        json={"tag_id": str(sample_tag.id)},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 201
+
+    feed = await client.get("/api/activity/feed", params={"event_type": "tag.added"})
+    data = feed.json()
+    activities = [
+        a
+        for a in data["items"]
+        if a["event_type"] == "tag.added" and a["node_id"] == str(sample_node.id)
+    ]
+    assert len(activities) >= 1
+    assert activities[0]["details"]["tag_id"] == str(sample_tag.id)
+
+
+async def test_node_tag_remove_generates_activity(
+    client, sample_person, sample_node, sample_tag
+):
+    """DELETE /api/nodes/{id}/tags/{tag_id} should create tag.removed activity."""
+    # First add the tag
+    add_resp = await client.post(
+        f"/api/nodes/{sample_node.id}/tags",
+        json={"tag_id": str(sample_tag.id)},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert add_resp.status_code == 201
+
+    # Remove the tag
+    del_resp = await client.delete(
+        f"/api/nodes/{sample_node.id}/tags/{sample_tag.id}",
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert del_resp.status_code == 204
+
+    feed = await client.get("/api/activity/feed", params={"event_type": "tag.removed"})
+    data = feed.json()
+    activities = [
+        a
+        for a in data["items"]
+        if a["event_type"] == "tag.removed" and a["node_id"] == str(sample_node.id)
+    ]
+    assert len(activities) >= 1
+    assert activities[0]["details"]["tag_id"] == str(sample_tag.id)
+
+
+# ---------------------------------------------------------------------------
+# Stakeholder update/remove generates activity
+# ---------------------------------------------------------------------------
+
+
+async def test_stakeholder_updated_generates_activity(
+    client, sample_person, second_person, sample_node
+):
+    """PUT /api/nodes/{id}/stakeholders/{sid} should create stakeholder.updated."""
+    # Add a stakeholder first
+    add_resp = await client.post(
+        f"/api/nodes/{sample_node.id}/stakeholders",
+        json={"person_id": str(second_person.id), "rol": "betrokken"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert add_resp.status_code == 201
+    stakeholder_id = add_resp.json()["id"]
+
+    # Update the stakeholder role
+    update_resp = await client.put(
+        f"/api/nodes/{sample_node.id}/stakeholders/{stakeholder_id}",
+        json={"rol": "eigenaar"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert update_resp.status_code == 200
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "stakeholder.updated"}
+    )
+    data = feed.json()
+    activities = [
+        a
+        for a in data["items"]
+        if a["event_type"] == "stakeholder.updated"
+        and a["node_id"] == str(sample_node.id)
+    ]
+    assert len(activities) >= 1
+    assert activities[0]["details"]["old_rol"] == "betrokken"
+    assert activities[0]["details"]["new_rol"] == "eigenaar"
+
+
+async def test_stakeholder_removed_generates_activity(
+    client, sample_person, second_person, sample_node
+):
+    """DELETE /api/nodes/{id}/stakeholders/{sid} should create stakeholder.removed."""
+    # Add a stakeholder first
+    add_resp = await client.post(
+        f"/api/nodes/{sample_node.id}/stakeholders",
+        json={"person_id": str(second_person.id), "rol": "adviseur"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert add_resp.status_code == 201
+    stakeholder_id = add_resp.json()["id"]
+
+    # Remove the stakeholder
+    del_resp = await client.delete(
+        f"/api/nodes/{sample_node.id}/stakeholders/{stakeholder_id}",
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert del_resp.status_code == 204
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "stakeholder.removed"}
+    )
+    data = feed.json()
+    activities = [
+        a
+        for a in data["items"]
+        if a["event_type"] == "stakeholder.removed"
+        and a["node_id"] == str(sample_node.id)
+    ]
+    assert len(activities) >= 1
+    assert activities[0]["details"]["person_id"] == str(second_person.id)
+    assert activities[0]["details"]["rol"] == "adviseur"
+
+
+# ---------------------------------------------------------------------------
+# Person organisatie placement generates activity
+# ---------------------------------------------------------------------------
+
+
+async def test_person_organisatie_added_generates_activity(
+    client, sample_person, sample_organisatie
+):
+    """POST /api/people/{id}/organisaties should create person.organisatie_added."""
+    resp = await client.post(
+        f"/api/people/{sample_person.id}/organisaties",
+        json={
+            "organisatie_eenheid_id": str(sample_organisatie.id),
+            "dienstverband": "in_dienst",
+            "start_datum": "2024-01-01",
+        },
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 201
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "person.organisatie_added"}
+    )
+    data = feed.json()
+    assert data["total"] >= 1
+    activities = [
+        a for a in data["items"] if a["event_type"] == "person.organisatie_added"
+    ]
+    assert len(activities) >= 1
+    assert activities[0]["details"]["person_id"] == str(sample_person.id)
+    assert activities[0]["details"]["organisatie_eenheid_id"] == str(
+        sample_organisatie.id
+    )
+
+
+async def test_person_organisatie_removed_generates_activity(
+    client, sample_person, sample_organisatie
+):
+    """DELETE /api/people/{id}/organisaties/{pid} creates person.organisatie_removed."""
+    # Add a placement first
+    add_resp = await client.post(
+        f"/api/people/{sample_person.id}/organisaties",
+        json={
+            "organisatie_eenheid_id": str(sample_organisatie.id),
+            "dienstverband": "in_dienst",
+            "start_datum": "2024-01-01",
+        },
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert add_resp.status_code == 201
+    placement_id = add_resp.json()["id"]
+
+    # Remove the placement
+    del_resp = await client.delete(
+        f"/api/people/{sample_person.id}/organisaties/{placement_id}",
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert del_resp.status_code == 204
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "person.organisatie_removed"}
+    )
+    data = feed.json()
+    assert data["total"] >= 1
+    activities = [
+        a for a in data["items"] if a["event_type"] == "person.organisatie_removed"
+    ]
+    assert len(activities) >= 1
+    assert activities[0]["details"]["person_id"] == str(sample_person.id)
+
+
+# ---------------------------------------------------------------------------
+# Parlementair generates activity
+# ---------------------------------------------------------------------------
+
+
+async def test_parlementair_reject_generates_activity(
+    client, db_session, sample_person, sample_node
+):
+    """PUT /api/parlementair/imports/{id}/reject creates parlementair.rejected."""
+    from bouwmeester.models.parlementair_item import ParlementairItem
+
+    item = ParlementairItem(
+        id=uuid.uuid4(),
+        type="motie",
+        zaak_id=f"zaak-{uuid.uuid4().hex[:8]}",
+        zaak_nummer=f"36200-{uuid.uuid4().hex[:4]}",
+        titel="Reject test",
+        onderwerp="Test",
+        bron="tweede_kamer",
+        status="pending",
+        corpus_node_id=sample_node.id,
+    )
+    db_session.add(item)
+    await db_session.flush()
+
+    resp = await client.put(
+        f"/api/parlementair/imports/{item.id}/reject",
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 200
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "parlementair.rejected"}
+    )
+    data = feed.json()
+    activities = [
+        a for a in data["items"] if a.get("details", {}).get("item_id") == str(item.id)
+    ]
+    assert len(activities) == 1
+
+
+async def test_parlementair_edge_approve_generates_activity(
+    client, db_session, sample_person, sample_node, second_node, sample_edge_type
+):
+    """PUT /api/parlementair/edges/{id}/approve creates parlementair.edge_approved."""
+    from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
+
+    item = ParlementairItem(
+        id=uuid.uuid4(),
+        type="motie",
+        zaak_id=f"zaak-{uuid.uuid4().hex[:8]}",
+        zaak_nummer=f"36200-{uuid.uuid4().hex[:4]}",
+        titel="Edge approve test",
+        onderwerp="Test",
+        bron="tweede_kamer",
+        status="pending",
+        corpus_node_id=sample_node.id,
+    )
+    db_session.add(item)
+    await db_session.flush()
+
+    se = SuggestedEdge(
+        id=uuid.uuid4(),
+        parlementair_item_id=item.id,
+        target_node_id=second_node.id,
+        edge_type_id=sample_edge_type.id,
+        confidence=0.9,
+        reason="Test",
+        status="pending",
+    )
+    db_session.add(se)
+    await db_session.flush()
+
+    resp = await client.put(
+        f"/api/parlementair/edges/{se.id}/approve",
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 200
+
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "parlementair.edge_approved"}
+    )
+    data = feed.json()
+    activities = [
+        a
+        for a in data["items"]
+        if a.get("details", {}).get("suggested_edge_id") == str(se.id)
+    ]
+    assert len(activities) == 1
+
+
+# ---------------------------------------------------------------------------
+# actor_naam denormalized in details
+# ---------------------------------------------------------------------------
+
+
+async def test_actor_naam_stored_in_details(client, sample_person):
+    """Activity actor_naam comes from the actor relationship.
+
+    In test mode (no OIDC), current_user is None, so resolve_actor_naam()
+    returns None and actor_naam is NOT denormalized into details.  However
+    the top-level actor_naam response field is populated via the ORM
+    relationship (Activity → Person).
+    """
+    resp = await client.post(
+        "/api/nodes",
+        json={"title": "Naam in details test", "node_type": "dossier"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 201
+    node_id = resp.json()["id"]
+
+    feed = await client.get("/api/activity/feed")
+    data = feed.json()
+    activities = [a for a in data["items"] if a["node_id"] == node_id]
+    assert len(activities) == 1
+    # Top-level actor_naam is resolved via the Person relationship
+    assert activities[0]["actor_naam"] == "Jan Tester"
+    # In dev/test mode (no authenticated user), actor_naam is NOT in details
+    # because resolve_actor_naam(None) returns None.  In production with OIDC,
+    # actor_naam would also be denormalized into details for durability.
+    assert activities[0]["actor_id"] == str(sample_person.id)

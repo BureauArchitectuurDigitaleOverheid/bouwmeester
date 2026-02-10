@@ -18,7 +18,11 @@ from bouwmeester.schema.task import (
     TaskStatus,
     TaskUpdate,
 )
-from bouwmeester.services.activity_service import ActivityService
+from bouwmeester.services.activity_service import (
+    ActivityService,
+    resolve_actor_id,
+    resolve_actor_naam,
+)
 from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
@@ -86,7 +90,9 @@ async def create_task(
     if task.assignee_id:
         assignee = await db.get(Person, task.assignee_id)
         if assignee:
-            await notif_svc.notify_task_assigned(task, assignee, actor_id=actor_id)
+            await notif_svc.notify_task_assigned(
+                task, assignee, actor_id=resolve_actor_id(current_user, actor_id)
+            )
 
     # Notify team manager
     if task.organisatie_eenheid_id:
@@ -96,7 +102,8 @@ async def create_task(
 
     await ActivityService(db).log_event(
         "task.created",
-        actor_id=actor_id,
+        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_naam=resolve_actor_naam(current_user),
         task_id=task.id,
         node_id=task.node_id,
         details={
@@ -225,12 +232,16 @@ async def update_task(
             else:
                 # First assignment
                 await notif_svc.notify_task_assigned(
-                    task, new_assignee, actor_id=actor_id
+                    task,
+                    new_assignee,
+                    actor_id=resolve_actor_id(current_user, actor_id),
                 )
 
     # Detect status → done
     if task.status == "done" and old_status != "done":
-        await notif_svc.notify_task_completed(task, actor_id=actor_id)
+        await notif_svc.notify_task_completed(
+            task, actor_id=resolve_actor_id(current_user, actor_id)
+        )
 
     # Detect org unit change
     new_org_unit_id = task.organisatie_eenheid_id
@@ -241,7 +252,8 @@ async def update_task(
 
     await ActivityService(db).log_event(
         "task.updated",
-        actor_id=actor_id,
+        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_naam=resolve_actor_naam(current_user),
         task_id=task.id,
         node_id=task.node_id,
         details={"title": task.title},
@@ -264,7 +276,8 @@ async def delete_task(
     require_deleted(await repo.delete(id), "Task")
     await ActivityService(db).log_event(
         "task.deleted",
-        actor_id=actor_id,
+        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_naam=resolve_actor_naam(current_user),
         details={
             "task_id": str(id),
             "node_id": str(task_node_id) if task_node_id else None,

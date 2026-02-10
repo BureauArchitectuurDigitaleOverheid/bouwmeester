@@ -82,6 +82,7 @@ class ActivityRepository:
             .options(selectinload(Activity.actor))
             .order_by(Activity.created_at.desc())
         )
+        # NOTE: For large tables, consider adding a text_pattern_ops index on event_type
         if event_type:
             stmt = stmt.where(Activity.event_type.startswith(event_type))
         if actor_id:

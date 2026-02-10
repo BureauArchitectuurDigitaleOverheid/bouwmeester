@@ -9,6 +9,20 @@ from bouwmeester.models.activity import Activity
 from bouwmeester.repositories.activity import ActivityRepository
 
 
+def resolve_actor_id(current_user: Any, actor_id: UUID | None) -> UUID | None:
+    """Prefer authenticated user's ID; fall back to query param for dev mode."""
+    if current_user is not None:
+        return current_user.id
+    return actor_id
+
+
+def resolve_actor_naam(current_user: Any) -> str | None:
+    """Return the authenticated user's name, or None."""
+    if current_user is not None:
+        return current_user.naam
+    return None
+
+
 class ActivityService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -18,11 +32,18 @@ class ActivityService:
         self,
         event_type: str,
         actor_id: UUID | None = None,
+        actor_naam: str | None = None,
         node_id: UUID | None = None,
         task_id: UUID | None = None,
         edge_id: UUID | None = None,
         details: dict[str, Any] | None = None,
     ) -> Activity:
+        if actor_naam:
+            if details is None:
+                details = {}
+            else:
+                details = dict(details)
+            details["actor_naam"] = actor_naam
         return await self.repo.create(
             event_type=event_type,
             actor_id=actor_id,

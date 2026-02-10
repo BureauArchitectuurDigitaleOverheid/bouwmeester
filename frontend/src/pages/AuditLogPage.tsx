@@ -36,7 +36,7 @@ export function AuditLogPage() {
   const [page, setPage] = useState(0);
   const [category, setCategory] = useState('');
 
-  const { data, isLoading } = useActivityFeed({
+  const { data, isLoading, isError } = useActivityFeed({
     skip: page * PAGE_SIZE,
     limit: PAGE_SIZE,
     event_type: category || undefined,
@@ -91,6 +91,15 @@ export function AuditLogPage() {
                   className="px-4 py-8 text-center text-text-secondary"
                 >
                   Laden...
+                </td>
+              </tr>
+            ) : isError ? (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-4 py-8 text-center text-red-600"
+                >
+                  Fout bij laden van activiteiten
                 </td>
               </tr>
             ) : !data?.items.length ? (

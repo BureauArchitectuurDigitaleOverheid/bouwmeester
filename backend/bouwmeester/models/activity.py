@@ -25,8 +25,8 @@ class Activity(Base):
     event_type: Mapped[str] = mapped_column(
         nullable=False,
         comment=(
-            "node.created|node.updated|edge.created|edge.deleted|"
-            "task.created|task.assigned|task.completed|stakeholder.added"
+            "Prefix-based categories: node, task, edge, person, "
+            "organisatie, tag, stakeholder, parlementair"
         ),
     )
     actor_id: Mapped[uuid.UUID | None] = mapped_column(

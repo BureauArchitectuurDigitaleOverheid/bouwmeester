@@ -22,7 +22,11 @@ from bouwmeester.schema.parlementair_item import (
     ParlementairItemResponse,
     SuggestedEdgeResponse,
 )
-from bouwmeester.services.activity_service import ActivityService
+from bouwmeester.services.activity_service import (
+    ActivityService,
+    resolve_actor_id,
+    resolve_actor_naam,
+)
 
 SUGGESTED_EDGE_DESCRIPTION = "Automatisch voorgesteld vanuit parlementaire import"
 
@@ -89,7 +93,8 @@ async def trigger_import(
 
     await ActivityService(db).log_event(
         "parlementair.import_triggered",
-        actor_id=actor_id,
+        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_naam=resolve_actor_naam(current_user),
         details={"count": count},
     )
 
@@ -123,7 +128,8 @@ async def reject_import(
 
     await ActivityService(db).log_event(
         "parlementair.rejected",
-        actor_id=actor_id,
+        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_naam=resolve_actor_naam(current_user),
         details={"item_id": str(import_id)},
     )
 
@@ -201,7 +207,8 @@ async def complete_review(
 
     await ActivityService(db).log_event(
         "parlementair.reviewed",
-        actor_id=actor_id,
+        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_naam=resolve_actor_naam(current_user),
         details={"item_id": str(import_id), "eigenaar_id": str(body.eigenaar_id)},
     )
 
@@ -271,7 +278,8 @@ async def approve_edge(
 
     await ActivityService(db).log_event(
         "parlementair.edge_approved",
-        actor_id=actor_id,
+        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_naam=resolve_actor_naam(current_user),
         details={"suggested_edge_id": str(edge_id)},
     )
 
@@ -297,7 +305,8 @@ async def reject_edge(
 
     await ActivityService(db).log_event(
         "parlementair.edge_rejected",
-        actor_id=actor_id,
+        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_naam=resolve_actor_naam(current_user),
         details={"suggested_edge_id": str(edge_id)},
     )
 
@@ -332,7 +341,8 @@ async def reset_suggested_edge(
 
     await ActivityService(db).log_event(
         "parlementair.edge_reset",
-        actor_id=actor_id,
+        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_naam=resolve_actor_naam(current_user),
         details={"suggested_edge_id": str(edge_id)},
     )
 
