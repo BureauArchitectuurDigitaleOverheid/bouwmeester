@@ -23,6 +23,8 @@ COPY --from=builder --chown=appuser:appuser /app /app
 
 USER 1001
 
+ENV UV_NO_CACHE=1
+
 EXPOSE 8080
 
 ENTRYPOINT ["sh", "/app/entrypoint.sh"]
