@@ -9,6 +9,13 @@ import { useOrganisatieEenheid, useOrganisatiePersonenRecursive } from '@/hooks/
 import { ORGANISATIE_TYPE_LABELS } from '@/types';
 import type { Person, OrganisatieEenheidPersonenGroup } from '@/types';
 
+/** Org types where the manager role is labeled "Coördinator" instead of "Manager". */
+const COORDINATOR_TYPES = new Set(['cluster', 'team']);
+
+function managerLabelForType(orgType: string): string {
+  return COORDINATOR_TYPES.has(orgType) ? 'Coördinator' : 'Manager';
+}
+
 const TYPE_BADGE_COLORS: Record<string, 'blue' | 'purple' | 'amber' | 'cyan' | 'green' | 'gray'> = {
   ministerie: 'blue',
   directoraat_generaal: 'purple',
@@ -111,6 +118,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
             onEditPerson={onEditPerson}
             onDragStartPerson={onDragStartPerson}
             isManager
+            managerLabel={managerLabelForType(group.eenheid.type)}
           />
         )}
 
@@ -181,6 +189,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
               onEditPerson={onEditPerson}
               onDragStartPerson={onDragStartPerson}
               isManager
+              managerLabel={managerLabelForType(group.eenheid.type)}
             />
           )}
 

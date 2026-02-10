@@ -24,11 +24,13 @@ interface PersonCardExpandableProps {
   onEditPerson?: (person: Person) => void;
   onDragStartPerson?: (e: React.DragEvent, person: Person) => void;
   isManager?: boolean;
+  /** Override the manager badge label (e.g. "Coördinator" for teams) */
+  managerLabel?: string;
   /** Extra badge shown on the right side (e.g. stakeholder role) */
   extraBadge?: React.ReactNode;
 }
 
-export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, isManager, extraBadge }: PersonCardExpandableProps) {
+export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, isManager, managerLabel, extraBadge }: PersonCardExpandableProps) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [messageOpen, setMessageOpen] = useState(false);
@@ -84,14 +86,18 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 Agent
               </Badge>
             )}
-            {isManager && (
-              <Badge
-                variant={person.functie === 'minister' || person.functie === 'staatssecretaris' ? 'purple' : 'blue'}
-                className="text-[10px] px-1.5 py-0 shrink-0"
-              >
-                {person.functie === 'minister' || person.functie === 'staatssecretaris' ? 'Bewindspersoon' : 'Manager'}
-              </Badge>
-            )}
+            {isManager && (() => {
+              const isBewindspersoon = person.functie === 'minister' || person.functie === 'staatssecretaris';
+              const label = isBewindspersoon ? 'Bewindspersoon' : (managerLabel ?? 'Manager');
+              return (
+                <Badge
+                  variant={isBewindspersoon ? 'purple' : 'blue'}
+                  className="text-[10px] px-1.5 py-0 shrink-0"
+                >
+                  {label}
+                </Badge>
+              );
+            })()}
             {extraBadge && <div className="shrink-0 ml-auto">{extraBadge}</div>}
           </div>
           <div className="flex items-center gap-3 text-xs text-text-secondary mt-0.5">
