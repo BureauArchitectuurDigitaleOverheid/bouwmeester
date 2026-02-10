@@ -33,6 +33,8 @@ Run `just` to see all available commands. Key ones:
 | `just import-parlementair` | Manually trigger parlementair import via API |
 | `just decrypt-seed` | Decrypt seed person data (.age → .json) |
 | `just encrypt-seed` | Encrypt seed person data (.json → .age) |
+| `just decrypt-whitelist` | Decrypt access whitelist (.age → .json) |
+| `just encrypt-whitelist` | Encrypt access whitelist (.json → .age) |
 
 ## Architecture
 
@@ -156,6 +158,22 @@ To edit person data: decrypt, edit the JSON, re-encrypt, commit the `.age` file.
 3. Team member adds your public key to `encrypt-seed` in `justfile` and re-encrypts
 4. `just decrypt-seed` to get the person data
 5. `just reset-db` works without decryption too (uses placeholder persons)
+
+## Access whitelist
+
+Production access is restricted to whitelisted email addresses. The whitelist uses the same age-encryption pattern as seed person data.
+
+- `backend/scripts/access_whitelist.json` — plaintext, **gitignored**. Format: `{"emails": ["user@example.com"]}`
+- `backend/scripts/access_whitelist.json.age` — age-encrypted version, **committed**
+- Backend module: `bouwmeester/core/whitelist.py` — loaded at startup, enforced in `AuthRequiredMiddleware` (all API routes) and `auth_status()` (friendly frontend response)
+- When no whitelist file exists, all emails are allowed (backwards compatible for local dev)
+
+```bash
+just decrypt-whitelist    # Decrypt .age → .json (needs ~/.age/key.txt)
+just encrypt-whitelist    # Encrypt .json → .age (uses public keys from justfile)
+```
+
+To add/remove users: decrypt, edit the JSON, re-encrypt, commit the `.age` file, redeploy.
 
 ## Database
 

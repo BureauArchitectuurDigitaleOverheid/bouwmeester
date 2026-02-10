@@ -59,5 +59,8 @@ htmlcov/
 # Seed person data (PII — encrypted version .age is committed)
 backend/scripts/seed_persons.json
 
+# Access whitelist (encrypted version .age is committed)
+backend/scripts/access_whitelist.json
+
 # Alembic
 alembic/versions/__pycache__/

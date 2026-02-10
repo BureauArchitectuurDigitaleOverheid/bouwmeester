@@ -125,6 +125,10 @@ class AuthRequiredMiddleware:
         bearer_token = _get_bearer_token(scope)
         if bearer_token:
             if await self._validate_bearer(bearer_token):
+                # Bearer tokens don't carry an email in the session, so
+                # we can't check the whitelist here.  This is intentional:
+                # Bearer auth is for machine-to-machine clients that are
+                # not subject to the email-based access whitelist.
                 scope["_auth_validated"] = True
                 await self.app(scope, receive, send)
                 return
@@ -135,6 +139,33 @@ class AuthRequiredMiddleware:
             from bouwmeester.core.auth import validate_session_token
 
             if await validate_session_token(session, self.settings):
+                # Check access whitelist — deny even valid sessions
+                # for users not on the whitelist.  This is the primary
+                # enforcement point; auth_status() has a parallel check
+                # that returns a friendly JSON response for the frontend
+                # (since /api/auth/* is a public prefix and skips this
+                # middleware).
+                from bouwmeester.core.whitelist import is_email_allowed
+
+                email = session.get("person_email", "")
+                if not is_email_allowed(email):
+                    session.clear()
+                    body = json.dumps(
+                        {"detail": "Access denied — not on whitelist"}
+                    ).encode("utf-8")
+                    await send(
+                        {
+                            "type": "http.response.start",
+                            "status": 403,
+                            "headers": [
+                                (b"content-type", b"application/json"),
+                                (b"content-length", str(len(body)).encode()),
+                            ],
+                        }
+                    )
+                    await send({"type": "http.response.body", "body": body})
+                    return
+
                 scope["_auth_validated"] = True
                 await self.app(scope, receive, send)
                 return

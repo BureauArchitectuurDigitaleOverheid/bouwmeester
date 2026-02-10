@@ -19,6 +19,7 @@ import { ParlementairPage } from '@/pages/ParlementairPage';
 import { EenheidOverzichtPage } from '@/pages/EenheidOverzichtPage';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { LoginPage } from '@/pages/LoginPage';
+import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,7 +32,7 @@ const queryClient = new QueryClient({
 });
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { loading, authenticated, oidcConfigured, error } = useAuth();
+  const { loading, authenticated, oidcConfigured, error, accessDenied, deniedEmail } = useAuth();
 
   if (loading) {
     return (
@@ -57,6 +58,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
+  }
+
+  // If access was denied by the whitelist, show access denied page
+  if (accessDenied) {
+    return <AccessDeniedPage email={deniedEmail} />;
   }
 
   // If OIDC is configured and user is not authenticated, show login
