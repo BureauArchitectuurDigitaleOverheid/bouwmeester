@@ -1,13 +1,17 @@
 #!/bin/sh
 set -e
 
+# Activate the venv directly — avoids uv run which tries to
+# re-install the project and fails on read-only .pth files.
+export PATH="/app/.venv/bin:$PATH"
+
 echo "Running database migrations..."
-uv run alembic upgrade head
+alembic upgrade head
 
 if [ "${SEED_ON_STARTUP:-false}" = "true" ]; then
     echo "Seeding database..."
-    uv run python scripts/seed.py
+    python scripts/seed.py
 fi
 
 echo "Starting uvicorn..."
-exec uv run uvicorn bouwmeester.core.app:create_app --factory --host 0.0.0.0 --port 8080
+exec uvicorn bouwmeester.core.app:create_app --factory --host 0.0.0.0 --port 8080
