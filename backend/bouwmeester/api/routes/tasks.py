@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.task import TaskRepository
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 @router.get("", response_model=list[TaskResponse])
 async def list_tasks(
+    current_user: OptionalUser,
     status_filter: TaskStatus | None = Query(None, alias="status"),
     node_id: UUID | None = Query(None),
     assignee_id: UUID | None = Query(None),
@@ -60,6 +62,7 @@ async def list_tasks(
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     data: TaskCreate,
+    current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
@@ -95,18 +98,26 @@ async def create_task(
 
 @router.get("/my", response_model=list[TaskResponse])
 async def get_my_tasks(
-    person_id: UUID = Query(...),
+    current_user: OptionalUser,
+    person_id: UUID | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
+    # Use authenticated user's id when available, fall back to query param for dev
+    effective_id = current_user.id if current_user is not None else person_id
+    if effective_id is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail="person_id is required")
     repo = TaskRepository(db)
-    tasks = await repo.get_by_assignee(person_id, skip=skip, limit=limit)
+    tasks = await repo.get_by_assignee(effective_id, skip=skip, limit=limit)
     return [TaskResponse.model_validate(t) for t in tasks]
 
 
 @router.get("/inbox", response_model=InboxResponse)
 async def get_task_inbox(
+    current_user: OptionalUser,
     person_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
 ) -> InboxResponse:
@@ -116,6 +127,7 @@ async def get_task_inbox(
 
 @router.get("/unassigned", response_model=list[TaskResponse])
 async def get_unassigned_tasks(
+    current_user: OptionalUser,
     organisatie_eenheid_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
@@ -126,6 +138,7 @@ async def get_unassigned_tasks(
 
 @router.get("/eenheid-overview", response_model=EenheidOverviewResponse)
 async def get_eenheid_overview(
+    current_user: OptionalUser,
     organisatie_eenheid_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
 ) -> EenheidOverviewResponse:
@@ -137,6 +150,7 @@ async def get_eenheid_overview(
 @router.get("/{id}", response_model=TaskResponse)
 async def get_task(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
     repo = TaskRepository(db)
@@ -147,6 +161,7 @@ async def get_task(
 @router.get("/{id}/subtasks", response_model=list[TaskResponse])
 async def get_task_subtasks(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
     repo = TaskRepository(db)
@@ -158,6 +173,7 @@ async def get_task_subtasks(
 async def update_task(
     id: UUID,
     data: TaskUpdate,
+    current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
@@ -217,6 +233,7 @@ async def update_task(
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = TaskRepository(db)

@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.search import SearchRepository
 from bouwmeester.schema.search import SearchResponse, SearchResult, SearchResultType
@@ -12,7 +13,8 @@ router = APIRouter(prefix="/search", tags=["search"])
 
 @router.get("", response_model=SearchResponse)
 async def search(
-    q: str = Query(..., min_length=1),
+    current_user: OptionalUser,
+    q: str = Query(..., min_length=1, max_length=500),
     result_types: list[SearchResultType] | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),

@@ -34,7 +34,7 @@ _TOKEN_REVALIDATION_INTERVAL = 300
 
 # Grace period: if Keycloak is unreachable, allow recently-validated sessions
 # for up to this many seconds beyond the last successful validation.
-_NETWORK_ERROR_GRACE_SECONDS = 600
+_NETWORK_ERROR_GRACE_SECONDS = 120
 
 # Shared httpx client for outbound OIDC requests (connection pooling).
 _http_client: httpx.AsyncClient | None = None

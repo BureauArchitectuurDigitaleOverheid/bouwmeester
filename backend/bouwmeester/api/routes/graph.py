@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.graph import GraphRepository
 from bouwmeester.schema.corpus_node import CorpusNodeResponse, NodeType
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/graph", tags=["graph"])
 
 @router.get("/search", response_model=GraphViewResponse)
 async def graph_search(
+    current_user: OptionalUser,
     node_types: list[NodeType] | None = Query(None),
     edge_types: list[str] | None = Query(None),
     db: AsyncSession = Depends(get_db),
@@ -41,6 +43,7 @@ async def graph_search(
 
 @router.get("/path")
 async def find_path(
+    current_user: OptionalUser,
     from_id: UUID = Query(...),
     to_id: UUID = Query(...),
     max_depth: int = Query(10, ge=1, le=50),

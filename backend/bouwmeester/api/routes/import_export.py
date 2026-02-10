@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import validate_csv_upload
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.schema.import_export import ImportResult
 from bouwmeester.services.archimate_export_service import (
@@ -24,6 +25,7 @@ router = APIRouter(tags=["import-export"])
 @router.post("/import/politieke-inputs", response_model=ImportResult)
 async def import_politieke_inputs(
     file: UploadFile,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> ImportResult:
     """Upload a CSV to bulk-import politieke inputs."""
@@ -35,6 +37,7 @@ async def import_politieke_inputs(
 @router.post("/import/nodes", response_model=ImportResult)
 async def import_nodes(
     file: UploadFile,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> ImportResult:
     """Upload a CSV to bulk-import generic nodes."""
@@ -46,6 +49,7 @@ async def import_nodes(
 @router.post("/import/edges", response_model=ImportResult)
 async def import_edges(
     file: UploadFile,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> ImportResult:
     """Upload a CSV to bulk-import edges."""
@@ -59,6 +63,7 @@ async def import_edges(
 
 @router.get("/export/nodes")
 async def export_nodes(
+    current_user: OptionalUser,
     node_type: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
@@ -74,6 +79,7 @@ async def export_nodes(
 
 @router.get("/export/edges")
 async def export_edges(
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Export all edges as CSV."""
@@ -88,6 +94,7 @@ async def export_edges(
 
 @router.get("/export/corpus")
 async def export_corpus(
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """Export full corpus as JSON (nodes + edges + types)."""
@@ -101,6 +108,7 @@ async def export_corpus(
 
 @router.get("/export/archimate")
 async def export_archimate(
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Export corpus as ArchiMate Exchange Format XML."""

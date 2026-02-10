@@ -3,13 +3,13 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MentionBase(BaseModel):
-    source_type: str
+    source_type: str = Field(max_length=100)
     source_id: UUID
-    mention_type: str
+    mention_type: str = Field(max_length=100)
     target_id: UUID
     created_by: UUID | None = None
 

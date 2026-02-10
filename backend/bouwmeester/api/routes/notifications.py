@@ -2,11 +2,12 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.notification import Notification
 from bouwmeester.models.person import Person
@@ -90,6 +91,7 @@ async def _enrich_batch(
 
 @router.get("", response_model=list[NotificationResponse])
 async def list_notifications(
+    current_user: OptionalUser,
     person_id: UUID = Query(...),
     unread_only: bool = Query(False),
     skip: int = Query(0, ge=0),
@@ -108,6 +110,7 @@ async def list_notifications(
 
 @router.get("/count", response_model=UnreadCountResponse)
 async def get_unread_count(
+    current_user: OptionalUser,
     person_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
 ) -> UnreadCountResponse:
@@ -118,6 +121,7 @@ async def get_unread_count(
 
 @router.get("/dashboard-stats", response_model=DashboardStatsResponse)
 async def get_dashboard_stats(
+    current_user: OptionalUser,
     person_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
 ) -> DashboardStatsResponse:
@@ -130,6 +134,7 @@ async def get_dashboard_stats(
 @router.get("/{id}", response_model=NotificationResponse)
 async def get_notification(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
     service = NotificationService(db)
@@ -140,6 +145,7 @@ async def get_notification(
 @router.get("/{id}/replies", response_model=list[NotificationResponse])
 async def get_replies(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[NotificationResponse]:
     service = NotificationService(db)
@@ -153,6 +159,7 @@ async def get_replies(
 @router.put("/{id}/read", response_model=NotificationResponse)
 async def mark_notification_read(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
     service = NotificationService(db)
@@ -162,6 +169,7 @@ async def mark_notification_read(
 
 @router.put("/read-all")
 async def mark_all_notifications_read(
+    current_user: OptionalUser,
     person_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, int]:
@@ -173,8 +181,13 @@ async def mark_all_notifications_read(
 @router.post("/send", response_model=NotificationResponse)
 async def send_message(
     body: SendMessageRequest,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
+    # Prevent sender spoofing when authenticated
+    if current_user is not None and body.sender_id != current_user.id:
+        raise HTTPException(403, "Sender moet de ingelogde gebruiker zijn")
+
     recipient = require_found(await db.get(Person, body.person_id), "Recipient")
     sender = require_found(await db.get(Person, body.sender_id), "Sender")
 
@@ -229,8 +242,13 @@ async def send_message(
 async def reply_to_notification(
     id: UUID,
     body: ReplyRequest,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
+    # Prevent sender spoofing when authenticated
+    if current_user is not None and body.sender_id != current_user.id:
+        raise HTTPException(403, "Sender moet de ingelogde gebruiker zijn")
+
     service = NotificationService(db)
     parent = require_found(await service.repo.get_by_id(id), "Notification")
 

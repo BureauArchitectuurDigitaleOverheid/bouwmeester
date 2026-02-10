@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.node_stakeholder import NodeStakeholderRepository
@@ -44,6 +45,7 @@ router = APIRouter(prefix="/nodes", tags=["nodes"])
 
 @router.get("", response_model=list[CorpusNodeResponse])
 async def list_nodes(
+    current_user: OptionalUser,
     node_type: NodeType | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -58,6 +60,7 @@ async def list_nodes(
 @router.post("", response_model=CorpusNodeResponse, status_code=status.HTTP_201_CREATED)
 async def create_node(
     data: CorpusNodeCreate,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> CorpusNodeResponse:
     service = NodeService(db)
@@ -78,6 +81,7 @@ async def create_node(
 @router.get("/{id}", response_model=CorpusNodeWithEdges)
 async def get_node(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> CorpusNodeWithEdges:
     service = NodeService(db)
@@ -104,6 +108,7 @@ async def get_node(
 async def update_node(
     id: UUID,
     data: CorpusNodeUpdate,
+    current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> CorpusNodeResponse:
@@ -132,6 +137,7 @@ async def update_node(
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_node(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     service = NodeService(db)
@@ -141,6 +147,7 @@ async def delete_node(
 @router.get("/{id}/neighbors", response_model=GraphNeighborsResponse)
 async def get_neighbors(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> GraphNeighborsResponse:
     service = NodeService(db)
@@ -161,6 +168,7 @@ async def get_neighbors(
 @router.get("/{id}/graph", response_model=GraphViewResponse)
 async def get_graph(
     id: UUID,
+    current_user: OptionalUser,
     depth: int = Query(2, ge=1, le=5),
     db: AsyncSession = Depends(get_db),
 ) -> GraphViewResponse:
@@ -175,6 +183,7 @@ async def get_graph(
 @router.get("/{id}/tasks", response_model=list[TaskResponse])
 async def get_node_tasks(
     id: UUID,
+    current_user: OptionalUser,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
@@ -191,6 +200,7 @@ async def get_node_tasks(
 @router.get("/{id}/stakeholders", response_model=list[NodeStakeholderResponse])
 async def get_node_stakeholders(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[NodeStakeholderResponse]:
     # Verify node exists
@@ -210,6 +220,7 @@ async def get_node_stakeholders(
 async def add_node_stakeholder(
     id: UUID,
     data: NodeStakeholderCreate,
+    current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> NodeStakeholderResponse:
@@ -239,6 +250,7 @@ async def update_node_stakeholder(
     id: UUID,
     stakeholder_id: UUID,
     data: NodeStakeholderUpdate,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> NodeStakeholderResponse:
     repo = NodeStakeholderRepository(db)
@@ -274,6 +286,7 @@ async def update_node_stakeholder(
 async def remove_node_stakeholder(
     id: UUID,
     stakeholder_id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = NodeStakeholderRepository(db)
@@ -289,6 +302,7 @@ async def remove_node_stakeholder(
 @router.get("/{id}/tags", response_model=list[NodeTagResponse])
 async def get_node_tags(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[NodeTagResponse]:
     from bouwmeester.repositories.tag import TagRepository
@@ -309,6 +323,7 @@ async def get_node_tags(
 async def add_tag_to_node(
     id: UUID,
     data: NodeTagCreate,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> NodeTagResponse:
     from bouwmeester.repositories.tag import TagRepository
@@ -339,6 +354,7 @@ async def add_tag_to_node(
 async def remove_tag_from_node(
     id: UUID,
     tag_id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     from bouwmeester.repositories.tag import TagRepository
@@ -350,6 +366,7 @@ async def remove_tag_from_node(
 @router.get("/{id}/history/titles", response_model=list[NodeTitleRecord])
 async def get_node_title_history(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[NodeTitleRecord]:
     service = NodeService(db)
@@ -361,6 +378,7 @@ async def get_node_title_history(
 @router.get("/{id}/history/statuses", response_model=list[NodeStatusRecord])
 async def get_node_status_history(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[NodeStatusRecord]:
     service = NodeService(db)
@@ -372,6 +390,7 @@ async def get_node_status_history(
 @router.get("/{id}/parlementair-item")
 async def get_node_parlementair_item(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict | None:
     """Get linked parliamentary item data for a politieke_input node."""
