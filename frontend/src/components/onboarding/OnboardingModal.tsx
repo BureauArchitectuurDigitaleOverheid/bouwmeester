@@ -4,6 +4,12 @@ import { apiPost, ApiError } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Modal } from '@/components/common/Modal';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
+import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
+import { FUNCTIE_LABELS } from '@/types';
+
+const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS).map(
+  ([value, label]) => ({ value, label }),
+);
 
 interface OnboardingPayload {
   naam: string;
@@ -17,6 +23,7 @@ export function OnboardingModal() {
 
   const [naam, setNaam] = useState(person?.name ?? '');
   const [functie, setFunctie] = useState('');
+  const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
   const [orgId, setOrgId] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -35,6 +42,13 @@ export function OnboardingModal() {
       }
     },
   });
+
+  const handleCreateFunctie = async (text: string): Promise<string | null> => {
+    const value = text.toLowerCase().replace(/\s+/g, '_');
+    setFunctieOptions((prev) => [...prev, { value, label: text }]);
+    setFunctie(value);
+    return value;
+  };
 
   const canSubmit = naam.trim().length > 0 && functie.trim().length > 0 && orgId.length > 0;
 
@@ -80,16 +94,15 @@ export function OnboardingModal() {
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">Functie</label>
-          <input
-            type="text"
-            value={functie}
-            onChange={(e) => setFunctie(e.target.value)}
-            className="w-full rounded-lg border border-border px-3 py-2 text-sm text-text focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-            placeholder="bijv. Beleidsmedewerker, Directeur"
-          />
-        </div>
+        <CreatableSelect
+          label="Functie"
+          value={functie}
+          onChange={setFunctie}
+          options={functieOptions}
+          placeholder="Selecteer of maak functie..."
+          onCreate={handleCreateFunctie}
+          createLabel="Nieuwe functie aanmaken"
+        />
 
         <CascadingOrgSelect value={orgId} onChange={setOrgId} />
 
