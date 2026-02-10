@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from bouwmeester.schema.person import PersonResponse
 
@@ -44,20 +44,20 @@ class OrgManagerRecord(BaseModel):
 
 
 class OrganisatieEenheidCreate(BaseModel):
-    naam: str
-    type: str
+    naam: str = Field(min_length=1, max_length=200)
+    type: str = Field(min_length=1, max_length=100)
     parent_id: UUID | None = None
     manager_id: UUID | None = None
-    beschrijving: str | None = None
+    beschrijving: str | None = Field(None, max_length=5000)
     geldig_van: date | None = None  # defaults to today in repository
 
 
 class OrganisatieEenheidUpdate(BaseModel):
-    naam: str | None = None
-    type: str | None = None
+    naam: str | None = Field(None, min_length=1, max_length=200)
+    type: str | None = Field(None, min_length=1, max_length=100)
     parent_id: UUID | None = None
     manager_id: UUID | None = None
-    beschrijving: str | None = None
+    beschrijving: str | None = Field(None, max_length=5000)
     geldig_tot: date | None = None  # to dissolve the unit
     wijzig_datum: date | None = None  # effective date of the change
 

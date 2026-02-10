@@ -38,7 +38,7 @@ Run `just` to see all available commands. Key ones:
 
 - **Backend**: FastAPI + SQLAlchemy 2.0 async + Alembic + PostgreSQL (asyncpg)
 - **Frontend**: React + TypeScript + React Query + Tailwind CSS + Vite
-- **Infra**: Docker Compose (dev), Kubernetes manifests in `k8s/`
+- **Infra**: Docker Compose (dev)
 - **Python**: Use `uv` for ALL python operations (never pip/poetry)
 
 ## Project structure

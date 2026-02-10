@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.node_stakeholder import NodeStakeholder
@@ -42,6 +43,7 @@ router = APIRouter(prefix="/parlementair", tags=["parlementair"])
 
 @router.get("/imports", response_model=list[ParlementairItemResponse])
 async def list_imports(
+    current_user: OptionalUser,
     status_filter: str | None = Query(None, alias="status"),
     bron: str | None = None,
     type_filter: str | None = Query(None, alias="type"),
@@ -59,6 +61,7 @@ async def list_imports(
 @router.get("/imports/{import_id}", response_model=ParlementairItemResponse)
 async def get_import(
     import_id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> ParlementairItemResponse:
     repo = ParlementairItemRepository(db)
@@ -70,6 +73,7 @@ async def get_import(
 
 @router.post("/imports/trigger")
 async def trigger_import(
+    current_user: OptionalUser,
     item_types: list[str] | None = Query(None, alias="types"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -85,6 +89,7 @@ async def trigger_import(
 
 @router.get("/review-queue", response_model=list[ParlementairItemResponse])
 async def get_review_queue(
+    current_user: OptionalUser,
     type_filter: str | None = Query(None, alias="type"),
     db: AsyncSession = Depends(get_db),
 ) -> list[ParlementairItemResponse]:
@@ -96,6 +101,7 @@ async def get_review_queue(
 @router.put("/imports/{import_id}/reject", response_model=ParlementairItemResponse)
 async def reject_import(
     import_id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> ParlementairItemResponse:
     repo = ParlementairItemRepository(db)
@@ -111,6 +117,7 @@ async def reject_import(
 async def complete_review(
     import_id: UUID,
     body: CompleteReviewRequest,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> ParlementairItemResponse:
     repo = ParlementairItemRepository(db)
@@ -185,6 +192,7 @@ class UpdateSuggestedEdgeRequest(BaseModel):
 async def update_suggested_edge(
     edge_id: UUID,
     body: UpdateSuggestedEdgeRequest,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> SuggestedEdgeResponse:
     """Update a suggested edge (e.g. change its edge type) before approval."""
@@ -203,6 +211,7 @@ async def update_suggested_edge(
 @router.put("/edges/{edge_id}/approve", response_model=SuggestedEdgeResponse)
 async def approve_edge(
     edge_id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> SuggestedEdgeResponse:
     suggested_edge_repo = SuggestedEdgeRepository(db)
@@ -241,6 +250,7 @@ async def approve_edge(
 @router.put("/edges/{edge_id}/reject", response_model=SuggestedEdgeResponse)
 async def reject_edge(
     edge_id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> SuggestedEdgeResponse:
     repo = SuggestedEdgeRepository(db)
@@ -257,6 +267,7 @@ async def reject_edge(
 @router.put("/edges/{edge_id}/reset", response_model=SuggestedEdgeResponse)
 async def reset_suggested_edge(
     edge_id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> SuggestedEdgeResponse:
     """Reset a suggested edge back to pending, undoing approve/reject."""

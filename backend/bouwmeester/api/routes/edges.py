@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.repositories.edge import EdgeRepository
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/edges", tags=["edges"])
 
 @router.get("", response_model=list[EdgeWithNodes])
 async def list_edges(
+    current_user: OptionalUser,
     from_node_id: UUID | None = None,
     to_node_id: UUID | None = None,
     node_id: UUID | None = None,
@@ -41,6 +43,7 @@ async def list_edges(
 @router.post("", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)
 async def create_edge(
     data: EdgeCreate,
+    current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> EdgeResponse:
@@ -66,6 +69,7 @@ async def create_edge(
 @router.get("/{id}", response_model=EdgeWithNodes)
 async def get_edge(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> EdgeWithNodes:
     repo = EdgeRepository(db)
@@ -77,6 +81,7 @@ async def get_edge(
 async def update_edge(
     id: UUID,
     data: EdgeUpdate,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> EdgeResponse:
     repo = EdgeRepository(db)
@@ -87,6 +92,7 @@ async def update_edge(
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_edge(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = EdgeRepository(db)

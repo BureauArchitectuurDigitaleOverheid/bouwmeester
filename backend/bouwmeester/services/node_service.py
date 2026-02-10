@@ -4,9 +4,15 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.models.beleidskader import Beleidskader
 from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.doel import Doel
+from bouwmeester.models.dossier import Dossier
+from bouwmeester.models.instrument import Instrument
+from bouwmeester.models.maatregel import Maatregel
 from bouwmeester.models.node_status import CorpusNodeStatus
 from bouwmeester.models.node_title import CorpusNodeTitle
+from bouwmeester.models.politieke_input import PolitiekeInput
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.schema.corpus_node import CorpusNodeCreate, CorpusNodeUpdate
 
@@ -33,41 +39,17 @@ class NodeService:
         # Create the type-specific sub-record with defaults.
         # These tables extend corpus_node with extra columns specific
         # to each node type, using the same id as foreign key.
-        type_table_map = {
-            "dossier": "dossier",
-            "doel": "doel",
-            "instrument": "instrument",
-            "beleidskader": "beleidskader",
-            "maatregel": "maatregel",
-            "politieke_input": "politieke_input",
+        type_factories = {
+            "dossier": lambda nid: Dossier(id=nid, fase="verkenning"),
+            "doel": lambda nid: Doel(id=nid, type="operationeel"),
+            "instrument": lambda nid: Instrument(id=nid, type="overig"),
+            "beleidskader": lambda nid: Beleidskader(id=nid, scope="nationaal"),
+            "maatregel": lambda nid: Maatregel(id=nid),
+            "politieke_input": lambda nid: PolitiekeInput(id=nid, type="toezegging"),
         }
-        table_name = type_table_map.get(data.node_type.value)
-        if table_name:
-            from sqlalchemy import text
-
-            # Insert a row into the type-specific table with the same id.
-            # Each type table has required columns with defaults or NULLable fields.
-            defaults = {
-                "dossier": "fase = 'verkenning'",
-                "doel": "type = 'operationeel'",
-                "instrument": "type = 'overig'",
-                "beleidskader": "scope = 'nationaal'",
-                "maatregel": "",
-                "politieke_input": "type = 'toezegging'",
-            }
-            cols = defaults.get(table_name, "")
-            if cols:
-                stmt = text(
-                    f"INSERT INTO {table_name} (id, {cols.split(' = ')[0]}) "
-                    f"VALUES (:id, :val)"
-                )
-                await self.session.execute(
-                    stmt,
-                    {"id": str(node.id), "val": cols.split(" = ")[1].strip("'")},
-                )
-            else:
-                stmt = text(f"INSERT INTO {table_name} (id) VALUES (:id)")
-                await self.session.execute(stmt, {"id": str(node.id)})
+        factory = type_factories.get(data.node_type.value)
+        if factory:
+            self.session.add(factory(node.id))
 
         return node
 

@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class NotificationType(enum.StrEnum):
@@ -26,8 +26,8 @@ class NotificationType(enum.StrEnum):
 class NotificationBase(BaseModel):
     person_id: UUID
     type: NotificationType
-    title: str
-    message: str | None = None
+    title: str = Field(max_length=500)
+    message: str | None = Field(None, max_length=10000)
     sender_id: UUID | None = None
     related_node_id: UUID | None = None
     related_task_id: UUID | None = None
@@ -54,12 +54,12 @@ class NotificationResponse(NotificationBase):
 class SendMessageRequest(BaseModel):
     person_id: UUID
     sender_id: UUID
-    message: str
+    message: str = Field(max_length=10000)
 
 
 class ReplyRequest(BaseModel):
     sender_id: UUID
-    message: str
+    message: str = Field(max_length=10000)
 
 
 class UnreadCountResponse(BaseModel):

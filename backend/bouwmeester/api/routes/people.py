@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import require_deleted, require_found
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
@@ -33,6 +34,7 @@ router = APIRouter(prefix="/people", tags=["people"])
 
 @router.get("", response_model=list[PersonResponse])
 async def list_people(
+    current_user: OptionalUser,
     skip: int = Query(0, ge=0),
     limit: int = Query(1000, ge=1, le=10000),
     db: AsyncSession = Depends(get_db),
@@ -49,6 +51,7 @@ async def list_people(
 )
 async def create_person(
     data: PersonCreate,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
     # Agent names must be unique
@@ -68,7 +71,8 @@ async def create_person(
 
 @router.get("/search", response_model=list[PersonResponse])
 async def search_people(
-    q: str = Query("", min_length=0),
+    current_user: OptionalUser,
+    q: str = Query("", min_length=0, max_length=500),
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ) -> list[PersonResponse]:
@@ -83,6 +87,7 @@ async def search_people(
 @router.get("/{id}/summary", response_model=PersonSummaryResponse)
 async def get_person_summary(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> PersonSummaryResponse:
     """Compact summary: task counts, top open tasks, and stakeholder nodes."""
@@ -148,6 +153,7 @@ async def get_person_summary(
 @router.get("/{id}", response_model=PersonDetailResponse)
 async def get_person(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
     repo = PersonRepository(db)
@@ -159,6 +165,7 @@ async def get_person(
 async def update_person(
     id: UUID,
     data: PersonUpdate,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
     repo = PersonRepository(db)
@@ -169,6 +176,7 @@ async def update_person(
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_person(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = PersonRepository(db)
@@ -181,6 +189,7 @@ async def delete_person(
 @router.get("/{id}/organisaties", response_model=list[PersonOrganisatieResponse])
 async def list_person_organisaties(
     id: UUID,
+    current_user: OptionalUser,
     actief: bool = Query(True),
     db: AsyncSession = Depends(get_db),
 ) -> list[PersonOrganisatieResponse]:
@@ -217,6 +226,7 @@ async def list_person_organisaties(
 async def add_person_organisatie(
     id: UUID,
     data: PersonOrganisatieCreate,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> PersonOrganisatieResponse:
     require_found(await db.get(Person, id), "Person")
@@ -270,6 +280,7 @@ async def update_person_organisatie(
     id: UUID,
     placement_id: UUID,
     data: PersonOrganisatieUpdate,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> PersonOrganisatieResponse:
     stmt = select(PersonOrganisatieEenheid).where(
@@ -304,6 +315,7 @@ async def update_person_organisatie(
 async def delete_person_organisatie(
     id: UUID,
     placement_id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     stmt = select(PersonOrganisatieEenheid).where(

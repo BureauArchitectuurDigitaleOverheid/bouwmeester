@@ -45,7 +45,7 @@ class NodeTagResponse(BaseModel):
 
 class NodeTagCreate(BaseModel):
     tag_id: UUID | None = None
-    tag_name: str | None = None  # For creating tag inline
+    tag_name: str | None = Field(None, max_length=200)  # For creating tag inline
 
 
 # Resolve forward refs

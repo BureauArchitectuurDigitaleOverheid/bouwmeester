@@ -263,3 +263,28 @@ async def test_get_personen_for_organisatie_empty(client, sample_organisatie):
     resp = await client.get(f"/api/organisatie/{sample_organisatie.id}/personen")
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Cycle detection
+# ---------------------------------------------------------------------------
+
+
+async def test_update_organisatie_self_parent_rejected(client, sample_organisatie):
+    """PUT /api/organisatie/{id} rejects setting parent_id to itself."""
+    payload = {"parent_id": str(sample_organisatie.id)}
+    resp = await client.put(f"/api/organisatie/{sample_organisatie.id}", json=payload)
+    assert resp.status_code == 400
+    assert "eigen parent" in resp.json()["detail"]
+
+
+async def test_update_organisatie_rejects_circular_parent(
+    client, sample_organisatie, child_organisatie
+):
+    """PUT /api/organisatie/{id} rejects setting parent to a descendant (cycle)."""
+    # sample_organisatie -> child_organisatie (parent/child)
+    # Try to make sample_organisatie a child of child_organisatie → cycle
+    payload = {"parent_id": str(child_organisatie.id)}
+    resp = await client.put(f"/api/organisatie/{sample_organisatie.id}", json=payload)
+    assert resp.status_code == 400
+    assert "Circulaire" in resp.json()["detail"]

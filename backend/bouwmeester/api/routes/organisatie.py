@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.schema.organisatie_eenheid import (
@@ -51,6 +52,7 @@ def _build_tree(
     response_model=list[OrganisatieEenheidResponse] | list[OrganisatieEenheidTreeNode],
 )
 async def list_organisatie(
+    current_user: OptionalUser,
     format: str = Query("flat", pattern="^(flat|tree)$"),
     db: AsyncSession = Depends(get_db),
 ) -> list[OrganisatieEenheidResponse] | list[OrganisatieEenheidTreeNode]:
@@ -69,7 +71,8 @@ async def list_organisatie(
 
 @router.get("/search", response_model=list[OrganisatieEenheidResponse])
 async def search_organisatie(
-    q: str = Query("", min_length=0),
+    current_user: OptionalUser,
+    q: str = Query("", min_length=0, max_length=500),
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ) -> list[OrganisatieEenheidResponse]:
@@ -83,6 +86,7 @@ async def search_organisatie(
 @router.get("/managed-by/{person_id}", response_model=list[OrganisatieEenheidResponse])
 async def get_managed_eenheden(
     person_id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[OrganisatieEenheidResponse]:
     """Get all eenheden where person_id is the manager."""
@@ -96,6 +100,7 @@ async def get_managed_eenheden(
 )
 async def create_organisatie(
     data: OrganisatieEenheidCreate,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> OrganisatieEenheidResponse:
     repo = OrganisatieEenheidRepository(db)
@@ -117,6 +122,7 @@ async def create_organisatie(
 @router.get("/{id}", response_model=OrganisatieEenheidResponse)
 async def get_organisatie(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> OrganisatieEenheidResponse:
     repo = OrganisatieEenheidRepository(db)
@@ -128,9 +134,19 @@ async def get_organisatie(
 async def update_organisatie(
     id: UUID,
     data: OrganisatieEenheidUpdate,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> OrganisatieEenheidResponse:
     repo = OrganisatieEenheidRepository(db)
+
+    # Cycle detection for parent_id changes
+    if data.parent_id is not None:
+        if data.parent_id == id:
+            raise HTTPException(400, "Eenheid kan niet zijn eigen parent zijn")
+        descendants = await repo.get_descendant_ids(id)
+        if data.parent_id in descendants:
+            raise HTTPException(400, "Circulaire parent-relatie gedetecteerd")
+
     eenheid = require_found(await repo.update(id, data), "Eenheid")
 
     await sync_and_notify_mentions(
@@ -147,6 +163,7 @@ async def update_organisatie(
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_organisatie(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = OrganisatieEenheidRepository(db)
@@ -167,6 +184,7 @@ async def delete_organisatie(
 @router.get("/{id}/history/namen", response_model=list[OrgNaamRecord])
 async def get_naam_history(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[OrgNaamRecord]:
     repo = OrganisatieEenheidRepository(db)
@@ -178,6 +196,7 @@ async def get_naam_history(
 @router.get("/{id}/history/parents", response_model=list[OrgParentRecord])
 async def get_parent_history(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[OrgParentRecord]:
     repo = OrganisatieEenheidRepository(db)
@@ -189,6 +208,7 @@ async def get_parent_history(
 @router.get("/{id}/history/managers", response_model=list[OrgManagerRecord])
 async def get_manager_history(
     id: UUID,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[OrgManagerRecord]:
     repo = OrganisatieEenheidRepository(db)
@@ -203,6 +223,7 @@ async def get_manager_history(
 )
 async def get_organisatie_personen(
     id: UUID,
+    current_user: OptionalUser,
     recursive: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ) -> list[PersonResponse] | OrganisatieEenheidPersonenGroup:
