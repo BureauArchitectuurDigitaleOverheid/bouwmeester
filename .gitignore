@@ -48,6 +48,7 @@ frontend/build/
 # Testing
 .pytest_cache/
 .coverage
+coverage/
 htmlcov/
 .mypy_cache/
 
