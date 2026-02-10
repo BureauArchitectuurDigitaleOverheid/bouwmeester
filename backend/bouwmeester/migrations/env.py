@@ -19,7 +19,8 @@ if config.config_file_name is not None:
 # Use Settings to derive DATABASE_URL (handles both direct URL and ZAD env vars)
 _settings = get_settings()
 if _settings.DATABASE_URL:
-    config.set_main_option("sqlalchemy.url", _settings.DATABASE_URL)
+    # Escape % for configparser (URL-encoded passwords may contain %XX)
+    config.set_main_option("sqlalchemy.url", _settings.DATABASE_URL.replace("%", "%%"))
 
 _connect_args: dict = {}
 if _settings.DATABASE_SCHEMA:
