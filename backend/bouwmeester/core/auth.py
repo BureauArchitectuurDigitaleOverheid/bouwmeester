@@ -9,8 +9,10 @@ application can run without authentication.
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+import time
+from typing import Annotated, Any
 
+import httpx
 from authlib.integrations.starlette_client import OAuth
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -22,6 +24,9 @@ from bouwmeester.models.person import Person
 
 logger = logging.getLogger(__name__)
 
+# Revalidate the access token against Keycloak at most every 5 minutes.
+_TOKEN_REVALIDATION_INTERVAL = 300
+
 
 def _get_discovery_url(settings: Settings) -> str:
     """Return the OIDC discovery URL from settings.
@@ -32,6 +37,35 @@ def _get_discovery_url(settings: Settings) -> str:
     if settings.OIDC_DISCOVERY_URL:
         return settings.OIDC_DISCOVERY_URL
     return f"{settings.OIDC_ISSUER.rstrip('/')}/.well-known/openid-configuration"
+
+
+# ---------------------------------------------------------------------------
+# Cached OIDC discovery metadata
+# ---------------------------------------------------------------------------
+
+_oidc_metadata: dict[str, Any] | None = None
+_oidc_metadata_fetched_at: float = 0
+_OIDC_METADATA_TTL = 3600  # Re-fetch discovery doc every hour
+
+
+async def get_oidc_metadata(settings: Settings) -> dict[str, Any] | None:
+    """Return cached OIDC discovery metadata, fetching if stale."""
+    global _oidc_metadata, _oidc_metadata_fetched_at  # noqa: PLW0603
+
+    if not settings.OIDC_ISSUER:
+        return None
+
+    now = time.monotonic()
+    if _oidc_metadata and (now - _oidc_metadata_fetched_at) < _OIDC_METADATA_TTL:
+        return _oidc_metadata
+
+    url = _get_discovery_url(settings)
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, timeout=10)
+        resp.raise_for_status()
+        _oidc_metadata = resp.json()
+        _oidc_metadata_fetched_at = now
+        return _oidc_metadata
 
 
 # ---------------------------------------------------------------------------
@@ -115,8 +149,117 @@ async def _get_or_create_person(
 
 
 # ---------------------------------------------------------------------------
-# Token validation
+# Token validation + refresh
 # ---------------------------------------------------------------------------
+
+
+async def _try_refresh_token(
+    session: dict[str, Any],
+    settings: Settings,
+) -> bool:
+    """Attempt to refresh the access token using the stored refresh_token.
+
+    Updates the session in-place on success.  Returns ``True`` if successful.
+    """
+    refresh_token = session.get("refresh_token")
+    if not refresh_token:
+        return False
+
+    metadata = await get_oidc_metadata(settings)
+    if not metadata:
+        return False
+
+    token_url = metadata.get("token_endpoint")
+    if not token_url:
+        return False
+
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                token_url,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                    "client_id": settings.OIDC_CLIENT_ID,
+                    "client_secret": settings.OIDC_CLIENT_SECRET,
+                },
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                logger.info("Token refresh failed with status %d", resp.status_code)
+                return False
+
+            tokens = resp.json()
+            session["access_token"] = tokens["access_token"]
+            if "refresh_token" in tokens:
+                session["refresh_token"] = tokens["refresh_token"]
+            if "id_token" in tokens:
+                session["id_token"] = tokens["id_token"]
+            session["token_validated_at"] = time.monotonic()
+            logger.debug("Token refreshed successfully")
+            return True
+        except httpx.HTTPError as exc:
+            logger.warning("Token refresh HTTP error: %s", exc)
+            return False
+
+
+async def validate_session_token(
+    session: dict[str, Any],
+    settings: Settings,
+) -> bool:
+    """Validate the session's access token against Keycloak.
+
+    Uses a cached validation timestamp to avoid hitting Keycloak on every
+    request.  If the token is expired, attempts a refresh first.
+
+    Returns ``True`` if the session is valid, ``False`` if it should be
+    rejected (session will be cleared).
+    """
+    access_token = session.get("access_token")
+    if not access_token:
+        return False
+
+    # Skip revalidation if recently validated.
+    validated_at = session.get("token_validated_at")
+    recently_validated = (
+        validated_at
+        and (time.monotonic() - validated_at) < _TOKEN_REVALIDATION_INTERVAL
+    )
+    if recently_validated:
+        return True
+
+    metadata = await get_oidc_metadata(settings)
+    if not metadata:
+        return False
+
+    userinfo_url = metadata.get("userinfo_endpoint")
+    if not userinfo_url:
+        return False
+
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(
+                userinfo_url,
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10,
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("Token validation HTTP error: %s", exc)
+            # Network error — don't clear session, allow stale validation.
+            return True
+
+    if resp.status_code == 200:
+        session["token_validated_at"] = time.monotonic()
+        return True
+
+    # Token is invalid/expired at Keycloak — try refresh.
+    if await _try_refresh_token(session, settings):
+        return True
+
+    # Refresh also failed — session is dead.
+    logger.info("Token invalid and refresh failed, clearing session")
+    session.clear()
+    return False
 
 
 async def _validate_token(request: Request, settings: Settings) -> dict | None:
@@ -143,25 +286,20 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
     if not token:
         return None
 
-    oauth = get_oauth(settings)
-    if oauth is None:
+    metadata = await get_oidc_metadata(settings)
+    if not metadata:
         return None
 
-    # Use the userinfo endpoint to validate the token.  This is the simplest
-    # approach and works with opaque tokens as well as JWTs.
-    import httpx
+    userinfo_url = metadata.get("userinfo_endpoint")
+    if not userinfo_url:
+        return None
 
-    metadata_url = _get_discovery_url(settings)
     async with httpx.AsyncClient() as client:
         try:
-            meta_resp = await client.get(metadata_url)
-            meta_resp.raise_for_status()
-            metadata = meta_resp.json()
-            userinfo_url = metadata["userinfo_endpoint"]
-
             resp = await client.get(
                 userinfo_url,
                 headers={"Authorization": f"Bearer {token}"},
+                timeout=10,
             )
             if resp.status_code != 200:
                 # Token expired or invalid — clear session if present

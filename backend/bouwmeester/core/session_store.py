@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 logger = logging.getLogger(__name__)
@@ -77,22 +78,21 @@ class DatabaseSessionStore(SessionStore):
         from bouwmeester.models.http_session import HttpSession
 
         async with self._session_factory() as db:
-            stmt = select(HttpSession).where(HttpSession.session_id == session_id)
-            result = await db.execute(stmt)
-            row = result.scalar_one_or_none()
             expires_at = datetime.now(UTC) + timedelta(seconds=self._ttl)
             data_json = json.dumps(data)
-            if row is not None:
-                row.data = data_json
-                row.expires_at = expires_at
-            else:
-                db.add(
-                    HttpSession(
-                        session_id=session_id,
-                        data=data_json,
-                        expires_at=expires_at,
-                    )
+            stmt = (
+                pg_insert(HttpSession)
+                .values(
+                    session_id=session_id,
+                    data=data_json,
+                    expires_at=expires_at,
                 )
+                .on_conflict_do_update(
+                    index_elements=["session_id"],
+                    set_={"data": data_json, "expires_at": expires_at},
+                )
+            )
+            await db.execute(stmt)
             await db.commit()
 
     async def delete(self, session_id: str) -> None:

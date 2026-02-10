@@ -32,12 +32,20 @@ export class ApiError extends Error {
   }
 }
 
+const AUTH_REDIRECT_KEY = 'bm_auth_redirect_at';
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     if (response.status === 401) {
-      // Redirect to login on auth failure
-      window.location.href = `${BASE_URL}/api/auth/login`;
-      return new Promise(() => {}); // never resolves
+      // Prevent infinite redirect loop: only redirect if we haven't
+      // redirected in the last 10 seconds.
+      const lastRedirect = Number(sessionStorage.getItem(AUTH_REDIRECT_KEY) || '0');
+      if (Date.now() - lastRedirect > 10_000) {
+        sessionStorage.setItem(AUTH_REDIRECT_KEY, String(Date.now()));
+        window.location.href = `${BASE_URL}/api/auth/login`;
+        return new Promise(() => {}); // never resolves
+      }
+      // Fall through to throw ApiError if recently redirected.
     }
 
     let body: unknown;

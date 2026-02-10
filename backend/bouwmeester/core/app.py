@@ -48,6 +48,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         AuthRequiredMiddleware,
         oidc_configured=bool(settings.OIDC_ISSUER),
+        settings=settings,
     )
 
     app.add_middleware(

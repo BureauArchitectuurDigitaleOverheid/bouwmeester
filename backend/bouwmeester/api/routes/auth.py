@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
@@ -65,6 +66,7 @@ async def callback(
     # Store tokens in the server-side session.
     session = request.session
     session["access_token"] = token.get("access_token")
+    session["refresh_token"] = token.get("refresh_token")
     session["id_token"] = token.get("id_token")
 
     # Extract user info for quick access.
@@ -105,15 +107,16 @@ async def logout(
         f"{settings.OIDC_ISSUER.rstrip('/')}/protocol/openid-connect/logout"
     )
 
-    redirect_url = (
-        f"{end_session_url}"
-        f"?post_logout_redirect_uri={settings.FRONTEND_URL}"
-        f"&client_id={settings.OIDC_CLIENT_ID}"
-    )
+    params: dict[str, str] = {
+        "post_logout_redirect_uri": settings.FRONTEND_URL,
+        "client_id": settings.OIDC_CLIENT_ID,
+    }
     if id_token:
-        redirect_url += f"&id_token_hint={id_token}"
+        params["id_token_hint"] = id_token
 
-    return RedirectResponse(url=redirect_url, status_code=302)
+    return RedirectResponse(
+        url=f"{end_session_url}?{urlencode(params)}", status_code=302
+    )
 
 
 # ---------------------------------------------------------------------------
