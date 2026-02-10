@@ -39,6 +39,10 @@ class CSRFMiddleware:
         self.app = app
         self.cookie_domain = cookie_domain
         self.cookie_secure = cookie_secure
+        # Use __Host- prefix when Secure is set to prevent subdomain overrides.
+        self._cookie_name = (
+            f"__Host-{_CSRF_COOKIE_NAME}" if cookie_secure else _CSRF_COOKIE_NAME
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket"):
@@ -59,9 +63,9 @@ class CSRFMiddleware:
             return
 
         # Bearer-token requests are exempt (not vulnerable to CSRF).
-        headers = dict(scope.get("headers", []))
-        auth_value = headers.get(b"authorization", b"").decode("utf-8", errors="ignore")
-        if auth_value.startswith("Bearer "):
+        from bouwmeester.middleware.auth_required import _get_bearer_token
+
+        if _get_bearer_token(scope) is not None:
             await self.app(scope, receive, send)
             return
 
@@ -75,8 +79,9 @@ class CSRFMiddleware:
 
         # For mutating methods, validate the CSRF header.
         if method not in _SAFE_METHODS:
+            raw_headers = dict(scope.get("headers", []))
             header_token = (
-                headers.get(_CSRF_HEADER.encode(), b"")
+                raw_headers.get(_CSRF_HEADER.encode(), b"")
                 .decode("utf-8", errors="ignore")
                 .strip()
             )
@@ -104,11 +109,12 @@ class CSRFMiddleware:
 
                 resp_headers = MutableHeaders(scope=message)
                 cookie_parts = [
-                    f"{_CSRF_COOKIE_NAME}={csrf_token}",
+                    f"{self._cookie_name}={csrf_token}",
                     "Path=/",
                     "SameSite=Lax",
                 ]
-                if self.cookie_domain:
+                # __Host- cookies must NOT have a Domain attribute.
+                if not self.cookie_secure and self.cookie_domain:
                     cookie_parts.append(f"Domain={self.cookie_domain}")
                 if self.cookie_secure:
                     cookie_parts.append("Secure")

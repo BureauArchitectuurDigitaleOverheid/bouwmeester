@@ -43,6 +43,21 @@ class ServerSideSessionMiddleware:
         self.cookie_secure = cookie_secure
         self.cookie_max_age = cookie_max_age
 
+    def _build_cookie(self, value: str, max_age: int) -> str:
+        """Build a Set-Cookie header value for the session cookie."""
+        parts = [
+            f"{COOKIE_NAME}={value}",
+            "Path=/",
+            "HttpOnly",
+            "SameSite=Lax",
+            f"Max-Age={max_age}",
+        ]
+        if self.cookie_domain:
+            parts.append(f"Domain={self.cookie_domain}")
+        if self.cookie_secure:
+            parts.append("Secure")
+        return "; ".join(parts)
+
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket"):
             await self.app(scope, receive, send)
@@ -78,38 +93,28 @@ class ServerSideSessionMiddleware:
 
                 headers = MutableHeaders(scope=message)
 
+                # Handle session ID rotation (e.g. after login).
+                # The handler sets ``_rotate`` to signal that a new session ID
+                # should be issued, preventing session fixation attacks.
+                needs_rotation = current_data.pop("_rotate", False)
+                if needs_rotation and session_id is not None:
+                    # Delete the old session from the store.
+                    await self.store.delete(session_id)
+                    session_id = None
+
                 if current_data:
                     if session_id is None:
                         session_id = secrets.token_urlsafe(32)
-                    if current_data != initial_data:
+                    if current_data != initial_data or needs_rotation:
                         await self.store.set(session_id, current_data)
                     signed = self.signer.sign(session_id).decode("utf-8")
-                    cookie_parts = [
-                        f"{COOKIE_NAME}={signed}",
-                        "Path=/",
-                        "HttpOnly",
-                        "SameSite=Lax",
-                        f"Max-Age={self.cookie_max_age}",
-                    ]
-                    if self.cookie_domain:
-                        cookie_parts.append(f"Domain={self.cookie_domain}")
-                    if self.cookie_secure:
-                        cookie_parts.append("Secure")
-                    headers.append("set-cookie", "; ".join(cookie_parts))
+                    headers.append(
+                        "set-cookie",
+                        self._build_cookie(signed, self.cookie_max_age),
+                    )
                 elif session_id is not None:
                     await self.store.delete(session_id)
-                    cookie_parts = [
-                        f"{COOKIE_NAME}=",
-                        "Path=/",
-                        "HttpOnly",
-                        "SameSite=Lax",
-                        "Max-Age=0",
-                    ]
-                    if self.cookie_domain:
-                        cookie_parts.append(f"Domain={self.cookie_domain}")
-                    if self.cookie_secure:
-                        cookie_parts.append("Secure")
-                    headers.append("set-cookie", "; ".join(cookie_parts))
+                    headers.append("set-cookie", self._build_cookie("", 0))
 
             await send(message)
 

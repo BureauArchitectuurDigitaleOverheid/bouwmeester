@@ -28,6 +28,7 @@ export default tseslint.config(
         {
           allowConstantExport: true,
           allowExportNames: [
+            'useAuth',
             'useCurrentPerson',
             'useNodeDetail',
             'useTaskDetail',

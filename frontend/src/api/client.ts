@@ -1,5 +1,5 @@
 function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)bm_csrf=([^;]*)/);
+  const match = document.cookie.match(/(?:^|;\s*)(?:__Host-)?bm_csrf=([^;]*)/);
   return match ? match[1] : '';
 }
 
@@ -37,22 +37,8 @@ export class ApiError extends Error {
   }
 }
 
-const AUTH_REDIRECT_KEY = 'bm_auth_redirect_at';
-
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    if (response.status === 401) {
-      // Prevent infinite redirect loop: only redirect if we haven't
-      // redirected in the last 10 seconds.
-      const lastRedirect = Number(sessionStorage.getItem(AUTH_REDIRECT_KEY) || '0');
-      if (Date.now() - lastRedirect > 10_000) {
-        sessionStorage.setItem(AUTH_REDIRECT_KEY, String(Date.now()));
-        window.location.href = `${BASE_URL}/api/auth/login`;
-        return new Promise(() => {}); // never resolves
-      }
-      // Fall through to throw ApiError if recently redirected.
-    }
-
     let body: unknown;
     const text = await response.text();
     try {
@@ -82,11 +68,19 @@ function buildUrl(path: string, params?: Record<string, string | number | boolea
   return url.toString();
 }
 
+/** Headers for read-only requests. */
+const readHeaders: HeadersInit = { 'Content-Type': 'application/json' };
+
+/** Headers for state-changing requests (includes CSRF token). */
+function mutationHeaders(): HeadersInit {
+  return { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() };
+}
+
 export async function apiGet<T>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
   const url = buildUrl(path, params);
   const response = await fetch(url, {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
+    headers: readHeaders,
     credentials: 'include',
   });
   return handleResponse<T>(response);
@@ -96,7 +90,7 @@ export async function apiPost<T>(path: string, data?: unknown): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+    headers: mutationHeaders(),
     body: data ? JSON.stringify(data) : undefined,
     credentials: 'include',
   });
@@ -107,7 +101,7 @@ export async function apiPut<T>(path: string, data?: unknown): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+    headers: mutationHeaders(),
     body: data ? JSON.stringify(data) : undefined,
     credentials: 'include',
   });
@@ -118,7 +112,7 @@ export async function apiPatch<T>(path: string, data?: unknown): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+    headers: mutationHeaders(),
     body: data ? JSON.stringify(data) : undefined,
     credentials: 'include',
   });
@@ -129,7 +123,7 @@ export async function apiDelete<T = void>(path: string): Promise<T> {
   const url = buildUrl(path);
   const response = await fetch(url, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+    headers: mutationHeaders(),
     credentials: 'include',
   });
   return handleResponse<T>(response);

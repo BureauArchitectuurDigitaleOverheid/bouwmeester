@@ -598,6 +598,27 @@ async def revoke_tokens(
 # ---------------------------------------------------------------------------
 
 
+async def _person_from_claims(
+    db: AsyncSession,
+    claims: dict[str, Any],
+) -> Person | None:
+    """Extract OIDC claims and resolve to a :class:`Person`.
+
+    Returns ``None`` if required claims (``sub``, ``email``) are missing.
+    """
+    sub: str = claims.get("sub", "")
+    email: str = claims.get("email", "")
+    name: str = claims.get("name", claims.get("preferred_username", ""))
+    email_verified: bool = claims.get("email_verified", False)
+
+    if not sub or not email:
+        return None
+
+    return await _get_or_create_person(
+        db, sub=sub, email=email, name=name, email_verified=email_verified
+    )
+
+
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -622,20 +643,12 @@ async def get_current_user(
             detail="Missing Authorization header",
         )
 
-    sub: str = claims.get("sub", "")
-    email: str = claims.get("email", "")
-    name: str = claims.get("name", claims.get("preferred_username", ""))
-    email_verified: bool = claims.get("email_verified", False)
-
-    if not sub or not email:
+    person = await _person_from_claims(db, claims)
+    if person is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="OIDC claims missing 'sub' or 'email'",
         )
-
-    person = await _get_or_create_person(
-        db, sub=sub, email=email, name=name, email_verified=email_verified
-    )
     return person
 
 
@@ -655,18 +668,7 @@ async def get_optional_user(
     if claims is None:
         return None
 
-    sub: str = claims.get("sub", "")
-    email: str = claims.get("email", "")
-    name: str = claims.get("name", claims.get("preferred_username", ""))
-    email_verified: bool = claims.get("email_verified", False)
-
-    if not sub or not email:
-        return None
-
-    person = await _get_or_create_person(
-        db, sub=sub, email=email, name=name, email_verified=email_verified
-    )
-    return person
+    return await _person_from_claims(db, claims)
 
 
 # Type aliases for convenient use in route signatures.

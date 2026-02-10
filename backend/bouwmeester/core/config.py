@@ -82,10 +82,17 @@ class Settings(BaseSettings):
             self.OIDC_ISSUER = f"{self.OIDC_URL.rstrip('/')}/realms/{self.OIDC_REALM}"
         return self
 
+    _INSECURE_SECRET_DEFAULTS = frozenset(
+        {"change-me-in-production", "local-dev-secret-key"}
+    )
+
     @model_validator(mode="after")
     def _validate_session_secret(self) -> "Settings":
         """Reject insecure default SESSION_SECRET_KEY when OIDC is enabled."""
-        if self.OIDC_ISSUER and self.SESSION_SECRET_KEY == "change-me-in-production":
+        if (
+            self.OIDC_ISSUER
+            and self.SESSION_SECRET_KEY in self._INSECURE_SECRET_DEFAULTS
+        ):
             raise ValueError(
                 "SESSION_SECRET_KEY must be set to a secure random value "
                 "when OIDC is configured. Do not use the default."
@@ -113,8 +120,15 @@ class Settings(BaseSettings):
                 base_domain = hostname[len("component-2-") :]
                 self.FRONTEND_URL = f"https://{base_domain}"
 
-            # Derive cookie domain: use registrable domain with leading dot
-            # e.g. component-2.bouwmeester.rijks.app → .bouwmeester.rijks.app
+            # Derive cookie domain: strip the component-N subdomain to get
+            # the shared parent domain (e.g. .bouwmeester.rijks.app).
+            #
+            # SECURITY NOTE: This allows cookies to be shared across ALL
+            # subdomains of bouwmeester.rijks.app. This is required because
+            # the frontend (component-1) and backend (component-2) are on
+            # different subdomains. The session cookie is HttpOnly+SameSite=Lax
+            # and the CSRF cookie uses __Host- prefix in production to mitigate
+            # subdomain attack risks.
             if not self.SESSION_COOKIE_DOMAIN and "." in hostname:
                 # Strip first subdomain (component-N)
                 parts = hostname.split(".", 1)
