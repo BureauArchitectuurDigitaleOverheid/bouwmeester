@@ -2,6 +2,7 @@ import { apiGet } from './client';
 import type { ActivityFeedResponse } from '@/types';
 
 export interface ActivityFeedParams {
+  [key: string]: string | number | boolean | undefined;
   skip?: number;
   limit?: number;
   event_type?: string;
