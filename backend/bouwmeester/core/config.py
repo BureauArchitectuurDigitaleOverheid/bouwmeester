@@ -34,7 +34,10 @@ class Settings(BaseSettings):
     OIDC_URL: str = ""
     OIDC_REALM: str = ""
 
-    CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "https://component-1.bouwmeester.rijks.app",
+    ]
 
     ANTHROPIC_API_KEY: str = ""
     TK_API_BASE_URL: str = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0"
