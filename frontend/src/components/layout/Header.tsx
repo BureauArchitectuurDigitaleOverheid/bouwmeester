@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, User, ChevronDown, Check } from 'lucide-react';
+import { Search, User, ChevronDown, Check, LogOut } from 'lucide-react';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { VOCABULARY_LABELS, type VocabularyId } from '@/vocabulary';
 import { NotificationBell } from '@/components/common/NotificationBell';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
@@ -23,6 +24,7 @@ export function Header() {
   const navigate = useNavigate();
   const { currentPerson, setCurrentPersonId, people } = useCurrentPerson();
   const { vocabularyId, setVocabularyId } = useVocabulary();
+  const { authenticated, logout } = useAuth();
   const [showPersonPicker, setShowPersonPicker] = useState(false);
   const [search, setSearch] = useState('');
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -203,6 +205,18 @@ export function Header() {
             </div>
           )}
         </div>
+
+        {/* Logout button */}
+        {authenticated && (
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-border text-sm text-text-secondary hover:border-border-hover hover:text-text transition-all"
+            title="Uitloggen"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Uitloggen</span>
+          </button>
+        )}
       </div>
     </header>
   );

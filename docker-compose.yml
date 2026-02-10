@@ -26,6 +26,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://bouwmeester:bouwmeester@db:5432/bouwmeester
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-local-dev-secret-key}
+      FRONTEND_URL: http://localhost:5173
     volumes:
       - ./backend:/app
     entrypoint: []

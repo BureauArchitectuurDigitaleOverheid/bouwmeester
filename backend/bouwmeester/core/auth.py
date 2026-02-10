@@ -120,16 +120,28 @@ async def _get_or_create_person(
 
 
 async def _validate_token(request: Request, settings: Settings) -> dict | None:
-    """Validate the Bearer token from the Authorization header.
+    """Validate the Bearer token or session access token.
+
+    Checks in order:
+    1. ``Authorization: Bearer`` header (for API clients)
+    2. ``request.session["access_token"]`` (for browser sessions)
 
     Returns the userinfo claims dict on success, or ``None`` when no token is
     present.  Raises ``HTTPException(401)`` when the token is invalid.
     """
+    # 1. Check Authorization header
     auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return None
+    token: str | None = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.removeprefix("Bearer ").strip() or None
 
-    token = auth_header.removeprefix("Bearer ").strip()
+    # 2. Fall back to session token
+    if token is None:
+        session = getattr(request, "session", None) or request.scope.get(
+            "session", {}
+        )
+        token = session.get("access_token") if session else None
+
     if not token:
         return None
 
@@ -154,6 +166,10 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
                 headers={"Authorization": f"Bearer {token}"},
             )
             if resp.status_code != 200:
+                # Token expired or invalid — clear session if present
+                session = request.scope.get("session")
+                if session and "access_token" in session:
+                    session.clear()
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid or expired token",

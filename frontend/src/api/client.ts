@@ -19,7 +19,7 @@ function getBaseUrl(): string {
   return '';
 }
 
-const BASE_URL = getBaseUrl();
+export const BASE_URL = getBaseUrl();
 
 export class ApiError extends Error {
   constructor(
@@ -34,6 +34,12 @@ export class ApiError extends Error {
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
+    if (response.status === 401) {
+      // Redirect to login on auth failure
+      window.location.href = `${BASE_URL}/api/auth/login`;
+      return new Promise(() => {}); // never resolves
+    }
+
     let body: unknown;
     const text = await response.text();
     try {
@@ -68,6 +74,7 @@ export async function apiGet<T>(path: string, params?: Record<string, string | n
   const response = await fetch(url, {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
   });
   return handleResponse<T>(response);
 }
@@ -78,6 +85,7 @@ export async function apiPost<T>(path: string, data?: unknown): Promise<T> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: data ? JSON.stringify(data) : undefined,
+    credentials: 'include',
   });
   return handleResponse<T>(response);
 }
@@ -88,6 +96,7 @@ export async function apiPut<T>(path: string, data?: unknown): Promise<T> {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: data ? JSON.stringify(data) : undefined,
+    credentials: 'include',
   });
   return handleResponse<T>(response);
 }
@@ -98,6 +107,7 @@ export async function apiPatch<T>(path: string, data?: unknown): Promise<T> {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: data ? JSON.stringify(data) : undefined,
+    credentials: 'include',
   });
   return handleResponse<T>(response);
 }
@@ -107,6 +117,7 @@ export async function apiDelete<T = void>(path: string): Promise<T> {
   const response = await fetch(url, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
   });
   return handleResponse<T>(response);
 }

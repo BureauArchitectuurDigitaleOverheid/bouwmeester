@@ -11,6 +11,7 @@ from bouwmeester.models.dossier import Dossier  # noqa: F401
 from bouwmeester.models.edge import Edge  # noqa: F401
 from bouwmeester.models.edge_type import EdgeType  # noqa: F401
 from bouwmeester.models.effect import Effect  # noqa: F401
+from bouwmeester.models.http_session import HttpSession  # noqa: F401
 from bouwmeester.models.instrument import Instrument  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
 from bouwmeester.models.mention import Mention  # noqa: F401
@@ -47,6 +48,7 @@ __all__ = [
     "Edge",
     "EdgeType",
     "Effect",
+    "HttpSession",
     "Instrument",
     "Maatregel",
     "Mention",

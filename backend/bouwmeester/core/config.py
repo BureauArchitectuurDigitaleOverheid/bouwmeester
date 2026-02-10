@@ -1,5 +1,5 @@
 from functools import lru_cache
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -40,6 +40,16 @@ class Settings(BaseSettings):
         "https://bouwmeester.rijks.app",
     ]
 
+    # Session — SESSION_SECRET_KEY must be set in production (via ZAD).
+    # FRONTEND_URL, SESSION_COOKIE_DOMAIN, and SESSION_COOKIE_SECURE are
+    # auto-derived from PUBLIC_HOST when not explicitly set.
+    SESSION_SECRET_KEY: str = "change-me-in-production"
+    PUBLIC_HOST: str = ""  # Injected by ZAD per component
+    FRONTEND_URL: str = ""
+    SESSION_COOKIE_DOMAIN: str = ""
+    SESSION_COOKIE_SECURE: bool = False
+    SESSION_TTL_SECONDS: int = 86400
+
     ANTHROPIC_API_KEY: str = ""
     TK_API_BASE_URL: str = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0"
     EK_API_BASE_URL: str = "https://opendata.eerstekamer.nl"
@@ -69,6 +79,43 @@ class Settings(BaseSettings):
         """Build OIDC_ISSUER from ZAD env vars if not set."""
         if not self.OIDC_ISSUER and self.OIDC_URL and self.OIDC_REALM:
             self.OIDC_ISSUER = f"{self.OIDC_URL.rstrip('/')}/realms/{self.OIDC_REALM}"
+        return self
+
+    @model_validator(mode="after")
+    def _derive_session_settings(self) -> "Settings":
+        """Derive session settings from PUBLIC_HOST when not explicitly set.
+
+        The ZAD platform injects PUBLIC_HOST per component, e.g.
+        ``https://component-2.bouwmeester.rijks.app``.  From this we can
+        derive FRONTEND_URL (component-1 URL), cookie domain, and secure
+        flag — so only SESSION_SECRET_KEY needs to be configured manually.
+        """
+        if self.PUBLIC_HOST:
+            parsed = urlparse(self.PUBLIC_HOST)
+            hostname = parsed.hostname or ""
+
+            # Derive FRONTEND_URL: component-2 → component-1 (or strip prefix)
+            if not self.FRONTEND_URL and hostname.startswith("component-2."):
+                base_domain = hostname[len("component-2."):]
+                self.FRONTEND_URL = f"https://{base_domain}"
+            elif not self.FRONTEND_URL and hostname.startswith("component-2-"):
+                base_domain = hostname[len("component-2-"):]
+                self.FRONTEND_URL = f"https://{base_domain}"
+
+            # Derive cookie domain: use registrable domain with leading dot
+            # e.g. component-2.bouwmeester.rijks.app → .bouwmeester.rijks.app
+            if not self.SESSION_COOKIE_DOMAIN and "." in hostname:
+                # Strip first subdomain (component-N)
+                parts = hostname.split(".", 1)
+                if len(parts) == 2:
+                    self.SESSION_COOKIE_DOMAIN = f".{parts[1]}"
+
+            # HTTPS → secure cookies
+            if parsed.scheme == "https":
+                self.SESSION_COOKIE_SECURE = True
+
+        if not self.FRONTEND_URL:
+            self.FRONTEND_URL = "http://localhost:5173"
         return self
 
 
