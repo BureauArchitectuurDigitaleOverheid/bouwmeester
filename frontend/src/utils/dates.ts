@@ -2,7 +2,8 @@ import { format, formatDistanceToNowStrict } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
 /** "15 jan" — compact date for cards/lists */
-export function formatDateShort(dateStr: string): string {
+export function formatDateShort(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
   return format(new Date(dateStr), 'd MMM', { locale: nl });
 }
 

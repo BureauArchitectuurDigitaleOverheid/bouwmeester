@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, LayoutGrid, GitFork } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button } from '@/components/common/Button';
@@ -11,7 +12,15 @@ type ViewMode = 'list' | 'graph';
 
 export function CorpusPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const viewMode: ViewMode = searchParams.get('view') === 'graph' ? 'graph' : 'list';
+
+  const setViewMode = useCallback((mode: ViewMode) => {
+    setSearchParams((prev) => {
+      if (mode === 'graph') prev.set('view', 'graph'); else prev.delete('view');
+      return prev;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   return (
     <div className="space-y-6">

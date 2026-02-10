@@ -182,11 +182,11 @@ export function OrganisatieForm({
 
         {editData && (
           <CreatableSelect
-            label="Manager"
+            label={type === 'cluster' || type === 'team' ? 'Coördinator' : 'Manager'}
             value={managerId}
             onChange={setManagerId}
             options={managerOptions}
-            placeholder="Selecteer manager..."
+            placeholder={type === 'cluster' || type === 'team' ? 'Selecteer coördinator...' : 'Selecteer manager...'}
           />
         )}
 

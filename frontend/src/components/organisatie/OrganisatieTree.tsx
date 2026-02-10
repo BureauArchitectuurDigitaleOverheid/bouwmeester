@@ -107,7 +107,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0 }
 
         <Badge
           variant={TYPE_BADGE_COLORS[node.type] || 'gray'}
-          className="text-[10px] px-1.5 py-0"
+          className="text-xs px-2 py-0.5 shrink-0"
         >
           {ORGANISATIE_TYPE_LABELS[node.type] || node.type}
         </Badge>

@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { NodeCard } from './NodeCard';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -12,8 +13,23 @@ import { useVocabulary } from '@/contexts/VocabularyContext';
 
 export function NodeList() {
   const { nodeLabel } = useVocabulary();
-  const [selectedType, setSelectedType] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedType = searchParams.get('type') ?? '';
+  const searchQuery = searchParams.get('q') ?? '';
+
+  const setSelectedType = useCallback((value: string) => {
+    setSearchParams((prev) => {
+      if (value) prev.set('type', value); else prev.delete('type');
+      return prev;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const setSearchQuery = useCallback((value: string) => {
+    setSearchParams((prev) => {
+      if (value) prev.set('q', value); else prev.delete('q');
+      return prev;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const nodeTypeOptions: SelectOption[] = [
     { value: '', label: 'Alle types' },
@@ -62,7 +78,7 @@ export function NodeList() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
           <Input
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => setSearchQuery(e.target.value as string)}
             placeholder="Zoek in lijst..."
             className="pl-9"
           />

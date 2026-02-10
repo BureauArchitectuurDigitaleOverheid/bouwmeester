@@ -75,8 +75,12 @@ export function PersonEditForm({
         setApiKey(editData.api_key || '');
         setOrgEenheidId('');
         // Ensure the existing functie value is in options
-        if (editData.functie && !functieOptions.some((o) => o.value === editData.functie)) {
-          setFunctieOptions((prev) => [...prev, { value: editData.functie!, label: editData.functie! }]);
+        if (editData.functie) {
+          setFunctieOptions((prev) =>
+            prev.some((o) => o.value === editData.functie)
+              ? prev
+              : [...prev, { value: editData.functie!, label: editData.functie! }],
+          );
         }
       } else {
         // For new agents, pick next available Karakter name
@@ -95,7 +99,8 @@ export function PersonEditForm({
         setDienstverband('in_dienst');
       }
     }
-  }, [open, editData, defaultIsAgent, defaultOrgEenheidId, allPeople, functieOptions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editData, defaultIsAgent, defaultOrgEenheidId, allPeople]);
 
   const isAgent = editData ? editData.is_agent : defaultIsAgent;
   const isValid = naam.trim() && (isAgent || email.trim());

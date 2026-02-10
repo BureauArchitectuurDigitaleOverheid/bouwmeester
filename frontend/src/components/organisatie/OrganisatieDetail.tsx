@@ -9,6 +9,15 @@ import { useOrganisatieEenheid, useOrganisatiePersonenRecursive } from '@/hooks/
 import { ORGANISATIE_TYPE_LABELS } from '@/types';
 import type { Person, OrganisatieEenheidPersonenGroup } from '@/types';
 
+/** Org types where the manager role is labeled "Coördinator" instead of "Manager". */
+const COORDINATOR_TYPES = new Set(['cluster', 'team']);
+const BEWINDSPERSOON_FUNCTIES = new Set(['minister', 'staatssecretaris']);
+
+function managerLabelForType(orgType: string, functie?: string | null): string {
+  if (functie && BEWINDSPERSOON_FUNCTIES.has(functie)) return 'Bewindspersoon';
+  return COORDINATOR_TYPES.has(orgType) ? 'Coördinator' : 'Manager';
+}
+
 const TYPE_BADGE_COLORS: Record<string, 'blue' | 'purple' | 'amber' | 'cyan' | 'green' | 'gray'> = {
   ministerie: 'blue',
   directoraat_generaal: 'purple',
@@ -111,6 +120,8 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
             onEditPerson={onEditPerson}
             onDragStartPerson={onDragStartPerson}
             isManager
+            managerLabel={managerLabelForType(group.eenheid.type, managerPerson.functie)}
+            showPlacementActions
           />
         )}
 
@@ -121,6 +132,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
             person={person}
             onEditPerson={onEditPerson}
             onDragStartPerson={onDragStartPerson}
+            showPlacementActions
           />
         ))}
 
@@ -164,7 +176,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
         )}
         <Badge
           variant={TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}
-          className="text-[10px] px-1.5 py-0"
+          className="text-xs px-2 py-0.5"
         >
           {ORGANISATIE_TYPE_LABELS[group.eenheid.type] || group.eenheid.type}
         </Badge>
@@ -181,6 +193,8 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
               onEditPerson={onEditPerson}
               onDragStartPerson={onDragStartPerson}
               isManager
+              managerLabel={managerLabelForType(group.eenheid.type, managerPerson.functie)}
+              showPlacementActions
             />
           )}
 
@@ -191,6 +205,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
               person={person}
               onEditPerson={onEditPerson}
               onDragStartPerson={onDragStartPerson}
+              showPlacementActions
             />
           ))}
 

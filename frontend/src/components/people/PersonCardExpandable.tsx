@@ -24,11 +24,15 @@ interface PersonCardExpandableProps {
   onEditPerson?: (person: Person) => void;
   onDragStartPerson?: (e: React.DragEvent, person: Person) => void;
   isManager?: boolean;
+  /** Override the manager badge label (e.g. "Coördinator" for teams) */
+  managerLabel?: string;
   /** Extra badge shown on the right side (e.g. stakeholder role) */
   extraBadge?: React.ReactNode;
+  /** Show end/delete buttons on placements (only on person/org pages) */
+  showPlacementActions?: boolean;
 }
 
-export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, isManager, extraBadge }: PersonCardExpandableProps) {
+export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, isManager, managerLabel, extraBadge, showPlacementActions }: PersonCardExpandableProps) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [messageOpen, setMessageOpen] = useState(false);
@@ -84,14 +88,17 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 Agent
               </Badge>
             )}
-            {isManager && (
-              <Badge
-                variant={person.functie === 'minister' || person.functie === 'staatssecretaris' ? 'purple' : 'blue'}
-                className="text-[10px] px-1.5 py-0 shrink-0"
-              >
-                {person.functie === 'minister' || person.functie === 'staatssecretaris' ? 'Bewindspersoon' : 'Manager'}
-              </Badge>
-            )}
+            {isManager && (() => {
+              const label = managerLabel ?? 'Manager';
+              return (
+                <Badge
+                  variant={label === 'Bewindspersoon' ? 'purple' : 'blue'}
+                  className="text-[10px] px-1.5 py-0 shrink-0"
+                >
+                  {label}
+                </Badge>
+              );
+            })()}
             {extraBadge && <div className="shrink-0 ml-auto">{extraBadge}</div>}
           </div>
           <div className="flex items-center gap-3 text-xs text-text-secondary mt-0.5">
@@ -228,67 +235,69 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                         <Badge variant="gray" className="text-[10px] px-1.5 py-0 shrink-0">
                           {DIENSTVERBAND_LABELS[p.dienstverband] || p.dienstverband}
                         </Badge>
-                        <div className="flex items-center gap-1 shrink-0 ml-auto">
-                          {!p.eind_datum && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                endPlacement.mutate(
-                                  {
-                                    personId: person.id,
-                                    placementId: p.id,
-                                    data: { eind_datum: todayISO() },
-                                  },
-                                  { onError: () => alert('Plaatsing beëindigen mislukt.') },
-                                );
-                              }}
-                              className="text-text-secondary hover:text-amber-600 transition-colors"
-                              title="Plaatsing beëindigen"
-                            >
-                              <CheckCircle2 className="h-3 w-3" />
-                            </button>
-                          )}
-                          {confirmDeleteId === p.id ? (
-                            <span className="flex items-center gap-1 text-red-600">
-                              <span>Zeker?</span>
+                        {showPlacementActions && (
+                          <div className="flex items-center gap-1 shrink-0 ml-auto">
+                            {!p.eind_datum && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  removePlacement.mutate(
-                                    { personId: person.id, placementId: p.id },
+                                  endPlacement.mutate(
                                     {
-                                      onSettled: () => setConfirmDeleteId(null),
-                                      onError: () => alert('Verwijderen mislukt.'),
+                                      personId: person.id,
+                                      placementId: p.id,
+                                      data: { eind_datum: todayISO() },
                                     },
+                                    { onError: () => alert('Plaatsing beëindigen mislukt.') },
                                   );
                                 }}
-                                className="font-medium hover:underline"
+                                className="text-text-secondary hover:text-amber-600 transition-colors"
+                                title="Plaatsing beëindigen"
                               >
-                                Ja
+                                <CheckCircle2 className="h-3 w-3" />
                               </button>
+                            )}
+                            {confirmDeleteId === p.id ? (
+                              <span className="flex items-center gap-1 text-red-600">
+                                <span>Zeker?</span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removePlacement.mutate(
+                                      { personId: person.id, placementId: p.id },
+                                      {
+                                        onSettled: () => setConfirmDeleteId(null),
+                                        onError: () => alert('Verwijderen mislukt.'),
+                                      },
+                                    );
+                                  }}
+                                  className="font-medium hover:underline"
+                                >
+                                  Ja
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmDeleteId(null);
+                                  }}
+                                  className="text-text-secondary hover:text-text"
+                                >
+                                  Nee
+                                </button>
+                              </span>
+                            ) : (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setConfirmDeleteId(null);
+                                  setConfirmDeleteId(p.id);
                                 }}
-                                className="text-text-secondary hover:text-text"
+                                className="text-text-secondary hover:text-red-600 transition-colors"
+                                title="Plaatsing verwijderen"
                               >
-                                Nee
+                                <X className="h-3 w-3" />
                               </button>
-                            </span>
-                          ) : (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setConfirmDeleteId(p.id);
-                              }}
-                              className="text-text-secondary hover:text-red-600 transition-colors"
-                              title="Plaatsing verwijderen"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

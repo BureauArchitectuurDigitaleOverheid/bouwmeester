@@ -5,6 +5,7 @@ import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { formatDateTimeShort } from '@/utils/dates';
+import { NOTIFICATION_TYPE_LABELS } from '@/types';
 import type { InboxItem as InboxItemType } from '@/types';
 
 interface InboxItemProps {
@@ -26,6 +27,7 @@ const typeColors: Record<string, string> = {
   notification: 'amber',
   message: 'green',
 };
+
 
 export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps) {
   const { openTaskDetail } = useTaskDetail();
@@ -79,7 +81,7 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
 
           <div className="flex items-center gap-2">
             <Badge variant={typeColors[item.type] as 'blue'}>
-              {item.type}
+              {(item.notification_type && NOTIFICATION_TYPE_LABELS[item.notification_type]) || item.type}
             </Badge>
             {item.reply_count != null && item.reply_count > 0 && (
               <span className="flex items-center gap-1 text-xs text-primary-600">

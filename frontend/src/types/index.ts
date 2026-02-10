@@ -492,6 +492,8 @@ export interface Activity {
 export interface InboxItem {
   id: string;
   type: string;
+  /** Original notification type (e.g. "stakeholder_added") for display label */
+  notification_type?: string;
   title: string;
   description?: string;
   source?: string;
