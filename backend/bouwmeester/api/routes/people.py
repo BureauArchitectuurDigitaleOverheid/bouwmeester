@@ -301,6 +301,8 @@ async def add_person_organisatie(
         details={
             "person_id": str(id),
             "organisatie_eenheid_id": str(data.organisatie_eenheid_id),
+            "organisatie_eenheid_naam": eenheid.naam,
+            "dienstverband": data.dienstverband,
         },
     )
 
@@ -340,15 +342,19 @@ async def update_person_organisatie(
     await db.flush()
     await db.refresh(placement)
 
+    eenheid = await db.get(OrganisatieEenheid, placement.organisatie_eenheid_id)
+
     resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "person.organisatie_updated",
         actor_id=resolved_id,
         actor_naam=resolved_naam,
-        details={"person_id": str(id), "placement_id": str(placement_id)},
+        details={
+            "person_id": str(id),
+            "placement_id": str(placement_id),
+            "organisatie_eenheid_naam": eenheid.naam if eenheid else None,
+        },
     )
-
-    eenheid = await db.get(OrganisatieEenheid, placement.organisatie_eenheid_id)
     return PersonOrganisatieResponse(
         id=placement.id,
         person_id=placement.person_id,

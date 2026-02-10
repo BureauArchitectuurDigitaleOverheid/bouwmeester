@@ -98,6 +98,7 @@ async def create_task(
             task, task.organisatie_eenheid_id, exclude_person_id=task.assignee_id
         )
 
+    assignee_naam = assignee.naam if task.assignee_id and assignee else None
     await ActivityService(db).log_event(
         "task.created",
         actor_id=resolved_id,
@@ -106,7 +107,9 @@ async def create_task(
         node_id=task.node_id,
         details={
             "title": task.title,
+            "priority": task.priority,
             "assignee_id": str(task.assignee_id) if task.assignee_id else None,
+            "assignee_naam": assignee_naam,
         },
     )
 
@@ -247,13 +250,25 @@ async def update_task(
             task, new_org_unit_id, exclude_person_id=task.assignee_id
         )
 
+    # Build change details for audit log
+    changes: dict = {}
+    if old_status != task.status:
+        changes["old_status"] = old_status
+        changes["new_status"] = task.status
+    if old_assignee_id != task.assignee_id:
+        changes["old_assignee_id"] = str(old_assignee_id) if old_assignee_id else None
+        changes["new_assignee_id"] = str(task.assignee_id) if task.assignee_id else None
+        if task.assignee_id:
+            new_person = await db.get(Person, task.assignee_id)
+            changes["new_assignee_naam"] = new_person.naam if new_person else None
+
     await ActivityService(db).log_event(
         "task.updated",
         actor_id=resolved_id,
         actor_naam=resolved_naam,
         task_id=task.id,
         node_id=task.node_id,
-        details={"title": task.title},
+        details={"title": task.title, **changes},
     )
 
     return TaskResponse.model_validate(task)

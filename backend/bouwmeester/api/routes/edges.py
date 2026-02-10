@@ -75,7 +75,9 @@ async def create_edge(
         edge_id=edge.id,
         details={
             "from_node_id": str(data.from_node_id),
+            "from_node_title": from_node.title if from_node else None,
             "to_node_id": str(data.to_node_id),
+            "to_node_title": to_node.title if to_node else None,
             "edge_type": data.edge_type_id,
         },
     )
@@ -126,14 +128,17 @@ async def delete_edge(
 ) -> None:
     repo = EdgeRepository(db)
     edge = await repo.get(id)
-    edge_details = (
-        {
+    edge_details: dict = {}
+    if edge:
+        from_node = await db.get(CorpusNode, edge.from_node_id)
+        to_node = await db.get(CorpusNode, edge.to_node_id)
+        edge_details = {
             "from_node_id": str(edge.from_node_id),
+            "from_node_title": from_node.title if from_node else None,
             "to_node_id": str(edge.to_node_id),
+            "to_node_title": to_node.title if to_node else None,
+            "edge_type": edge.edge_type_id,
         }
-        if edge
-        else {}
-    )
     require_deleted(await repo.delete(id), "Edge")
     resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(

@@ -273,12 +273,17 @@ async def add_node_stakeholder(
         actor_id=resolved_id,
     )
 
+    person = await db.get(Person, data.person_id)
     await ActivityService(db).log_event(
         "stakeholder.added",
         actor_id=resolved_id,
         actor_naam=resolved_naam,
         node_id=id,
-        details={"person_id": str(data.person_id), "rol": data.rol},
+        details={
+            "person_id": str(data.person_id),
+            "person_naam": person.naam if person else None,
+            "rol": data.rol,
+        },
     )
 
     await db.commit()
@@ -319,13 +324,19 @@ async def update_node_stakeholder(
                 node, stakeholder.person_id, old_rol, data.rol
             )
 
+    person = await db.get(Person, stakeholder.person_id)
     resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
         "stakeholder.updated",
         actor_id=resolved_id,
         actor_naam=resolved_naam,
         node_id=id,
-        details={"old_rol": old_rol, "new_rol": data.rol},
+        details={
+            "person_id": str(stakeholder.person_id),
+            "person_naam": person.naam if person else None,
+            "old_rol": old_rol,
+            "new_rol": data.rol,
+        },
     )
 
     await db.commit()
@@ -352,6 +363,8 @@ async def remove_node_stakeholder(
 
     stakeholder_person_id = str(stakeholder.person_id)
     stakeholder_rol = stakeholder.rol
+    person = await db.get(Person, stakeholder.person_id)
+    stakeholder_person_naam = person.naam if person else None
     await db.delete(stakeholder)
 
     resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
@@ -360,7 +373,11 @@ async def remove_node_stakeholder(
         actor_id=resolved_id,
         actor_naam=resolved_naam,
         node_id=id,
-        details={"person_id": stakeholder_person_id, "rol": stakeholder_rol},
+        details={
+            "person_id": stakeholder_person_id,
+            "person_naam": stakeholder_person_naam,
+            "rol": stakeholder_rol,
+        },
     )
 
     await db.commit()
@@ -415,6 +432,7 @@ async def add_tag_to_node(
         raise HTTPException(status_code=400, detail="Provide tag_id or tag_name")
 
     node_tag = await tag_repo.add_tag_to_node(id, tag_id)
+    tag = await tag_repo.get_by_id(tag_id)
 
     resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     await ActivityService(db).log_event(
@@ -422,7 +440,7 @@ async def add_tag_to_node(
         actor_id=resolved_id,
         actor_naam=resolved_naam,
         node_id=id,
-        details={"tag_id": str(tag_id)},
+        details={"tag_id": str(tag_id), "tag_name": tag.name if tag else None},
     )
 
     return NodeTagResponse.model_validate(node_tag)
@@ -439,6 +457,8 @@ async def remove_tag_from_node(
     from bouwmeester.repositories.tag import TagRepository
 
     tag_repo = TagRepository(db)
+    tag = await tag_repo.get_by_id(tag_id)
+    tag_name = tag.name if tag else None
     require_deleted(await tag_repo.remove_tag_from_node(id, tag_id), "Tag link")
 
     resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
@@ -447,7 +467,7 @@ async def remove_tag_from_node(
         actor_id=resolved_id,
         actor_naam=resolved_naam,
         node_id=id,
-        details={"tag_id": str(tag_id)},
+        details={"tag_id": str(tag_id), "tag_name": tag_name},
     )
 
 

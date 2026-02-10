@@ -20,8 +20,11 @@ async def test_activity_feed_returns_paginated_response(client):
 
 
 async def test_activity_feed_empty_by_default(client):
-    """When no mutations have happened the feed should be empty."""
-    resp = await client.get("/api/activity/feed")
+    """Feed with a non-existent actor_id filter should return zero results."""
+    resp = await client.get(
+        "/api/activity/feed",
+        params={"actor_id": str(uuid.uuid4())},
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["items"] == []
@@ -35,6 +38,9 @@ async def test_activity_feed_empty_by_default(client):
 
 async def test_activity_feed_pagination(client, sample_person):
     """Create several activity records via node mutations and verify skip/limit."""
+    # Use actor_id filter so we only see activities from this test
+    actor_id = str(sample_person.id)
+
     # Create 5 nodes to generate 5 activity entries
     node_ids = []
     for i in range(5):
@@ -44,27 +50,32 @@ async def test_activity_feed_pagination(client, sample_person):
                 "title": f"Pagination node {i}",
                 "node_type": "dossier",
             },
-            params={"actor_id": str(sample_person.id)},
+            params={"actor_id": actor_id},
         )
         assert resp.status_code == 201
         node_ids.append(resp.json()["id"])
 
-    # Total should be at least 5
-    full_resp = await client.get("/api/activity/feed", params={"limit": 200})
+    # Total should be at least 5 for this actor
+    full_resp = await client.get(
+        "/api/activity/feed", params={"limit": 200, "actor_id": actor_id}
+    )
     assert full_resp.status_code == 200
     full_data = full_resp.json()
     assert full_data["total"] >= 5
 
     # Fetch with limit=2
-    page1 = await client.get("/api/activity/feed", params={"limit": 2, "skip": 0})
+    page1 = await client.get(
+        "/api/activity/feed", params={"limit": 2, "skip": 0, "actor_id": actor_id}
+    )
     assert page1.status_code == 200
     page1_data = page1.json()
     assert len(page1_data["items"]) == 2
-    # Total should still reflect the full count
     assert page1_data["total"] >= 5
 
     # Fetch next page
-    page2 = await client.get("/api/activity/feed", params={"limit": 2, "skip": 2})
+    page2 = await client.get(
+        "/api/activity/feed", params={"limit": 2, "skip": 2, "actor_id": actor_id}
+    )
     assert page2.status_code == 200
     page2_data = page2.json()
     assert len(page2_data["items"]) == 2
