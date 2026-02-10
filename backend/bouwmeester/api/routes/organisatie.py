@@ -21,6 +21,7 @@ from bouwmeester.schema.organisatie_eenheid import (
     OrgParentRecord,
 )
 from bouwmeester.schema.person import PersonResponse
+from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 
 router = APIRouter(prefix="/organisatie", tags=["organisatie"])
@@ -101,6 +102,7 @@ async def get_managed_eenheden(
 async def create_organisatie(
     data: OrganisatieEenheidCreate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> OrganisatieEenheidResponse:
     repo = OrganisatieEenheidRepository(db)
@@ -114,6 +116,14 @@ async def create_organisatie(
         eenheid.id,
         data.beschrijving,
         eenheid.naam,
+    )
+
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "organisatie.created",
+        details={"organisatie_id": str(eenheid.id), "naam": eenheid.naam},
     )
 
     return OrganisatieEenheidResponse.model_validate(eenheid)
@@ -135,6 +145,7 @@ async def update_organisatie(
     id: UUID,
     data: OrganisatieEenheidUpdate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> OrganisatieEenheidResponse:
     repo = OrganisatieEenheidRepository(db)
@@ -157,6 +168,14 @@ async def update_organisatie(
         eenheid.naam,
     )
 
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "organisatie.updated",
+        details={"organisatie_id": str(eenheid.id), "naam": eenheid.naam},
+    )
+
     return OrganisatieEenheidResponse.model_validate(eenheid)
 
 
@@ -164,10 +183,11 @@ async def update_organisatie(
 async def delete_organisatie(
     id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = OrganisatieEenheidRepository(db)
-    require_found(await repo.get(id), "Eenheid")
+    eenheid = require_found(await repo.get(id), "Eenheid")
     if await repo.has_children(id):
         raise HTTPException(
             status_code=409,
@@ -178,7 +198,16 @@ async def delete_organisatie(
             status_code=409,
             detail="Kan niet verwijderen: eenheid heeft personen",
         )
+    eenheid_naam = eenheid.naam
     await repo.delete(id)
+
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "organisatie.deleted",
+        details={"organisatie_id": str(id), "naam": eenheid_naam},
+    )
 
 
 @router.get("/{id}/history/namen", response_model=list[OrgNaamRecord])

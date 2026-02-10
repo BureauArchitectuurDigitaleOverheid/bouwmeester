@@ -505,14 +505,67 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
 // Activity
 export interface Activity {
   id: string;
-  action: string;
-  description: string;
+  event_type: string;
+  actor_id?: string;
+  actor_naam?: string;
   node_id?: string;
-  node?: CorpusNode;
-  person_id?: string;
-  person?: Person;
+  task_id?: string;
+  edge_id?: string;
+  details?: Record<string, unknown>;
   created_at: string;
 }
+
+export interface ActivityFeedResponse {
+  items: Activity[];
+  total: number;
+}
+
+export const EVENT_TYPE_LABELS: Record<string, string> = {
+  'node.created': 'Node aangemaakt',
+  'node.updated': 'Node bewerkt',
+  'node.deleted': 'Node verwijderd',
+  'stakeholder.added': 'Betrokkene toegevoegd',
+  'stakeholder.updated': 'Betrokkene rol gewijzigd',
+  'stakeholder.removed': 'Betrokkene verwijderd',
+  'node_tag.added': 'Tag toegevoegd aan node',
+  'node_tag.removed': 'Tag verwijderd van node',
+  'tag.created': 'Tag aangemaakt',
+  'tag.updated': 'Tag bewerkt',
+  'tag.deleted': 'Tag verwijderd',
+  'task.created': 'Taak aangemaakt',
+  'task.updated': 'Taak bewerkt',
+  'task.deleted': 'Taak verwijderd',
+  'edge.created': 'Relatie aangemaakt',
+  'edge.updated': 'Relatie bewerkt',
+  'edge.deleted': 'Relatie verwijderd',
+  'person.created': 'Persoon aangemaakt',
+  'person.updated': 'Persoon bewerkt',
+  'person.deleted': 'Persoon verwijderd',
+  'person.organisatie_added': 'Organisatie-plaatsing toegevoegd',
+  'person.organisatie_updated': 'Organisatie-plaatsing bewerkt',
+  'person.organisatie_removed': 'Organisatie-plaatsing verwijderd',
+  'organisatie.created': 'Organisatie aangemaakt',
+  'organisatie.updated': 'Organisatie bewerkt',
+  'organisatie.deleted': 'Organisatie verwijderd',
+  'parlementair.rejected': 'Parlementair item afgewezen',
+  'parlementair.reviewed': 'Parlementair item beoordeeld',
+  'parlementair.edge_approved': 'Parlementaire relatie goedgekeurd',
+  'parlementair.edge_rejected': 'Parlementaire relatie afgewezen',
+  'parlementair.edge_reset': 'Parlementaire relatie gereset',
+  'parlementair.import_triggered': 'Parlementaire import gestart',
+};
+
+export const EVENT_TYPE_CATEGORY_LABELS: Record<string, string> = {
+  node: 'Nodes',
+  task: 'Taken',
+  edge: 'Relaties',
+  person: 'Personen',
+  organisatie: 'Organisatie',
+  tag: 'Tags',
+  node_tag: 'Node-tags',
+  stakeholder: 'Betrokkenen',
+  parlementair: 'Parlementair',
+};
 
 // Inbox
 export interface InboxItem {

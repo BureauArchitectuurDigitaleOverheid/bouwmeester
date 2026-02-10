@@ -9,6 +9,52 @@ from bouwmeester.models.activity import Activity
 from bouwmeester.repositories.activity import ActivityRepository
 
 
+async def resolve_actor(
+    current_user: Any,
+    actor_id: UUID | None,
+    db: AsyncSession,
+) -> tuple[UUID | None, str | None]:
+    """Resolve actor id and name in a single pass.
+
+    Prefers authenticated user; falls back to actor_id query param with DB
+    lookup for the name (dev mode).
+    """
+    if current_user is not None:
+        return current_user.id, current_user.naam
+    if actor_id is not None:
+        from bouwmeester.models.person import Person
+
+        person = await db.get(Person, actor_id)
+        if person is not None:
+            return actor_id, person.naam
+        return actor_id, None
+    return None, None
+
+
+async def log_activity(
+    db: AsyncSession,
+    current_user: Any,
+    actor_id: UUID | None,
+    event_type: str,
+    *,
+    node_id: UUID | None = None,
+    task_id: UUID | None = None,
+    edge_id: UUID | None = None,
+    details: dict[str, Any] | None = None,
+) -> Activity:
+    """Resolve actor and log an activity event in one call."""
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
+    return await ActivityService(db).log_event(
+        event_type,
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
+        node_id=node_id,
+        task_id=task_id,
+        edge_id=edge_id,
+        details=details,
+    )
+
+
 class ActivityService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -18,11 +64,18 @@ class ActivityService:
         self,
         event_type: str,
         actor_id: UUID | None = None,
+        actor_naam: str | None = None,
         node_id: UUID | None = None,
         task_id: UUID | None = None,
         edge_id: UUID | None = None,
         details: dict[str, Any] | None = None,
     ) -> Activity:
+        if actor_naam:
+            if details is None:
+                details = {}
+            else:
+                details = dict(details)
+            details["actor_naam"] = actor_naam
         return await self.repo.create(
             event_type=event_type,
             actor_id=actor_id,
@@ -36,8 +89,19 @@ class ActivityService:
         self,
         skip: int = 0,
         limit: int = 50,
+        event_type: str | None = None,
+        actor_id: UUID | None = None,
     ) -> list[Activity]:
-        return await self.repo.get_recent(skip=skip, limit=limit)
+        return await self.repo.get_recent(
+            skip=skip, limit=limit, event_type=event_type, actor_id=actor_id
+        )
+
+    async def count(
+        self,
+        event_type: str | None = None,
+        actor_id: UUID | None = None,
+    ) -> int:
+        return await self.repo.count(event_type=event_type, actor_id=actor_id)
 
     async def get_by_node(
         self,

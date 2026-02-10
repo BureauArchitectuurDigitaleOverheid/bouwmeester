@@ -9,6 +9,7 @@ import {
   Building2,
   Users,
   ScrollText,
+  History,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
@@ -35,6 +36,7 @@ export function Sidebar() {
     { to: '/organisatie', icon: Building2, label: 'Organisatie' },
     { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel },
     { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken' },
+    { to: '/auditlog', icon: History, label: 'Auditlog' },
     { to: '/search', icon: Search, label: 'Zoeken' },
   ], [eenheidLabel]);
 

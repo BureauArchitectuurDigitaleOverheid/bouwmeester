@@ -12,6 +12,11 @@ from bouwmeester.core.database import get_db
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.schema.edge import EdgeCreate, EdgeResponse, EdgeUpdate, EdgeWithNodes
+from bouwmeester.services.activity_service import (
+    ActivityService,
+    log_activity,
+    resolve_actor,
+)
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/edges", tags=["edges"])
@@ -56,12 +61,28 @@ async def create_edge(
             detail="Deze verbinding bestaat al.",
         )
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
+
     # Notify stakeholders of both nodes
     from_node = await db.get(CorpusNode, data.from_node_id)
     to_node = await db.get(CorpusNode, data.to_node_id)
     if from_node and to_node:
         notif_svc = NotificationService(db)
-        await notif_svc.notify_edge_created(from_node, to_node, actor_id=actor_id)
+        await notif_svc.notify_edge_created(from_node, to_node, actor_id=resolved_id)
+
+    await ActivityService(db).log_event(
+        "edge.created",
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
+        edge_id=edge.id,
+        details={
+            "from_node_id": str(data.from_node_id),
+            "from_node_title": from_node.title if from_node else None,
+            "to_node_id": str(data.to_node_id),
+            "to_node_title": to_node.title if to_node else None,
+            "edge_type": data.edge_type_id,
+        },
+    )
 
     return EdgeResponse.model_validate(edge)
 
@@ -82,10 +103,21 @@ async def update_edge(
     id: UUID,
     data: EdgeUpdate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> EdgeResponse:
     repo = EdgeRepository(db)
     edge = require_found(await repo.update(id, data), "Edge")
+
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "edge.updated",
+        edge_id=edge.id,
+        details={"edge_type": edge.edge_type_id},
+    )
+
     return EdgeResponse.model_validate(edge)
 
 
@@ -93,7 +125,27 @@ async def update_edge(
 async def delete_edge(
     id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = EdgeRepository(db)
+    edge = await repo.get(id)
+    edge_details: dict = {}
+    if edge:
+        from_node = await db.get(CorpusNode, edge.from_node_id)
+        to_node = await db.get(CorpusNode, edge.to_node_id)
+        edge_details = {
+            "from_node_id": str(edge.from_node_id),
+            "from_node_title": from_node.title if from_node else None,
+            "to_node_id": str(edge.to_node_id),
+            "to_node_title": to_node.title if to_node else None,
+            "edge_type": edge.edge_type_id,
+        }
     require_deleted(await repo.delete(id), "Edge")
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "edge.deleted",
+        details={**edge_details, "edge_id": str(id)},
+    )

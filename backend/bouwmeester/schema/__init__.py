@@ -1,6 +1,6 @@
 """Pydantic schemas for the Bouwmeester API."""
 
-from bouwmeester.schema.activity import ActivityResponse
+from bouwmeester.schema.activity import ActivityFeedResponse, ActivityResponse
 from bouwmeester.schema.corpus_node import (
     CorpusNodeBase,
     CorpusNodeCreate,
@@ -136,6 +136,7 @@ __all__ = [
     "PersonSummaryResponse",
     "PersonUpdate",
     # activity
+    "ActivityFeedResponse",
     "ActivityResponse",
     # graph
     "GraphNeighborsResponse",

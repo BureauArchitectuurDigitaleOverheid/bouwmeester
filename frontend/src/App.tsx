@@ -17,6 +17,7 @@ import { OrganisatiePage } from '@/pages/OrganisatiePage';
 import { SearchPage } from '@/pages/SearchPage';
 import { ParlementairPage } from '@/pages/ParlementairPage';
 import { EenheidOverzichtPage } from '@/pages/EenheidOverzichtPage';
+import { AuditLogPage } from '@/pages/AuditLogPage';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
@@ -107,6 +108,7 @@ export default function App() {
                     <Route path="/eenheid-overzicht" element={<EenheidOverzichtPage />} />
                     <Route path="/search" element={<SearchPage />} />
                     <Route path="/parlementair" element={<ParlementairPage />} />
+                    <Route path="/auditlog" element={<AuditLogPage />} />
                   </Route>
                 </Routes>
                 <DetailModals />

@@ -18,6 +18,11 @@ from bouwmeester.schema.task import (
     TaskStatus,
     TaskUpdate,
 )
+from bouwmeester.services.activity_service import (
+    ActivityService,
+    log_activity,
+    resolve_actor,
+)
 from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
@@ -80,18 +85,35 @@ async def create_task(
         source_node_id=task.node_id,
     )
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
+
     # Notify assignee
     notif_svc = NotificationService(db)
     if task.assignee_id:
         assignee = await db.get(Person, task.assignee_id)
         if assignee:
-            await notif_svc.notify_task_assigned(task, assignee, actor_id=actor_id)
+            await notif_svc.notify_task_assigned(task, assignee, actor_id=resolved_id)
 
     # Notify team manager
     if task.organisatie_eenheid_id:
         await notif_svc.notify_team_manager(
             task, task.organisatie_eenheid_id, exclude_person_id=task.assignee_id
         )
+
+    assignee_naam = assignee.naam if task.assignee_id and assignee else None
+    await ActivityService(db).log_event(
+        "task.created",
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
+        task_id=task.id,
+        node_id=task.node_id,
+        details={
+            "title": task.title,
+            "priority": task.priority,
+            "assignee_id": str(task.assignee_id) if task.assignee_id else None,
+            "assignee_naam": assignee_naam,
+        },
+    )
 
     return TaskResponse.model_validate(task)
 
@@ -198,6 +220,7 @@ async def update_task(
         source_node_id=task.node_id,
     )
 
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
     notif_svc = NotificationService(db)
 
     # Detect assignee changes
@@ -213,12 +236,14 @@ async def update_task(
             else:
                 # First assignment
                 await notif_svc.notify_task_assigned(
-                    task, new_assignee, actor_id=actor_id
+                    task,
+                    new_assignee,
+                    actor_id=resolved_id,
                 )
 
     # Detect status → done
     if task.status == "done" and old_status != "done":
-        await notif_svc.notify_task_completed(task, actor_id=actor_id)
+        await notif_svc.notify_task_completed(task, actor_id=resolved_id)
 
     # Detect org unit change
     new_org_unit_id = task.organisatie_eenheid_id
@@ -227,6 +252,27 @@ async def update_task(
             task, new_org_unit_id, exclude_person_id=task.assignee_id
         )
 
+    # Build change details for audit log
+    changes: dict = {}
+    if old_status != task.status:
+        changes["old_status"] = old_status
+        changes["new_status"] = task.status
+    if old_assignee_id != task.assignee_id:
+        changes["old_assignee_id"] = str(old_assignee_id) if old_assignee_id else None
+        changes["new_assignee_id"] = str(task.assignee_id) if task.assignee_id else None
+        if task.assignee_id:
+            new_person = await db.get(Person, task.assignee_id)
+            changes["new_assignee_naam"] = new_person.naam if new_person else None
+
+    await ActivityService(db).log_event(
+        "task.updated",
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
+        task_id=task.id,
+        node_id=task.node_id,
+        details={"title": task.title, **changes},
+    )
+
     return TaskResponse.model_validate(task)
 
 
@@ -234,7 +280,22 @@ async def update_task(
 async def delete_task(
     id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = TaskRepository(db)
+    task = await repo.get(id)
+    task_title = task.title if task else None
+    task_node_id = task.node_id if task else None
     require_deleted(await repo.delete(id), "Task")
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "task.deleted",
+        details={
+            "task_id": str(id),
+            "node_id": str(task_node_id) if task_node_id else None,
+            "title": task_title,
+        },
+    )

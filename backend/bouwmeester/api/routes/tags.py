@@ -15,6 +15,7 @@ from bouwmeester.schema.tag import (
     TagTreeResponse,
     TagUpdate,
 )
+from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -50,10 +51,22 @@ async def search_tags(
 
 @router.post("", response_model=TagResponse, status_code=status.HTTP_201_CREATED)
 async def create_tag(
-    data: TagCreate, current_user: OptionalUser, db: AsyncSession = Depends(get_db)
+    data: TagCreate,
+    current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
 ) -> TagResponse:
     repo = TagRepository(db)
     tag = await repo.create(data)
+
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "tag.created",
+        details={"tag_id": str(tag.id), "name": tag.name},
+    )
+
     return TagResponse.model_validate(tag)
 
 
@@ -71,16 +84,38 @@ async def update_tag(
     tag_id: UUID,
     data: TagUpdate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TagResponse:
     repo = TagRepository(db)
     tag = require_found(await repo.update(tag_id, data), "Tag")
+
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "tag.updated",
+        details={"tag_id": str(tag.id), "name": tag.name},
+    )
+
     return TagResponse.model_validate(tag)
 
 
 @router.delete("/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tag(
-    tag_id: UUID, current_user: OptionalUser, db: AsyncSession = Depends(get_db)
+    tag_id: UUID,
+    current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = TagRepository(db)
+    tag = await repo.get_by_id(tag_id)
+    tag_name = tag.name if tag else None
     require_deleted(await repo.delete(tag_id), "Tag")
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "tag.deleted",
+        details={"tag_id": str(tag_id), "name": tag_name},
+    )
