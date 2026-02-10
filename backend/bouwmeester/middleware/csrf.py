@@ -23,6 +23,7 @@ _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 # Paths exempt from CSRF checks (public endpoints).
 _CSRF_EXEMPT_PREFIXES = (
     "/api/auth/callback",
+    "/api/auth/onboarding",
     "/api/health/",
 )
 
