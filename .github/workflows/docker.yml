@@ -70,6 +70,10 @@ jobs:
       packages: read
 
     steps:
+      - name: Compute image tag
+        id: tag
+        run: echo "sha=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       - name: Deploy backend to ZAD
         uses: RijksICTGilde/zad-actions/deploy@v2
         with:
@@ -77,7 +81,7 @@ jobs:
           project-id: bouwm-6gn
           deployment-name: main
           component: component-2
-          image: ${{ env.IMAGE_PREFIX }}/backend:main
+          image: ${{ env.IMAGE_PREFIX }}/backend:${{ steps.tag.outputs.sha }}
 
       - name: Deploy frontend to ZAD
         uses: RijksICTGilde/zad-actions/deploy@v2
@@ -86,4 +90,4 @@ jobs:
           project-id: bouwm-6gn
           deployment-name: main
           component: component-1
-          image: ${{ env.IMAGE_PREFIX }}/frontend:main
+          image: ${{ env.IMAGE_PREFIX }}/frontend:${{ steps.tag.outputs.sha }}
