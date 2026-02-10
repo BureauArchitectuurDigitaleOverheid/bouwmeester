@@ -33,7 +33,11 @@ from bouwmeester.schema.person import (
 )
 from bouwmeester.schema.tag import NodeTagCreate, NodeTagResponse, TagCreate
 from bouwmeester.schema.task import TaskResponse
-from bouwmeester.services.activity_service import ActivityService, resolve_actor
+from bouwmeester.services.activity_service import (
+    ActivityService,
+    log_activity,
+    resolve_actor,
+)
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.node_service import NodeService
 from bouwmeester.services.notification_service import NotificationService
@@ -77,11 +81,8 @@ async def create_node(
         source_node_id=node.id,
     )
 
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "node.created",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "node.created",
         node_id=node.id,
         details={"title": node.title, "node_type": node.node_type},
     )
@@ -166,11 +167,8 @@ async def delete_node(
     node_title = node.title if node else None
     node_type = node.node_type if node else None
     require_deleted(await service.delete(id), "Node")
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "node.deleted",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "node.deleted",
         details={"node_id": str(id), "title": node_title, "node_type": node_type},
     )
 
@@ -325,11 +323,8 @@ async def update_node_stakeholder(
             )
 
     person = await db.get(Person, stakeholder.person_id)
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "stakeholder.updated",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "stakeholder.updated",
         node_id=id,
         details={
             "person_id": str(stakeholder.person_id),
@@ -367,11 +362,8 @@ async def remove_node_stakeholder(
     stakeholder_person_naam = person.naam if person else None
     await db.delete(stakeholder)
 
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "stakeholder.removed",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "stakeholder.removed",
         node_id=id,
         details={
             "person_id": stakeholder_person_id,
@@ -434,11 +426,8 @@ async def add_tag_to_node(
     node_tag = await tag_repo.add_tag_to_node(id, tag_id)
     tag = await tag_repo.get_by_id(tag_id)
 
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "node_tag.added",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "node_tag.added",
         node_id=id,
         details={"tag_id": str(tag_id), "tag_name": tag.name if tag else None},
     )
@@ -461,11 +450,8 @@ async def remove_tag_from_node(
     tag_name = tag.name if tag else None
     require_deleted(await tag_repo.remove_tag_from_node(id, tag_id), "Tag link")
 
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "node_tag.removed",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "node_tag.removed",
         node_id=id,
         details={"tag_id": str(tag_id), "tag_name": tag_name},
     )

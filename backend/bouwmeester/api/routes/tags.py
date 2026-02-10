@@ -15,7 +15,7 @@ from bouwmeester.schema.tag import (
     TagTreeResponse,
     TagUpdate,
 )
-from bouwmeester.services.activity_service import ActivityService, resolve_actor
+from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -59,11 +59,8 @@ async def create_tag(
     repo = TagRepository(db)
     tag = await repo.create(data)
 
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "tag.created",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "tag.created",
         details={"tag_id": str(tag.id), "name": tag.name},
     )
 
@@ -90,11 +87,8 @@ async def update_tag(
     repo = TagRepository(db)
     tag = require_found(await repo.update(tag_id, data), "Tag")
 
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "tag.updated",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "tag.updated",
         details={"tag_id": str(tag.id), "name": tag.name},
     )
 
@@ -112,10 +106,7 @@ async def delete_tag(
     tag = await repo.get_by_id(tag_id)
     tag_name = tag.name if tag else None
     require_deleted(await repo.delete(tag_id), "Tag")
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "tag.deleted",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "tag.deleted",
         details={"tag_id": str(tag_id), "name": tag_name},
     )

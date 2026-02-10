@@ -18,7 +18,11 @@ from bouwmeester.schema.task import (
     TaskStatus,
     TaskUpdate,
 )
-from bouwmeester.services.activity_service import ActivityService, resolve_actor
+from bouwmeester.services.activity_service import (
+    ActivityService,
+    log_activity,
+    resolve_actor,
+)
 from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
@@ -286,11 +290,8 @@ async def delete_task(
     task_title = task.title if task else None
     task_node_id = task.node_id if task else None
     require_deleted(await repo.delete(id), "Task")
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "task.deleted",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "task.deleted",
         details={
             "task_id": str(id),
             "node_id": str(task_node_id) if task_node_id else None,

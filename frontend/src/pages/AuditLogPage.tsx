@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useActivityFeed } from '@/hooks/useActivity';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
@@ -259,6 +259,13 @@ export function AuditLogPage() {
   });
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
+
+  // Clamp page when totalPages shrinks (e.g. after applying a filter)
+  useEffect(() => {
+    if (totalPages > 0 && page >= totalPages) {
+      setPage(totalPages - 1);
+    }
+  }, [totalPages, page]);
 
   return (
     <div className="p-6 space-y-4">

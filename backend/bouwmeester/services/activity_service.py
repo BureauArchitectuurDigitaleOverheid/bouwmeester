@@ -31,6 +31,30 @@ async def resolve_actor(
     return None, None
 
 
+async def log_activity(
+    db: AsyncSession,
+    current_user: Any,
+    actor_id: UUID | None,
+    event_type: str,
+    *,
+    node_id: UUID | None = None,
+    task_id: UUID | None = None,
+    edge_id: UUID | None = None,
+    details: dict[str, Any] | None = None,
+) -> Activity:
+    """Resolve actor and log an activity event in one call."""
+    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
+    return await ActivityService(db).log_event(
+        event_type,
+        actor_id=resolved_id,
+        actor_naam=resolved_naam,
+        node_id=node_id,
+        task_id=task_id,
+        edge_id=edge_id,
+        details=details,
+    )
+
+
 class ActivityService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session

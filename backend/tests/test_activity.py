@@ -1256,3 +1256,67 @@ async def test_actor_naam_stored_in_details(client, sample_person):
     assert activities[0]["actor_naam"] == "Jan Tester"
     # actor_naam is also denormalized into details for durability
     assert activities[0]["details"].get("actor_naam") == "Jan Tester"
+
+
+# ---------------------------------------------------------------------------
+# event_type query param validation
+# ---------------------------------------------------------------------------
+
+
+async def test_feed_event_type_rejects_invalid_pattern(client):
+    """event_type query param must match ^[a-z][a-z_.]*$ pattern."""
+    resp = await client.get(
+        "/api/activity/feed", params={"event_type": "'; DROP TABLE"}
+    )
+    assert resp.status_code == 422
+
+
+async def test_feed_event_type_rejects_too_long(client):
+    """event_type query param must be at most 50 chars."""
+    resp = await client.get("/api/activity/feed", params={"event_type": "a" * 51})
+    assert resp.status_code == 422
+
+
+async def test_feed_event_type_accepts_valid_prefix(client):
+    """event_type query param accepts a valid dotted prefix like 'node.'."""
+    resp = await client.get("/api/activity/feed", params={"event_type": "node."})
+    assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# actor_naam durability after person deletion
+# ---------------------------------------------------------------------------
+
+
+async def test_actor_naam_survives_person_deletion(client, db_session, sample_person):
+    """After deleting the actor person, the denormalized actor_naam in details
+    should still be present so audit records remain readable."""
+    from bouwmeester.models.person import Person
+
+    # Create a second person who will act as the "admin" performing actions
+    admin = Person(naam="Admin User", email="admin@example.com")
+    db_session.add(admin)
+    await db_session.flush()
+
+    # Create a node as sample_person to generate an activity record
+    resp = await client.post(
+        "/api/nodes",
+        json={"title": "Durability test", "node_type": "dossier"},
+        params={"actor_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 201
+    node_id = resp.json()["id"]
+
+    # Delete sample_person (using admin as the actor)
+    del_resp = await client.delete(
+        f"/api/people/{sample_person.id}",
+        params={"actor_id": str(admin.id)},
+    )
+    assert del_resp.status_code == 204
+
+    # The original activity record should still have actor_naam in details
+    feed = await client.get("/api/activity/feed", params={"event_type": "node.created"})
+    data = feed.json()
+    activities = [a for a in data["items"] if a.get("node_id") == node_id]
+    assert len(activities) == 1
+    assert activities[0]["details"].get("actor_naam") == "Jan Tester"

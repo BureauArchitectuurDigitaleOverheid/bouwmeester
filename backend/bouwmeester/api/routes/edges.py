@@ -12,7 +12,11 @@ from bouwmeester.core.database import get_db
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.schema.edge import EdgeCreate, EdgeResponse, EdgeUpdate, EdgeWithNodes
-from bouwmeester.services.activity_service import ActivityService, resolve_actor
+from bouwmeester.services.activity_service import (
+    ActivityService,
+    log_activity,
+    resolve_actor,
+)
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/edges", tags=["edges"])
@@ -107,11 +111,8 @@ async def update_edge(
     repo = EdgeRepository(db)
     edge = require_found(await repo.update(id, data), "Edge")
 
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "edge.updated",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "edge.updated",
         edge_id=edge.id,
         details={"edge_type": edge.edge_type_id},
     )
@@ -140,10 +141,7 @@ async def delete_edge(
             "edge_type": edge.edge_type_id,
         }
     require_deleted(await repo.delete(id), "Edge")
-    resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
-    await ActivityService(db).log_event(
-        "edge.deleted",
-        actor_id=resolved_id,
-        actor_naam=resolved_naam,
+    await log_activity(
+        db, current_user, actor_id, "edge.deleted",
         details={**edge_details, "edge_id": str(id)},
     )
