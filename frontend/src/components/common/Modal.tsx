@@ -8,6 +8,7 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
+  closeable?: boolean;
 }
 
 const sizeClasses = {
@@ -16,7 +17,7 @@ const sizeClasses = {
   lg: 'max-w-2xl',
 };
 
-export function Modal({ open, onClose, title, children, footer, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, size = 'md', closeable = true }: ModalProps) {
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
@@ -30,13 +31,13 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: M
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && open) {
+      if (e.key === 'Escape' && open && closeable) {
         onClose();
       }
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
+  }, [open, onClose, closeable]);
 
   if (!open) return null;
 
@@ -45,7 +46,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: M
       {/* Overlay */}
       <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
+        onClick={closeable ? onClose : undefined}
       />
 
       {/* Dialog */}
@@ -55,12 +56,14 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: M
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-text">{title}</h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          {closeable && (
+            <button
+              onClick={onClose}
+              className="rounded-lg p-1.5 text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
         </div>
 
         {/* Body – extra bottom padding so dropdown menus have room to open */}

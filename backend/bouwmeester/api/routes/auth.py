@@ -1,23 +1,29 @@
-"""Auth routes -- OIDC login / callback / logout / status / me."""
+"""Auth routes -- OIDC login / callback / logout / status / me / onboarding."""
 
 from __future__ import annotations
 
 import logging
 import time
 from collections import OrderedDict
+from datetime import date
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import (
     CurrentUser,
+    _get_or_create_person,
     get_oauth,
     revoke_tokens,
     validate_session_token,
 )
 from bouwmeester.core.config import Settings, get_settings
-from bouwmeester.schema.person import PersonDetailResponse
+from bouwmeester.core.database import get_db
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.schema.person import OnboardingRequest, PersonDetailResponse
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +206,7 @@ async def logout(
 @router.get("/status")
 async def auth_status(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     """Return authentication status for the current session."""
@@ -216,10 +223,34 @@ async def auth_status(
     }
 
     if authenticated:
+        sub = request.session.get("person_sub", "")
+        email = request.session.get("person_email", "")
+        name = request.session.get("person_name", "")
+
+        person_id = None
+        needs_onboarding = False
+
+        if sub and email:
+            person = await _get_or_create_person(db, sub=sub, email=email, name=name)
+            person_id = str(person.id)
+
+            # Check if person has a functie and an active org placement
+            has_functie = bool(person.functie)
+            stmt = select(PersonOrganisatieEenheid).where(
+                PersonOrganisatieEenheid.person_id == person.id,
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
+            result_plaatsing = await db.execute(stmt)
+            has_placement = result_plaatsing.scalar_one_or_none() is not None
+
+            needs_onboarding = not (has_functie and has_placement)
+
         result["person"] = {
-            "sub": request.session.get("person_sub", ""),
-            "email": request.session.get("person_email", ""),
-            "name": request.session.get("person_name", ""),
+            "sub": sub,
+            "email": email,
+            "name": name,
+            "id": person_id,
+            "needs_onboarding": needs_onboarding,
         }
 
     return result
@@ -233,4 +264,36 @@ async def auth_status(
 @router.get("/me", response_model=PersonDetailResponse)
 async def me(current_user: CurrentUser) -> PersonDetailResponse:
     """Return information about the currently authenticated user."""
+    return PersonDetailResponse.model_validate(current_user)
+
+
+# ---------------------------------------------------------------------------
+# POST /onboarding -- complete onboarding for a new SSO user
+# ---------------------------------------------------------------------------
+
+
+@router.post("/onboarding", response_model=PersonDetailResponse)
+async def complete_onboarding(
+    body: OnboardingRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> PersonDetailResponse:
+    """Complete the onboarding flow for a newly-created SSO user.
+
+    Updates the person's name and functie, and creates an org placement.
+    """
+    current_user.naam = body.naam
+    current_user.functie = body.functie
+
+    # Create org placement (start today)
+    placement = PersonOrganisatieEenheid(
+        person_id=current_user.id,
+        organisatie_eenheid_id=body.organisatie_eenheid_id,
+        dienstverband=body.dienstverband,
+        start_datum=date.today(),
+    )
+    db.add(placement)
+    await db.flush()
+    await db.refresh(current_user)
+
     return PersonDetailResponse.model_validate(current_user)
