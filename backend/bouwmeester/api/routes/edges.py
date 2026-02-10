@@ -61,24 +61,26 @@ async def create_edge(
             detail="Deze verbinding bestaat al.",
         )
 
+    resolved_actor = resolve_actor_id(current_user, actor_id)
+
     # Notify stakeholders of both nodes
     from_node = await db.get(CorpusNode, data.from_node_id)
     to_node = await db.get(CorpusNode, data.to_node_id)
     if from_node and to_node:
         notif_svc = NotificationService(db)
         await notif_svc.notify_edge_created(
-            from_node, to_node, actor_id=resolve_actor_id(current_user, actor_id)
+            from_node, to_node, actor_id=resolved_actor
         )
 
     await ActivityService(db).log_event(
         "edge.created",
-        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_id=resolved_actor,
         actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         edge_id=edge.id,
         details={
             "from_node_id": str(data.from_node_id),
             "to_node_id": str(data.to_node_id),
-            "edge_type_id": data.edge_type_id,
+            "edge_type": data.edge_type_id,
         },
     )
 
@@ -112,7 +114,7 @@ async def update_edge(
         actor_id=resolve_actor_id(current_user, actor_id),
         actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         edge_id=edge.id,
-        details={"edge_type_id": edge.edge_type_id},
+        details={"edge_type": edge.edge_type_id},
     )
 
     return EdgeResponse.model_validate(edge)

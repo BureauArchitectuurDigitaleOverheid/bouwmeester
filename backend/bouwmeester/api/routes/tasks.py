@@ -85,13 +85,15 @@ async def create_task(
         source_node_id=task.node_id,
     )
 
+    resolved_actor = resolve_actor_id(current_user, actor_id)
+
     # Notify assignee
     notif_svc = NotificationService(db)
     if task.assignee_id:
         assignee = await db.get(Person, task.assignee_id)
         if assignee:
             await notif_svc.notify_task_assigned(
-                task, assignee, actor_id=resolve_actor_id(current_user, actor_id)
+                task, assignee, actor_id=resolved_actor
             )
 
     # Notify team manager
@@ -102,7 +104,7 @@ async def create_task(
 
     await ActivityService(db).log_event(
         "task.created",
-        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_id=resolved_actor,
         actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         task_id=task.id,
         node_id=task.node_id,
@@ -217,6 +219,7 @@ async def update_task(
         source_node_id=task.node_id,
     )
 
+    resolved_actor = resolve_actor_id(current_user, actor_id)
     notif_svc = NotificationService(db)
 
     # Detect assignee changes
@@ -234,14 +237,12 @@ async def update_task(
                 await notif_svc.notify_task_assigned(
                     task,
                     new_assignee,
-                    actor_id=resolve_actor_id(current_user, actor_id),
+                    actor_id=resolved_actor,
                 )
 
     # Detect status → done
     if task.status == "done" and old_status != "done":
-        await notif_svc.notify_task_completed(
-            task, actor_id=resolve_actor_id(current_user, actor_id)
-        )
+        await notif_svc.notify_task_completed(task, actor_id=resolved_actor)
 
     # Detect org unit change
     new_org_unit_id = task.organisatie_eenheid_id
@@ -252,7 +253,7 @@ async def update_task(
 
     await ActivityService(db).log_event(
         "task.updated",
-        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_id=resolved_actor,
         actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         task_id=task.id,
         node_id=task.node_id,

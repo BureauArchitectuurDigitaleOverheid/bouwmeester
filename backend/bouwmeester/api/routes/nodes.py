@@ -264,18 +264,20 @@ async def add_node_stakeholder(
     repo = NodeStakeholderRepository(db)
     stakeholder = await repo.create_stakeholder(id, data.person_id, data.rol)
 
+    resolved_actor = resolve_actor_id(current_user, actor_id)
+
     # Notify the newly added person (skip if they added themselves)
     notif_svc = NotificationService(db)
     await notif_svc.notify_stakeholder_added(
         node,
         data.person_id,
         data.rol,
-        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_id=resolved_actor,
     )
 
     await ActivityService(db).log_event(
         "stakeholder.added",
-        actor_id=resolve_actor_id(current_user, actor_id),
+        actor_id=resolved_actor,
         actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         node_id=id,
         details={"person_id": str(data.person_id), "rol": data.rol},
@@ -415,7 +417,7 @@ async def add_tag_to_node(
     node_tag = await tag_repo.add_tag_to_node(id, tag_id)
 
     await ActivityService(db).log_event(
-        "tag.added",
+        "node_tag.added",
         actor_id=resolve_actor_id(current_user, actor_id),
         actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         node_id=id,
@@ -439,7 +441,7 @@ async def remove_tag_from_node(
     require_deleted(await tag_repo.remove_tag_from_node(id, tag_id), "Tag link")
 
     await ActivityService(db).log_event(
-        "tag.removed",
+        "node_tag.removed",
         actor_id=resolve_actor_id(current_user, actor_id),
         actor_naam=await resolve_actor_naam_from_db(current_user, actor_id, db),
         node_id=id,

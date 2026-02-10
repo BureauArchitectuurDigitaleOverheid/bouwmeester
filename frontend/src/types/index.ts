@@ -527,8 +527,8 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
   'stakeholder.added': 'Betrokkene toegevoegd',
   'stakeholder.updated': 'Betrokkene rol gewijzigd',
   'stakeholder.removed': 'Betrokkene verwijderd',
-  'tag.added': 'Tag toegevoegd',
-  'tag.removed': 'Tag verwijderd',
+  'node_tag.added': 'Tag toegevoegd aan node',
+  'node_tag.removed': 'Tag verwijderd van node',
   'tag.created': 'Tag aangemaakt',
   'tag.updated': 'Tag bewerkt',
   'tag.deleted': 'Tag verwijderd',
@@ -562,6 +562,7 @@ export const EVENT_TYPE_CATEGORY_LABELS: Record<string, string> = {
   person: 'Personen',
   organisatie: 'Organisatie',
   tag: 'Tags',
+  node_tag: 'Node-tags',
   stakeholder: 'Betrokkenen',
   parlementair: 'Parlementair',
 };

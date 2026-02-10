@@ -567,7 +567,7 @@ async def test_edge_create_generates_activity(
     assert len(activities) == 1
     assert activities[0]["details"]["from_node_id"] == str(sample_node.id)
     assert activities[0]["details"]["to_node_id"] == str(second_node.id)
-    assert activities[0]["details"]["edge_type_id"] == sample_edge_type.id
+    assert activities[0]["details"]["edge_type"] == sample_edge_type.id
 
 
 async def test_edge_update_generates_activity(
@@ -585,7 +585,7 @@ async def test_edge_update_generates_activity(
     data = feed.json()
     activities = [a for a in data["items"] if a.get("edge_id") == str(sample_edge.id)]
     assert len(activities) == 1
-    assert activities[0]["details"]["edge_type_id"] == sample_edge_type.id
+    assert activities[0]["details"]["edge_type"] == sample_edge_type.id
 
 
 async def test_edge_delete_generates_activity(
@@ -926,7 +926,7 @@ async def test_tag_delete_generates_activity(client, sample_person):
 async def test_node_tag_add_generates_activity(
     client, sample_person, sample_node, sample_tag
 ):
-    """POST /api/nodes/{id}/tags should create tag.added activity."""
+    """POST /api/nodes/{id}/tags should create node_tag.added activity."""
     resp = await client.post(
         f"/api/nodes/{sample_node.id}/tags",
         json={"tag_id": str(sample_tag.id)},
@@ -934,12 +934,14 @@ async def test_node_tag_add_generates_activity(
     )
     assert resp.status_code == 201
 
-    feed = await client.get("/api/activity/feed", params={"event_type": "tag.added"})
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "node_tag.added"}
+    )
     data = feed.json()
     activities = [
         a
         for a in data["items"]
-        if a["event_type"] == "tag.added" and a["node_id"] == str(sample_node.id)
+        if a["event_type"] == "node_tag.added" and a["node_id"] == str(sample_node.id)
     ]
     assert len(activities) >= 1
     assert activities[0]["details"]["tag_id"] == str(sample_tag.id)
@@ -948,7 +950,7 @@ async def test_node_tag_add_generates_activity(
 async def test_node_tag_remove_generates_activity(
     client, sample_person, sample_node, sample_tag
 ):
-    """DELETE /api/nodes/{id}/tags/{tag_id} should create tag.removed activity."""
+    """DELETE /api/nodes/{id}/tags/{tag_id} should create node_tag.removed activity."""
     # First add the tag
     add_resp = await client.post(
         f"/api/nodes/{sample_node.id}/tags",
@@ -964,12 +966,14 @@ async def test_node_tag_remove_generates_activity(
     )
     assert del_resp.status_code == 204
 
-    feed = await client.get("/api/activity/feed", params={"event_type": "tag.removed"})
+    feed = await client.get(
+        "/api/activity/feed", params={"event_type": "node_tag.removed"}
+    )
     data = feed.json()
     activities = [
         a
         for a in data["items"]
-        if a["event_type"] == "tag.removed" and a["node_id"] == str(sample_node.id)
+        if a["event_type"] == "node_tag.removed" and a["node_id"] == str(sample_node.id)
     ]
     assert len(activities) >= 1
     assert activities[0]["details"]["tag_id"] == str(sample_tag.id)
