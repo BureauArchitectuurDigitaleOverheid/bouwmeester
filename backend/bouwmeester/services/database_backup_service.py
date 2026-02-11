@@ -323,16 +323,21 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
             env=env,
             timeout=30,
         )
-        if newer_check.returncode == 0 and export_revision in newer_check.stdout:
-            # export_revision is ahead of current
-            raise ValueError(
-                f"Backup is van een nieuwere versie ({export_revision}) "
-                f"dan de huidige applicatie ({current_revision}). "
-                "Update eerst de applicatie."
-            )
+        if newer_check.returncode == 0:
+            # Check for exact revision match (not substring) in output lines
+            for hist_line in newer_check.stdout.splitlines():
+                if export_revision in hist_line and hist_line.strip().startswith(
+                    export_revision
+                ):
+                    raise ValueError(
+                        f"Backup is van een nieuwere versie ({export_revision}) "
+                        f"dan de huidige applicatie ({current_revision}). "
+                        "Update eerst de applicatie."
+                    )
 
-    # 4. Write dump to temp file for pg_restore
-    with tempfile.NamedTemporaryFile(suffix=".dump", delete=False) as tmp:
+    # 4. Write dump to temp file for pg_restore (mode 0o600: owner-only)
+    with tempfile.NamedTemporaryFile(suffix=".dump", delete=False, mode="wb") as tmp:
+        os.chmod(tmp.name, 0o600)
         tmp.write(dump_data)
         tmp_path = tmp.name
 
