@@ -147,14 +147,25 @@ async def export_database(
         export_database as do_export,
     )
 
+    user_label = (
+        current_user.email or current_user.naam if current_user else "anonymous"
+    )
+    logger.info("Database export requested by %s", user_label)
+
     try:
         file_bytes, filename = await asyncio.to_thread(do_export)
     except Exception:
-        logger.exception("Database export failed")
+        logger.exception("Database export failed (requested by %s)", user_label)
         raise HTTPException(
             status_code=500, detail="Database export mislukt. Zie server logs."
         )
 
+    logger.info(
+        "Database export completed: %s (%s bytes, by %s)",
+        filename,
+        len(file_bytes),
+        user_label,
+    )
     media_type = (
         "application/octet-stream" if filename.endswith(".age") else "application/gzip"
     )
@@ -191,18 +202,35 @@ async def import_database(
         import_database as do_import,
     )
 
+    user_label = (
+        current_user.email or current_user.naam if current_user else "anonymous"
+    )
     content = await file.read()
     if len(content) > MAX_BACKUP_SIZE:
         raise HTTPException(
             status_code=413,
             detail=f"Bestand te groot (max {MAX_BACKUP_SIZE // 1024 // 1024} MB)",
         )
+    logger.info(
+        "Database import requested by %s (file: %s, %s bytes)",
+        user_label,
+        file.filename,
+        len(content),
+    )
     try:
-        return await asyncio.to_thread(do_import, content)
+        result = await asyncio.to_thread(do_import, content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception:
-        logger.exception("Database import failed")
+        logger.exception("Database import failed (requested by %s)", user_label)
         raise HTTPException(
             status_code=500, detail="Database import mislukt. Zie server logs."
         )
+    logger.info(
+        "Database import completed by %s: %s tables, revision %s→%s",
+        user_label,
+        result.tables_restored,
+        result.alembic_revision_from,
+        result.alembic_revision_to,
+    )
+    return result

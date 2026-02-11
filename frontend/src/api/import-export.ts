@@ -89,10 +89,6 @@ export interface DatabaseRestoreResult {
   message: string;
 }
 
-export function exportDatabaseUrl(): string {
-  return `${BASE_URL}/api/export/database`;
-}
-
 export async function exportDatabase(): Promise<void> {
   const response = await fetch(`${BASE_URL}/api/export/database`, {
     credentials: 'include',
