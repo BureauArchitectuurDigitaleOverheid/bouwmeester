@@ -4,6 +4,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Mention from '@tiptap/extension-mention';
 import Placeholder from '@tiptap/extension-placeholder';
 import { apiGet } from '@/api/client';
+import { formatFunctie } from '@/types';
 import type { Person, OrganisatieEenheid } from '@/types';
 import type { MentionSearchResult } from '@/api/mentions';
 import type { SuggestionProps, SuggestionKeyDownProps } from '@tiptap/suggestion';
@@ -215,7 +216,7 @@ async function fetchPeopleAndOrgs(query: string): Promise<SuggestionItem[]> {
     const personItems: SuggestionItem[] = people.map((p) => ({
       id: p.id,
       label: p.naam,
-      subtitle: p.functie ?? undefined,
+      subtitle: formatFunctie(p.functie),
       mentionType: 'person',
     }));
     const orgItems: SuggestionItem[] = orgs.map((o) => ({

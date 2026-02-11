@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { VOCABULARY_LABELS, type VocabularyId } from '@/vocabulary';
 import { NotificationBell } from '@/components/common/NotificationBell';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
-import { ORGANISATIE_TYPE_LABELS } from '@/types';
+import { ORGANISATIE_TYPE_LABELS, formatFunctie } from '@/types';
 
 const pageTitles: Record<string, string> = {
   '/': 'Inbox',
@@ -214,7 +214,7 @@ export function Header() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-text truncate">{person.naam}</p>
                       {person.functie && (
-                        <p className="text-xs text-text-secondary truncate">{person.functie}</p>
+                        <p className="text-xs text-text-secondary truncate">{formatFunctie(person.functie)}</p>
                       )}
                     </div>
                     {currentPerson?.id === person.id && (

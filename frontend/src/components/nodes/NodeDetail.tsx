@@ -20,7 +20,7 @@ import { useNodeTags, useAddTagToNode, useRemoveTagFromNode, useTags } from '@/h
 import { useReferences } from '@/hooks/useMentions';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
-import { NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS } from '@/types';
+import { NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, formatFunctie } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDate } from '@/utils/dates';
 
@@ -472,7 +472,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                     options={(allPeople ?? []).map((p) => ({
                       value: p.id,
                       label: p.naam,
-                      description: p.functie || undefined,
+                      description: formatFunctie(p.functie),
                     }))}
                     placeholder="Selecteer persoon..."
                     onCreate={async (text) => {

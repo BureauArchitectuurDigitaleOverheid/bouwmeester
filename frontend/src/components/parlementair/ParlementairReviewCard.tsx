@@ -30,7 +30,7 @@ import {
   PARLEMENTAIR_TYPE_LABELS,
   PARLEMENTAIR_TYPE_COLORS,
   NODE_TYPE_COLORS,
-  FUNCTIE_LABELS,
+  formatFunctie,
 } from '@/types';
 import { NodeDetailModal } from '@/components/nodes/NodeDetailModal';
 import { useVocabulary } from '@/contexts/VocabularyContext';
@@ -118,8 +118,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   );
 
   // Helper for functie display
-  const functieLabel = (functie?: string) =>
-    functie ? (FUNCTIE_LABELS[functie] ?? functie.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())) : undefined;
+  const functieLabel = formatFunctie;
 
   // People options sorted: relevant eigenaren first, then the rest
   const sortedPeopleOptions: SelectOption[] = (people ?? [])

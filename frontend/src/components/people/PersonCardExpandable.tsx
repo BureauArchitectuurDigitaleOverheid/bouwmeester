@@ -5,7 +5,7 @@ import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
-import { FUNCTIE_LABELS, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS } from '@/types';
+import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDateShort, todayISO } from '@/utils/dates';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
@@ -115,7 +115,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             {person.functie && !person.is_agent && (
               <span className="flex items-center gap-1">
                 <Briefcase className="h-3 w-3" />
-                {FUNCTIE_LABELS[person.functie] || person.functie.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                {formatFunctie(person.functie)}
               </span>
             )}
             {person.description && person.is_agent && (

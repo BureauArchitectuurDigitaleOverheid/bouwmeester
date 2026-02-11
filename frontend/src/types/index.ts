@@ -221,13 +221,13 @@ export interface TaskCreate {
 
 export interface TaskUpdate {
   title?: string;
-  description?: string;
+  description?: string | null;
   status?: TaskStatus;
   priority?: TaskPriority;
-  due_date?: string;
-  assignee_id?: string;
-  organisatie_eenheid_id?: string;
-  parent_id?: string;
+  due_date?: string | null;
+  assignee_id?: string | null;
+  organisatie_eenheid_id?: string | null;
+  parent_id?: string | null;
 }
 
 export interface EenheidPersonTaskStats {
@@ -367,6 +367,11 @@ export const FUNCTIE_LABELS: Record<string, string> = {
   communicatieadviseur: 'Communicatieadviseur',
   staff_engineer: 'Staff Engineer',
 };
+
+export function formatFunctie(functie?: string | null): string | undefined {
+  if (!functie) return undefined;
+  return FUNCTIE_LABELS[functie] ?? functie.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
 
 // People
 export interface Person {
