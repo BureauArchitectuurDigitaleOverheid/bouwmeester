@@ -260,6 +260,9 @@ async def import_database(
     if admin_created:
         logger.info("Created %d admin person stubs after import", admin_created)
 
+    # Refresh whitelist cache — imported backup may contain different whitelist
+    await refresh_whitelist_cache(db)
+
     logger.info(
         "Database import completed by %s: %s tables, revision %s→%s",
         user_label,
