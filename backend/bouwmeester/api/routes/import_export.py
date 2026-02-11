@@ -1,16 +1,17 @@
 """API routes for bulk import and export."""
 
+import asyncio
 import io
 import logging
 import os
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import validate_csv_upload
-from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.auth import CurrentUser, OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.schema.database_backup import (
     DatabaseBackupInfo,
@@ -24,6 +25,8 @@ from bouwmeester.services.export_service import ExportService
 from bouwmeester.services.import_service import ImportService
 
 logger = logging.getLogger(__name__)
+
+MAX_BACKUP_SIZE = 500 * 1024 * 1024  # 500 MB
 
 router = APIRouter(tags=["import-export"])
 
@@ -137,7 +140,7 @@ async def export_archimate(
 
 @router.get("/export/database")
 async def export_database(
-    current_user: OptionalUser,
+    current_user: CurrentUser,
 ) -> StreamingResponse:
     """Export full database as pg_dump (optionally age-encrypted)."""
     from bouwmeester.services.database_backup_service import (
@@ -145,13 +148,10 @@ async def export_database(
     )
 
     try:
-        file_bytes, filename = do_export()
-    except RuntimeError as e:
+        file_bytes, filename = await asyncio.to_thread(do_export)
+    except Exception as e:
         logger.exception("Database export failed")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": str(e)},
-        )
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     media_type = (
         "application/octet-stream" if filename.endswith(".age") else "application/gzip"
@@ -165,14 +165,15 @@ async def export_database(
 
 @router.get("/export/database/info", response_model=DatabaseBackupInfo)
 async def export_database_info(
-    current_user: OptionalUser,
+    current_user: CurrentUser,
 ) -> DatabaseBackupInfo:
     """Return metadata about the current database (revision, etc.)."""
     from bouwmeester.services.database_backup_service import _get_alembic_revision
 
+    revision = await asyncio.to_thread(_get_alembic_revision)
     return DatabaseBackupInfo(
         exported_at=datetime.now(UTC).isoformat(),
-        alembic_revision=_get_alembic_revision(),
+        alembic_revision=revision,
         format_version=1,
         encrypted=bool(os.environ.get("AGE_SECRET_KEY", "")),
     )
@@ -181,18 +182,23 @@ async def export_database_info(
 @router.post("/import/database", response_model=DatabaseRestoreResult)
 async def import_database(
     file: UploadFile,
-    current_user: OptionalUser,
-) -> DatabaseRestoreResult | JSONResponse:
+    current_user: CurrentUser,
+) -> DatabaseRestoreResult:
     """Upload a database backup and restore it."""
     from bouwmeester.services.database_backup_service import (
         import_database as do_import,
     )
 
     content = await file.read()
+    if len(content) > MAX_BACKUP_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Bestand te groot (max {MAX_BACKUP_SIZE // 1024 // 1024} MB)",
+        )
     try:
-        return do_import(content)
+        return await asyncio.to_thread(do_import, content)
     except ValueError as e:
-        return JSONResponse(status_code=400, content={"detail": str(e)})
-    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
         logger.exception("Database import failed")
-        return JSONResponse(status_code=500, content={"detail": str(e)})
+        raise HTTPException(status_code=500, detail=str(e)) from e

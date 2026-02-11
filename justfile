@@ -163,6 +163,7 @@ decrypt-seed:
 
 # Encrypt seed_persons.json for committing (recipients from age-recipients.txt)
 encrypt-seed:
+    @test -f age-recipients.txt || { echo "Error: age-recipients.txt not found"; exit 1; }
     age $(grep -v '^#' age-recipients.txt | grep -v '^\s*$' | sed 's/^/-r /') \
         -o backend/scripts/seed_persons.json.age \
         backend/scripts/seed_persons.json
@@ -179,6 +180,7 @@ decrypt-whitelist:
 
 # Encrypt access_whitelist.json for committing (recipients from age-recipients.txt)
 encrypt-whitelist:
+    @test -f age-recipients.txt || { echo "Error: age-recipients.txt not found"; exit 1; }
     age $(grep -v '^#' age-recipients.txt | grep -v '^\s*$' | sed 's/^/-r /') \
         -o backend/scripts/access_whitelist.json.age \
         backend/scripts/access_whitelist.json

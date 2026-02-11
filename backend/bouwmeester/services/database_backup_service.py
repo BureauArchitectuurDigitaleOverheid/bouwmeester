@@ -11,6 +11,7 @@ import io
 import json
 import logging
 import os
+import re
 import subprocess
 import tarfile
 import tempfile
@@ -27,6 +28,10 @@ logger = logging.getLogger(__name__)
 
 FORMAT_VERSION = 1
 EXCLUDED_TABLES = ["http_sessions", "alembic_version"]
+
+# Strict patterns for validating untrusted input before using in SQL/commands
+_TABLE_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,62}$")
+_ALEMBIC_REVISION_RE = re.compile(r"^[a-f0-9]{4,40}$")
 
 
 def _parse_db_url() -> dict[str, str]:
@@ -140,7 +145,10 @@ def _age_decrypt(data: bytes) -> tuple[bytes, bool]:
         decrypted = decrypt(data, [identity])
         return decrypted, True
     except Exception:
-        # Not encrypted or wrong key — treat as plaintext
+        logger.warning(
+            "Age decryption failed (AGE_SECRET_KEY is set but data could not "
+            "be decrypted) — treating as plaintext"
+        )
         return data, False
 
 
@@ -286,6 +294,8 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
         )
 
     export_revision = metadata["alembic_revision"]
+    if not _ALEMBIC_REVISION_RE.match(export_revision):
+        raise ValueError(f"Ongeldige migratieversie in backup: {export_revision!r}")
     current_revision = _get_alembic_revision()
 
     # Check if the export revision exists in the migration chain
@@ -353,14 +363,20 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
                         and parts[i + 1] == "DATA"
                     ):
                         if i + 2 < len(parts):
-                            tables_in_dump.add(parts[i + 2])
+                            table_name = parts[i + 2]
+                            if not _TABLE_NAME_RE.match(table_name):
+                                raise ValueError(
+                                    f"Ongeldige tabelnaam in backup: {table_name!r}"
+                                )
+                            tables_in_dump.add(table_name)
                         break
 
         # Truncate tables (CASCADE handles FK ordering)
         if tables_in_dump:
-            table_list = ", ".join(sorted(tables_in_dump))
-            truncate_sql = f"TRUNCATE {table_list} CASCADE"
-            subprocess.run(
+            # Quote identifiers to prevent SQL injection
+            quoted = ", ".join(f'"{t}"' for t in sorted(tables_in_dump))
+            truncate_sql = f"TRUNCATE {quoted} CASCADE"
+            trunc_result = subprocess.run(
                 [
                     "psql",
                     "-h",
@@ -379,8 +395,10 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
                 env=env,
                 timeout=60,
             )
+            if trunc_result.returncode != 0:
+                raise RuntimeError(f"TRUNCATE mislukt: {trunc_result.stderr.strip()}")
 
-        # 6. pg_restore
+        # 6. pg_restore (--single-transaction: rolls back on error)
         restore_result = subprocess.run(
             [
                 "pg_restore",
@@ -393,6 +411,7 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
                 "-d",
                 db["dbname"],
                 "--data-only",
+                "--single-transaction",
                 "--disable-triggers",
                 "--no-owner",
                 "--no-privileges",
@@ -412,7 +431,8 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
         tables_restored = len(tables_in_dump)
 
         # 7. Set alembic_version to the export's revision
-        subprocess.run(
+        # export_revision is validated against _ALEMBIC_REVISION_RE above
+        alembic_result = subprocess.run(
             [
                 "psql",
                 "-h",
@@ -423,16 +443,22 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
                 db["user"],
                 "-d",
                 db["dbname"],
+                "-v",
+                f"rev={export_revision}",
                 "-c",
                 "DELETE FROM alembic_version;"
                 " INSERT INTO alembic_version (version_num)"
-                f" VALUES ('{export_revision}')",
+                " VALUES (:'rev')",
             ],
             capture_output=True,
             text=True,
             env=env,
             timeout=30,
         )
+        if alembic_result.returncode != 0:
+            raise RuntimeError(
+                f"alembic_version update mislukt: {alembic_result.stderr.strip()}"
+            )
 
         # 8. Migrate to head if needed
         migrations_applied = 0
