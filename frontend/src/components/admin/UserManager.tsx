@@ -42,6 +42,9 @@ export function UserManager() {
                   </td>
                   <td className="px-4 py-2.5 text-center">
                     <button
+                      role="switch"
+                      aria-checked={user.is_admin}
+                      aria-label={`Admin-rechten voor ${user.naam}`}
                       onClick={() =>
                         toggleAdmin.mutate({ id: user.id, is_admin: !user.is_admin })
                       }

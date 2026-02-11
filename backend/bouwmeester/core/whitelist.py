@@ -95,8 +95,12 @@ async def seed_whitelist_from_file(session: AsyncSession) -> None:
     try:
         emails = _load_emails_from_file(_WL_JSON_PATH, _WL_AGE_PATH)
     except Exception:
-        logger.exception("Failed to load whitelist file for DB seed")
-        return
+        logger.exception(
+            "Failed to load whitelist file for DB seed — "
+            "whitelist stays empty (fail-closed: no access until file is fixed or "
+            "emails are added via admin UI)"
+        )
+        raise
 
     if emails is None:
         logger.info("No whitelist file found — table stays empty (all allowed in dev)")

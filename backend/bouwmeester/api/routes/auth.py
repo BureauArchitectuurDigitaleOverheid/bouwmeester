@@ -276,12 +276,17 @@ async def auth_status(
             request.session["needs_onboarding"] = needs_onboarding
             request.session["is_admin"] = is_admin
         elif person_id is not None:
-            # Re-fetch is_admin from DB so admin-role changes take effect
-            # without requiring the target user to re-login.
-            person_obj = await db.get(Person, UUID(person_id))
-            if person_obj is not None:
-                is_admin = person_obj.is_admin
-                request.session["is_admin"] = is_admin
+            # Re-fetch is_admin from DB periodically so admin-role changes
+            # take effect without requiring the target user to re-login.
+            # Throttled to at most once per 60s to avoid a DB query on every
+            # page load.
+            last_check = request.session.get("is_admin_checked_at", 0)
+            if time.time() - last_check > 60:
+                person_obj = await db.get(Person, UUID(person_id))
+                if person_obj is not None:
+                    is_admin = person_obj.is_admin
+                    request.session["is_admin"] = is_admin
+                request.session["is_admin_checked_at"] = time.time()
 
         result["person"] = {
             "sub": sub,

@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -85,6 +85,13 @@ async def remove_whitelist_email(
             detail="Whitelist entry niet gevonden",
         )
 
+    # Guard: prevent admin from removing their own email (lockout protection)
+    if admin and admin.email and entry.email == admin.email.strip().lower():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Je kunt je eigen e-mailadres niet van de toegangslijst verwijderen",
+        )
+
     await db.delete(entry)
     await db.flush()
 
@@ -99,12 +106,16 @@ async def remove_whitelist_email(
 @router.get("/users", response_model=list[AdminUserResponse])
 async def list_admin_users(
     admin: AdminUser,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
 ) -> list[AdminUserResponse]:
     result = await db.execute(
         select(Person)
         .where(Person.is_agent == False)  # noqa: E712
         .order_by(Person.naam)
+        .offset(skip)
+        .limit(limit)
     )
     return [AdminUserResponse.model_validate(p) for p in result.scalars().all()]
 

@@ -7,6 +7,7 @@ export function WhitelistManager() {
   const addEmail = useAddWhitelistEmail();
   const removeEmail = useRemoveWhitelistEmail();
   const [newEmail, setNewEmail] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -14,6 +15,12 @@ export function WhitelistManager() {
     if (!trimmed) return;
     addEmail.mutate(trimmed, {
       onSuccess: () => setNewEmail(''),
+    });
+  };
+
+  const handleDelete = (id: string) => {
+    removeEmail.mutate(id, {
+      onSuccess: () => setConfirmDeleteId(null),
     });
   };
 
@@ -65,14 +72,31 @@ export function WhitelistManager() {
                   {new Date(entry.created_at).toLocaleDateString('nl-NL')}
                 </td>
                 <td className="px-4 py-2.5">
-                  <button
-                    onClick={() => removeEmail.mutate(entry.id)}
-                    disabled={removeEmail.isPending}
-                    className="p-1 rounded hover:bg-red-50 text-text-secondary hover:text-red-600 transition-colors"
-                    title="Verwijderen"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {confirmDeleteId === entry.id ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleDelete(entry.id)}
+                        disabled={removeEmail.isPending}
+                        className="px-2 py-0.5 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                      >
+                        Ja
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-text hover:bg-gray-300 transition-colors"
+                      >
+                        Nee
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(entry.id)}
+                      className="p-1 rounded hover:bg-red-50 text-text-secondary hover:text-red-600 transition-colors"
+                      title="Verwijderen"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
