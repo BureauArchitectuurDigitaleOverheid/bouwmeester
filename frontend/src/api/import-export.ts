@@ -70,3 +70,53 @@ export function exportCorpusUrl(): string {
 export function exportArchimateUrl(): string {
   return `${BASE_URL}/api/export/archimate`;
 }
+
+// ── Database backup / restore ──────────────────────────────────────
+
+export interface DatabaseBackupInfo {
+  exported_at: string;
+  alembic_revision: string;
+  format_version: number;
+  encrypted: boolean;
+}
+
+export interface DatabaseRestoreResult {
+  success: boolean;
+  tables_restored: number;
+  alembic_revision_from: string;
+  alembic_revision_to: string;
+  migrations_applied: number;
+  message: string;
+}
+
+export function exportDatabaseUrl(): string {
+  return `${BASE_URL}/api/export/database`;
+}
+
+export async function getDatabaseInfo(): Promise<DatabaseBackupInfo> {
+  const response = await fetch(`${BASE_URL}/api/export/database/info`, {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch database info: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function importDatabase(file: File): Promise<DatabaseRestoreResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${BASE_URL}/api/import/database`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(body.detail || `Import failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}

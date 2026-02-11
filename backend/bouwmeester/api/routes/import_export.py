@@ -1,6 +1,9 @@
 """API routes for bulk import and export."""
 
 import io
+import logging
+import os
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -9,12 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import validate_csv_upload
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.schema.database_backup import (
+    DatabaseBackupInfo,
+    DatabaseRestoreResult,
+)
 from bouwmeester.schema.import_export import ImportResult
 from bouwmeester.services.archimate_export_service import (
     ArchiMateExportService,
 )
 from bouwmeester.services.export_service import ExportService
 from bouwmeester.services.import_service import ImportService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["import-export"])
 
@@ -121,3 +130,69 @@ async def export_archimate(
             "Content-Disposition": ("attachment; filename=bouwmeester-archimate.xml")
         },
     )
+
+
+# ── Database backup / restore ────────────────────────────────────────
+
+
+@router.get("/export/database")
+async def export_database(
+    current_user: OptionalUser,
+) -> StreamingResponse:
+    """Export full database as pg_dump (optionally age-encrypted)."""
+    from bouwmeester.services.database_backup_service import (
+        export_database as do_export,
+    )
+
+    try:
+        file_bytes, filename = do_export()
+    except RuntimeError as e:
+        logger.exception("Database export failed")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(e)},
+        )
+
+    media_type = (
+        "application/octet-stream" if filename.endswith(".age") else "application/gzip"
+    )
+    return StreamingResponse(
+        io.BytesIO(file_bytes),
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/export/database/info", response_model=DatabaseBackupInfo)
+async def export_database_info(
+    current_user: OptionalUser,
+) -> DatabaseBackupInfo:
+    """Return metadata about the current database (revision, etc.)."""
+    from bouwmeester.services.database_backup_service import _get_alembic_revision
+
+    return DatabaseBackupInfo(
+        exported_at=datetime.now(UTC).isoformat(),
+        alembic_revision=_get_alembic_revision(),
+        format_version=1,
+        encrypted=bool(os.environ.get("AGE_SECRET_KEY", "")),
+    )
+
+
+@router.post("/import/database", response_model=DatabaseRestoreResult)
+async def import_database(
+    file: UploadFile,
+    current_user: OptionalUser,
+) -> DatabaseRestoreResult | JSONResponse:
+    """Upload a database backup and restore it."""
+    from bouwmeester.services.database_backup_service import (
+        import_database as do_import,
+    )
+
+    content = await file.read()
+    try:
+        return do_import(content)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"detail": str(e)})
+    except RuntimeError as e:
+        logger.exception("Database import failed")
+        return JSONResponse(status_code=500, content={"detail": str(e)})

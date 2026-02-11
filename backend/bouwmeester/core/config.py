@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "claude-haiku-4-5-20251001"
     ENABLED_IMPORT_TYPES: list[str] = ["motie", "kamervraag", "toezegging"]
 
+    # Age encryption for database backups
+    AGE_SECRET_KEY: str = ""  # Age secret key for decryption (set on production)
+
     @model_validator(mode="after")
     def _derive_database_url(self) -> "Settings":
         """Build DATABASE_URL from ZAD individual env vars if not set."""

@@ -139,6 +139,20 @@ import-type TYPE:
 import-moties: import-parlementair
 
 # ---------------------------------------------------------------------------
+# Database backup / restore (via API)
+# ---------------------------------------------------------------------------
+
+# Export database via API (downloads to current directory)
+db-export:
+    curl -sS -o bouwmeester-backup.tar.gz http://localhost:8000/api/export/database
+    @echo "Downloaded → bouwmeester-backup.tar.gz"
+
+# Import database via API (provide backup file as argument)
+db-import FILE:
+    curl -sS -X POST -F "file=@{{ FILE }}" http://localhost:8000/api/import/database | python3 -m json.tool
+    @echo "Import complete."
+
+# ---------------------------------------------------------------------------
 # Seed data encryption (age)
 # ---------------------------------------------------------------------------
 
@@ -147,11 +161,9 @@ decrypt-seed:
     age -d -i ~/.age/key.txt -o backend/scripts/seed_persons.json backend/scripts/seed_persons.json.age
     @echo "Decrypted → backend/scripts/seed_persons.json"
 
-# Encrypt seed_persons.json for committing (add more -r flags for additional recipients)
+# Encrypt seed_persons.json for committing (recipients from age-recipients.txt)
 encrypt-seed:
-    age -r age1t3gkzgkgy9r05zutg2xws33xv42gyagk7wty5pqqa9apn5vrjsgsf0s4ha \
-        -r age1ugedsnl8qs5rjll3nfqw0uw4ue4dvznsndnwjnduklskxzmhzyvqsapkdk \
-        -r age17w8fqjs4paklc8mhmseslq006au7ua9zhstn5y8ya7k7nu9r7u5q9kfly8 \
+    age $(grep -v '^#' age-recipients.txt | grep -v '^\s*$' | sed 's/^/-r /') \
         -o backend/scripts/seed_persons.json.age \
         backend/scripts/seed_persons.json
     @echo "Encrypted → backend/scripts/seed_persons.json.age"
@@ -165,11 +177,9 @@ decrypt-whitelist:
     age -d -i ~/.age/key.txt -o backend/scripts/access_whitelist.json backend/scripts/access_whitelist.json.age
     @echo "Decrypted → backend/scripts/access_whitelist.json"
 
-# Encrypt access_whitelist.json for committing (same recipients as seed data)
+# Encrypt access_whitelist.json for committing (recipients from age-recipients.txt)
 encrypt-whitelist:
-    age -r age1t3gkzgkgy9r05zutg2xws33xv42gyagk7wty5pqqa9apn5vrjsgsf0s4ha \
-        -r age1ugedsnl8qs5rjll3nfqw0uw4ue4dvznsndnwjnduklskxzmhzyvqsapkdk \
-        -r age17w8fqjs4paklc8mhmseslq006au7ua9zhstn5y8ya7k7nu9r7u5q9kfly8 \
+    age $(grep -v '^#' age-recipients.txt | grep -v '^\s*$' | sed 's/^/-r /') \
         -o backend/scripts/access_whitelist.json.age \
         backend/scripts/access_whitelist.json
     @echo "Encrypted → backend/scripts/access_whitelist.json.age"

@@ -1,6 +1,7 @@
 """Pydantic schemas for the Bouwmeester API."""
 
 from bouwmeester.schema.activity import ActivityFeedResponse, ActivityResponse
+from bouwmeester.schema.database_backup import DatabaseBackupInfo, DatabaseRestoreResult
 from bouwmeester.schema.corpus_node import (
     CorpusNodeBase,
     CorpusNodeCreate,
@@ -144,6 +145,9 @@ __all__ = [
     # activity
     "ActivityFeedResponse",
     "ActivityResponse",
+    # database_backup
+    "DatabaseBackupInfo",
+    "DatabaseRestoreResult",
     # graph
     "GraphNeighborsResponse",
     "GraphSearchParams",

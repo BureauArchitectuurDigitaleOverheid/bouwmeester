@@ -40,6 +40,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Copy backend
 WORKDIR /app
 COPY --from=backend-builder /app /app
+COPY age-recipients.txt /app/age-recipients.txt
 
 # Copy frontend build to nginx
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html
