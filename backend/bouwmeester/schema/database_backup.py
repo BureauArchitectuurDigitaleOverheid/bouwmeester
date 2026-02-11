@@ -17,3 +17,14 @@ class DatabaseRestoreResult(BaseModel):
     alembic_revision_to: str
     migrations_applied: int
     message: str
+
+
+class DatabaseResetRequest(BaseModel):
+    confirm: str
+
+
+class DatabaseResetResult(BaseModel):
+    success: bool
+    tables_cleared: int
+    admin_persons_created: int
+    message: str

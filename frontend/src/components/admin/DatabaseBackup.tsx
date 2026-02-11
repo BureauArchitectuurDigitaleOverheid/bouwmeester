@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Download, Upload, AlertTriangle, CheckCircle, Loader2, Database } from 'lucide-react';
+import { Download, Upload, AlertTriangle, CheckCircle, Loader2, Database, Trash2 } from 'lucide-react';
 import { useToast } from '@/contexts/ToastContext';
 import { FileUpload } from '@/components/common/FileUpload';
 import {
   exportDatabase,
   getDatabaseInfo,
   importDatabase,
+  resetDatabase,
   type DatabaseBackupInfo,
+  type DatabaseResetResult,
   type DatabaseRestoreResult,
 } from '@/api/import-export';
 
@@ -19,6 +21,10 @@ export function DatabaseBackup() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [restoreResult, setRestoreResult] = useState<DatabaseRestoreResult | null>(null);
   const [confirmImport, setConfirmImport] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
+  const [showResetInput, setShowResetInput] = useState(false);
+  const [resetResult, setResetResult] = useState<DatabaseResetResult | null>(null);
 
   useEffect(() => {
     getDatabaseInfo()
@@ -68,6 +74,25 @@ export function DatabaseBackup() {
     } finally {
       setImporting(false);
       setConfirmImport(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setResetting(true);
+    setResetResult(null);
+    try {
+      const result = await resetDatabase(resetConfirmText);
+      setResetResult(result);
+      if (result.success) {
+        showSuccess(result.message);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Reset mislukt';
+      showError(msg);
+    } finally {
+      setResetting(false);
+      setResetConfirmText('');
+      setShowResetInput(false);
     }
   };
 
@@ -207,6 +232,106 @@ export function DatabaseBackup() {
                   <> &middot; {restoreResult.migrations_applied} migraties toegepast</>
                 )}
                 {' '}&middot; versie {restoreResult.alembic_revision_to}
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Reset section */}
+      <section className="rounded-xl border border-red-200 bg-surface p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-red-50">
+            <Trash2 className="h-5 w-5 text-red-600" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-text">Database resetten</h2>
+            <p className="text-sm text-text-secondary">
+              Wis alle data en begin opnieuw.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 p-3">
+          <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+          <p className="text-sm text-red-800">
+            Dit wist <strong>alle</strong> data behalve de toegangslijst en sessies.
+            Corpus, organisatie, personen, taken — alles wordt verwijderd.
+            Admin-accounts worden opnieuw aangemaakt.
+          </p>
+        </div>
+
+        {!showResetInput ? (
+          <button
+            onClick={() => setShowResetInput(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-300 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+            Database resetten
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-text mb-1">
+                Type <code className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">RESET</code> om te bevestigen
+              </label>
+              <input
+                type="text"
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                placeholder="RESET"
+                className="w-48 px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                disabled={resetting}
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleReset}
+                disabled={resetting || resetConfirmText !== 'RESET'}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {resetting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                Bevestig reset
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowResetInput(false);
+                  setResetConfirmText('');
+                }}
+                disabled={resetting}
+                className="px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:bg-gray-50 transition-colors"
+              >
+                Annuleren
+              </button>
+            </div>
+          </div>
+        )}
+
+        {resetResult && (
+          <div className={`flex items-start gap-2 rounded-lg p-3 ${
+            resetResult.success
+              ? 'bg-green-50 border border-green-200'
+              : 'bg-red-50 border border-red-200'
+          }`}>
+            <CheckCircle className={`h-4 w-4 mt-0.5 shrink-0 ${
+              resetResult.success ? 'text-green-600' : 'text-red-600'
+            }`} />
+            <div className="text-sm space-y-1">
+              <p className={resetResult.success ? 'text-green-800' : 'text-red-800'}>
+                {resetResult.message}
+              </p>
+              <p className="text-text-secondary">
+                {resetResult.tables_cleared} tabellen gewist
+                {resetResult.admin_persons_created > 0 && (
+                  <> &middot; {resetResult.admin_persons_created} admin-accounts aangemaakt</>
+                )}
               </p>
             </div>
           </div>

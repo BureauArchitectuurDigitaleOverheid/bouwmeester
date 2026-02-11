@@ -117,11 +117,16 @@ async def seed_whitelist_from_file(session: AsyncSession) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def seed_admins_from_file(session: AsyncSession) -> None:
-    """Mark persons as admin based on the admin_emails seed file.
+async def seed_admins_from_file(session: AsyncSession) -> int:
+    """Ensure admin persons exist and have ``is_admin = True``.
 
-    Runs on every startup (idempotent).  Only sets ``is_admin = True`` for
-    matching persons — it never revokes admin rights.
+    For each email in the admin seed file:
+    - If a Person with that email exists → set ``is_admin = True``
+    - If not → create a stub Person with ``is_admin = True``
+
+    Runs on every startup (idempotent).  Never revokes admin rights.
+
+    Returns the number of newly created person stubs.
     """
     from bouwmeester.models.person import Person
 
@@ -129,23 +134,40 @@ async def seed_admins_from_file(session: AsyncSession) -> None:
         emails = _load_emails_from_file(_ADMIN_JSON_PATH, _ADMIN_AGE_PATH)
     except Exception:
         logger.exception("Failed to load admin emails file")
-        return
+        return 0
 
     if emails is None:
         logger.info("No admin_emails file found — skipping admin seed")
-        return
+        return 0
 
     if not emails:
-        return
+        return 0
 
+    # Update existing persons
     result = await session.execute(
         update(Person).where(func.lower(Person.email).in_(emails)).values(is_admin=True)
     )
+    updated = result.rowcount
+
+    # Find which admin emails don't have a person yet and create stubs
+    existing_result = await session.execute(
+        select(func.lower(Person.email)).where(func.lower(Person.email).in_(emails))
+    )
+    existing_emails = {row[0] for row in existing_result.all()}
+    missing_emails = emails - existing_emails
+
+    for email in missing_emails:
+        session.add(Person(email=email, naam=email, is_admin=True))
+    if missing_emails:
+        await session.flush()
+
     logger.info(
-        "Admin seed: set is_admin=True for %d persons (from %d emails in file)",
-        result.rowcount,
+        "Admin seed: updated %d existing, created %d new person stubs (from %d emails)",
+        updated,
+        len(missing_emails),
         len(emails),
     )
+    return len(missing_emails)
 
 
 # ---------------------------------------------------------------------------

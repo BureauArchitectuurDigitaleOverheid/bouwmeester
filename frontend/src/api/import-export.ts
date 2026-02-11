@@ -119,6 +119,29 @@ export async function getDatabaseInfo(): Promise<DatabaseBackupInfo> {
   return response.json();
 }
 
+export interface DatabaseResetResult {
+  success: boolean;
+  tables_cleared: number;
+  admin_persons_created: number;
+  message: string;
+}
+
+export async function resetDatabase(confirm: string): Promise<DatabaseResetResult> {
+  const response = await fetch(`${BASE_URL}/api/admin/database/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirm }),
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(body.detail || `Reset mislukt: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
 export async function importDatabase(file: File): Promise<DatabaseRestoreResult> {
   const formData = new FormData();
   formData.append('file', file);

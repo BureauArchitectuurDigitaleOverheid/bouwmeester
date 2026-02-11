@@ -11,7 +11,12 @@ from bouwmeester.schema.corpus_node import (
     NodeTitleRecord,
     NodeType,
 )
-from bouwmeester.schema.database_backup import DatabaseBackupInfo, DatabaseRestoreResult
+from bouwmeester.schema.database_backup import (
+    DatabaseBackupInfo,
+    DatabaseResetRequest,
+    DatabaseResetResult,
+    DatabaseRestoreResult,
+)
 from bouwmeester.schema.edge import (
     EdgeBase,
     EdgeCreate,
@@ -147,6 +152,8 @@ __all__ = [
     "ActivityResponse",
     # database_backup
     "DatabaseBackupInfo",
+    "DatabaseResetRequest",
+    "DatabaseResetResult",
     "DatabaseRestoreResult",
     # graph
     "GraphNeighborsResponse",

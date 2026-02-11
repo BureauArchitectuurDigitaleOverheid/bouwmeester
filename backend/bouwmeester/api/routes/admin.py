@@ -9,16 +9,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import AdminUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.whitelist import refresh_whitelist_cache
+from bouwmeester.core.whitelist import refresh_whitelist_cache, seed_admins_from_file
 from bouwmeester.models.person import Person
 from bouwmeester.models.whitelist_email import WhitelistEmail
 from bouwmeester.schema.database_backup import (
     DatabaseBackupInfo,
+    DatabaseResetRequest,
+    DatabaseResetResult,
     DatabaseRestoreResult,
 )
 from bouwmeester.schema.whitelist import (
@@ -223,6 +225,7 @@ async def export_database_info(
 async def import_database(
     file: UploadFile,
     admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
 ) -> DatabaseRestoreResult:
     """Upload a database backup and restore it."""
     from bouwmeester.services.database_backup_service import (
@@ -251,6 +254,12 @@ async def import_database(
         raise HTTPException(
             status_code=500, detail="Database import mislukt. Zie server logs."
         )
+
+    # Ensure admin persons exist after import (import may have wiped them)
+    admin_created = await seed_admins_from_file(db)
+    if admin_created:
+        logger.info("Created %d admin person stubs after import", admin_created)
+
     logger.info(
         "Database import completed by %s: %s tables, revision %s→%s",
         user_label,
@@ -259,3 +268,89 @@ async def import_database(
         result.alembic_revision_to,
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Database reset
+# ---------------------------------------------------------------------------
+
+# Tables to preserve during reset
+_PRESERVED_TABLES = {"whitelist_email", "alembic_version", "http_sessions"}
+
+# All model tables (order doesn't matter — TRUNCATE ... CASCADE handles FKs)
+_ALL_MODEL_TABLES = [
+    "notification",
+    "mention",
+    "suggested_edge",
+    "parlementair_item",
+    "node_tag",
+    "tag",
+    "task",
+    "node_stakeholder",
+    "edge",
+    "edge_type",
+    "probleem",
+    "effect",
+    "beleidsoptie",
+    "dossier",
+    "doel",
+    "instrument",
+    "beleidskader",
+    "maatregel",
+    "politieke_input",
+    "corpus_node_title",
+    "corpus_node_status",
+    "corpus_node",
+    "person_organisatie_eenheid",
+    "organisatie_eenheid_manager",
+    "organisatie_eenheid_parent",
+    "organisatie_eenheid_naam",
+    "activity",
+    "absence",
+    "team_member",
+    "team",
+    "person",
+    "organisatie_eenheid",
+]
+
+
+@router.post("/database/reset", response_model=DatabaseResetResult)
+async def reset_database(
+    data: DatabaseResetRequest,
+    admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> DatabaseResetResult:
+    """Wipe all data except whitelist, sessions, and alembic version.
+
+    Re-creates admin person stubs so admins keep access after reset.
+    """
+    if data.confirm != "RESET":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Bevestig de reset door confirm op "RESET" te zetten.',
+        )
+
+    user_label = (admin.email or admin.naam) if admin else "anonymous"
+    logger.warning("DATABASE RESET requested by %s", user_label)
+
+    tables_to_clear = [t for t in _ALL_MODEL_TABLES if t not in _PRESERVED_TABLES]
+    quoted = ", ".join(f'"{t}"' for t in tables_to_clear)
+    await db.execute(text(f"TRUNCATE {quoted} CASCADE"))
+
+    admin_created = await seed_admins_from_file(db)
+    await refresh_whitelist_cache(db)
+
+    logger.warning(
+        "DATABASE RESET completed by %s: %d tables cleared, %d admin stubs created",
+        user_label,
+        len(tables_to_clear),
+        admin_created,
+    )
+
+    return DatabaseResetResult(
+        success=True,
+        tables_cleared=len(tables_to_clear),
+        admin_persons_created=admin_created,
+        message=f"Database gereset: {len(tables_to_clear)} tabellen gewist, "
+        f"{admin_created} admin-accounts aangemaakt.",
+    )
