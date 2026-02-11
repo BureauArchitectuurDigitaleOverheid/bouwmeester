@@ -25,7 +25,7 @@ export function PersonTasksRow({ person, isExpanded, onToggle }: PersonTasksRowP
         className="border-b border-border last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
         onClick={onToggle}
       >
-        <td className="px-5 py-3 font-medium text-text">
+        <td className="px-3 md:px-5 py-3 font-medium text-text">
           <div className="flex items-center gap-2">
             <ChevronRight
               className={`h-4 w-4 text-text-secondary transition-transform ${
@@ -35,17 +35,17 @@ export function PersonTasksRow({ person, isExpanded, onToggle }: PersonTasksRowP
             {person.person_naam}
           </div>
         </td>
-        <td className="px-5 py-3 text-right text-text-secondary">
+        <td className="px-3 md:px-5 py-3 text-right text-text-secondary">
           {person.open_count}
         </td>
-        <td className="px-5 py-3 text-right text-text-secondary">
+        <td className="px-3 md:px-5 py-3 text-right text-text-secondary">
           {person.in_progress_count}
         </td>
-        <td className="px-5 py-3 text-right text-text-secondary">
+        <td className="px-3 md:px-5 py-3 text-right text-text-secondary">
           {person.done_count}
         </td>
         <td
-          className={`px-5 py-3 text-right font-medium ${
+          className={`px-3 md:px-5 py-3 text-right font-medium ${
             person.overdue_count > 0
               ? 'text-red-600'
               : 'text-text-secondary'
@@ -56,7 +56,7 @@ export function PersonTasksRow({ person, isExpanded, onToggle }: PersonTasksRowP
       </tr>
       {isExpanded && (
         <tr>
-          <td colSpan={5} className="px-5 py-3 bg-gray-50/50">
+          <td colSpan={5} className="px-3 md:px-5 py-3 bg-gray-50/50">
             {isLoading && <LoadingSpinner className="py-4" />}
             {tasks && tasks.length === 0 && (
               <p className="text-sm text-text-secondary py-2">Geen taken gevonden.</p>

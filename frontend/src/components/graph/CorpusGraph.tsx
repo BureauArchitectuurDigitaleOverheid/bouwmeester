@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useIsMobile } from '@/hooks/useMediaQuery';
 import ReactFlow, {
   Background,
   Controls,
@@ -150,6 +151,7 @@ const nodeTypes = {
 export function CorpusGraph() {
   const navigate = useNavigate();
   const location = useLocation();
+  const isMobile = useIsMobile();
   const { nodeLabel, edgeLabel: vocabEdgeLabel } = useVocabulary();
   const { data, isLoading, error } = useGraphView();
 
@@ -413,8 +415,8 @@ export function CorpusGraph() {
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="w-52">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+        <div className="w-full sm:w-52">
           <MultiSelect
             value={enabledNodeTypes as Set<string>}
             onChange={handleNodeTypesChange}
@@ -423,7 +425,7 @@ export function CorpusGraph() {
           />
         </div>
         {edgeTypeFilterOptions.length > 0 && (
-          <div className="w-52">
+          <div className="w-full sm:w-52">
             <MultiSelect
               value={enabledEdgeTypes}
               onChange={setEnabledEdgeTypes}
@@ -439,7 +441,7 @@ export function CorpusGraph() {
       </div>
 
       {/* Graph canvas */}
-      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden" style={{ height: 'calc(100vh - 260px)', minHeight: '500px' }}>
+      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden" style={{ height: 'calc(100vh - 260px)', minHeight: isMobile ? '300px' : '500px' }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -465,15 +467,17 @@ export function CorpusGraph() {
               boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
             }}
           />
-          <MiniMap
-            nodeColor={minimapNodeColor}
-            maskColor="rgba(248, 249, 250, 0.7)"
-            style={{
-              borderRadius: '10px',
-              border: '1px solid #e2e8f0',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            }}
-          />
+          {!isMobile && (
+            <MiniMap
+              nodeColor={minimapNodeColor}
+              maskColor="rgba(248, 249, 250, 0.7)"
+              style={{
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              }}
+            />
+          )}
         </ReactFlow>
       </div>
 

@@ -174,9 +174,9 @@ export function OrganisatiePage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left panel: Tree */}
-          <div className="xl:col-span-1">
+          <div className="lg:col-span-1">
             <Card>
               <div className="p-1">
                 <OrganisatieTree
@@ -191,7 +191,7 @@ export function OrganisatiePage() {
           </div>
 
           {/* Right panel: Detail */}
-          <div className="xl:col-span-2">
+          <div className="lg:col-span-2">
             {selectedId ? (
               <Card>
                 <div className="p-2">

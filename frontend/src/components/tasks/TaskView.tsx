@@ -116,10 +116,10 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        {/* Left: Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="w-44">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        {/* Filters */}
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-3">
+          <div className="w-full sm:w-44">
             <CreatableSelect
               value={statusFilter}
               onChange={setStatusFilter}
@@ -128,7 +128,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
             />
           </div>
 
-          <div className="w-44">
+          <div className="w-full sm:w-44">
             <CreatableSelect
               value={priorityFilter}
               onChange={setPriorityFilter}
@@ -137,7 +137,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
             />
           </div>
 
-          <div className="w-52">
+          <div className="w-full sm:w-52">
             <CreatableSelect
               value={personFilter}
               onChange={setPersonFilter}
@@ -146,7 +146,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
             />
           </div>
 
-          <div className="w-52">
+          <div className="w-full sm:w-52">
             <CreatableSelect
               value={eenheidFilter}
               onChange={setEenheidFilter}
@@ -156,7 +156,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
           </div>
         </div>
 
-        {/* Right: View toggle + New task */}
+        {/* View toggle + New task */}
         <div className="flex items-center gap-2">
           <div className="flex items-center rounded-xl border border-border bg-white p-0.5">
             <button

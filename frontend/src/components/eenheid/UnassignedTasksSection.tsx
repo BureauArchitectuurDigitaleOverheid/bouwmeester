@@ -87,7 +87,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
   };
 
   return (
-    <div className="flex items-center gap-3 py-2.5 px-4 border-b border-border last:border-0 hover:bg-gray-50/50">
+    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 py-2.5 px-4 border-b border-border last:border-0 hover:bg-gray-50/50">
       <div className="flex-1 min-w-0">
         <button
           onClick={() => openTaskDetail(task.id)}
@@ -115,7 +115,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <div className="w-56">
+        <div className="w-full md:w-56">
           <CreatableSelect
             value={task.organisatie_eenheid_id ?? ''}
             onChange={handleUnitChange}
@@ -124,7 +124,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
           />
         </div>
         {showPersonAssign && (
-          <div className="w-56">
+          <div className="w-full md:w-56">
             <CreatableSelect
               value={task.assignee_id ?? ''}
               onChange={handlePersonChange}

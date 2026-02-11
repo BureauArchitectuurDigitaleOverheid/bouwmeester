@@ -48,7 +48,7 @@ export function ParlementairPage() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <p className="text-sm text-text-secondary">
           Beheer geïmporteerde kamerstukken uit de Tweede en Eerste Kamer.
         </p>
@@ -57,31 +57,38 @@ export function ParlementairPage() {
           onClick={() => triggerImport.mutate()}
           disabled={triggerImport.isPending}
         >
-          {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
+          <span className="hidden sm:inline">
+            {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
+          </span>
+          <span className="sm:hidden">
+            {triggerImport.isPending ? 'Laden...' : 'Importeren'}
+          </span>
         </Button>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 border-b border-border">
-        <div className="flex items-center gap-1">
-          {statusFilters.map((filter) => (
-            <button
-              key={filter.value}
-              onClick={() => setStatusFilter(filter.value)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                statusFilter === filter.value
-                  ? 'border-primary-900 text-primary-900'
-                  : 'border-transparent text-text-secondary hover:text-text hover:border-border'
-              }`}
-            >
-              {filter.label}
-            </button>
-          ))}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 border-b border-border">
+        <div className="overflow-x-auto scrollbar-hide">
+          <div className="flex items-center gap-1">
+            {statusFilters.map((filter) => (
+              <button
+                key={filter.value}
+                onClick={() => setStatusFilter(filter.value)}
+                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap flex-shrink-0 ${
+                  statusFilter === filter.value
+                    ? 'border-primary-900 text-primary-900'
+                    : 'border-transparent text-text-secondary hover:text-text hover:border-border'
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
         </div>
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as ParlementairItemType | 'all')}
-          className="ml-auto text-sm border border-border rounded-lg px-3 py-1.5 bg-white text-text-secondary -mb-px"
+          className="sm:ml-auto text-sm border border-border rounded-lg px-3 py-1.5 bg-white text-text-secondary -mb-px"
         >
           {typeFilters.map((f) => (
             <option key={f.value} value={f.value}>{f.label}</option>
