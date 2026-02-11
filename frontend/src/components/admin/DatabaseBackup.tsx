@@ -10,7 +10,7 @@ import {
   type DatabaseRestoreResult,
 } from '@/api/import-export';
 
-export function DatabasePage() {
+export function DatabaseBackup() {
   const { showError, showSuccess } = useToast();
   const [info, setInfo] = useState<DatabaseBackupInfo | null>(null);
   const [loadingInfo, setLoadingInfo] = useState(true);
@@ -72,7 +72,7 @@ export function DatabasePage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 p-4 md:p-6">
+    <div className="max-w-2xl space-y-6">
       {/* Export section */}
       <section className="rounded-xl border border-border bg-surface p-5 space-y-4">
         <div className="flex items-center gap-3">

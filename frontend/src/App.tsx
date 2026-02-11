@@ -19,7 +19,6 @@ import { ParlementairPage } from '@/pages/ParlementairPage';
 import { EenheidOverzichtPage } from '@/pages/EenheidOverzichtPage';
 import { AdminPage } from '@/pages/AdminPage';
 import { AuditLogPage } from '@/pages/AuditLogPage';
-import { DatabasePage } from '@/pages/DatabasePage';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
@@ -112,7 +111,6 @@ export default function App() {
                     <Route path="/parlementair" element={<ParlementairPage />} />
                     <Route path="/admin" element={<AdminPage />} />
                     <Route path="/auditlog" element={<AuditLogPage />} />
-                    <Route path="/database" element={<DatabasePage />} />
                   </Route>
                 </Routes>
                 <DetailModals />

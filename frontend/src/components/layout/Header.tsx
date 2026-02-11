@@ -19,7 +19,6 @@ const pageTitles: Record<string, string> = {
   '/parlementair': 'Kamerstukken',
   '/admin': 'Beheer',
   '/auditlog': 'Auditlog',
-  '/database': 'Database Beheer',
   '/search': 'Zoeken',
 };
 

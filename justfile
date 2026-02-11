@@ -144,12 +144,12 @@ import-moties: import-parlementair
 
 # Export database via API (downloads to current directory)
 db-export:
-    curl -sS -o bouwmeester-backup.tar.gz http://localhost:8000/api/export/database
+    curl -sS -o bouwmeester-backup.tar.gz http://localhost:8000/api/admin/database/export
     @echo "Downloaded → bouwmeester-backup.tar.gz"
 
 # Import database via API (provide backup file as argument)
 db-import FILE:
-    curl -sS -X POST -F "file=@{{ FILE }}" http://localhost:8000/api/import/database | python3 -m json.tool
+    curl -sS -X POST -F "file=@{{ FILE }}" http://localhost:8000/api/admin/database/import | python3 -m json.tool
     @echo "Import complete."
 
 # ---------------------------------------------------------------------------
@@ -195,11 +195,10 @@ decrypt-admins:
     age -d -i ~/.age/key.txt -o backend/scripts/admin_emails.json backend/scripts/admin_emails.json.age
     @echo "Decrypted → backend/scripts/admin_emails.json"
 
-# Encrypt admin_emails.json for committing (same recipients as seed data)
+# Encrypt admin_emails.json for committing (recipients from age-recipients.txt)
 encrypt-admins:
-    age -r age1t3gkzgkgy9r05zutg2xws33xv42gyagk7wty5pqqa9apn5vrjsgsf0s4ha \
-        -r age1ugedsnl8qs5rjll3nfqw0uw4ue4dvznsndnwjnduklskxzmhzyvqsapkdk \
-        -r age17w8fqjs4paklc8mhmseslq006au7ua9zhstn5y8ya7k7nu9r7u5q9kfly8 \
+    @test -f age-recipients.txt || { echo "Error: age-recipients.txt not found"; exit 1; }
+    age $(grep -v '^#' age-recipients.txt | grep -v '^\s*$' | sed 's/^/-r /') \
         -o backend/scripts/admin_emails.json.age \
         backend/scripts/admin_emails.json
     @echo "Encrypted → backend/scripts/admin_emails.json.age"

@@ -3,8 +3,9 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { WhitelistManager } from '@/components/admin/WhitelistManager';
 import { UserManager } from '@/components/admin/UserManager';
+import { DatabaseBackup } from '@/components/admin/DatabaseBackup';
 
-type Tab = 'whitelist' | 'users';
+type Tab = 'whitelist' | 'users' | 'database';
 
 export function AdminPage() {
   const { person, oidcConfigured, loading } = useAuth();
@@ -23,6 +24,7 @@ export function AdminPage() {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'whitelist', label: 'Toegangslijst' },
     { id: 'users', label: 'Gebruikers' },
+    { id: 'database', label: 'Database' },
   ];
 
   return (
@@ -47,6 +49,7 @@ export function AdminPage() {
       {/* Tab content */}
       {activeTab === 'whitelist' && <WhitelistManager />}
       {activeTab === 'users' && <UserManager />}
+      {activeTab === 'database' && <DatabaseBackup />}
     </div>
   );
 }

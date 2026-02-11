@@ -1,7 +1,6 @@
 """Pydantic schemas for the Bouwmeester API."""
 
 from bouwmeester.schema.activity import ActivityFeedResponse, ActivityResponse
-from bouwmeester.schema.database_backup import DatabaseBackupInfo, DatabaseRestoreResult
 from bouwmeester.schema.corpus_node import (
     CorpusNodeBase,
     CorpusNodeCreate,
@@ -12,6 +11,7 @@ from bouwmeester.schema.corpus_node import (
     NodeTitleRecord,
     NodeType,
 )
+from bouwmeester.schema.database_backup import DatabaseBackupInfo, DatabaseRestoreResult
 from bouwmeester.schema.edge import (
     EdgeBase,
     EdgeCreate,

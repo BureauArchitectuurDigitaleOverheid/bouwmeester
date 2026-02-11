@@ -90,7 +90,7 @@ export interface DatabaseRestoreResult {
 }
 
 export async function exportDatabase(): Promise<void> {
-  const response = await fetch(`${BASE_URL}/api/export/database`, {
+  const response = await fetch(`${BASE_URL}/api/admin/database/export`, {
     credentials: 'include',
   });
   if (!response.ok) {
@@ -110,7 +110,7 @@ export async function exportDatabase(): Promise<void> {
 }
 
 export async function getDatabaseInfo(): Promise<DatabaseBackupInfo> {
-  const response = await fetch(`${BASE_URL}/api/export/database/info`, {
+  const response = await fetch(`${BASE_URL}/api/admin/database/info`, {
     credentials: 'include',
   });
   if (!response.ok) {
@@ -123,7 +123,7 @@ export async function importDatabase(file: File): Promise<DatabaseRestoreResult>
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`${BASE_URL}/api/import/database`, {
+  const response = await fetch(`${BASE_URL}/api/admin/database/import`, {
     method: 'POST',
     body: formData,
     credentials: 'include',
