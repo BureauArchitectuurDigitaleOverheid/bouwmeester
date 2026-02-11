@@ -102,7 +102,7 @@ export function NotificationBell({ personId }: NotificationBellProps) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 z-50 w-80 max-h-96 rounded-xl border border-border bg-surface shadow-xl overflow-hidden">
+        <div className="fixed inset-x-2 top-16 z-50 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 w-auto sm:w-80 max-h-96 rounded-xl border border-border bg-surface shadow-xl overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold text-text">Meldingen</h3>
