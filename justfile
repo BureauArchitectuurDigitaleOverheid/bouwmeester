@@ -173,3 +173,21 @@ encrypt-whitelist:
         -o backend/scripts/access_whitelist.json.age \
         backend/scripts/access_whitelist.json
     @echo "Encrypted → backend/scripts/access_whitelist.json.age"
+
+# ---------------------------------------------------------------------------
+# Admin emails encryption (age)
+# ---------------------------------------------------------------------------
+
+# Decrypt admin_emails.json from the committed .age file
+decrypt-admins:
+    age -d -i ~/.age/key.txt -o backend/scripts/admin_emails.json backend/scripts/admin_emails.json.age
+    @echo "Decrypted → backend/scripts/admin_emails.json"
+
+# Encrypt admin_emails.json for committing (same recipients as seed data)
+encrypt-admins:
+    age -r age1t3gkzgkgy9r05zutg2xws33xv42gyagk7wty5pqqa9apn5vrjsgsf0s4ha \
+        -r age1ugedsnl8qs5rjll3nfqw0uw4ue4dvznsndnwjnduklskxzmhzyvqsapkdk \
+        -r age17w8fqjs4paklc8mhmseslq006au7ua9zhstn5y8ya7k7nu9r7u5q9kfly8 \
+        -o backend/scripts/admin_emails.json.age \
+        backend/scripts/admin_emails.json
+    @echo "Encrypted → backend/scripts/admin_emails.json.age"

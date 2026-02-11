@@ -79,6 +79,12 @@ from bouwmeester.schema.task import (
     TaskSubtaskSummary,
     TaskUpdate,
 )
+from bouwmeester.schema.whitelist import (
+    AdminToggleRequest,
+    AdminUserResponse,
+    WhitelistEmailCreate,
+    WhitelistEmailResponse,
+)
 
 # Resolve forward references between corpus_node <-> edge schemas.
 CorpusNodeWithEdges.model_rebuild()
@@ -167,4 +173,9 @@ __all__ = [
     "ParlementairItemResponse",
     "ReviewAction",
     "SuggestedEdgeResponse",
+    # whitelist / admin
+    "AdminToggleRequest",
+    "AdminUserResponse",
+    "WhitelistEmailCreate",
+    "WhitelistEmailResponse",
 ]

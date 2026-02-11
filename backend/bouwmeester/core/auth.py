@@ -671,6 +671,43 @@ async def get_optional_user(
     return await _person_from_claims(db, claims)
 
 
+async def get_admin_user(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Person | None:
+    """Dependency that requires the current user to be an admin.
+
+    In development mode (no OIDC) returns ``None`` (all access open).
+    In OIDC mode: resolves the authenticated user and checks ``is_admin``.
+    Raises 403 if the user is not an admin.
+    """
+    if not settings.OIDC_ISSUER:
+        return None
+
+    claims = await _validate_token(request, settings)
+    if claims is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    person = await _person_from_claims(db, claims)
+    if person is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="OIDC claims missing 'sub' or 'email'",
+        )
+
+    if not person.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+
+    return person
+
+
 # Type aliases for convenient use in route signatures.
 #
 # NOTE ON AUTHORIZATION:
@@ -683,5 +720,7 @@ async def get_optional_user(
 #   so the app keeps working in dev without an OIDC provider.  When deployed
 #   behind the Keycloak gateway, every request carries a valid token and
 #   OptionalUser returns the authenticated Person.
+# - AdminUser: requires admin role.  Returns None in dev mode (no OIDC).
 CurrentUser = Annotated[Person, Depends(get_current_user)]
 OptionalUser = Annotated[Person | None, Depends(get_optional_user)]
+AdminUser = Annotated[Person | None, Depends(get_admin_user)]
