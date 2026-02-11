@@ -19,10 +19,7 @@ from datetime import UTC, datetime
 from urllib.parse import unquote, urlparse
 
 from bouwmeester.core.config import get_settings
-from bouwmeester.schema.database_backup import (
-    DatabaseBackupInfo,
-    DatabaseRestoreResult,
-)
+from bouwmeester.schema.database_backup import DatabaseRestoreResult
 
 logger = logging.getLogger(__name__)
 
@@ -229,29 +226,6 @@ def export_database() -> tuple[bytes, str]:
     return encrypted, filename
 
 
-def get_backup_info(file_bytes: bytes) -> DatabaseBackupInfo:
-    """Read metadata from an uploaded backup file without restoring."""
-    data, was_encrypted = _age_decrypt(file_bytes)
-
-    try:
-        buf = io.BytesIO(data)
-        with tarfile.open(fileobj=buf, mode="r:gz") as tar:
-            meta_member = tar.getmember("metadata.json")
-            f = tar.extractfile(meta_member)
-            if f is None:
-                raise ValueError("metadata.json is empty")
-            metadata = json.loads(f.read())
-    except (tarfile.TarError, KeyError) as e:
-        raise ValueError(f"Ongeldig backup-bestand: {e}") from e
-
-    return DatabaseBackupInfo(
-        exported_at=metadata["exported_at"],
-        alembic_revision=metadata["alembic_revision"],
-        format_version=metadata["format_version"],
-        encrypted=was_encrypted,
-    )
-
-
 def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
     """Restore a database from an uploaded backup file.
 
@@ -298,42 +272,36 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
         raise ValueError(f"Ongeldige migratieversie in backup: {export_revision!r}")
     current_revision = _get_alembic_revision()
 
-    # Check if the export revision exists in the migration chain
-    check = subprocess.run(
-        ["alembic", "history", "-r", f"{export_revision}:"],
-        capture_output=True,
-        text=True,
-        cwd=_get_backend_dir(),
-        env=env,
-        timeout=30,
-    )
-    if check.returncode != 0 and "Can't locate revision" in check.stderr:
-        raise ValueError(
-            f"Onbekende migratieversie in backup: {export_revision}. "
-            "Update eerst de applicatie."
-        )
-
-    # If export is newer than current, refuse
+    # Verify export revision is known and not newer than current.
+    # Use `alembic history -r export:current` — if the range is valid and
+    # produces output, export is an ancestor of current (OK to restore).
+    # If export == current, skip the check entirely.
     if export_revision != current_revision:
-        newer_check = subprocess.run(
-            ["alembic", "history", "-r", f"{current_revision}:{export_revision}"],
+        history_check = subprocess.run(
+            [
+                "alembic",
+                "history",
+                "-r",
+                f"{export_revision}:{current_revision}",
+            ],
             capture_output=True,
             text=True,
             cwd=_get_backend_dir(),
             env=env,
             timeout=30,
         )
-        if newer_check.returncode == 0:
-            # Check for exact revision match (not substring) in output lines
-            for hist_line in newer_check.stdout.splitlines():
-                if export_revision in hist_line and hist_line.strip().startswith(
-                    export_revision
-                ):
-                    raise ValueError(
-                        f"Backup is van een nieuwere versie ({export_revision}) "
-                        f"dan de huidige applicatie ({current_revision}). "
-                        "Update eerst de applicatie."
-                    )
+        if history_check.returncode != 0:
+            # Range invalid — either unknown revision or export is newer
+            if "Can't locate revision" in history_check.stderr:
+                raise ValueError(
+                    f"Onbekende migratieversie in backup: {export_revision}. "
+                    "Update eerst de applicatie."
+                )
+            raise ValueError(
+                f"Backup is van een nieuwere versie ({export_revision}) "
+                f"dan de huidige applicatie ({current_revision}). "
+                "Update eerst de applicatie."
+            )
 
     # 4. Write dump to temp file for pg_restore (mode 0o600: owner-only)
     with tempfile.NamedTemporaryFile(suffix=".dump", delete=False, mode="wb") as tmp:
@@ -342,8 +310,7 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
         tmp_path = tmp.name
 
     try:
-        # 5. Truncate all app tables (excluding EXCLUDED_TABLES)
-        # Get list of tables from pg_restore --list
+        # 5. Parse table names from pg_restore TOC
         list_result = subprocess.run(
             ["pg_restore", "--list", tmp_path],
             capture_output=True,
@@ -351,7 +318,6 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
             env=env,
             timeout=60,
         )
-        # Parse table names from the TOC
         # Format: "id; oid table_oid TABLE DATA schema tablename owner"
         tables_in_dump: set[str] = set()
         for line in list_result.stdout.splitlines():
@@ -376,50 +342,16 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
                             tables_in_dump.add(table_name)
                         break
 
-        # Truncate tables (CASCADE handles FK ordering)
-        if tables_in_dump:
-            # Quote identifiers to prevent SQL injection
-            quoted = ", ".join(f'"{t}"' for t in sorted(tables_in_dump))
-            truncate_sql = f"TRUNCATE {quoted} CASCADE"
-            trunc_result = subprocess.run(
-                [
-                    "psql",
-                    "-h",
-                    db["host"],
-                    "-p",
-                    db["port"],
-                    "-U",
-                    db["user"],
-                    "-d",
-                    db["dbname"],
-                    "-c",
-                    truncate_sql,
-                ],
-                capture_output=True,
-                text=True,
-                env=env,
-                timeout=60,
-            )
-            if trunc_result.returncode != 0:
-                raise RuntimeError(f"TRUNCATE mislukt: {trunc_result.stderr.strip()}")
-
-        # 6. pg_restore (--single-transaction: rolls back on error)
-        restore_result = subprocess.run(
+        # 6. Convert dump to plain SQL for atomic restore
+        sql_result = subprocess.run(
             [
                 "pg_restore",
-                "-h",
-                db["host"],
-                "-p",
-                db["port"],
-                "-U",
-                db["user"],
-                "-d",
-                db["dbname"],
                 "--data-only",
-                "--single-transaction",
                 "--disable-triggers",
                 "--no-owner",
                 "--no-privileges",
+                "-f",
+                "-",
                 tmp_path,
             ],
             capture_output=True,
@@ -427,20 +359,33 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
             env=env,
             timeout=300,
         )
-        if restore_result.returncode != 0:
-            # pg_restore returns non-zero for warnings too; only fail on real errors
-            stderr = restore_result.stderr.strip()
+        if sql_result.returncode != 0:
+            stderr = sql_result.stderr.strip()
             if stderr and "error" in stderr.lower():
-                raise RuntimeError(f"pg_restore mislukt: {stderr}")
+                raise RuntimeError(f"pg_restore conversie mislukt: {stderr}")
+        restore_sql = sql_result.stdout
 
-        tables_restored = len(tables_in_dump)
-
-        # 7. Set alembic_version to the export's revision (in a transaction)
+        # 7. Build atomic restore script: TRUNCATE + restore data + set
+        #    alembic_version, all in a single transaction via psql -1.
+        #    If any statement fails, the entire transaction rolls back.
+        script_parts: list[str] = []
+        if tables_in_dump:
+            quoted = ", ".join(f'"{t}"' for t in sorted(tables_in_dump))
+            script_parts.append(f"TRUNCATE {quoted} CASCADE;")
+        script_parts.append(restore_sql)
         # export_revision is validated against _ALEMBIC_REVISION_RE above
-        alembic_result = subprocess.run(
+        script_parts.append(
+            "DELETE FROM alembic_version;\n"
+            f"INSERT INTO alembic_version (version_num) VALUES ('{export_revision}');"
+        )
+        full_script = "\n".join(script_parts)
+
+        restore_result = subprocess.run(
             [
                 "psql",
                 "-1",
+                "-v",
+                "ON_ERROR_STOP=1",
                 "-h",
                 db["host"],
                 "-p",
@@ -449,22 +394,20 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
                 db["user"],
                 "-d",
                 db["dbname"],
-                "-v",
-                f"rev={export_revision}",
-                "-c",
-                "DELETE FROM alembic_version;"
-                " INSERT INTO alembic_version (version_num)"
-                " VALUES (:'rev')",
             ],
+            input=full_script,
             capture_output=True,
             text=True,
             env=env,
-            timeout=30,
+            timeout=300,
         )
-        if alembic_result.returncode != 0:
+        if restore_result.returncode != 0:
             raise RuntimeError(
-                f"alembic_version update mislukt: {alembic_result.stderr.strip()}"
+                f"Database restore mislukt (rolled back): "
+                f"{restore_result.stderr.strip()}"
             )
+
+        tables_restored = len(tables_in_dump)
 
         # 8. Migrate to head if needed
         migrations_applied = 0
