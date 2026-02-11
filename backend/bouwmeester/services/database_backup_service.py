@@ -352,23 +352,23 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
             timeout=60,
         )
         # Parse table names from the TOC
+        # Format: "id; oid table_oid TABLE DATA schema tablename owner"
         tables_in_dump: set[str] = set()
         for line in list_result.stdout.splitlines():
             line = line.strip()
             if line.startswith(";") or not line:
                 continue
-            # Format: "id; seq tablespace owner TABLE DATA tablename owner"
             parts = line.split()
-            if "TABLE DATA" in line and len(parts) >= 6:
-                # Find TABLE DATA and the next word is the table name
+            if "TABLE DATA" in line and len(parts) >= 7:
                 for i, part in enumerate(parts):
                     if (
                         part == "TABLE"
                         and i + 1 < len(parts)
                         and parts[i + 1] == "DATA"
                     ):
-                        if i + 2 < len(parts):
-                            table_name = parts[i + 2]
+                        # parts[i+2] = schema, parts[i+3] = table name
+                        if i + 3 < len(parts):
+                            table_name = parts[i + 3]
                             if not _TABLE_NAME_RE.match(table_name):
                                 raise ValueError(
                                     f"Ongeldige tabelnaam in backup: {table_name!r}"
@@ -435,11 +435,12 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
 
         tables_restored = len(tables_in_dump)
 
-        # 7. Set alembic_version to the export's revision
+        # 7. Set alembic_version to the export's revision (in a transaction)
         # export_revision is validated against _ALEMBIC_REVISION_RE above
         alembic_result = subprocess.run(
             [
                 "psql",
+                "-1",
                 "-h",
                 db["host"],
                 "-p",

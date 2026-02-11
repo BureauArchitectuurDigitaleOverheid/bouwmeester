@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import validate_csv_upload
-from bouwmeester.core.auth import CurrentUser, OptionalUser
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.schema.database_backup import (
     DatabaseBackupInfo,
@@ -140,7 +140,7 @@ async def export_archimate(
 
 @router.get("/export/database")
 async def export_database(
-    current_user: CurrentUser,
+    current_user: OptionalUser,
 ) -> StreamingResponse:
     """Export full database as pg_dump (optionally age-encrypted)."""
     from bouwmeester.services.database_backup_service import (
@@ -165,7 +165,7 @@ async def export_database(
 
 @router.get("/export/database/info", response_model=DatabaseBackupInfo)
 async def export_database_info(
-    current_user: CurrentUser,
+    current_user: OptionalUser,
 ) -> DatabaseBackupInfo:
     """Return metadata about the current database (revision, etc.)."""
     from bouwmeester.services.database_backup_service import _get_alembic_revision
@@ -182,7 +182,7 @@ async def export_database_info(
 @router.post("/import/database", response_model=DatabaseRestoreResult)
 async def import_database(
     file: UploadFile,
-    current_user: CurrentUser,
+    current_user: OptionalUser,
 ) -> DatabaseRestoreResult:
     """Upload a database backup and restore it."""
     from bouwmeester.services.database_backup_service import (
