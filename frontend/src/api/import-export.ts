@@ -93,6 +93,26 @@ export function exportDatabaseUrl(): string {
   return `${BASE_URL}/api/export/database`;
 }
 
+export async function exportDatabase(): Promise<void> {
+  const response = await fetch(`${BASE_URL}/api/export/database`, {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(body.detail || `Export mislukt: ${response.statusText}`);
+  }
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename=(.+)/);
+  const filename = match ? match[1] : 'bouwmeester-backup.tar.gz';
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export async function getDatabaseInfo(): Promise<DatabaseBackupInfo> {
   const response = await fetch(`${BASE_URL}/api/export/database/info`, {
     credentials: 'include',

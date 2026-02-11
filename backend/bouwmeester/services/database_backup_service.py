@@ -7,6 +7,7 @@ Export format: tar.gz (optionally age-encrypted → .tar.gz.age) containing:
 
 from __future__ import annotations
 
+import fcntl
 import io
 import json
 import logging
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 FORMAT_VERSION = 1
 EXCLUDED_TABLES = ["http_sessions", "alembic_version"]
+_IMPORT_LOCK = os.path.join(tempfile.gettempdir(), "bouwmeester-import.lock")
 
 # Strict patterns for validating untrusted input before using in SQL/commands
 _TABLE_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,62}$")
@@ -229,15 +231,29 @@ def export_database() -> tuple[bytes, str]:
 def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
     """Restore a database from an uploaded backup file.
 
-    Steps:
-    1. Decrypt if needed
-    2. Extract tarball, validate metadata
-    3. Compare alembic revisions
-    4. Truncate app tables
-    5. pg_restore data
-    6. Set alembic_version
-    7. Run migrations to head if needed
+    Uses a file lock to prevent concurrent imports. The entire data restore
+    (TRUNCATE + COPY/INSERT + alembic_version) runs as a single psql
+    transaction — any failure rolls back completely.
     """
+    # Acquire exclusive lock to prevent concurrent imports
+    lock_fd = open(_IMPORT_LOCK, "w")  # noqa: SIM115
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock_fd.close()
+        raise ValueError(
+            "Er loopt al een database-import. Probeer het later opnieuw."
+        ) from None
+
+    try:
+        return _do_import(file_bytes)
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
+
+
+def _do_import(file_bytes: bytes) -> DatabaseRestoreResult:
+    """Internal import implementation (called under lock)."""
     db = _parse_db_url()
     env = _pg_env(db)
 
@@ -273,9 +289,6 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
     current_revision = _get_alembic_revision()
 
     # Verify export revision is known and not newer than current.
-    # Use `alembic history -r export:current` — if the range is valid and
-    # produces output, export is an ancestor of current (OK to restore).
-    # If export == current, skip the check entirely.
     if export_revision != current_revision:
         history_check = subprocess.run(
             [
@@ -291,7 +304,6 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
             timeout=30,
         )
         if history_check.returncode != 0:
-            # Range invalid — either unknown revision or export is newer
             if "Can't locate revision" in history_check.stderr:
                 raise ValueError(
                     f"Onbekende migratieversie in backup: {export_revision}. "
@@ -308,6 +320,9 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
         os.chmod(tmp.name, 0o600)
         tmp.write(dump_data)
         tmp_path = tmp.name
+
+    # Free the in-memory dump data now that it's on disk
+    del dump_data
 
     try:
         # 5. Parse table names from pg_restore TOC
@@ -342,7 +357,9 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
                             tables_in_dump.add(table_name)
                         break
 
-        # 6. Convert dump to plain SQL for atomic restore
+        # 6. Convert dump to plain SQL (COPY ... FROM stdin statements).
+        #    pg_restore -f - outputs SQL that psql can consume directly,
+        #    including COPY blocks with inline data terminated by \.
         sql_result = subprocess.run(
             [
                 "pg_restore",
@@ -365,6 +382,10 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
                 raise RuntimeError(f"pg_restore conversie mislukt: {stderr}")
         restore_sql = sql_result.stdout
 
+        # Temp file no longer needed — free disk space before restore
+        os.unlink(tmp_path)
+        tmp_path = None
+
         # 7. Build atomic restore script: TRUNCATE + restore data + set
         #    alembic_version, all in a single transaction via psql -1.
         #    If any statement fails, the entire transaction rolls back.
@@ -379,6 +400,7 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
             f"INSERT INTO alembic_version (version_num) VALUES ('{export_revision}');"
         )
         full_script = "\n".join(script_parts)
+        del restore_sql  # free before piping
 
         restore_result = subprocess.run(
             [
@@ -424,7 +446,6 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
                 raise RuntimeError(
                     f"Alembic migratie mislukt: {migrate_result.stderr.strip()}"
                 )
-            # Count applied migrations
             for line in migrate_result.stdout.splitlines():
                 if "Running upgrade" in line:
                     migrations_applied += 1
@@ -446,7 +467,8 @@ def import_database(file_bytes: bytes) -> DatabaseRestoreResult:
             ),
         )
     finally:
-        os.unlink(tmp_path)
+        if tmp_path is not None:
+            os.unlink(tmp_path)
 
 
 def _get_backend_dir() -> str:

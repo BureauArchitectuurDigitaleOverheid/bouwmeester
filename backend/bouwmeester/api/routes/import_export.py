@@ -149,9 +149,11 @@ async def export_database(
 
     try:
         file_bytes, filename = await asyncio.to_thread(do_export)
-    except Exception as e:
+    except Exception:
         logger.exception("Database export failed")
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(
+            status_code=500, detail="Database export mislukt. Zie server logs."
+        )
 
     media_type = (
         "application/octet-stream" if filename.endswith(".age") else "application/gzip"
@@ -199,6 +201,8 @@ async def import_database(
         return await asyncio.to_thread(do_import, content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
+    except Exception:
         logger.exception("Database import failed")
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(
+            status_code=500, detail="Database import mislukt. Zie server logs."
+        )

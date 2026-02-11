@@ -3,7 +3,7 @@ import { Download, Upload, AlertTriangle, CheckCircle, Loader2, Database } from 
 import { useToast } from '@/contexts/ToastContext';
 import { FileUpload } from '@/components/common/FileUpload';
 import {
-  exportDatabaseUrl,
+  exportDatabase,
   getDatabaseInfo,
   importDatabase,
   type DatabaseBackupInfo,
@@ -27,17 +27,17 @@ export function DatabasePage() {
       .finally(() => setLoadingInfo(false));
   }, []);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     setExporting(true);
-    // Use a hidden link to trigger download (credentials included via cookie)
-    const link = document.createElement('a');
-    link.href = exportDatabaseUrl();
-    link.click();
-    // We can't know when the download finishes; reset after a short delay
-    setTimeout(() => {
+    try {
+      await exportDatabase();
+      showSuccess('Export voltooid — het bestand wordt gedownload.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Export mislukt';
+      showError(msg);
+    } finally {
       setExporting(false);
-      showSuccess('Export gestart — het bestand wordt gedownload.');
-    }, 2000);
+    }
   };
 
   const handleFileSelect = (file: File) => {
