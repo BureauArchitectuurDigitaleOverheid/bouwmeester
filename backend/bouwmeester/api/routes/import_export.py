@@ -148,7 +148,7 @@ async def export_database(
     )
 
     user_label = (
-        current_user.email or current_user.naam if current_user else "anonymous"
+        (current_user.email or current_user.naam) if current_user else "anonymous"
     )
     logger.info("Database export requested by %s", user_label)
 
@@ -203,7 +203,7 @@ async def import_database(
     )
 
     user_label = (
-        current_user.email or current_user.naam if current_user else "anonymous"
+        (current_user.email or current_user.naam) if current_user else "anonymous"
     )
     content = await file.read()
     if len(content) > MAX_BACKUP_SIZE:
