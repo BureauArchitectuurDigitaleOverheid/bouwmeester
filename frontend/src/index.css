@@ -66,6 +66,15 @@ body {
   background-color: var(--color-border-hover);
 }
 
+/* Hide scrollbar utility for horizontal tab scrolling */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Smooth transitions for interactive elements */
 button, a, input, select, textarea {
   transition: all 0.15s ease-in-out;

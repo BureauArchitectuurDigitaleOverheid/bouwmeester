@@ -115,11 +115,11 @@ export function EenheidOverzichtPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border text-left text-text-secondary">
-                        <th className="px-5 py-3 font-medium">Persoon</th>
-                        <th className="px-5 py-3 font-medium text-right">Open</th>
-                        <th className="px-5 py-3 font-medium text-right">In uitvoering</th>
-                        <th className="px-5 py-3 font-medium text-right">Afgerond</th>
-                        <th className="px-5 py-3 font-medium text-right">Verlopen</th>
+                        <th className="px-3 md:px-5 py-3 font-medium">Persoon</th>
+                        <th className="px-3 md:px-5 py-3 font-medium text-right">Open</th>
+                        <th className="px-3 md:px-5 py-3 font-medium text-right">In uitvoering</th>
+                        <th className="px-3 md:px-5 py-3 font-medium text-right">Afgerond</th>
+                        <th className="px-3 md:px-5 py-3 font-medium text-right">Verlopen</th>
                       </tr>
                     </thead>
                     <tbody>

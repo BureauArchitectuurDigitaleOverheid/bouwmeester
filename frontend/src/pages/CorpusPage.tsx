@@ -25,13 +25,13 @@ export function CorpusPage() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <p className="text-sm text-text-secondary">
             Bekijk en beheer alle beleidsdocumenten, dossiers en instrumenten.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {/* View mode toggle */}
           <div className="flex items-center bg-gray-100 rounded-xl p-0.5">
             <button

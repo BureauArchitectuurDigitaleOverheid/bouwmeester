@@ -188,7 +188,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
       </button>
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-2">
             <Badge variant={color as 'blue'} dot title={nodeAltLabel(node.node_type)}>
@@ -197,7 +197,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             {node.status && <Badge variant="gray">{node.status}</Badge>}
           </div>
           <h1 className="text-2xl font-bold text-text">{node.title}</h1>
-          <div className="flex items-center gap-4 mt-2 text-xs text-text-secondary">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 text-xs text-text-secondary">
             <span className="inline-flex items-center gap-1">
               <Calendar className="h-3.5 w-3.5" />
               Aangemaakt: {formatDate(node.created_at)}
@@ -237,21 +237,23 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-border">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={clsx(
-              'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px',
-              activeTab === tab.id
-                ? 'border-primary-900 text-primary-900'
-                : 'border-transparent text-text-secondary hover:text-text hover:border-border',
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="overflow-x-auto scrollbar-hide">
+        <div className="flex items-center gap-1 border-b border-border">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={clsx(
+                'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap flex-shrink-0',
+                activeTab === tab.id
+                  ? 'border-primary-900 text-primary-900'
+                  : 'border-transparent text-text-secondary hover:text-text hover:border-border',
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Tab content */}
@@ -463,7 +465,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             {/* Add stakeholder form */}
             <Card>
               <h4 className="text-sm font-medium text-text mb-3">Betrokkene toevoegen</h4>
-              <div className="flex items-end gap-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
                 <div className="flex-1">
                   <CreatableSelect
                     label="Persoon"
@@ -483,7 +485,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                     createLabel="Nieuwe persoon aanmaken"
                   />
                 </div>
-                <div className="w-48">
+                <div className="w-full sm:w-48">
                   <label className="block text-sm font-medium text-text mb-1.5">Rol</label>
                   <select
                     value={newStakeholderRol}

@@ -63,14 +63,14 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
   };
 
   return (
-    <div className="grid grid-cols-3 gap-4 min-h-[400px]">
+    <div className="-mx-4 px-4 md:mx-0 md:px-0 flex gap-4 min-h-[400px] overflow-x-auto pb-2 snap-x snap-mandatory md:grid md:grid-cols-3 md:overflow-x-visible md:snap-none md:pb-0">
       {BOARD_COLUMNS.map((status) => (
         <div
           key={status}
           onDragOver={(e) => handleDragOver(e, status)}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, status)}
-          className={`rounded-xl border border-border bg-gray-50/50 border-t-4 ${COLUMN_COLORS[status]} transition-colors ${
+          className={`rounded-xl border border-border bg-gray-50/50 border-t-4 w-[85vw] shrink-0 snap-center md:w-auto md:shrink md:flex-1 ${COLUMN_COLORS[status]} transition-colors ${
             dragOverColumn === status ? 'bg-primary-50/50 border-primary-200' : ''
           }`}
         >

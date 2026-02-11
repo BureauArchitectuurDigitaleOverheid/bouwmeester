@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, User, ChevronDown, Check, LogOut, Eye, X } from 'lucide-react';
+import { Search, User, ChevronDown, Check, LogOut, Eye, X, Menu } from 'lucide-react';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,6 +8,7 @@ import { VOCABULARY_LABELS, type VocabularyId } from '@/vocabulary';
 import { NotificationBell } from '@/components/common/NotificationBell';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { ORGANISATIE_TYPE_LABELS, formatFunctie } from '@/types';
+import { useUIStore } from '@/store/ui';
 
 const pageTitles: Record<string, string> = {
   '/': 'Inbox',
@@ -36,6 +37,7 @@ export function Header() {
     useCurrentPerson();
   const { vocabularyId, setVocabularyId } = useVocabulary();
   const { authenticated, oidcConfigured, person: authPerson, logout } = useAuth();
+  const toggleMobileSidebar = useUIStore((s) => s.toggleMobileSidebar);
   const [showPersonPicker, setShowPersonPicker] = useState(false);
   const [search, setSearch] = useState('');
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -86,9 +88,15 @@ export function Header() {
   const authDisplayName = oidcConfigured ? (authPerson?.name || authPerson?.email || '') : '';
 
   return (
-    <header className="flex items-center justify-between h-16 px-6 bg-surface border-b border-border shrink-0">
-      {/* Left: Title / Breadcrumbs */}
+    <header className="flex items-center justify-between h-16 px-4 md:px-6 bg-surface border-b border-border shrink-0">
+      {/* Left: Hamburger + Title / Breadcrumbs */}
       <div className="flex items-center gap-2">
+        <button
+          onClick={toggleMobileSidebar}
+          className="md:hidden flex items-center justify-center h-10 w-10 -ml-1 rounded-lg text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
         {breadcrumbs ? (
           <nav className="flex items-center gap-1.5 text-sm">
             {breadcrumbs.map((crumb, i) => (
@@ -115,7 +123,7 @@ export function Header() {
       {/* Right: Actions */}
       <div className="flex items-center gap-3">
         {/* Vocabulary toggle */}
-        <div className="flex items-center rounded-lg border border-border text-xs overflow-hidden">
+        <div className="hidden sm:flex items-center rounded-lg border border-border text-xs overflow-hidden">
           {(Object.keys(VOCABULARY_LABELS) as VocabularyId[]).map((id) => (
             <button
               key={id}

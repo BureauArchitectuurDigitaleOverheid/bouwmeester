@@ -246,7 +246,7 @@ export function AuditLogPage() {
   }, [totalPages, page]);
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       {/* Filters */}
       <div className="flex items-center gap-3">
         <select
@@ -265,8 +265,34 @@ export function AuditLogPage() {
         </select>
       </div>
 
-      {/* Table */}
-      <div className="border border-border rounded-xl overflow-hidden bg-white">
+      {/* Mobile card layout */}
+      <div className="md:hidden space-y-3">
+        {isLoading ? (
+          <p className="text-center text-text-secondary py-8">Laden...</p>
+        ) : isError ? (
+          <p className="text-center text-red-600 py-8">Fout bij laden van activiteiten</p>
+        ) : !data?.items.length ? (
+          <p className="text-center text-text-secondary py-8">Geen activiteit gevonden</p>
+        ) : (
+          data.items.map((item) => (
+            <div key={item.id} className="border border-border rounded-xl bg-white p-4 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-text-secondary">{formatDate(item.created_at)}</span>
+                {item.actor_naam && (
+                  <span className="text-xs font-medium text-text">{item.actor_naam}</span>
+                )}
+              </div>
+              <div className="text-sm font-medium text-text">
+                {EVENT_TYPE_LABELS[item.event_type] || item.event_type}
+              </div>
+              <DetailCell item={item} onOpenNode={openNodeDetail} onOpenTask={openTaskDetail} />
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block border border-border rounded-xl overflow-hidden bg-white">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-border">
