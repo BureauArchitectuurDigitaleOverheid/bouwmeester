@@ -3,7 +3,7 @@ import { useNodes, useCreateNode } from '@/hooks/useNodes';
 import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { useVocabulary } from '@/contexts/VocabularyContext';
-import { ORGANISATIE_TYPE_LABELS, NodeType } from '@/types';
+import { ORGANISATIE_TYPE_LABELS, NodeType, formatFunctie } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 
 export function useTaskFormOptions() {
@@ -29,7 +29,7 @@ export function useTaskFormOptions() {
     () => (allPeople ?? []).map((p) => ({
       value: p.id,
       label: p.naam,
-      description: p.functie ?? undefined,
+      description: formatFunctie(p.functie),
     })),
     [allPeople],
   );

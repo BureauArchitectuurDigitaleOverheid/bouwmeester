@@ -28,7 +28,7 @@ const NOTIFICATION_TYPE_MAP: Record<string, string> = {
   agent_prompt: 'message',
 };
 
-const PERSON_LEVEL_TYPES = new Set(['afdeling', 'team', 'cluster']);
+const PERSON_LEVEL_TYPES = new Set(['afdeling', 'dienst', 'bureau', 'cluster', 'team']);
 
 export function InboxPage() {
   const navigate = useNavigate();

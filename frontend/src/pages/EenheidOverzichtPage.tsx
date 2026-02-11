@@ -42,9 +42,6 @@ export function EenheidOverzichtPage() {
     selectedEenheidId || null,
   );
 
-  const highLevelTypes = new Set(['ministerie', 'directoraat_generaal', 'directie']);
-  const showNoUnit = overview ? highLevelTypes.has(overview.eenheid_type) : false;
-
   const handleSelectSubeenheid = (eenheidId: string) => {
     setSelectedEenheidId(eenheidId);
     setExpandedPersonId(null);
@@ -96,7 +93,6 @@ export function EenheidOverzichtPage() {
             noUnitCount={overview.unassigned_no_unit_count}
             noPersonTasks={overview.unassigned_no_person}
             noPersonCount={overview.unassigned_no_person_count}
-            showNoUnit={showNoUnit}
             eenheidType={overview.eenheid_type}
             selectedEenheidId={selectedEenheidId}
           />

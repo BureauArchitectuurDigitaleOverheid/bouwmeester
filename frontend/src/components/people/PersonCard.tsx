@@ -1,6 +1,6 @@
 import { User, Mail, Briefcase, Bot } from 'lucide-react';
 import { Card } from '@/components/common/Card';
-import { FUNCTIE_LABELS } from '@/types';
+import { formatFunctie } from '@/types';
 import type { Person } from '@/types';
 
 interface PersonCardProps {
@@ -59,7 +59,7 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
             {person.functie && (
               <div className="flex items-center gap-1.5 text-xs text-text-secondary">
                 <Briefcase className="h-3 w-3 shrink-0" />
-                <span className="truncate">{FUNCTIE_LABELS[person.functie] || person.functie.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                <span className="truncate">{formatFunctie(person.functie)}</span>
               </div>
             )}
             {person.is_agent && person.description && (

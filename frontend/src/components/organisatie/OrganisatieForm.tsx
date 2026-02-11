@@ -9,7 +9,7 @@ import type {
   OrganisatieEenheidCreate,
   OrganisatieEenheidUpdate,
 } from '@/types';
-import { ORGANISATIE_TYPE_OPTIONS } from '@/types';
+import { ORGANISATIE_TYPE_OPTIONS, formatFunctie } from '@/types';
 import { useOrganisatieFlat, useOrganisatiePersonen } from '@/hooks/useOrganisatie';
 
 interface OrganisatieFormProps {
@@ -61,7 +61,7 @@ export function OrganisatieForm({
     ...personen.map((p) => ({
       value: p.id,
       label: p.naam,
-      description: p.functie || undefined,
+      description: formatFunctie(p.functie),
     })),
   ];
 

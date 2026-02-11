@@ -3,8 +3,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Clock, Building2, User } from
 import { Badge } from '@/components/common/Badge';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useUpdateTask } from '@/hooks/useTasks';
-import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
-import { usePeople } from '@/hooks/usePeople';
+import { useOrganisatieFlat, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { isOverdue as checkOverdue, formatDateShort } from '@/utils/dates';
 import {
@@ -12,10 +11,19 @@ import {
   TASK_PRIORITY_COLORS,
   ORGANISATIE_TYPE_LABELS,
 } from '@/types';
-import type { Task } from '@/types';
+import type { Task, Person, OrganisatieEenheidPersonenGroup } from '@/types';
+import { formatFunctie } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 
-const PERSON_LEVEL_TYPES = new Set(['afdeling', 'team', 'cluster']);
+const PERSON_LEVEL_TYPES = new Set(['afdeling', 'dienst', 'bureau', 'cluster', 'team']);
+
+function flattenPersonenGroup(group: OrganisatieEenheidPersonenGroup): Person[] {
+  const people = [...group.personen];
+  for (const child of group.children) {
+    people.push(...flattenPersonenGroup(child));
+  }
+  return people;
+}
 
 function getDescendantIds(allUnits: { id: string; parent_id?: string | null }[], parentId: string): Set<string> {
   const descendants = new Set<string>();
@@ -37,16 +45,14 @@ interface UnassignedTasksSectionProps {
   noUnitCount: number;
   noPersonTasks: Task[];
   noPersonCount: number;
-  showNoUnit: boolean;
   eenheidType: string;
   selectedEenheidId: string;
 }
 
-function TaskRow({ task, showPersonAssign, selectedEenheidId }: { task: Task; showPersonAssign: boolean; selectedEenheidId: string }) {
+function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: { task: Task; showPersonAssign: boolean; selectedEenheidId: string; personOptions: SelectOption[] }) {
   const { openTaskDetail } = useTaskDetail();
   const updateTask = useUpdateTask();
   const { data: eenheden } = useOrganisatieFlat();
-  const { data: allPeople } = usePeople();
 
   const isOverdue = task.due_date && checkOverdue(task.due_date);
 
@@ -66,26 +72,17 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId }: { task: Task; sh
     ];
   }, [eenheden, selectedEenheidId]);
 
-  const personOptions: SelectOption[] = useMemo(() => {
-    if (!showPersonAssign) return [];
-    return (allPeople ?? []).map((p) => ({
-      value: p.id,
-      label: p.naam,
-      description: p.functie ?? undefined,
-    }));
-  }, [allPeople, showPersonAssign]);
-
   const handleUnitChange = (value: string) => {
     updateTask.mutate({
       id: task.id,
-      data: { organisatie_eenheid_id: value || undefined },
+      data: { organisatie_eenheid_id: value || null },
     });
   };
 
   const handlePersonChange = (value: string) => {
     updateTask.mutate({
       id: task.id,
-      data: { assignee_id: value || undefined },
+      data: { assignee_id: value || null },
     });
   };
 
@@ -146,16 +143,33 @@ export function UnassignedTasksSection({
   noUnitCount,
   noPersonTasks,
   noPersonCount,
-  showNoUnit,
   eenheidType,
   selectedEenheidId,
 }: UnassignedTasksSectionProps) {
   const [noUnitOpen, setNoUnitOpen] = useState(true);
   const [noPersonOpen, setNoPersonOpen] = useState(true);
+  const { data: personenGroup } = useOrganisatiePersonenRecursive(selectedEenheidId || null);
+
+  const personOptions: SelectOption[] = useMemo(() => {
+    if (!personenGroup) return [];
+    const people = flattenPersonenGroup(personenGroup);
+    const seen = new Set<string>();
+    return people
+      .filter((p) => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      })
+      .map((p) => ({
+        value: p.id,
+        label: p.naam,
+        description: formatFunctie(p.functie),
+      }));
+  }, [personenGroup]);
 
   const isPersonLevel = PERSON_LEVEL_TYPES.has(eenheidType);
   const showNoPersonSection = isPersonLevel;
-  const totalCount = (showNoUnit ? noUnitCount : 0) + (showNoPersonSection ? noPersonCount : 0);
+  const totalCount = noUnitCount + (showNoPersonSection ? noPersonCount : 0);
   if (totalCount === 0) return null;
 
   return (
@@ -173,7 +187,7 @@ export function UnassignedTasksSection({
       </div>
 
       {/* No unit section */}
-      {showNoUnit && noUnitCount > 0 && (
+      {noUnitCount > 0 && (
         <div className="border-t border-border">
           <button
             onClick={() => setNoUnitOpen(!noUnitOpen)}
@@ -189,7 +203,7 @@ export function UnassignedTasksSection({
           {noUnitOpen && (
             <div>
               {noUnitTasks.map((task) => (
-                <TaskRow key={task.id} task={task} showPersonAssign={false} selectedEenheidId={selectedEenheidId} />
+                <TaskRow key={task.id} task={task} showPersonAssign={false} selectedEenheidId={selectedEenheidId} personOptions={personOptions} />
               ))}
               {noUnitCount > noUnitTasks.length && (
                 <p className="px-5 py-2 text-xs text-text-secondary">
@@ -218,7 +232,7 @@ export function UnassignedTasksSection({
           {noPersonOpen && (
             <div>
               {noPersonTasks.map((task) => (
-                <TaskRow key={task.id} task={task} showPersonAssign={isPersonLevel} selectedEenheidId={selectedEenheidId} />
+                <TaskRow key={task.id} task={task} showPersonAssign={isPersonLevel} selectedEenheidId={selectedEenheidId} personOptions={personOptions} />
               ))}
               {noPersonCount > noPersonTasks.length && (
                 <p className="px-5 py-2 text-xs text-text-secondary">

@@ -6,7 +6,7 @@ import { Badge } from '@/components/common/Badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { useOrganisatieEenheid, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
-import { ORGANISATIE_TYPE_LABELS } from '@/types';
+import { ORGANISATIE_TYPE_LABELS, formatFunctie } from '@/types';
 import type { Person, OrganisatieEenheidPersonenGroup } from '@/types';
 
 /** Org types where the manager role is labeled "Coördinator" instead of "Manager". */
@@ -286,7 +286,7 @@ export function OrganisatieDetail({
           <h2 className="text-xl font-semibold text-text">{eenheid.naam}</h2>
           {eenheid.manager && (
             <p className="text-sm text-text-secondary mt-0.5">
-              {eenheid.manager.naam}{eenheid.manager.functie ? ` — ${eenheid.manager.functie}` : ''}
+              {eenheid.manager.naam}{eenheid.manager.functie ? ` — ${formatFunctie(eenheid.manager.functie)}` : ''}
             </p>
           )}
           {eenheid.beschrijving && (() => {

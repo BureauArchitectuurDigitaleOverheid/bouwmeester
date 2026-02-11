@@ -16,6 +16,7 @@ import {
   TASK_STATUS_LABELS,
   TASK_PRIORITY_LABELS,
   ORGANISATIE_TYPE_LABELS,
+  formatFunctie,
 } from '@/types';
 import type { Task } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
@@ -77,7 +78,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
     ...(people ?? []).map((p) => ({
       value: p.id,
       label: p.naam,
-      description: p.functie ?? undefined,
+      description: formatFunctie(p.functie),
     })),
   ], [people, currentPerson]);
 
