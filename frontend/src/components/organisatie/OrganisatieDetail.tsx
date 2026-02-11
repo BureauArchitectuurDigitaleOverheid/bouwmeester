@@ -273,7 +273,7 @@ export function OrganisatieDetail({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Badge
@@ -310,7 +310,7 @@ export function OrganisatieDetail({
             ) : null;
           })()}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="secondary"
             size="sm"
@@ -331,7 +331,7 @@ export function OrganisatieDetail({
       </div>
 
       {/* Action buttons */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Button
           variant="secondary"
           size="sm"
