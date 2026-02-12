@@ -222,9 +222,7 @@ async def test_access_request_status_denied(client, db_session):
 async def test_admin_list_access_requests(client, db_session):
     """Admin can list all access requests."""
     for i in range(3):
-        db_session.add(
-            AccessRequest(email=f"list{i}@example.com", naam=f"List {i}")
-        )
+        db_session.add(AccessRequest(email=f"list{i}@example.com", naam=f"List {i}"))
     await db_session.flush()
 
     resp = await client.get("/api/admin/access-requests")
@@ -243,9 +241,7 @@ async def test_admin_list_access_requests_filter_pending(client, db_session):
     )
     await db_session.flush()
 
-    resp = await client.get(
-        "/api/admin/access-requests", params={"status": "pending"}
-    )
+    resp = await client.get("/api/admin/access-requests", params={"status": "pending"})
     assert resp.status_code == 200
     data = resp.json()
     emails = [r["email"] for r in data]
@@ -275,18 +271,14 @@ async def test_admin_approve_access_request(client, db_session):
 
     # Verify whitelist entry was created
     result = await db_session.execute(
-        select(WhitelistEmail).where(
-            WhitelistEmail.email == "approve@example.com"
-        )
+        select(WhitelistEmail).where(WhitelistEmail.email == "approve@example.com")
     )
     assert result.scalar_one_or_none() is not None
 
 
 async def test_admin_approve_already_reviewed(client, db_session):
     """Approving an already-reviewed request returns 409."""
-    req = AccessRequest(
-        email="already@example.com", naam="Already", status="approved"
-    )
+    req = AccessRequest(email="already@example.com", naam="Already", status="approved")
     db_session.add(req)
     await db_session.flush()
 
