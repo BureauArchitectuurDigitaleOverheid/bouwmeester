@@ -1,11 +1,11 @@
 import { useState, useCallback } from 'react';
 import { clsx } from 'clsx';
-import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, Bot, MessageSquare, Terminal, Building2, X } from 'lucide-react';
+import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, Bot, MessageSquare, Terminal, Building2, X, Phone, Star } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
-import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS } from '@/types';
+import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDateShort, todayISO } from '@/utils/dates';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
@@ -45,14 +45,15 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
   const endPlacement = useUpdatePersonOrganisatie();
   const removePlacement = useRemovePersonOrganisatie();
 
+  const displayEmail = person.default_email || person.email;
   const handleCopyEmail = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    if (person.email) {
-      navigator.clipboard.writeText(person.email);
+    if (displayEmail) {
+      navigator.clipboard.writeText(displayEmail);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }
-  }, [person.email]);
+  }, [displayEmail]);
 
   const initials = person.naam
     .split(' ')
@@ -102,15 +103,25 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             {extraBadge && <div className="shrink-0 ml-auto">{extraBadge}</div>}
           </div>
           <div className="flex items-center gap-3 text-xs text-text-secondary mt-0.5">
-            {person.email && (
+            {displayEmail && (
               <button
                 className="flex items-center gap-1 hover:text-primary-600 transition-colors"
                 onClick={handleCopyEmail}
                 title="Klik om e-mail te kopiëren"
               >
                 <Mail className="h-3 w-3" />
-                {copied ? 'Gekopieerd!' : person.email}
+                {copied ? 'Gekopieerd!' : displayEmail}
               </button>
+            )}
+            {person.default_phone && (
+              <a
+                href={`tel:${person.default_phone}`}
+                className="flex items-center gap-1 hover:text-primary-600 transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Phone className="h-3 w-3" />
+                {person.default_phone}
+              </a>
             )}
             {person.functie && !person.is_agent && (
               <span className="flex items-center gap-1">
@@ -148,6 +159,59 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
       {/* Expanded details */}
       {expanded && (
         <div className="mt-3 pt-3 border-t border-border text-xs">
+          {/* All emails */}
+          {person.emails && person.emails.length > 0 && (
+            <div className="mb-3">
+              <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
+                <Mail className="h-3 w-3" />
+                E-mailadressen
+              </p>
+              <div className="space-y-0.5">
+                {person.emails.map((em) => (
+                  <div key={em.id} className="flex items-center gap-1.5 text-text">
+                    <a
+                      href={`mailto:${em.email}`}
+                      className="hover:text-primary-600 transition-colors truncate"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {em.email}
+                    </a>
+                    {em.is_default && (
+                      <Star className="h-3 w-3 text-amber-500 shrink-0" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* All phones */}
+          {person.phones && person.phones.length > 0 && (
+            <div className="mb-3">
+              <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
+                <Phone className="h-3 w-3" />
+                Telefoonnummers
+              </p>
+              <div className="space-y-0.5">
+                {person.phones.map((ph) => (
+                  <div key={ph.id} className="flex items-center gap-1.5 text-text">
+                    <a
+                      href={`tel:${ph.phone_number}`}
+                      className="hover:text-primary-600 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {ph.phone_number}
+                    </a>
+                    <span className="text-text-secondary">
+                      {PHONE_LABELS[ph.label] || ph.label}
+                    </span>
+                    {ph.is_default && (
+                      <Star className="h-3 w-3 text-amber-500 shrink-0" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {summaryLoading ? (
             <div className="flex items-center gap-2 text-text-secondary py-1">
               <Loader2 className="h-3 w-3 animate-spin" />

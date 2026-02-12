@@ -147,6 +147,7 @@ async def second_node(db_session: AsyncSession):
 async def sample_person(db_session: AsyncSession):
     """Create a person for testing."""
     from bouwmeester.models.person import Person
+    from bouwmeester.models.person_email import PersonEmail
 
     person = Person(
         id=uuid.uuid4(),
@@ -157,6 +158,10 @@ async def sample_person(db_session: AsyncSession):
     )
     db_session.add(person)
     await db_session.flush()
+    db_session.add(
+        PersonEmail(person_id=person.id, email="jan@example.com", is_default=True)
+    )
+    await db_session.flush()
     return person
 
 
@@ -164,6 +169,7 @@ async def sample_person(db_session: AsyncSession):
 async def second_person(db_session: AsyncSession):
     """Create a second person for testing."""
     from bouwmeester.models.person import Person
+    from bouwmeester.models.person_email import PersonEmail
 
     person = Person(
         id=uuid.uuid4(),
@@ -173,6 +179,10 @@ async def second_person(db_session: AsyncSession):
         is_active=True,
     )
     db_session.add(person)
+    await db_session.flush()
+    db_session.add(
+        PersonEmail(person_id=person.id, email="piet@example.com", is_default=True)
+    )
     await db_session.flush()
     return person
 
@@ -326,6 +336,7 @@ async def sample_notification(db_session: AsyncSession, sample_person, second_pe
 async def third_person(db_session: AsyncSession):
     """Create a third person (manager) for testing."""
     from bouwmeester.models.person import Person
+    from bouwmeester.models.person_email import PersonEmail
 
     person = Person(
         id=uuid.uuid4(),
@@ -335,6 +346,10 @@ async def third_person(db_session: AsyncSession):
         is_active=True,
     )
     db_session.add(person)
+    await db_session.flush()
+    db_session.add(
+        PersonEmail(person_id=person.id, email="klaas@example.com", is_default=True)
+    )
     await db_session.flush()
     return person
 

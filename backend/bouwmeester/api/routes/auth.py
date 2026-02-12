@@ -33,7 +33,12 @@ from bouwmeester.schema.access_request import (
     AccessRequestCreate,
     AccessRequestStatusResponse,
 )
-from bouwmeester.schema.person import OnboardingRequest, PersonDetailResponse
+from bouwmeester.schema.person import (
+    OnboardingRequest,
+    PersonDetailResponse,
+    PersonResponse,
+)
+from bouwmeester.services.merge import find_merge_candidates, merge_persons
 from bouwmeester.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
@@ -319,6 +324,21 @@ async def me(current_user: CurrentUser) -> PersonDetailResponse:
 
 
 # ---------------------------------------------------------------------------
+# GET /merge-candidates -- find potential duplicate persons
+# ---------------------------------------------------------------------------
+
+
+@router.get("/merge-candidates", response_model=list[PersonResponse])
+async def get_merge_candidates(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[PersonResponse]:
+    """Find persons that may be duplicates of the current user."""
+    candidates = await find_merge_candidates(db, current_user)
+    return [PersonResponse.model_validate(c) for c in candidates]
+
+
+# ---------------------------------------------------------------------------
 # POST /onboarding -- complete onboarding for a new SSO user
 # ---------------------------------------------------------------------------
 
@@ -333,7 +353,8 @@ async def complete_onboarding(
     """Complete the onboarding flow for a newly-created SSO user.
 
     Updates the person's name and functie, and creates an org placement.
-    Rejects the request if the user has already completed onboarding.
+    If merge_with_id is provided, merges the current stub into the existing
+    person. Rejects the request if the user has already completed onboarding.
     """
     # Guard: reject if already onboarded.
     if not await _check_needs_onboarding(db, current_user):
@@ -352,6 +373,26 @@ async def complete_onboarding(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Organisatie-eenheid niet gevonden",
         )
+
+    if body.merge_with_id:
+        # Merge: absorb current stub into the existing person
+        target = await db.get(Person, body.merge_with_id)
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Samenvoeg-persoon niet gevonden",
+            )
+        merged = await merge_persons(
+            db,
+            keep_id=body.merge_with_id,
+            absorb_id=current_user.id,
+        )
+
+        # Update session to point to the merged person
+        request.session["person_db_id"] = str(merged.id)
+        request.session.pop("needs_onboarding", None)
+
+        return PersonDetailResponse.model_validate(merged)
 
     current_user.naam = body.naam
     current_user.functie = body.functie

@@ -4,7 +4,39 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+PHONE_LABELS = {"werk": "Werk", "mobiel": "Mobiel", "prive": "Priv\u00e9"}
+
+
+class PersonEmailCreate(BaseModel):
+    email: str = Field(max_length=254)
+    is_default: bool = False
+
+
+class PersonEmailResponse(BaseModel):
+    id: UUID
+    email: str
+    is_default: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PersonPhoneCreate(BaseModel):
+    phone_number: str = Field(max_length=50)
+    label: str = Field(max_length=20)
+    is_default: bool = False
+
+
+class PersonPhoneResponse(BaseModel):
+    id: UUID
+    phone_number: str
+    label: str
+    is_default: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PersonBase(BaseModel):
@@ -36,8 +68,53 @@ class PersonResponse(PersonBase):
     is_agent: bool
     is_admin: bool
     created_at: datetime
+    emails: list[PersonEmailResponse] = []
+    phones: list[PersonPhoneResponse] = []
+    default_email: str | None = None
+    default_phone: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _handle_unloaded_relations(cls, data):
+        """Set empty defaults for unloaded email/phone relationships on ORM objects.
+
+        When a Person is fetched without ``selectinload(Person.emails)``
+        or ``selectinload(Person.phones)``, accessing those attributes
+        would trigger a lazy load which fails in async context
+        (MissingGreenlet).  We detect this via the SQLAlchemy instance
+        state and replace the unloaded attributes with safe defaults so
+        Pydantic never touches the lazy attribute.
+        """
+        if not hasattr(data, "__tablename__"):
+            return data
+
+        from sqlalchemy.orm.attributes import instance_state
+
+        state = instance_state(data)
+        loaded = state.dict
+
+        if "emails" not in loaded:
+            # Pydantic will read the ORM attr → MissingGreenlet.
+            # Override with a plain dict so Pydantic uses it instead.
+            return {
+                "id": data.id,
+                "naam": data.naam,
+                "email": data.email,
+                "functie": data.functie,
+                "description": data.description,
+                "is_agent": data.is_agent,
+                "is_active": data.is_active,
+                "is_admin": data.is_admin,
+                "created_at": data.created_at,
+                "emails": [],
+                "phones": [],
+                "default_email": data.email,
+                "default_phone": None,
+            }
+
+        return data
 
 
 class PersonDetailResponse(PersonResponse):
@@ -95,6 +172,7 @@ class OnboardingRequest(BaseModel):
     functie: str = Field(min_length=1, max_length=200)
     organisatie_eenheid_id: UUID
     dienstverband: Dienstverband = "in_dienst"
+    merge_with_id: UUID | None = None
 
 
 class PersonOrganisatieCreate(BaseModel):

@@ -82,7 +82,7 @@ async def add_whitelist_email(
 
     entry = WhitelistEmail(
         email=email,
-        added_by=admin.email if admin else None,
+        added_by=admin.default_email if admin else None,
     )
     db.add(entry)
     await db.flush()
@@ -106,8 +106,9 @@ async def remove_whitelist_email(
             detail="Whitelist entry niet gevonden",
         )
 
-    # Guard: prevent admin from removing their own email (lockout protection)
-    if admin and admin.email and entry.email == admin.email.strip().lower():
+    # Guard: prevent admin from removing their own email (lockout)
+    admin_email = admin.default_email if admin else None
+    if admin_email and entry.email == admin_email.strip().lower():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Je kunt je eigen e-mailadres niet van de toegangslijst verwijderen",
@@ -221,11 +222,15 @@ async def review_access_request(
             select(WhitelistEmail).where(WhitelistEmail.email == email)
         )
         if existing.scalar_one_or_none() is None:
+            reviewer = admin.default_email if admin else None
+            added_label = (
+                f"access-request (by {reviewer})"
+                if reviewer
+                else "access-request"
+            )
             entry = WhitelistEmail(
                 email=email,
-                added_by=(
-                    f"access-request (by {admin.email})" if admin else "access-request"
-                ),
+                added_by=added_label,
             )
             db.add(entry)
 
@@ -254,7 +259,7 @@ async def export_database(
         export_database as do_export,
     )
 
-    user_label = (admin.email or admin.naam) if admin else "anonymous"
+    user_label = (admin.default_email or admin.naam) if admin else "anonymous"
     logger.info("Database export requested by %s", user_label)
 
     try:
@@ -308,7 +313,7 @@ async def import_database(
         import_database as do_import,
     )
 
-    user_label = (admin.email or admin.naam) if admin else "anonymous"
+    user_label = (admin.default_email or admin.naam) if admin else "anonymous"
     content = await file.read()
     if len(content) > MAX_BACKUP_SIZE:
         raise HTTPException(
@@ -383,6 +388,8 @@ _ALL_MODEL_TABLES = [
     "corpus_node_title",
     "corpus_node_status",
     "corpus_node",
+    "person_email",
+    "person_phone",
     "person_organisatie_eenheid",
     "organisatie_eenheid_manager",
     "organisatie_eenheid_parent",
@@ -412,7 +419,7 @@ async def reset_database(
             detail='Bevestig de reset door confirm op "RESET" te zetten.',
         )
 
-    user_label = (admin.email or admin.naam) if admin else "anonymous"
+    user_label = (admin.default_email or admin.naam) if admin else "anonymous"
     logger.warning("DATABASE RESET requested by %s", user_label)
 
     tables_to_clear = [t for t in _ALL_MODEL_TABLES if t not in _PRESERVED_TABLES]
