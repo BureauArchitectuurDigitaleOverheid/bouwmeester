@@ -24,6 +24,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 
 COPY --from=builder --chown=appuser:appuser /app /app
+# age-recipients.txt is copied into the build context by CI; wildcard
+# makes it optional for local builds where encryption is not needed.
+COPY --chown=appuser:appuser age-recipients.tx[t] /app/
 
 USER 1001
 
