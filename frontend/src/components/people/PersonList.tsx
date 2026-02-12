@@ -20,7 +20,10 @@ export function PersonList({ people, isLoading, onPersonClick }: PersonListProps
     const q = searchQuery.toLowerCase();
     return (
       person.naam.toLowerCase().includes(q) ||
+      person.default_email?.toLowerCase().includes(q) ||
       person.email?.toLowerCase().includes(q) ||
+      person.emails?.some((e) => e.email.toLowerCase().includes(q)) ||
+      person.default_phone?.toLowerCase().includes(q) ||
       person.functie?.toLowerCase().includes(q) ||
       person.description?.toLowerCase().includes(q)
     );

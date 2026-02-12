@@ -13,15 +13,22 @@ from bouwmeester.core.database import get_db
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
+from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.person_phone import PersonPhone
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.person import (
+    PHONE_LABELS,
     PersonCreate,
     PersonDetailResponse,
+    PersonEmailCreate,
+    PersonEmailResponse,
     PersonOrganisatieCreate,
     PersonOrganisatieResponse,
     PersonOrganisatieUpdate,
+    PersonPhoneCreate,
+    PersonPhoneResponse,
     PersonResponse,
     PersonStakeholderNode,
     PersonSummaryResponse,
@@ -69,6 +76,13 @@ async def create_person(
     repo = PersonRepository(db)
     person = await repo.create(data)
 
+    # Also create a PersonEmail row if email was provided
+    if data.email:
+        email_obj = PersonEmail(person_id=person.id, email=data.email, is_default=True)
+        db.add(email_obj)
+        await db.flush()
+        await db.refresh(person, attribute_names=["emails"])
+
     await log_activity(
         db,
         current_user,
@@ -77,6 +91,8 @@ async def create_person(
         details={"person_id": str(person.id), "naam": person.naam},
     )
 
+    # Re-fetch with eager loading for response
+    person = await repo.get(person.id)
     return PersonDetailResponse.model_validate(person)
 
 
@@ -181,7 +197,10 @@ async def update_person(
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
     repo = PersonRepository(db)
-    person = require_found(await repo.update(id, data), "Person")
+    require_found(await repo.update(id, data), "Person")
+
+    # Re-fetch with eager loading for response
+    person = require_found(await repo.get(id), "Person")
 
     await log_activity(
         db,
@@ -393,3 +412,244 @@ async def delete_person_organisatie(
         "person.organisatie_removed",
         details={"person_id": str(id), "placement_id": str(placement_id)},
     )
+
+
+# --- Emails ---
+
+
+@router.post(
+    "/{id}/emails",
+    response_model=PersonEmailResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_person_email(
+    id: UUID,
+    data: PersonEmailCreate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> PersonEmailResponse:
+    require_found(await db.get(Person, id), "Person")
+    email = data.email.strip().lower()
+
+    # Check uniqueness
+    existing = await db.execute(select(PersonEmail).where(PersonEmail.email == email))
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"E-mailadres '{email}' is al in gebruik",
+        )
+
+    # If this is the first email, auto-set as default
+    count_result = await db.execute(
+        select(func.count()).select_from(PersonEmail).where(PersonEmail.person_id == id)
+    )
+    is_first = (count_result.scalar() or 0) == 0
+
+    email_obj = PersonEmail(
+        person_id=id,
+        email=email,
+        is_default=data.is_default or is_first,
+    )
+    db.add(email_obj)
+
+    # If setting as default, unset others
+    if email_obj.is_default:
+        for existing_email in (
+            await db.execute(
+                select(PersonEmail).where(
+                    PersonEmail.person_id == id,
+                    PersonEmail.email != email,
+                )
+            )
+        ).scalars():
+            existing_email.is_default = False
+
+    await db.flush()
+    await db.refresh(email_obj)
+    return PersonEmailResponse.model_validate(email_obj)
+
+
+@router.delete(
+    "/{id}/emails/{email_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_person_email(
+    id: UUID,
+    email_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    stmt = select(PersonEmail).where(
+        PersonEmail.id == email_id,
+        PersonEmail.person_id == id,
+    )
+    result = await db.execute(stmt)
+    email_obj = require_found(result.scalar_one_or_none(), "Email")
+    was_default = email_obj.is_default
+    await db.delete(email_obj)
+    await db.flush()
+
+    # Auto-promote another email to default if we deleted the default
+    if was_default:
+        next_email = (
+            await db.execute(
+                select(PersonEmail)
+                .where(PersonEmail.person_id == id)
+                .order_by(PersonEmail.created_at.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if next_email:
+            next_email.is_default = True
+            await db.flush()
+
+
+@router.post(
+    "/{id}/emails/{email_id}/set-default",
+    response_model=PersonEmailResponse,
+)
+async def set_default_email(
+    id: UUID,
+    email_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> PersonEmailResponse:
+    # Unset all defaults for this person
+    all_emails = (
+        (await db.execute(select(PersonEmail).where(PersonEmail.person_id == id)))
+        .scalars()
+        .all()
+    )
+    target = None
+    for e in all_emails:
+        if e.id == email_id:
+            e.is_default = True
+            target = e
+        else:
+            e.is_default = False
+
+    if target is None:
+        raise HTTPException(status_code=404, detail="Email niet gevonden")
+
+    await db.flush()
+    await db.refresh(target)
+    return PersonEmailResponse.model_validate(target)
+
+
+# --- Phones ---
+
+
+@router.post(
+    "/{id}/phones",
+    response_model=PersonPhoneResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_person_phone(
+    id: UUID,
+    data: PersonPhoneCreate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> PersonPhoneResponse:
+    require_found(await db.get(Person, id), "Person")
+
+    if data.label not in PHONE_LABELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Label moet een van {list(PHONE_LABELS.keys())} zijn",
+        )
+
+    # If this is the first phone, auto-set as default
+    count_result = await db.execute(
+        select(func.count()).select_from(PersonPhone).where(PersonPhone.person_id == id)
+    )
+    is_first = (count_result.scalar() or 0) == 0
+
+    phone_obj = PersonPhone(
+        person_id=id,
+        phone_number=data.phone_number,
+        label=data.label,
+        is_default=data.is_default or is_first,
+    )
+    db.add(phone_obj)
+
+    # If setting as default, unset others
+    if phone_obj.is_default:
+        for existing_phone in (
+            await db.execute(
+                select(PersonPhone).where(
+                    PersonPhone.person_id == id,
+                )
+            )
+        ).scalars():
+            if existing_phone is not phone_obj:
+                existing_phone.is_default = False
+
+    await db.flush()
+    await db.refresh(phone_obj)
+    return PersonPhoneResponse.model_validate(phone_obj)
+
+
+@router.delete(
+    "/{id}/phones/{phone_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_person_phone(
+    id: UUID,
+    phone_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    stmt = select(PersonPhone).where(
+        PersonPhone.id == phone_id,
+        PersonPhone.person_id == id,
+    )
+    result = await db.execute(stmt)
+    phone_obj = require_found(result.scalar_one_or_none(), "Telefoon")
+    was_default = phone_obj.is_default
+    await db.delete(phone_obj)
+    await db.flush()
+
+    # Auto-promote another phone to default if we deleted the default
+    if was_default:
+        next_phone = (
+            await db.execute(
+                select(PersonPhone)
+                .where(PersonPhone.person_id == id)
+                .order_by(PersonPhone.created_at.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if next_phone:
+            next_phone.is_default = True
+            await db.flush()
+
+
+@router.post(
+    "/{id}/phones/{phone_id}/set-default",
+    response_model=PersonPhoneResponse,
+)
+async def set_default_phone(
+    id: UUID,
+    phone_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> PersonPhoneResponse:
+    all_phones = (
+        (await db.execute(select(PersonPhone).where(PersonPhone.person_id == id)))
+        .scalars()
+        .all()
+    )
+    target = None
+    for p in all_phones:
+        if p.id == phone_id:
+            p.is_default = True
+            target = p
+        else:
+            p.is_default = False
+
+    if target is None:
+        raise HTTPException(status_code=404, detail="Telefoonnummer niet gevonden")
+
+    await db.flush()
+    await db.refresh(target)
+    return PersonPhoneResponse.model_validate(target)

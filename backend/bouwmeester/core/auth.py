@@ -12,6 +12,7 @@ import asyncio
 import logging
 import time
 from typing import Annotated, Any
+from uuid import UUID
 
 import httpx
 from authlib.integrations.starlette_client import OAuth
@@ -26,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
+from bouwmeester.models.person_email import PersonEmail
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +250,29 @@ def get_oauth(settings: Settings | None = None) -> OAuth | None:
 # ---------------------------------------------------------------------------
 
 
+async def _ensure_email_linked(db: AsyncSession, person_id: UUID, email: str) -> None:
+    """Add email to person_email if not already present (is_default=False)."""
+    email = email.strip().lower()
+
+    existing = await db.execute(select(PersonEmail).where(PersonEmail.email == email))
+    existing_row = existing.scalar_one_or_none()
+    if existing_row is not None:
+        if existing_row.person_id != person_id:
+            logger.warning(
+                "Email %s already linked to person %s, not to %s",
+                email,
+                existing_row.person_id,
+                person_id,
+            )
+        return
+    try:
+        async with db.begin_nested():
+            db.add(PersonEmail(person_id=person_id, email=email, is_default=False))
+            await db.flush()
+    except IntegrityError:
+        pass  # Concurrent insert — ignore (savepoint already rolled back)
+
+
 async def get_or_create_person(
     db: AsyncSession,
     sub: str,
@@ -268,18 +293,28 @@ async def get_or_create_person(
     person = result.scalar_one_or_none()
 
     if person is not None:
+        # Auto-accumulate emails across logins
+        await _ensure_email_linked(db, person.id, email)
         return person
 
     # Only link by email if the OIDC provider has verified the email address.
     if email_verified:
-        stmt_email = select(Person).where(Person.email == email)
+        # Look up in person_email table
+        stmt_email = select(Person).join(PersonEmail).where(PersonEmail.email == email)
         result_email = await db.execute(stmt_email)
         person = result_email.scalar_one_or_none()
+
+        if person is None:
+            # Fallback: check legacy Person.email column
+            stmt_legacy = select(Person).where(Person.email == email)
+            result_legacy = await db.execute(stmt_legacy)
+            person = result_legacy.scalar_one_or_none()
 
         if person is not None:
             person.oidc_subject = sub
             if name and not person.naam:
                 person.naam = name
+            await _ensure_email_linked(db, person.id, email)
             await db.flush()
             await db.refresh(person)
             return person
@@ -293,19 +328,25 @@ async def get_or_create_person(
         )
         db.add(person)
         await db.flush()
+        # Create PersonEmail row for the new person
+        email_obj = PersonEmail(person_id=person.id, email=email, is_default=True)
+        db.add(email_obj)
+        await db.flush()
         await db.refresh(person)
         return person
     except IntegrityError:
         # Concurrent insert — roll back and re-fetch.
-        # Prefer matching by oidc_subject to avoid returning the wrong
-        # person when two different subjects share the same email.
         await db.rollback()
         stmt = select(Person).where(Person.oidc_subject == sub)
         result = await db.execute(stmt)
         person = result.scalar_one_or_none()
         if person is None:
-            # Fall back to email match (the IntegrityError may have been
-            # caused by a duplicate email rather than duplicate subject).
+            # Fall back to email match in person_email table.
+            stmt = select(Person).join(PersonEmail).where(PersonEmail.email == email)
+            result = await db.execute(stmt)
+            person = result.scalar_one_or_none()
+        if person is None:
+            # Legacy fallback
             stmt = select(Person).where(Person.email == email)
             result = await db.execute(stmt)
             person = result.scalar_one_or_none()

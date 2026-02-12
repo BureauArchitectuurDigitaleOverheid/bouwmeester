@@ -29,11 +29,15 @@ from bouwmeester.models.access_request import AccessRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.access_request import (
     AccessRequestCreate,
     AccessRequestStatusResponse,
 )
-from bouwmeester.schema.person import OnboardingRequest, PersonDetailResponse
+from bouwmeester.schema.person import (
+    OnboardingRequest,
+    PersonDetailResponse,
+)
 from bouwmeester.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
@@ -365,13 +369,15 @@ async def complete_onboarding(
     )
     db.add(placement)
     await db.flush()
-    await db.refresh(current_user)
 
     # Invalidate the session cache so /status re-checks from DB.
     request.session.pop("needs_onboarding", None)
     request.session.pop("person_db_id", None)
 
-    return PersonDetailResponse.model_validate(current_user)
+    # Re-fetch with eager loading so emails/phones are included in response
+    repo = PersonRepository(db)
+    person = await repo.get(current_user.id)
+    return PersonDetailResponse.model_validate(person)
 
 
 # ---------------------------------------------------------------------------

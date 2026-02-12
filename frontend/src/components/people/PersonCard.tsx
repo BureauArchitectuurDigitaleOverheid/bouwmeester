@@ -1,4 +1,4 @@
-import { User, Mail, Briefcase, Bot } from 'lucide-react';
+import { User, Mail, Briefcase, Bot, Phone } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { formatFunctie } from '@/types';
 import type { Person } from '@/types';
@@ -50,11 +50,25 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
           </div>
 
           <div className="space-y-1 mt-1.5">
-            {person.email && (
-              <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+            {(person.default_email || person.email) && (
+              <a
+                href={`mailto:${person.default_email || person.email}`}
+                className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary-600 transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <Mail className="h-3 w-3 shrink-0" />
-                <span className="truncate">{person.email}</span>
-              </div>
+                <span className="truncate">{person.default_email || person.email}</span>
+              </a>
+            )}
+            {person.default_phone && (
+              <a
+                href={`tel:${person.default_phone}`}
+                className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary-600 transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Phone className="h-3 w-3 shrink-0" />
+                <span className="truncate">{person.default_phone}</span>
+              </a>
             )}
             {person.functie && (
               <div className="flex items-center gap-1.5 text-xs text-text-secondary">

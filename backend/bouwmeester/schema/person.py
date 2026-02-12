@@ -4,7 +4,59 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+import phonenumbers
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
+
+PHONE_LABELS = {"werk": "Werk", "mobiel": "Mobiel", "prive": "Priv\u00e9"}
+
+
+class PersonEmailCreate(BaseModel):
+    email: EmailStr
+    is_default: bool = False
+
+
+class PersonEmailResponse(BaseModel):
+    id: UUID
+    email: str
+    is_default: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PersonPhoneCreate(BaseModel):
+    phone_number: str = Field(min_length=3, max_length=50)
+    label: str = Field(max_length=20)
+    is_default: bool = False
+
+    @field_validator("phone_number")
+    @classmethod
+    def normalize_phone_number(cls, v: str) -> str:
+        """Parse and normalize to E.164 international format."""
+        try:
+            parsed = phonenumbers.parse(v, "NL")  # default region NL
+        except phonenumbers.NumberParseException as exc:
+            raise ValueError(f"Ongeldig telefoonnummer: {exc}") from exc
+        if not phonenumbers.is_valid_number(parsed):
+            raise ValueError("Ongeldig telefoonnummer")
+        return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+
+
+class PersonPhoneResponse(BaseModel):
+    id: UUID
+    phone_number: str
+    label: str
+    is_default: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PersonBase(BaseModel):
@@ -36,8 +88,45 @@ class PersonResponse(PersonBase):
     is_agent: bool
     is_admin: bool
     created_at: datetime
+    emails: list[PersonEmailResponse] = []
+    phones: list[PersonPhoneResponse] = []
+    default_email: str | None = None
+    default_phone: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _handle_unloaded_relations(cls, data):
+        """Set empty defaults for unloaded email/phone relationships on ORM objects.
+
+        When a Person is fetched without ``selectinload(Person.emails)``
+        or ``selectinload(Person.phones)``, accessing those attributes
+        would trigger a lazy load which fails in async context
+        (MissingGreenlet).  We detect this via the SQLAlchemy instance
+        state and replace the unloaded attributes with safe defaults so
+        Pydantic never touches the lazy attribute.
+        """
+        if not hasattr(data, "__tablename__"):
+            return data
+
+        from sqlalchemy.orm.attributes import instance_state
+
+        state = instance_state(data)
+        loaded = state.dict
+
+        if "emails" not in loaded:
+            # Pydantic will read the ORM attr → MissingGreenlet.
+            # Build a dict from all loaded column attrs, then override
+            # the unloaded relationship attrs with safe defaults.
+            result = {k: v for k, v in loaded.items() if not k.startswith("_")}
+            result["emails"] = []
+            result["phones"] = []
+            result["default_email"] = data.email
+            result["default_phone"] = None
+            return result
+
+        return data
 
 
 class PersonDetailResponse(PersonResponse):

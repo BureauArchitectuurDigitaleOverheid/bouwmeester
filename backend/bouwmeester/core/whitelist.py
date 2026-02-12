@@ -82,6 +82,7 @@ async def seed_admins_from_file(session: AsyncSession) -> int:
     Returns the number of newly created person stubs.
     """
     from bouwmeester.models.person import Person
+    from bouwmeester.models.person_email import PersonEmail
 
     try:
         emails = _load_emails_from_file(_ADMIN_JSON_PATH, _ADMIN_AGE_PATH)
@@ -96,21 +97,48 @@ async def seed_admins_from_file(session: AsyncSession) -> int:
     if not emails:
         return 0
 
-    # Update existing persons
-    result = await session.execute(
-        update(Person).where(func.lower(Person.email).in_(emails)).values(is_admin=True)
+    # Update existing persons found via person_email table
+    person_email_result = await session.execute(
+        select(PersonEmail.person_id).where(func.lower(PersonEmail.email).in_(emails))
     )
-    updated = result.rowcount
+    person_ids_from_email_table = {row[0] for row in person_email_result.all()}
 
-    # Find which admin emails don't have a person yet and create stubs
-    existing_result = await session.execute(
+    # Also check legacy Person.email column
+    legacy_result = await session.execute(
+        select(Person.id).where(func.lower(Person.email).in_(emails))
+    )
+    person_ids_from_legacy = {row[0] for row in legacy_result.all()}
+
+    all_person_ids = person_ids_from_email_table | person_ids_from_legacy
+    updated = 0
+    if all_person_ids:
+        result = await session.execute(
+            update(Person).where(Person.id.in_(all_person_ids)).values(is_admin=True)
+        )
+        updated = result.rowcount
+
+    # Find which admin emails already have a person
+    existing_emails_result = await session.execute(
+        select(func.lower(PersonEmail.email)).where(
+            func.lower(PersonEmail.email).in_(emails)
+        )
+    )
+    existing_emails = {row[0] for row in existing_emails_result.all()}
+
+    # Also check legacy column
+    legacy_emails_result = await session.execute(
         select(func.lower(Person.email)).where(func.lower(Person.email).in_(emails))
     )
-    existing_emails = {row[0] for row in existing_result.all()}
+    existing_emails |= {row[0] for row in legacy_emails_result.all() if row[0]}
+
     missing_emails = emails - existing_emails
 
     for email in missing_emails:
-        session.add(Person(email=email, naam=email, is_admin=True))
+        person = Person(email=email, naam=email, is_admin=True)
+        session.add(person)
+        await session.flush()
+        # Also create PersonEmail row
+        session.add(PersonEmail(person_id=person.id, email=email, is_default=True))
     if missing_emails:
         await session.flush()
 

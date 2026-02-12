@@ -84,7 +84,7 @@ export function PersonEditForm({
   const naamOptions: SelectOption[] = personResults.map(p => ({
     value: p.id,
     label: p.naam,
-    description: p.email || undefined,
+    description: p.default_email || p.email || undefined,
   }));
 
   const naamEmptyMessage = naamQuery.length < 2
@@ -192,7 +192,7 @@ export function PersonEditForm({
     if (person) {
       setSelectedPerson(person);
       setNaam(person.naam);
-      setEmail(person.email || '');
+      setEmail(person.default_email || person.email || '');
       setFunctie(person.functie || '');
       // Ensure the functie value is in options
       if (person.functie) {
