@@ -465,8 +465,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                         try {
                           await uploadBijlage(nodeId, file);
                           refetchBijlage();
-                        } catch {
-                          alert('Upload mislukt. Controleer bestandstype en grootte.');
+                        } catch (err) {
+                          const msg = err instanceof Error ? err.message : 'Onbekende fout';
+                          alert(`Upload mislukt: ${msg}`);
                         } finally {
                           setBijlageUploading(false);
                         }

@@ -18,7 +18,15 @@ from bouwmeester.schema.bron import BronBijlageResponse
 
 router = APIRouter(prefix="/nodes/{node_id}/bijlage", tags=["bijlage"])
 
-BIJLAGEN_ROOT = Path(os.environ.get("BIJLAGEN_ROOT", "/app/bijlagen"))
+
+def _default_bijlagen_root() -> str:
+    data_path = os.environ.get("DATA_PATH")
+    if data_path:
+        return os.path.join(data_path, "bijlagen")
+    return "/app/bijlagen"
+
+
+BIJLAGEN_ROOT = Path(os.environ.get("BIJLAGEN_ROOT", _default_bijlagen_root()))
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
 ALLOWED_CONTENT_TYPES = {
     "application/pdf",
