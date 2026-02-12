@@ -9,6 +9,7 @@ export enum NodeType {
   PROBLEEM = 'probleem',
   EFFECT = 'effect',
   BELEIDSOPTIE = 'beleidsoptie',
+  BRON = 'bron',
   NOTITIE = 'notitie',
   OVERIG = 'overig',
 }
@@ -23,6 +24,7 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   [NodeType.PROBLEEM]: 'Probleem',
   [NodeType.EFFECT]: 'Effect',
   [NodeType.BELEIDSOPTIE]: 'Beleidsoptie',
+  [NodeType.BRON]: 'Bron',
   [NodeType.NOTITIE]: 'Notitie',
   [NodeType.OVERIG]: 'Overig',
 };
@@ -37,8 +39,20 @@ export const NODE_TYPE_COLORS: Record<NodeType, string> = {
   [NodeType.PROBLEEM]: 'red',
   [NodeType.EFFECT]: 'emerald',
   [NodeType.BELEIDSOPTIE]: 'indigo',
+  [NodeType.BRON]: 'orange',
   [NodeType.NOTITIE]: 'slate',
   [NodeType.OVERIG]: 'gray',
+};
+
+export const BRON_TYPE_LABELS: Record<string, string> = {
+  rapport: 'Rapport',
+  onderzoek: 'Onderzoek',
+  wetgeving: 'Wetgeving',
+  advies: 'Advies',
+  opinie: 'Opinie',
+  beleidsnota: 'Beleidsnota',
+  evaluatie: 'Evaluatie',
+  overig: 'Overig',
 };
 
 // Node Status

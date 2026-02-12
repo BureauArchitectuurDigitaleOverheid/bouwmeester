@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete } from './client';
+import { apiGet, apiPost, apiPut, apiDelete, BASE_URL, getCsrfToken } from './client';
 import type { CorpusNode, CorpusNodeCreate, CorpusNodeUpdate, GraphViewResponse, NodeStakeholder, NodeTitleRecord, NodeStatusRecord, NodeType } from '@/types';
 
 export async function getNodes(nodeType?: NodeType): Promise<CorpusNode[]> {
@@ -79,4 +79,60 @@ export interface NodeParlementairItem {
 
 export async function getNodeParlementairItem(id: string): Promise<NodeParlementairItem | null> {
   return apiGet<NodeParlementairItem | null>(`/api/nodes/${id}/parlementair-item`);
+}
+
+// --- Bron detail ---
+
+export interface NodeBronDetail {
+  type: string;
+  auteur: string | null;
+  publicatie_datum: string | null;
+  url: string | null;
+}
+
+export async function getNodeBronDetail(id: string): Promise<NodeBronDetail | null> {
+  return apiGet<NodeBronDetail | null>(`/api/nodes/${id}/bron-detail`);
+}
+
+export async function updateNodeBronDetail(id: string, data: Partial<NodeBronDetail>): Promise<NodeBronDetail> {
+  return apiPut<NodeBronDetail>(`/api/nodes/${id}/bron-detail`, data);
+}
+
+// --- Bijlage ---
+
+export interface BijlageInfo {
+  id: string;
+  bestandsnaam: string;
+  content_type: string;
+  bestandsgrootte: number;
+  created_at: string;
+}
+
+export async function getBijlageInfo(nodeId: string): Promise<BijlageInfo | null> {
+  return apiGet<BijlageInfo | null>(`/api/nodes/${nodeId}/bijlage`);
+}
+
+export async function uploadBijlage(nodeId: string, file: File): Promise<BijlageInfo> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const url = `${BASE_URL}/api/nodes/${nodeId}/bijlage`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'X-CSRF-Token': getCsrfToken() },
+    body: formData,
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Upload failed: ${response.status} ${text}`);
+  }
+  return response.json();
+}
+
+export async function deleteBijlage(nodeId: string): Promise<void> {
+  return apiDelete(`/api/nodes/${nodeId}/bijlage`);
+}
+
+export function getBijlageDownloadUrl(nodeId: string): string {
+  return `${BASE_URL}/api/nodes/${nodeId}/bijlage/download`;
 }

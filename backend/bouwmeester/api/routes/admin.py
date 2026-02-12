@@ -295,6 +295,8 @@ _ALL_MODEL_TABLES = [
     "probleem",
     "effect",
     "beleidsoptie",
+    "bron_bijlage",
+    "bron",
     "dossier",
     "doel",
     "instrument",

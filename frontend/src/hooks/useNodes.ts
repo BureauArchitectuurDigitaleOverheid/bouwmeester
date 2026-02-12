@@ -4,6 +4,7 @@ import {
   getNodeNeighbors, getNodeStakeholders, addNodeStakeholder,
   updateNodeStakeholder, removeNodeStakeholder, getNodeParlementairItem,
   getNodeTitleHistory, getNodeStatusHistory,
+  getNodeBronDetail, getBijlageInfo,
 } from '@/api/nodes';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import type { CorpusNodeCreate, CorpusNodeUpdate, NodeType } from '@/types';
@@ -129,5 +130,21 @@ export function useNodeParlementairItem(id: string | undefined, nodeType?: strin
     queryKey: ['nodes', 'detail', id, 'parlementair-item'],
     queryFn: () => getNodeParlementairItem(id!),
     enabled: !!id && nodeType === 'politieke_input',
+  });
+}
+
+export function useNodeBronDetail(id: string | undefined, nodeType?: string) {
+  return useQuery({
+    queryKey: ['nodes', 'detail', id, 'bron-detail'],
+    queryFn: () => getNodeBronDetail(id!),
+    enabled: !!id && nodeType === 'bron',
+  });
+}
+
+export function useNodeBijlage(id: string | undefined, nodeType?: string) {
+  return useQuery({
+    queryKey: ['nodes', 'detail', id, 'bijlage'],
+    queryFn: () => getBijlageInfo(id!),
+    enabled: !!id && nodeType === 'bron',
   });
 }

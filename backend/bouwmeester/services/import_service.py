@@ -114,6 +114,7 @@ class ImportService:
             "beleidskader",
             "maatregel",
             "politieke_input",
+            "bron",
         }
 
         text_content = file_content.decode("utf-8-sig")

@@ -14,6 +14,7 @@ const NODE_TYPE_HEX_COLORS: Record<string, string> = {
   [NodeType.PROBLEEM]: '#EF4444',
   [NodeType.EFFECT]: '#059669',
   [NodeType.BELEIDSOPTIE]: '#6366F1',
+  [NodeType.BRON]: '#F97316',
   [NodeType.NOTITIE]: '#64748b',
   [NodeType.OVERIG]: '#9ca3af',
 };
@@ -28,6 +29,7 @@ const NODE_TYPE_BG_COLORS: Record<string, string> = {
   [NodeType.PROBLEEM]: '#FEF2F2',
   [NodeType.EFFECT]: '#ECFDF5',
   [NodeType.BELEIDSOPTIE]: '#EEF2FF',
+  [NodeType.BRON]: '#FFF7ED',
   [NodeType.NOTITIE]: '#F8FAFC',
   [NodeType.OVERIG]: '#F9FAFB',
 };
