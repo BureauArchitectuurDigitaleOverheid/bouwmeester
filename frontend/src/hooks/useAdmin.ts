@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/api/client';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
+import type { AccessRequest } from '@/types';
 
 export interface WhitelistEmail {
   id: string;
@@ -55,5 +56,22 @@ export function useToggleAdmin() {
       apiPatch<AdminUser>(`/api/admin/users/${id}`, { is_admin }),
     errorMessage: 'Fout bij wijzigen van admin-status',
     invalidateKeys: [['admin', 'users']],
+  });
+}
+
+export function useAccessRequests(status?: string) {
+  return useQuery({
+    queryKey: ['admin', 'access-requests', status],
+    queryFn: () =>
+      apiGet<AccessRequest[]>('/api/admin/access-requests', status ? { status } : undefined),
+  });
+}
+
+export function useReviewAccessRequest() {
+  return useMutationWithError({
+    mutationFn: ({ id, action, deny_reason }: { id: string; action: 'approve' | 'deny'; deny_reason?: string }) =>
+      apiPatch<AccessRequest>(`/api/admin/access-requests/${id}`, { action, deny_reason }),
+    errorMessage: 'Fout bij beoordelen van toegangsverzoek',
+    invalidateKeys: [['admin', 'access-requests'], ['admin', 'whitelist']],
   });
 }

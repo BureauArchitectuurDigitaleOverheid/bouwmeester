@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from unittest.mock import patch
-
 import pytest
 
 from bouwmeester.core import whitelist
@@ -21,101 +17,49 @@ def _reset_whitelist():
     whitelist._whitelist_active = False
 
 
-class TestNoWhitelistFile:
-    """When no whitelist file exists, all emails should be allowed."""
+class TestWhitelistInactive:
+    """When whitelist is not active, all emails should be allowed."""
 
-    def test_all_emails_allowed(self):
-        with (
-            patch.object(whitelist, "_WL_JSON_PATH", Path("/nonexistent/wl.json")),
-            patch.object(whitelist, "_WL_AGE_PATH", Path("/nonexistent/wl.json.age")),
-        ):
-            whitelist.load_whitelist()
-
+    def test_all_emails_allowed_by_default(self):
         assert whitelist.is_email_allowed("anyone@example.com") is True
 
-    def test_whitelist_not_active(self):
-        with (
-            patch.object(whitelist, "_WL_JSON_PATH", Path("/nonexistent/wl.json")),
-            patch.object(whitelist, "_WL_AGE_PATH", Path("/nonexistent/wl.json.age")),
-        ):
-            whitelist.load_whitelist()
-
+    def test_load_whitelist_sets_inactive(self):
+        whitelist.load_whitelist()
         assert whitelist._whitelist_active is False
+        assert whitelist.is_email_allowed("anyone@example.com") is True
 
 
-class TestWhitelistLoaded:
-    """When a whitelist JSON file is present."""
+class TestWhitelistActive:
+    """When whitelist is active with cached emails."""
 
-    def test_allowed_email(self, tmp_path: Path):
-        wl = tmp_path / "access_whitelist.json"
-        wl.write_text(json.dumps({"emails": ["alice@example.com", "bob@example.com"]}))
-
-        with patch.object(whitelist, "_WL_JSON_PATH", wl):
-            whitelist.load_whitelist()
+    def test_allowed_email(self):
+        whitelist._allowed_emails = {"alice@example.com", "bob@example.com"}
+        whitelist._whitelist_active = True
 
         assert whitelist.is_email_allowed("alice@example.com") is True
         assert whitelist.is_email_allowed("bob@example.com") is True
 
-    def test_denied_email(self, tmp_path: Path):
-        wl = tmp_path / "access_whitelist.json"
-        wl.write_text(json.dumps({"emails": ["alice@example.com"]}))
-
-        with patch.object(whitelist, "_WL_JSON_PATH", wl):
-            whitelist.load_whitelist()
+    def test_denied_email(self):
+        whitelist._allowed_emails = {"alice@example.com"}
+        whitelist._whitelist_active = True
 
         assert whitelist.is_email_allowed("eve@example.com") is False
 
-    def test_case_insensitive(self, tmp_path: Path):
-        wl = tmp_path / "access_whitelist.json"
-        wl.write_text(json.dumps({"emails": ["Alice@Example.COM"]}))
+    def test_case_insensitive(self):
+        whitelist._allowed_emails = {"alice@example.com"}
+        whitelist._whitelist_active = True
 
-        with patch.object(whitelist, "_WL_JSON_PATH", wl):
-            whitelist.load_whitelist()
-
-        assert whitelist.is_email_allowed("alice@example.com") is True
-        assert whitelist.is_email_allowed("ALICE@EXAMPLE.COM") is True
         assert whitelist.is_email_allowed("Alice@Example.COM") is True
+        assert whitelist.is_email_allowed("ALICE@EXAMPLE.COM") is True
 
-    def test_whitespace_stripped(self, tmp_path: Path):
-        wl = tmp_path / "access_whitelist.json"
-        wl.write_text(json.dumps({"emails": ["  alice@example.com  "]}))
+    def test_whitespace_stripped(self):
+        whitelist._allowed_emails = {"alice@example.com"}
+        whitelist._whitelist_active = True
 
-        with patch.object(whitelist, "_WL_JSON_PATH", wl):
-            whitelist.load_whitelist()
-
-        assert whitelist.is_email_allowed("alice@example.com") is True
         assert whitelist.is_email_allowed("  alice@example.com  ") is True
 
-    def test_empty_whitelist_denies_all(self, tmp_path: Path):
-        wl = tmp_path / "access_whitelist.json"
-        wl.write_text(json.dumps({"emails": []}))
+    def test_empty_whitelist_denies_all(self):
+        whitelist._allowed_emails = set()
+        whitelist._whitelist_active = True
 
-        with patch.object(whitelist, "_WL_JSON_PATH", wl):
-            whitelist.load_whitelist()
-
-        assert whitelist._whitelist_active is True
         assert whitelist.is_email_allowed("anyone@example.com") is False
-
-
-class TestMalformedWhitelist:
-    """Malformed files should fail-closed (deny all)."""
-
-    def test_invalid_json_denies_all(self, tmp_path: Path):
-        wl = tmp_path / "access_whitelist.json"
-        wl.write_text("not valid json {{{")
-
-        with patch.object(whitelist, "_WL_JSON_PATH", wl):
-            whitelist.load_whitelist()
-
-        assert whitelist._whitelist_active is True
-        assert whitelist.is_email_allowed("anyone@example.com") is False
-
-    def test_missing_emails_key_allows_none(self, tmp_path: Path):
-        wl = tmp_path / "access_whitelist.json"
-        wl.write_text(json.dumps({"wrong_key": ["a@b.com"]}))
-
-        with patch.object(whitelist, "_WL_JSON_PATH", wl):
-            whitelist.load_whitelist()
-
-        assert whitelist._whitelist_active is True
-        assert whitelist.is_email_allowed("a@b.com") is False

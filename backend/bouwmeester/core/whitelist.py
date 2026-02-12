@@ -1,20 +1,15 @@
 """Access whitelist — restrict login to a set of allowed email addresses.
 
-The whitelist is stored in the ``whitelist_email`` database table.  On first
-startup (when the table is empty) it is seeded from
-``backend/scripts/access_whitelist.json`` (plaintext, gitignored) or decrypted
-at runtime from the ``.age`` variant using the ``AGE_SECRET_KEY`` environment
-variable (production).
+The whitelist is stored in the ``whitelist_email`` database table and managed
+via the admin UI.
 
-Admin emails are similarly bootstrapped from ``admin_emails.json`` /
+Admin emails are bootstrapped from ``admin_emails.json`` /
 ``admin_emails.json.age`` — those persons get ``is_admin = True``.
 
-When neither file exists for the initial seed the whitelist table stays empty,
-which means **all users are denied** (fail-closed).  For local development
-without any whitelist file, the whitelist is simply not active and all emails
-are allowed (backwards compatible).
+When the whitelist table is empty the whitelist is considered inactive and all
+emails are allowed (backwards compatible for local development).
 
-Expected JSON format for both files::
+Expected JSON format for admin_emails::
 
     {"emails": ["user@example.com", "other@example.com"]}
 """
@@ -32,10 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
-
-# Whitelist files
-_WL_JSON_PATH = _SCRIPTS_DIR / "access_whitelist.json"
-_WL_AGE_PATH = _SCRIPTS_DIR / "access_whitelist.json.age"
 
 # Admin seed files
 _ADMIN_JSON_PATH = _SCRIPTS_DIR / "admin_emails.json"
@@ -72,44 +63,6 @@ def _load_emails_from_file(json_path: Path, age_path: Path) -> set[str] | None:
         return {e.strip().lower() for e in data.get("emails", [])}
 
     return None
-
-
-# ---------------------------------------------------------------------------
-# Startup: seed whitelist from file into DB (one-time)
-# ---------------------------------------------------------------------------
-
-
-async def seed_whitelist_from_file(session: AsyncSession) -> None:
-    """If the ``whitelist_email`` table is empty, seed it from the JSON file.
-
-    This is a one-time migration: once emails are in the DB they are managed
-    via the admin UI.
-    """
-    from bouwmeester.models.whitelist_email import WhitelistEmail
-
-    count_result = await session.execute(select(WhitelistEmail.id).limit(1))
-    if count_result.scalar_one_or_none() is not None:
-        logger.info("Whitelist table already populated — skipping file seed")
-        return
-
-    try:
-        emails = _load_emails_from_file(_WL_JSON_PATH, _WL_AGE_PATH)
-    except Exception:
-        logger.exception(
-            "Failed to load whitelist file for DB seed — "
-            "whitelist stays empty (fail-closed: no access until file is fixed or "
-            "emails are added via admin UI)"
-        )
-        raise
-
-    if emails is None:
-        logger.info("No whitelist file found — table stays empty (all allowed in dev)")
-        return
-
-    for email in emails:
-        session.add(WhitelistEmail(email=email, added_by="file-seed"))
-    await session.flush()
-    logger.info("Seeded %d whitelist emails from file into DB", len(emails))
 
 
 # ---------------------------------------------------------------------------
@@ -212,30 +165,18 @@ async def refresh_whitelist_cache(session: AsyncSession) -> None:
 
 
 def load_whitelist() -> None:
-    """Load the whitelist from disk (sync, legacy).
+    """Set whitelist to inactive (sync, legacy).
 
     Prefer :func:`refresh_whitelist_cache` for the async DB-backed flow.
-    This function is kept for backwards compatibility with scripts.
+    This function is kept for backwards compatibility with scripts/tests.
     """
     global _allowed_emails, _whitelist_active  # noqa: PLW0603
 
-    try:
-        emails = _load_emails_from_file(_WL_JSON_PATH, _WL_AGE_PATH)
-    except Exception:
-        logger.exception("Failed to load access whitelist — denying all access")
-        _allowed_emails = set()
-        _whitelist_active = True
-        return
-
-    if emails is None:
-        _allowed_emails = None
-        _whitelist_active = False
-        logger.info("No access whitelist found — all emails allowed (backwards compat)")
-        return
-
-    _allowed_emails = emails
-    _whitelist_active = True
-    logger.info("Access whitelist loaded from file (%d emails)", len(emails))
+    _allowed_emails = None
+    _whitelist_active = False
+    logger.info(
+        "Whitelist inactive — all emails allowed (use DB-backed cache in production)"
+    )
 
 
 # ---------------------------------------------------------------------------

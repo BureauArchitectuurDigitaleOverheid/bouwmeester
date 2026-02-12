@@ -1,4 +1,4 @@
-"""Admin API routes — whitelist management, user admin, database backup."""
+"""Admin API routes — whitelist, users, database backup, access requests."""
 
 import asyncio
 import io
@@ -15,8 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.auth import AdminUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.whitelist import refresh_whitelist_cache, seed_admins_from_file
+from bouwmeester.models.access_request import AccessRequest
 from bouwmeester.models.person import Person
 from bouwmeester.models.whitelist_email import WhitelistEmail
+from bouwmeester.schema.access_request import (
+    AccessRequestResponse,
+    AccessRequestReviewRequest,
+)
 from bouwmeester.schema.database_backup import (
     DatabaseBackupInfo,
     DatabaseResetRequest,
@@ -165,6 +170,77 @@ async def toggle_admin(
 
 
 # ---------------------------------------------------------------------------
+# Access request endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/access-requests", response_model=list[AccessRequestResponse])
+async def list_access_requests(
+    admin: AdminUser,
+    request_status: str | None = Query(None, alias="status"),
+    db: AsyncSession = Depends(get_db),
+) -> list[AccessRequestResponse]:
+    """List access requests, optionally filtered by status."""
+    stmt = select(AccessRequest).order_by(AccessRequest.requested_at.desc())
+    if request_status:
+        stmt = stmt.where(AccessRequest.status == request_status)
+    result = await db.execute(stmt)
+    return [AccessRequestResponse.model_validate(row) for row in result.scalars().all()]
+
+
+@router.patch("/access-requests/{id}", response_model=AccessRequestResponse)
+async def review_access_request(
+    id: UUID,
+    data: AccessRequestReviewRequest,
+    admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> AccessRequestResponse:
+    """Approve or deny an access request."""
+    access_request = await db.get(AccessRequest, id)
+    if access_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Toegangsverzoek niet gevonden",
+        )
+
+    if access_request.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dit verzoek is al beoordeeld",
+        )
+
+    access_request.reviewed_at = datetime.now(UTC)
+    access_request.reviewed_by_id = admin.id if admin else None
+
+    if data.action == "approve":
+        access_request.status = "approved"
+
+        # Add to whitelist
+        email = access_request.email.strip().lower()
+        existing = await db.execute(
+            select(WhitelistEmail).where(WhitelistEmail.email == email)
+        )
+        if existing.scalar_one_or_none() is None:
+            entry = WhitelistEmail(
+                email=email,
+                added_by=(
+                    f"access-request (by {admin.email})" if admin else "access-request"
+                ),
+            )
+            db.add(entry)
+
+        await db.flush()
+        await refresh_whitelist_cache(db)
+    else:
+        access_request.status = "denied"
+        access_request.deny_reason = data.deny_reason
+        await db.flush()
+
+    await db.refresh(access_request)
+    return AccessRequestResponse.model_validate(access_request)
+
+
+# ---------------------------------------------------------------------------
 # Database backup / restore
 # ---------------------------------------------------------------------------
 
@@ -282,6 +358,7 @@ _PRESERVED_TABLES = {"whitelist_email", "alembic_version", "http_sessions"}
 
 # All model tables (order doesn't matter — TRUNCATE ... CASCADE handles FKs)
 _ALL_MODEL_TABLES = [
+    "access_request",
     "notification",
     "mention",
     "suggested_edge",

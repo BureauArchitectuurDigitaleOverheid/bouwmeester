@@ -1,5 +1,11 @@
 """Pydantic schemas for the Bouwmeester API."""
 
+from bouwmeester.schema.access_request import (
+    AccessRequestCreate,
+    AccessRequestResponse,
+    AccessRequestReviewRequest,
+    AccessRequestStatusResponse,
+)
 from bouwmeester.schema.activity import ActivityFeedResponse, ActivityResponse
 from bouwmeester.schema.bron import (
     BronBijlageResponse,
@@ -105,6 +111,11 @@ OrganisatieEenheidPersonenGroup.model_rebuild()
 TagTreeResponse.model_rebuild()
 
 __all__ = [
+    # access_request
+    "AccessRequestCreate",
+    "AccessRequestResponse",
+    "AccessRequestReviewRequest",
+    "AccessRequestStatusResponse",
     # bron
     "BronBijlageResponse",
     "BronCreate",

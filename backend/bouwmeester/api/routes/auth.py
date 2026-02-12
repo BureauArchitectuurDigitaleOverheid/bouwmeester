@@ -1,4 +1,4 @@
-"""Auth routes -- OIDC login / callback / logout / status / me / onboarding."""
+"""Auth routes -- OIDC login/callback/logout/status/onboarding/access requests."""
 
 from __future__ import annotations
 
@@ -9,9 +9,10 @@ from datetime import date
 from urllib.parse import urlencode
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import (
@@ -24,10 +25,16 @@ from bouwmeester.core.auth import (
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.core.database import get_db
 from bouwmeester.core.whitelist import is_email_allowed
+from bouwmeester.models.access_request import AccessRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.schema.access_request import (
+    AccessRequestCreate,
+    AccessRequestStatusResponse,
+)
 from bouwmeester.schema.person import OnboardingRequest, PersonDetailResponse
+from bouwmeester.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -365,3 +372,133 @@ async def complete_onboarding(
     request.session.pop("person_db_id", None)
 
     return PersonDetailResponse.model_validate(current_user)
+
+
+# ---------------------------------------------------------------------------
+# POST /request-access -- submit an access request (public, rate-limited)
+# ---------------------------------------------------------------------------
+
+# Separate rate limiter for access requests (stricter)
+_ACCESS_REQUEST_RATE_LIMIT_WINDOW = 300  # 5 minutes
+_ACCESS_REQUEST_RATE_LIMIT_MAX = 5  # requests per window per IP
+_access_request_rate_store: OrderedDict[str, list[float]] = OrderedDict()
+
+
+def _check_access_request_rate_limit(request: Request) -> None:
+    """Raise 429 if the client IP has exceeded the access request rate limit."""
+    client_ip = _get_client_ip(request)
+    now = time.monotonic()
+    window_start = now - _ACCESS_REQUEST_RATE_LIMIT_WINDOW
+
+    timestamps = _access_request_rate_store.get(client_ip, [])
+    pruned = [t for t in timestamps if t > window_start]
+
+    if len(pruned) >= _ACCESS_REQUEST_RATE_LIMIT_MAX:
+        _access_request_rate_store[client_ip] = pruned
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Te veel verzoeken, probeer het later opnieuw",
+        )
+
+    pruned.append(now)
+    _access_request_rate_store[client_ip] = pruned
+    _access_request_rate_store.move_to_end(client_ip)
+
+    while len(_access_request_rate_store) > _RATE_LIMIT_MAX_KEYS:
+        _access_request_rate_store.popitem(last=False)
+
+
+@router.post("/request-access", response_model=AccessRequestStatusResponse)
+async def request_access(
+    request: Request,
+    body: AccessRequestCreate,
+    db: AsyncSession = Depends(get_db),
+) -> AccessRequestStatusResponse:
+    """Submit an access request. Public endpoint (no auth required)."""
+    _check_access_request_rate_limit(request)
+
+    email = body.email.strip().lower()
+
+    # If already on whitelist, tell the user
+    if is_email_allowed(email):
+        return AccessRequestStatusResponse(
+            has_pending=False,
+            status="already_allowed",
+        )
+
+    # Check for existing pending request
+    existing = await db.execute(
+        select(AccessRequest).where(
+            AccessRequest.email == email,
+            AccessRequest.status == "pending",
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        return AccessRequestStatusResponse(
+            has_pending=True,
+            status="already_pending",
+        )
+
+    # Create the request — the partial unique index on (email) WHERE status='pending'
+    # prevents duplicates at the DB level even under concurrent requests.
+    access_request = AccessRequest(email=email, naam=body.naam)
+    db.add(access_request)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        return AccessRequestStatusResponse(
+            has_pending=True,
+            status="already_pending",
+        )
+
+    # Notify admins
+    notification_service = NotificationService(db)
+    await notification_service.notify_access_request(email, body.naam)
+
+    return AccessRequestStatusResponse(
+        has_pending=True,
+        status="pending",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /access-request-status -- check status of an access request (public)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/access-request-status", response_model=AccessRequestStatusResponse)
+async def access_request_status(
+    email: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+) -> AccessRequestStatusResponse:
+    """Check the status of the latest access request for an email."""
+    email = email.strip().lower()
+
+    # If already on whitelist, they're allowed now
+    if is_email_allowed(email):
+        return AccessRequestStatusResponse(
+            has_pending=False,
+            status="approved",
+        )
+
+    # Find the most recent request for this email
+    result = await db.execute(
+        select(AccessRequest)
+        .where(AccessRequest.email == email)
+        .order_by(AccessRequest.requested_at.desc())
+        .limit(1)
+    )
+    latest = result.scalar_one_or_none()
+
+    if latest is None:
+        return AccessRequestStatusResponse(
+            has_pending=False,
+            status=None,
+        )
+
+    return AccessRequestStatusResponse(
+        has_pending=latest.status == "pending",
+        status=latest.status,
+        deny_reason=latest.deny_reason,
+    )

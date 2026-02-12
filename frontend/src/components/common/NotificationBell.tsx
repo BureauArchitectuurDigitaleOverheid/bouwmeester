@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bell, Check, CheckCheck } from 'lucide-react';
 import { useNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNotificationsRead } from '@/hooks/useNotifications';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
@@ -65,6 +66,7 @@ export function NotificationBell({ personId }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
 
@@ -126,7 +128,11 @@ export function NotificationBell({ personId }: NotificationBellProps) {
                   notification={notification}
                   onMarkRead={(id) => markRead.mutate(id)}
                   onClick={() => {
-                    if (notification.type === 'direct_message' || notification.type === 'agent_prompt') {
+                    if (notification.type === 'access_request') {
+                      navigate('/admin?tab=requests');
+                      if (!notification.is_read) markRead.mutate(notification.id);
+                      setOpen(false);
+                    } else if (notification.type === 'direct_message' || notification.type === 'agent_prompt') {
                       setThreadId(notification.id);
                       setOpen(false);
                     } else if (notification.related_task_id) {

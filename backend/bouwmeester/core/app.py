@@ -20,11 +20,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from bouwmeester.core.whitelist import (
         refresh_whitelist_cache,
         seed_admins_from_file,
-        seed_whitelist_from_file,
     )
 
     async with async_session() as session:
-        await seed_whitelist_from_file(session)
         await seed_admins_from_file(session)
         await refresh_whitelist_cache(session)
         await session.commit()

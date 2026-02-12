@@ -504,6 +504,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   agent_prompt: 'agent prompt',
   mention: 'vermelding',
   politieke_input_imported: 'parlementair item',
+  access_request: 'toegangsverzoek',
 };
 
 export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
@@ -520,6 +521,7 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   agent_prompt: 'bg-violet-100 text-violet-700',
   mention: 'bg-cyan-100 text-cyan-700',
   politieke_input_imported: 'bg-rose-100 text-rose-700',
+  access_request: 'bg-amber-100 text-amber-700',
 };
 
 // Activity
@@ -761,3 +763,17 @@ export const PARLEMENTAIR_ITEM_STATUS_COLORS: Record<ParlementairItemStatus, str
   rejected: 'gray',
   out_of_scope: 'gray',
 };
+
+// Access Requests
+export type AccessRequestStatus = 'pending' | 'approved' | 'denied';
+
+export interface AccessRequest {
+  id: string;
+  email: string;
+  naam: string;
+  status: AccessRequestStatus;
+  requested_at: string;
+  reviewed_at?: string | null;
+  reviewed_by_id?: string | null;
+  deny_reason?: string | null;
+}
