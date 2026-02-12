@@ -416,7 +416,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       <div className="min-w-0">
                         <p className="text-sm text-text truncate">{bijlageInfo.bestandsnaam}</p>
                         <p className="text-xs text-text-secondary">
-                          {(bijlageInfo.bestandsgrootte / 1024).toFixed(1)} KB
+                          {bijlageInfo.bestandsgrootte >= 1024 * 1024
+                            ? `${(bijlageInfo.bestandsgrootte / (1024 * 1024)).toFixed(1)} MB`
+                            : `${(bijlageInfo.bestandsgrootte / 1024).toFixed(1)} KB`}
                         </p>
                       </div>
                     </div>
@@ -434,8 +436,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                             try {
                               await deleteBijlage(nodeId);
                               refetchBijlage();
-                            } catch (err) {
-                              console.error('Delete failed', err);
+                            } catch {
+                              alert('Bijlage verwijderen mislukt.');
                             }
                           }
                         }}
@@ -459,8 +461,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                         try {
                           await uploadBijlage(nodeId, file);
                           refetchBijlage();
-                        } catch (err) {
-                          console.error('Upload failed', err);
+                        } catch {
+                          alert('Upload mislukt. Controleer bestandstype en grootte.');
                         } finally {
                           setBijlageUploading(false);
                         }

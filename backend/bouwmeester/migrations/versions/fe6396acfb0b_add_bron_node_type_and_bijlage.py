@@ -53,6 +53,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["bron_id"], ["bron.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("bron_id"),
     )
 
 

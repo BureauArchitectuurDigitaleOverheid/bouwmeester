@@ -22,6 +22,7 @@ class BronBijlage(Base):
         UUID(as_uuid=True),
         ForeignKey("bron.id", ondelete="CASCADE"),
         nullable=False,
+        unique=True,
     )
     bestandsnaam: Mapped[str] = mapped_column(nullable=False)
     content_type: Mapped[str] = mapped_column(nullable=False)

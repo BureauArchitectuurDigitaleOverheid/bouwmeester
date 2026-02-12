@@ -76,15 +76,19 @@ async def upload_bijlage(
             ),
         )
 
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_SIZE:
-        max_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Bestand te groot ({len(content)} bytes). Maximum is {max_mb} MB."
-            ),
-        )
+    # Read file in chunks to avoid loading arbitrarily large uploads into memory.
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(8192):
+        total += len(chunk)
+        if total > MAX_UPLOAD_SIZE:
+            max_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Bestand te groot. Maximum is {max_mb} MB.",
+            )
+        chunks.append(chunk)
+    content = b"".join(chunks)
 
     # Sanitize filename: strip path components, keep only the basename.
     raw_name = file.filename or "bijlage"
@@ -156,13 +160,14 @@ async def download_bijlage(
 
     # Force download (Content-Disposition: attachment) to prevent inline
     # rendering of potentially dangerous content (e.g. HTML/SVG).
+    # Sanitize filename to prevent header injection via control chars.
+    safe_filename = (
+        bijlage.bestandsnaam.replace('"', "").replace("\r", "").replace("\n", "")
+    )
     return FileResponse(
         path=str(file_path),
-        filename=bijlage.bestandsnaam,
+        filename=safe_filename,
         media_type="application/octet-stream",
-        headers={
-            "Content-Disposition": (f'attachment; filename="{bijlage.bestandsnaam}"')
-        },
     )
 
 
