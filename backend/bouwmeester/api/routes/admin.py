@@ -224,9 +224,7 @@ async def review_access_request(
         if existing.scalar_one_or_none() is None:
             reviewer = admin.default_email if admin else None
             added_label = (
-                f"access-request (by {reviewer})"
-                if reviewer
-                else "access-request"
+                f"access-request (by {reviewer})" if reviewer else "access-request"
             )
             entry = WhitelistEmail(
                 email=email,
