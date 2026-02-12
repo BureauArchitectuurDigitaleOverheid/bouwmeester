@@ -1,4 +1,4 @@
-import { BASE_URL } from '@/api/client';
+import { BASE_URL, getCsrfToken } from '@/api/client';
 
 export interface ImportResult {
   imported: number;
@@ -12,7 +12,9 @@ export async function importPolitiekeInputs(file: File): Promise<ImportResult> {
 
   const response = await fetch(`${BASE_URL}/api/import/politieke-inputs`, {
     method: 'POST',
+    headers: { 'X-CSRF-Token': getCsrfToken() },
     body: formData,
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -28,7 +30,9 @@ export async function importNodes(file: File): Promise<ImportResult> {
 
   const response = await fetch(`${BASE_URL}/api/import/nodes`, {
     method: 'POST',
+    headers: { 'X-CSRF-Token': getCsrfToken() },
     body: formData,
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -44,7 +48,9 @@ export async function importEdges(file: File): Promise<ImportResult> {
 
   const response = await fetch(`${BASE_URL}/api/import/edges`, {
     method: 'POST',
+    headers: { 'X-CSRF-Token': getCsrfToken() },
     body: formData,
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -129,7 +135,7 @@ export interface DatabaseResetResult {
 export async function resetDatabase(confirm: string): Promise<DatabaseResetResult> {
   const response = await fetch(`${BASE_URL}/api/admin/database/reset`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
     body: JSON.stringify({ confirm }),
     credentials: 'include',
   });
@@ -148,6 +154,7 @@ export async function importDatabase(file: File): Promise<DatabaseRestoreResult>
 
   const response = await fetch(`${BASE_URL}/api/admin/database/import`, {
     method: 'POST',
+    headers: { 'X-CSRF-Token': getCsrfToken() },
     body: formData,
     credentials: 'include',
   });
