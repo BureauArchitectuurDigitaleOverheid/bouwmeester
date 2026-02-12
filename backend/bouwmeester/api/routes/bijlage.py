@@ -1,5 +1,6 @@
 """API routes for file attachments on Bron nodes."""
 
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -27,7 +28,13 @@ def _default_bijlagen_root() -> str:
 
 
 BIJLAGEN_ROOT = Path(os.environ.get("BIJLAGEN_ROOT", _default_bijlagen_root()))
+try:
+    BIJLAGEN_ROOT.mkdir(parents=True, exist_ok=True)
+except OSError:
+    pass  # May fail in CI/test; directory is also created per-upload
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
+
+logger = logging.getLogger(__name__)
 ALLOWED_CONTENT_TYPES = {
     "application/pdf",
     "application/msword",
@@ -106,9 +113,16 @@ async def upload_bijlage(
     # Write new file first (before deleting old one, to avoid data loss
     # on write failure).
     dir_path = BIJLAGEN_ROOT / str(node_id)
-    dir_path.mkdir(parents=True, exist_ok=True)
-    new_file_path = dir_path / safe_name
-    new_file_path.write_bytes(content)
+    try:
+        dir_path.mkdir(parents=True, exist_ok=True)
+        new_file_path = dir_path / safe_name
+        new_file_path.write_bytes(content)
+    except OSError as exc:
+        logger.exception("Failed to write bijlage to %s", dir_path)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Kan bestand niet opslaan op disk: {exc}",
+        ) from exc
 
     relative_path = f"{node_id}/{safe_name}"
 
