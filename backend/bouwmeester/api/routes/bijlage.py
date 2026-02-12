@@ -82,8 +82,7 @@ async def upload_bijlage(
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Bestand te groot ({len(content)} bytes). "
-                f"Maximum is {max_mb} MB."
+                f"Bestand te groot ({len(content)} bytes). Maximum is {max_mb} MB."
             ),
         )
 
@@ -131,9 +130,7 @@ async def get_bijlage_info(
 ) -> BronBijlageResponse | None:
     bron = await _get_bron(node_id, db)
 
-    result = await db.execute(
-        select(BronBijlage).where(BronBijlage.bron_id == bron.id)
-    )
+    result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
     bijlage = result.scalar_one_or_none()
     if bijlage is None:
         return None
@@ -148,18 +145,14 @@ async def download_bijlage(
 ) -> FileResponse:
     bron = await _get_bron(node_id, db)
 
-    result = await db.execute(
-        select(BronBijlage).where(BronBijlage.bron_id == bron.id)
-    )
+    result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
     bijlage = result.scalar_one_or_none()
     if bijlage is None:
         raise HTTPException(status_code=404, detail="Geen bijlage gevonden")
 
     file_path = _safe_path(bijlage.pad)
     if not file_path.exists():
-        raise HTTPException(
-            status_code=404, detail="Bestand niet gevonden op disk"
-        )
+        raise HTTPException(status_code=404, detail="Bestand niet gevonden op disk")
 
     # Force download (Content-Disposition: attachment) to prevent inline
     # rendering of potentially dangerous content (e.g. HTML/SVG).
@@ -168,9 +161,7 @@ async def download_bijlage(
         filename=bijlage.bestandsnaam,
         media_type="application/octet-stream",
         headers={
-            "Content-Disposition": (
-                f'attachment; filename="{bijlage.bestandsnaam}"'
-            )
+            "Content-Disposition": (f'attachment; filename="{bijlage.bestandsnaam}"')
         },
     )
 
@@ -183,9 +174,7 @@ async def delete_bijlage(
 ) -> None:
     bron = await _get_bron(node_id, db)
 
-    result = await db.execute(
-        select(BronBijlage).where(BronBijlage.bron_id == bron.id)
-    )
+    result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
     bijlage = result.scalar_one_or_none()
     if bijlage is None:
         raise HTTPException(status_code=404, detail="Geen bijlage gevonden")

@@ -180,9 +180,7 @@ async def delete_node(
         from bouwmeester.api.routes.bijlage import BIJLAGEN_ROOT
         from bouwmeester.models.bron_bijlage import BronBijlage
 
-        result = await db.execute(
-            select(BronBijlage).where(BronBijlage.bron_id == id)
-        )
+        result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == id))
         bijlage = result.scalar_one_or_none()
         if bijlage:
             bijlage_path_to_delete = bijlage.pad
@@ -192,9 +190,10 @@ async def delete_node(
     # Delete the file after DB deletion succeeds.
     if bijlage_path_to_delete:
         file_path = (BIJLAGEN_ROOT / bijlage_path_to_delete).resolve()
-        if str(file_path).startswith(
-            str(BIJLAGEN_ROOT.resolve())
-        ) and file_path.exists():
+        if (
+            str(file_path).startswith(str(BIJLAGEN_ROOT.resolve()))
+            and file_path.exists()
+        ):
             file_path.unlink()
 
     await log_activity(
