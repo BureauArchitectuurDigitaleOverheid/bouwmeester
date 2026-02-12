@@ -31,7 +31,9 @@ from bouwmeester.models.parlementair_item import (  # noqa: F401
     SuggestedEdge,
 )
 from bouwmeester.models.person import Person  # noqa: F401
+from bouwmeester.models.person_email import PersonEmail  # noqa: F401
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid  # noqa: F401
+from bouwmeester.models.person_phone import PersonPhone  # noqa: F401
 from bouwmeester.models.politieke_input import PolitiekeInput  # noqa: F401
 from bouwmeester.models.probleem import Probleem  # noqa: F401
 from bouwmeester.models.tag import NodeTag, Tag  # noqa: F401
@@ -68,7 +70,9 @@ __all__ = [
     "OrganisatieEenheidParent",
     "OrganisatieEenheid",
     "Person",
+    "PersonEmail",
     "PersonOrganisatieEenheid",
+    "PersonPhone",
     "PolitiekeInput",
     "Probleem",
     "SuggestedEdge",

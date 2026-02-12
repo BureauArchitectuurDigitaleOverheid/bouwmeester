@@ -388,6 +388,27 @@ export function formatFunctie(functie?: string | null): string | undefined {
 }
 
 // People
+export interface PersonEmail {
+  id: string;
+  email: string;
+  is_default: boolean;
+  created_at: string;
+}
+
+export interface PersonPhone {
+  id: string;
+  phone_number: string;
+  label: string;
+  is_default: boolean;
+  created_at: string;
+}
+
+export const PHONE_LABELS: Record<string, string> = {
+  werk: 'Werk',
+  mobiel: 'Mobiel',
+  prive: 'Priv\u00e9',
+};
+
 export interface Person {
   id: string;
   naam: string;
@@ -399,6 +420,10 @@ export interface Person {
   api_key?: string | null;
   is_active: boolean;
   created_at: string;
+  emails: PersonEmail[];
+  phones: PersonPhone[];
+  default_email?: string | null;
+  default_phone?: string | null;
 }
 
 export interface PersonCreate {

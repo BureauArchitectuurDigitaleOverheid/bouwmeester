@@ -33,7 +33,10 @@ from bouwmeester.schema.access_request import (
     AccessRequestCreate,
     AccessRequestStatusResponse,
 )
-from bouwmeester.schema.person import OnboardingRequest, PersonDetailResponse
+from bouwmeester.schema.person import (
+    OnboardingRequest,
+    PersonDetailResponse,
+)
 from bouwmeester.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)

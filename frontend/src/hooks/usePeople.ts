@@ -9,6 +9,12 @@ import {
   updatePersonOrganisatie,
   removePersonOrganisatie,
   searchPeople,
+  addPersonEmail,
+  removePersonEmail,
+  setDefaultEmail,
+  addPersonPhone,
+  removePersonPhone,
+  setDefaultPhone,
 } from '@/api/people';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
@@ -106,5 +112,93 @@ export function useSearchPeople(query: string) {
     queryKey: ['people', 'search', debouncedQuery],
     queryFn: () => searchPeople(debouncedQuery),
     enabled: debouncedQuery.length >= 2,
+  });
+}
+
+// Email hooks
+
+export function useAddPersonEmail() {
+  return useMutationWithError({
+    mutationFn: ({
+      personId,
+      data,
+    }: {
+      personId: string;
+      data: { email: string; is_default?: boolean };
+    }) => addPersonEmail(personId, data),
+    errorMessage: 'Fout bij toevoegen e-mail',
+    invalidateKeys: [['people']],
+  });
+}
+
+export function useRemovePersonEmail() {
+  return useMutationWithError({
+    mutationFn: ({
+      personId,
+      emailId,
+    }: {
+      personId: string;
+      emailId: string;
+    }) => removePersonEmail(personId, emailId),
+    errorMessage: 'Fout bij verwijderen e-mail',
+    invalidateKeys: [['people']],
+  });
+}
+
+export function useSetDefaultEmail() {
+  return useMutationWithError({
+    mutationFn: ({
+      personId,
+      emailId,
+    }: {
+      personId: string;
+      emailId: string;
+    }) => setDefaultEmail(personId, emailId),
+    errorMessage: 'Fout bij instellen standaard e-mail',
+    invalidateKeys: [['people']],
+  });
+}
+
+// Phone hooks
+
+export function useAddPersonPhone() {
+  return useMutationWithError({
+    mutationFn: ({
+      personId,
+      data,
+    }: {
+      personId: string;
+      data: { phone_number: string; label: string; is_default?: boolean };
+    }) => addPersonPhone(personId, data),
+    errorMessage: 'Fout bij toevoegen telefoon',
+    invalidateKeys: [['people']],
+  });
+}
+
+export function useRemovePersonPhone() {
+  return useMutationWithError({
+    mutationFn: ({
+      personId,
+      phoneId,
+    }: {
+      personId: string;
+      phoneId: string;
+    }) => removePersonPhone(personId, phoneId),
+    errorMessage: 'Fout bij verwijderen telefoon',
+    invalidateKeys: [['people']],
+  });
+}
+
+export function useSetDefaultPhone() {
+  return useMutationWithError({
+    mutationFn: ({
+      personId,
+      phoneId,
+    }: {
+      personId: string;
+      phoneId: string;
+    }) => setDefaultPhone(personId, phoneId),
+    errorMessage: 'Fout bij instellen standaard telefoon',
+    invalidateKeys: [['people']],
   });
 }

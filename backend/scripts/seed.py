@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import async_session
+from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.repositories.edge import EdgeRepository
@@ -846,6 +847,9 @@ async def seed(db: AsyncSession) -> None:
                 functie=functie,
             )
         )
+        # Create PersonEmail row
+        email_obj = PersonEmail(person_id=person.id, email=email, is_default=True)
+        db.add(email_obj)
         # Create org placement
         placement = PersonOrganisatieEenheid(
             person_id=person.id,

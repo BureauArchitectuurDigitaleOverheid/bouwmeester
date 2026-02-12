@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
-import type { Person, PersonCreate, PersonSummaryResponse, PersonOrganisatie } from '@/types';
+import type { Person, PersonCreate, PersonSummaryResponse, PersonOrganisatie, PersonEmail, PersonPhone } from '@/types';
 
 export async function getPeople(): Promise<Person[]> {
   return apiGet<Person[]>('/api/people', { limit: '1000' });
@@ -58,4 +58,36 @@ export async function removePersonOrganisatie(
 
 export async function searchPeople(q: string, limit = 10): Promise<Person[]> {
   return apiGet<Person[]>('/api/people/search', { q, limit: String(limit) });
+}
+
+// Emails
+export async function addPersonEmail(
+  personId: string,
+  data: { email: string; is_default?: boolean },
+): Promise<PersonEmail> {
+  return apiPost<PersonEmail>(`/api/people/${personId}/emails`, data);
+}
+
+export async function removePersonEmail(personId: string, emailId: string): Promise<void> {
+  return apiDelete(`/api/people/${personId}/emails/${emailId}`);
+}
+
+export async function setDefaultEmail(personId: string, emailId: string): Promise<PersonEmail> {
+  return apiPost<PersonEmail>(`/api/people/${personId}/emails/${emailId}/set-default`, {});
+}
+
+// Phones
+export async function addPersonPhone(
+  personId: string,
+  data: { phone_number: string; label: string; is_default?: boolean },
+): Promise<PersonPhone> {
+  return apiPost<PersonPhone>(`/api/people/${personId}/phones`, data);
+}
+
+export async function removePersonPhone(personId: string, phoneId: string): Promise<void> {
+  return apiDelete(`/api/people/${personId}/phones/${phoneId}`);
+}
+
+export async function setDefaultPhone(personId: string, phoneId: string): Promise<PersonPhone> {
+  return apiPost<PersonPhone>(`/api/people/${personId}/phones/${phoneId}/set-default`, {});
 }
