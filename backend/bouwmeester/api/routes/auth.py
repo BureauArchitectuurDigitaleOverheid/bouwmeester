@@ -364,12 +364,12 @@ async def complete_onboarding(
         )
 
     if body.merge_with_id:
-        # Merge: absorb current stub into the existing person
-        target = await db.get(Person, body.merge_with_id)
-        if target is None:
+        # Validate that the target is a legitimate merge candidate
+        candidates = await find_merge_candidates(db, current_user)
+        if not any(c.id == body.merge_with_id for c in candidates):
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Samenvoeg-persoon niet gevonden",
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Geen geldige samenvoeg-kandidaat",
             )
         merged = await merge_persons(
             db,
