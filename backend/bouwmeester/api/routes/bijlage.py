@@ -24,7 +24,7 @@ def _default_bijlagen_root() -> str:
     data_path = os.environ.get("DATA_PATH")
     if data_path:
         return os.path.join(data_path, "bijlagen")
-    return "/app/bijlagen"
+    return "/data/bijlagen"
 
 
 BIJLAGEN_ROOT = Path(os.environ.get("BIJLAGEN_ROOT", _default_bijlagen_root()))
