@@ -432,9 +432,7 @@ async def add_person_email(
     email = data.email.strip().lower()
 
     # Check uniqueness
-    existing = await db.execute(
-        select(PersonEmail).where(PersonEmail.email == email)
-    )
+    existing = await db.execute(select(PersonEmail).where(PersonEmail.email == email))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=409,
