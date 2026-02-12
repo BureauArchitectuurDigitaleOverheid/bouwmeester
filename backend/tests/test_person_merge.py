@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.notification import Notification
+from bouwmeester.models.org_manager import OrganisatieEenheidManager
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_phone import PersonPhone
@@ -254,6 +256,135 @@ async def test_merge_transfers_phones(db_session: AsyncSession):
         .all()
     )
     assert "+31600000000" in phones
+
+
+async def test_merge_deduplicates_stakeholder_roles(
+    db_session: AsyncSession, sample_node, sample_person, second_person
+):
+    """Merge removes duplicate stakeholder rows instead of violating unique constraint."""
+    # Both persons are "eigenaar" on the same node
+    ns_keep = NodeStakeholder(
+        id=uuid.uuid4(),
+        node_id=sample_node.id,
+        person_id=sample_person.id,
+        rol="eigenaar",
+    )
+    ns_absorb = NodeStakeholder(
+        id=uuid.uuid4(),
+        node_id=sample_node.id,
+        person_id=second_person.id,
+        rol="eigenaar",
+    )
+    db_session.add_all([ns_keep, ns_absorb])
+    await db_session.flush()
+
+    await merge_persons(
+        db_session, keep_id=sample_person.id, absorb_id=second_person.id
+    )
+
+    # Only keep's stakeholder row should remain
+    stakes = (
+        (
+            await db_session.execute(
+                select(NodeStakeholder).where(
+                    NodeStakeholder.node_id == sample_node.id,
+                    NodeStakeholder.rol == "eigenaar",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(stakes) == 1
+    assert stakes[0].person_id == sample_person.id
+
+
+async def test_merge_transfers_notification_sender(
+    db_session: AsyncSession, sample_person, second_person
+):
+    """Merge transfers notification sender_id references."""
+    notif = Notification(
+        id=uuid.uuid4(),
+        person_id=sample_person.id,
+        type="direct_message",
+        title="Test",
+        message="Bericht",
+        sender_id=second_person.id,
+    )
+    db_session.add(notif)
+    await db_session.flush()
+
+    await merge_persons(
+        db_session, keep_id=sample_person.id, absorb_id=second_person.id
+    )
+
+    updated_notif = await db_session.get(Notification, notif.id)
+    assert updated_notif.sender_id == sample_person.id
+
+
+async def test_merge_transfers_manager_id(
+    db_session: AsyncSession, sample_person, second_person
+):
+    """Merge transfers OrganisatieEenheid.manager_id references."""
+    from bouwmeester.models.org_naam import OrganisatieEenheidNaam
+    from datetime import date
+
+    org = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Test Org",
+        type="afdeling",
+        manager_id=second_person.id,
+    )
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(
+        OrganisatieEenheidNaam(
+            eenheid_id=org.id, naam=org.naam, geldig_van=date.today()
+        )
+    )
+    await db_session.flush()
+
+    await merge_persons(
+        db_session, keep_id=sample_person.id, absorb_id=second_person.id
+    )
+
+    updated_org = await db_session.get(OrganisatieEenheid, org.id)
+    assert updated_org.manager_id == sample_person.id
+
+
+async def test_merge_transfers_temporal_manager(
+    db_session: AsyncSession, sample_person, second_person
+):
+    """Merge transfers OrganisatieEenheidManager.manager_id references."""
+    from bouwmeester.models.org_naam import OrganisatieEenheidNaam
+    from datetime import date
+
+    org = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Test Org2",
+        type="afdeling",
+    )
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(
+        OrganisatieEenheidNaam(
+            eenheid_id=org.id, naam=org.naam, geldig_van=date.today()
+        )
+    )
+    mgr = OrganisatieEenheidManager(
+        eenheid_id=org.id,
+        manager_id=second_person.id,
+        geldig_van=date.today(),
+    )
+    db_session.add(mgr)
+    await db_session.flush()
+
+    await merge_persons(
+        db_session, keep_id=sample_person.id, absorb_id=second_person.id
+    )
+
+    updated_mgr = await db_session.get(OrganisatieEenheidManager, mgr.id)
+    assert updated_mgr.manager_id == sample_person.id
 
 
 # ---------------------------------------------------------------------------

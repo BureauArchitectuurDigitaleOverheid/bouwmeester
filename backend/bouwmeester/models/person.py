@@ -26,7 +26,7 @@ class Person(Base):
         server_default=text("gen_random_uuid()"),
     )
     naam: Mapped[str] = mapped_column(nullable=False)
-    email: Mapped[str | None] = mapped_column(unique=True, nullable=True)
+    email: Mapped[str | None] = mapped_column(nullable=True)
     functie: Mapped[str | None] = mapped_column(nullable=True)
     description: Mapped[str | None] = mapped_column(nullable=True)
     oidc_subject: Mapped[str | None] = mapped_column(unique=True, nullable=True)

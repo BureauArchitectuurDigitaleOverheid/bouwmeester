@@ -257,10 +257,11 @@ async def _ensure_email_linked(db: AsyncSession, person_id: UUID, email: str) ->
     if existing.scalar_one_or_none() is not None:
         return  # Already linked (possibly to this or another person)
     try:
-        db.add(PersonEmail(person_id=person_id, email=email, is_default=False))
-        await db.flush()
+        async with db.begin_nested():
+            db.add(PersonEmail(person_id=person_id, email=email, is_default=False))
+            await db.flush()
     except IntegrityError:
-        await db.rollback()  # Concurrent insert — ignore
+        pass  # Concurrent insert — ignore (savepoint already rolled back)
 
 
 async def get_or_create_person(

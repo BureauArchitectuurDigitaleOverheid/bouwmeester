@@ -363,17 +363,6 @@ async def complete_onboarding(
             detail="Onboarding is al voltooid",
         )
 
-    # Validate that the org unit exists.
-    org_stmt = select(OrganisatieEenheid.id).where(
-        OrganisatieEenheid.id == body.organisatie_eenheid_id
-    )
-    org_result = await db.execute(org_stmt)
-    if org_result.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Organisatie-eenheid niet gevonden",
-        )
-
     if body.merge_with_id:
         # Merge: absorb current stub into the existing person
         target = await db.get(Person, body.merge_with_id)
@@ -393,6 +382,24 @@ async def complete_onboarding(
         request.session.pop("needs_onboarding", None)
 
         return PersonDetailResponse.model_validate(merged)
+
+    # Non-merge path: org is required.
+    if not body.organisatie_eenheid_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Organisatie-eenheid is verplicht",
+        )
+
+    # Validate that the org unit exists.
+    org_stmt = select(OrganisatieEenheid.id).where(
+        OrganisatieEenheid.id == body.organisatie_eenheid_id
+    )
+    org_result = await db.execute(org_stmt)
+    if org_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Organisatie-eenheid niet gevonden",
+        )
 
     current_user.naam = body.naam
     current_user.functie = body.functie

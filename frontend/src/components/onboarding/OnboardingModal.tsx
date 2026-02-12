@@ -15,7 +15,7 @@ const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS).m
 interface OnboardingPayload {
   naam: string;
   functie: string;
-  organisatie_eenheid_id: string;
+  organisatie_eenheid_id?: string;
   merge_with_id?: string;
 }
 
@@ -83,11 +83,10 @@ export function OnboardingModal() {
     if (!canSubmit) return;
     setError(null);
     if (mergeWithId) {
-      // Merge mode: send merge_with_id along with the required onboarding fields
+      // Merge mode: only merge_with_id is needed; org is not required
       mutation.mutate({
         naam: naam.trim() || person?.name || '',
         functie: functie.trim() || 'medewerker',
-        organisatie_eenheid_id: orgId || '00000000-0000-0000-0000-000000000000',
         merge_with_id: mergeWithId,
       });
     } else {

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import require_deleted, require_found
-from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.auth import AdminUser, OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
@@ -241,7 +241,7 @@ async def delete_person(
 async def merge_people(
     keep_id: UUID,
     absorb_id: UUID,
-    current_user: OptionalUser,
+    admin: AdminUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
@@ -258,7 +258,7 @@ async def merge_people(
 
     await log_activity(
         db,
-        current_user,
+        admin,
         actor_id,
         "person.merged",
         details={
@@ -492,11 +492,6 @@ async def add_person_email(
 
     # If setting as default, unset others
     if email_obj.is_default:
-        await db.execute(
-            select(PersonEmail)
-            .where(PersonEmail.person_id == id)
-            .execution_options(synchronize_session="fetch")
-        )
         for existing_email in (
             await db.execute(
                 select(PersonEmail).where(

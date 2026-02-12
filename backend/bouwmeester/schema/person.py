@@ -170,7 +170,7 @@ Dienstverband = Literal["in_dienst", "ingehuurd", "extern"]
 class OnboardingRequest(BaseModel):
     naam: str = Field(min_length=1, max_length=200)
     functie: str = Field(min_length=1, max_length=200)
-    organisatie_eenheid_id: UUID
+    organisatie_eenheid_id: UUID | None = None
     dienstverband: Dienstverband = "in_dienst"
     merge_with_id: UUID | None = None
 

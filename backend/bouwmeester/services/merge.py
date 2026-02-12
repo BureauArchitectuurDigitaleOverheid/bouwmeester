@@ -3,13 +3,15 @@
 import logging
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.absence import Absence
 from bouwmeester.models.activity import Activity
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.notification import Notification
+from bouwmeester.models.org_manager import OrganisatieEenheidManager
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
@@ -145,12 +147,31 @@ async def merge_persons(
         update(Task).where(Task.assignee_id == absorb_id).values(assignee_id=keep_id)
     )
 
-    # Transfer stakeholder roles
-    await db.execute(
-        update(NodeStakeholder)
-        .where(NodeStakeholder.person_id == absorb_id)
-        .values(person_id=keep_id)
+    # Transfer stakeholder roles — delete duplicates first to avoid
+    # UniqueConstraint("node_id", "person_id", "rol") violations.
+    keep_stakes = (
+        await db.execute(
+            select(NodeStakeholder.node_id, NodeStakeholder.rol).where(
+                NodeStakeholder.person_id == keep_id
+            )
+        )
+    ).all()
+    keep_stake_set = {(row.node_id, row.rol) for row in keep_stakes}
+
+    absorb_stakes = (
+        (
+            await db.execute(
+                select(NodeStakeholder).where(NodeStakeholder.person_id == absorb_id)
+            )
+        )
+        .scalars()
+        .all()
     )
+    for stake in absorb_stakes:
+        if (stake.node_id, stake.rol) in keep_stake_set:
+            await db.delete(stake)  # duplicate — keep already has this role
+        else:
+            stake.person_id = keep_id
 
     # Transfer org placements
     await db.execute(
@@ -164,11 +185,28 @@ async def merge_persons(
         update(Activity).where(Activity.actor_id == absorb_id).values(actor_id=keep_id)
     )
 
-    # Transfer notifications
+    # Transfer notifications (recipient and sender)
     await db.execute(
         update(Notification)
         .where(Notification.person_id == absorb_id)
         .values(person_id=keep_id)
+    )
+    await db.execute(
+        update(Notification)
+        .where(Notification.sender_id == absorb_id)
+        .values(sender_id=keep_id)
+    )
+
+    # Transfer manager references (legacy and temporal)
+    await db.execute(
+        update(OrganisatieEenheid)
+        .where(OrganisatieEenheid.manager_id == absorb_id)
+        .values(manager_id=keep_id)
+    )
+    await db.execute(
+        update(OrganisatieEenheidManager)
+        .where(OrganisatieEenheidManager.manager_id == absorb_id)
+        .values(manager_id=keep_id)
     )
 
     # Transfer absences (both as person and as substitute)
