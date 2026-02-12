@@ -26,6 +26,7 @@ class PersonPhone(Base):
         UUID(as_uuid=True),
         ForeignKey("person.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     phone_number: Mapped[str] = mapped_column(nullable=False)
     label: Mapped[str] = mapped_column(

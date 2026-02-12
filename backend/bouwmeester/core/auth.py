@@ -252,10 +252,19 @@ def get_oauth(settings: Settings | None = None) -> OAuth | None:
 
 async def _ensure_email_linked(db: AsyncSession, person_id: UUID, email: str) -> None:
     """Add email to person_email if not already present (is_default=False)."""
+    email = email.strip().lower()
 
     existing = await db.execute(select(PersonEmail).where(PersonEmail.email == email))
-    if existing.scalar_one_or_none() is not None:
-        return  # Already linked (possibly to this or another person)
+    existing_row = existing.scalar_one_or_none()
+    if existing_row is not None:
+        if existing_row.person_id != person_id:
+            logger.warning(
+                "Email %s already linked to person %s, not to %s",
+                email,
+                existing_row.person_id,
+                person_id,
+            )
+        return
     try:
         async with db.begin_nested():
             db.add(PersonEmail(person_id=person_id, email=email, is_default=False))

@@ -41,6 +41,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("email"),
     )
+    op.create_index("ix_person_email_person_id", "person_email", ["person_id"])
 
     # Create person_phone table
     op.create_table(
@@ -69,6 +70,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["person_id"], ["person.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
+    op.create_index("ix_person_phone_person_id", "person_phone", ["person_id"])
 
     # Migrate existing person.email data into person_email table
     op.execute(
@@ -85,9 +87,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # NOTE: This downgrade is lossy — emails added only via person_email
+    # (not present in person.email) will be lost.
+
     # Restore unique constraint on person.email
     op.create_unique_constraint("person_email_key", "person", ["email"])
 
-    # Drop the new tables
+    # Drop the new tables (indexes are dropped automatically with the tables)
     op.drop_table("person_phone")
     op.drop_table("person_email")

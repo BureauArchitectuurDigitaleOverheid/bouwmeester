@@ -131,3 +131,26 @@ async def test_create_person_creates_email(client):
     assert data["emails"][0]["email"] == "emailtest@example.com"
     assert data["emails"][0]["is_default"] is True
     assert data["default_email"] == "emailtest@example.com"
+
+
+async def test_delete_default_email_promotes_next(client, sample_person):
+    """Deleting the default email auto-promotes another one."""
+    # Add email and set as default
+    resp1 = await client.post(
+        f"/api/people/{sample_person.id}/emails",
+        json={"email": "extra-default@example.com", "is_default": True},
+    )
+    assert resp1.status_code == 201
+    extra_id = resp1.json()["id"]
+
+    # Delete the default
+    del_resp = await client.delete(f"/api/people/{sample_person.id}/emails/{extra_id}")
+    assert del_resp.status_code == 204
+
+    # Another email should now be default (the fixture's or another remaining one)
+    person_resp = await client.get(f"/api/people/{sample_person.id}")
+    data = person_resp.json()
+    remaining_emails = data["emails"]
+    assert len(remaining_emails) >= 1
+    defaults = [e for e in remaining_emails if e["is_default"]]
+    assert len(defaults) == 1, "Exactly one email should be default after deletion"

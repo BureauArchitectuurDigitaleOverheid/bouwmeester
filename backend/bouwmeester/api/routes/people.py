@@ -429,15 +429,16 @@ async def add_person_email(
     db: AsyncSession = Depends(get_db),
 ) -> PersonEmailResponse:
     require_found(await db.get(Person, id), "Person")
+    email = data.email.strip().lower()
 
     # Check uniqueness
     existing = await db.execute(
-        select(PersonEmail).where(PersonEmail.email == data.email)
+        select(PersonEmail).where(PersonEmail.email == email)
     )
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=409,
-            detail=f"E-mailadres '{data.email}' is al in gebruik",
+            detail=f"E-mailadres '{email}' is al in gebruik",
         )
 
     # If this is the first email, auto-set as default
@@ -448,7 +449,7 @@ async def add_person_email(
 
     email_obj = PersonEmail(
         person_id=id,
-        email=data.email,
+        email=email,
         is_default=data.is_default or is_first,
     )
     db.add(email_obj)
@@ -459,7 +460,7 @@ async def add_person_email(
             await db.execute(
                 select(PersonEmail).where(
                     PersonEmail.person_id == id,
-                    PersonEmail.email != data.email,
+                    PersonEmail.email != email,
                 )
             )
         ).scalars():
@@ -486,8 +487,23 @@ async def remove_person_email(
     )
     result = await db.execute(stmt)
     email_obj = require_found(result.scalar_one_or_none(), "Email")
+    was_default = email_obj.is_default
     await db.delete(email_obj)
     await db.flush()
+
+    # Auto-promote another email to default if we deleted the default
+    if was_default:
+        next_email = (
+            await db.execute(
+                select(PersonEmail)
+                .where(PersonEmail.person_id == id)
+                .order_by(PersonEmail.created_at.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if next_email:
+            next_email.is_default = True
+            await db.flush()
 
 
 @router.post(
@@ -591,8 +607,23 @@ async def remove_person_phone(
     )
     result = await db.execute(stmt)
     phone_obj = require_found(result.scalar_one_or_none(), "Telefoon")
+    was_default = phone_obj.is_default
     await db.delete(phone_obj)
     await db.flush()
+
+    # Auto-promote another phone to default if we deleted the default
+    if was_default:
+        next_phone = (
+            await db.execute(
+                select(PersonPhone)
+                .where(PersonPhone.person_id == id)
+                .order_by(PersonPhone.created_at.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if next_phone:
+            next_phone.is_default = True
+            await db.flush()
 
 
 @router.post(

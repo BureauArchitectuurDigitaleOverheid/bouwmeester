@@ -26,6 +26,7 @@ class PersonEmail(Base):
         UUID(as_uuid=True),
         ForeignKey("person.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     email: Mapped[str] = mapped_column(unique=True, nullable=False)
     is_default: Mapped[bool] = mapped_column(default=False, server_default="false")

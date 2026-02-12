@@ -44,6 +44,7 @@ export function OnboardingModal() {
   const [extraEmails, setExtraEmails] = useState<ExtraEmail[]>([]);
   const [extraPhones, setExtraPhones] = useState<ExtraPhone[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   const mutation = useMutation({
     mutationFn: async (data: OnboardingPayload) => {
@@ -61,7 +62,19 @@ export function OnboardingModal() {
           promises.push(addPersonPhone(personId, { phone_number: p.phone_number.trim(), label: p.label }));
         }
       }
-      await Promise.allSettled(promises);
+      const results = await Promise.allSettled(promises);
+      const failed = results.filter((r) => r.status === 'rejected');
+      if (failed.length > 0) {
+        setWarnings(
+          failed.map((r) => {
+            const reason = (r as PromiseRejectedResult).reason;
+            if (reason instanceof ApiError && reason.body && typeof reason.body === 'object' && 'detail' in reason.body) {
+              return String((reason.body as { detail: string }).detail);
+            }
+            return 'Kon contactgegeven niet opslaan';
+          }),
+        );
+      }
       return result;
     },
     onSuccess: async () => {
@@ -235,6 +248,13 @@ export function OnboardingModal() {
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {warnings.length > 0 && (
+          <div className="text-sm text-amber-600">
+            {warnings.map((w, i) => (
+              <p key={i}>{w}</p>
+            ))}
+          </div>
+        )}
       </div>
     </Modal>
   );
