@@ -21,6 +21,7 @@ class NotificationType(enum.StrEnum):
     direct_message = "direct_message"
     agent_prompt = "agent_prompt"
     mention = "mention"
+    access_request = "access_request"
 
 
 class NotificationBase(BaseModel):

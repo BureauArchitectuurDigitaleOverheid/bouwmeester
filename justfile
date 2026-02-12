@@ -170,23 +170,6 @@ encrypt-seed:
     @echo "Encrypted → backend/scripts/seed_persons.json.age"
 
 # ---------------------------------------------------------------------------
-# Access whitelist encryption (age)
-# ---------------------------------------------------------------------------
-
-# Decrypt access_whitelist.json from the committed .age file
-decrypt-whitelist:
-    age -d -i ~/.age/key.txt -o backend/scripts/access_whitelist.json backend/scripts/access_whitelist.json.age
-    @echo "Decrypted → backend/scripts/access_whitelist.json"
-
-# Encrypt access_whitelist.json for committing (recipients from age-recipients.txt)
-encrypt-whitelist:
-    @test -f age-recipients.txt || { echo "Error: age-recipients.txt not found"; exit 1; }
-    age $(grep -v '^#' age-recipients.txt | grep -v '^\s*$' | sed 's/^/-r /') \
-        -o backend/scripts/access_whitelist.json.age \
-        backend/scripts/access_whitelist.json
-    @echo "Encrypted → backend/scripts/access_whitelist.json.age"
-
-# ---------------------------------------------------------------------------
 # Admin emails encryption (age)
 # ---------------------------------------------------------------------------
 

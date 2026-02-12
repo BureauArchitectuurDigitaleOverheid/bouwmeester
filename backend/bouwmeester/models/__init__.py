@@ -2,6 +2,7 @@
 # and Alembic can detect them for autogenerate.
 
 from bouwmeester.models.absence import Absence  # noqa: F401
+from bouwmeester.models.access_request import AccessRequest  # noqa: F401
 from bouwmeester.models.activity import Activity  # noqa: F401
 from bouwmeester.models.beleidskader import Beleidskader  # noqa: F401
 from bouwmeester.models.beleidsoptie import Beleidsoptie  # noqa: F401
@@ -39,6 +40,7 @@ from bouwmeester.models.team import Team, TeamMember  # noqa: F401
 from bouwmeester.models.whitelist_email import WhitelistEmail  # noqa: F401
 
 __all__ = [
+    "AccessRequest",
     "Absence",
     "Activity",
     "Beleidskader",

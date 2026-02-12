@@ -385,6 +385,23 @@ class NotificationService:
         )
         return await self.repo.create(data)
 
+    async def notify_access_request(self, email: str, naam: str) -> list[Notification]:
+        """Notify all admin users about a new access request."""
+        stmt = select(Person).where(Person.is_admin == True)  # noqa: E712
+        result = await self.session.execute(stmt)
+        admins = result.scalars().all()
+
+        notifications: list[Notification] = []
+        for admin in admins:
+            data = NotificationCreate(
+                person_id=admin.id,
+                type="access_request",
+                title=f"Nieuw toegangsverzoek: {naam}",
+                message=f"{naam} ({email}) vraagt toegang aan tot Bouwmeester.",
+            )
+            notifications.append(await self.repo.create(data))
+        return notifications
+
     async def get_notifications(
         self,
         person_id: UUID,
