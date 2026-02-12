@@ -388,15 +388,19 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       <div className="sm:col-span-2">
                         <dt className="text-xs font-medium text-text-secondary">URL</dt>
                         <dd className="text-sm mt-0.5">
-                          <a
-                            href={bronDetail.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary-700 hover:text-primary-900 inline-flex items-center gap-1"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            {bronDetail.url}
-                          </a>
+                          {bronDetail.url.startsWith('http://') || bronDetail.url.startsWith('https://') ? (
+                            <a
+                              href={bronDetail.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary-700 hover:text-primary-900 inline-flex items-center gap-1"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              {bronDetail.url}
+                            </a>
+                          ) : (
+                            <span className="text-text-secondary">{bronDetail.url}</span>
+                          )}
                         </dd>
                       </div>
                     )}
