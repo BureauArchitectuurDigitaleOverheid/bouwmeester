@@ -499,6 +499,74 @@ async def get_node_status_history(
     return [NodeStatusRecord.model_validate(r) for r in records]
 
 
+@router.get("/{id}/bron-detail")
+async def get_node_bron_detail(
+    id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict | None:
+    """Get bron-specific detail fields for a bron node."""
+    from sqlalchemy import select
+
+    from bouwmeester.models.bron import Bron
+
+    stmt = select(Bron).where(Bron.id == id)
+    result = await db.execute(stmt)
+    bron = result.scalar_one_or_none()
+    if bron is None:
+        return None
+    return {
+        "type": bron.type,
+        "auteur": bron.auteur,
+        "publicatie_datum": str(bron.publicatie_datum)
+        if bron.publicatie_datum
+        else None,
+        "url": bron.url,
+    }
+
+
+@router.put("/{id}/bron-detail")
+async def update_node_bron_detail(
+    id: UUID,
+    data: dict,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Update bron-specific detail fields for a bron node."""
+    from sqlalchemy import select
+
+    from bouwmeester.models.bron import Bron
+
+    stmt = select(Bron).where(Bron.id == id)
+    result = await db.execute(stmt)
+    bron = result.scalar_one_or_none()
+    if bron is None:
+        raise HTTPException(status_code=404, detail="Bron detail not found")
+
+    if "type" in data and data["type"] is not None:
+        bron.type = data["type"]
+    if "auteur" in data:
+        bron.auteur = data["auteur"]
+    if "publicatie_datum" in data:
+        from datetime import date as date_type
+
+        val = data["publicatie_datum"]
+        bron.publicatie_datum = date_type.fromisoformat(val) if val else None
+    if "url" in data:
+        bron.url = data["url"]
+
+    await db.flush()
+
+    return {
+        "type": bron.type,
+        "auteur": bron.auteur,
+        "publicatie_datum": str(bron.publicatie_datum)
+        if bron.publicatie_datum
+        else None,
+        "url": bron.url,
+    }
+
+
 @router.get("/{id}/parlementair-item")
 async def get_node_parlementair_item(
     id: UUID,

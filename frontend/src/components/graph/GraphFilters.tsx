@@ -11,6 +11,7 @@ const NODE_TYPE_HEX_COLORS: Record<string, string> = {
   [NodeType.PROBLEEM]: '#EF4444',
   [NodeType.EFFECT]: '#059669',
   [NodeType.BELEIDSOPTIE]: '#6366F1',
+  [NodeType.BRON]: '#F97316',
   [NodeType.NOTITIE]: '#64748b',
   [NodeType.OVERIG]: '#9ca3af',
 };

@@ -1,6 +1,12 @@
 """Pydantic schemas for the Bouwmeester API."""
 
 from bouwmeester.schema.activity import ActivityFeedResponse, ActivityResponse
+from bouwmeester.schema.bron import (
+    BronBijlageResponse,
+    BronCreate,
+    BronResponse,
+    BronUpdate,
+)
 from bouwmeester.schema.corpus_node import (
     CorpusNodeBase,
     CorpusNodeCreate,
@@ -99,6 +105,11 @@ OrganisatieEenheidPersonenGroup.model_rebuild()
 TagTreeResponse.model_rebuild()
 
 __all__ = [
+    # bron
+    "BronBijlageResponse",
+    "BronCreate",
+    "BronResponse",
+    "BronUpdate",
     # corpus_node
     "CorpusNodeBase",
     "CorpusNodeCreate",

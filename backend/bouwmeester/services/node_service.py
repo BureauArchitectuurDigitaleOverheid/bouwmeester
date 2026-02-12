@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.beleidskader import Beleidskader
+from bouwmeester.models.bron import Bron
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.doel import Doel
 from bouwmeester.models.dossier import Dossier
@@ -46,6 +47,7 @@ class NodeService:
             "beleidskader": lambda nid: Beleidskader(id=nid, scope="nationaal"),
             "maatregel": lambda nid: Maatregel(id=nid),
             "politieke_input": lambda nid: PolitiekeInput(id=nid, type="toezegging"),
+            "bron": lambda nid: Bron(id=nid, type="overig"),
         }
         factory = type_factories.get(data.node_type.value)
         if factory:

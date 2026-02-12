@@ -21,6 +21,7 @@ class NodeType(enum.StrEnum):
     probleem = "probleem"
     effect = "effect"
     beleidsoptie = "beleidsoptie"
+    bron = "bron"
 
 
 # --- Temporal record schemas ---

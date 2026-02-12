@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { clsx } from 'clsx';
-import { ArrowLeft, Pencil, Trash2, Calendar, Link as LinkIcon, Users, X, ExternalLink, Plus } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Calendar, Link as LinkIcon, Users, X, ExternalLink, Plus, Download, Upload, FileText } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
@@ -13,14 +13,15 @@ import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm
 import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
 import { TaskView } from '@/components/tasks/TaskView';
-import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeParlementairItem, useAddNodeStakeholder, useUpdateNodeStakeholder, useRemoveNodeStakeholder, useNodeTitleHistory, useNodeStatusHistory } from '@/hooks/useNodes';
+import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeParlementairItem, useAddNodeStakeholder, useUpdateNodeStakeholder, useRemoveNodeStakeholder, useNodeTitleHistory, useNodeStatusHistory, useNodeBronDetail, useNodeBijlage } from '@/hooks/useNodes';
 import { useTasks } from '@/hooks/useTasks';
 import { usePeople } from '@/hooks/usePeople';
 import { useNodeTags, useAddTagToNode, useRemoveTagFromNode, useTags } from '@/hooks/useTags';
 import { useReferences } from '@/hooks/useMentions';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
-import { NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, formatFunctie } from '@/types';
+import { NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, BRON_TYPE_LABELS, NodeType, formatFunctie } from '@/types';
+import { uploadBijlage, deleteBijlage, getBijlageDownloadUrl, updateNodeBronDetail } from '@/api/nodes';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDate } from '@/utils/dates';
 
@@ -60,6 +61,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const removeTag = useRemoveTagFromNode();
   const { nodeLabel, nodeAltLabel } = useVocabulary();
   const { data: parlementairItem } = useNodeParlementairItem(nodeId, node?.node_type);
+  const { data: bronDetail, refetch: refetchBronDetail } = useNodeBronDetail(nodeId, node?.node_type);
+  const { data: bijlageInfo, refetch: refetchBijlage } = useNodeBijlage(nodeId, node?.node_type);
   const { data: references } = useReferences(nodeId);
   const { data: titleHistory } = useNodeTitleHistory(nodeId);
   const { data: statusHistory } = useNodeStatusHistory(nodeId);
@@ -72,6 +75,12 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const [newStakeholderRol, setNewStakeholderRol] = useState('betrokken');
   const [personCreateName, setPersonCreateName] = useState('');
   const [showPersonCreate, setShowPersonCreate] = useState(false);
+  const [bronEditing, setBronEditing] = useState(false);
+  const [bronType, setBronType] = useState('');
+  const [bronAuteur, setBronAuteur] = useState('');
+  const [bronPublicatieDatum, setBronPublicatieDatum] = useState('');
+  const [bronUrl, setBronUrl] = useState('');
+  const [bijlageUploading, setBijlageUploading] = useState(false);
 
   // Tag search: fetch all tags and filter client-side for instant results
   const { data: allTags } = useTags();
@@ -265,6 +274,201 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
               <h3 className="text-sm font-medium text-text mb-2">Beschrijving</h3>
               <RichTextDisplay content={node.description} />
             </Card>
+
+            {/* Bron detail */}
+            {node.node_type === NodeType.BRON && bronDetail && (
+              <Card>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-text">Brongegevens</h3>
+                  {!bronEditing && (
+                    <button
+                      onClick={() => {
+                        setBronType(bronDetail.type);
+                        setBronAuteur(bronDetail.auteur ?? '');
+                        setBronPublicatieDatum(bronDetail.publicatie_datum ?? '');
+                        setBronUrl(bronDetail.url ?? '');
+                        setBronEditing(true);
+                      }}
+                      className="text-xs text-primary-700 hover:text-primary-900 transition-colors"
+                    >
+                      Bewerken
+                    </button>
+                  )}
+                </div>
+                {bronEditing ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">Type</label>
+                      <select
+                        value={bronType}
+                        onChange={(e) => setBronType(e.target.value)}
+                        className="w-full rounded-lg border border-border bg-white px-3 py-1.5 text-sm"
+                      >
+                        {Object.entries(BRON_TYPE_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">Auteur</label>
+                      <input
+                        type="text"
+                        value={bronAuteur}
+                        onChange={(e) => setBronAuteur(e.target.value)}
+                        placeholder="Naam auteur..."
+                        className="w-full rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">Publicatiedatum</label>
+                      <input
+                        type="date"
+                        value={bronPublicatieDatum}
+                        onChange={(e) => setBronPublicatieDatum(e.target.value)}
+                        className="w-full rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">URL</label>
+                      <input
+                        type="url"
+                        value={bronUrl}
+                        onChange={(e) => setBronUrl(e.target.value)}
+                        placeholder="https://..."
+                        className="w-full rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          await updateNodeBronDetail(nodeId, {
+                            type: bronType,
+                            auteur: bronAuteur || null,
+                            publicatie_datum: bronPublicatieDatum || null,
+                            url: bronUrl || null,
+                          });
+                          setBronEditing(false);
+                          refetchBronDetail();
+                        }}
+                      >
+                        Opslaan
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => setBronEditing(false)}>
+                        Annuleren
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <dt className="text-xs font-medium text-text-secondary">Type</dt>
+                      <dd className="text-sm text-text mt-0.5">
+                        {BRON_TYPE_LABELS[bronDetail.type] ?? bronDetail.type}
+                      </dd>
+                    </div>
+                    {bronDetail.auteur && (
+                      <div>
+                        <dt className="text-xs font-medium text-text-secondary">Auteur</dt>
+                        <dd className="text-sm text-text mt-0.5">{bronDetail.auteur}</dd>
+                      </div>
+                    )}
+                    {bronDetail.publicatie_datum && (
+                      <div>
+                        <dt className="text-xs font-medium text-text-secondary">Publicatiedatum</dt>
+                        <dd className="text-sm text-text mt-0.5">{formatDate(bronDetail.publicatie_datum)}</dd>
+                      </div>
+                    )}
+                    {bronDetail.url && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs font-medium text-text-secondary">URL</dt>
+                        <dd className="text-sm mt-0.5">
+                          <a
+                            href={bronDetail.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary-700 hover:text-primary-900 inline-flex items-center gap-1"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            {bronDetail.url}
+                          </a>
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+              </Card>
+            )}
+
+            {/* Bijlage */}
+            {node.node_type === NodeType.BRON && (
+              <Card>
+                <h3 className="text-sm font-medium text-text mb-3">Bijlage</h3>
+                {bijlageInfo ? (
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-gray-50/50">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="h-5 w-5 text-text-secondary shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm text-text truncate">{bijlageInfo.bestandsnaam}</p>
+                        <p className="text-xs text-text-secondary">
+                          {(bijlageInfo.bestandsgrootte / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <a
+                        href={getBijlageDownloadUrl(nodeId)}
+                        className="p-1.5 rounded-lg text-primary-700 hover:bg-primary-50 transition-colors"
+                        title="Downloaden"
+                      >
+                        <Download className="h-4 w-4" />
+                      </a>
+                      <button
+                        onClick={async () => {
+                          if (window.confirm('Bijlage verwijderen?')) {
+                            await deleteBijlage(nodeId);
+                            refetchBijlage();
+                          }
+                        }}
+                        className="p-1.5 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Verwijderen"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border hover:border-border-hover p-6 transition-colors cursor-pointer">
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.odt,.txt,.png,.jpg,.jpeg"
+                      disabled={bijlageUploading}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setBijlageUploading(true);
+                        try {
+                          await uploadBijlage(nodeId, file);
+                          refetchBijlage();
+                        } catch (err) {
+                          console.error('Upload failed', err);
+                        } finally {
+                          setBijlageUploading(false);
+                        }
+                      }}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <Upload className="h-6 w-6 text-text-secondary" />
+                    <p className="text-sm text-text-secondary">
+                      {bijlageUploading ? 'Uploaden...' : 'Sleep een bestand hierheen of klik om te uploaden'}
+                    </p>
+                    <p className="text-xs text-text-secondary">
+                      PDF, Word, ODT, TXT, PNG, JPEG (max. 20 MB)
+                    </p>
+                  </div>
+                )}
+              </Card>
+            )}
 
             {/* Tags */}
             <Card>

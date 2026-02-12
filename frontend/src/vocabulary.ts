@@ -25,6 +25,7 @@ export const NODE_TYPE_VOCABULARY: Record<string, { beleid: string; architectuur
   probleem:        { beleid: 'Probleem',          architectuur: 'Driver' },
   effect:          { beleid: 'Effect',            architectuur: 'Outcome' },
   beleidsoptie:    { beleid: 'Beleidsoptie',      architectuur: 'Course of Action' },
+  bron:            { beleid: 'Bron',              architectuur: 'Resource' },
   notitie:         { beleid: 'Notitie',           architectuur: 'Notitie' },
   overig:          { beleid: 'Overig',            architectuur: 'Overig' },
 };

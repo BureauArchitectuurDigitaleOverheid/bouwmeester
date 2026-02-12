@@ -25,6 +25,7 @@ NODE_TYPE_TO_ARCHIMATE: dict[str, str] = {
     "probleem": "Driver",
     "effect": "Outcome",
     "beleidsoptie": "CourseOfAction",
+    "bron": "Resource",
 }
 
 # Bouwmeester edge type → ArchiMate relationship type

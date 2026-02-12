@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from bouwmeester.api.routes.activity import router as activity_router
 from bouwmeester.api.routes.admin import router as admin_router
 from bouwmeester.api.routes.auth import router as auth_router
+from bouwmeester.api.routes.bijlage import router as bijlage_router
 from bouwmeester.api.routes.edge_types import router as edge_types_router
 from bouwmeester.api.routes.edges import router as edges_router
 from bouwmeester.api.routes.graph import router as graph_router
@@ -22,6 +23,7 @@ from bouwmeester.api.routes.tasks import router as tasks_router
 api_router = APIRouter()
 
 api_router.include_router(admin_router)
+api_router.include_router(bijlage_router)
 api_router.include_router(auth_router)
 api_router.include_router(nodes_router)
 api_router.include_router(edges_router)
