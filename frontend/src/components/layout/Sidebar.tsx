@@ -10,10 +10,12 @@ import {
   Users,
   ScrollText,
   History,
+  Shield,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
 import { useUIStore } from '@/store/ui';
+import { useAuth } from '@/contexts/AuthContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { ORGANISATIE_TYPE_LABELS } from '@/types';
@@ -24,6 +26,7 @@ interface SidebarProps {
 
 export function Sidebar({ mobile }: SidebarProps) {
   const { sidebarOpen, toggleSidebar, setMobileSidebarOpen } = useUIStore();
+  const { person: authPerson, oidcConfigured } = useAuth();
   const { currentPerson } = useCurrentPerson();
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
 
@@ -36,16 +39,22 @@ export function Sidebar({ mobile }: SidebarProps) {
     return 'Eenheid';
   }, [managedEenheden]);
 
-  const navItems = useMemo(() => [
-    { to: '/', icon: Inbox, label: 'Inbox' },
-    { to: '/corpus', icon: Network, label: 'Corpus' },
-    { to: '/tasks', icon: CheckSquare, label: 'Taken' },
-    { to: '/organisatie', icon: Building2, label: 'Organisatie' },
-    { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel },
-    { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken' },
-    { to: '/auditlog', icon: History, label: 'Auditlog' },
-    { to: '/search', icon: Search, label: 'Zoeken' },
-  ], [eenheidLabel]);
+  const navItems = useMemo(() => {
+    const items = [
+      { to: '/', icon: Inbox, label: 'Inbox' },
+      { to: '/corpus', icon: Network, label: 'Corpus' },
+      { to: '/tasks', icon: CheckSquare, label: 'Taken' },
+      { to: '/organisatie', icon: Building2, label: 'Organisatie' },
+      { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel },
+      { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken' },
+      { to: '/auditlog', icon: History, label: 'Auditlog' },
+      { to: '/search', icon: Search, label: 'Zoeken' },
+    ];
+    if (!oidcConfigured || authPerson?.is_admin) {
+      items.push({ to: '/admin', icon: Shield, label: 'Beheer' });
+    }
+    return items;
+  }, [eenheidLabel, oidcConfigured, authPerson?.is_admin]);
 
   const handleNavClick = () => {
     if (mobile) {

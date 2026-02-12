@@ -7,6 +7,7 @@ import time
 from collections import OrderedDict
 from datetime import date
 from urllib.parse import urlencode
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
@@ -261,15 +262,31 @@ async def auth_status(
         person_id = request.session.get("person_db_id")
         needs_onboarding = request.session.get("needs_onboarding")
 
-        # Resolve from DB only on first call (or after cache invalidation).
+        is_admin = request.session.get("is_admin")
+
+        # Resolve from DB on first call.
         if person_id is None and sub and email:
             person = await get_or_create_person(db, sub=sub, email=email, name=name)
             person_id = str(person.id)
             needs_onboarding = await _check_needs_onboarding(db, person)
+            is_admin = person.is_admin
 
             # Cache in session.
             request.session["person_db_id"] = person_id
             request.session["needs_onboarding"] = needs_onboarding
+            request.session["is_admin"] = is_admin
+        elif person_id is not None:
+            # Re-fetch is_admin from DB periodically so admin-role changes
+            # take effect without requiring the target user to re-login.
+            # Throttled to at most once per 60s to avoid a DB query on every
+            # page load.
+            last_check = request.session.get("is_admin_checked_at", 0)
+            if time.time() - last_check > 60:
+                person_obj = await db.get(Person, UUID(person_id))
+                if person_obj is not None:
+                    is_admin = person_obj.is_admin
+                    request.session["is_admin"] = is_admin
+                request.session["is_admin_checked_at"] = time.time()
 
         result["person"] = {
             "sub": sub,
@@ -277,6 +294,7 @@ async def auth_status(
             "name": name,
             "id": person_id,
             "needs_onboarding": bool(needs_onboarding),
+            "is_admin": bool(is_admin),
         }
 
     return result

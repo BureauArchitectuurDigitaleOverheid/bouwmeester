@@ -381,6 +381,7 @@ export interface Person {
   functie?: string;
   description?: string;
   is_agent: boolean;
+  is_admin: boolean;
   api_key?: string | null;
   is_active: boolean;
   created_at: string;

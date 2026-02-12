@@ -11,6 +11,12 @@ from bouwmeester.schema.corpus_node import (
     NodeTitleRecord,
     NodeType,
 )
+from bouwmeester.schema.database_backup import (
+    DatabaseBackupInfo,
+    DatabaseResetRequest,
+    DatabaseResetResult,
+    DatabaseRestoreResult,
+)
 from bouwmeester.schema.edge import (
     EdgeBase,
     EdgeCreate,
@@ -79,6 +85,12 @@ from bouwmeester.schema.task import (
     TaskSubtaskSummary,
     TaskUpdate,
 )
+from bouwmeester.schema.whitelist import (
+    AdminToggleRequest,
+    AdminUserResponse,
+    WhitelistEmailCreate,
+    WhitelistEmailResponse,
+)
 
 # Resolve forward references between corpus_node <-> edge schemas.
 CorpusNodeWithEdges.model_rebuild()
@@ -138,6 +150,11 @@ __all__ = [
     # activity
     "ActivityFeedResponse",
     "ActivityResponse",
+    # database_backup
+    "DatabaseBackupInfo",
+    "DatabaseResetRequest",
+    "DatabaseResetResult",
+    "DatabaseRestoreResult",
     # graph
     "GraphNeighborsResponse",
     "GraphSearchParams",
@@ -167,4 +184,9 @@ __all__ = [
     "ParlementairItemResponse",
     "ReviewAction",
     "SuggestedEdgeResponse",
+    # whitelist / admin
+    "AdminToggleRequest",
+    "AdminUserResponse",
+    "WhitelistEmailCreate",
+    "WhitelistEmailResponse",
 ]

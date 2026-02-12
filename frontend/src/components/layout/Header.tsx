@@ -17,6 +17,7 @@ const pageTitles: Record<string, string> = {
   '/people': 'Personen',
   '/organisatie': 'Organisatie',
   '/parlementair': 'Kamerstukken',
+  '/admin': 'Beheer',
   '/auditlog': 'Auditlog',
   '/search': 'Zoeken',
 };

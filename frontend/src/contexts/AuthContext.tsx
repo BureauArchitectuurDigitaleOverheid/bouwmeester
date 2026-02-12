@@ -7,6 +7,7 @@ interface AuthPerson {
   name: string;
   id: string | null;
   needs_onboarding: boolean;
+  is_admin: boolean;
 }
 
 interface AuthState {
@@ -42,6 +43,7 @@ async function fetchAuthStatus(): Promise<AuthState> {
           name: data.person.name ?? '',
           id: data.person.id ?? null,
           needs_onboarding: data.person.needs_onboarding ?? false,
+          is_admin: data.person.is_admin ?? false,
         }
       : null,
     error: null,

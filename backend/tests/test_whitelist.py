@@ -26,8 +26,8 @@ class TestNoWhitelistFile:
 
     def test_all_emails_allowed(self):
         with (
-            patch.object(whitelist, "_JSON_PATH", Path("/nonexistent/wl.json")),
-            patch.object(whitelist, "_AGE_PATH", Path("/nonexistent/wl.json.age")),
+            patch.object(whitelist, "_WL_JSON_PATH", Path("/nonexistent/wl.json")),
+            patch.object(whitelist, "_WL_AGE_PATH", Path("/nonexistent/wl.json.age")),
         ):
             whitelist.load_whitelist()
 
@@ -35,8 +35,8 @@ class TestNoWhitelistFile:
 
     def test_whitelist_not_active(self):
         with (
-            patch.object(whitelist, "_JSON_PATH", Path("/nonexistent/wl.json")),
-            patch.object(whitelist, "_AGE_PATH", Path("/nonexistent/wl.json.age")),
+            patch.object(whitelist, "_WL_JSON_PATH", Path("/nonexistent/wl.json")),
+            patch.object(whitelist, "_WL_AGE_PATH", Path("/nonexistent/wl.json.age")),
         ):
             whitelist.load_whitelist()
 
@@ -50,7 +50,7 @@ class TestWhitelistLoaded:
         wl = tmp_path / "access_whitelist.json"
         wl.write_text(json.dumps({"emails": ["alice@example.com", "bob@example.com"]}))
 
-        with patch.object(whitelist, "_JSON_PATH", wl):
+        with patch.object(whitelist, "_WL_JSON_PATH", wl):
             whitelist.load_whitelist()
 
         assert whitelist.is_email_allowed("alice@example.com") is True
@@ -60,7 +60,7 @@ class TestWhitelistLoaded:
         wl = tmp_path / "access_whitelist.json"
         wl.write_text(json.dumps({"emails": ["alice@example.com"]}))
 
-        with patch.object(whitelist, "_JSON_PATH", wl):
+        with patch.object(whitelist, "_WL_JSON_PATH", wl):
             whitelist.load_whitelist()
 
         assert whitelist.is_email_allowed("eve@example.com") is False
@@ -69,7 +69,7 @@ class TestWhitelistLoaded:
         wl = tmp_path / "access_whitelist.json"
         wl.write_text(json.dumps({"emails": ["Alice@Example.COM"]}))
 
-        with patch.object(whitelist, "_JSON_PATH", wl):
+        with patch.object(whitelist, "_WL_JSON_PATH", wl):
             whitelist.load_whitelist()
 
         assert whitelist.is_email_allowed("alice@example.com") is True
@@ -80,7 +80,7 @@ class TestWhitelistLoaded:
         wl = tmp_path / "access_whitelist.json"
         wl.write_text(json.dumps({"emails": ["  alice@example.com  "]}))
 
-        with patch.object(whitelist, "_JSON_PATH", wl):
+        with patch.object(whitelist, "_WL_JSON_PATH", wl):
             whitelist.load_whitelist()
 
         assert whitelist.is_email_allowed("alice@example.com") is True
@@ -90,7 +90,7 @@ class TestWhitelistLoaded:
         wl = tmp_path / "access_whitelist.json"
         wl.write_text(json.dumps({"emails": []}))
 
-        with patch.object(whitelist, "_JSON_PATH", wl):
+        with patch.object(whitelist, "_WL_JSON_PATH", wl):
             whitelist.load_whitelist()
 
         assert whitelist._whitelist_active is True
@@ -104,7 +104,7 @@ class TestMalformedWhitelist:
         wl = tmp_path / "access_whitelist.json"
         wl.write_text("not valid json {{{")
 
-        with patch.object(whitelist, "_JSON_PATH", wl):
+        with patch.object(whitelist, "_WL_JSON_PATH", wl):
             whitelist.load_whitelist()
 
         assert whitelist._whitelist_active is True
@@ -114,7 +114,7 @@ class TestMalformedWhitelist:
         wl = tmp_path / "access_whitelist.json"
         wl.write_text(json.dumps({"wrong_key": ["a@b.com"]}))
 
-        with patch.object(whitelist, "_JSON_PATH", wl):
+        with patch.object(whitelist, "_WL_JSON_PATH", wl):
             whitelist.load_whitelist()
 
         assert whitelist._whitelist_active is True

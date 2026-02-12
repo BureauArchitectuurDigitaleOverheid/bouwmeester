@@ -34,6 +34,7 @@ from bouwmeester.models.probleem import Probleem  # noqa: F401
 from bouwmeester.models.tag import NodeTag, Tag  # noqa: F401
 from bouwmeester.models.task import Task  # noqa: F401
 from bouwmeester.models.team import Team, TeamMember  # noqa: F401
+from bouwmeester.models.whitelist_email import WhitelistEmail  # noqa: F401
 
 __all__ = [
     "Absence",
@@ -69,4 +70,5 @@ __all__ = [
     "Task",
     "Team",
     "TeamMember",
+    "WhitelistEmail",
 ]

@@ -62,5 +62,8 @@ backend/scripts/seed_persons.json
 # Access whitelist (encrypted version .age is committed)
 backend/scripts/access_whitelist.json
 
+# Admin emails seed (encrypted version .age is committed)
+backend/scripts/admin_emails.json
+
 # Alembic
 alembic/versions/__pycache__/

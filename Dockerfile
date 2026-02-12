@@ -32,7 +32,7 @@ RUN uv sync --frozen
 FROM python:3.13-slim
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends nginx supervisor && \
+    apt-get install -y --no-install-recommends nginx supervisor postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -40,6 +40,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Copy backend
 WORKDIR /app
 COPY --from=backend-builder /app /app
+COPY age-recipients.txt /app/age-recipients.txt
 
 # Copy frontend build to nginx
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html

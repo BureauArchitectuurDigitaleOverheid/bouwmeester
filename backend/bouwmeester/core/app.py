@@ -16,9 +16,19 @@ from bouwmeester.middleware.session import ServerSideSessionMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_db()
-    from bouwmeester.core.whitelist import load_whitelist
 
-    load_whitelist()
+    from bouwmeester.core.whitelist import (
+        refresh_whitelist_cache,
+        seed_admins_from_file,
+        seed_whitelist_from_file,
+    )
+
+    async with async_session() as session:
+        await seed_whitelist_from_file(session)
+        await seed_admins_from_file(session)
+        await refresh_whitelist_cache(session)
+        await session.commit()
+
     cleanup_task = asyncio.create_task(run_cleanup_loop(app.state.session_store))
     yield
     cleanup_task.cancel()
