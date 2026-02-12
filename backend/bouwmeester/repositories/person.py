@@ -17,9 +17,7 @@ class PersonRepository(BaseRepository[Person]):
         return [selectinload(Person.emails), selectinload(Person.phones)]
 
     async def get(self, id: UUID) -> Person | None:
-        stmt = (
-            select(Person).where(Person.id == id).options(*self._eager_options())
-        )
+        stmt = select(Person).where(Person.id == id).options(*self._eager_options())
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 

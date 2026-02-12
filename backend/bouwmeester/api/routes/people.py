@@ -79,9 +79,7 @@ async def create_person(
 
     # Also create a PersonEmail row if email was provided
     if data.email:
-        email_obj = PersonEmail(
-            person_id=person.id, email=data.email, is_default=True
-        )
+        email_obj = PersonEmail(person_id=person.id, email=data.email, is_default=True)
         db.add(email_obj)
         await db.flush()
         await db.refresh(person, attribute_names=["emails"])
@@ -481,9 +479,7 @@ async def add_person_email(
 
     # If this is the first email, auto-set as default
     count_result = await db.execute(
-        select(func.count())
-        .select_from(PersonEmail)
-        .where(PersonEmail.person_id == id)
+        select(func.count()).select_from(PersonEmail).where(PersonEmail.person_id == id)
     )
     is_first = (count_result.scalar() or 0) == 0
 
@@ -548,10 +544,10 @@ async def set_default_email(
 ) -> PersonEmailResponse:
     # Unset all defaults for this person
     all_emails = (
-        await db.execute(
-            select(PersonEmail).where(PersonEmail.person_id == id)
-        )
-    ).scalars().all()
+        (await db.execute(select(PersonEmail).where(PersonEmail.person_id == id)))
+        .scalars()
+        .all()
+    )
     target = None
     for e in all_emails:
         if e.id == email_id:
@@ -592,9 +588,7 @@ async def add_person_phone(
 
     # If this is the first phone, auto-set as default
     count_result = await db.execute(
-        select(func.count())
-        .select_from(PersonPhone)
-        .where(PersonPhone.person_id == id)
+        select(func.count()).select_from(PersonPhone).where(PersonPhone.person_id == id)
     )
     is_first = (count_result.scalar() or 0) == 0
 
@@ -654,10 +648,10 @@ async def set_default_phone(
     db: AsyncSession = Depends(get_db),
 ) -> PersonPhoneResponse:
     all_phones = (
-        await db.execute(
-            select(PersonPhone).where(PersonPhone.person_id == id)
-        )
-    ).scalars().all()
+        (await db.execute(select(PersonPhone).where(PersonPhone.person_id == id)))
+        .scalars()
+        .all()
+    )
     target = None
     for p in all_phones:
         if p.id == phone_id:

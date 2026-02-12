@@ -30,9 +30,7 @@ def upgrade() -> None:
         ),
         sa.Column("person_id", sa.UUID(), nullable=False),
         sa.Column("email", sa.String(), nullable=False),
-        sa.Column(
-            "is_default", sa.Boolean(), server_default="false", nullable=False
-        ),
+        sa.Column("is_default", sa.Boolean(), server_default="false", nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -61,9 +59,7 @@ def upgrade() -> None:
             nullable=False,
             comment="werk|mobiel|prive",
         ),
-        sa.Column(
-            "is_default", sa.Boolean(), server_default="false", nullable=False
-        ),
+        sa.Column("is_default", sa.Boolean(), server_default="false", nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

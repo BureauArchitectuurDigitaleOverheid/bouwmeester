@@ -99,9 +99,7 @@ async def seed_admins_from_file(session: AsyncSession) -> int:
 
     # Update existing persons found via person_email table
     person_email_result = await session.execute(
-        select(PersonEmail.person_id).where(
-            func.lower(PersonEmail.email).in_(emails)
-        )
+        select(PersonEmail.person_id).where(func.lower(PersonEmail.email).in_(emails))
     )
     person_ids_from_email_table = {row[0] for row in person_email_result.all()}
 
@@ -115,9 +113,7 @@ async def seed_admins_from_file(session: AsyncSession) -> int:
     updated = 0
     if all_person_ids:
         result = await session.execute(
-            update(Person)
-            .where(Person.id.in_(all_person_ids))
-            .values(is_admin=True)
+            update(Person).where(Person.id.in_(all_person_ids)).values(is_admin=True)
         )
         updated = result.rowcount
 
@@ -131,9 +127,7 @@ async def seed_admins_from_file(session: AsyncSession) -> int:
 
     # Also check legacy column
     legacy_emails_result = await session.execute(
-        select(func.lower(Person.email)).where(
-            func.lower(Person.email).in_(emails)
-        )
+        select(func.lower(Person.email)).where(func.lower(Person.email).in_(emails))
     )
     existing_emails |= {row[0] for row in legacy_emails_result.all() if row[0]}
 
@@ -144,9 +138,7 @@ async def seed_admins_from_file(session: AsyncSession) -> int:
         session.add(person)
         await session.flush()
         # Also create PersonEmail row
-        session.add(
-            PersonEmail(person_id=person.id, email=email, is_default=True)
-        )
+        session.add(PersonEmail(person_id=person.id, email=email, is_default=True))
     if missing_emails:
         await session.flush()
 

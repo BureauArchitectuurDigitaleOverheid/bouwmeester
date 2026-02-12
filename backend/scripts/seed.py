@@ -848,9 +848,7 @@ async def seed(db: AsyncSession) -> None:
             )
         )
         # Create PersonEmail row
-        email_obj = PersonEmail(
-            person_id=person.id, email=email, is_default=True
-        )
+        email_obj = PersonEmail(person_id=person.id, email=email, is_default=True)
         db.add(email_obj)
         # Create org placement
         placement = PersonOrganisatieEenheid(

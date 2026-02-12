@@ -250,14 +250,10 @@ def get_oauth(settings: Settings | None = None) -> OAuth | None:
 # ---------------------------------------------------------------------------
 
 
-async def _ensure_email_linked(
-    db: AsyncSession, person_id: UUID, email: str
-) -> None:
+async def _ensure_email_linked(db: AsyncSession, person_id: UUID, email: str) -> None:
     """Add email to person_email if not already present (is_default=False)."""
 
-    existing = await db.execute(
-        select(PersonEmail).where(PersonEmail.email == email)
-    )
+    existing = await db.execute(select(PersonEmail).where(PersonEmail.email == email))
     if existing.scalar_one_or_none() is not None:
         return  # Already linked (possibly to this or another person)
     try:
@@ -294,9 +290,7 @@ async def get_or_create_person(
     # Only link by email if the OIDC provider has verified the email address.
     if email_verified:
         # Look up in person_email table
-        stmt_email = (
-            select(Person).join(PersonEmail).where(PersonEmail.email == email)
-        )
+        stmt_email = select(Person).join(PersonEmail).where(PersonEmail.email == email)
         result_email = await db.execute(stmt_email)
         person = result_email.scalar_one_or_none()
 
@@ -338,11 +332,7 @@ async def get_or_create_person(
         person = result.scalar_one_or_none()
         if person is None:
             # Fall back to email match in person_email table.
-            stmt = (
-                select(Person)
-                .join(PersonEmail)
-                .where(PersonEmail.email == email)
-            )
+            stmt = select(Person).join(PersonEmail).where(PersonEmail.email == email)
             result = await db.execute(stmt)
             person = result.scalar_one_or_none()
         if person is None:
