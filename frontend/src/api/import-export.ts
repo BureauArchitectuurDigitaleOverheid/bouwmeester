@@ -99,7 +99,7 @@ export async function exportDatabase(): Promise<void> {
   }
   const disposition = response.headers.get('Content-Disposition') || '';
   const match = disposition.match(/filename=(.+)/);
-  const filename = match ? match[1] : 'bouwmeester-backup.tar.gz';
+  const filename = match ? match[1] : 'bouwmeester-backup.tar.gz.age';
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
