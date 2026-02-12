@@ -11,6 +11,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.node_stakeholder import NodeStakeholderRepository
 from bouwmeester.repositories.task import TaskRepository
+from bouwmeester.schema.bron import BronResponse, BronUpdate
 from bouwmeester.schema.corpus_node import (
     CorpusNodeCreate,
     CorpusNodeResponse,
@@ -169,7 +170,33 @@ async def delete_node(
     node = await service.get(id)
     node_title = node.title if node else None
     node_type = node.node_type if node else None
+
+    # Clean up bijlage files on disk before deleting the bron node,
+    # because CASCADE will remove the DB rows but not the files.
+    bijlage_path_to_delete: str | None = None
+    if node and node.node_type == "bron":
+        from sqlalchemy import select
+
+        from bouwmeester.api.routes.bijlage import BIJLAGEN_ROOT
+        from bouwmeester.models.bron_bijlage import BronBijlage
+
+        result = await db.execute(
+            select(BronBijlage).where(BronBijlage.bron_id == id)
+        )
+        bijlage = result.scalar_one_or_none()
+        if bijlage:
+            bijlage_path_to_delete = bijlage.pad
+
     require_deleted(await service.delete(id), "Node")
+
+    # Delete the file after DB deletion succeeds.
+    if bijlage_path_to_delete:
+        file_path = (BIJLAGEN_ROOT / bijlage_path_to_delete).resolve()
+        if str(file_path).startswith(
+            str(BIJLAGEN_ROOT.resolve())
+        ) and file_path.exists():
+            file_path.unlink()
+
     await log_activity(
         db,
         current_user,
@@ -499,12 +526,12 @@ async def get_node_status_history(
     return [NodeStatusRecord.model_validate(r) for r in records]
 
 
-@router.get("/{id}/bron-detail")
+@router.get("/{id}/bron-detail", response_model=BronResponse | None)
 async def get_node_bron_detail(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-) -> dict | None:
+) -> BronResponse | None:
     """Get bron-specific detail fields for a bron node."""
     from sqlalchemy import select
 
@@ -515,23 +542,16 @@ async def get_node_bron_detail(
     bron = result.scalar_one_or_none()
     if bron is None:
         return None
-    return {
-        "type": bron.type,
-        "auteur": bron.auteur,
-        "publicatie_datum": str(bron.publicatie_datum)
-        if bron.publicatie_datum
-        else None,
-        "url": bron.url,
-    }
+    return BronResponse.model_validate(bron)
 
 
-@router.put("/{id}/bron-detail")
+@router.put("/{id}/bron-detail", response_model=BronResponse)
 async def update_node_bron_detail(
     id: UUID,
-    data: dict,
+    data: BronUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> BronResponse:
     """Update bron-specific detail fields for a bron node."""
     from sqlalchemy import select
 
@@ -543,28 +563,13 @@ async def update_node_bron_detail(
     if bron is None:
         raise HTTPException(status_code=404, detail="Bron detail not found")
 
-    if "type" in data and data["type"] is not None:
-        bron.type = data["type"]
-    if "auteur" in data:
-        bron.auteur = data["auteur"]
-    if "publicatie_datum" in data:
-        from datetime import date as date_type
-
-        val = data["publicatie_datum"]
-        bron.publicatie_datum = date_type.fromisoformat(val) if val else None
-    if "url" in data:
-        bron.url = data["url"]
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(bron, field, value)
 
     await db.flush()
 
-    return {
-        "type": bron.type,
-        "auteur": bron.auteur,
-        "publicatie_datum": str(bron.publicatie_datum)
-        if bron.publicatie_datum
-        else None,
-        "url": bron.url,
-    }
+    return BronResponse.model_validate(bron)
 
 
 @router.get("/{id}/parlementair-item")

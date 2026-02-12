@@ -342,14 +342,19 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       <Button
                         size="sm"
                         onClick={async () => {
-                          await updateNodeBronDetail(nodeId, {
-                            type: bronType,
-                            auteur: bronAuteur || null,
-                            publicatie_datum: bronPublicatieDatum || null,
-                            url: bronUrl || null,
-                          });
-                          setBronEditing(false);
-                          refetchBronDetail();
+                          try {
+                            await updateNodeBronDetail(nodeId, {
+                              type: bronType,
+                              auteur: bronAuteur || null,
+                              publicatie_datum: bronPublicatieDatum || null,
+                              url: bronUrl || null,
+                            });
+                            setBronEditing(false);
+                            refetchBronDetail();
+                          } catch (err) {
+                            console.error('Fout bij opslaan brongegevens:', err);
+                            alert('Fout bij opslaan brongegevens. Probeer het opnieuw.');
+                          }
                         }}
                       >
                         Opslaan
@@ -426,8 +431,12 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       <button
                         onClick={async () => {
                           if (window.confirm('Bijlage verwijderen?')) {
-                            await deleteBijlage(nodeId);
-                            refetchBijlage();
+                            try {
+                              await deleteBijlage(nodeId);
+                              refetchBijlage();
+                            } catch (err) {
+                              console.error('Delete failed', err);
+                            }
                           }
                         }}
                         className="p-1.5 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors"

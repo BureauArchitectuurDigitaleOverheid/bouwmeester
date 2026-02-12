@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
@@ -30,8 +31,21 @@ ALLOWED_CONTENT_TYPES = {
 }
 
 
-async def _get_bron(node_id: uuid.UUID, db: AsyncSession) -> Bron:
-    result = await db.execute(select(Bron).where(Bron.id == node_id))
+def _safe_path(relative: str) -> Path:
+    """Resolve a relative path under BIJLAGEN_ROOT, guarding against traversal."""
+    resolved = (BIJLAGEN_ROOT / relative).resolve()
+    if not str(resolved).startswith(str(BIJLAGEN_ROOT.resolve())):
+        raise HTTPException(status_code=400, detail="Ongeldig pad")
+    return resolved
+
+
+async def _get_bron(
+    node_id: uuid.UUID, db: AsyncSession, *, load_bijlage: bool = False
+) -> Bron:
+    stmt = select(Bron).where(Bron.id == node_id)
+    if load_bijlage:
+        stmt = stmt.options(selectinload(Bron.bijlage))
+    result = await db.execute(stmt)
     bron = result.scalar_one_or_none()
     if bron is None:
         raise HTTPException(
@@ -50,7 +64,7 @@ async def upload_bijlage(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> BronBijlageResponse:
-    bron = await _get_bron(node_id, db)
+    bron = await _get_bron(node_id, db, load_bijlage=True)
 
     content_type = file.content_type or ""
     if content_type not in ALLOWED_CONTENT_TYPES:
@@ -67,26 +81,33 @@ async def upload_bijlage(
         max_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
         raise HTTPException(
             status_code=400,
-            detail=f"Bestand te groot ({len(content)} bytes). Maximum is {max_mb} MB.",
+            detail=(
+                f"Bestand te groot ({len(content)} bytes). "
+                f"Maximum is {max_mb} MB."
+            ),
         )
 
-    # Remove existing bijlage if present
+    # Sanitize filename: strip path components, keep only the basename.
+    raw_name = file.filename or "bijlage"
+    filename = Path(raw_name).name or "bijlage"
+    safe_name = f"{uuid.uuid4().hex}_{filename}"
+
+    # Write new file first (before deleting old one, to avoid data loss
+    # on write failure).
+    dir_path = BIJLAGEN_ROOT / str(node_id)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    new_file_path = dir_path / safe_name
+    new_file_path.write_bytes(content)
+
+    relative_path = f"{node_id}/{safe_name}"
+
+    # Remove existing bijlage if present (file + DB row).
     if bron.bijlage:
-        old_path = BIJLAGEN_ROOT / bron.bijlage.pad
+        old_path = _safe_path(bron.bijlage.pad)
         if old_path.exists():
             old_path.unlink()
         await db.delete(bron.bijlage)
         await db.flush()
-
-    # Store on filesystem
-    filename = file.filename or "bijlage"
-    safe_name = f"{uuid.uuid4().hex}_{filename}"
-    dir_path = BIJLAGEN_ROOT / str(node_id)
-    dir_path.mkdir(parents=True, exist_ok=True)
-    file_path = dir_path / safe_name
-    file_path.write_bytes(content)
-
-    relative_path = f"{node_id}/{safe_name}"
 
     bijlage = BronBijlage(
         bron_id=bron.id,
@@ -110,7 +131,9 @@ async def get_bijlage_info(
 ) -> BronBijlageResponse | None:
     bron = await _get_bron(node_id, db)
 
-    result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
+    result = await db.execute(
+        select(BronBijlage).where(BronBijlage.bron_id == bron.id)
+    )
     bijlage = result.scalar_one_or_none()
     if bijlage is None:
         return None
@@ -125,19 +148,30 @@ async def download_bijlage(
 ) -> FileResponse:
     bron = await _get_bron(node_id, db)
 
-    result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
+    result = await db.execute(
+        select(BronBijlage).where(BronBijlage.bron_id == bron.id)
+    )
     bijlage = result.scalar_one_or_none()
     if bijlage is None:
         raise HTTPException(status_code=404, detail="Geen bijlage gevonden")
 
-    file_path = BIJLAGEN_ROOT / bijlage.pad
+    file_path = _safe_path(bijlage.pad)
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Bestand niet gevonden op disk")
+        raise HTTPException(
+            status_code=404, detail="Bestand niet gevonden op disk"
+        )
 
+    # Force download (Content-Disposition: attachment) to prevent inline
+    # rendering of potentially dangerous content (e.g. HTML/SVG).
     return FileResponse(
         path=str(file_path),
         filename=bijlage.bestandsnaam,
-        media_type=bijlage.content_type,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{bijlage.bestandsnaam}"'
+            )
+        },
     )
 
 
@@ -149,13 +183,15 @@ async def delete_bijlage(
 ) -> None:
     bron = await _get_bron(node_id, db)
 
-    result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
+    result = await db.execute(
+        select(BronBijlage).where(BronBijlage.bron_id == bron.id)
+    )
     bijlage = result.scalar_one_or_none()
     if bijlage is None:
         raise HTTPException(status_code=404, detail="Geen bijlage gevonden")
 
-    file_path = BIJLAGEN_ROOT / bijlage.pad
+    file_path = _safe_path(bijlage.pad)
+    await db.delete(bijlage)
+    # Delete file after DB delete succeeds (commit happens in get_db).
     if file_path.exists():
         file_path.unlink()
-
-    await db.delete(bijlage)

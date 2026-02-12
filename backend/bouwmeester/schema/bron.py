@@ -1,13 +1,25 @@
 """Pydantic schemas for Bron and BronBijlage."""
 
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+BronType = Literal[
+    "rapport",
+    "onderzoek",
+    "wetgeving",
+    "advies",
+    "opinie",
+    "beleidsnota",
+    "evaluatie",
+    "overig",
+]
+
 
 class BronBase(BaseModel):
-    type: str = "overig"
+    type: BronType = "overig"
     auteur: str | None = None
     publicatie_datum: date | None = None
     url: str | None = None
@@ -18,7 +30,7 @@ class BronCreate(BronBase):
 
 
 class BronUpdate(BaseModel):
-    type: str | None = None
+    type: BronType | None = None
     auteur: str | None = None
     publicatie_datum: date | None = None
     url: str | None = None
