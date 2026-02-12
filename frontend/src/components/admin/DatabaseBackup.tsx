@@ -159,10 +159,16 @@ export function DatabaseBackup() {
 
         <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3">
           <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-sm text-amber-800">
-            Import vervangt <strong>alle</strong> huidige data in de database.
-            Maak eerst een export als backup.
-          </p>
+          <div className="text-sm text-amber-800 space-y-1">
+            <p>
+              Import vervangt <strong>alle</strong> huidige data in de database.
+              Maak eerst een export als backup.
+            </p>
+            <p>
+              De import kan enkele minuten duren. Tijdens het importeren is de
+              applicatie tijdelijk niet beschikbaar voor andere gebruikers.
+            </p>
+          </div>
         </div>
 
         <FileUpload
@@ -198,7 +204,7 @@ export function DatabaseBackup() {
                 ) : (
                   <Upload className="h-4 w-4" />
                 )}
-                {confirmImport ? 'Bevestig import' : 'Database importeren'}
+                {importing ? 'Bezig met importeren... (dit kan enkele minuten duren)' : confirmImport ? 'Bevestig import' : 'Database importeren'}
               </button>
 
               {confirmImport && (
@@ -254,11 +260,16 @@ export function DatabaseBackup() {
 
         <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 p-3">
           <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
-          <p className="text-sm text-red-800">
-            Dit wist <strong>alle</strong> data behalve de toegangslijst en sessies.
-            Corpus, organisatie, personen, taken — alles wordt verwijderd.
-            Admin-accounts worden opnieuw aangemaakt.
-          </p>
+          <div className="text-sm text-red-800 space-y-1">
+            <p>
+              Dit wist <strong>alle</strong> data behalve de toegangslijst en sessies.
+              Corpus, organisatie, personen, taken — alles wordt verwijderd.
+              Admin-accounts worden opnieuw aangemaakt.
+            </p>
+            <p>
+              De applicatie is tijdelijk niet beschikbaar tijdens het resetten.
+            </p>
+          </div>
         </div>
 
         {!showResetInput ? (
@@ -297,7 +308,7 @@ export function DatabaseBackup() {
                 ) : (
                   <Trash2 className="h-4 w-4" />
                 )}
-                Bevestig reset
+                {resetting ? 'Bezig met resetten...' : 'Bevestig reset'}
               </button>
 
               <button
