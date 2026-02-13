@@ -52,7 +52,12 @@ async def list_people(
 ) -> list[PersonResponse]:
     repo = PersonRepository(db)
     people = await repo.get_all(skip=skip, limit=limit)
-    return [PersonResponse.model_validate(p) for p in people]
+    result = []
+    for p in people:
+        resp = PersonResponse.model_validate(p)
+        resp.has_api_key = p.api_key_hash is not None
+        result.append(resp)
+    return result
 
 
 @router.post(
@@ -135,7 +140,12 @@ async def search_people(
         people = await repo.get_all(limit=limit)
     else:
         people = await repo.search(q.strip(), limit=limit)
-    return [PersonResponse.model_validate(p) for p in people]
+    result = []
+    for p in people:
+        resp = PersonResponse.model_validate(p)
+        resp.has_api_key = p.api_key_hash is not None
+        result.append(resp)
+    return result
 
 
 @router.get("/{id}/summary", response_model=PersonSummaryResponse)

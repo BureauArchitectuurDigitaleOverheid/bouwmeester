@@ -91,6 +91,7 @@ class PersonResponse(PersonBase):
     phones: list[PersonPhoneResponse] = []
     default_email: str | None = None
     default_phone: str | None = None
+    has_api_key: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -129,14 +130,9 @@ class PersonResponse(PersonBase):
 
 
 class PersonDetailResponse(PersonResponse):
-    """Full response for a single person.
+    """Full response for a single person."""
 
-    ``has_api_key`` indicates whether the person has an API key configured.
-    The actual plaintext key is **never** included here — it is only returned
-    via :class:`ApiKeyCreateResponse` on agent creation or key rotation.
-    """
-
-    has_api_key: bool = False
+    pass
 
 
 class ApiKeyResponse(BaseModel):
