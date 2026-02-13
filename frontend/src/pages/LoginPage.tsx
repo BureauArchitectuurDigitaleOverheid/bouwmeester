@@ -1,7 +1,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, authError } = useAuth();
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -12,6 +12,11 @@ export function LoginPage() {
             Log in om door te gaan
           </p>
         </div>
+        {authError && (
+          <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-700">
+            Er ging iets mis bij het inloggen. Probeer het opnieuw of neem contact op met een beheerder.
+          </div>
+        )}
         <button
           onClick={login}
           className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
