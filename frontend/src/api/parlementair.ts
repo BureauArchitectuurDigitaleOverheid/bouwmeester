@@ -5,6 +5,7 @@ export interface ParlementairItemFilters {
   status?: string;
   bron?: string;
   type?: string;
+  search?: string;
 }
 
 export async function getParlementairItems(filters?: ParlementairItemFilters): Promise<ParlementairItem[]> {
@@ -21,6 +22,10 @@ export async function triggerParlementairImport(): Promise<{ message: string; im
 
 export async function rejectParlementairItem(id: string): Promise<ParlementairItem> {
   return apiPut<ParlementairItem>(`/api/parlementair/imports/${id}/reject`);
+}
+
+export async function reopenParlementairItem(id: string): Promise<ParlementairItem> {
+  return apiPut<ParlementairItem>(`/api/parlementair/imports/${id}/reopen`);
 }
 
 export interface CompleteReviewData {

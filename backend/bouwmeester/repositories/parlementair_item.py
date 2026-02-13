@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,6 +18,7 @@ class ParlementairItemRepository:
         status: str | None = None,
         bron: str | None = None,
         item_type: str | None = None,
+        search: str | None = None,
         skip: int = 0,
         limit: int = 100,
     ) -> list[ParlementairItem]:
@@ -38,6 +39,16 @@ class ParlementairItemRepository:
             stmt = stmt.where(ParlementairItem.bron == bron)
         if item_type:
             stmt = stmt.where(ParlementairItem.type == item_type)
+        if search:
+            pattern = f"%{search}%"
+            stmt = stmt.where(
+                or_(
+                    ParlementairItem.titel.ilike(pattern),
+                    ParlementairItem.onderwerp.ilike(pattern),
+                    ParlementairItem.zaak_nummer.ilike(pattern),
+                    ParlementairItem.document_tekst.ilike(pattern),
+                )
+            )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
