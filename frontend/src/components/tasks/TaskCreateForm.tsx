@@ -106,7 +106,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
             <RichTextEditor
               value={description}
               onChange={setDescription}
-              placeholder="Optionele beschrijving... Gebruik @ voor personen, # voor nodes/taken"
+              placeholder="Optionele beschrijving... Gebruik @ voor personen, # voor nodes/taken, **vet** voor opmaak"
               rows={3}
             />
           </div>

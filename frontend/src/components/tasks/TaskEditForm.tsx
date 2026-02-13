@@ -158,7 +158,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
             <RichTextEditor
               value={description}
               onChange={setDescription}
-              placeholder="Optionele beschrijving... Gebruik @ voor personen, # voor nodes/taken"
+              placeholder="Optionele beschrijving... Gebruik @ voor personen, # voor nodes/taken, **vet** voor opmaak"
               rows={3}
             />
           </div>

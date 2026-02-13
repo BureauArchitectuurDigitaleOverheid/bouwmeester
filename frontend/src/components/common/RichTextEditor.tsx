@@ -375,10 +375,7 @@ export function RichTextEditor({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: false,
-        codeBlock: false,
-        blockquote: false,
-        horizontalRule: false,
+        heading: { levels: [2, 3] },
       }),
       Placeholder.configure({ placeholder }),
       PersonMention,
@@ -469,6 +466,46 @@ export function RichTextEditor({
           padding: 0.1rem 0.3rem;
           font-weight: 500;
           text-decoration: none;
+        }
+        .rich-text-editor .ProseMirror h2 {
+          font-size: 1.25rem;
+          font-weight: 600;
+          line-height: 1.4;
+          margin-top: 0.75rem;
+          margin-bottom: 0.25rem;
+        }
+        .rich-text-editor .ProseMirror h3 {
+          font-size: 1.1rem;
+          font-weight: 600;
+          line-height: 1.4;
+          margin-top: 0.5rem;
+          margin-bottom: 0.25rem;
+        }
+        .rich-text-editor .ProseMirror blockquote {
+          border-left: 3px solid #d1d5db;
+          padding-left: 0.75rem;
+          color: #6b7280;
+          margin: 0.5rem 0;
+        }
+        .rich-text-editor .ProseMirror pre {
+          background-color: #f3f4f6;
+          border-radius: 0.375rem;
+          padding: 0.5rem 0.75rem;
+          margin: 0.5rem 0;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font-size: 0.8rem;
+          overflow-x: auto;
+        }
+        .rich-text-editor .ProseMirror pre code {
+          background: none;
+          padding: 0;
+          font-size: inherit;
+          color: inherit;
+        }
+        .rich-text-editor .ProseMirror hr {
+          border: none;
+          border-top: 1px solid #e5e7eb;
+          margin: 0.75rem 0;
         }
       `}</style>
     </div>
