@@ -323,7 +323,12 @@ async def auth_status(
             request.session.pop("person_db_id", None)
             request.session.pop("needs_onboarding", None)
             request.session.pop("is_admin", None)
-            raise
+            # Degrade gracefully instead of returning 500 — the frontend
+            # will see authenticated=False and redirect to login.
+            return {
+                "authenticated": False,
+                "oidc_configured": oidc_configured,
+            }
 
     return result
 
