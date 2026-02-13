@@ -683,14 +683,20 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             )}
 
             {/* Add edge toggle */}
-            {corpusNodeId && !showAddEdge && (
-              <button
-                onClick={() => setShowAddEdge(true)}
-                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 transition-colors"
-              >
-                <Plus className="h-3 w-3" />
-                Verbinding toevoegen
-              </button>
+            {!showAddEdge && (
+              corpusNodeId ? (
+                <button
+                  onClick={() => setShowAddEdge(true)}
+                  className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 transition-colors"
+                >
+                  <Plus className="h-3 w-3" />
+                  Verbinding toevoegen
+                </button>
+              ) : (
+                <p className="text-xs text-text-secondary">
+                  Geen corpus-node gekoppeld — verbindingen kunnen niet worden toegevoegd.
+                </p>
+              )
             )}
 
             {/* Add new edge form */}
