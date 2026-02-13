@@ -16,6 +16,7 @@ interface AuthState {
   oidcConfigured: boolean;
   person: AuthPerson | null;
   error: string | null;
+  authError: string | null;
   accessDenied: boolean;
   deniedEmail: string | null;
 }
@@ -47,6 +48,7 @@ async function fetchAuthStatus(): Promise<AuthState> {
         }
       : null,
     error: null,
+    authError: data.error ?? null,
     accessDenied: data.access_denied ?? false,
     deniedEmail: data.denied_email ?? null,
   };
@@ -59,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     oidcConfigured: false,
     person: null,
     error: null,
+    authError: null,
     accessDenied: false,
     deniedEmail: null,
   });

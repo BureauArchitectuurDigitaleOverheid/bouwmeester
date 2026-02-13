@@ -252,6 +252,11 @@ async def auth_status(
     except Exception:
         logger.exception("Token validation failed in auth_status")
         authenticated = False
+        return {
+            "authenticated": False,
+            "oidc_configured": oidc_configured,
+            "error": "token_validation_failed",
+        }
 
     result: dict = {
         "authenticated": authenticated,
@@ -328,6 +333,7 @@ async def auth_status(
             return {
                 "authenticated": False,
                 "oidc_configured": oidc_configured,
+                "error": "person_resolution_failed",
             }
 
     return result
