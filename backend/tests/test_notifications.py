@@ -1321,7 +1321,7 @@ async def test_react_inbox_preview_shows_reactie_op_bericht(
 ):
     """Inbox preview shows 'Reactie op bericht' for the latest emoji reaction."""
     # Create DM thread
-    send_resp = await client.post(
+    await client.post(
         "/api/notifications/send",
         json={
             "person_id": str(sample_person.id),
@@ -1329,8 +1329,6 @@ async def test_react_inbox_preview_shows_reactie_op_bericht(
             "message": "Test bericht",
         },
     )
-    sender_root_id = send_resp.json()["id"]
-
     # Find recipient root
     resp = await client.get(
         "/api/notifications", params={"person_id": str(sample_person.id)}
