@@ -48,7 +48,7 @@ async def list_imports(
     status_filter: str | None = Query(None, alias="status"),
     bron: str | None = None,
     type_filter: str | None = Query(None, alias="type"),
-    search: str | None = Query(None),
+    search: str | None = Query(None, max_length=500),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),

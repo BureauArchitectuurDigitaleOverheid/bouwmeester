@@ -398,6 +398,14 @@ async def test_search_imports_no_match(client, db_session):
     assert len(resp.json()) == 0
 
 
+async def test_search_imports_rejects_too_long(client):
+    """GET /api/parlementair/imports?search= rejects queries over 500 chars."""
+    resp = await client.get(
+        "/api/parlementair/imports", params={"search": "a" * 501}
+    )
+    assert resp.status_code == 422
+
+
 async def test_search_imports_case_insensitive(client, db_session):
     """GET /api/parlementair/imports?search= is case insensitive."""
     item = await _create_parlementair_item(db_session)
