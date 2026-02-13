@@ -165,6 +165,12 @@ Production access is restricted to whitelisted email addresses stored in the `wh
 - When the whitelist table is empty, all emails are allowed (backwards compatible for local dev)
 - Non-whitelisted users can request access via the AccessDeniedPage; admins approve/deny from Beheer > Verzoeken
 
+## Pull requests
+
+- Always branch from the latest remote main: `git fetch origin && git checkout -b <branch> origin/main`
+- When asked to create a PR and merge: create the PR, wait for all CI checks to pass (green), then merge.
+- Use squash merge with `--delete-branch` by default.
+
 ## Database
 
 - PostgreSQL 16, connection via Docker Compose on `localhost:5432`
