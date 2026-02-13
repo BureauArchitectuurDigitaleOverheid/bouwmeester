@@ -1,6 +1,11 @@
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
+
+// Regex to detect URLs in plain text
+const URL_REGEX = /(https?:\/\/[^\s<>)"'\]]+)/;
+const URL_REGEX_GLOBAL = new RegExp(URL_REGEX.source, 'g');
 
 interface RichTextDisplayProps {
   content: string | null | undefined;
@@ -41,8 +46,8 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
 
   const doc = isTipTapJson(content);
   if (!doc) {
-    // Plain text fallback
-    return <p className="text-sm text-text-secondary whitespace-pre-wrap">{content}</p>;
+    // Plain text fallback — auto-linkify URLs
+    return <p className="text-sm text-text-secondary whitespace-pre-wrap">{linkifyText(content)}</p>;
   }
 
   const handlers: MentionHandlers = { openTaskDetail, openNodeDetail, navigate };
@@ -188,7 +193,10 @@ function renderNode(node: TipTapNode, key: number, handlers: MentionHandlers): R
 }
 
 function renderText(node: TipTapNode, key: number): React.ReactNode {
-  let element: React.ReactNode = node.text ?? '';
+  const hasLinkMark = node.marks?.some((m) => m.type === 'link');
+
+  // Auto-linkify plain text that has no explicit link mark
+  let element: React.ReactNode = hasLinkMark ? (node.text ?? '') : linkifyText(node.text ?? '');
 
   if (node.marks) {
     for (const mark of node.marks) {
@@ -205,9 +213,50 @@ function renderText(node: TipTapNode, key: number): React.ReactNode {
         case 'strike':
           element = <s key={key}>{element}</s>;
           break;
+        case 'link': {
+          const href = mark.attrs?.href as string | undefined;
+          if (href) {
+            element = (
+              <a
+                key={key}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-600 underline hover:text-primary-800 break-all"
+              >
+                {element}
+              </a>
+            );
+          }
+          break;
+        }
       }
     }
   }
 
   return <span key={key}>{element}</span>;
+}
+
+/**
+ * Split text on URLs and return a mix of strings and <a> elements.
+ */
+function linkifyText(text: string): React.ReactNode {
+  const parts = text.split(URL_REGEX_GLOBAL);
+  if (parts.length === 1) return text; // no URLs found
+
+  return parts.map((part, i) =>
+    URL_REGEX.test(part) ? (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary-600 underline hover:text-primary-800 break-all"
+      >
+        {part}
+      </a>
+    ) : (
+      <React.Fragment key={i}>{part}</React.Fragment>
+    ),
+  );
 }

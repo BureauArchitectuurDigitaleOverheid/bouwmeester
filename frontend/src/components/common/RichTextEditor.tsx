@@ -3,6 +3,7 @@ import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Mention from '@tiptap/extension-mention';
 import Placeholder from '@tiptap/extension-placeholder';
+import Link from '@tiptap/extension-link';
 import { apiGet } from '@/api/client';
 import { formatFunctie, titleCase } from '@/types';
 import type { Person, OrganisatieEenheid } from '@/types';
@@ -378,6 +379,16 @@ export function RichTextEditor({
         heading: { levels: [2, 3] },
       }),
       Placeholder.configure({ placeholder }),
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        linkOnPaste: true,
+        HTMLAttributes: {
+          class: 'text-primary-600 underline',
+          target: '_blank',
+          rel: 'noopener noreferrer',
+        },
+      }),
       PersonMention,
       HashtagMention,
     ],
@@ -506,6 +517,11 @@ export function RichTextEditor({
           border: none;
           border-top: 1px solid #e5e7eb;
           margin: 0.75rem 0;
+        }
+        .rich-text-editor .ProseMirror a {
+          color: #4f46e5;
+          text-decoration: underline;
+          word-break: break-all;
         }
       `}</style>
     </div>
