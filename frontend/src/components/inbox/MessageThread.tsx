@@ -18,11 +18,11 @@ interface MessageThreadProps {
 interface MessageBubbleProps {
   message: Notification;
   isCurrentUser: boolean;
-  reactions?: ReactionSummary[];
-  onReact?: (emoji: string) => void;
+  reactions: ReactionSummary[];
+  onReact: (emoji: string) => void;
 }
 
-function MessageBubble({ message, isCurrentUser, reactions = [], onReact }: MessageBubbleProps) {
+function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBubbleProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [hovered, setHovered] = useState(false);
   const smileRef = useRef<HTMLButtonElement>(null);
@@ -52,30 +52,26 @@ function MessageBubble({ message, isCurrentUser, reactions = [], onReact }: Mess
               {timeAgo(message.created_at)}
             </p>
           </div>
-          {onReact && (
-            <div className={`shrink-0 pt-1 ${hovered || showPicker ? 'visible' : 'invisible'}`}>
-              <button
-                ref={smileRef}
-                onClick={() => setShowPicker(!showPicker)}
-                className="p-1 rounded-full bg-surface border border-border shadow-sm text-text-secondary hover:text-text hover:bg-gray-50 transition-colors"
-              >
-                <Smile className="h-4 w-4" />
-              </button>
-              {showPicker && (
-                <EmojiPicker
-                  anchorRef={smileRef}
-                  onSelect={(emoji) => { onReact(emoji); setShowPicker(false); setHovered(false); }}
-                  onClose={() => { setShowPicker(false); setHovered(false); }}
-                />
-              )}
-            </div>
-          )}
-        </div>
-        {onReact && (
-          <div className={`${isCurrentUser ? 'flex justify-end' : ''}`}>
-            <ReactionBar reactions={reactions} onReact={onReact} />
+          <div className={`shrink-0 pt-1 ${hovered || showPicker ? 'visible' : 'invisible'}`}>
+            <button
+              ref={smileRef}
+              onClick={() => setShowPicker(!showPicker)}
+              className="p-1 rounded-full bg-surface border border-border shadow-sm text-text-secondary hover:text-text hover:bg-gray-50 transition-colors"
+            >
+              <Smile className="h-4 w-4" />
+            </button>
+            {showPicker && (
+              <EmojiPicker
+                anchorRef={smileRef}
+                onSelect={(emoji) => { onReact(emoji); setShowPicker(false); setHovered(false); }}
+                onClose={() => { setShowPicker(false); setHovered(false); }}
+              />
+            )}
           </div>
-        )}
+        </div>
+        <div className={`${isCurrentUser ? 'flex justify-end' : ''}`}>
+          <ReactionBar reactions={reactions} onReact={onReact} />
+        </div>
       </div>
     </div>
   );

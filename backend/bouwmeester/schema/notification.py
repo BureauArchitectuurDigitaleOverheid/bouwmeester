@@ -74,7 +74,16 @@ class ReplyRequest(BaseModel):
 
 
 _EMOJI_RE = re.compile(
-    r"^[\U0001f300-\U0001f9ff\U00002600-\U000027bf\U0000fe0f\U0000200d]+$"
+    r"^["
+    r"\U0001f300-\U0001f9ff"  # Misc Symbols, Emoticons, Dingbats, etc.
+    r"\U0001fa00-\U0001faff"  # Symbols & Pictographs Extended-A
+    r"\U0001f1e0-\U0001f1ff"  # Regional Indicator Symbols (flags)
+    r"\U00002600-\U000027bf"  # Misc Symbols, Dingbats
+    r"\U0001f3fb-\U0001f3ff"  # Skin-tone modifiers
+    r"\U0000fe0f"  # Variation Selector-16
+    r"\U0000200d"  # Zero Width Joiner
+    r"\U000020e3"  # Combining Enclosing Keycap
+    r"]+$"
 )
 
 
