@@ -22,6 +22,7 @@ class NotificationType(enum.StrEnum):
     agent_prompt = "agent_prompt"
     mention = "mention"
     access_request = "access_request"
+    emoji_reaction = "emoji_reaction"
 
 
 class NotificationBase(BaseModel):
@@ -40,6 +41,13 @@ class NotificationCreate(NotificationBase):
     pass
 
 
+class ReactionSummary(BaseModel):
+    emoji: str
+    count: int
+    sender_names: list[str]
+    reacted_by_me: bool = False
+
+
 class NotificationResponse(NotificationBase):
     id: UUID
     is_read: bool = False
@@ -48,6 +56,7 @@ class NotificationResponse(NotificationBase):
     last_message: str | None = None
     sender_name: str | None = None
     reply_count: int = 0
+    reactions: list[ReactionSummary] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -61,6 +70,11 @@ class SendMessageRequest(BaseModel):
 class ReplyRequest(BaseModel):
     sender_id: UUID
     message: str = Field(max_length=10000)
+
+
+class ReactionRequest(BaseModel):
+    sender_id: UUID
+    emoji: str = Field(max_length=10)
 
 
 class UnreadCountResponse(BaseModel):

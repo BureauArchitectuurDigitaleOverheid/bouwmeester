@@ -8,6 +8,7 @@ import {
   markAllNotificationsRead,
   sendMessage,
   replyToNotification,
+  reactToMessage,
   getDashboardStats,
 } from '@/api/notifications';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
@@ -21,10 +22,10 @@ export function useNotifications(personId: string | undefined, unreadOnly = fals
   });
 }
 
-export function useNotification(id: string | undefined) {
+export function useNotification(id: string | undefined, personId?: string) {
   return useQuery({
-    queryKey: ['notifications', 'detail', id],
-    queryFn: () => getNotification(id!),
+    queryKey: ['notifications', 'detail', id, personId],
+    queryFn: () => getNotification(id!, personId),
     enabled: !!id,
   });
 }
@@ -38,10 +39,10 @@ export function useUnreadCount(personId: string | undefined) {
   });
 }
 
-export function useReplies(notificationId: string | undefined) {
+export function useReplies(notificationId: string | undefined, personId?: string) {
   return useQuery({
-    queryKey: ['notifications', 'replies', notificationId],
-    queryFn: () => getReplies(notificationId!),
+    queryKey: ['notifications', 'replies', notificationId, personId],
+    queryFn: () => getReplies(notificationId!, personId),
     enabled: !!notificationId,
   });
 }
@@ -76,6 +77,15 @@ export function useDashboardStats(personId: string | undefined) {
     queryFn: () => getDashboardStats(personId!),
     enabled: !!personId,
     refetchInterval: 60_000,
+  });
+}
+
+export function useReactToMessage() {
+  return useMutationWithError({
+    mutationFn: ({ notificationId, data }: { notificationId: string; data: { sender_id: string; emoji: string } }) =>
+      reactToMessage(notificationId, data),
+    errorMessage: 'Fout bij emoji-reactie',
+    invalidateKeys: [['notifications']],
   });
 }
 

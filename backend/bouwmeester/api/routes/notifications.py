@@ -15,6 +15,8 @@ from bouwmeester.schema.notification import (
     DashboardStatsResponse,
     NotificationCreate,
     NotificationResponse,
+    ReactionRequest,
+    ReactionSummary,
     ReplyRequest,
     SendMessageRequest,
     UnreadCountResponse,
@@ -89,6 +91,55 @@ async def _enrich_batch(
     return responses
 
 
+async def _attach_reactions(
+    responses: list[NotificationResponse],
+    service: NotificationService,
+    db: AsyncSession,
+    current_person_id: UUID | None = None,
+) -> None:
+    """Fetch reactions for a list of NotificationResponses and attach them in-place."""
+    message_ids = [r.id for r in responses]
+    if not message_ids:
+        return
+    reactions_map = await service.repo.get_reactions_for_messages(message_ids)
+
+    # Pre-fetch sender names for reaction senders
+    all_sender_ids = {
+        r.sender_id for rlist in reactions_map.values() for r in rlist if r.sender_id
+    }
+    sender_name_map: dict[UUID, str] = {}
+    if all_sender_ids:
+        stmt = select(Person.id, Person.naam).where(Person.id.in_(all_sender_ids))
+        result = await db.execute(stmt)
+        sender_name_map = {row.id: row.naam for row in result.all()}
+
+    resp_by_id = {r.id: r for r in responses}
+    for msg_id, reaction_list in reactions_map.items():
+        if msg_id not in resp_by_id:
+            continue
+        # Group by emoji
+        emoji_groups: dict[str, list[Notification]] = {}
+        for r in reaction_list:
+            emoji_groups.setdefault(r.message or "", []).append(r)
+        summaries = []
+        for emoji, group in emoji_groups.items():
+            summaries.append(
+                ReactionSummary(
+                    emoji=emoji,
+                    count=len(group),
+                    sender_names=[
+                        sender_name_map.get(r.sender_id, "")
+                        for r in group
+                        if r.sender_id
+                    ],
+                    reacted_by_me=any(r.sender_id == current_person_id for r in group)
+                    if current_person_id
+                    else False,
+                )
+            )
+        resp_by_id[msg_id].reactions = summaries
+
+
 @router.get("", response_model=list[NotificationResponse])
 async def list_notifications(
     current_user: OptionalUser,
@@ -140,27 +191,33 @@ async def get_dashboard_stats(
 async def get_notification(
     id: UUID,
     current_user: OptionalUser,
+    person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
-    """Get a single notification by ID with sender name and reply count."""
+    """Get a single notification by ID with sender name, reply count, and reactions."""
     service = NotificationService(db)
     notification = require_found(await service.repo.get_by_id(id), "Notification")
-    return await _enrich_response(notification, service, db)
+    resp = await _enrich_response(notification, service, db)
+    await _attach_reactions([resp], service, db, person_id)
+    return resp
 
 
 @router.get("/{id}/replies", response_model=list[NotificationResponse])
 async def get_replies(
     id: UUID,
     current_user: OptionalUser,
+    person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> list[NotificationResponse]:
-    """Get all replies in a notification thread."""
+    """Get all replies in a notification thread, with reactions attached."""
     service = NotificationService(db)
     notification = require_found(await service.repo.get_by_id(id), "Notification")
     # Use thread_id to fetch replies (replies are parented to the recipient's root)
     reply_parent_id = notification.thread_id if notification.thread_id else id
     replies = await service.repo.get_replies(reply_parent_id)
-    return await _enrich_batch(replies, service, db)
+    responses = await _enrich_batch(replies, service, db)
+    await _attach_reactions(responses, service, db, person_id)
+    return responses
 
 
 @router.put("/{id}/read", response_model=NotificationResponse)
@@ -312,3 +369,39 @@ async def reply_to_notification(
     )
 
     return await _enrich_response(reply, service, db)
+
+
+@router.post("/{id}/react")
+async def react_to_message(
+    id: UUID,
+    body: ReactionRequest,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Toggle an emoji reaction on a message. Returns action taken."""
+    if current_user is not None and body.sender_id != current_user.id:
+        raise HTTPException(403, "Sender moet de ingelogde gebruiker zijn")
+
+    service = NotificationService(db)
+    message = require_found(await service.repo.get_by_id(id), "Notification")
+
+    # Check for existing reaction — toggle off if found
+    existing = await service.repo.find_existing_reaction(
+        message.id, body.sender_id, body.emoji
+    )
+    if existing:
+        await service.repo.delete(existing)
+        return {"action": "removed"}
+
+    # Create new reaction: parent_id = the specific message being reacted to
+    sender = require_found(await db.get(Person, body.sender_id), "Sender")
+    data = NotificationCreate(
+        person_id=message.person_id,
+        type="emoji_reaction",
+        title=f"{sender.naam} reageerde met {body.emoji}",
+        message=body.emoji,
+        sender_id=body.sender_id,
+        parent_id=message.id,
+    )
+    await service.repo.create(data)
+    return {"action": "added"}

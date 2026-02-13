@@ -17,6 +17,14 @@ export interface Notification {
   created_at: string;
   last_activity_at?: string;
   last_message?: string;
+  reactions?: ReactionSummary[];
+}
+
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  sender_names: string[];
+  reacted_by_me: boolean;
 }
 
 export interface UnreadCountResponse {
@@ -39,8 +47,10 @@ export async function getNotifications(
   });
 }
 
-export async function getNotification(id: string): Promise<Notification> {
-  return apiGet<Notification>(`/api/notifications/${id}`);
+export async function getNotification(id: string, personId?: string): Promise<Notification> {
+  const params: Record<string, string> = {};
+  if (personId) params.person_id = personId;
+  return apiGet<Notification>(`/api/notifications/${id}`, params);
 }
 
 export async function getUnreadCount(personId: string): Promise<UnreadCountResponse> {
@@ -49,8 +59,10 @@ export async function getUnreadCount(personId: string): Promise<UnreadCountRespo
   });
 }
 
-export async function getReplies(notificationId: string): Promise<Notification[]> {
-  return apiGet<Notification[]>(`/api/notifications/${notificationId}/replies`);
+export async function getReplies(notificationId: string, personId?: string): Promise<Notification[]> {
+  const params: Record<string, string> = {};
+  if (personId) params.person_id = personId;
+  return apiGet<Notification[]>(`/api/notifications/${notificationId}/replies`, params);
 }
 
 export async function markNotificationRead(id: string): Promise<Notification> {
@@ -74,6 +86,13 @@ export async function replyToNotification(
   data: { sender_id: string; message: string },
 ): Promise<Notification> {
   return apiPost<Notification>(`/api/notifications/${notificationId}/reply`, data);
+}
+
+export async function reactToMessage(
+  notificationId: string,
+  data: { sender_id: string; emoji: string },
+): Promise<{ action: string }> {
+  return apiPost<{ action: string }>(`/api/notifications/${notificationId}/react`, data);
 }
 
 export async function getDashboardStats(personId: string): Promise<DashboardStats> {

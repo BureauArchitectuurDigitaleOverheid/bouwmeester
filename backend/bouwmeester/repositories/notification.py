@@ -37,7 +37,10 @@ class NotificationRepository(BaseRepository[Notification]):
     async def get_replies(self, parent_id: UUID) -> list[Notification]:
         stmt = (
             select(Notification)
-            .where(Notification.parent_id == parent_id)
+            .where(
+                Notification.parent_id == parent_id,
+                Notification.type != "emoji_reaction",
+            )
             .order_by(Notification.created_at.asc())
         )
         result = await self.session.execute(stmt)
@@ -47,7 +50,10 @@ class NotificationRepository(BaseRepository[Notification]):
         stmt = (
             select(func.count())
             .select_from(Notification)
-            .where(Notification.parent_id == parent_id)
+            .where(
+                Notification.parent_id == parent_id,
+                Notification.type != "emoji_reaction",
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one()
@@ -61,7 +67,10 @@ class NotificationRepository(BaseRepository[Notification]):
                 Notification.parent_id,
                 func.count().label("cnt"),
             )
-            .where(Notification.parent_id.in_(parent_ids))
+            .where(
+                Notification.parent_id.in_(parent_ids),
+                Notification.type != "emoji_reaction",
+            )
             .group_by(Notification.parent_id)
         )
         result = await self.session.execute(stmt)
@@ -84,7 +93,10 @@ class NotificationRepository(BaseRepository[Notification]):
                 Notification.created_at,
                 Notification.message,
             )
-            .where(Notification.parent_id.in_(parent_ids))
+            .where(
+                Notification.parent_id.in_(parent_ids),
+                Notification.type != "emoji_reaction",
+            )
             .order_by(
                 Notification.parent_id,
                 Notification.created_at.desc(),
@@ -130,6 +142,44 @@ class NotificationRepository(BaseRepository[Notification]):
         )
         result = await self.session.execute(stmt)
         return result.scalar_one()
+
+    async def find_existing_reaction(
+        self, message_id: UUID, sender_id: UUID, emoji: str
+    ) -> Notification | None:
+        """Find an existing emoji reaction for toggle detection."""
+        stmt = select(Notification).where(
+            Notification.parent_id == message_id,
+            Notification.sender_id == sender_id,
+            Notification.type == "emoji_reaction",
+            Notification.message == emoji,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_reactions_for_messages(
+        self, message_ids: list[UUID]
+    ) -> dict[UUID, list[Notification]]:
+        """Fetch emoji_reaction notifications parented to these messages."""
+        if not message_ids:
+            return {}
+        stmt = (
+            select(Notification)
+            .where(
+                Notification.parent_id.in_(message_ids),
+                Notification.type == "emoji_reaction",
+            )
+            .order_by(Notification.created_at.asc())
+        )
+        result = await self.session.execute(stmt)
+        reactions: dict[UUID, list[Notification]] = {}
+        for r in result.scalars().all():
+            reactions.setdefault(r.parent_id, []).append(r)
+        return reactions
+
+    async def delete(self, notification: Notification) -> None:
+        """Delete a notification."""
+        await self.session.delete(notification)
+        await self.session.flush()
 
     async def get_other_root(
         self, thread_id: UUID, person_id: UUID
