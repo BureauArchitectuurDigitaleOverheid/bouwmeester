@@ -145,6 +145,8 @@ class ParlementairImportService:
                 logger.exception(
                     f"Error processing {strategy.item_type} {item.zaak_id}"
                 )
+                # Rollback so the session is usable for subsequent items
+                await self.session.rollback()
 
         return imported_count
 
