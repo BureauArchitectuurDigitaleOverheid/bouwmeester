@@ -1,12 +1,23 @@
 import { useState, useEffect, useRef } from 'react';
-import { Copy, RefreshCw, Check, Eye, EyeOff } from 'lucide-react';
+import { Copy, RefreshCw, Check, Eye, EyeOff, Mail, Phone, Star, X, Plus } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
-import { usePeople, useSearchPeople, useRotateApiKey } from '@/hooks/usePeople';
-import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS } from '@/types';
+import {
+  usePeople,
+  usePerson,
+  useSearchPeople,
+  useRotateApiKey,
+  useAddPersonEmail,
+  useRemovePersonEmail,
+  useSetDefaultEmail,
+  useAddPersonPhone,
+  useRemovePersonPhone,
+  useSetDefaultPhone,
+} from '@/hooks/usePeople';
+import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS } from '@/types';
 import type { Person, PersonFormSubmitParams } from '@/types';
 
 // Character names from Bordewijk's novel "Karakter" — used as agent names
@@ -69,8 +80,28 @@ export function PersonEditForm({
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [naamQuery, setNaamQuery] = useState('');
 
+  // Email/phone inline management state (edit mode)
+  const [newEmail, setNewEmail] = useState('');
+  const [newEmailError, setNewEmailError] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newPhoneLabel, setNewPhoneLabel] = useState('werk');
+  const [newPhoneError, setNewPhoneError] = useState('');
+
   const { data: allPeople = [] } = usePeople();
   const { data: searchResults = [] } = useSearchPeople(naamQuery);
+  const { data: freshPerson } = usePerson(editData?.id ?? null);
+
+  // Email/phone mutation hooks
+  const addEmailMutation = useAddPersonEmail();
+  const removeEmailMutation = useRemovePersonEmail();
+  const setDefaultEmailMutation = useSetDefaultEmail();
+  const addPhoneMutation = useAddPersonPhone();
+  const removePhoneMutation = useRemovePersonPhone();
+  const setDefaultPhoneMutation = useSetDefaultPhone();
+
+  // Use fresh person data for emails/phones (auto-refreshed by React Query invalidation)
+  const personEmails = freshPerson?.emails ?? editData?.emails ?? [];
+  const personPhones = freshPerson?.phones ?? editData?.phones ?? [];
 
   // Cache all persons we've ever seen from search results so lookups
   // remain stable even when the debounced query changes (Fix #3).
@@ -102,6 +133,11 @@ export function PersonEditForm({
       setCopied(false);
       setShowKey(false);
       setConfirmRotate(false);
+      setNewEmail('');
+      setNewEmailError('');
+      setNewPhone('');
+      setNewPhoneLabel('werk');
+      setNewPhoneError('');
       if (editData) {
         setNaam(editData.naam);
         setEmail(editData.email || '');
@@ -140,9 +176,13 @@ export function PersonEditForm({
 
   const isAgent = editData ? editData.is_agent : defaultIsAgent;
   const isCreateMode = !editData;
+  const isEditMode = !!editData;
+
   const isValid = selectedPerson
     ? true // existing person is always valid
-    : naam.trim() && (isAgent || email.trim());
+    : isEditMode
+      ? !!naam.trim() // edit mode: only naam required (emails managed separately)
+      : naam.trim() && (isAgent || email.trim()); // create mode: naam + email (unless agent)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,7 +194,7 @@ export function PersonEditForm({
         personId: editData.id,
         data: {
           naam: naam.trim(),
-          email: email.trim() || undefined,
+          // In edit mode, don't send email — managed via multi-email section
           functie: isAgent ? undefined : (functie || undefined),
           description: isAgent ? (description.trim() || undefined) : undefined,
           is_agent: isAgent,
@@ -257,6 +297,57 @@ export function PersonEditForm({
     }
   };
 
+  // Email management handlers
+  const handleAddEmail = async () => {
+    if (!editData || !newEmail.trim()) return;
+    setNewEmailError('');
+    try {
+      await addEmailMutation.mutateAsync({
+        personId: editData.id,
+        data: { email: newEmail.trim() },
+      });
+      setNewEmail('');
+    } catch {
+      setNewEmailError('Ongeldig of bestaand e-mailadres');
+    }
+  };
+
+  const handleRemoveEmail = async (emailId: string) => {
+    if (!editData) return;
+    await removeEmailMutation.mutateAsync({ personId: editData.id, emailId });
+  };
+
+  const handleSetDefaultEmail = async (emailId: string) => {
+    if (!editData) return;
+    await setDefaultEmailMutation.mutateAsync({ personId: editData.id, emailId });
+  };
+
+  // Phone management handlers
+  const handleAddPhone = async () => {
+    if (!editData || !newPhone.trim()) return;
+    setNewPhoneError('');
+    try {
+      await addPhoneMutation.mutateAsync({
+        personId: editData.id,
+        data: { phone_number: newPhone.trim(), label: newPhoneLabel },
+      });
+      setNewPhone('');
+      setNewPhoneLabel('werk');
+    } catch {
+      setNewPhoneError('Ongeldig of bestaand telefoonnummer');
+    }
+  };
+
+  const handleRemovePhone = async (phoneId: string) => {
+    if (!editData) return;
+    await removePhoneMutation.mutateAsync({ personId: editData.id, phoneId });
+  };
+
+  const handleSetDefaultPhone = async (phoneId: string) => {
+    if (!editData) return;
+    await setDefaultPhoneMutation.mutateAsync({ personId: editData.id, phoneId });
+  };
+
   const title = editData
     ? (isAgent ? 'Agent bewerken' : 'Persoon bewerken')
     : selectedPerson
@@ -327,7 +418,9 @@ export function PersonEditForm({
             autoFocus
           />
         )}
-        {!isAgent && selectedPerson && (
+
+        {/* Email field — create mode (non-agent): single input; edit mode: managed list */}
+        {!isAgent && isCreateMode && selectedPerson && (
           <Input
             label="E-mail"
             type="email"
@@ -336,7 +429,7 @@ export function PersonEditForm({
             disabled
           />
         )}
-        {!isAgent && !selectedPerson && (
+        {!isAgent && isCreateMode && !selectedPerson && (
           <Input
             label="E-mail"
             type="email"
@@ -348,6 +441,133 @@ export function PersonEditForm({
             error={emailTouched && !email.trim() ? 'E-mail is verplicht' : undefined}
           />
         )}
+
+        {/* Email management — edit mode, non-agent */}
+        {!isAgent && isEditMode && (
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">E-mailadressen</label>
+            {personEmails.length === 0 ? (
+              <p className="text-sm text-text-secondary italic">Geen e-mailadressen</p>
+            ) : (
+              <ul className="space-y-1 mb-2">
+                {personEmails.map((em) => (
+                  <li key={em.id} className="group flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm">
+                    <Mail className="h-3.5 w-3.5 text-text-secondary shrink-0" />
+                    <span className="flex-1 truncate">{em.email}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleSetDefaultEmail(em.id)}
+                      className="shrink-0 p-0.5 rounded hover:bg-gray-100 transition-colors"
+                      title={em.is_default ? 'Standaard e-mail' : 'Instellen als standaard'}
+                    >
+                      <Star className={`h-3.5 w-3.5 ${em.is_default ? 'fill-amber-400 text-amber-400' : 'text-gray-300 group-hover:text-gray-400'}`} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveEmail(em.id)}
+                      className="shrink-0 p-0.5 rounded hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Verwijderen"
+                    >
+                      <X className="h-3.5 w-3.5 text-red-400 hover:text-red-600" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex items-center gap-2">
+              <input
+                type="email"
+                value={newEmail}
+                onChange={(e) => { setNewEmail(e.target.value); setNewEmailError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddEmail(); } }}
+                placeholder="Nieuw e-mailadres..."
+                className="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text placeholder:text-text-secondary/50 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+              />
+              <button
+                type="button"
+                onClick={handleAddEmail}
+                disabled={!newEmail.trim() || addEmailMutation.isPending}
+                className="flex items-center justify-center h-8 w-8 rounded-lg border border-border hover:bg-gray-50 transition-colors disabled:opacity-40"
+                title="Toevoegen"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {newEmailError && (
+              <p className="mt-1 text-xs text-red-600">{newEmailError}</p>
+            )}
+          </div>
+        )}
+
+        {/* Phone management — edit mode, non-agent */}
+        {!isAgent && isEditMode && (
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">Telefoonnummers</label>
+            {personPhones.length === 0 ? (
+              <p className="text-sm text-text-secondary italic">Geen telefoonnummers</p>
+            ) : (
+              <ul className="space-y-1 mb-2">
+                {personPhones.map((ph) => (
+                  <li key={ph.id} className="group flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm">
+                    <Phone className="h-3.5 w-3.5 text-text-secondary shrink-0" />
+                    <span className="flex-1 truncate">{ph.phone_number}</span>
+                    <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-text-secondary">
+                      {PHONE_LABELS[ph.label] ?? ph.label}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleSetDefaultPhone(ph.id)}
+                      className="shrink-0 p-0.5 rounded hover:bg-gray-100 transition-colors"
+                      title={ph.is_default ? 'Standaard telefoonnummer' : 'Instellen als standaard'}
+                    >
+                      <Star className={`h-3.5 w-3.5 ${ph.is_default ? 'fill-amber-400 text-amber-400' : 'text-gray-300 group-hover:text-gray-400'}`} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePhone(ph.id)}
+                      className="shrink-0 p-0.5 rounded hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Verwijderen"
+                    >
+                      <X className="h-3.5 w-3.5 text-red-400 hover:text-red-600" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex items-center gap-2">
+              <input
+                type="tel"
+                value={newPhone}
+                onChange={(e) => { setNewPhone(e.target.value); setNewPhoneError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddPhone(); } }}
+                placeholder="+31 6 12345678"
+                className="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text placeholder:text-text-secondary/50 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+              />
+              <select
+                value={newPhoneLabel}
+                onChange={(e) => setNewPhoneLabel(e.target.value)}
+                className="rounded-lg border border-border px-2 py-1.5 text-sm text-text bg-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+              >
+                {Object.entries(PHONE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAddPhone}
+                disabled={!newPhone.trim() || addPhoneMutation.isPending}
+                className="flex items-center justify-center h-8 w-8 rounded-lg border border-border hover:bg-gray-50 transition-colors disabled:opacity-40"
+                title="Toevoegen"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {newPhoneError && (
+              <p className="mt-1 text-xs text-red-600">{newPhoneError}</p>
+            )}
+          </div>
+        )}
+
         {isAgent && (
           <>
             <div>

@@ -26,7 +26,13 @@ class PersonRepository(BaseRepository[Person]):
         skip: int = 0,
         limit: int = 100,
     ) -> list[Person]:
-        stmt = select(Person).offset(skip).limit(limit).order_by(Person.naam)
+        stmt = (
+            select(Person)
+            .options(*self._eager_options())
+            .offset(skip)
+            .limit(limit)
+            .order_by(Person.naam)
+        )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -44,6 +50,7 @@ class PersonRepository(BaseRepository[Person]):
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         stmt = (
             select(Person)
+            .options(*self._eager_options())
             .where(Person.naam.ilike(f"%{escaped}%"))
             .order_by(Person.naam)
             .limit(limit)
