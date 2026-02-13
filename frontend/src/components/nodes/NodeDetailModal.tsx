@@ -24,9 +24,11 @@ import { useQuery } from '@tanstack/react-query';
 import { getTasks } from '@/api/tasks';
 import {
   NODE_TYPE_COLORS,
+  NODE_STATUS_LABELS,
   STAKEHOLDER_ROL_LABELS,
   TASK_PRIORITY_COLORS,
   TaskStatus,
+  type NodeStatus,
 } from '@/types';
 import type { Task } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
@@ -141,7 +143,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
             <Badge variant={(NODE_TYPE_COLORS[node.node_type] ?? 'gray') as 'blue'} dot title={nodeAltLabel(node.node_type)}>
               {nodeLabel(node.node_type)}
             </Badge>
-            {node.status && <Badge variant="gray">{node.status}</Badge>}
+            {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
             {node.edge_count != null && (
               <span className="inline-flex items-center gap-1 text-sm text-text-secondary">
                 <LinkIcon className="h-4 w-4" />

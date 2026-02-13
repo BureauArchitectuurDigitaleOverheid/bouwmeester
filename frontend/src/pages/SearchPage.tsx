@@ -13,9 +13,33 @@ import { richTextToPlain } from '@/utils/richtext';
 import {
   SEARCH_RESULT_TYPE_LABELS,
   SEARCH_RESULT_TYPE_COLORS,
+  NODE_TYPE_LABELS,
+  NODE_STATUS_LABELS,
+  TASK_STATUS_LABELS,
+  ORGANISATIE_TYPE_LABELS,
+  PARLEMENTAIR_TYPE_LABELS,
+  formatFunctie,
   type SearchResultType,
   type SearchResult,
 } from '@/types';
+
+const SUBTITLE_LABEL_MAPS: Partial<
+  Record<SearchResultType, Record<string, string>>
+> = {
+  corpus_node: { ...NODE_TYPE_LABELS, ...NODE_STATUS_LABELS },
+  task: TASK_STATUS_LABELS,
+  organisatie_eenheid: ORGANISATIE_TYPE_LABELS,
+  parlementair_item: PARLEMENTAIR_TYPE_LABELS,
+};
+
+function formatSubtitle(result: SearchResult): string | undefined {
+  if (!result.subtitle) return undefined;
+  if (result.result_type === 'person') {
+    return formatFunctie(result.subtitle);
+  }
+  const map = SUBTITLE_LABEL_MAPS[result.result_type];
+  return map?.[result.subtitle] ?? result.subtitle;
+}
 
 const ALL_RESULT_TYPES: SearchResultType[] = [
   'corpus_node',
@@ -149,7 +173,7 @@ export function SearchPage() {
                           </Badge>
                           {result.subtitle && (
                             <span className="text-xs text-text-secondary">
-                              {result.subtitle}
+                              {formatSubtitle(result)}
                             </span>
                           )}
                         </div>

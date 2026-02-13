@@ -2,8 +2,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowRight, Link as LinkIcon } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
-import type { CorpusNode } from '@/types';
-import { NODE_TYPE_COLORS } from '@/types';
+import type { CorpusNode, NodeStatus } from '@/types';
+import { NODE_TYPE_COLORS, NODE_STATUS_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { richTextToPlain } from '@/utils/richtext';
 import { formatDateShort } from '@/utils/dates';
@@ -30,7 +30,7 @@ export function NodeCard({ node }: NodeCardProps) {
               {nodeLabel(node.node_type)}
             </Badge>
             {node.status && (
-              <Badge variant="gray">{node.status}</Badge>
+              <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>
             )}
           </div>
 
