@@ -506,12 +506,18 @@ class TweedeKamerClient:
 
             actors = data.get("value", [])
 
+            # Chamber-level actors (e.g. "TK", "EK") are not real indieners
+            _skip_fracties = {"TK", "EK"}
+
             indieners = []
             for actor in actors:
-                # Prefer full name, fallback to fractie
-                naam = actor.get("ActorNaam") or actor.get("ActorFractie")
+                naam = actor.get("ActorNaam")
                 if naam:
                     indieners.append(naam)
+                elif (
+                    fractie := actor.get("ActorFractie")
+                ) and fractie not in _skip_fracties:
+                    indieners.append(fractie)
 
             return indieners
 

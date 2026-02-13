@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.config import get_settings
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.node_stakeholder import NodeStakeholder
+from bouwmeester.models.parlementair_item import ParlementairItem
 from bouwmeester.models.person import Person
 from bouwmeester.models.politieke_input import PolitiekeInput
 from bouwmeester.models.task import Task
@@ -322,42 +323,9 @@ class ParlementairImportService:
 
         # Step 11: Create review task
         try:
-            review_unit_id = await self._determine_review_unit(affected_nodes)
-            task_title = strategy.task_title(item)
-            if len(task_title) > 200:
-                task_title = task_title[:197] + "..."
-
-            description_parts = [
-                f"Zaak: {item.zaak_nummer}",
-                f"Bron: {item.bron}",
-            ]
-            if samenvatting:
-                description_parts.append(f"\n{samenvatting}")
-            description_parts.append(
-                f"\n{len(affected_nodes)} gerelateerde beleidsdossiers gevonden."
-            )
-
-            # Use strategy deadline or default to 10 business days
-            deadline = strategy.calculate_deadline(item)
-            if deadline is None:
-                deadline = self._business_days_from_now(10)
-
-            task = Task(
-                node_id=node.id,
-                title=task_title,
-                description="\n".join(description_parts),
-                priority=strategy.task_priority(item),
-                status="open",
-                deadline=deadline,
-                organisatie_eenheid_id=review_unit_id,
-                assignee_id=None,
-                parlementair_item_id=parlementair_item.id,
-            )
-            self.session.add(task)
-            await self.session.flush()
-            logger.info(
-                f"Created review task for {strategy.item_type} {item.zaak_nummer} "
-                f"(unit: {review_unit_id or 'none'})"
+            await self.create_review_task(
+                parlementair_item,
+                affected_nodes=affected_nodes,
             )
         except SQLAlchemyError:
             logger.exception(
@@ -370,6 +338,79 @@ class ParlementairImportService:
             f"{len(affected_nodes)} suggested edges"
         )
         return True
+
+    async def create_review_task(
+        self,
+        parlementair_item: ParlementairItem,
+        affected_nodes: list[CorpusNode] | None = None,
+    ) -> Task | None:
+        """Create a review task for a parliamentary item.
+
+        Used both during initial import and when reopening a rejected/
+        out-of-scope item.  When *affected_nodes* is ``None`` (reopen
+        case), the connected nodes are derived from existing suggested
+        edges.
+        """
+        if parlementair_item.corpus_node_id is None:
+            return None
+
+        # Resolve affected nodes from suggested edges when not provided
+        if affected_nodes is None:
+            affected_nodes = [
+                se.target_node
+                for se in (parlementair_item.suggested_edges or [])
+                if se.target_node is not None
+            ]
+
+        review_unit_id = await self._determine_review_unit(affected_nodes)
+
+        # Build title/priority/deadline via the strategy for this item type
+        strategy = get_strategy(parlementair_item.type)
+        fetched = FetchedItem(
+            zaak_id="",
+            zaak_nummer=parlementair_item.zaak_nummer,
+            titel=parlementair_item.titel,
+            onderwerp=parlementair_item.onderwerp,
+            bron=parlementair_item.bron,
+            deadline=parlementair_item.deadline,
+        )
+        task_title = strategy.task_title(fetched)
+        if len(task_title) > 200:
+            task_title = task_title[:197] + "..."
+
+        description_parts = [
+            f"Zaak: {parlementair_item.zaak_nummer}",
+            f"Bron: {parlementair_item.bron}",
+        ]
+        if parlementair_item.llm_samenvatting:
+            description_parts.append(f"\n{parlementair_item.llm_samenvatting}")
+        description_parts.append(
+            f"\n{len(affected_nodes)} gerelateerde beleidsdossiers gevonden."
+        )
+
+        deadline = strategy.calculate_deadline(fetched)
+        if deadline is None:
+            deadline = self._business_days_from_now(10)
+
+        task = Task(
+            node_id=parlementair_item.corpus_node_id,
+            title=task_title,
+            description="\n".join(description_parts),
+            priority=strategy.task_priority(fetched),
+            status="open",
+            deadline=deadline,
+            organisatie_eenheid_id=review_unit_id,
+            assignee_id=None,
+            parlementair_item_id=parlementair_item.id,
+        )
+        self.session.add(task)
+        await self.session.flush()
+        logger.info(
+            f"Created review task for {parlementair_item.type} "
+            f"{parlementair_item.zaak_nummer} "
+            f"(unit: {review_unit_id or 'none'})"
+        )
+        return task
 
     async def _determine_review_unit(
         self,

@@ -152,6 +152,10 @@ async def reopen_import(
     db: AsyncSession = Depends(get_db),
 ) -> ParlementairItemResponse:
     """Reopen a rejected or out-of-scope item for review."""
+    from bouwmeester.services.parlementair_import_service import (
+        ParlementairImportService,
+    )
+
     repo = ParlementairItemRepository(db)
     item = await repo.get_by_id(import_id)
     if item is None:
@@ -163,6 +167,10 @@ async def reopen_import(
         )
 
     item = await repo.update_status(import_id, "imported", reviewed_at=None)
+
+    # Create a review task (same logic as initial import)
+    service = ParlementairImportService(db)
+    await service.create_review_task(item)
 
     await log_activity(
         db,

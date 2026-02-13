@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, Search } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/common/Button';
+import { Input } from '@/components/common/Input';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ParlementairReviewCard } from '@/components/parlementair/ParlementairReviewCard';
@@ -12,6 +14,7 @@ import {
 } from '@/hooks/useParlementair';
 import type { ParlementairItemStatus, ParlementairItemType } from '@/types';
 import { PARLEMENTAIR_TYPE_LABELS } from '@/types';
+import type { SelectOption } from '@/components/common/CreatableSelect';
 
 const statusFilters: { value: ParlementairItemStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'Alles' },
@@ -22,8 +25,8 @@ const statusFilters: { value: ParlementairItemStatus | 'all'; label: string }[] 
   { value: 'pending', label: 'In wachtrij' },
 ];
 
-const typeFilters: { value: ParlementairItemType | 'all'; label: string }[] = [
-  { value: 'all', label: 'Alle typen' },
+const typeOptions: SelectOption[] = [
+  { value: '', label: 'Alle typen' },
   ...(['motie', 'kamervraag', 'toezegging'] as ParlementairItemType[]).map((t) => ({
     value: t,
     label: PARLEMENTAIR_TYPE_LABELS[t] ?? t,
@@ -36,12 +39,12 @@ export function ParlementairPage() {
   const [statusFilter, setStatusFilter] = useState<ParlementairItemStatus | 'all'>(
     highlightItemId ? 'all' : 'imported'
   );
-  const [typeFilter, setTypeFilter] = useState<ParlementairItemType | 'all'>('all');
+  const [typeFilter, setTypeFilter] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
   const filters = {
     ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-    ...(typeFilter !== 'all' ? { type: typeFilter } : {}),
+    ...(typeFilter ? { type: typeFilter } : {}),
     ...(debouncedSearch ? { search: debouncedSearch } : {}),
   };
   const { data: imports, isLoading } = useParlementairItems(
@@ -70,46 +73,45 @@ export function ParlementairPage() {
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
-        <input
-          type="text"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Zoeken in kamerstukken..."
-          className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
-        />
+      {/* Type filter + Search (same row, matching Corpus page) */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="w-44">
+          <CreatableSelect
+            value={typeFilter}
+            onChange={setTypeFilter}
+            options={typeOptions}
+            placeholder="Alle typen"
+          />
+        </div>
+
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+          <Input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Zoek in lijst..."
+            className="pl-9"
+          />
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 border-b border-border">
-        <div className="overflow-x-auto scrollbar-hide">
-          <div className="flex items-center gap-1">
-            {statusFilters.map((filter) => (
-              <button
-                key={filter.value}
-                onClick={() => setStatusFilter(filter.value)}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap flex-shrink-0 ${
-                  statusFilter === filter.value
-                    ? 'border-primary-900 text-primary-900'
-                    : 'border-transparent text-text-secondary hover:text-text hover:border-border'
-                }`}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as ParlementairItemType | 'all')}
-          className="sm:ml-auto text-sm border border-border rounded-lg px-3 py-1.5 bg-white text-text-secondary -mb-px"
-        >
-          {typeFilters.map((f) => (
-            <option key={f.value} value={f.value}>{f.label}</option>
+      {/* Status tabs */}
+      <div className="flex items-center gap-2 sm:gap-4 border-b border-border overflow-x-auto scrollbar-hide">
+        <div className="flex items-center gap-1">
+          {statusFilters.map((filter) => (
+            <button
+              key={filter.value}
+              onClick={() => setStatusFilter(filter.value)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap flex-shrink-0 ${
+                statusFilter === filter.value
+                  ? 'border-primary-900 text-primary-900'
+                  : 'border-transparent text-text-secondary hover:text-text hover:border-border'
+              }`}
+            >
+              {filter.label}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
       {/* Content */}
