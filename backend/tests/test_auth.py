@@ -180,6 +180,68 @@ async def test_onboarding_creates_placement(db_session, sample_organisatie):
     assert result.scalar_one_or_none() is not None
 
 
+async def test_onboarding_idempotent_no_duplicate_placement(
+    db_session, sample_organisatie
+):
+    """Re-submitting onboarding updates naam/functie but does not duplicate placement."""
+    person = Person(
+        id=uuid.uuid4(),
+        naam="First Name",
+        email="idempotent@example.com",
+        oidc_subject="sub-idempotent",
+        functie="Beleidsmedewerker",
+    )
+    db_session.add(person)
+    await db_session.flush()
+
+    # Create an existing active placement (simulates completed onboarding)
+    placement = PersonOrganisatieEenheid(
+        person_id=person.id,
+        organisatie_eenheid_id=sample_organisatie.id,
+        dienstverband="in_dienst",
+        start_datum=date.today(),
+    )
+    db_session.add(placement)
+    await db_session.flush()
+
+    assert await _check_needs_onboarding(db_session, person) is False
+
+    # Simulate the idempotent onboarding endpoint logic:
+    # always update naam/functie, only create placement if none exists
+    person.naam = "Updated Name"
+    person.functie = "Senior Beleidsmedewerker"
+
+    existing = await db_session.execute(
+        select(PersonOrganisatieEenheid.id).where(
+            PersonOrganisatieEenheid.person_id == person.id,
+            PersonOrganisatieEenheid.eind_datum.is_(None),
+        )
+    )
+    if existing.scalar_one_or_none() is None:
+        new_placement = PersonOrganisatieEenheid(
+            person_id=person.id,
+            organisatie_eenheid_id=sample_organisatie.id,
+            dienstverband="in_dienst",
+            start_datum=date.today(),
+        )
+        db_session.add(new_placement)
+
+    await db_session.flush()
+
+    # Verify naam/functie updated
+    assert person.naam == "Updated Name"
+    assert person.functie == "Senior Beleidsmedewerker"
+
+    # Verify still only one active placement (no duplicate)
+    stmt = select(PersonOrganisatieEenheid).where(
+        PersonOrganisatieEenheid.person_id == person.id,
+        PersonOrganisatieEenheid.eind_datum.is_(None),
+    )
+    result = await db_session.execute(stmt)
+    placements = result.scalars().all()
+    assert len(placements) == 1
+
+
 async def test_onboarding_rejects_invalid_org_id(db_session):
     """Onboarding with a non-existent org ID would fail FK constraint."""
     from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
