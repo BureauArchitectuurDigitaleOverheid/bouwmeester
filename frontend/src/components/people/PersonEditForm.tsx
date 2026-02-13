@@ -136,7 +136,6 @@ export function PersonEditForm({
         personCacheRef.current.clear();
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editData, defaultIsAgent, defaultOrgEenheidId, allPeople]);
 
   const isAgent = editData ? editData.is_agent : defaultIsAgent;

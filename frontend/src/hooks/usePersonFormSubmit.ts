@@ -1,6 +1,6 @@
 import { useCreatePerson, useUpdatePerson, useAddPersonOrganisatie } from '@/hooks/usePeople';
 import { todayISO } from '@/utils/dates';
-import type { Person, PersonCreateResult, PersonFormSubmitParams } from '@/types';
+import type { PersonCreateResult, PersonFormSubmitParams } from '@/types';
 
 /**
  * Shared handler for PersonEditForm submissions.
