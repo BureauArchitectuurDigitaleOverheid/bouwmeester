@@ -227,7 +227,7 @@ async def _check_needs_onboarding(db: AsyncSession, person: Person) -> bool:
         PersonOrganisatieEenheid.eind_datum.is_(None),
     )
     result = await db.execute(stmt)
-    return result.scalar_one_or_none() is None
+    return result.first() is None
 
 
 # ---------------------------------------------------------------------------
