@@ -481,6 +481,57 @@ async def test_reopen_out_of_scope_creates_corpus_node(client, db_session):
     assert len(tasks) == 1
 
 
+async def test_reopen_out_of_scope_with_indieners(client, db_session):
+    """Reopen out_of_scope item with indieners creates person records."""
+    from bouwmeester.models.parlementair_item import ParlementairItem
+
+    item = ParlementairItem(
+        id=uuid.uuid4(),
+        type="motie",
+        zaak_id=f"zaak-{uuid.uuid4().hex[:8]}",
+        zaak_nummer="36200-VII-99",
+        titel="Test motie met indiener",
+        onderwerp="Test onderwerp indiener",
+        bron="tweede_kamer",
+        datum=date(2024, 6, 15),
+        status="out_of_scope",
+        indieners=["J. de Testpersoon", "A. Ander"],
+    )
+    db_session.add(item)
+    await db_session.flush()
+
+    resp = await client.put(f"/api/parlementair/imports/{item.id}/reopen")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "imported"
+    assert data["corpus_node_id"] is not None
+
+
+async def test_reopen_rejected_with_existing_task(client, db_session, sample_node):
+    """Reopen a rejected item that already has a review task from initial import."""
+    from bouwmeester.models.task import Task
+
+    item = await _create_parlementair_item(
+        db_session, corpus_node_id=sample_node.id, status="rejected"
+    )
+    # Simulate existing task from the initial import round
+    existing_task = Task(
+        id=uuid.uuid4(),
+        node_id=sample_node.id,
+        title="Beoordeel motie: Test onderwerp",
+        status="cancelled",
+        priority="hoog",
+        parlementair_item_id=item.id,
+    )
+    db_session.add(existing_task)
+    await db_session.flush()
+
+    resp = await client.put(f"/api/parlementair/imports/{item.id}/reopen")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "imported"
+
+
 async def test_reopen_imported_item_fails(client, db_session):
     """PUT /api/parlementair/imports/{id}/reopen rejects already-imported items."""
     item = await _create_parlementair_item(db_session, status="imported")

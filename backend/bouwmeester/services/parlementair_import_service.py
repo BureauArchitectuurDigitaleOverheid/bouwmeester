@@ -659,7 +659,6 @@ class ParlementairImportService:
         person = Person(
             naam=naam,
             functie=functie,
-            rol="extern",
             is_active=True,
         )
         self.session.add(person)
