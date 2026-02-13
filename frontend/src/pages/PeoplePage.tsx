@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { PersonList } from '@/components/people/PersonList';
@@ -8,10 +9,24 @@ import { usePersonFormSubmit } from '@/hooks/usePersonFormSubmit';
 import type { Person } from '@/types';
 
 export function PeoplePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [editPerson, setEditPerson] = useState<Person | null>(null);
 
   const { data: people = [], isLoading } = usePeople();
+
+  // Open person detail when navigated via ?person={id}
+  useEffect(() => {
+    const personParam = searchParams.get('person');
+    if (personParam && people.length > 0) {
+      const match = people.find((p) => p.id === personParam);
+      if (match) {
+        setEditPerson(match);
+        setShowForm(true);
+      }
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, people]);
   const { handleSubmit: handleFormSubmit, isPending } = usePersonFormSubmit(() => setShowForm(false));
 
   const handleAddPerson = () => {
