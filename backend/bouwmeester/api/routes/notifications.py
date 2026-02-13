@@ -98,6 +98,10 @@ async def list_notifications(
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ) -> list[NotificationResponse]:
+    """List notifications for a person, sorted by latest activity.
+
+    Filter with unread_only.
+    """
     service = NotificationService(db)
     notifications = await service.get_notifications(
         person_id, unread_only=unread_only, skip=skip, limit=limit
@@ -114,6 +118,7 @@ async def get_unread_count(
     person_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
 ) -> UnreadCountResponse:
+    """Get the count of unread notifications for a person."""
     service = NotificationService(db)
     count = await service.count_unread(person_id)
     return UnreadCountResponse(count=count)
@@ -137,6 +142,7 @@ async def get_notification(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
+    """Get a single notification by ID with sender name and reply count."""
     service = NotificationService(db)
     notification = require_found(await service.repo.get_by_id(id), "Notification")
     return await _enrich_response(notification, service, db)
@@ -148,6 +154,7 @@ async def get_replies(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[NotificationResponse]:
+    """Get all replies in a notification thread."""
     service = NotificationService(db)
     notification = require_found(await service.repo.get_by_id(id), "Notification")
     # Use thread_id to fetch replies (replies are parented to the recipient's root)
@@ -162,6 +169,7 @@ async def mark_notification_read(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
+    """Mark a single notification as read."""
     service = NotificationService(db)
     notification = require_found(await service.mark_read(id), "Notification")
     return await _enrich_response(notification, service, db)
@@ -173,6 +181,7 @@ async def mark_all_notifications_read(
     person_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, int]:
+    """Mark all notifications as read for a person. Returns count marked."""
     service = NotificationService(db)
     count = await service.mark_all_read(person_id)
     return {"marked_read": count}
@@ -184,6 +193,7 @@ async def send_message(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
+    """Send a direct message to a person. Creates thread roots for both parties."""
     # Prevent sender spoofing when authenticated
     if current_user is not None and body.sender_id != current_user.id:
         raise HTTPException(403, "Sender moet de ingelogde gebruiker zijn")
@@ -245,6 +255,7 @@ async def reply_to_notification(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
+    """Reply to a notification thread. Marks the other party's root as unread."""
     # Prevent sender spoofing when authenticated
     if current_user is not None and body.sender_id != current_user.id:
         raise HTTPException(403, "Sender moet de ingelogde gebruiker zijn")

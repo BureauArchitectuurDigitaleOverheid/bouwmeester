@@ -79,6 +79,7 @@ async def upload_bijlage(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> BronBijlageResponse:
+    """Upload a file attachment to a bron node. Replaces existing attachment."""
     bron = await _get_bron(node_id, db, load_bijlage=True)
 
     content_type = file.content_type or ""
@@ -154,6 +155,7 @@ async def get_bijlage_info(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> BronBijlageResponse | None:
+    """Get metadata about a bron node's attachment (filename, size, type)."""
     bron = await _get_bron(node_id, db)
 
     result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
@@ -169,6 +171,7 @@ async def download_bijlage(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> FileResponse:
+    """Download the file attachment of a bron node."""
     bron = await _get_bron(node_id, db)
 
     result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
@@ -199,6 +202,7 @@ async def delete_bijlage(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete a bron node's file attachment (DB record and file on disk)."""
     bron = await _get_bron(node_id, db)
 
     result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))

@@ -24,6 +24,7 @@ router = APIRouter(prefix="/tags", tags=["tags"])
 async def list_tags(
     current_user: OptionalUser, db: AsyncSession = Depends(get_db)
 ) -> list[TagResponse]:
+    """List all tags as a flat list."""
     repo = TagRepository(db)
     tags = await repo.get_all()
     return [TagResponse.model_validate(t) for t in tags]
@@ -33,6 +34,7 @@ async def list_tags(
 async def get_tag_tree(
     current_user: OptionalUser, db: AsyncSession = Depends(get_db)
 ) -> list[TagTreeResponse]:
+    """Get tags as a hierarchical tree (parent-child relationships)."""
     repo = TagRepository(db)
     tags = await repo.get_tree()
     return [TagTreeResponse.model_validate(t) for t in tags]
@@ -44,6 +46,7 @@ async def search_tags(
     q: str = Query(..., min_length=1, max_length=200),
     db: AsyncSession = Depends(get_db),
 ) -> list[TagResponse]:
+    """Search tags by name."""
     repo = TagRepository(db)
     tags = await repo.search(q)
     return [TagResponse.model_validate(t) for t in tags]
@@ -56,6 +59,7 @@ async def create_tag(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TagResponse:
+    """Create a new tag, optionally with a parent_id for hierarchy."""
     repo = TagRepository(db)
     tag = await repo.create(data)
 
@@ -74,6 +78,7 @@ async def create_tag(
 async def get_tag(
     tag_id: UUID, current_user: OptionalUser, db: AsyncSession = Depends(get_db)
 ) -> TagResponse:
+    """Get a single tag by ID."""
     repo = TagRepository(db)
     tag = require_found(await repo.get_by_id(tag_id), "Tag")
     return TagResponse.model_validate(tag)
@@ -87,6 +92,7 @@ async def update_tag(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TagResponse:
+    """Update a tag's name or parent."""
     repo = TagRepository(db)
     tag = require_found(await repo.update(tag_id, data), "Tag")
 
@@ -108,6 +114,7 @@ async def delete_tag(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete a tag permanently."""
     repo = TagRepository(db)
     tag = await repo.get_by_id(tag_id)
     tag_name = tag.name if tag else None

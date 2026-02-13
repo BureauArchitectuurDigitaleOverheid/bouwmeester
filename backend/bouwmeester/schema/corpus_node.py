@@ -58,6 +58,19 @@ class CorpusNodeBase(BaseModel):
 class CorpusNodeCreate(CorpusNodeBase):
     geldig_van: date | None = None  # defaults to today in repository
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "title": "Woningbouwopgave",
+                    "description": "Dossier over de nationale woningbouwopgave",
+                    "node_type": "dossier",
+                    "status": "actief",
+                }
+            ]
+        }
+    )
+
 
 class CorpusNodeUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=500)

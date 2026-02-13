@@ -43,6 +43,7 @@ _api_key_failures: dict[str, list[float]] = defaultdict(list)
 _PUBLIC_PREFIXES = (
     "/api/auth/",
     "/api/health/",
+    "/api/skill.md",
 )
 
 
@@ -168,8 +169,12 @@ class AuthRequiredMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Allow public endpoints through.
+        # Allow public endpoints through.  Still resolve API-key identity
+        # (without enforcing) so /api/auth/me works for agents.
         if any(path.startswith(prefix) for prefix in _PUBLIC_PREFIXES):
+            bearer_token = _get_bearer_token(scope)
+            if bearer_token and bearer_token.startswith("bm_"):
+                await self._validate_api_key(bearer_token, scope)
             await self.app(scope, receive, send)
             return
 

@@ -20,6 +20,24 @@ from bouwmeester.core.session_store import SessionStore
 settings = get_settings()
 
 
+@pytest.fixture(autouse=True)
+async def _dispose_global_engine():
+    """Dispose the module-level engine after each test.
+
+    The middleware (auth_required) and health endpoints open their own DB
+    sessions via the global ``async_session`` / ``engine`` from
+    ``core.database``.  Pool connections created during a test get bound
+    to that test's event loop.  If the next test runs on a *different*
+    loop the stale connections cause "attached to a different loop"
+    errors.  Disposing the engine between tests drops all pooled
+    connections and avoids the cross-loop issue.
+    """
+    yield
+    from bouwmeester.core.database import engine
+
+    await engine.dispose()
+
+
 class InMemorySessionStore(SessionStore):
     """Simple in-memory session store for tests (no DB connections)."""
 

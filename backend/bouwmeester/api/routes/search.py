@@ -19,6 +19,7 @@ async def search(
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ) -> SearchResponse:
+    """Full-text search across nodes, tasks, people, and org units."""
     repo = SearchRepository(db)
     type_values = [rt.value for rt in result_types] if result_types else None
     results = await repo.full_text_search(

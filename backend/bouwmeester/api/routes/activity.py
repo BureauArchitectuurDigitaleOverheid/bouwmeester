@@ -24,6 +24,7 @@ async def get_activity_feed(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> ActivityFeedResponse:
+    """Get paginated audit log. Filter by event_type or actor_id."""
     service = ActivityService(db)
     activities = await service.get_recent(
         skip=skip, limit=limit, event_type=event_type, actor_id=actor_id
@@ -43,5 +44,6 @@ async def get_inbox(
     person_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
 ) -> InboxResponse:
+    """Get aggregated inbox for a person (tasks, notifications, deadlines)."""
     service = InboxService(db)
     return await service.get_inbox(person_id)
