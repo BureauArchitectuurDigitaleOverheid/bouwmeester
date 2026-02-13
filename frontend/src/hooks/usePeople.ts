@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   getPeople,
+  getPerson,
   createPerson,
   updatePerson,
   getPersonSummary,
@@ -25,6 +26,14 @@ export function usePeople() {
   return useQuery({
     queryKey: ['people'],
     queryFn: getPeople,
+  });
+}
+
+export function usePerson(id: string | null) {
+  return useQuery({
+    queryKey: ['people', id],
+    queryFn: () => getPerson(id!),
+    enabled: !!id,
   });
 }
 
