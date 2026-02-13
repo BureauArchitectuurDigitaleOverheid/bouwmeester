@@ -61,6 +61,7 @@ export function PersonEditForm({
   const [apiKey, setApiKey] = useState('');
   const [orgEenheidId, setOrgEenheidId] = useState('');
   const [dienstverband, setDienstverband] = useState('in_dienst');
+  const [emailTouched, setEmailTouched] = useState(false);
   const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
 
   // Search/select existing person state (create mode, non-agent only)
@@ -125,6 +126,7 @@ export function PersonEditForm({
         setDienstverband('in_dienst');
         setSelectedPerson(null);
         setNaamQuery('');
+        setEmailTouched(false);
         personCacheRef.current.clear();
       }
     }
@@ -298,8 +300,10 @@ export function PersonEditForm({
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setEmailTouched(true)}
             placeholder="email@voorbeeld.nl"
             required
+            error={emailTouched && !email.trim() ? 'E-mail is verplicht' : undefined}
           />
         )}
         {isAgent && (

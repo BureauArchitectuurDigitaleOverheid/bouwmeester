@@ -28,7 +28,6 @@ class PersonRepository(BaseRepository[Person]):
     ) -> list[Person]:
         stmt = (
             select(Person)
-            .options(*self._eager_options())
             .offset(skip)
             .limit(limit)
             .order_by(Person.naam)
@@ -51,7 +50,6 @@ class PersonRepository(BaseRepository[Person]):
         stmt = (
             select(Person)
             .where(Person.naam.ilike(f"%{escaped}%"))
-            .options(*self._eager_options())
             .order_by(Person.naam)
             .limit(limit)
         )

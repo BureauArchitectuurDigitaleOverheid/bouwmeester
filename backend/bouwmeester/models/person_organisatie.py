@@ -27,11 +27,13 @@ class PersonOrganisatieEenheid(Base):
         UUID(as_uuid=True),
         ForeignKey("person.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     organisatie_eenheid_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organisatie_eenheid.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     dienstverband: Mapped[str] = mapped_column(
         nullable=False,
