@@ -134,6 +134,46 @@ async def test_onboarding_complete(db_session, sample_organisatie):
     assert await _check_needs_onboarding(db_session, person) is False
 
 
+async def test_onboarding_multiple_active_placements(db_session, sample_organisatie):
+    """Person with multiple active placements does NOT need onboarding.
+
+    Regression test: scalar_one_or_none() raised MultipleResultsFound
+    when a person had more than one active org placement.
+    """
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    # Create a second org unit so we can have two distinct active placements.
+    org2 = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Second Org",
+        type="directie",
+    )
+    db_session.add(org2)
+
+    person = Person(
+        id=uuid.uuid4(),
+        naam="Multi Placement User",
+        email="multi@example.com",
+        oidc_subject="sub-multi",
+        functie="Beleidsmedewerker",
+    )
+    db_session.add(person)
+    await db_session.flush()
+
+    for org in [sample_organisatie, org2]:
+        db_session.add(
+            PersonOrganisatieEenheid(
+                person_id=person.id,
+                organisatie_eenheid_id=org.id,
+                dienstverband="in_dienst",
+                start_datum=date.today(),
+            )
+        )
+    await db_session.flush()
+
+    assert await _check_needs_onboarding(db_session, person) is False
+
+
 # ---------------------------------------------------------------------------
 # Onboarding endpoint validation (via direct DB setup, not HTTP)
 # ---------------------------------------------------------------------------
