@@ -457,7 +457,7 @@ export function PersonEditForm({
             onChange={setOrgEenheidId}
           />
         )}
-        {!editData && orgEenheidId && (
+        {!editData && orgEenheidId && !isAgent && (
           <div>
             <label className="block text-sm font-medium text-text mb-1">
               Dienstverband
