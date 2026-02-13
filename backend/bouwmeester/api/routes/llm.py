@@ -1,10 +1,16 @@
-"""API routes for LLM-powered features: tag suggestions, edge suggestions, summaries."""
+"""API routes for LLM-powered features: tag suggestions, edge suggestions, summaries.
+
+These endpoints send corpus node titles, descriptions, and tag names to the LLM.
+This is policy content (PUBLIC sensitivity), not PII, so any configured provider
+(Claude or VLAM) may be used.
+"""
 
 import logging
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.llm import (
@@ -15,7 +21,7 @@ from bouwmeester.schema.llm import (
     TagSuggestionRequest,
     TagSuggestionResponse,
 )
-from bouwmeester.services.llm import DataSensitivity, get_llm_service_for
+from bouwmeester.services.llm import get_llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +31,11 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 @router.post("/suggest-tags", response_model=TagSuggestionResponse)
 async def suggest_tags(
     request: TagSuggestionRequest,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> TagSuggestionResponse:
     """Suggest tags for a corpus node based on title and description."""
-    service = await get_llm_service_for(DataSensitivity.INTERNAL, db)
+    service = await get_llm_service(db)
     if not service:
         return TagSuggestionResponse(
             matched_tags=[], suggested_new_tags=[], available=False
@@ -53,12 +60,13 @@ async def suggest_tags(
 @router.post("/suggest-edges", response_model=EdgeSuggestionResponse)
 async def suggest_edges(
     request: EdgeSuggestionRequest,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> EdgeSuggestionResponse:
     """Suggest related nodes for a given corpus node."""
     from bouwmeester.services.edge_suggestion_service import EdgeSuggestionService
 
-    service = await get_llm_service_for(DataSensitivity.INTERNAL, db)
+    service = await get_llm_service(db)
     if not service:
         return EdgeSuggestionResponse(suggestions=[], available=False)
 
@@ -70,10 +78,11 @@ async def suggest_edges(
 @router.post("/summarize", response_model=SummarizeResponse)
 async def summarize(
     request: SummarizeRequest,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> SummarizeResponse:
     """Summarize a long text."""
-    service = await get_llm_service_for(DataSensitivity.INTERNAL, db)
+    service = await get_llm_service(db)
     if not service:
         return SummarizeResponse(summary="", available=False)
 

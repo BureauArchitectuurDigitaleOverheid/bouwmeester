@@ -3,7 +3,6 @@ import { Sparkles, Loader2, Check, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { suggestEdges, type EdgeSuggestionItem } from '@/api/llm';
 import { Badge } from '@/components/common/Badge';
-import { Button } from '@/components/common/Button';
 import { NODE_TYPE_COLORS } from '@/types';
 import { apiPost } from '@/api/client';
 
@@ -44,7 +43,7 @@ export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
       await apiPost('/api/edges', {
         from_node_id: nodeId,
         to_node_id: suggestion.target_node_id,
-        edge_type_id: null, // Will use default or suggested type
+        edge_type_id: suggestion.suggested_edge_type || 'gerelateerd_aan',
         description: suggestion.reason,
       });
       setApproved((prev) => new Set([...prev, suggestion.target_node_id]));

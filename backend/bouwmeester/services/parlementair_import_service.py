@@ -10,7 +10,6 @@ import uuid
 from collections import Counter
 from datetime import date, datetime, timedelta
 
-import anthropic
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -175,7 +174,7 @@ class ParlementairImportService:
             all_tags = await self.tag_repo.get_all()
             tag_names = [t.name for t in all_tags]
 
-            llm_service = await get_llm_service(self.db)
+            llm_service = await get_llm_service(self.session)
             if not llm_service:
                 logger.warning("No LLM provider configured, skipping tag extraction")
                 extraction = None
@@ -188,7 +187,7 @@ class ParlementairImportService:
                         bestaande_tags=tag_names,
                         context_hint=strategy.context_hint(),
                     )
-                except (anthropic.APIError, ValueError):
+                except Exception:
                     logger.exception(
                         "LLM extraction failed for %s %s",
                         strategy.item_type,

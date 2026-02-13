@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "claude"  # "claude" or "vlam"
     VLAM_API_KEY: str = ""
     VLAM_BASE_URL: str = ""
-    VLAM_MODEL_ID: str = "gpt-4o"
+    VLAM_MODEL_ID: str = ""
     ENABLED_IMPORT_TYPES: list[str] = ["motie", "kamervraag", "toezegging"]
 
     # Age encryption for database backups

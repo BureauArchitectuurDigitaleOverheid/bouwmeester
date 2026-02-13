@@ -4,6 +4,7 @@ Uses tag overlap (fast, no LLM) to find candidates, then LLM scoring
 for content relevance.
 """
 
+import asyncio
 import logging
 import uuid
 
@@ -14,9 +15,12 @@ from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.tag import NodeTag
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.llm import EdgeSuggestionItem
-from bouwmeester.services.llm.base import BaseLLMService
+from bouwmeester.services.llm.base import BaseLLMService, EdgeRelevanceResult
 
 logger = logging.getLogger(__name__)
+
+# Overall timeout for all LLM scoring calls combined.
+LLM_SCORING_TIMEOUT_SECONDS = 30
 
 
 class EdgeSuggestionService:
@@ -85,27 +89,47 @@ class EdgeSuggestionService:
         nodes_result = await self.session.execute(nodes_stmt)
         nodes_by_id = {n.id: n for n in nodes_result.scalars().all()}
 
-        # LLM-score top candidates
-        suggestions: list[EdgeSuggestionItem] = []
-        for nid, overlap_score in sorted_candidates[:max_llm_scored]:
+        # LLM-score top candidates concurrently with overall timeout
+        to_score = []
+        for nid, _overlap_score in sorted_candidates[:max_llm_scored]:
             target = nodes_by_id.get(nid)
-            if not target:
-                continue
+            if target:
+                to_score.append((nid, target))
 
+        if not to_score:
+            return []
+
+        async def _score_one(
+            nid: uuid.UUID, target: CorpusNode
+        ) -> tuple[uuid.UUID, CorpusNode, EdgeRelevanceResult | None]:
             try:
-                llm_result = await self.llm_service.score_edge_relevance(
+                r = await self.llm_service.score_edge_relevance(
                     source_title=source_node.title,
                     source_description=source_node.description,
                     target_title=target.title,
                     target_description=target.description,
                 )
+                return nid, target, r
             except Exception:
-                logger.exception(f"LLM scoring failed for edge to {nid}")
-                continue
+                logger.exception("LLM scoring failed for edge to %s", nid)
+                return nid, target, None
 
-            if llm_result.score < 0.3:
-                continue
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*[_score_one(nid, t) for nid, t in to_score]),
+                timeout=LLM_SCORING_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            logger.warning(
+                "LLM edge scoring timed out after %ds",
+                LLM_SCORING_TIMEOUT_SECONDS,
+            )
+            return []
 
+        suggestions: list[EdgeSuggestionItem] = []
+        for nid, target, llm_result in results:
+            if llm_result is None or llm_result.score < 0.3:
+                continue
             suggestions.append(
                 EdgeSuggestionItem(
                     target_node_id=str(nid),

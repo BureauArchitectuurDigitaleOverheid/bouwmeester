@@ -4,7 +4,8 @@ Settings are read from:
 1. AppConfig table in the database (set via admin panel)
 2. Environment variables / config.py settings (fallback)
 
-All public functions are async because they read from the database.
+Service instances and config are cached in memory. The cache is cleared
+when an admin updates config via the admin panel.
 """
 
 import logging
@@ -17,27 +18,39 @@ from bouwmeester.services.llm.base import BaseLLMService, DataSensitivity
 
 logger = logging.getLogger(__name__)
 
-# In-memory cache — cleared by admin config update endpoint.
+# In-memory caches — cleared by admin config update endpoint.
 _config_cache: dict[str, str] | None = None
+_claude_cache: BaseLLMService | None = None
+_vlam_cache: BaseLLMService | None = None
+_services_built = False
 
 
 def clear_config_cache() -> None:
-    """Clear the cached config so the next request reads fresh values."""
-    global _config_cache  # noqa: PLW0603
+    """Clear all caches so the next request rebuilds from the database."""
+    global _config_cache, _claude_cache, _vlam_cache, _services_built  # noqa: PLW0603
     _config_cache = None
+    _claude_cache = None
+    _vlam_cache = None
+    _services_built = False
 
 
 async def _load_config(db: AsyncSession) -> dict[str, str]:
-    """Load LLM config from the AppConfig table."""
+    """Load LLM config from the AppConfig table, decrypting secrets."""
     global _config_cache  # noqa: PLW0603
     if _config_cache is not None:
         return _config_cache
 
     try:
+        from bouwmeester.core.encryption import decrypt_value
         from bouwmeester.models.app_config import AppConfig
 
-        result = await db.execute(select(AppConfig.key, AppConfig.value))
-        _config_cache = {row[0]: row[1] for row in result.all() if row[1]}
+        result = await db.execute(
+            select(AppConfig.key, AppConfig.value, AppConfig.is_secret)
+        )
+        _config_cache = {}
+        for key, value, is_secret in result.all():
+            if value:
+                _config_cache[key] = decrypt_value(value) if is_secret else value
     except Exception:
         logger.debug("Could not load config from database, using env vars")
         _config_cache = {}
@@ -45,27 +58,35 @@ async def _load_config(db: AsyncSession) -> dict[str, str]:
     return _config_cache
 
 
-def _build_claude(config: dict[str, str]) -> BaseLLMService | None:
+async def _ensure_services(db: AsyncSession) -> None:
+    """Build and cache service instances if not already built."""
+    global _claude_cache, _vlam_cache, _services_built  # noqa: PLW0603
+    if _services_built:
+        return
+
+    config = await _load_config(db)
     settings = get_settings()
+
+    # Build Claude
     api_key = config.get("ANTHROPIC_API_KEY") or settings.ANTHROPIC_API_KEY
     model = config.get("LLM_MODEL") or settings.LLM_MODEL
-    if not api_key:
-        return None
-    from bouwmeester.services.llm.claude_service import ClaudeLLMService
+    if api_key:
+        from bouwmeester.services.llm.claude_service import ClaudeLLMService
 
-    return ClaudeLLMService(api_key=api_key, model=model)
+        _claude_cache = ClaudeLLMService(api_key=api_key, model=model)
 
+    # Build VLAM
+    vlam_key = config.get("VLAM_API_KEY") or settings.VLAM_API_KEY
+    vlam_url = config.get("VLAM_BASE_URL") or settings.VLAM_BASE_URL
+    vlam_model = config.get("VLAM_MODEL_ID") or settings.VLAM_MODEL_ID
+    if vlam_key and vlam_url:
+        from bouwmeester.services.llm.vlam_service import VlamLLMService
 
-def _build_vlam(config: dict[str, str]) -> BaseLLMService | None:
-    settings = get_settings()
-    api_key = config.get("VLAM_API_KEY") or settings.VLAM_API_KEY
-    base_url = config.get("VLAM_BASE_URL") or settings.VLAM_BASE_URL
-    model = config.get("VLAM_MODEL_ID") or settings.VLAM_MODEL_ID
-    if not api_key or not base_url:
-        return None
-    from bouwmeester.services.llm.vlam_service import VlamLLMService
+        _vlam_cache = VlamLLMService(
+            api_key=vlam_key, base_url=vlam_url, model=vlam_model
+        )
 
-    return VlamLLMService(api_key=api_key, base_url=base_url, model=model)
+    _services_built = True
 
 
 async def get_llm_service(
@@ -76,14 +97,15 @@ async def get_llm_service(
     Uses LLM_PROVIDER setting to pick the preferred provider.
     Falls back to the other provider if the preferred one is unavailable.
     """
+    await _ensure_services(db)
     config = await _load_config(db)
     settings = get_settings()
     preferred = config.get("LLM_PROVIDER") or settings.LLM_PROVIDER
 
     if preferred == "vlam":
-        return _build_vlam(config) or _build_claude(config)
+        return _vlam_cache or _claude_cache
 
-    return _build_claude(config) or _build_vlam(config)
+    return _claude_cache or _vlam_cache
 
 
 async def get_llm_service_for(
@@ -99,14 +121,15 @@ async def get_llm_service_for(
     if sensitivity == DataSensitivity.PUBLIC:
         return await get_llm_service(db)
 
+    await _ensure_services(db)
     config = await _load_config(db)
     settings = get_settings()
     preferred = config.get("LLM_PROVIDER") or settings.LLM_PROVIDER
 
     if preferred == "vlam":
-        candidates = [_build_vlam(config), _build_claude(config)]
+        candidates = [_vlam_cache, _claude_cache]
     else:
-        candidates = [_build_claude(config), _build_vlam(config)]
+        candidates = [_claude_cache, _vlam_cache]
 
     for service in candidates:
         if service and service.capabilities.supports(sensitivity):

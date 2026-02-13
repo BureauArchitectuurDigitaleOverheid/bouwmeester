@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import AdminUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.encryption import decrypt_value, encrypt_value
 from bouwmeester.core.whitelist import refresh_whitelist_cache, seed_admins_from_file
 from bouwmeester.models.access_request import AccessRequest
 from bouwmeester.models.app_config import AppConfig
@@ -277,7 +278,7 @@ _DEFAULT_CONFIG = [
     },
     {
         "key": "VLAM_BASE_URL",
-        "value": "https://api.demo.vlam.ai/v2.1/projects/poc/openai-compatible/v1",
+        "value": "",
         "description": "VLAM API base-URL (OpenAI-compatible endpoint)",
         "is_secret": False,
     },
@@ -300,18 +301,29 @@ def _mask_secret(value: str) -> str:
     """Mask a secret value for display, showing only last 4 chars."""
     if not value or len(value) <= 4:
         return "****" if value else ""
-    return "*" * (len(value) - 4) + value[-4:]
+    return "****" + value[-4:]
+
+
+_defaults_seeded = False
 
 
 async def _ensure_default_config(db: AsyncSession) -> None:
-    """Create default config entries if they don't exist."""
+    """Create default config entries if they don't exist (runs once)."""
+    global _defaults_seeded  # noqa: PLW0603
+    if _defaults_seeded:
+        return
+
+    from sqlalchemy.dialects.postgresql import insert
+
     for entry in _DEFAULT_CONFIG:
-        existing = await db.execute(
-            select(AppConfig).where(AppConfig.key == entry["key"])
+        stmt = (
+            insert(AppConfig)
+            .values(**entry)
+            .on_conflict_do_nothing(index_elements=["key"])
         )
-        if existing.scalar_one_or_none() is None:
-            db.add(AppConfig(**entry))
+        await db.execute(stmt)
     await db.flush()
+    _defaults_seeded = True
 
 
 @router.get("/config", response_model=list[AppConfigResponse])
@@ -326,7 +338,9 @@ async def list_config(
     for row in result.scalars().all():
         resp = AppConfigResponse.model_validate(row)
         if row.is_secret:
-            resp.value = _mask_secret(row.value)
+            # Decrypt for masking (show last 4 chars of real value)
+            plain = decrypt_value(row.value)
+            resp.value = _mask_secret(plain)
         entries.append(resp)
     return entries
 
@@ -350,7 +364,7 @@ async def update_config(
             detail=f"Configuratie '{key}' niet gevonden",
         )
 
-    entry.value = data.value
+    entry.value = encrypt_value(data.value) if entry.is_secret else data.value
     user_label = (admin.default_email or admin.naam) if admin else "anonymous"
     entry.updated_by = user_label
     await db.flush()
@@ -370,7 +384,7 @@ async def update_config(
 
     resp = AppConfigResponse.model_validate(entry)
     if entry.is_secret:
-        resp.value = _mask_secret(entry.value)
+        resp.value = _mask_secret(decrypt_value(entry.value))
     return resp
 
 

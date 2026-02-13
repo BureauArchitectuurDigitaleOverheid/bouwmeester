@@ -1,11 +1,11 @@
 """Pydantic schemas for LLM-powered features."""
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TagSuggestionRequest(BaseModel):
-    title: str
-    description: str | None = None
+    title: str = Field(max_length=500)
+    description: str | None = Field(default=None, max_length=50000)
     node_type: str = "dossier"
 
 
@@ -36,8 +36,8 @@ class EdgeSuggestionResponse(BaseModel):
 
 
 class SummarizeRequest(BaseModel):
-    text: str
-    max_words: int = 100
+    text: str = Field(max_length=50000)
+    max_words: int = Field(default=100, ge=10, le=500)
 
 
 class SummarizeResponse(BaseModel):

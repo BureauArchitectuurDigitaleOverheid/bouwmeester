@@ -2,6 +2,10 @@
 
 import json
 
+# Maximum number of tags to include in prompts to control token usage.
+MAX_TAGS_IN_PROMPT = 200
+MAX_TEXT_IN_PROMPT = 10000
+
 _TYPE_LABELS: dict[str, str] = {
     "motie": "aangenomen motie",
     "kamervraag": "schriftelijke kamervraag",
@@ -36,9 +40,9 @@ def build_extract_tags_prompt(
     type_label = _TYPE_LABELS.get(context_hint, context_hint)
     item_content = f"TITEL: {titel}\nONDERWERP: {onderwerp}"
     if document_tekst:
-        item_content += f"\n\nDOCUMENTTEKST:\n{document_tekst}"
+        item_content += f"\n\nDOCUMENTTEKST:\n{document_tekst[:MAX_TEXT_IN_PROMPT]}"
 
-    tags_json = json.dumps(bestaande_tags, ensure_ascii=False)
+    tags_json = json.dumps(bestaande_tags[:MAX_TAGS_IN_PROMPT], ensure_ascii=False)
     return (
         "Je bent een beleidsanalist van het ministerie van BZK"
         " (Binnenlandse Zaken en Koninkrijksrelaties)."
@@ -85,9 +89,9 @@ def build_suggest_tags_prompt(
     type_label = _NODE_TYPE_LABELS.get(node_type, node_type)
     content = f"TITEL: {title}"
     if description:
-        content += f"\nBESCHRIJVING:\n{description}"
+        content += f"\nBESCHRIJVING:\n{description[:MAX_TEXT_IN_PROMPT]}"
 
-    tags_json = json.dumps(bestaande_tags, ensure_ascii=False)
+    tags_json = json.dumps(bestaande_tags[:MAX_TAGS_IN_PROMPT], ensure_ascii=False)
     return (
         "Je bent een beleidsanalist van het ministerie van BZK"
         " (Binnenlandse Zaken en Koninkrijksrelaties)."
@@ -158,6 +162,6 @@ def build_summarize_prompt(text: str, max_words: int = 100) -> str:
         "Je bent een beleidsanalist van het ministerie van BZK."
         " Vat de volgende tekst beknopt samen in het Nederlands."
         f" Gebruik maximaal {max_words} woorden.\n\n"
-        f"TEKST:\n{text}\n\n"
+        f"TEKST:\n{text[:MAX_TEXT_IN_PROMPT]}\n\n"
         "SAMENVATTING:"
     )
