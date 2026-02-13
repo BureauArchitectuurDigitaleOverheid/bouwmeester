@@ -29,15 +29,22 @@ API keys are created when an agent Person is created (POST /api/people with
 `is_agent: true`, admin only). The plaintext key is returned once on creation.
 Keys can be rotated via POST `/api/people/{id}/rotate-api-key`.
 
-**Base URL:** `https://component-2.bouwmeester.rijks.app` (production).
-For local development use `http://localhost:8000`.
+**Base URL:** The API backend runs at
+`https://component-2.bouwmeester.rijks.app` (production) or
+`http://localhost:8000` (local dev). All examples below use `$BASE`
+as a placeholder — set it before running:
+
+```bash
+BASE=https://component-2.bouwmeester.rijks.app   # production
+# BASE=http://localhost:8000                       # local dev
+```
 
 ### Verify your identity
 
 After authenticating, confirm your agent identity:
 
 ```bash
-curl -H "Authorization: Bearer bm_..." https://component-2.bouwmeester.rijks.app/api/auth/me
+curl -H "Authorization: Bearer bm_..." $BASE/api/auth/me
 ```
 
 Returns your `PersonDetailResponse` (id, naam, email, is_agent, etc.).
@@ -153,19 +160,19 @@ Nodes of type `bron` have additional fields and capabilities:
 
 ```bash
 # List all nodes (paginated)
-curl -H "Authorization: Bearer bm_..." https://component-2.bouwmeester.rijks.app/api/nodes?limit=20
+curl -H "Authorization: Bearer bm_..." $BASE/api/nodes?limit=20
 
 # Filter by type
-curl -H "Authorization: Bearer bm_..." https://component-2.bouwmeester.rijks.app/api/nodes?node_type=dossier
+curl -H "Authorization: Bearer bm_..." $BASE/api/nodes?node_type=dossier
 
 # Get a single node with its edges
-curl -H "Authorization: Bearer bm_..." https://component-2.bouwmeester.rijks.app/api/nodes/{id}
+curl -H "Authorization: Bearer bm_..." $BASE/api/nodes/{id}
 ```
 
 ### 2. Create a node
 
 ```bash
-curl -X POST https://component-2.bouwmeester.rijks.app/api/nodes \
+curl -X POST $BASE/api/nodes \
   -H "Authorization: Bearer bm_..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -179,7 +186,7 @@ curl -X POST https://component-2.bouwmeester.rijks.app/api/nodes \
 ### 3. Create an edge between two nodes
 
 ```bash
-curl -X POST https://component-2.bouwmeester.rijks.app/api/edges \
+curl -X POST $BASE/api/edges \
   -H "Authorization: Bearer bm_..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -193,7 +200,7 @@ curl -X POST https://component-2.bouwmeester.rijks.app/api/edges \
 ### 4. Create a task on a node
 
 ```bash
-curl -X POST https://component-2.bouwmeester.rijks.app/api/tasks \
+curl -X POST $BASE/api/tasks \
   -H "Authorization: Bearer bm_..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -209,17 +216,17 @@ curl -X POST https://component-2.bouwmeester.rijks.app/api/tasks \
 
 ```bash
 curl -H "Authorization: Bearer bm_..." \
-  "https://component-2.bouwmeester.rijks.app/api/search?q=woningbouw&limit=20"
+  "$BASE/api/search?q=woningbouw&limit=20"
 ```
 
 ### 6. Get the graph around a node
 
 ```bash
 # Direct neighbors
-curl -H "Authorization: Bearer bm_..." https://component-2.bouwmeester.rijks.app/api/nodes/{id}/neighbors
+curl -H "Authorization: Bearer bm_..." $BASE/api/nodes/{id}/neighbors
 
 # Multi-hop graph (depth 1-5)
-curl -H "Authorization: Bearer bm_..." https://component-2.bouwmeester.rijks.app/api/nodes/{id}/graph?depth=2
+curl -H "Authorization: Bearer bm_..." $BASE/api/nodes/{id}/graph?depth=2
 ```
 
 ## Important Conventions
