@@ -1,5 +1,6 @@
 """API routes for parliamentary item imports and review."""
 
+import logging
 from datetime import date, datetime
 from uuid import UUID
 
@@ -23,6 +24,8 @@ from bouwmeester.schema.parlementair_item import (
     SuggestedEdgeResponse,
 )
 from bouwmeester.services.activity_service import log_activity
+
+logger = logging.getLogger(__name__)
 
 SUGGESTED_EDGE_DESCRIPTION = "Automatisch voorgesteld vanuit parlementaire import"
 
@@ -167,13 +170,18 @@ async def reopen_import(
         )
 
     item = await repo.update_status(import_id, "imported", reviewed_at=None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Import not found")
 
     # Ensure corpus node exists (out-of-scope items skip node creation)
     service = ParlementairImportService(db)
     item = await service.ensure_corpus_node(item)
 
     # Create a review task (same logic as initial import)
-    await service.create_review_task(item)
+    try:
+        await service.create_review_task(item)
+    except Exception:
+        logger.exception("Error creating review task for reopened item %s", import_id)
 
     await log_activity(
         db,
@@ -183,6 +191,8 @@ async def reopen_import(
         details={"item_id": str(import_id)},
     )
 
+    # Re-fetch to ensure all relationships are loaded for serialization
+    item = await repo.get_by_id(import_id)
     return ParlementairItemResponse.model_validate(item)
 
 
