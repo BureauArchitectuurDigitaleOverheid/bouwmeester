@@ -195,7 +195,7 @@ export function OrganisatieForm({
           <RichTextEditor
             value={beschrijving}
             onChange={setBeschrijving}
-            placeholder="Optionele beschrijving... Gebruik @ voor personen, # voor nodes/taken"
+            placeholder="Optionele beschrijving... Gebruik @ voor personen, # voor nodes/taken, **vet** voor opmaak"
             rows={3}
           />
         </div>

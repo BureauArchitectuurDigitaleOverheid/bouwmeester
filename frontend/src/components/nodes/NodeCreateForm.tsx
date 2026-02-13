@@ -129,7 +129,7 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
           <RichTextEditor
             value={description}
             onChange={setDescription}
-            placeholder="Optionele beschrijving... Gebruik @ voor personen, # voor nodes/taken"
+            placeholder="Optionele beschrijving... Gebruik @ voor personen, # voor nodes/taken, **vet** voor opmaak"
             rows={4}
           />
         </div>

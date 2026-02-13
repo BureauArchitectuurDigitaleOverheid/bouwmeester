@@ -124,6 +124,36 @@ function renderNode(node: TipTapNode, key: number, handlers: MentionHandlers): R
       );
     }
 
+    case 'heading': {
+      const level = (node.attrs?.level as number) ?? 2;
+      const Tag = level === 2 ? 'h2' : 'h3';
+      const className = level === 2
+        ? 'text-lg font-semibold mt-3 mb-1'
+        : 'text-base font-semibold mt-2 mb-1';
+      return (
+        <Tag key={key} className={className}>
+          {node.content ? renderNodes(node.content, handlers) : null}
+        </Tag>
+      );
+    }
+
+    case 'blockquote':
+      return (
+        <blockquote key={key} className="border-l-3 border-gray-300 pl-3 text-gray-500 my-2">
+          {node.content ? renderNodes(node.content, handlers) : null}
+        </blockquote>
+      );
+
+    case 'codeBlock':
+      return (
+        <pre key={key} className="bg-gray-100 rounded-md px-3 py-2 my-2 font-mono text-xs overflow-x-auto">
+          <code>{node.content?.map((c) => c.text ?? '').join('\n')}</code>
+        </pre>
+      );
+
+    case 'horizontalRule':
+      return <hr key={key} className="border-t border-gray-200 my-3" />;
+
     case 'hardBreak':
       return <br key={key} />;
 
