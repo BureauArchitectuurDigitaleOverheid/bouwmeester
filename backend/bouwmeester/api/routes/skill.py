@@ -251,9 +251,9 @@ curl -H "Authorization: Bearer bm_..." $BASE/api/nodes/{id}/graph?depth=2
 
 ## Full API Reference
 
-- **OpenAPI spec**: `GET /openapi.json`
-- **Interactive docs**: `GET /docs` (Swagger UI)
-- **Alternative docs**: `GET /redoc` (ReDoc)
+- **OpenAPI spec**: `GET /api/openapi.json`
+- **Interactive docs**: `GET /api/docs` (Swagger UI)
+- **Alternative docs**: `GET /api/redoc` (ReDoc)
 
 Each endpoint has a docstring visible in the OpenAPI spec describing its
 purpose and key behavior.

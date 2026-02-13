@@ -58,6 +58,9 @@ def create_app() -> FastAPI:
         debug=settings.DEBUG,
         lifespan=lifespan,
         redirect_slashes=False,
+        openapi_url="/api/openapi.json",
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
         openapi_tags=[
             {"name": "nodes", "description": "Corpus nodes"},
             {"name": "edges", "description": "Edges between nodes"},
