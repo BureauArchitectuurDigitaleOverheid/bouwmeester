@@ -378,13 +378,26 @@ export const FUNCTIE_LABELS: Record<string, string> = {
   projectleider: 'Projectleider',
   programmamanager: 'Programmamanager',
   jurist: 'Jurist',
+  'coördinerend_beleidsmedewerker': 'Coördinerend Beleidsmedewerker',
   communicatieadviseur: 'Communicatieadviseur',
   staff_engineer: 'Staff Engineer',
 };
 
+/**
+ * Unicode-safe title case: capitalize the first letter of each space-separated word.
+ * Unlike \b\w which treats non-ASCII (ö, é, …) as word boundaries, this splits
+ * on whitespace so "coördinerend beleidsmedewerker" → "Coördinerend Beleidsmedewerker".
+ */
+export function titleCase(str: string): string {
+  return str
+    .split(' ')
+    .map(w => (w.length > 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
 export function formatFunctie(functie?: string | null): string | undefined {
   if (!functie) return undefined;
-  return FUNCTIE_LABELS[functie] ?? functie.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return FUNCTIE_LABELS[functie] ?? titleCase(functie.replace(/_/g, ' '));
 }
 
 // People
