@@ -243,7 +243,7 @@ class TweedeKamerClient:
     async def _zaak_to_data(self, zaak: dict[str, Any], soort: str) -> ZaakData:
         """Convert a raw Zaak dict to ZaakData with enrichment."""
         zaak_id = zaak["Id"]
-        zaak_nummer = zaak.get("Nummer", "")
+        zaak_nummer = zaak.get("Nummer") or ""
 
         indieners = await self._fetch_indieners(zaak_id)
         document_tekst, document_url = await self._fetch_document_text(
@@ -267,8 +267,8 @@ class TweedeKamerClient:
         return ZaakData(
             zaak_id=zaak_id,
             zaak_nummer=zaak_nummer,
-            titel=zaak.get("Titel", ""),
-            onderwerp=zaak.get("Onderwerp", ""),
+            titel=zaak.get("Titel") or "",
+            onderwerp=zaak.get("Onderwerp") or "",
             soort=soort,
             datum=datum,
             indieners=indieners,

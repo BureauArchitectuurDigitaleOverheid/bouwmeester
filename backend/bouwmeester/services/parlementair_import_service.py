@@ -11,7 +11,6 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 
 import anthropic
-import httpx
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -142,13 +141,7 @@ class ParlementairImportService:
                 result = await self._process_item(item, strategy)
                 if result:
                     imported_count += 1
-            except (
-                httpx.HTTPError,
-                anthropic.APIError,
-                SQLAlchemyError,
-                ValueError,
-                KeyError,
-            ):
+            except Exception:
                 logger.exception(
                     f"Error processing {strategy.item_type} {item.zaak_id}"
                 )
