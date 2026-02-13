@@ -48,14 +48,20 @@ async def list_imports(
     status_filter: str | None = Query(None, alias="status"),
     bron: str | None = None,
     type_filter: str | None = Query(None, alias="type"),
+    search: str | None = Query(None, max_length=500),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[ParlementairItemResponse]:
-    """List imported parliamentary items. Filter by status, bron, or type."""
+    """List imported parliamentary items. Filter by status, bron, type, or search."""
     repo = ParlementairItemRepository(db)
     imports = await repo.get_all(
-        status=status_filter, bron=bron, item_type=type_filter, skip=skip, limit=limit
+        status=status_filter,
+        bron=bron,
+        item_type=type_filter,
+        search=search,
+        skip=skip,
+        limit=limit,
     )
     return [ParlementairItemResponse.model_validate(i) for i in imports]
 
@@ -132,6 +138,37 @@ async def reject_import(
         current_user,
         actor_id,
         "parlementair.rejected",
+        details={"item_id": str(import_id)},
+    )
+
+    return ParlementairItemResponse.model_validate(item)
+
+
+@router.put("/imports/{import_id}/reopen", response_model=ParlementairItemResponse)
+async def reopen_import(
+    import_id: UUID,
+    current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> ParlementairItemResponse:
+    """Reopen a rejected or out-of-scope item for review."""
+    repo = ParlementairItemRepository(db)
+    item = await repo.get_by_id(import_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Import not found")
+    if item.status not in ("rejected", "out_of_scope"):
+        raise HTTPException(
+            status_code=400,
+            detail="Alleen afgewezen of buiten-scope items kunnen heropend worden",
+        )
+
+    item = await repo.update_status(import_id, "imported", reviewed_at=None)
+
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "parlementair.reopened",
         details={"item_id": str(import_id)},
     )
 

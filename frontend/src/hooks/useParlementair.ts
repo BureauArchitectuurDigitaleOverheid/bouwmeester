@@ -4,6 +4,7 @@ import {
   getParlementairItem,
   triggerParlementairImport,
   rejectParlementairItem,
+  reopenParlementairItem,
   completeParlementairReview,
   getReviewQueue,
   updateSuggestedEdge,
@@ -50,6 +51,14 @@ export function useRejectParlementairItem() {
   return useMutationWithError({
     mutationFn: (id: string) => rejectParlementairItem(id),
     errorMessage: 'Fout bij afwijzen kamerstuk',
+    invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
+  });
+}
+
+export function useReopenParlementairItem() {
+  return useMutationWithError({
+    mutationFn: (id: string) => reopenParlementairItem(id),
+    errorMessage: 'Fout bij heropenen kamerstuk',
     invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
   });
 }

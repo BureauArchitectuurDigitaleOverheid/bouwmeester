@@ -13,6 +13,7 @@ import {
   useResetSuggestedEdge,
   useUpdateSuggestedEdge,
   useRejectParlementairItem,
+  useReopenParlementairItem,
   useCompleteParlementairReview,
 } from '@/hooks/useParlementair';
 import { useCreateEdge, useDeleteEdge } from '@/hooks/useEdges';
@@ -78,6 +79,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   const resetEdge = useResetSuggestedEdge();
   const updateSuggestedEdge = useUpdateSuggestedEdge();
   const rejectItem = useRejectParlementairItem();
+  const reopenItem = useReopenParlementairItem();
   const completeReview = useCompleteParlementairReview();
   const createEdge = useCreateEdge();
   const deleteEdge = useDeleteEdge();
@@ -829,6 +831,22 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                 onClick={() => rejectItem.mutate(item.id)}
               >
                 Niet relevant
+              </Button>
+            </div>
+          )}
+
+          {/* Reopen action for rejected/out_of_scope items */}
+          {(item.status === 'out_of_scope' || item.status === 'rejected') && (
+            <div className="pt-2 border-t border-border">
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Undo2 className="h-3.5 w-3.5" />}
+                onClick={() => reopenItem.mutate(item.id)}
+                disabled={reopenItem.isPending}
+                loading={reopenItem.isPending}
+              >
+                Heropenen voor beoordeling
               </Button>
             </div>
           )}

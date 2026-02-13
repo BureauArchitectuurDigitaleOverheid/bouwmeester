@@ -348,3 +348,126 @@ async def test_reset_suggested_edge_not_found(client):
     fake_id = uuid.uuid4()
     resp = await client.put(f"/api/parlementair/edges/{fake_id}/reset")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Search imports
+# ---------------------------------------------------------------------------
+
+
+async def test_search_imports_by_titel(client, db_session):
+    """GET /api/parlementair/imports?search= filters by titel."""
+    item = await _create_parlementair_item(db_session)
+    resp = await client.get(
+        "/api/parlementair/imports", params={"search": "Test motie"}
+    )
+    assert resp.status_code == 200
+    ids = {m["id"] for m in resp.json()}
+    assert str(item.id) in ids
+
+
+async def test_search_imports_by_onderwerp(client, db_session):
+    """GET /api/parlementair/imports?search= filters by onderwerp."""
+    item = await _create_parlementair_item(db_session)
+    resp = await client.get(
+        "/api/parlementair/imports", params={"search": "Test onderwerp"}
+    )
+    assert resp.status_code == 200
+    ids = {m["id"] for m in resp.json()}
+    assert str(item.id) in ids
+
+
+async def test_search_imports_by_zaak_nummer(client, db_session):
+    """GET /api/parlementair/imports?search= filters by zaak_nummer."""
+    item = await _create_parlementair_item(db_session)
+    resp = await client.get(
+        "/api/parlementair/imports", params={"search": "36200-VII-42"}
+    )
+    assert resp.status_code == 200
+    ids = {m["id"] for m in resp.json()}
+    assert str(item.id) in ids
+
+
+async def test_search_imports_no_match(client, db_session):
+    """GET /api/parlementair/imports?search= returns empty for non-matching query."""
+    await _create_parlementair_item(db_session)
+    resp = await client.get(
+        "/api/parlementair/imports", params={"search": "xyz-nonexistent-query"}
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()) == 0
+
+
+async def test_search_imports_rejects_too_long(client):
+    """GET /api/parlementair/imports?search= rejects queries over 500 chars."""
+    resp = await client.get("/api/parlementair/imports", params={"search": "a" * 501})
+    assert resp.status_code == 422
+
+
+async def test_search_imports_case_insensitive(client, db_session):
+    """GET /api/parlementair/imports?search= is case insensitive."""
+    item = await _create_parlementair_item(db_session)
+    resp = await client.get(
+        "/api/parlementair/imports", params={"search": "test MOTIE"}
+    )
+    assert resp.status_code == 200
+    ids = {m["id"] for m in resp.json()}
+    assert str(item.id) in ids
+
+
+async def test_search_combined_with_status_filter(client, db_session):
+    """GET /api/parlementair/imports?search=&status= combines both filters."""
+    await _create_parlementair_item(db_session, status="imported")
+    resp = await client.get(
+        "/api/parlementair/imports",
+        params={"search": "Test motie", "status": "reviewed"},
+    )
+    assert resp.status_code == 200
+    # Should not find it because status doesn't match
+    assert len(resp.json()) == 0
+
+
+# ---------------------------------------------------------------------------
+# Reopen import
+# ---------------------------------------------------------------------------
+
+
+async def test_reopen_rejected_import(client, db_session):
+    """PUT /api/parlementair/imports/{id}/reopen reopens a rejected item."""
+    item = await _create_parlementair_item(db_session, status="rejected")
+    resp = await client.put(f"/api/parlementair/imports/{item.id}/reopen")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "imported"
+    assert data["reviewed_at"] is None
+
+
+async def test_reopen_out_of_scope_import(client, db_session):
+    """PUT /api/parlementair/imports/{id}/reopen reopens an out_of_scope item."""
+    item = await _create_parlementair_item(db_session, status="out_of_scope")
+    resp = await client.put(f"/api/parlementair/imports/{item.id}/reopen")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "imported"
+    assert data["reviewed_at"] is None
+
+
+async def test_reopen_imported_item_fails(client, db_session):
+    """PUT /api/parlementair/imports/{id}/reopen rejects already-imported items."""
+    item = await _create_parlementair_item(db_session, status="imported")
+    resp = await client.put(f"/api/parlementair/imports/{item.id}/reopen")
+    assert resp.status_code == 400
+
+
+async def test_reopen_reviewed_item_fails(client, db_session):
+    """PUT /api/parlementair/imports/{id}/reopen rejects reviewed items."""
+    item = await _create_parlementair_item(db_session, status="reviewed")
+    resp = await client.put(f"/api/parlementair/imports/{item.id}/reopen")
+    assert resp.status_code == 400
+
+
+async def test_reopen_not_found(client):
+    """PUT /api/parlementair/imports/{id}/reopen returns 404 for non-existent."""
+    fake_id = uuid.uuid4()
+    resp = await client.put(f"/api/parlementair/imports/{fake_id}/reopen")
+    assert resp.status_code == 404

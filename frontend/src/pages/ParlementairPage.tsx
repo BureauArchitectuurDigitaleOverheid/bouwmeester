@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Search } from 'lucide-react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -36,9 +37,12 @@ export function ParlementairPage() {
     highlightItemId ? 'all' : 'imported'
   );
   const [typeFilter, setTypeFilter] = useState<ParlementairItemType | 'all'>('all');
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebounce(searchInput, 300);
   const filters = {
     ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
     ...(typeFilter !== 'all' ? { type: typeFilter } : {}),
+    ...(debouncedSearch ? { search: debouncedSearch } : {}),
   };
   const { data: imports, isLoading } = useParlementairItems(
     Object.keys(filters).length > 0 ? filters : undefined
@@ -64,6 +68,18 @@ export function ParlementairPage() {
             {triggerImport.isPending ? 'Laden...' : 'Importeren'}
           </span>
         </Button>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+        <input
+          type="text"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Zoeken in kamerstukken..."
+          className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+        />
       </div>
 
       {/* Filters */}
