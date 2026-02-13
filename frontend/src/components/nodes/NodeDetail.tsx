@@ -20,7 +20,7 @@ import { useNodeTags, useAddTagToNode, useRemoveTagFromNode, useTags } from '@/h
 import { useReferences } from '@/hooks/useMentions';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
-import { NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, BRON_TYPE_LABELS, NodeType, formatFunctie, titleCase } from '@/types';
+import { NODE_TYPE_COLORS, NODE_STATUS_LABELS, STAKEHOLDER_ROL_LABELS, BRON_TYPE_LABELS, NodeType, type NodeStatus, formatFunctie, titleCase } from '@/types';
 import { uploadBijlage, deleteBijlage, getBijlageDownloadUrl, updateNodeBronDetail } from '@/api/nodes';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDate } from '@/utils/dates';
@@ -203,7 +203,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             <Badge variant={color as 'blue'} dot title={nodeAltLabel(node.node_type)}>
               {nodeLabel(node.node_type)}
             </Badge>
-            {node.status && <Badge variant="gray">{node.status}</Badge>}
+            {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
           </div>
           <h1 className="text-2xl font-bold text-text">{node.title}</h1>
           <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 text-xs text-text-secondary">
@@ -839,7 +839,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                         ) : (
                           <span className="inline-block w-2 h-2 rounded-full bg-gray-300 shrink-0" title="Vorig" />
                         )}
-                        <Badge variant="gray">{record.status}</Badge>
+                        <Badge variant="gray">{NODE_STATUS_LABELS[record.status as NodeStatus] ?? record.status}</Badge>
                       </div>
                       <span className="text-xs text-text-secondary shrink-0 ml-3">
                         {formatDate(record.geldig_van)}
