@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
-import type { Person, PersonCreate, PersonSummaryResponse, PersonOrganisatie, PersonEmail, PersonPhone } from '@/types';
+import type { Person, PersonCreate, PersonCreateResult, PersonSummaryResponse, PersonOrganisatie, PersonEmail, PersonPhone, ApiKeyResponse } from '@/types';
 
 export async function getPeople(): Promise<Person[]> {
   return apiGet<Person[]>('/api/people', { limit: '1000' });
@@ -9,8 +9,8 @@ export async function getPerson(id: string): Promise<Person> {
   return apiGet<Person>(`/api/people/${id}`);
 }
 
-export async function createPerson(data: PersonCreate): Promise<Person> {
-  return apiPost<Person>('/api/people', data);
+export async function createPerson(data: PersonCreate): Promise<PersonCreateResult> {
+  return apiPost<PersonCreateResult>('/api/people', data);
 }
 
 export async function updatePerson(id: string, data: Partial<PersonCreate>): Promise<Person> {
@@ -54,6 +54,10 @@ export async function removePersonOrganisatie(
   placementId: string,
 ): Promise<void> {
   return apiDelete(`/api/people/${personId}/organisaties/${placementId}`);
+}
+
+export async function rotateApiKey(personId: string): Promise<ApiKeyResponse> {
+  return apiPost<ApiKeyResponse>(`/api/people/${personId}/rotate-api-key`);
 }
 
 export async function searchPeople(q: string, limit = 10): Promise<Person[]> {

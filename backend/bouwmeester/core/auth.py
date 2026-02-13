@@ -42,7 +42,7 @@ _NETWORK_ERROR_GRACE_SECONDS = 120
 _http_client: httpx.AsyncClient | None = None
 
 
-def _get_http_client() -> httpx.AsyncClient:
+def get_http_client() -> httpx.AsyncClient:
     """Return a shared httpx.AsyncClient, creating it on first call."""
     global _http_client  # noqa: PLW0603
     if _http_client is None or _http_client.is_closed:
@@ -58,7 +58,7 @@ async def close_http_client() -> None:
         _http_client = None
 
 
-def _require_https(url: str, label: str) -> bool:
+def require_https(url: str, label: str) -> bool:
     """Return True if the URL uses HTTPS.  Log a warning and return False otherwise."""
     if url.startswith("https://"):
         return True
@@ -105,9 +105,9 @@ async def get_oidc_metadata(settings: Settings) -> dict[str, Any] | None:
             return _oidc_metadata
 
         url = _get_discovery_url(settings)
-        if not _require_https(url, "OIDC discovery URL"):
+        if not require_https(url, "OIDC discovery URL"):
             return None
-        client = _get_http_client()
+        client = get_http_client()
         resp = await client.get(url)
         resp.raise_for_status()
         _oidc_metadata = resp.json()
@@ -125,7 +125,7 @@ _jwks_lock = asyncio.Lock()
 _JWKS_TTL = 3600  # Re-fetch JWKS every hour
 
 
-async def _get_jwks(settings: Settings) -> Any | None:
+async def get_jwks(settings: Settings) -> Any | None:
     """Return cached JWKS key set, fetching if stale."""
     global _jwks_keys, _jwks_fetched_at  # noqa: PLW0603
 
@@ -146,10 +146,10 @@ async def _get_jwks(settings: Settings) -> Any | None:
         if not jwks_uri:
             return None
 
-        if not _require_https(jwks_uri, "JWKS URI"):
+        if not require_https(jwks_uri, "JWKS URI"):
             return None
 
-        client = _get_http_client()
+        client = get_http_client()
         try:
             resp = await client.get(jwks_uri)
             resp.raise_for_status()
@@ -161,7 +161,7 @@ async def _get_jwks(settings: Settings) -> Any | None:
             return _jwks_keys  # Return stale keys if available
 
 
-def _validate_jwt_locally(
+def validate_jwt_locally(
     token: str,
     jwks: Any,
     settings: Settings,
@@ -380,10 +380,10 @@ async def _try_refresh_token(
     if not token_url:
         return False
 
-    if not _require_https(token_url, "Token endpoint"):
+    if not require_https(token_url, "Token endpoint"):
         return False
 
-    client = _get_http_client()
+    client = get_http_client()
     try:
         resp = await client.post(
             token_url,
@@ -437,9 +437,9 @@ async def validate_session_token(
         return True
 
     # Try local JWT validation first (no network call).
-    jwks = await _get_jwks(settings)
+    jwks = await get_jwks(settings)
     if jwks:
-        claims = _validate_jwt_locally(access_token, jwks, settings)
+        claims = validate_jwt_locally(access_token, jwks, settings)
         if claims:
             session["token_validated_at"] = time.time()
             return True
@@ -454,10 +454,10 @@ async def validate_session_token(
     if not userinfo_url:
         return False
 
-    if not _require_https(userinfo_url, "Userinfo endpoint"):
+    if not require_https(userinfo_url, "Userinfo endpoint"):
         return False
 
-    client = _get_http_client()
+    client = get_http_client()
     try:
         resp = await client.get(
             userinfo_url,
@@ -520,9 +520,9 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
         return None
 
     # Try local JWT validation first (avoids network call).
-    jwks = await _get_jwks(settings)
+    jwks = await get_jwks(settings)
     if jwks:
-        claims = _validate_jwt_locally(token, jwks, settings)
+        claims = validate_jwt_locally(token, jwks, settings)
         if claims:
             return claims
 
@@ -535,13 +535,13 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
     if not userinfo_url:
         return None
 
-    if not _require_https(userinfo_url, "Userinfo endpoint"):
+    if not require_https(userinfo_url, "Userinfo endpoint"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="OIDC userinfo endpoint is not HTTPS",
         )
 
-    client = _get_http_client()
+    client = get_http_client()
     try:
         resp = await client.get(
             userinfo_url,
@@ -606,10 +606,10 @@ async def revoke_tokens(
         f"{settings.OIDC_ISSUER.rstrip('/')}/protocol/openid-connect/revoke",
     )
 
-    if not _require_https(revocation_url, "Revocation endpoint"):
+    if not require_https(revocation_url, "Revocation endpoint"):
         return
 
-    client = _get_http_client()
+    client = get_http_client()
     for token_value, token_type in [
         (refresh_token, "refresh_token"),
         (access_token, "access_token"),
@@ -639,6 +639,27 @@ async def revoke_tokens(
 # ---------------------------------------------------------------------------
 
 
+async def _person_from_api_key(
+    request: Request,
+    db: AsyncSession,
+) -> Person | None:
+    """Resolve the current request to a :class:`Person` via API key.
+
+    The middleware already validated the key and stored the person's UUID in
+    ``request.scope["_api_key_person_id"]``.  We load the Person by PK
+    (fast, no re-hashing needed).
+    """
+    person_id = request.scope.get("_api_key_person_id")
+    if person_id is None:
+        return None
+
+    person = await db.get(Person, person_id)
+    # Double-check the person is still active and is an agent (race guard).
+    if person is not None and person.is_active and person.is_agent:
+        return person
+    return None
+
+
 async def _person_from_claims(
     db: AsyncSession,
     claims: dict[str, Any],
@@ -665,12 +686,18 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Person:
-    """Dependency that requires a valid OIDC token.
+    """Dependency that requires a valid token (API key or OIDC).
 
-    In development mode (``OIDC_ISSUER`` is empty) this raises 401 to signal
-    that authentication is not available -- prefer :func:`get_optional_user`
-    for endpoints that should also work without OIDC.
+    Checks API key first, then OIDC.  In development mode without OIDC and
+    without an API key this raises 401 — prefer :func:`get_optional_user`
+    for endpoints that should also work unauthenticated.
     """
+    # 1. API key auth (works with or without OIDC).
+    person = await _person_from_api_key(request, db)
+    if person is not None:
+        return person
+
+    # 2. OIDC auth.
     if not settings.OIDC_ISSUER:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -700,8 +727,15 @@ async def get_optional_user(
 ) -> Person | None:
     """Dependency that returns the current user when authenticated, or ``None``.
 
-    If OIDC is not configured, always returns ``None`` (dev mode).
+    Checks API key first, then OIDC.  If neither is present/configured,
+    returns ``None`` (dev mode).
     """
+    # 1. API key auth (works with or without OIDC).
+    person = await _person_from_api_key(request, db)
+    if person is not None:
+        return person
+
+    # 2. OIDC auth.
     if not settings.OIDC_ISSUER:
         return None
 
@@ -719,10 +753,21 @@ async def get_admin_user(
 ) -> Person | None:
     """Dependency that requires the current user to be an admin.
 
-    In development mode (no OIDC) returns ``None`` (all access open).
-    In OIDC mode: resolves the authenticated user and checks ``is_admin``.
-    Raises 403 if the user is not an admin.
+    Checks API key first, then OIDC.  In development mode (no OIDC and
+    no API key) returns ``None`` (all access open).
+    Raises 403 if the user is authenticated but not an admin.
     """
+    # 1. API key auth.
+    person = await _person_from_api_key(request, db)
+    if person is not None:
+        if not person.is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required",
+            )
+        return person
+
+    # 2. OIDC auth.
     if not settings.OIDC_ISSUER:
         return None
 

@@ -67,9 +67,11 @@ from bouwmeester.schema.parlementair_item import (
 )
 from bouwmeester.schema.person import (
     PHONE_LABELS,
+    ApiKeyResponse,
     OnboardingRequest,
     PersonBase,
     PersonCreate,
+    PersonCreateResponse,
     PersonDetailResponse,
     PersonEmailCreate,
     PersonEmailResponse,
@@ -167,10 +169,12 @@ __all__ = [
     "OrganisatieEenheidTreeNode",
     "OrganisatieEenheidUpdate",
     # person
+    "ApiKeyResponse",
     "OnboardingRequest",
     "PHONE_LABELS",
     "PersonBase",
     "PersonCreate",
+    "PersonCreateResponse",
     "PersonDetailResponse",
     "PersonEmailCreate",
     "PersonEmailResponse",

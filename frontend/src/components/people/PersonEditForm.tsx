@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Copy, RefreshCw } from 'lucide-react';
+import { Copy, RefreshCw, Check, Eye, EyeOff } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
-import { usePeople, useSearchPeople } from '@/hooks/usePeople';
+import { usePeople, useSearchPeople, useRotateApiKey } from '@/hooks/usePeople';
 import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS } from '@/types';
 import type { Person, PersonFormSubmitParams } from '@/types';
 
@@ -22,14 +22,6 @@ const KARAKTER_NAMEN = [
   'Burgeik', 'Van den Born', 'Iris',
 ];
 
-function generateMockApiKey(): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  const segments = [8, 4, 4, 4, 12];
-  return 'bm_' + segments.map(len =>
-    Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-  ).join('-');
-}
-
 const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS).map(
   ([value, label]) => ({ value, label })
 );
@@ -43,6 +35,8 @@ interface PersonEditFormProps {
   defaultIsAgent?: boolean;
   /** Pre-fill the org unit selector (e.g. when adding from within an org unit) */
   defaultOrgEenheidId?: string;
+  /** One-time API key to display after creation */
+  createdApiKey?: string | null;
 }
 
 export function PersonEditForm({
@@ -53,16 +47,23 @@ export function PersonEditForm({
   editData,
   defaultIsAgent = false,
   defaultOrgEenheidId,
+  createdApiKey,
 }: PersonEditFormProps) {
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
   const [functie, setFunctie] = useState('');
   const [description, setDescription] = useState('');
-  const [apiKey, setApiKey] = useState('');
   const [orgEenheidId, setOrgEenheidId] = useState('');
   const [dienstverband, setDienstverband] = useState('in_dienst');
   const [emailTouched, setEmailTouched] = useState(false);
   const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
+
+  // Rotated API key one-time display
+  const [rotatedApiKey, setRotatedApiKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
+  const rotateApiKeyMutation = useRotateApiKey();
 
   // Search/select existing person state (create mode, non-agent only)
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
@@ -92,14 +93,20 @@ export function PersonEditForm({
     ? 'Typ minimaal 2 tekens om te zoeken...'
     : 'Geen personen gevonden';
 
+  // The key to display — either freshly rotated, freshly created, or nothing.
+  const displayApiKey = rotatedApiKey || createdApiKey || null;
+
   useEffect(() => {
     if (open) {
+      setRotatedApiKey(null);
+      setCopied(false);
+      setShowKey(false);
+      setConfirmRotate(false);
       if (editData) {
         setNaam(editData.naam);
         setEmail(editData.email || '');
         setFunctie(editData.functie || '');
         setDescription(editData.description || '');
-        setApiKey(editData.api_key || '');
         setOrgEenheidId('');
         // Ensure the existing functie value is in options
         if (editData.functie) {
@@ -121,7 +128,6 @@ export function PersonEditForm({
         setEmail('');
         setFunctie('');
         setDescription('');
-        setApiKey(defaultIsAgent ? generateMockApiKey() : '');
         setOrgEenheidId(defaultOrgEenheidId || '');
         setDienstverband('in_dienst');
         setSelectedPerson(null);
@@ -130,7 +136,6 @@ export function PersonEditForm({
         personCacheRef.current.clear();
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editData, defaultIsAgent, defaultOrgEenheidId, allPeople]);
 
   const isAgent = editData ? editData.is_agent : defaultIsAgent;
@@ -153,7 +158,6 @@ export function PersonEditForm({
           functie: isAgent ? undefined : (functie || undefined),
           description: isAgent ? (description.trim() || undefined) : undefined,
           is_agent: isAgent,
-          api_key: isAgent ? apiKey : undefined,
         },
       });
     } else if (selectedPerson) {
@@ -172,7 +176,6 @@ export function PersonEditForm({
           functie: isAgent ? undefined : (functie || undefined),
           description: isAgent ? (description.trim() || undefined) : undefined,
           is_agent: isAgent,
-          api_key: isAgent ? apiKey : undefined,
         },
         orgEenheidId: orgEenheidId || undefined,
         dienstverband: orgEenheidId ? dienstverband : undefined,
@@ -225,6 +228,35 @@ export function PersonEditForm({
     setNaamQuery('');
   };
 
+  const handleCopyKey = async () => {
+    if (displayApiKey) {
+      try {
+        await navigator.clipboard.writeText(displayApiKey);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // Fallback: select the text so user can copy manually
+        setShowKey(true);
+      }
+    }
+  };
+
+  const handleRotateKey = async () => {
+    if (!editData) return;
+    if (!confirmRotate) {
+      setConfirmRotate(true);
+      return;
+    }
+    try {
+      const result = await rotateApiKeyMutation.mutateAsync(editData.id);
+      setRotatedApiKey(result.api_key);
+      setCopied(false);
+      setConfirmRotate(false);
+    } catch {
+      setConfirmRotate(false);
+    }
+  };
+
   const title = editData
     ? (isAgent ? 'Agent bewerken' : 'Persoon bewerken')
     : selectedPerson
@@ -237,24 +269,34 @@ export function PersonEditForm({
       ? 'Koppelen'
       : 'Toevoegen';
 
+  // When a one-time API key is displayed, prevent accidental close.
+  const isShowingKey = !!displayApiKey;
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={title}
+      closeable={!isShowingKey}
       footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Annuleren
+        isShowingKey ? (
+          <Button onClick={onClose}>
+            Ik heb de sleutel gekopieerd
           </Button>
-          <Button
-            onClick={handleSubmit}
-            loading={isLoading}
-            disabled={!isValid}
-          >
-            {submitLabel}
-          </Button>
-        </>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onClose}>
+              Annuleren
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              loading={isLoading}
+              disabled={!isValid}
+            >
+              {submitLabel}
+            </Button>
+          </>
+        )
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -310,30 +352,80 @@ export function PersonEditForm({
           <>
             <div>
               <label className="block text-sm font-medium text-text mb-1">API Key</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={apiKey}
-                  className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary"
-                />
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard.writeText(apiKey)}
-                  className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
-                  title="Kopieer API key"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setApiKey(generateMockApiKey())}
-                  className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
-                  title="Genereer nieuwe API key"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              {displayApiKey ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type={showKey ? 'text' : 'password'}
+                      readOnly
+                      value={displayApiKey}
+                      className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKey(!showKey)}
+                      className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
+                      title={showKey ? 'Verberg API key' : 'Toon API key'}
+                    >
+                      {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyKey}
+                      className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
+                      title="Kopieer API key"
+                    >
+                      {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-amber-600 font-medium">
+                    Deze sleutel wordt slechts eenmaal getoond. Kopieer en bewaar deze veilig.
+                  </p>
+                </>
+              ) : editData ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={editData.has_api_key ? '••••••••••••••••••••••••••' : 'Geen API key'}
+                    className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary/50"
+                  />
+                  {confirmRotate ? (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleRotateKey}
+                        disabled={rotateApiKeyMutation.isPending}
+                        className="flex items-center justify-center h-9 px-3 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 transition-colors text-sm gap-1.5 text-red-700 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${rotateApiKeyMutation.isPending ? 'animate-spin' : ''}`} />
+                        Bevestig
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmRotate(false)}
+                        className="flex items-center justify-center h-9 px-3 rounded-lg border border-border hover:bg-gray-50 transition-colors text-sm"
+                      >
+                        Annuleer
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleRotateKey}
+                      className="flex items-center justify-center h-9 px-3 rounded-lg border border-border hover:bg-gray-50 transition-colors text-sm gap-1.5"
+                      title="Genereer nieuwe API key (de oude wordt ongeldig)"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Roteer
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-text-secondary">
+                  API key wordt automatisch gegenereerd na aanmaken.
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-text mb-1">Beschrijving</label>

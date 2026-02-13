@@ -430,7 +430,7 @@ export interface Person {
   description?: string;
   is_agent: boolean;
   is_admin: boolean;
-  api_key?: string | null;
+  has_api_key?: boolean;
   is_active: boolean;
   created_at: string;
   emails: PersonEmail[];
@@ -439,13 +439,22 @@ export interface Person {
   default_phone?: string | null;
 }
 
+/** Extended response from POST /api/people — includes one-time api_key for agents. */
+export interface PersonCreateResult extends Person {
+  api_key?: string | null;
+}
+
 export interface PersonCreate {
   naam: string;
   email?: string;
   functie?: string;
   description?: string;
   is_agent?: boolean;
-  api_key?: string;
+}
+
+export interface ApiKeyResponse {
+  api_key: string;
+  person_id: string;
 }
 
 // PersonEditForm submit discriminated union

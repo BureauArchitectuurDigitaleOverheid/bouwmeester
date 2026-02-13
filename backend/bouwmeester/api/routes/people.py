@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import require_deleted, require_found
-from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.api_key import generate_api_key, hash_api_key
+from bouwmeester.core.auth import AdminUser, OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
@@ -20,7 +21,9 @@ from bouwmeester.models.task import Task
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.person import (
     PHONE_LABELS,
+    ApiKeyResponse,
     PersonCreate,
+    PersonCreateResponse,
     PersonDetailResponse,
     PersonEmailCreate,
     PersonEmailResponse,
@@ -54,7 +57,7 @@ async def list_people(
 
 @router.post(
     "",
-    response_model=PersonDetailResponse,
+    response_model=PersonCreateResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_person(
@@ -62,11 +65,23 @@ async def create_person(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-) -> PersonDetailResponse:
-    # Agent names must be unique
+) -> PersonCreateResponse:
+    # Agent creation requires admin privileges (agents bypass email whitelist).
+    # In dev mode (no OIDC) current_user is None so all access is open.
+    if data.is_agent and current_user is not None and not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Alleen administrators kunnen agents aanmaken",
+        )
+
+    # Agent names must be unique among active agents
     if data.is_agent:
         existing = await db.execute(
-            select(Person).where(Person.naam == data.naam, Person.is_agent == True)  # noqa: E712
+            select(Person).where(
+                Person.naam == data.naam,
+                Person.is_agent == True,  # noqa: E712
+                Person.is_active == True,  # noqa: E712
+            )
         )
         if existing.scalar_one_or_none() is not None:
             raise HTTPException(
@@ -75,6 +90,13 @@ async def create_person(
             )
     repo = PersonRepository(db)
     person = await repo.create(data)
+
+    # Auto-generate API key for agents.
+    plaintext_key: str | None = None
+    if data.is_agent:
+        plaintext_key = generate_api_key()
+        person.api_key_hash = hash_api_key(plaintext_key)
+        await db.flush()
 
     # Also create a PersonEmail row if email was provided
     if data.email:
@@ -93,7 +115,12 @@ async def create_person(
 
     # Re-fetch with eager loading for response
     person = await repo.get(person.id)
-    return PersonDetailResponse.model_validate(person)
+    resp = PersonCreateResponse.model_validate(person)
+    # Return plaintext key one-time on creation.
+    if plaintext_key:
+        resp.api_key = plaintext_key
+        resp.has_api_key = True
+    return resp
 
 
 @router.get("/search", response_model=list[PersonResponse])
@@ -185,7 +212,9 @@ async def get_person(
 ) -> PersonDetailResponse:
     repo = PersonRepository(db)
     person = require_found(await repo.get(id), "Person")
-    return PersonDetailResponse.model_validate(person)
+    resp = PersonDetailResponse.model_validate(person)
+    resp.has_api_key = person.api_key_hash is not None
+    return resp
 
 
 @router.put("/{id}", response_model=PersonDetailResponse)
@@ -210,7 +239,9 @@ async def update_person(
         details={"person_id": str(person.id), "naam": person.naam},
     )
 
-    return PersonDetailResponse.model_validate(person)
+    resp = PersonDetailResponse.model_validate(person)
+    resp.has_api_key = person.api_key_hash is not None
+    return resp
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -231,6 +262,42 @@ async def delete_person(
         "person.deleted",
         details={"person_id": str(id), "naam": person_naam},
     )
+
+
+# --- API key management ---
+
+
+@router.post("/{id}/rotate-api-key", response_model=ApiKeyResponse)
+async def rotate_api_key(
+    id: UUID,
+    admin: AdminUser,
+    actor_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> ApiKeyResponse:
+    """Generate a new API key, replacing the previous one.
+
+    The plaintext key is returned once — it cannot be retrieved afterwards.
+    """
+    person = require_found(await db.get(Person, id), "Person")
+    if not person.is_agent:
+        raise HTTPException(
+            status_code=400,
+            detail="API keys zijn alleen beschikbaar voor agents",
+        )
+
+    plaintext_key = generate_api_key()
+    person.api_key_hash = hash_api_key(plaintext_key)
+    await db.flush()
+
+    await log_activity(
+        db,
+        admin,
+        actor_id,
+        "person.api_key_rotated",
+        details={"person_id": str(person.id), "naam": person.naam},
+    )
+
+    return ApiKeyResponse(api_key=plaintext_key, person_id=person.id)
 
 
 # --- Org placements ---

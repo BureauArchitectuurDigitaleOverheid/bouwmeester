@@ -18,11 +18,26 @@ downstream FastAPI dependencies can skip redundant validation.
 from __future__ import annotations
 
 import json
+import logging
+import time
+from collections import defaultdict
 
 import httpx
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from bouwmeester.core.config import Settings
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Simple in-memory rate limiter for failed API key attempts.
+# Tracks per-IP failure counts within a sliding window.  Not persistent
+# across process restarts — intentionally lightweight.
+# ---------------------------------------------------------------------------
+_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_MAX_FAILURES = 10  # max failures per window before we slow-log
+_api_key_failures: dict[str, list[float]] = defaultdict(list)
 
 # Prefixes that are always accessible without authentication.
 _PUBLIC_PREFIXES = (
@@ -54,6 +69,43 @@ class AuthRequiredMiddleware:
         self.oidc_configured = oidc_configured
         self.settings = settings
 
+    async def _validate_api_key(self, token: str, scope: Scope) -> bool:
+        """Validate a ``bm_``-prefixed API key against the database.
+
+        We hash the plaintext key and use the hash as a DB lookup key.
+        This avoids fetching all hashes for comparison and is safe because
+        SHA-256 on high-entropy keys (128-bit) is collision-resistant.
+        The constant-time ``verify_api_key`` in ``core/api_key`` is used
+        by tests to verify hash correctness, not here.
+
+        On success, stores the matched person's UUID in
+        ``scope["_api_key_person_id"]`` so downstream dependencies can
+        load the Person by PK instead of re-hashing the key.
+        """
+        from bouwmeester.core.api_key import hash_api_key
+        from bouwmeester.core.database import async_session
+        from bouwmeester.models.person import Person
+
+        key_hash = hash_api_key(token)
+        try:
+            from sqlalchemy import select
+
+            async with async_session() as session:
+                stmt = select(Person.id).where(
+                    Person.api_key_hash == key_hash,
+                    Person.is_active == True,  # noqa: E712
+                    Person.is_agent == True,  # noqa: E712
+                )
+                result = await session.execute(stmt)
+                person_id = result.scalar_one_or_none()
+                if person_id is not None:
+                    scope["_api_key_person_id"] = person_id
+                    return True
+                return False
+        except (SQLAlchemyError, OSError):
+            logger.exception("API key validation failed")
+            return False
+
     async def _validate_bearer(self, token: str) -> bool:
         """Validate a Bearer token using the shared auth helpers.
 
@@ -64,17 +116,17 @@ class AuthRequiredMiddleware:
             return False
 
         from bouwmeester.core.auth import (
-            _get_http_client,
-            _get_jwks,
-            _require_https,
-            _validate_jwt_locally,
+            get_http_client,
+            get_jwks,
             get_oidc_metadata,
+            require_https,
+            validate_jwt_locally,
         )
 
         # 1. Try local JWT validation (fast, no network).
-        jwks = await _get_jwks(self.settings)
+        jwks = await get_jwks(self.settings)
         if jwks:
-            claims = _validate_jwt_locally(token, jwks, self.settings)
+            claims = validate_jwt_locally(token, jwks, self.settings)
             if claims:
                 return True
 
@@ -85,10 +137,10 @@ class AuthRequiredMiddleware:
         userinfo_url = metadata.get("userinfo_endpoint")
         if not userinfo_url:
             return False
-        if not _require_https(userinfo_url, "Userinfo endpoint"):
+        if not require_https(userinfo_url, "Userinfo endpoint"):
             return False
 
-        client = _get_http_client()
+        client = get_http_client()
         try:
             resp = await client.get(
                 userinfo_url,
@@ -112,7 +164,7 @@ class AuthRequiredMiddleware:
         # Only enforce on /api/ routes (not static files, etc.)
         path: str = scope.get("path", "")
 
-        if not self.oidc_configured or not path.startswith("/api/"):
+        if not path.startswith("/api/"):
             await self.app(scope, receive, send)
             return
 
@@ -121,19 +173,67 @@ class AuthRequiredMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # 1. Check Bearer token (for API clients).
+        # 1. Check for bm_ API key (works regardless of OIDC config).
+        #    Note: API key auth intentionally bypasses the email whitelist
+        #    (step 3 below) — agents are system accounts without emails.
+        #    Access control for agents uses Person.is_active instead.
         bearer_token = _get_bearer_token(scope)
-        if bearer_token:
+        if bearer_token and bearer_token.startswith("bm_"):
+            if await self._validate_api_key(bearer_token, scope):
+                scope["_auth_validated"] = True
+                await self.app(scope, receive, send)
+                return
+            # Invalid API key → reject immediately (don't fall through to
+            # dev-mode passthrough or OIDC — a bm_ token is always ours).
+            client = scope.get("client")
+            client_host = client[0] if client else "unknown"
+
+            # Track failures per IP for rate-limit awareness.
+            now = time.monotonic()
+            failures = _api_key_failures[client_host]
+            # Prune old entries outside the window.
+            failures[:] = [t for t in failures if now - t < _RATE_LIMIT_WINDOW]
+            failures.append(now)
+            if len(failures) >= _RATE_LIMIT_MAX_FAILURES:
+                logger.warning(
+                    "Excessive invalid API key attempts (%d in %ds) from %s",
+                    len(failures),
+                    _RATE_LIMIT_WINDOW,
+                    client_host,
+                )
+            else:
+                logger.warning(
+                    "Invalid API key attempt from %s on %s",
+                    client_host,
+                    path,
+                )
+            body = json.dumps({"detail": "Invalid API key"}).encode("utf-8")
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body)).encode()),
+                    ],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+
+        # If OIDC is not configured, pass through (dev mode).
+        if not self.oidc_configured:
+            await self.app(scope, receive, send)
+            return
+
+        # 2. Check OIDC Bearer token (for API clients).
+        if bearer_token and not bearer_token.startswith("bm_"):
             if await self._validate_bearer(bearer_token):
-                # Bearer tokens don't carry an email in the session, so
-                # we can't check the whitelist here.  This is intentional:
-                # Bearer auth is for machine-to-machine clients that are
-                # not subject to the email-based access whitelist.
                 scope["_auth_validated"] = True
                 await self.app(scope, receive, send)
                 return
 
-        # 2. Validate the session token against Keycloak (with caching + refresh).
+        # 3. Validate the session token against Keycloak (with caching + refresh).
         session: dict = scope.get("session", {})
         if session.get("access_token") and self.settings:
             from bouwmeester.core.auth import validate_session_token

@@ -9,6 +9,7 @@ import {
   updatePersonOrganisatie,
   removePersonOrganisatie,
   searchPeople,
+  rotateApiKey,
   addPersonEmail,
   removePersonEmail,
   setDefaultEmail,
@@ -112,6 +113,16 @@ export function useSearchPeople(query: string) {
     queryKey: ['people', 'search', debouncedQuery],
     queryFn: () => searchPeople(debouncedQuery),
     enabled: debouncedQuery.length >= 2,
+  });
+}
+
+// API key hooks
+
+export function useRotateApiKey() {
+  return useMutationWithError({
+    mutationFn: (personId: string) => rotateApiKey(personId),
+    errorMessage: 'Fout bij roteren API key',
+    invalidateKeys: [['people']],
   });
 }
 

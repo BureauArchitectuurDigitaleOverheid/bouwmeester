@@ -68,7 +68,7 @@ class PersonBase(BaseModel):
 
 
 class PersonCreate(PersonBase):
-    api_key: str | None = None
+    pass
 
 
 class PersonUpdate(BaseModel):
@@ -77,7 +77,6 @@ class PersonUpdate(BaseModel):
     functie: str | None = Field(None, max_length=200)
     description: str | None = Field(None, max_length=5000)
     is_agent: bool | None = None
-    api_key: str | None = None
 
 
 class PersonResponse(PersonBase):
@@ -130,7 +129,30 @@ class PersonResponse(PersonBase):
 
 
 class PersonDetailResponse(PersonResponse):
-    """Full response including api_key — only for get/create/update."""
+    """Full response for a single person.
+
+    ``has_api_key`` indicates whether the person has an API key configured.
+    The actual plaintext key is **never** included here — it is only returned
+    via :class:`ApiKeyCreateResponse` on agent creation or key rotation.
+    """
+
+    has_api_key: bool = False
+
+
+class ApiKeyResponse(BaseModel):
+    """Returned after key rotation (one-time display)."""
+
+    api_key: str
+    person_id: UUID
+
+
+class PersonCreateResponse(PersonDetailResponse):
+    """Returned after creating a person.
+
+    For agents, ``api_key`` contains the one-time plaintext key.
+    For non-agents, ``api_key`` is always ``None``.
+    This is the **only** response type that ever carries the plaintext key.
+    """
 
     api_key: str | None = None
 
