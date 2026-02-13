@@ -24,6 +24,7 @@ export default defineConfig({
       closeBundle() {
         const docsDir = path.resolve(__dirname, '../docs');
         const outDir = path.resolve(__dirname, 'dist/docs');
+        if (!fs.existsSync(docsDir)) return;
         fs.mkdirSync(outDir, { recursive: true });
         for (const file of fs.readdirSync(docsDir)) {
           fs.copyFileSync(path.join(docsDir, file), path.join(outDir, file));

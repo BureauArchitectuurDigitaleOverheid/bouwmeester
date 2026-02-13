@@ -128,8 +128,8 @@ const components: Components = {
     if (
       child &&
       typeof child === 'object' &&
-      'type' in (child as Record<string, unknown>) &&
-      (child as { type: unknown }).type === MermaidBlock
+      'type' in (child as unknown as Record<string, unknown>) &&
+      (child as unknown as { type: unknown }).type === MermaidBlock
     ) {
       return <>{children}</>;
     }

@@ -6,6 +6,8 @@ COPY package.json package-lock.json* ./
 RUN npm install
 
 COPY . .
+# Copy docs for the in-app documentation page (CI places docs/ in the context)
+COPY doc[s] /docs/
 RUN npm run build
 
 

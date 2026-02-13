@@ -8,5 +8,8 @@ export PATH="/app/.venv/bin:$PATH"
 echo "Running database migrations..."
 alembic upgrade head
 
+echo "Starting parlementair import worker..."
+python -m bouwmeester.worker &
+
 echo "Starting uvicorn..."
 exec uvicorn bouwmeester.core.app:create_app --factory --host 0.0.0.0 --port 8080

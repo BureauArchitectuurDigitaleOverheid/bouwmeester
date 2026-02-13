@@ -11,6 +11,7 @@ lives in the server-side store.
 
 from __future__ import annotations
 
+import logging
 import secrets
 from typing import Any
 
@@ -20,6 +21,8 @@ from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from bouwmeester.core.session_store import SessionStore
+
+logger = logging.getLogger(__name__)
 
 COOKIE_NAME = "bm_session"
 
@@ -82,6 +85,9 @@ class ServerSideSessionMiddleware:
                     session_id = None
             except (BadSignature, SignatureExpired):
                 session_id = None
+            except Exception:
+                logger.exception("Failed to load session from store")
+                session_id = None
 
         scope["session"] = session_data
         initial_data = dict(session_data)
@@ -93,28 +99,31 @@ class ServerSideSessionMiddleware:
 
                 headers = MutableHeaders(scope=message)
 
-                # Handle session ID rotation (e.g. after login).
-                # The handler sets ``_rotate`` to signal that a new session ID
-                # should be issued, preventing session fixation attacks.
-                needs_rotation = current_data.pop("_rotate", False)
-                if needs_rotation and session_id is not None:
-                    # Delete the old session from the store.
-                    await self.store.delete(session_id)
-                    session_id = None
+                try:
+                    # Handle session ID rotation (e.g. after login).
+                    # The handler sets ``_rotate`` to signal that a new session ID
+                    # should be issued, preventing session fixation attacks.
+                    needs_rotation = current_data.pop("_rotate", False)
+                    if needs_rotation and session_id is not None:
+                        # Delete the old session from the store.
+                        await self.store.delete(session_id)
+                        session_id = None
 
-                if current_data:
-                    if session_id is None:
-                        session_id = secrets.token_urlsafe(32)
-                    if current_data != initial_data or needs_rotation:
-                        await self.store.set(session_id, current_data)
-                    signed = self.signer.sign(session_id).decode("utf-8")
-                    headers.append(
-                        "set-cookie",
-                        self._build_cookie(signed, self.cookie_max_age),
-                    )
-                elif session_id is not None:
-                    await self.store.delete(session_id)
-                    headers.append("set-cookie", self._build_cookie("", 0))
+                    if current_data:
+                        if session_id is None:
+                            session_id = secrets.token_urlsafe(32)
+                        if current_data != initial_data or needs_rotation:
+                            await self.store.set(session_id, current_data)
+                        signed = self.signer.sign(session_id).decode("utf-8")
+                        headers.append(
+                            "set-cookie",
+                            self._build_cookie(signed, self.cookie_max_age),
+                        )
+                    elif session_id is not None:
+                        await self.store.delete(session_id)
+                        headers.append("set-cookie", self._build_cookie("", 0))
+                except Exception:
+                    logger.exception("Failed to persist session")
 
             await send(message)
 
