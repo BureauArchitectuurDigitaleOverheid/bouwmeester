@@ -18,11 +18,14 @@ downstream FastAPI dependencies can skip redundant validation.
 from __future__ import annotations
 
 import json
+import logging
 
 import httpx
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from bouwmeester.core.config import Settings
+
+logger = logging.getLogger(__name__)
 
 # Prefixes that are always accessible without authentication.
 _PUBLIC_PREFIXES = (
@@ -53,6 +56,36 @@ class AuthRequiredMiddleware:
         self.app = app
         self.oidc_configured = oidc_configured
         self.settings = settings
+
+    async def _validate_api_key(self, token: str, scope: Scope) -> bool:
+        """Validate a ``bm_``-prefixed API key against the database.
+
+        On success, stores the matched person's UUID in
+        ``scope["_api_key_person_id"]`` so downstream dependencies can
+        load the Person by PK instead of re-hashing the key.
+        """
+        from bouwmeester.core.api_key import hash_api_key
+        from bouwmeester.core.database import async_session
+        from bouwmeester.models.person import Person
+
+        key_hash = hash_api_key(token)
+        try:
+            from sqlalchemy import select
+
+            async with async_session() as session:
+                stmt = select(Person.id).where(
+                    Person.api_key_hash == key_hash,
+                    Person.is_active == True,  # noqa: E712
+                )
+                result = await session.execute(stmt)
+                person_id = result.scalar_one_or_none()
+                if person_id is not None:
+                    scope["_api_key_person_id"] = person_id
+                    return True
+                return False
+        except Exception:
+            logger.exception("API key validation failed")
+            return False
 
     async def _validate_bearer(self, token: str) -> bool:
         """Validate a Bearer token using the shared auth helpers.
@@ -112,7 +145,7 @@ class AuthRequiredMiddleware:
         # Only enforce on /api/ routes (not static files, etc.)
         path: str = scope.get("path", "")
 
-        if not self.oidc_configured or not path.startswith("/api/"):
+        if not path.startswith("/api/"):
             await self.app(scope, receive, send)
             return
 
@@ -121,19 +154,45 @@ class AuthRequiredMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # 1. Check Bearer token (for API clients).
+        # 1. Check for bm_ API key (works regardless of OIDC config).
+        #    Note: API key auth intentionally bypasses the email whitelist
+        #    (step 3 below) — agents are system accounts without emails.
+        #    Access control for agents uses Person.is_active instead.
         bearer_token = _get_bearer_token(scope)
-        if bearer_token:
+        if bearer_token and bearer_token.startswith("bm_"):
+            if await self._validate_api_key(bearer_token, scope):
+                scope["_auth_validated"] = True
+                await self.app(scope, receive, send)
+                return
+            # Invalid API key → reject immediately (don't fall through to
+            # dev-mode passthrough or OIDC — a bm_ token is always ours).
+            body = json.dumps({"detail": "Invalid API key"}).encode("utf-8")
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body)).encode()),
+                    ],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+
+        # If OIDC is not configured, pass through (dev mode).
+        if not self.oidc_configured:
+            await self.app(scope, receive, send)
+            return
+
+        # 2. Check OIDC Bearer token (for API clients).
+        if bearer_token and not bearer_token.startswith("bm_"):
             if await self._validate_bearer(bearer_token):
-                # Bearer tokens don't carry an email in the session, so
-                # we can't check the whitelist here.  This is intentional:
-                # Bearer auth is for machine-to-machine clients that are
-                # not subject to the email-based access whitelist.
                 scope["_auth_validated"] = True
                 await self.app(scope, receive, send)
                 return
 
-        # 2. Validate the session token against Keycloak (with caching + refresh).
+        # 3. Validate the session token against Keycloak (with caching + refresh).
         session: dict = scope.get("session", {})
         if session.get("access_token") and self.settings:
             from bouwmeester.core.auth import validate_session_token

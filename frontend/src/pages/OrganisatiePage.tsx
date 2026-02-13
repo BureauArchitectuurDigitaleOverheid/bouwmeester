@@ -30,6 +30,7 @@ export function OrganisatiePage() {
   // Person form state
   const [showPersonForm, setShowPersonForm] = useState(false);
   const [editPerson, setEditPerson] = useState<Person | null>(null);
+  const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
 
   // Sync ?eenheid= param on arrival, then clear it
   useEffect(() => {
@@ -46,7 +47,16 @@ export function OrganisatiePage() {
   const deleteMutation = useDeleteOrganisatieEenheid();
   const addPlacementMutation = useAddPersonOrganisatie();
   const { handleSubmit: handlePersonFormSubmit, isPending: isPersonPending } = usePersonFormSubmit(
-    () => setShowPersonForm(false),
+    () => {
+      setShowPersonForm(false);
+      setCreatedApiKey(null);
+    },
+    (person) => {
+      if (person.api_key && person.is_agent) {
+        setCreatedApiKey(person.api_key);
+        setEditPerson(person);
+      }
+    },
   );
 
   const handleAdd = (parentId: string | null) => {
@@ -233,12 +243,16 @@ export function OrganisatiePage() {
       {/* Create/Edit person form */}
       <PersonEditForm
         open={showPersonForm}
-        onClose={() => setShowPersonForm(false)}
+        onClose={() => {
+          setShowPersonForm(false);
+          setCreatedApiKey(null);
+        }}
         onSubmit={handlePersonFormSubmit}
         isLoading={isPersonPending}
         editData={editPerson}
         defaultIsAgent={defaultIsAgent}
         defaultOrgEenheidId={selectedId || undefined}
+        createdApiKey={createdApiKey}
       />
     </div>
   );

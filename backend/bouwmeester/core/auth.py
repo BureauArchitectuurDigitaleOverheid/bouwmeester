@@ -639,6 +639,27 @@ async def revoke_tokens(
 # ---------------------------------------------------------------------------
 
 
+async def _person_from_api_key(
+    request: Request,
+    db: AsyncSession,
+) -> Person | None:
+    """Resolve the current request to a :class:`Person` via API key.
+
+    The middleware already validated the key and stored the person's UUID in
+    ``request.scope["_api_key_person_id"]``.  We load the Person by PK
+    (fast, no re-hashing needed).
+    """
+    person_id = request.scope.get("_api_key_person_id")
+    if person_id is None:
+        return None
+
+    person = await db.get(Person, person_id)
+    # Double-check the person is still active (race guard).
+    if person is not None and person.is_active:
+        return person
+    return None
+
+
 async def _person_from_claims(
     db: AsyncSession,
     claims: dict[str, Any],
@@ -665,12 +686,18 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Person:
-    """Dependency that requires a valid OIDC token.
+    """Dependency that requires a valid token (API key or OIDC).
 
-    In development mode (``OIDC_ISSUER`` is empty) this raises 401 to signal
-    that authentication is not available -- prefer :func:`get_optional_user`
-    for endpoints that should also work without OIDC.
+    Checks API key first, then OIDC.  In development mode without OIDC and
+    without an API key this raises 401 — prefer :func:`get_optional_user`
+    for endpoints that should also work unauthenticated.
     """
+    # 1. API key auth (works with or without OIDC).
+    person = await _person_from_api_key(request, db)
+    if person is not None:
+        return person
+
+    # 2. OIDC auth.
     if not settings.OIDC_ISSUER:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -700,8 +727,15 @@ async def get_optional_user(
 ) -> Person | None:
     """Dependency that returns the current user when authenticated, or ``None``.
 
-    If OIDC is not configured, always returns ``None`` (dev mode).
+    Checks API key first, then OIDC.  If neither is present/configured,
+    returns ``None`` (dev mode).
     """
+    # 1. API key auth (works with or without OIDC).
+    person = await _person_from_api_key(request, db)
+    if person is not None:
+        return person
+
+    # 2. OIDC auth.
     if not settings.OIDC_ISSUER:
         return None
 
@@ -719,10 +753,21 @@ async def get_admin_user(
 ) -> Person | None:
     """Dependency that requires the current user to be an admin.
 
-    In development mode (no OIDC) returns ``None`` (all access open).
-    In OIDC mode: resolves the authenticated user and checks ``is_admin``.
-    Raises 403 if the user is not an admin.
+    Checks API key first, then OIDC.  In development mode (no OIDC and
+    no API key) returns ``None`` (all access open).
+    Raises 403 if the user is authenticated but not an admin.
     """
+    # 1. API key auth.
+    person = await _person_from_api_key(request, db)
+    if person is not None:
+        if not person.is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required",
+            )
+        return person
+
+    # 2. OIDC auth.
     if not settings.OIDC_ISSUER:
         return None
 

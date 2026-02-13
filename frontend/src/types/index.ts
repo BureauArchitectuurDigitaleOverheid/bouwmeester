@@ -431,6 +431,7 @@ export interface Person {
   is_agent: boolean;
   is_admin: boolean;
   api_key?: string | null;
+  has_api_key?: boolean;
   is_active: boolean;
   created_at: string;
   emails: PersonEmail[];
@@ -445,7 +446,11 @@ export interface PersonCreate {
   functie?: string;
   description?: string;
   is_agent?: boolean;
-  api_key?: string;
+}
+
+export interface ApiKeyResponse {
+  api_key: string;
+  person_id: string;
 }
 
 // PersonEditForm submit discriminated union

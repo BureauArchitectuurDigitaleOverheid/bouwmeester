@@ -1,12 +1,15 @@
 import { useCreatePerson, useUpdatePerson, useAddPersonOrganisatie } from '@/hooks/usePeople';
 import { todayISO } from '@/utils/dates';
-import type { PersonFormSubmitParams } from '@/types';
+import type { Person, PersonFormSubmitParams } from '@/types';
 
 /**
  * Shared handler for PersonEditForm submissions.
  * Handles all three modes: edit, link-existing, and create(+link).
  */
-export function usePersonFormSubmit(onDone: () => void) {
+export function usePersonFormSubmit(
+  onDone: () => void,
+  onCreated?: (person: Person) => void,
+) {
   const createPersonMutation = useCreatePerson();
   const updatePersonMutation = useUpdatePerson();
   const addPlacementMutation = useAddPersonOrganisatie();
@@ -56,10 +59,21 @@ export function usePersonFormSubmit(onDone: () => void) {
                     start_datum: todayISO(),
                   },
                 },
-                { onSettled: onDone },
+                {
+                  onSettled: () => {
+                    onCreated?.(person);
+                    onDone();
+                  },
+                },
               );
             } else {
-              onDone();
+              onCreated?.(person);
+              // For agents with API keys, don't auto-close — let the parent decide.
+              if (person.api_key && person.is_agent) {
+                // Parent will handle closing after user copies the key.
+              } else {
+                onDone();
+              }
             }
           },
         });

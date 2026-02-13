@@ -12,6 +12,7 @@ export function PeoplePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [editPerson, setEditPerson] = useState<Person | null>(null);
+  const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
 
   const { data: people = [], isLoading } = usePeople();
 
@@ -27,15 +28,30 @@ export function PeoplePage() {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams, people]);
-  const { handleSubmit: handleFormSubmit, isPending } = usePersonFormSubmit(() => setShowForm(false));
+
+  const { handleSubmit: handleFormSubmit, isPending } = usePersonFormSubmit(
+    () => {
+      setShowForm(false);
+      setCreatedApiKey(null);
+    },
+    (person) => {
+      // Capture one-time API key from agent creation response
+      if (person.api_key && person.is_agent) {
+        setCreatedApiKey(person.api_key);
+        setEditPerson(person);
+      }
+    },
+  );
 
   const handleAddPerson = () => {
     setEditPerson(null);
+    setCreatedApiKey(null);
     setShowForm(true);
   };
 
   const handleEditPerson = (person: Person) => {
     setEditPerson(person);
+    setCreatedApiKey(null);
     setShowForm(true);
   };
 
@@ -66,10 +82,14 @@ export function PeoplePage() {
       {/* Create/Edit person form */}
       <PersonEditForm
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={() => {
+          setShowForm(false);
+          setCreatedApiKey(null);
+        }}
         onSubmit={handleFormSubmit}
         isLoading={isPending}
         editData={editPerson}
+        createdApiKey={createdApiKey}
       />
     </div>
   );

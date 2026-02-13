@@ -7,13 +7,13 @@ Clears all existing data and populates organisatie, personen, corpus, edges, and
 import asyncio
 import json
 import os
-import uuid
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.api_key import generate_api_key, hash_api_key
 from bouwmeester.core.database import async_session
 from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
@@ -993,15 +993,16 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
 
     async def create_agent(naam, description, eenheid):
-        api_key = f"bm_{''.join(f'{b:02x}' for b in uuid.uuid4().bytes[:16])}"
+        plaintext_key = generate_api_key()
         agent = await person_repo.create(
             PersonCreate(
                 naam=naam,
                 description=description,
                 is_agent=True,
-                api_key=api_key,
             )
         )
+        agent.api_key_hash = hash_api_key(plaintext_key)
+        agent.api_key = None
         placement = PersonOrganisatieEenheid(
             person_id=agent.id,
             organisatie_eenheid_id=eenheid.id,
@@ -1010,6 +1011,7 @@ async def seed(db: AsyncSession) -> None:
         )
         db.add(placement)
         await db.flush()
+        print(f"    Agent {naam}: API key = {plaintext_key}")
         return agent
 
     # Domain-specialist agents in "Afdeling Zonder Mensen"
