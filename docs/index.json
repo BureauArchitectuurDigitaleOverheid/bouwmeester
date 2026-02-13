@@ -1,0 +1,5 @@
+[
+  { "id": "theoretisch", "label": "Theoretisch" },
+  { "id": "functioneel", "label": "Functioneel" },
+  { "id": "technisch", "label": "Technisch" }
+]

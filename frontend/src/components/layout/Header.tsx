@@ -20,6 +20,7 @@ const pageTitles: Record<string, string> = {
   '/admin': 'Beheer',
   '/auditlog': 'Auditlog',
   '/search': 'Zoeken',
+  '/docs': 'Documentatie',
 };
 
 function getInitials(naam: string): string {
