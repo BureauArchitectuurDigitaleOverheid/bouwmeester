@@ -10,7 +10,6 @@ import uuid
 from collections import Counter
 from datetime import date, datetime, timedelta
 
-import anthropic
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +29,7 @@ from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import TagCreate
 from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrategy
 from bouwmeester.services.import_strategies.registry import get_strategy
-from bouwmeester.services.llm_service import LLMService
+from bouwmeester.services.llm import get_llm_service
 from bouwmeester.services.notification_service import NotificationService
 from bouwmeester.services.tk_api_client import EersteKamerClient, TweedeKamerClient
 
@@ -176,20 +175,26 @@ class ParlementairImportService:
             all_tags = await self.tag_repo.get_all()
             tag_names = [t.name for t in all_tags]
 
-            llm_service = LLMService()
-            try:
-                extraction = await llm_service.extract_tags(
-                    titel=item.titel,
-                    onderwerp=item.onderwerp,
-                    document_tekst=item.document_tekst,
-                    bestaande_tags=tag_names,
-                    context_hint=strategy.context_hint(),
-                )
-            except (anthropic.APIError, ValueError):
-                logger.exception(
-                    f"LLM extraction failed for {strategy.item_type} {item.zaak_nummer}"
-                )
+            llm_service = await get_llm_service(self.session)
+            if not llm_service:
+                logger.warning("No LLM provider configured, skipping tag extraction")
                 extraction = None
+            else:
+                try:
+                    extraction = await llm_service.extract_tags(
+                        titel=item.titel,
+                        onderwerp=item.onderwerp,
+                        document_tekst=item.document_tekst,
+                        bestaande_tags=tag_names,
+                        context_hint=strategy.context_hint(),
+                    )
+                except Exception:
+                    logger.exception(
+                        "LLM extraction failed for %s %s",
+                        strategy.item_type,
+                        item.zaak_nummer,
+                    )
+                    extraction = None
 
             matched_tag_names = extraction.matched_tags if extraction else []
             samenvatting = extraction.samenvatting if extraction else None

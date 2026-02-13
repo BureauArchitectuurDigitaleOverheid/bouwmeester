@@ -12,6 +12,8 @@ import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
+import { EdgeSuggestions } from './EdgeSuggestions';
+import { ContentSummary } from './ContentSummary';
 import { TaskView } from '@/components/tasks/TaskView';
 import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeParlementairItem, useAddNodeStakeholder, useUpdateNodeStakeholder, useRemoveNodeStakeholder, useNodeTitleHistory, useNodeStatusHistory, useNodeBronDetail, useNodeBijlage } from '@/hooks/useNodes';
 import { useTasks } from '@/hooks/useTasks';
@@ -273,6 +275,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             <Card>
               <h3 className="text-sm font-medium text-text mb-2">Beschrijving</h3>
               <RichTextDisplay content={node.description} />
+              <ContentSummary text={node.description ?? ''} />
             </Card>
 
             {/* Bron detail */}
@@ -669,6 +672,11 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                 </div>
               </Card>
             )}
+
+            {/* Edge suggestions (LLM) */}
+            <Card>
+              <EdgeSuggestions nodeId={nodeId} />
+            </Card>
           </div>
         )}
 

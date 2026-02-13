@@ -1,16 +1,18 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload } from 'lucide-react';
+import { Upload, X } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
+import { TagSuggestions } from './TagSuggestions';
 import { useCreateNode } from '@/hooks/useNodes';
 import { useNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
 import { NodeType, NodeStatus, NODE_STATUS_LABELS, BRON_TYPE_LABELS } from '@/types';
 import { updateNodeBronDetail, uploadBijlage } from '@/api/nodes';
+import { addTagToNode } from '@/api/tags';
 
 interface NodeCreateFormProps {
   open: boolean;
@@ -35,6 +37,9 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Tags suggested by LLM, to be applied after node creation
+  const [pendingTags, setPendingTags] = useState<{ name: string; isNew: boolean }[]>([]);
+
   const isBron = nodeType === NodeType.BRON;
 
   const resetForm = () => {
@@ -47,6 +52,7 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
     setBronPublicatieDatum('');
     setBronUrl('');
     setBijlageFile(null);
+    setPendingTags([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -77,6 +83,15 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
       // 3. If file was selected, upload it
       if (isBron && bijlageFile) {
         await uploadBijlage(node.id, bijlageFile);
+      }
+
+      // 4. Apply suggested tags
+      for (const tag of pendingTags) {
+        try {
+          await addTagToNode(node.id, { tag_name: tag.name });
+        } catch {
+          // Non-critical: tag may already exist or fail silently
+        }
       }
 
       resetForm();
@@ -133,6 +148,38 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
             rows={4}
           />
         </div>
+
+        <TagSuggestions
+          title={title}
+          description={description}
+          nodeType={nodeType}
+          onAcceptTag={(tagName, isNew) => {
+            setPendingTags((prev) => {
+              if (prev.some((t) => t.name === tagName)) return prev;
+              return [...prev, { name: tagName, isNew }];
+            });
+          }}
+        />
+
+        {pendingTags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {pendingTags.map((tag) => (
+              <span
+                key={tag.name}
+                className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2.5 py-0.5 text-xs font-medium"
+              >
+                {tag.name}
+                <button
+                  type="button"
+                  onClick={() => setPendingTags((prev) => prev.filter((t) => t.name !== tag.name))}
+                  className="hover:text-red-500 transition-colors ml-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
 
         <Select
           label="Status"

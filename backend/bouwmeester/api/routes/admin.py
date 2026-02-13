@@ -14,14 +14,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import AdminUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.encryption import decrypt_value, encrypt_value
 from bouwmeester.core.whitelist import refresh_whitelist_cache, seed_admins_from_file
 from bouwmeester.models.access_request import AccessRequest
+from bouwmeester.models.app_config import AppConfig
 from bouwmeester.models.person import Person
 from bouwmeester.models.whitelist_email import WhitelistEmail
 from bouwmeester.schema.access_request import (
     AccessRequestResponse,
     AccessRequestReviewRequest,
 )
+from bouwmeester.schema.app_config import AppConfigResponse, AppConfigUpdate
 from bouwmeester.schema.database_backup import (
     DatabaseBackupInfo,
     DatabaseResetRequest,
@@ -250,6 +253,144 @@ async def review_access_request(
 
 
 # ---------------------------------------------------------------------------
+# App configuration (LLM keys, model settings, etc.)
+# ---------------------------------------------------------------------------
+
+# Default config entries seeded on first admin visit.
+_DEFAULT_CONFIG = [
+    {
+        "key": "ANTHROPIC_API_KEY",
+        "value": "",
+        "description": "Anthropic API-sleutel voor Claude",
+        "is_secret": True,
+    },
+    {
+        "key": "LLM_MODEL",
+        "value": "claude-haiku-4-5-20251001",
+        "description": "Claude model-ID",
+        "is_secret": False,
+    },
+    {
+        "key": "VLAM_API_KEY",
+        "value": "",
+        "description": "VLAM API-token (soevereine LLM)",
+        "is_secret": True,
+    },
+    {
+        "key": "VLAM_BASE_URL",
+        "value": "",
+        "description": "VLAM API base-URL (OpenAI-compatible endpoint)",
+        "is_secret": False,
+    },
+    {
+        "key": "VLAM_MODEL_ID",
+        "value": "",
+        "description": "VLAM model-ID",
+        "is_secret": False,
+    },
+    {
+        "key": "LLM_PROVIDER",
+        "value": "claude",
+        "description": "Standaard LLM-provider: 'claude' of 'vlam'",
+        "is_secret": False,
+    },
+]
+
+
+def _mask_secret(value: str) -> str:
+    """Mask a secret value for display, showing only last 4 chars."""
+    if not value or len(value) <= 4:
+        return "****" if value else ""
+    return "****" + value[-4:]
+
+
+# Per-worker optimization flag. ON CONFLICT DO NOTHING ensures correctness
+# even when multiple workers race to seed defaults simultaneously.
+_defaults_seeded = False
+
+
+async def _ensure_default_config(db: AsyncSession) -> None:
+    """Create default config entries if they don't exist (runs once per worker)."""
+    global _defaults_seeded  # noqa: PLW0603
+    if _defaults_seeded:
+        return
+
+    from sqlalchemy.dialects.postgresql import insert
+
+    for entry in _DEFAULT_CONFIG:
+        stmt = (
+            insert(AppConfig)
+            .values(**entry)
+            .on_conflict_do_nothing(index_elements=["key"])
+        )
+        await db.execute(stmt)
+    await db.flush()
+    _defaults_seeded = True
+
+
+@router.get("/config", response_model=list[AppConfigResponse])
+async def list_config(
+    admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[AppConfigResponse]:
+    """List all configuration entries. Secret values are masked."""
+    await _ensure_default_config(db)
+    result = await db.execute(select(AppConfig).order_by(AppConfig.key))
+    entries = []
+    for row in result.scalars().all():
+        resp = AppConfigResponse.model_validate(row)
+        if row.is_secret:
+            # Decrypt for masking (show last 4 chars of real value)
+            plain = decrypt_value(row.value)
+            resp.value = _mask_secret(plain)
+        entries.append(resp)
+    return entries
+
+
+@router.patch(
+    "/config/{key}",
+    response_model=AppConfigResponse,
+)
+async def update_config(
+    key: str,
+    data: AppConfigUpdate,
+    admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> AppConfigResponse:
+    """Update a configuration value."""
+    result = await db.execute(select(AppConfig).where(AppConfig.key == key))
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Configuratie '{key}' niet gevonden",
+        )
+
+    entry.value = encrypt_value(data.value) if entry.is_secret else data.value
+    user_label = (admin.default_email or admin.naam) if admin else "anonymous"
+    entry.updated_by = user_label
+    await db.flush()
+    await db.refresh(entry)
+
+    # Clear the LLM factory cache so new values take effect immediately
+    from bouwmeester.services.llm import clear_config_cache
+
+    clear_config_cache()
+
+    await ActivityService(db).log_event(
+        "admin.config_update",
+        actor_id=admin.id if admin else None,
+        actor_naam=user_label,
+        details={"key": key},
+    )
+
+    resp = AppConfigResponse.model_validate(entry)
+    if entry.is_secret:
+        resp.value = _mask_secret(decrypt_value(entry.value))
+    return resp
+
+
+# ---------------------------------------------------------------------------
 # Database backup / restore
 # ---------------------------------------------------------------------------
 
@@ -383,7 +524,12 @@ async def import_database(
 # ---------------------------------------------------------------------------
 
 # Tables to preserve during reset
-_PRESERVED_TABLES = {"whitelist_email", "alembic_version", "http_sessions"}
+_PRESERVED_TABLES = {
+    "whitelist_email",
+    "alembic_version",
+    "http_sessions",
+    "app_config",
+}
 
 # All model tables (order doesn't matter — TRUNCATE ... CASCADE handles FKs)
 _ALL_MODEL_TABLES = [
