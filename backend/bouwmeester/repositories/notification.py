@@ -79,15 +79,16 @@ class NotificationRepository(BaseRepository[Notification]):
     async def last_activity_batch(
         self, parent_ids: list[UUID]
     ) -> dict[UUID, tuple[datetime, str | None, str]]:
-        """Get latest reply timestamp, message, and type per parent.
+        """Get latest activity timestamp, message, and type per thread root.
 
         Uses PostgreSQL DISTINCT ON to guarantee exactly one row per
-        parent_id, even when two replies share the same created_at.
-        Includes emoji reactions so the inbox preview stays current.
+        parent_id.  Also checks for reactions on replies (grandchildren)
+        so that emoji reactions bubble up to the thread-level preview.
         """
         if not parent_ids:
             return {}
 
+        # Direct children (replies + reactions on root messages)
         stmt = (
             select(
                 Notification.parent_id,
@@ -104,10 +105,46 @@ class NotificationRepository(BaseRepository[Notification]):
             .distinct(Notification.parent_id)
         )
         result = await self.session.execute(stmt)
-        return {
+        activity = {
             row.parent_id: (row.created_at, row.message, row.type)
             for row in result.all()
         }
+
+        # Reactions on replies (grandchildren): find reply IDs, then their
+        # most recent emoji_reaction, and keep the newer of the two.
+        reply_alias = Notification.__table__.alias("reply")
+        reaction_alias = Notification.__table__.alias("reaction")
+        gc_stmt = (
+            select(
+                reply_alias.c.parent_id.label("root_id"),
+                reaction_alias.c.created_at,
+                reaction_alias.c.message,
+                reaction_alias.c.type,
+            )
+            .select_from(
+                reaction_alias.join(
+                    reply_alias,
+                    reaction_alias.c.parent_id == reply_alias.c.id,
+                )
+            )
+            .where(
+                reply_alias.c.parent_id.in_(parent_ids),
+                reaction_alias.c.type == "emoji_reaction",
+            )
+            .order_by(
+                reply_alias.c.parent_id,
+                reaction_alias.c.created_at.desc(),
+                reaction_alias.c.id.desc(),
+            )
+            .distinct(reply_alias.c.parent_id)
+        )
+        gc_result = await self.session.execute(gc_stmt)
+        for row in gc_result.all():
+            root_id = row.root_id
+            if root_id not in activity or row.created_at > activity[root_id][0]:
+                activity[root_id] = (row.created_at, row.message, row.type)
+
+        return activity
 
     async def mark_read(self, notification_id: UUID) -> Notification | None:
         notification = await self.session.get(Notification, notification_id)
