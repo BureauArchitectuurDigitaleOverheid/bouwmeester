@@ -252,6 +252,7 @@ async def review_access_request(
 @router.get("/database/export")
 async def export_database(
     admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Export full database as pg_dump (optionally age-encrypted)."""
     from bouwmeester.services.database_backup_service import (
@@ -268,6 +269,13 @@ async def export_database(
         raise HTTPException(
             status_code=500, detail="Database export mislukt. Zie server logs."
         )
+
+    await ActivityService(db).log_event(
+        "seed.database_export",
+        actor_id=admin.id if admin else None,
+        actor_naam=user_label,
+        details={"description": "Database export uitgevoerd", "filename": filename},
+    )
 
     logger.info(
         "Database export completed: %s (%s bytes, by %s)",
