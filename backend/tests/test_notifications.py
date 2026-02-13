@@ -1113,3 +1113,296 @@ async def test_reply_allowed_when_sender_matches(
         f"/api/notifications/{sample_notification.id}/reply", json=payload
     )
     assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Emoji reactions
+# ---------------------------------------------------------------------------
+
+
+async def test_react_to_message_adds_reaction(
+    client, sample_person, second_person, sample_notification
+):
+    """POST /api/notifications/{id}/react adds a reaction."""
+    payload = {"sender_id": str(sample_person.id), "emoji": "👍"}
+    resp = await client.post(
+        f"/api/notifications/{sample_notification.id}/react", json=payload
+    )
+    assert resp.status_code == 200
+    assert resp.json()["action"] == "added"
+
+
+async def test_react_toggle_removes_reaction(
+    client, sample_person, second_person, sample_notification
+):
+    """Reacting with the same emoji twice toggles it off."""
+    payload = {"sender_id": str(sample_person.id), "emoji": "❤️"}
+    # Add
+    resp = await client.post(
+        f"/api/notifications/{sample_notification.id}/react", json=payload
+    )
+    assert resp.json()["action"] == "added"
+    # Remove
+    resp = await client.post(
+        f"/api/notifications/{sample_notification.id}/react", json=payload
+    )
+    assert resp.json()["action"] == "removed"
+
+
+async def test_react_different_emojis_coexist(
+    client, sample_person, second_person, sample_notification
+):
+    """Different emojis from the same user both persist."""
+    for emoji in ["👍", "❤️"]:
+        resp = await client.post(
+            f"/api/notifications/{sample_notification.id}/react",
+            json={"sender_id": str(sample_person.id), "emoji": emoji},
+        )
+        assert resp.json()["action"] == "added"
+
+    # Fetch the notification — should see 2 reaction summaries
+    resp = await client.get(
+        f"/api/notifications/{sample_notification.id}",
+        params={"person_id": str(sample_person.id)},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["reactions"]) == 2
+    emojis = {r["emoji"] for r in data["reactions"]}
+    assert emojis == {"👍", "❤️"}
+
+
+async def test_react_reacted_by_me_flag(
+    client, sample_person, second_person, sample_notification
+):
+    """Reactions include correct reacted_by_me flag per person_id query param."""
+    # sample_person reacts
+    await client.post(
+        f"/api/notifications/{sample_notification.id}/react",
+        json={"sender_id": str(sample_person.id), "emoji": "🔥"},
+    )
+
+    # Check as sample_person — reacted_by_me should be True
+    resp = await client.get(
+        f"/api/notifications/{sample_notification.id}",
+        params={"person_id": str(sample_person.id)},
+    )
+    reaction = next(r for r in resp.json()["reactions"] if r["emoji"] == "🔥")
+    assert reaction["reacted_by_me"] is True
+
+    # Check as second_person — reacted_by_me should be False
+    resp = await client.get(
+        f"/api/notifications/{sample_notification.id}",
+        params={"person_id": str(second_person.id)},
+    )
+    reaction = next(r for r in resp.json()["reactions"] if r["emoji"] == "🔥")
+    assert reaction["reacted_by_me"] is False
+
+
+async def test_react_emoji_validation_rejects_text(
+    client, sample_person, sample_notification
+):
+    """Non-emoji text is rejected by the emoji validator."""
+    payload = {"sender_id": str(sample_person.id), "emoji": "hello"}
+    resp = await client.post(
+        f"/api/notifications/{sample_notification.id}/react", json=payload
+    )
+    assert resp.status_code == 422
+
+
+async def test_react_emoji_validation_rejects_mixed(
+    client, sample_person, sample_notification
+):
+    """Mixed emoji+text is rejected."""
+    payload = {"sender_id": str(sample_person.id), "emoji": "👍abc"}
+    resp = await client.post(
+        f"/api/notifications/{sample_notification.id}/react", json=payload
+    )
+    assert resp.status_code == 422
+
+
+async def test_react_emoji_validation_accepts_skin_tone(
+    client, sample_person, second_person, sample_notification
+):
+    """Emoji with skin-tone modifier is accepted."""
+    payload = {"sender_id": str(sample_person.id), "emoji": "👍🏽"}
+    resp = await client.post(
+        f"/api/notifications/{sample_notification.id}/react", json=payload
+    )
+    assert resp.status_code == 200
+    assert resp.json()["action"] == "added"
+
+
+async def test_reply_count_excludes_reactions(
+    client, db_session, sample_person, second_person, sample_notification
+):
+    """Reply count and replies endpoint exclude emoji_reaction records."""
+    from bouwmeester.models.notification import Notification
+
+    # Add a real reply
+    reply = Notification(
+        id=uuid.uuid4(),
+        person_id=sample_person.id,
+        type="direct_message",
+        title="Een reactie",
+        message="Tekst reactie",
+        sender_id=second_person.id,
+        parent_id=sample_notification.id,
+        is_read=False,
+    )
+    db_session.add(reply)
+    await db_session.flush()
+
+    # Add an emoji reaction on the root
+    await client.post(
+        f"/api/notifications/{sample_notification.id}/react",
+        json={"sender_id": str(sample_person.id), "emoji": "👍"},
+    )
+
+    # reply_count should be 1 (not 2)
+    resp = await client.get(
+        "/api/notifications", params={"person_id": str(sample_person.id)}
+    )
+    notif = next(n for n in resp.json() if n["id"] == str(sample_notification.id))
+    assert notif["reply_count"] == 1
+
+    # replies endpoint should only return the text reply
+    resp = await client.get(f"/api/notifications/{sample_notification.id}/replies")
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["message"] == "Tekst reactie"
+
+
+async def test_react_marks_other_root_unread(client, sample_person, second_person):
+    """Reacting in a DM thread marks the other party's root as unread."""
+    # Create DM thread
+    send_resp = await client.post(
+        "/api/notifications/send",
+        json={
+            "person_id": str(sample_person.id),
+            "sender_id": str(second_person.id),
+            "message": "Hoi!",
+        },
+    )
+    sender_root_id = send_resp.json()["id"]
+
+    # Find recipient's root
+    resp = await client.get(
+        "/api/notifications", params={"person_id": str(sample_person.id)}
+    )
+    recipient_root = next(
+        i
+        for i in resp.json()
+        if i["type"] == "direct_message" and i["message"] == "Hoi!"
+    )
+    recipient_root_id = recipient_root["id"]
+
+    # Recipient marks it read
+    await client.put(f"/api/notifications/{recipient_root_id}/read")
+
+    # Sender reacts to the recipient's root message
+    resp = await client.post(
+        f"/api/notifications/{recipient_root_id}/react",
+        json={"sender_id": str(second_person.id), "emoji": "👍"},
+    )
+    assert resp.json()["action"] == "added"
+
+    # Recipient's root should be unread again
+    resp = await client.get(f"/api/notifications/{recipient_root_id}")
+    assert resp.json()["is_read"] is False
+
+    # Sender's root should still be read
+    resp = await client.get(f"/api/notifications/{sender_root_id}")
+    assert resp.json()["is_read"] is True
+
+
+async def test_react_inbox_preview_shows_reactie_op_bericht(
+    client, sample_person, second_person
+):
+    """Inbox preview shows 'Reactie op bericht' for the latest emoji reaction."""
+    # Create DM thread
+    await client.post(
+        "/api/notifications/send",
+        json={
+            "person_id": str(sample_person.id),
+            "sender_id": str(second_person.id),
+            "message": "Test bericht",
+        },
+    )
+    # Find recipient root
+    resp = await client.get(
+        "/api/notifications", params={"person_id": str(sample_person.id)}
+    )
+    recipient_root = next(
+        i
+        for i in resp.json()
+        if i["type"] == "direct_message" and i["message"] == "Test bericht"
+    )
+    recipient_root_id = recipient_root["id"]
+
+    # React to recipient's root message
+    await client.post(
+        f"/api/notifications/{recipient_root_id}/react",
+        json={"sender_id": str(second_person.id), "emoji": "👍"},
+    )
+
+    # Check inbox preview for recipient
+    resp = await client.get(
+        "/api/notifications", params={"person_id": str(sample_person.id)}
+    )
+    notif = next(n for n in resp.json() if n["id"] == recipient_root_id)
+    assert notif["last_message"] is not None
+    assert "Reactie op bericht" in notif["last_message"]
+    assert "👍" in notif["last_message"]
+
+
+async def test_react_spoofing_rejected(
+    authenticated_client, sample_person, second_person, sample_notification
+):
+    """POST /api/notifications/{id}/react rejects sender_id != auth user."""
+    payload = {
+        "sender_id": str(sample_person.id),  # Not the authenticated user
+        "emoji": "👍",
+    }
+    resp = await authenticated_client.post(
+        f"/api/notifications/{sample_notification.id}/react", json=payload
+    )
+    assert resp.status_code == 403
+
+
+async def test_replies_include_reactions(
+    client, db_session, sample_person, second_person, sample_notification
+):
+    """GET /notifications/{id}/replies includes reactions on each reply."""
+    from bouwmeester.models.notification import Notification
+
+    # Create a reply
+    reply = Notification(
+        id=uuid.uuid4(),
+        person_id=sample_person.id,
+        type="direct_message",
+        title="Reactie",
+        message="Tekst",
+        sender_id=second_person.id,
+        parent_id=sample_notification.id,
+        is_read=False,
+    )
+    db_session.add(reply)
+    await db_session.flush()
+
+    # React to the reply
+    await client.post(
+        f"/api/notifications/{reply.id}/react",
+        json={"sender_id": str(sample_person.id), "emoji": "🎉"},
+    )
+
+    # Fetch replies — the reply should have the reaction attached
+    resp = await client.get(
+        f"/api/notifications/{sample_notification.id}/replies",
+        params={"person_id": str(sample_person.id)},
+    )
+    data = resp.json()
+    reply_data = next(r for r in data if r["id"] == str(reply.id))
+    assert len(reply_data["reactions"]) == 1
+    assert reply_data["reactions"][0]["emoji"] == "🎉"
+    assert reply_data["reactions"][0]["reacted_by_me"] is True
