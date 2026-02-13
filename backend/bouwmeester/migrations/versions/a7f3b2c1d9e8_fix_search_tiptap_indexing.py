@@ -78,8 +78,9 @@ def upgrade() -> None:
         ALTER TABLE corpus_node
         ADD COLUMN search_vector tsvector
         GENERATED ALWAYS AS (
-            setweight(to_tsvector('dutch', coalesce(title, '')), 'A') ||
-            setweight(to_tsvector('dutch', tiptap_to_plain(coalesce(description, ''))), 'B')
+            setweight(to_tsvector('dutch', coalesce(title, '')), 'A')
+            || setweight(to_tsvector('dutch',
+                tiptap_to_plain(coalesce(description, ''))), 'B')
         ) STORED
     """)
     op.execute("""
@@ -94,8 +95,9 @@ def upgrade() -> None:
         ALTER TABLE task
         ADD COLUMN search_vector tsvector
         GENERATED ALWAYS AS (
-            setweight(to_tsvector('dutch', coalesce(title, '')), 'A') ||
-            setweight(to_tsvector('dutch', tiptap_to_plain(coalesce(description, ''))), 'B')
+            setweight(to_tsvector('dutch', coalesce(title, '')), 'A')
+            || setweight(to_tsvector('dutch',
+                tiptap_to_plain(coalesce(description, ''))), 'B')
         ) STORED
     """)
     op.execute("""
