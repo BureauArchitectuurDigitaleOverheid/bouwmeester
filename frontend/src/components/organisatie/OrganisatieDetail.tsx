@@ -40,19 +40,12 @@ const TYPE_BG_COLORS: Record<string, string> = {
   team: 'bg-emerald-50/40',
 };
 
-function filterGroup(
-  group: OrganisatieEenheidPersonenGroup,
-  predicate: (p: Person) => boolean,
-): OrganisatieEenheidPersonenGroup {
-  return {
-    ...group,
-    personen: group.personen.filter(predicate),
-    children: group.children.map((child) => filterGroup(child, predicate)),
-  };
-}
-
 function countAllPersonen(group: OrganisatieEenheidPersonenGroup): number {
   return group.personen.length + group.children.reduce((sum, child) => sum + countAllPersonen(child), 0);
+}
+
+function countAgents(group: OrganisatieEenheidPersonenGroup): number {
+  return group.personen.filter((p) => p.is_agent).length + group.children.reduce((sum, child) => sum + countAgents(child), 0);
 }
 
 function hasAnyPersonen(group: OrganisatieEenheidPersonenGroup): boolean {
@@ -75,7 +68,12 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
 
   // Split people into manager (shown first with distinct style) and others
   const managerPerson = managerId ? group.personen.find((p) => p.id === managerId) : null;
-  const otherPersonen = managerId ? group.personen.filter((p) => p.id !== managerId) : group.personen;
+  const otherPersonen = (managerId ? group.personen.filter((p) => p.id !== managerId) : group.personen)
+    .slice()
+    .sort((a, b) => {
+      if (a.is_agent === b.is_agent) return 0;
+      return a.is_agent ? 1 : -1;
+    });
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (!onDropPerson) return;
@@ -252,10 +250,9 @@ export function OrganisatieDetail({
   const { data: eenheid, isLoading } = useOrganisatieEenheid(selectedId);
   const { data: personenGroup } = useOrganisatiePersonenRecursive(selectedId);
 
-  const personenOnly = personenGroup ? filterGroup(personenGroup, (p) => !p.is_agent) : undefined;
-  const agentsOnly = personenGroup ? filterGroup(personenGroup, (p) => p.is_agent) : undefined;
-  const personenCount = personenOnly ? countAllPersonen(personenOnly) : 0;
-  const agentCount = agentsOnly ? countAllPersonen(agentsOnly) : 0;
+  const totalCount = personenGroup ? countAllPersonen(personenGroup) : 0;
+  const agentCount = personenGroup ? countAgents(personenGroup) : 0;
+  const personenCount = totalCount - agentCount;
 
   if (isLoading) {
     return <LoadingSpinner className="py-12" />;
@@ -363,41 +360,17 @@ export function OrganisatieDetail({
         <div className="flex items-center gap-2 mb-3">
           <Users className="h-4 w-4 text-text-secondary" />
           <h3 className="text-sm font-semibold text-text">
-            Personen ({personenCount})
+            Personen ({personenCount}){agentCount > 0 && ` · Agents (${agentCount})`}
           </h3>
         </div>
 
-        {!personenOnly || personenCount === 0 ? (
+        {!personenGroup || totalCount === 0 ? (
           <p className="text-sm text-text-secondary">
-            Geen personen gekoppeld aan deze eenheid.
+            Geen personen of agents gekoppeld aan deze eenheid.
           </p>
         ) : (
           <PersonGroupSection
-            group={personenOnly}
-            isRoot={true}
-            onEditPerson={onEditPerson}
-            onDragStartPerson={onDragStartPerson}
-            onDropPerson={onDropPerson}
-          />
-        )}
-      </div>
-
-      {/* Agents — recursive grouped view */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Bot className="h-4 w-4 text-text-secondary" />
-          <h3 className="text-sm font-semibold text-text">
-            Agents ({agentCount})
-          </h3>
-        </div>
-
-        {!agentsOnly || agentCount === 0 ? (
-          <p className="text-sm text-text-secondary">
-            Geen agents gekoppeld aan deze eenheid.
-          </p>
-        ) : (
-          <PersonGroupSection
-            group={agentsOnly}
+            group={personenGroup}
             isRoot={true}
             onEditPerson={onEditPerson}
             onDragStartPerson={onDragStartPerson}
