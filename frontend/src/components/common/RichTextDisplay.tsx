@@ -3,9 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 
-// Regex to detect URLs in plain text
-const URL_REGEX = /(https?:\/\/[^\s<>)"'\]]+)/;
-const URL_REGEX_GLOBAL = new RegExp(URL_REGEX.source, 'g');
+// Regex to detect URLs in plain text.
+// Matches http(s) URLs, then trims common trailing sentence punctuation that
+// is unlikely to be part of the URL itself.
+const URL_REGEX_RAW = /(https?:\/\/[^\s<>)"'\]]+)/;
+const URL_REGEX_RAW_GLOBAL = new RegExp(URL_REGEX_RAW.source, 'g');
+const TRAILING_PUNCT = /[.,;:!?]+$/;
+
+/** Return true when href is a safe URL (http/https only). */
+function isSafeHref(href: string): boolean {
+  try {
+    const url = new URL(href);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 interface RichTextDisplayProps {
   content: string | null | undefined;
@@ -196,7 +209,9 @@ function renderText(node: TipTapNode, key: number): React.ReactNode {
   const hasLinkMark = node.marks?.some((m) => m.type === 'link');
 
   // Auto-linkify plain text that has no explicit link mark
-  let element: React.ReactNode = hasLinkMark ? (node.text ?? '') : linkifyText(node.text ?? '');
+  let element: React.ReactNode = hasLinkMark
+    ? (node.text ?? '')
+    : linkifyText(node.text ?? '');
 
   if (node.marks) {
     for (const mark of node.marks) {
@@ -215,7 +230,7 @@ function renderText(node: TipTapNode, key: number): React.ReactNode {
           break;
         case 'link': {
           const href = mark.attrs?.href as string | undefined;
-          if (href) {
+          if (href && isSafeHref(href)) {
             element = (
               <a
                 key={key}
@@ -239,24 +254,37 @@ function renderText(node: TipTapNode, key: number): React.ReactNode {
 
 /**
  * Split text on URLs and return a mix of strings and <a> elements.
+ * Trailing sentence punctuation (.,;:!?) is stripped from matched URLs
+ * and appended as plain text so "Visit https://example.com." works correctly.
  */
 function linkifyText(text: string): React.ReactNode {
-  const parts = text.split(URL_REGEX_GLOBAL);
+  const parts = text.split(URL_REGEX_RAW_GLOBAL);
   if (parts.length === 1) return text; // no URLs found
 
-  return parts.map((part, i) =>
-    URL_REGEX.test(part) ? (
-      <a
-        key={i}
-        href={part}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-primary-600 underline hover:text-primary-800 break-all"
-      >
-        {part}
-      </a>
-    ) : (
-      <React.Fragment key={i}>{part}</React.Fragment>
-    ),
-  );
+  const result: React.ReactNode[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (URL_REGEX_RAW.test(part)) {
+      // Strip trailing punctuation that likely belongs to the sentence, not the URL
+      const trimmed = part.replace(TRAILING_PUNCT, '');
+      const trailing = part.slice(trimmed.length);
+      result.push(
+        <a
+          key={`l${i}`}
+          href={trimmed}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary-600 underline hover:text-primary-800 break-all"
+        >
+          {trimmed}
+        </a>,
+      );
+      if (trailing) {
+        result.push(<React.Fragment key={`t${i}`}>{trailing}</React.Fragment>);
+      }
+    } else {
+      result.push(<React.Fragment key={`p${i}`}>{part}</React.Fragment>);
+    }
+  }
+  return result;
 }
