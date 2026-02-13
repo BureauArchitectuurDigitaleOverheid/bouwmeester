@@ -13,6 +13,7 @@ import {
   Shield,
   PanelLeftClose,
   PanelLeftOpen,
+  BookOpen,
 } from 'lucide-react';
 import { useUIStore } from '@/store/ui';
 import { useAuth } from '@/contexts/AuthContext';
@@ -48,6 +49,7 @@ export function Sidebar({ mobile }: SidebarProps) {
       { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel },
       { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken' },
       { to: '/search', icon: Search, label: 'Zoeken' },
+      { to: '/docs', icon: BookOpen, label: 'Documentatie' },
     ];
   }, [eenheidLabel]);
 
