@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Check, CheckCheck } from 'lucide-react';
+import { Bell, BellOff, BellRing, Check, CheckCheck } from 'lucide-react';
 import { useNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNotificationsRead } from '@/hooks/useNotifications';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
@@ -9,6 +9,13 @@ import type { Notification } from '@/api/notifications';
 import { richTextToPlain } from '@/utils/richtext';
 import { MessageThread } from '@/components/inbox/MessageThread';
 import { NOTIFICATION_TYPE_COLORS, NOTIFICATION_TYPE_LABELS, titleCase } from '@/types';
+import {
+  useBrowserNotifications,
+  isBrowserNotificationsEnabled,
+  setBrowserNotificationsEnabled,
+  requestNotificationPermission,
+} from '@/hooks/useBrowserNotifications';
+import { useToast } from '@/contexts/ToastContext';
 
 interface NotificationBellProps {
   personId: string | undefined;
@@ -62,6 +69,40 @@ function NotificationItem({
   );
 }
 
+function BrowserNotificationToggle() {
+  const [enabled, setEnabled] = useState(isBrowserNotificationsEnabled);
+  const { showError } = useToast();
+
+  if (!('Notification' in window)) return null;
+
+  const handleToggle = async () => {
+    if (enabled) {
+      setBrowserNotificationsEnabled(false);
+      setEnabled(false);
+      return;
+    }
+    const permission = await requestNotificationPermission();
+    if (permission === 'granted') {
+      setBrowserNotificationsEnabled(true);
+      setEnabled(true);
+    } else if (permission === 'denied') {
+      showError('Browsermeldingen zijn geblokkeerd. Sta meldingen toe in je browserinstellingen.');
+    }
+  };
+
+  const Icon = enabled ? BellRing : BellOff;
+
+  return (
+    <button
+      onClick={handleToggle}
+      className="flex items-center gap-1 text-xs text-text-secondary hover:text-text transition-colors"
+      title={enabled ? 'Browsermeldingen uitschakelen' : 'Browsermeldingen inschakelen'}
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
 export function NotificationBell({ personId }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -69,6 +110,8 @@ export function NotificationBell({ personId }: NotificationBellProps) {
   const navigate = useNavigate();
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
+
+  useBrowserNotifications(personId);
 
   const { data: countData } = useUnreadCount(personId);
   const { data: notifications } = useNotifications(personId, false);
@@ -108,15 +151,18 @@ export function NotificationBell({ personId }: NotificationBellProps) {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold text-text">Meldingen</h3>
-            {unreadCount > 0 && (
-              <button
-                onClick={() => markAllRead.mutate(personId)}
-                className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 transition-colors"
-              >
-                <CheckCheck className="h-3.5 w-3.5" />
-                Alles gelezen
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              <BrowserNotificationToggle />
+              {unreadCount > 0 && (
+                <button
+                  onClick={() => markAllRead.mutate(personId)}
+                  className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 transition-colors"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  Alles gelezen
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Notification list */}
