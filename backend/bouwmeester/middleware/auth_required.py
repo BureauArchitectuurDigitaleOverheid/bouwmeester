@@ -19,13 +19,25 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+from collections import defaultdict
 
 import httpx
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from bouwmeester.core.config import Settings
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Simple in-memory rate limiter for failed API key attempts.
+# Tracks per-IP failure counts within a sliding window.  Not persistent
+# across process restarts — intentionally lightweight.
+# ---------------------------------------------------------------------------
+_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_MAX_FAILURES = 10  # max failures per window before we slow-log
+_api_key_failures: dict[str, list[float]] = defaultdict(list)
 
 # Prefixes that are always accessible without authentication.
 _PUBLIC_PREFIXES = (
@@ -60,6 +72,12 @@ class AuthRequiredMiddleware:
     async def _validate_api_key(self, token: str, scope: Scope) -> bool:
         """Validate a ``bm_``-prefixed API key against the database.
 
+        We hash the plaintext key and use the hash as a DB lookup key.
+        This avoids fetching all hashes for comparison and is safe because
+        SHA-256 on high-entropy keys (128-bit) is collision-resistant.
+        The constant-time ``verify_api_key`` in ``core/api_key`` is used
+        by tests to verify hash correctness, not here.
+
         On success, stores the matched person's UUID in
         ``scope["_api_key_person_id"]`` so downstream dependencies can
         load the Person by PK instead of re-hashing the key.
@@ -76,6 +94,7 @@ class AuthRequiredMiddleware:
                 stmt = select(Person.id).where(
                     Person.api_key_hash == key_hash,
                     Person.is_active == True,  # noqa: E712
+                    Person.is_agent == True,  # noqa: E712
                 )
                 result = await session.execute(stmt)
                 person_id = result.scalar_one_or_none()
@@ -83,7 +102,7 @@ class AuthRequiredMiddleware:
                     scope["_api_key_person_id"] = person_id
                     return True
                 return False
-        except Exception:
+        except (SQLAlchemyError, OSError):
             logger.exception("API key validation failed")
             return False
 
@@ -97,17 +116,17 @@ class AuthRequiredMiddleware:
             return False
 
         from bouwmeester.core.auth import (
-            _get_http_client,
-            _get_jwks,
-            _require_https,
-            _validate_jwt_locally,
+            get_http_client,
+            get_jwks,
             get_oidc_metadata,
+            require_https,
+            validate_jwt_locally,
         )
 
         # 1. Try local JWT validation (fast, no network).
-        jwks = await _get_jwks(self.settings)
+        jwks = await get_jwks(self.settings)
         if jwks:
-            claims = _validate_jwt_locally(token, jwks, self.settings)
+            claims = validate_jwt_locally(token, jwks, self.settings)
             if claims:
                 return True
 
@@ -118,10 +137,10 @@ class AuthRequiredMiddleware:
         userinfo_url = metadata.get("userinfo_endpoint")
         if not userinfo_url:
             return False
-        if not _require_https(userinfo_url, "Userinfo endpoint"):
+        if not require_https(userinfo_url, "Userinfo endpoint"):
             return False
 
-        client = _get_http_client()
+        client = get_http_client()
         try:
             resp = await client.get(
                 userinfo_url,
@@ -166,6 +185,28 @@ class AuthRequiredMiddleware:
                 return
             # Invalid API key → reject immediately (don't fall through to
             # dev-mode passthrough or OIDC — a bm_ token is always ours).
+            client = scope.get("client")
+            client_host = client[0] if client else "unknown"
+
+            # Track failures per IP for rate-limit awareness.
+            now = time.monotonic()
+            failures = _api_key_failures[client_host]
+            # Prune old entries outside the window.
+            failures[:] = [t for t in failures if now - t < _RATE_LIMIT_WINDOW]
+            failures.append(now)
+            if len(failures) >= _RATE_LIMIT_MAX_FAILURES:
+                logger.warning(
+                    "Excessive invalid API key attempts (%d in %ds) from %s",
+                    len(failures),
+                    _RATE_LIMIT_WINDOW,
+                    client_host,
+                )
+            else:
+                logger.warning(
+                    "Invalid API key attempt from %s on %s",
+                    client_host,
+                    path,
+                )
             body = json.dumps({"detail": "Invalid API key"}).encode("utf-8")
             await send(
                 {

@@ -20,10 +20,11 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.add_column("person", sa.Column("api_key_hash", sa.String(), nullable=True))
-    op.create_index("ix_person_api_key_hash", "person", ["api_key_hash"])
+    op.create_unique_constraint("uq_person_api_key_hash", "person", ["api_key_hash"])
 
     # Migrate existing plaintext api_key values to hashed form.
-    # Uses PostgreSQL's built-in encode(digest(...)) (pgcrypto not needed for sha256).
+    # PostgreSQL sha256(text::bytea) and Python hashlib.sha256(text.encode("utf-8"))
+    # produce identical digests for ASCII-only strings (which all bm_<hex> keys are).
     op.execute(
         """
         UPDATE person
@@ -33,7 +34,22 @@ def upgrade() -> None:
         """
     )
 
+    # Drop the legacy plaintext column — all keys are now stored as hashes.
+    op.drop_column("person", "api_key")
+
+    # Prevent duplicate agent names at the DB level (application-level check alone
+    # is vulnerable to race conditions).
+    op.execute(
+        """
+        CREATE UNIQUE INDEX uq_person_agent_naam
+        ON person (naam)
+        WHERE is_agent = true AND is_active = true
+        """
+    )
+
 
 def downgrade() -> None:
-    op.drop_index("ix_person_api_key_hash", table_name="person")
+    op.execute("DROP INDEX IF EXISTS uq_person_agent_naam")
+    op.add_column("person", sa.Column("api_key", sa.String(), nullable=True))
+    op.drop_constraint("uq_person_api_key_hash", "person", type_="unique")
     op.drop_column("person", "api_key_hash")

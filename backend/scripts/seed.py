@@ -1002,7 +1002,6 @@ async def seed(db: AsyncSession) -> None:
             )
         )
         agent.api_key_hash = hash_api_key(plaintext_key)
-        agent.api_key = None
         placement = PersonOrganisatieEenheid(
             person_id=agent.id,
             organisatie_eenheid_id=eenheid.id,
@@ -1011,7 +1010,6 @@ async def seed(db: AsyncSession) -> None:
         )
         db.add(placement)
         await db.flush()
-        print(f"    Agent {naam}: API key = {plaintext_key}")
         return agent
 
     # Domain-specialist agents in "Afdeling Zonder Mensen"

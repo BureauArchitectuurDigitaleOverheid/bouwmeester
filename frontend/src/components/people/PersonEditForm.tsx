@@ -62,6 +62,7 @@ export function PersonEditForm({
   const [rotatedApiKey, setRotatedApiKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
   const rotateApiKeyMutation = useRotateApiKey();
 
   // Search/select existing person state (create mode, non-agent only)
@@ -100,6 +101,7 @@ export function PersonEditForm({
       setRotatedApiKey(null);
       setCopied(false);
       setShowKey(false);
+      setConfirmRotate(false);
       if (editData) {
         setNaam(editData.naam);
         setEmail(editData.email || '');
@@ -242,12 +244,17 @@ export function PersonEditForm({
 
   const handleRotateKey = async () => {
     if (!editData) return;
+    if (!confirmRotate) {
+      setConfirmRotate(true);
+      return;
+    }
     try {
       const result = await rotateApiKeyMutation.mutateAsync(editData.id);
       setRotatedApiKey(result.api_key);
       setCopied(false);
+      setConfirmRotate(false);
     } catch {
-      // Error is handled by useMutationWithError
+      setConfirmRotate(false);
     }
   };
 
@@ -263,24 +270,34 @@ export function PersonEditForm({
       ? 'Koppelen'
       : 'Toevoegen';
 
+  // When a one-time API key is displayed, prevent accidental close.
+  const isShowingKey = !!displayApiKey;
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={title}
+      closeable={!isShowingKey}
       footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Annuleren
+        isShowingKey ? (
+          <Button onClick={onClose}>
+            Ik heb de sleutel gekopieerd
           </Button>
-          <Button
-            onClick={handleSubmit}
-            loading={isLoading}
-            disabled={!isValid}
-          >
-            {submitLabel}
-          </Button>
-        </>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onClose}>
+              Annuleren
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              loading={isLoading}
+              disabled={!isValid}
+            >
+              {submitLabel}
+            </Button>
+          </>
+        )
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -374,16 +391,36 @@ export function PersonEditForm({
                     value={editData.has_api_key ? '••••••••••••••••••••••••••' : 'Geen API key'}
                     className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary/50"
                   />
-                  <button
-                    type="button"
-                    onClick={handleRotateKey}
-                    disabled={rotateApiKeyMutation.isPending}
-                    className="flex items-center justify-center h-9 px-3 rounded-lg border border-border hover:bg-gray-50 transition-colors text-sm gap-1.5 disabled:opacity-50"
-                    title="Genereer nieuwe API key"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${rotateApiKeyMutation.isPending ? 'animate-spin' : ''}`} />
-                    Roteer
-                  </button>
+                  {confirmRotate ? (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleRotateKey}
+                        disabled={rotateApiKeyMutation.isPending}
+                        className="flex items-center justify-center h-9 px-3 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 transition-colors text-sm gap-1.5 text-red-700 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${rotateApiKeyMutation.isPending ? 'animate-spin' : ''}`} />
+                        Bevestig
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmRotate(false)}
+                        className="flex items-center justify-center h-9 px-3 rounded-lg border border-border hover:bg-gray-50 transition-colors text-sm"
+                      >
+                        Annuleer
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleRotateKey}
+                      className="flex items-center justify-center h-9 px-3 rounded-lg border border-border hover:bg-gray-50 transition-colors text-sm gap-1.5"
+                      title="Genereer nieuwe API key (de oude wordt ongeldig)"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Roteer
+                    </button>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-text-secondary">

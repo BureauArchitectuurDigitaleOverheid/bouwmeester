@@ -33,8 +33,7 @@ class Person(Base):
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
     is_agent: Mapped[bool] = mapped_column(default=False, server_default="false")
     is_admin: Mapped[bool] = mapped_column(default=False, server_default="false")
-    api_key: Mapped[str | None] = mapped_column(nullable=True)
-    api_key_hash: Mapped[str | None] = mapped_column(nullable=True, index=True)
+    api_key_hash: Mapped[str | None] = mapped_column(nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

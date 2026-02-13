@@ -82,6 +82,7 @@ async def test_create_non_agent_no_api_key(client):
     data = resp.json()
     assert data["is_agent"] is False
     assert data.get("api_key") is None
+    assert "api_key" not in data or data["api_key"] is None
 
 
 async def test_get_agent_hides_api_key(client):
@@ -96,7 +97,8 @@ async def test_get_agent_hides_api_key(client):
     get_resp = await client.get(f"/api/people/{agent_id}")
     assert get_resp.status_code == 200
     data = get_resp.json()
-    assert data["api_key"] is None
+    # api_key field should not be present on GET (only on create response)
+    assert "api_key" not in data
     assert data["has_api_key"] is True
 
 
@@ -146,7 +148,6 @@ async def test_api_key_hash_stored_in_db(client, db_session: AsyncSession):
     person = await db_session.get(Person, uuid.UUID(agent_id))
     assert person is not None
     assert person.api_key_hash is not None
-    assert person.api_key is None  # Plaintext should be cleared
     # Verify the hash matches
     assert verify_api_key(plaintext_key, person.api_key_hash) is True
 
@@ -170,6 +171,26 @@ async def test_rotate_invalidates_old_key(client, db_session: AsyncSession):
     assert verify_api_key(new_key, person.api_key_hash) is True
 
 
+async def test_update_agent_preserves_has_api_key(client):
+    """PUT /api/people/{id} returns has_api_key=True for agents with keys."""
+    create_resp = await client.post(
+        "/api/people",
+        json={"naam": "UpdateAgent", "is_agent": True},
+    )
+    assert create_resp.status_code == 201
+    agent_id = create_resp.json()["id"]
+
+    update_resp = await client.put(
+        f"/api/people/{agent_id}",
+        json={"description": "Updated description"},
+    )
+    assert update_resp.status_code == 200
+    data = update_resp.json()
+    assert data["has_api_key"] is True
+    # api_key field should not be present on update response
+    assert "api_key" not in data
+
+
 # ---------------------------------------------------------------------------
 # Middleware-level auth tests
 #
@@ -185,6 +206,36 @@ async def test_invalid_bm_key_returns_401(client):
     resp = await client.get(
         "/api/people",
         headers={"Authorization": "Bearer bm_this_key_does_not_exist_aa"},
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Invalid API key"
+
+
+async def test_malformed_bm_key_short(client):
+    """A bm_ key that is too short is rejected."""
+    resp = await client.get(
+        "/api/people",
+        headers={"Authorization": "Bearer bm_short"},
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Invalid API key"
+
+
+async def test_malformed_bm_key_non_hex(client):
+    """A bm_ key with non-hex characters is rejected."""
+    resp = await client.get(
+        "/api/people",
+        headers={"Authorization": "Bearer bm_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"},
+    )
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Invalid API key"
+
+
+async def test_malformed_bm_key_empty_after_prefix(client):
+    """A bare bm_ prefix with no key body is rejected."""
+    resp = await client.get(
+        "/api/people",
+        headers={"Authorization": "Bearer bm_"},
     )
     assert resp.status_code == 401
     assert resp.json()["detail"] == "Invalid API key"
@@ -257,6 +308,43 @@ async def test_person_from_api_key_inactive_rejected(db_session: AsyncSession):
 
     result = await _person_from_api_key(request, db_session)
     assert result is None
+
+
+async def test_person_from_api_key_non_agent_rejected(db_session: AsyncSession):
+    """_person_from_api_key returns None for non-agent persons."""
+    from unittest.mock import MagicMock
+
+    from bouwmeester.core.auth import _person_from_api_key
+
+    person = Person(
+        id=uuid.uuid4(),
+        naam="RegularPerson",
+        is_agent=False,
+        is_active=True,
+    )
+    db_session.add(person)
+    await db_session.flush()
+
+    request = MagicMock()
+    request.scope = {"_api_key_person_id": person.id}
+
+    result = await _person_from_api_key(request, db_session)
+    assert result is None
+
+
+async def test_duplicate_agent_name_rejected(client):
+    """Creating two agents with the same name returns 409."""
+    resp1 = await client.post(
+        "/api/people",
+        json={"naam": "DuplicateAgent", "is_agent": True},
+    )
+    assert resp1.status_code == 201
+
+    resp2 = await client.post(
+        "/api/people",
+        json={"naam": "DuplicateAgent", "is_agent": True},
+    )
+    assert resp2.status_code == 409
 
 
 async def test_person_from_api_key_no_scope():

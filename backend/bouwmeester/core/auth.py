@@ -42,7 +42,7 @@ _NETWORK_ERROR_GRACE_SECONDS = 120
 _http_client: httpx.AsyncClient | None = None
 
 
-def _get_http_client() -> httpx.AsyncClient:
+def get_http_client() -> httpx.AsyncClient:
     """Return a shared httpx.AsyncClient, creating it on first call."""
     global _http_client  # noqa: PLW0603
     if _http_client is None or _http_client.is_closed:
@@ -58,7 +58,7 @@ async def close_http_client() -> None:
         _http_client = None
 
 
-def _require_https(url: str, label: str) -> bool:
+def require_https(url: str, label: str) -> bool:
     """Return True if the URL uses HTTPS.  Log a warning and return False otherwise."""
     if url.startswith("https://"):
         return True
@@ -105,9 +105,9 @@ async def get_oidc_metadata(settings: Settings) -> dict[str, Any] | None:
             return _oidc_metadata
 
         url = _get_discovery_url(settings)
-        if not _require_https(url, "OIDC discovery URL"):
+        if not require_https(url, "OIDC discovery URL"):
             return None
-        client = _get_http_client()
+        client = get_http_client()
         resp = await client.get(url)
         resp.raise_for_status()
         _oidc_metadata = resp.json()
@@ -125,7 +125,7 @@ _jwks_lock = asyncio.Lock()
 _JWKS_TTL = 3600  # Re-fetch JWKS every hour
 
 
-async def _get_jwks(settings: Settings) -> Any | None:
+async def get_jwks(settings: Settings) -> Any | None:
     """Return cached JWKS key set, fetching if stale."""
     global _jwks_keys, _jwks_fetched_at  # noqa: PLW0603
 
@@ -146,10 +146,10 @@ async def _get_jwks(settings: Settings) -> Any | None:
         if not jwks_uri:
             return None
 
-        if not _require_https(jwks_uri, "JWKS URI"):
+        if not require_https(jwks_uri, "JWKS URI"):
             return None
 
-        client = _get_http_client()
+        client = get_http_client()
         try:
             resp = await client.get(jwks_uri)
             resp.raise_for_status()
@@ -161,7 +161,7 @@ async def _get_jwks(settings: Settings) -> Any | None:
             return _jwks_keys  # Return stale keys if available
 
 
-def _validate_jwt_locally(
+def validate_jwt_locally(
     token: str,
     jwks: Any,
     settings: Settings,
@@ -380,10 +380,10 @@ async def _try_refresh_token(
     if not token_url:
         return False
 
-    if not _require_https(token_url, "Token endpoint"):
+    if not require_https(token_url, "Token endpoint"):
         return False
 
-    client = _get_http_client()
+    client = get_http_client()
     try:
         resp = await client.post(
             token_url,
@@ -437,9 +437,9 @@ async def validate_session_token(
         return True
 
     # Try local JWT validation first (no network call).
-    jwks = await _get_jwks(settings)
+    jwks = await get_jwks(settings)
     if jwks:
-        claims = _validate_jwt_locally(access_token, jwks, settings)
+        claims = validate_jwt_locally(access_token, jwks, settings)
         if claims:
             session["token_validated_at"] = time.time()
             return True
@@ -454,10 +454,10 @@ async def validate_session_token(
     if not userinfo_url:
         return False
 
-    if not _require_https(userinfo_url, "Userinfo endpoint"):
+    if not require_https(userinfo_url, "Userinfo endpoint"):
         return False
 
-    client = _get_http_client()
+    client = get_http_client()
     try:
         resp = await client.get(
             userinfo_url,
@@ -520,9 +520,9 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
         return None
 
     # Try local JWT validation first (avoids network call).
-    jwks = await _get_jwks(settings)
+    jwks = await get_jwks(settings)
     if jwks:
-        claims = _validate_jwt_locally(token, jwks, settings)
+        claims = validate_jwt_locally(token, jwks, settings)
         if claims:
             return claims
 
@@ -535,13 +535,13 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
     if not userinfo_url:
         return None
 
-    if not _require_https(userinfo_url, "Userinfo endpoint"):
+    if not require_https(userinfo_url, "Userinfo endpoint"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="OIDC userinfo endpoint is not HTTPS",
         )
 
-    client = _get_http_client()
+    client = get_http_client()
     try:
         resp = await client.get(
             userinfo_url,
@@ -606,10 +606,10 @@ async def revoke_tokens(
         f"{settings.OIDC_ISSUER.rstrip('/')}/protocol/openid-connect/revoke",
     )
 
-    if not _require_https(revocation_url, "Revocation endpoint"):
+    if not require_https(revocation_url, "Revocation endpoint"):
         return
 
-    client = _get_http_client()
+    client = get_http_client()
     for token_value, token_type in [
         (refresh_token, "refresh_token"),
         (access_token, "access_token"),
@@ -654,8 +654,8 @@ async def _person_from_api_key(
         return None
 
     person = await db.get(Person, person_id)
-    # Double-check the person is still active (race guard).
-    if person is not None and person.is_active:
+    # Double-check the person is still active and is an agent (race guard).
+    if person is not None and person.is_active and person.is_agent:
         return person
     return None
 
