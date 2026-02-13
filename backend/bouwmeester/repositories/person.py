@@ -26,12 +26,7 @@ class PersonRepository(BaseRepository[Person]):
         skip: int = 0,
         limit: int = 100,
     ) -> list[Person]:
-        stmt = (
-            select(Person)
-            .offset(skip)
-            .limit(limit)
-            .order_by(Person.naam)
-        )
+        stmt = select(Person).offset(skip).limit(limit).order_by(Person.naam)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
