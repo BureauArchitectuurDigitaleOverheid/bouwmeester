@@ -7,6 +7,7 @@ from bouwmeester.schema.access_request import (
     AccessRequestStatusResponse,
 )
 from bouwmeester.schema.activity import ActivityFeedResponse, ActivityResponse
+from bouwmeester.schema.app_config import AppConfigResponse, AppConfigUpdate
 from bouwmeester.schema.bron import (
     BronBijlageResponse,
     BronCreate,
@@ -44,6 +45,15 @@ from bouwmeester.schema.graph import (
     NeighborEntry,
 )
 from bouwmeester.schema.inbox import InboxItem, InboxResponse
+from bouwmeester.schema.llm import (
+    EdgeSuggestionItem,
+    EdgeSuggestionRequest,
+    EdgeSuggestionResponse,
+    SummarizeRequest,
+    SummarizeResponse,
+    TagSuggestionRequest,
+    TagSuggestionResponse,
+)
 from bouwmeester.schema.mention import (
     MentionCreate,
     MentionReference,
@@ -186,6 +196,9 @@ __all__ = [
     # activity
     "ActivityFeedResponse",
     "ActivityResponse",
+    # app_config
+    "AppConfigResponse",
+    "AppConfigUpdate",
     # database_backup
     "DatabaseBackupInfo",
     "DatabaseResetRequest",
@@ -216,6 +229,14 @@ __all__ = [
     "MentionReference",
     "MentionResponse",
     "MentionSearchResult",
+    # llm
+    "EdgeSuggestionItem",
+    "EdgeSuggestionRequest",
+    "EdgeSuggestionResponse",
+    "SummarizeRequest",
+    "SummarizeResponse",
+    "TagSuggestionRequest",
+    "TagSuggestionResponse",
     # parlementair_item
     "ParlementairItemResponse",
     "ReviewAction",

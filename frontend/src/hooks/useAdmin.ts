@@ -75,3 +75,34 @@ export function useReviewAccessRequest() {
     invalidateKeys: [['admin', 'access-requests'], ['admin', 'whitelist']],
   });
 }
+
+// ---------------------------------------------------------------------------
+// App configuration (LLM keys, model settings)
+// ---------------------------------------------------------------------------
+
+export interface AppConfigEntry {
+  id: string;
+  key: string;
+  value: string;
+  description: string | null;
+  is_secret: boolean;
+  updated_by: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+export function useAppConfig() {
+  return useQuery({
+    queryKey: ['admin', 'config'],
+    queryFn: () => apiGet<AppConfigEntry[]>('/api/admin/config'),
+  });
+}
+
+export function useUpdateAppConfig() {
+  return useMutationWithError({
+    mutationFn: ({ key, value }: { key: string; value: string }) =>
+      apiPatch<AppConfigEntry>(`/api/admin/config/${key}`, { value }),
+    errorMessage: 'Fout bij opslaan van configuratie',
+    invalidateKeys: [['admin', 'config']],
+  });
+}
