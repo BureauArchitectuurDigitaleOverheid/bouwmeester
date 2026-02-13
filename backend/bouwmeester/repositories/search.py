@@ -3,6 +3,8 @@
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.utils.tiptap import tiptap_to_plain
+
 
 class SearchRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -29,84 +31,117 @@ class SearchRepository:
         }
         active_types = set(result_types) if result_types else all_types
 
+        short_query = len(query.strip()) < 4
+
         sub_queries = []
 
+        # title_col per entity for ILIKE fallback on short queries
+        entity_title_cols = {
+            "corpus_node": "title",
+            "task": "title",
+            "person": "naam",
+            "organisatie_eenheid": "naam",
+            "parlementair_item": "titel",
+            "tag": "name",
+        }
+
+        def _where(title_col: str) -> str:
+            fts = "search_vector @@ plainto_tsquery('dutch', :query)"
+            if short_query:
+                return f"({fts} OR {title_col} ILIKE :prefix)"
+            return fts
+
+        def _score(title_col: str) -> str:
+            rank = "ts_rank(search_vector, plainto_tsquery('dutch', :query))"
+            if short_query:
+                return (
+                    f"GREATEST({rank}, "
+                    f"CASE WHEN {title_col} ILIKE :prefix THEN 0.1 ELSE 0 END)"
+                )
+            return rank
+
         if "corpus_node" in active_types:
-            sub_queries.append("""
+            tc = entity_title_cols["corpus_node"]
+            sub_queries.append(f"""
                 SELECT
                     id,
                     'corpus_node' AS result_type,
                     title,
                     node_type AS subtitle,
                     description,
-                    ts_rank(search_vector, plainto_tsquery('dutch', :query)) AS score
+                    {_score(tc)} AS score
                 FROM corpus_node
-                WHERE search_vector @@ plainto_tsquery('dutch', :query)
+                WHERE {_where(tc)}
             """)
 
         if "task" in active_types:
-            sub_queries.append("""
+            tc = entity_title_cols["task"]
+            sub_queries.append(f"""
                 SELECT
                     id,
                     'task' AS result_type,
                     title,
                     status AS subtitle,
                     description,
-                    ts_rank(search_vector, plainto_tsquery('dutch', :query)) AS score
+                    {_score(tc)} AS score
                 FROM task
-                WHERE search_vector @@ plainto_tsquery('dutch', :query)
+                WHERE {_where(tc)}
             """)
 
         if "person" in active_types:
-            sub_queries.append("""
+            tc = entity_title_cols["person"]
+            sub_queries.append(f"""
                 SELECT
                     id,
                     'person' AS result_type,
                     naam AS title,
                     functie AS subtitle,
                     email AS description,
-                    ts_rank(search_vector, plainto_tsquery('dutch', :query)) AS score
+                    {_score(tc)} AS score
                 FROM person
-                WHERE search_vector @@ plainto_tsquery('dutch', :query)
+                WHERE {_where(tc)}
             """)
 
         if "organisatie_eenheid" in active_types:
-            sub_queries.append("""
+            tc = entity_title_cols["organisatie_eenheid"]
+            sub_queries.append(f"""
                 SELECT
                     id,
                     'organisatie_eenheid' AS result_type,
                     naam AS title,
                     type AS subtitle,
                     beschrijving AS description,
-                    ts_rank(search_vector, plainto_tsquery('dutch', :query)) AS score
+                    {_score(tc)} AS score
                 FROM organisatie_eenheid
-                WHERE search_vector @@ plainto_tsquery('dutch', :query)
+                WHERE {_where(tc)}
             """)
 
         if "parlementair_item" in active_types:
-            sub_queries.append("""
+            tc = entity_title_cols["parlementair_item"]
+            sub_queries.append(f"""
                 SELECT
                     id,
                     'parlementair_item' AS result_type,
                     titel AS title,
                     type AS subtitle,
                     onderwerp AS description,
-                    ts_rank(search_vector, plainto_tsquery('dutch', :query)) AS score
+                    {_score(tc)} AS score
                 FROM parlementair_item
-                WHERE search_vector @@ plainto_tsquery('dutch', :query)
+                WHERE {_where(tc)}
             """)
 
         if "tag" in active_types:
-            sub_queries.append("""
+            tc = entity_title_cols["tag"]
+            sub_queries.append(f"""
                 SELECT
                     id,
                     'tag' AS result_type,
                     name AS title,
                     NULL AS subtitle,
                     description,
-                    ts_rank(search_vector, plainto_tsquery('dutch', :query)) AS score
+                    {_score(tc)} AS score
                 FROM tag
-                WHERE search_vector @@ plainto_tsquery('dutch', :query)
+                WHERE {_where(tc)}
             """)
 
         if not sub_queries:
@@ -119,31 +154,34 @@ class SearchRepository:
             LIMIT :limit
         """
 
-        result = await self.session.execute(
-            text(full_sql), {"query": query, "limit": limit}
-        )
+        params: dict = {"query": query, "limit": limit}
+        if short_query:
+            params["prefix"] = query.strip() + "%"
+
+        result = await self.session.execute(text(full_sql), params)
         rows = result.all()
 
         url_map = {
             "corpus_node": "/nodes/{id}",
             "task": "/tasks?task={id}",
-            "person": "/people/{id}",
-            "organisatie_eenheid": "/organisatie/{id}",
-            "parlementair_item": "/parlementair/{id}",
+            "person": "/people?person={id}",
+            "organisatie_eenheid": "/organisatie?eenheid={id}",
+            "parlementair_item": "/parlementair?item={id}",
             "tag": "/corpus?tag={id}",
         }
 
-        # Build highlights via ts_headline for the final result set
+        # Build results, converting TipTap JSON descriptions to plain text
         results = []
         for row in rows:
             url = url_map[row.result_type].format(id=row.id)
+            description = tiptap_to_plain(row.description)
             results.append(
                 {
                     "id": row.id,
                     "result_type": row.result_type,
                     "title": row.title,
                     "subtitle": row.subtitle,
-                    "description": row.description,
+                    "description": description,
                     "score": float(row.score),
                     "highlights": None,
                     "url": url,

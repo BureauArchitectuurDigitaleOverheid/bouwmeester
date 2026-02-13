@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { useSearch } from '@/hooks/useSearch';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { richTextToPlain } from '@/utils/richtext';
 import {
   SEARCH_RESULT_TYPE_LABELS,
   SEARCH_RESULT_TYPE_COLORS,
@@ -157,7 +158,7 @@ export function SearchPage() {
                         </h4>
                         {result.description && (
                           <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">
-                            {result.description}
+                            {richTextToPlain(result.description)}
                           </p>
                         )}
                         {result.highlights && result.highlights.length > 0 && (
