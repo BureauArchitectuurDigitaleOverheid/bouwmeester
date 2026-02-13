@@ -457,16 +457,28 @@ async def test_reopen_rejected_import(client, db_session, sample_node):
     assert "Beoordeel motie" in tasks[0].title
 
 
-async def test_reopen_out_of_scope_import(client, db_session, sample_node):
-    """PUT /api/parlementair/imports/{id}/reopen reopens an out_of_scope item."""
-    item = await _create_parlementair_item(
-        db_session, corpus_node_id=sample_node.id, status="out_of_scope"
-    )
+async def test_reopen_out_of_scope_creates_corpus_node(client, db_session):
+    """Reopen out_of_scope item creates corpus node."""
+    item = await _create_parlementair_item(db_session, status="out_of_scope")
+    assert item.corpus_node_id is None
+
     resp = await client.put(f"/api/parlementair/imports/{item.id}/reopen")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "imported"
     assert data["reviewed_at"] is None
+    assert data["corpus_node_id"] is not None
+
+    # Verify a review task was created for the new node
+    from sqlalchemy import select
+
+    from bouwmeester.models.task import Task
+
+    result = await db_session.execute(
+        select(Task).where(Task.parlementair_item_id == item.id)
+    )
+    tasks = result.scalars().all()
+    assert len(tasks) == 1
 
 
 async def test_reopen_imported_item_fails(client, db_session):

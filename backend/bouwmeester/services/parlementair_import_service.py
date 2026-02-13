@@ -339,6 +339,69 @@ class ParlementairImportService:
         )
         return True
 
+    async def ensure_corpus_node(
+        self,
+        item: ParlementairItem,
+    ) -> ParlementairItem:
+        """Create a CorpusNode + PolitiekeInput for an item that lacks one.
+
+        Used when reopening out-of-scope items that skipped corpus node
+        creation during the original import.  If the item already has a
+        corpus_node_id this is a no-op.
+        """
+        if item.corpus_node_id is not None:
+            return item
+
+        strategy = get_strategy(item.type)
+
+        node = CorpusNode(
+            title=item.onderwerp,
+            node_type="politieke_input",
+            description=item.llm_samenvatting or f"Zaak: {item.titel}",
+            status="actief",
+        )
+        self.session.add(node)
+        await self.session.flush()
+
+        pi = PolitiekeInput(
+            id=node.id,
+            type=strategy.politieke_input_type,
+            referentie=item.zaak_nummer,
+            datum=item.datum,
+            status=strategy.politieke_input_status(
+                FetchedItem(
+                    zaak_id="",
+                    zaak_nummer=item.zaak_nummer,
+                    titel=item.titel,
+                    onderwerp=item.onderwerp,
+                    bron=item.bron,
+                )
+            ),
+        )
+        self.session.add(pi)
+        await self.session.flush()
+
+        # Link indieners as stakeholders
+        await self._link_indieners(node.id, item.indieners or [], item.bron)
+
+        # Tag the node with matched tags
+        if item.matched_tags:
+            tag_map = await self.tag_repo.get_by_names(item.matched_tags)
+            for tag_name, tag in tag_map.items():
+                try:
+                    await self.tag_repo.add_tag_to_node(node.id, tag.id)
+                except SQLAlchemyError:
+                    logger.exception(f"Error tagging node {node.id} with '{tag_name}'")
+
+        # Update the item to point to the new node
+        item.corpus_node_id = node.id
+        await self.session.flush()
+
+        logger.info(
+            f"Created corpus node {node.id} for reopened {item.type} {item.zaak_nummer}"
+        )
+        return item
+
     async def create_review_task(
         self,
         parlementair_item: ParlementairItem,

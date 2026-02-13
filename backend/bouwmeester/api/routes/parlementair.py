@@ -168,8 +168,11 @@ async def reopen_import(
 
     item = await repo.update_status(import_id, "imported", reviewed_at=None)
 
-    # Create a review task (same logic as initial import)
+    # Ensure corpus node exists (out-of-scope items skip node creation)
     service = ParlementairImportService(db)
+    item = await service.ensure_corpus_node(item)
+
+    # Create a review task (same logic as initial import)
     await service.create_review_task(item)
 
     await log_activity(
