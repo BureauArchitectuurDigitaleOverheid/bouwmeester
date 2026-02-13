@@ -400,9 +400,7 @@ async def test_search_imports_no_match(client, db_session):
 
 async def test_search_imports_rejects_too_long(client):
     """GET /api/parlementair/imports?search= rejects queries over 500 chars."""
-    resp = await client.get(
-        "/api/parlementair/imports", params={"search": "a" * 501}
-    )
+    resp = await client.get("/api/parlementair/imports", params={"search": "a" * 501})
     assert resp.status_code == 422
 
 
