@@ -89,7 +89,7 @@ stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 
 [program:backend]
-command=uv run uvicorn bouwmeester.core.app:create_app --factory --host 127.0.0.1 --port 8000
+command=uv run uvicorn bouwmeester.core.app:create_app --factory --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips='*'
 directory=/app
 autostart=true
 autorestart=true
