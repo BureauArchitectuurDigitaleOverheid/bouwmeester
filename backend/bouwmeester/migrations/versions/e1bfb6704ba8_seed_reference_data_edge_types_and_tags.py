@@ -6,15 +6,15 @@ Create Date: 2026-02-13 07:24:03.800806
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "e1bfb6704ba8"
-down_revision: Union[str, None] = "97ccf3b922b4"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "97ccf3b922b4"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # -- Reference data ----------------------------------------------------------
 
@@ -152,9 +152,11 @@ GRANDCHILD_TAGS = [
 def upgrade() -> None:
     # -- Edge types (idempotent) ----------------------------------------------
     for id_, label_nl, label_en, description in EDGE_TYPES:
+        vals = f"{_q(id_)}, {_q(label_nl)}, {_q(label_en)}, {_q(description)}, false"
         op.execute(
-            f"INSERT INTO edge_type (id, label_nl, label_en, description, is_custom) "
-            f"VALUES ({_q(id_)}, {_q(label_nl)}, {_q(label_en)}, {_q(description)}, false) "
+            f"INSERT INTO edge_type "
+            f"(id, label_nl, label_en, description, is_custom) "
+            f"VALUES ({vals}) "
             f"ON CONFLICT (id) DO NOTHING"
         )
 
