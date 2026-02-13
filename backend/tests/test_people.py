@@ -109,6 +109,18 @@ async def test_delete_person_not_found(client):
     assert resp.status_code == 404
 
 
+async def test_list_people_has_empty_emails_phones(client, sample_person):
+    """GET /api/people returns [] for emails/phones (no eager load)."""
+    resp = await client.get("/api/people")
+    assert resp.status_code == 200
+    data = resp.json()
+    person = next(p for p in data if p["id"] == str(sample_person.id))
+    assert person["emails"] == []
+    assert person["phones"] == []
+    # default_email should fall back to person.email
+    assert person["default_email"] == sample_person.email
+
+
 async def test_search_people_with_query(client, sample_person, second_person):
     """GET /api/people/search?q=Jan returns matching people."""
     resp = await client.get("/api/people/search", params={"q": "Jan"})
@@ -116,6 +128,16 @@ async def test_search_people_with_query(client, sample_person, second_person):
     data = resp.json()
     assert len(data) >= 1
     assert any(p["naam"] == "Jan Tester" for p in data)
+
+
+async def test_search_people_has_empty_emails_phones(client, sample_person):
+    """GET /api/people/search returns [] for emails/phones (no eager load)."""
+    resp = await client.get("/api/people/search", params={"q": "Jan"})
+    assert resp.status_code == 200
+    data = resp.json()
+    person = next(p for p in data if p["id"] == str(sample_person.id))
+    assert person["emails"] == []
+    assert person["phones"] == []
 
 
 async def test_search_people_empty_query(client, sample_person, second_person):

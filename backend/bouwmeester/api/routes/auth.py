@@ -336,16 +336,10 @@ async def complete_onboarding(
 ) -> PersonDetailResponse:
     """Complete the onboarding flow for a newly-created SSO user.
 
-    Updates the person's name and functie, and creates an org placement.
-    Rejects the request if the user has already completed onboarding.
+    Updates the person's name and functie, and creates an org placement
+    if none exists yet. Idempotent — safe to call again after a session
+    reset or re-login.
     """
-    # Guard: reject if already onboarded.
-    if not await _check_needs_onboarding(db, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Onboarding is al voltooid",
-        )
-
     # Validate that the org unit exists.
     org_stmt = select(OrganisatieEenheid.id).where(
         OrganisatieEenheid.id == body.organisatie_eenheid_id
@@ -357,17 +351,26 @@ async def complete_onboarding(
             detail="Organisatie-eenheid niet gevonden",
         )
 
+    # Always update naam and functie (allows corrections on re-submit).
     current_user.naam = body.naam
     current_user.functie = body.functie
 
-    # Create org placement (start today)
-    placement = PersonOrganisatieEenheid(
-        person_id=current_user.id,
-        organisatie_eenheid_id=body.organisatie_eenheid_id,
-        dienstverband=body.dienstverband,
-        start_datum=date.today(),
+    # Only create an org placement if none exists yet.
+    existing_placement = await db.execute(
+        select(PersonOrganisatieEenheid.id).where(
+            PersonOrganisatieEenheid.person_id == current_user.id,
+            PersonOrganisatieEenheid.eind_datum.is_(None),
+        )
     )
-    db.add(placement)
+    if existing_placement.scalar_one_or_none() is None:
+        placement = PersonOrganisatieEenheid(
+            person_id=current_user.id,
+            organisatie_eenheid_id=body.organisatie_eenheid_id,
+            dienstverband=body.dienstverband,
+            start_datum=date.today(),
+        )
+        db.add(placement)
+
     await db.flush()
 
     # Invalidate the session cache so /status re-checks from DB.
