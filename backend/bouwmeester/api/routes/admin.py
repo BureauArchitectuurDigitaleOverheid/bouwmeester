@@ -34,6 +34,7 @@ from bouwmeester.schema.whitelist import (
     WhitelistEmailCreate,
     WhitelistEmailResponse,
 )
+from bouwmeester.services.activity_service import ActivityService
 
 logger = logging.getLogger(__name__)
 
@@ -342,6 +343,18 @@ async def import_database(
     # Refresh whitelist cache — imported backup may contain different whitelist
     await refresh_whitelist_cache(db)
 
+    # Log audit entry so the first activity record shows who imported the backup
+    await ActivityService(db).log_event(
+        "seed.database_import",
+        actor_id=admin.id if admin else None,
+        actor_naam=user_label,
+        details={
+            "description": "Database import uitgevoerd",
+            "filename": file.filename,
+            "tables_restored": result.tables_restored,
+        },
+    )
+
     logger.info(
         "Database import completed by %s: %s tables, revision %s→%s",
         user_label,
@@ -426,6 +439,14 @@ async def reset_database(
 
     admin_created = await seed_admins_from_file(db)
     await refresh_whitelist_cache(db)
+
+    # Log audit entry so the first activity record shows who reset the database
+    await ActivityService(db).log_event(
+        "seed.database_reset",
+        actor_id=admin.id if admin else None,
+        actor_naam=user_label,
+        details={"description": "Database reset uitgevoerd"},
+    )
 
     logger.warning(
         "DATABASE RESET completed by %s: %d tables cleared, %d admin stubs created",
