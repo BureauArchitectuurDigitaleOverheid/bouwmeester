@@ -20,7 +20,7 @@ import { useNodeTags, useAddTagToNode, useRemoveTagFromNode, useTags } from '@/h
 import { useReferences } from '@/hooks/useMentions';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
-import { NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, BRON_TYPE_LABELS, NodeType, formatFunctie } from '@/types';
+import { NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, BRON_TYPE_LABELS, NodeType, formatFunctie, titleCase } from '@/types';
 import { uploadBijlage, deleteBijlage, getBijlageDownloadUrl, updateNodeBronDetail } from '@/api/nodes';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDate } from '@/utils/dates';
@@ -594,8 +594,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {Object.entries(node.metadata).map(([key, value]) => (
                     <div key={key}>
-                      <dt className="text-xs font-medium text-text-secondary capitalize">
-                        {key.replace(/_/g, ' ')}
+                      <dt className="text-xs font-medium text-text-secondary">
+                        {titleCase(key.replace(/_/g, ' '))}
                       </dt>
                       <dd className="text-sm text-text mt-0.5">
                         {String(value)}

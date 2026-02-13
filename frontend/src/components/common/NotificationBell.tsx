@@ -8,7 +8,7 @@ import { timeAgo } from '@/utils/dates';
 import type { Notification } from '@/api/notifications';
 import { richTextToPlain } from '@/utils/richtext';
 import { MessageThread } from '@/components/inbox/MessageThread';
-import { NOTIFICATION_TYPE_COLORS, NOTIFICATION_TYPE_LABELS } from '@/types';
+import { NOTIFICATION_TYPE_COLORS, NOTIFICATION_TYPE_LABELS, titleCase } from '@/types';
 
 interface NotificationBellProps {
   personId: string | undefined;
@@ -37,7 +37,7 @@ function NotificationItem({
               NOTIFICATION_TYPE_COLORS[notification.type] || 'bg-gray-100 text-gray-700'
             }`}
           >
-            {NOTIFICATION_TYPE_LABELS[notification.type] || notification.type.replace(/_/g, ' ')}
+            {NOTIFICATION_TYPE_LABELS[notification.type] || titleCase(notification.type.replace(/_/g, ' '))}
           </span>
           <span className="text-xs text-text-secondary">{timeAgo(notification.last_activity_at ?? notification.created_at)}</span>
         </div>
