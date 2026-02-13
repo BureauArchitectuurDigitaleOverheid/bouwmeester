@@ -406,4 +406,20 @@ async def react_to_message(
         parent_id=message.id,
     )
     await service.repo.create(data)
+
+    # Mark the other party's thread root as unread so they see the reaction.
+    # Walk up to the thread root (message may be root or reply).
+    root = message
+    if message.parent_id:
+        root = await service.repo.get_by_id(message.parent_id)
+        if root and root.parent_id:
+            root = await service.repo.get_by_id(root.parent_id)
+        if root is None:
+            root = message
+    thread_id = root.thread_id if root.thread_id else root.id
+    other_root = await service.repo.get_other_root(thread_id, body.sender_id)
+    if other_root and other_root.person_id != body.sender_id:
+        other_root.is_read = False
+        await db.flush()
+
     return {"action": "added"}
