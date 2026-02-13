@@ -20,6 +20,7 @@ from bouwmeester.services.llm.factory import (
     clear_config_cache,
 )
 from bouwmeester.services.llm.prompts import (
+    MAX_DESCRIPTION_IN_PROMPT,
     MAX_TAGS_IN_PROMPT,
     MAX_TEXT_IN_PROMPT,
     build_edge_relevance_prompt,
@@ -223,8 +224,8 @@ class TestPrompts:
             target_title="B",
             target_description=long_desc,
         )
-        # Descriptions are truncated at 500 chars
-        assert "y" * 501 not in prompt
+        # Descriptions are truncated at MAX_DESCRIPTION_IN_PROMPT chars
+        assert "y" * (MAX_DESCRIPTION_IN_PROMPT + 1) not in prompt
 
     def test_summarize_prompt_truncates_text(self):
         long_text = "z" * (MAX_TEXT_IN_PROMPT + 500)
@@ -324,12 +325,8 @@ class TestFactory:
         """Config values are loaded from the app_config table."""
         from bouwmeester.models.app_config import AppConfig
 
-        db_session.add(
-            AppConfig(key="LLM_PROVIDER", value="vlam", is_secret=False)
-        )
-        db_session.add(
-            AppConfig(key="LLM_MODEL", value="test-model", is_secret=False)
-        )
+        db_session.add(AppConfig(key="LLM_PROVIDER", value="vlam", is_secret=False))
+        db_session.add(AppConfig(key="LLM_MODEL", value="test-model", is_secret=False))
         await db_session.flush()
 
         config = await _load_config(db_session)
@@ -341,9 +338,7 @@ class TestFactory:
         """Empty values are not included in the config dict."""
         from bouwmeester.models.app_config import AppConfig
 
-        db_session.add(
-            AppConfig(key="VLAM_API_KEY", value="", is_secret=True)
-        )
+        db_session.add(AppConfig(key="VLAM_API_KEY", value="", is_secret=True))
         await db_session.flush()
 
         config = await _load_config(db_session)
@@ -511,10 +506,7 @@ class TestLLMEndpoints:
     @pytest.mark.asyncio
     async def test_suggest_tags_with_mock_provider(self, client):
         """With a mocked LLM service, returns tag suggestions."""
-        resp = (
-            '{"matched_tags": ["woningbouw"],'
-            ' "suggested_new_tags": ["nieuw"]}'
-        )
+        resp = '{"matched_tags": ["woningbouw"], "suggested_new_tags": ["nieuw"]}'
         mock_service = DummyLLMService(responses=[resp])
 
         with patch(
@@ -541,9 +533,7 @@ class TestLLMEndpoints:
         ):
             resp = await client.post(
                 "/api/llm/summarize",
-                json={
-                    "text": "Heel veel tekst over beleid."
-                },
+                json={"text": "Heel veel tekst over beleid."},
             )
             assert resp.status_code == 200
             data = resp.json()

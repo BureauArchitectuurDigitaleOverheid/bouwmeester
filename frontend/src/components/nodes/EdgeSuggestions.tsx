@@ -43,13 +43,12 @@ export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
       await apiPost('/api/edges', {
         from_node_id: nodeId,
         to_node_id: suggestion.target_node_id,
-        edge_type_id: suggestion.suggested_edge_type || 'gerelateerd_aan',
+        edge_type_id: suggestion.suggested_edge_type || 'verwijst_naar',
         description: suggestion.reason,
       });
       setApproved((prev) => new Set([...prev, suggestion.target_node_id]));
     } catch {
-      // Ignore edge creation failures (may already exist)
-      setApproved((prev) => new Set([...prev, suggestion.target_node_id]));
+      setError('Fout bij aanmaken van relatie. Mogelijk bestaat deze al.');
     }
   };
 

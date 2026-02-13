@@ -5,6 +5,7 @@ import json
 # Maximum number of tags to include in prompts to control token usage.
 MAX_TAGS_IN_PROMPT = 200
 MAX_TEXT_IN_PROMPT = 10000
+MAX_DESCRIPTION_IN_PROMPT = 500
 
 _TYPE_LABELS: dict[str, str] = {
     "motie": "aangenomen motie",
@@ -128,11 +129,11 @@ def build_edge_relevance_prompt(
 ) -> str:
     source = f"TITEL: {source_title}"
     if source_description:
-        source += f"\nBESCHRIJVING: {source_description[:500]}"
+        source += f"\nBESCHRIJVING: {source_description[:MAX_DESCRIPTION_IN_PROMPT]}"
 
     target = f"TITEL: {target_title}"
     if target_description:
-        target += f"\nBESCHRIJVING: {target_description[:500]}"
+        target += f"\nBESCHRIJVING: {target_description[:MAX_DESCRIPTION_IN_PROMPT]}"
 
     return (
         "Je bent een beleidsanalist van het ministerie van BZK."
@@ -144,14 +145,16 @@ def build_edge_relevance_prompt(
         "- Geef een score van 0.0 (geen relatie) tot"
         " 1.0 (sterk gerelateerd)\n"
         "- Stel een relatietype voor uit:"
-        " gerelateerd_aan, draagt_bij_aan, onderdeel_van,"
-        " beïnvloedt, implementeert\n"
+        " implementeert, draagt_bij_aan, vloeit_voort_uit,"
+        " conflicteert_met, verwijst_naar, vereist,"
+        " evalueert, vervangt, onderdeel_van,"
+        " leidt_tot, adresseert, meet\n"
         "- Geef een korte reden in het Nederlands\n\n"
         "Geef je analyse als JSON"
         " (en ALLEEN JSON, geen andere tekst):\n"
         "{\n"
         '  "score": 0.8,\n'
-        '  "suggested_edge_type": "gerelateerd_aan",\n'
+        '  "suggested_edge_type": "draagt_bij_aan",\n'
         '  "reason": "Beide nodes gaan over ..."\n'
         "}"
     )

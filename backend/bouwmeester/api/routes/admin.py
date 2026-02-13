@@ -304,11 +304,13 @@ def _mask_secret(value: str) -> str:
     return "****" + value[-4:]
 
 
+# Per-worker optimization flag. ON CONFLICT DO NOTHING ensures correctness
+# even when multiple workers race to seed defaults simultaneously.
 _defaults_seeded = False
 
 
 async def _ensure_default_config(db: AsyncSession) -> None:
-    """Create default config entries if they don't exist (runs once)."""
+    """Create default config entries if they don't exist (runs once per worker)."""
     global _defaults_seeded  # noqa: PLW0603
     if _defaults_seeded:
         return

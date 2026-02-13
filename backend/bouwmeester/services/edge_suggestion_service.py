@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.edge_type import EdgeType
 from bouwmeester.models.tag import NodeTag
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.llm import EdgeSuggestionItem
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Overall timeout for all LLM scoring calls combined.
 LLM_SCORING_TIMEOUT_SECONDS = 30
+_DEFAULT_EDGE_TYPE = "verwijst_naar"
 
 
 class EdgeSuggestionService:
@@ -30,6 +32,14 @@ class EdgeSuggestionService:
         self.session = session
         self.llm_service = llm_service
         self.tag_repo = TagRepository(session)
+        self._valid_edge_types: set[str] | None = None
+
+    async def _get_valid_edge_types(self) -> set[str]:
+        """Load valid edge type IDs from the database."""
+        if self._valid_edge_types is None:
+            result = await self.session.execute(select(EdgeType.id))
+            self._valid_edge_types = {row[0] for row in result.all()}
+        return self._valid_edge_types
 
     async def suggest_edges(
         self,
@@ -126,17 +136,23 @@ class EdgeSuggestionService:
             )
             return []
 
+        valid_edge_types = await self._get_valid_edge_types()
+
         suggestions: list[EdgeSuggestionItem] = []
         for nid, target, llm_result in results:
             if llm_result is None or llm_result.score < 0.3:
                 continue
+            # Validate edge type — fall back to default if LLM returns unknown type
+            edge_type = llm_result.suggested_edge_type
+            if edge_type not in valid_edge_types:
+                edge_type = _DEFAULT_EDGE_TYPE
             suggestions.append(
                 EdgeSuggestionItem(
                     target_node_id=str(nid),
                     target_node_title=target.title,
                     target_node_type=target.node_type,
                     confidence=llm_result.score,
-                    suggested_edge_type=llm_result.suggested_edge_type,
+                    suggested_edge_type=edge_type,
                     reason=llm_result.reason,
                 )
             )

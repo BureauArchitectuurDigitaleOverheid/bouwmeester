@@ -6,6 +6,12 @@ Settings are read from:
 
 Service instances and config are cached in memory. The cache is cleared
 when an admin updates config via the admin panel.
+
+NOTE: Caches are per-process. In a multi-worker deployment, only the worker
+that handles the admin config update will have its cache cleared immediately.
+Other workers will continue using stale config until they are restarted or
+recycled. This is acceptable for admin-initiated config changes (infrequent)
+but should be revisited if real-time propagation is needed (e.g. via Redis pub/sub).
 """
 
 import logging

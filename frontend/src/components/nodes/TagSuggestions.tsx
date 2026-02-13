@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, Check, Plus, X } from 'lucide-react';
+import { Sparkles, Loader2, Check, Plus } from 'lucide-react';
 import { suggestTags, type TagSuggestionResponse } from '@/api/llm';
 
 interface TagSuggestionsProps {
