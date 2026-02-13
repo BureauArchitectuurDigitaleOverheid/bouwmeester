@@ -27,6 +27,13 @@ from bouwmeester.services.notification_service import NotificationService
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
+def _format_last_message(message: str | None, notif_type: str) -> str | None:
+    """Format preview text — show 'Reactie op bericht' for emoji reactions."""
+    if notif_type == "emoji_reaction" and message:
+        return f"{message} Reactie op bericht"
+    return message
+
+
 async def _enrich_response(
     notification: Notification,
     service: NotificationService,
@@ -44,8 +51,9 @@ async def _enrich_response(
         resp.reply_count = await service.repo.count_replies(count_id)
         activity = await service.repo.last_activity_batch([count_id])
         if count_id in activity:
-            resp.last_activity_at = activity[count_id][0]
-            resp.last_message = activity[count_id][1]
+            ts, msg, typ = activity[count_id]
+            resp.last_activity_at = ts
+            resp.last_message = _format_last_message(msg, typ)
     return resp
 
 
@@ -84,8 +92,9 @@ async def _enrich_batch(
             count_id = n.thread_id if n.thread_id else n.id
             resp.reply_count = reply_counts.get(count_id, 0)
             if count_id in last_activity:
-                resp.last_activity_at = last_activity[count_id][0]
-                resp.last_message = last_activity[count_id][1]
+                ts, msg, typ = last_activity[count_id]
+                resp.last_activity_at = ts
+                resp.last_message = _format_last_message(msg, typ)
         responses.append(resp)
 
     return responses

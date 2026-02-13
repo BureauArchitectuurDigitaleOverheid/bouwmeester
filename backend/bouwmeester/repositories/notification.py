@@ -78,11 +78,12 @@ class NotificationRepository(BaseRepository[Notification]):
 
     async def last_activity_batch(
         self, parent_ids: list[UUID]
-    ) -> dict[UUID, tuple[datetime, str | None]]:
-        """Get latest reply timestamp and message per parent.
+    ) -> dict[UUID, tuple[datetime, str | None, str]]:
+        """Get latest reply timestamp, message, and type per parent.
 
         Uses PostgreSQL DISTINCT ON to guarantee exactly one row per
         parent_id, even when two replies share the same created_at.
+        Includes emoji reactions so the inbox preview stays current.
         """
         if not parent_ids:
             return {}
@@ -92,11 +93,9 @@ class NotificationRepository(BaseRepository[Notification]):
                 Notification.parent_id,
                 Notification.created_at,
                 Notification.message,
+                Notification.type,
             )
-            .where(
-                Notification.parent_id.in_(parent_ids),
-                Notification.type != "emoji_reaction",
-            )
+            .where(Notification.parent_id.in_(parent_ids))
             .order_by(
                 Notification.parent_id,
                 Notification.created_at.desc(),
@@ -105,7 +104,10 @@ class NotificationRepository(BaseRepository[Notification]):
             .distinct(Notification.parent_id)
         )
         result = await self.session.execute(stmt)
-        return {row.parent_id: (row.created_at, row.message) for row in result.all()}
+        return {
+            row.parent_id: (row.created_at, row.message, row.type)
+            for row in result.all()
+        }
 
     async def mark_read(self, notification_id: UUID) -> Notification | None:
         notification = await self.session.get(Notification, notification_id)
