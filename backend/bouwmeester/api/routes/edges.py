@@ -33,6 +33,10 @@ async def list_edges(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[EdgeWithNodes]:
+    """List edges with full node data.
+
+    Filter by from/to node, either node, or edge type.
+    """
     repo = EdgeRepository(db)
     edges = await repo.get_all(
         skip=skip,
@@ -52,6 +56,7 @@ async def create_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> EdgeResponse:
+    """Create a directed edge between two nodes. Returns 409 if duplicate."""
     repo = EdgeRepository(db)
     try:
         edge = await repo.create(data)
@@ -93,6 +98,7 @@ async def get_edge(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> EdgeWithNodes:
+    """Get a single edge by ID, including full from/to node data."""
     repo = EdgeRepository(db)
     edge = require_found(await repo.get(id), "Edge")
     return EdgeWithNodes.model_validate(edge)
@@ -106,6 +112,7 @@ async def update_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> EdgeResponse:
+    """Update edge weight, description, or type."""
     repo = EdgeRepository(db)
     edge = require_found(await repo.update(id, data), "Edge")
 
@@ -128,6 +135,7 @@ async def delete_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete an edge permanently."""
     repo = EdgeRepository(db)
     edge = await repo.get(id)
     edge_details: dict = {}

@@ -43,6 +43,7 @@ _api_key_failures: dict[str, list[float]] = defaultdict(list)
 _PUBLIC_PREFIXES = (
     "/api/auth/",
     "/api/health/",
+    "/api/skill.md",
 )
 
 

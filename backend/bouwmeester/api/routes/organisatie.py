@@ -57,6 +57,7 @@ async def list_organisatie(
     format: str = Query("flat", pattern="^(flat|tree)$"),
     db: AsyncSession = Depends(get_db),
 ) -> list[OrganisatieEenheidResponse] | list[OrganisatieEenheidTreeNode]:
+    """List org units as flat list or hierarchical tree (format=flat|tree)."""
     repo = OrganisatieEenheidRepository(db)
     items = await repo.get_all()
     flat = [OrganisatieEenheidResponse.model_validate(item) for item in items]
@@ -77,6 +78,7 @@ async def search_organisatie(
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ) -> list[OrganisatieEenheidResponse]:
+    """Search org units by name."""
     if not q.strip():
         return []
     repo = OrganisatieEenheidRepository(db)
@@ -105,6 +107,7 @@ async def create_organisatie(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> OrganisatieEenheidResponse:
+    """Create a new org unit, optionally under a parent."""
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
         require_found(await repo.get(data.parent_id), "Parent eenheid")
@@ -135,6 +138,7 @@ async def get_organisatie(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> OrganisatieEenheidResponse:
+    """Get a single org unit by ID."""
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
     return OrganisatieEenheidResponse.model_validate(eenheid)
@@ -148,6 +152,7 @@ async def update_organisatie(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> OrganisatieEenheidResponse:
+    """Update an org unit. Detects circular parent references."""
     repo = OrganisatieEenheidRepository(db)
 
     # Cycle detection for parent_id changes
@@ -186,6 +191,7 @@ async def delete_organisatie(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete an org unit. Fails if it has children or members."""
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
     if await repo.has_children(id):
@@ -216,6 +222,7 @@ async def get_naam_history(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[OrgNaamRecord]:
+    """Get temporal history of name changes for an org unit."""
     repo = OrganisatieEenheidRepository(db)
     require_found(await repo.get(id), "Eenheid")
     records = await repo.get_naam_history(id)
@@ -228,6 +235,7 @@ async def get_parent_history(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[OrgParentRecord]:
+    """Get temporal history of parent changes for an org unit."""
     repo = OrganisatieEenheidRepository(db)
     require_found(await repo.get(id), "Eenheid")
     records = await repo.get_parent_history(id)
@@ -240,6 +248,7 @@ async def get_manager_history(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[OrgManagerRecord]:
+    """Get temporal history of manager changes for an org unit."""
     repo = OrganisatieEenheidRepository(db)
     require_found(await repo.get(id), "Eenheid")
     records = await repo.get_manager_history(id)
@@ -256,6 +265,10 @@ async def get_organisatie_personen(
     recursive: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ) -> list[PersonResponse] | OrganisatieEenheidPersonenGroup:
+    """Get people in an org unit.
+
+    Use recursive=true for grouped tree of all descendants.
+    """
     repo = OrganisatieEenheidRepository(db)
     require_found(await repo.get(id), "Eenheid")
 

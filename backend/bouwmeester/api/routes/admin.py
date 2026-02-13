@@ -52,6 +52,7 @@ async def list_whitelist(
     admin: AdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[WhitelistEmailResponse]:
+    """List all whitelisted email addresses (admin only)."""
     result = await db.execute(
         select(WhitelistEmail).order_by(WhitelistEmail.created_at.desc())
     )
@@ -70,6 +71,7 @@ async def add_whitelist_email(
     admin: AdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> WhitelistEmailResponse:
+    """Add an email to the access whitelist. Returns 409 if already present."""
     email = data.email.strip().lower()
 
     existing = await db.execute(
@@ -100,6 +102,7 @@ async def remove_whitelist_email(
     admin: AdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Remove an email from the whitelist. Cannot remove your own email."""
     entry = await db.get(WhitelistEmail, id)
     if entry is None:
         raise HTTPException(
@@ -133,6 +136,7 @@ async def list_admin_users(
     limit: int = Query(200, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
 ) -> list[AdminUserResponse]:
+    """List all human users (excluding agents) with admin status."""
     result = await db.execute(
         select(Person)
         .where(Person.is_agent == False)  # noqa: E712
@@ -150,6 +154,7 @@ async def toggle_admin(
     admin: AdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> AdminUserResponse:
+    """Grant or revoke admin status. Cannot revoke your own admin rights."""
     person = await db.get(Person, id)
     if person is None:
         raise HTTPException(

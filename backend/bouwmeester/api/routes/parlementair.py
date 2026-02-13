@@ -52,6 +52,7 @@ async def list_imports(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[ParlementairItemResponse]:
+    """List imported parliamentary items. Filter by status, bron, or type."""
     repo = ParlementairItemRepository(db)
     imports = await repo.get_all(
         status=status_filter, bron=bron, item_type=type_filter, skip=skip, limit=limit
@@ -65,6 +66,7 @@ async def get_import(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> ParlementairItemResponse:
+    """Get a single parliamentary import item by ID."""
     repo = ParlementairItemRepository(db)
     item = await repo.get_by_id(import_id)
     if item is None:
@@ -104,6 +106,7 @@ async def get_review_queue(
     type_filter: str | None = Query(None, alias="type"),
     db: AsyncSession = Depends(get_db),
 ) -> list[ParlementairItemResponse]:
+    """Get parliamentary items pending review, optionally filtered by type."""
     repo = ParlementairItemRepository(db)
     imports = await repo.get_review_queue(item_type=type_filter)
     return [ParlementairItemResponse.model_validate(i) for i in imports]
@@ -116,6 +119,7 @@ async def reject_import(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> ParlementairItemResponse:
+    """Reject a parliamentary import item (sets status to rejected)."""
     repo = ParlementairItemRepository(db)
     item = await repo.update_status(
         import_id, "rejected", reviewed_at=datetime.utcnow()
@@ -142,6 +146,7 @@ async def complete_review(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> ParlementairItemResponse:
+    """Complete review: assign eigenaar, create follow-up tasks, mark as reviewed."""
     repo = ParlementairItemRepository(db)
     item = await repo.get_by_id(import_id)
     if item is None:
@@ -245,6 +250,7 @@ async def approve_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> SuggestedEdgeResponse:
+    """Approve a suggested edge, creating the actual edge in the graph."""
     suggested_edge_repo = SuggestedEdgeRepository(db)
     suggested_edge = await suggested_edge_repo.get_by_id(edge_id)
     if suggested_edge is None:
@@ -294,6 +300,7 @@ async def reject_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> SuggestedEdgeResponse:
+    """Reject a suggested edge (sets status to rejected)."""
     repo = SuggestedEdgeRepository(db)
     updated = await repo.update_status(
         edge_id,

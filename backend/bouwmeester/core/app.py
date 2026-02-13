@@ -45,9 +45,39 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title=settings.APP_NAME,
+        version="1.0.0",
+        description=(
+            "Policy corpus management API for the Dutch government (BZK). "
+            "Manages policy dossiers, goals, instruments, measures, and their "
+            "relationships as a directed graph.\n\n"
+            "**Authentication:** Use `Authorization: Bearer bm_...` for agent "
+            "API keys, or OIDC session tokens for browser users.\n\n"
+            "**Agent guide:** `GET /api/skill.md` returns a comprehensive "
+            "Markdown skill document for LLM agents."
+        ),
         debug=settings.DEBUG,
         lifespan=lifespan,
         redirect_slashes=False,
+        openapi_tags=[
+            {"name": "nodes", "description": "Corpus nodes"},
+            {"name": "edges", "description": "Edges between nodes"},
+            {"name": "edge-types", "description": "Edge type definitions"},
+            {"name": "tasks", "description": "Tasks on corpus nodes"},
+            {"name": "people", "description": "Users and agents"},
+            {"name": "organisatie", "description": "Org hierarchy"},
+            {"name": "tags", "description": "Hierarchical tags"},
+            {"name": "search", "description": "Full-text search"},
+            {"name": "graph", "description": "Graph views and paths"},
+            {"name": "activity", "description": "Audit log"},
+            {"name": "notifications", "description": "Messages"},
+            {"name": "parlementair", "description": "Parliamentary imports"},
+            {"name": "mentions", "description": "Mention search"},
+            {"name": "bijlage", "description": "File attachments"},
+            {"name": "import-export", "description": "Bulk import/export"},
+            {"name": "admin", "description": "Admin operations"},
+            {"name": "skill", "description": "Agent skill document"},
+            {"name": "auth", "description": "Authentication"},
+        ],
     )
 
     session_store = DatabaseSessionStore(

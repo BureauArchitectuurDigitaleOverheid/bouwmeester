@@ -19,6 +19,7 @@ async def list_edge_types(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[EdgeTypeResponse]:
+    """List all edge type definitions (e.g. draagt_bij_aan, implementeert)."""
     repo = EdgeTypeRepository(db)
     edge_types = await repo.get_all(skip=skip, limit=limit)
     return [EdgeTypeResponse.model_validate(et) for et in edge_types]
@@ -30,6 +31,7 @@ async def create_edge_type(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> EdgeTypeResponse:
+    """Create a new edge type definition."""
     repo = EdgeTypeRepository(db)
     edge_type = await repo.create(data)
     return EdgeTypeResponse.model_validate(edge_type)
@@ -41,6 +43,7 @@ async def get_edge_type(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> EdgeTypeResponse:
+    """Get a single edge type by its string ID."""
     repo = EdgeTypeRepository(db)
     edge_type = require_found(await repo.get(id), "Edge type")
     return EdgeTypeResponse.model_validate(edge_type)
@@ -52,5 +55,6 @@ async def delete_edge_type(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete an edge type permanently."""
     repo = EdgeTypeRepository(db)
     require_deleted(await repo.delete(id), "Edge type")

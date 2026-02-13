@@ -19,7 +19,18 @@ class EdgeBase(BaseModel):
 
 
 class EdgeCreate(EdgeBase):
-    pass
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "from_node_id": "00000000-0000-0000-0000-000000000001",
+                    "to_node_id": "00000000-0000-0000-0000-000000000002",
+                    "edge_type_id": "draagt_bij_aan",
+                    "description": "Dit instrument draagt bij aan het doel",
+                }
+            ]
+        }
+    )
 
 
 class EdgeUpdate(BaseModel):

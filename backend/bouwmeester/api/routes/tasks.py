@@ -43,6 +43,7 @@ async def list_tasks(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
+    """List tasks. Filter by status, node_id, assignee_id, or organisatie_eenheid_id."""
     repo = TaskRepository(db)
     if node_id is not None:
         tasks = await repo.get_by_node(node_id, skip=skip, limit=limit)
@@ -71,6 +72,7 @@ async def create_task(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
+    """Create a task linked to a node. Notifies assignee and team manager."""
     repo = TaskRepository(db)
     task = await repo.create(data)
 
@@ -126,6 +128,7 @@ async def get_my_tasks(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
+    """Get tasks assigned to the current user (or person_id in dev mode)."""
     # Use authenticated user's id when available, fall back to query param for dev
     effective_id = current_user.id if current_user is not None else person_id
     if effective_id is None:
@@ -143,6 +146,7 @@ async def get_task_inbox(
     person_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
 ) -> InboxResponse:
+    """Get aggregated inbox data for a person (tasks, notifications, deadlines)."""
     service = InboxService(db)
     return await service.get_inbox(person_id)
 
@@ -153,6 +157,7 @@ async def get_unassigned_tasks(
     organisatie_eenheid_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
+    """List tasks that have no assignee, optionally filtered by org unit."""
     repo = TaskRepository(db)
     tasks = await repo.get_unassigned(organisatie_eenheid_id)
     return [TaskResponse.model_validate(t) for t in tasks]
@@ -175,6 +180,7 @@ async def get_task(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
+    """Get a single task by ID, including assignee and node summaries."""
     repo = TaskRepository(db)
     task = require_found(await repo.get(id), "Task")
     return TaskResponse.model_validate(task)
@@ -186,6 +192,7 @@ async def get_task_subtasks(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
+    """List subtasks of a parent task."""
     repo = TaskRepository(db)
     subtasks = await repo.get_subtasks(id)
     return [TaskResponse.model_validate(t) for t in subtasks]
@@ -199,6 +206,7 @@ async def update_task(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
+    """Update a task. Notifies on assignee change, completion, or org unit change."""
     repo = TaskRepository(db)
 
     # Capture old state before update
@@ -283,6 +291,7 @@ async def delete_task(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete a task permanently."""
     repo = TaskRepository(db)
     task = await repo.get(id)
     task_title = task.title if task else None

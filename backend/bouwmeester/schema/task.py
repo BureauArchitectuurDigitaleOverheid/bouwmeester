@@ -37,7 +37,20 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
-    pass
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "title": "Analyseer impact nieuwe wetgeving",
+                    "node_id": "00000000-0000-0000-0000-000000000001",
+                    "assignee_id": "00000000-0000-0000-0000-000000000002",
+                    "priority": "hoog",
+                    "status": "open",
+                }
+            ]
+        },
+    )
 
 
 class TaskUpdate(BaseModel):

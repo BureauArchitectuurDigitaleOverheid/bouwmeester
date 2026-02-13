@@ -57,6 +57,7 @@ async def list_nodes(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[CorpusNodeResponse]:
+    """List all corpus nodes, optionally filtered by node_type."""
     service = NodeService(db)
     node_type_str = node_type.value if node_type else None
     nodes = await service.get_all(skip=skip, limit=limit, node_type=node_type_str)
@@ -70,6 +71,7 @@ async def create_node(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> CorpusNodeResponse:
+    """Create a new corpus node. Syncs mentions and logs activity."""
     service = NodeService(db)
     node = await service.create(data)
 
@@ -100,6 +102,7 @@ async def get_node(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> CorpusNodeWithEdges:
+    """Get a single node by ID, including its incoming and outgoing edges."""
     service = NodeService(db)
     node = require_found(await service.get(id), "Node")
     edges_from = [EdgeResponse.model_validate(e) for e in node.edges_from]
@@ -128,6 +131,7 @@ async def update_node(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> CorpusNodeResponse:
+    """Update a corpus node. Notifies stakeholders of changes."""
     service = NodeService(db)
     node = require_found(await service.update(id, data), "Node")
 
@@ -166,6 +170,7 @@ async def delete_node(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete a corpus node. Cleans up bijlage files for bron nodes."""
     service = NodeService(db)
     node = await service.get(id)
     node_title = node.title if node else None
@@ -211,6 +216,7 @@ async def get_neighbors(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> GraphNeighborsResponse:
+    """Get direct neighbors of a node (one hop) with their connecting edges."""
     service = NodeService(db)
     result = await service.get_neighbors(id)
     require_found(result["node"], "Node")
@@ -233,6 +239,7 @@ async def get_graph(
     depth: int = Query(2, ge=1, le=5),
     db: AsyncSession = Depends(get_db),
 ) -> GraphViewResponse:
+    """Get a multi-hop subgraph around a node (configurable depth 1-5)."""
     service = NodeService(db)
     result = await service.get_graph(id, depth=depth)
     return GraphViewResponse(
@@ -249,6 +256,7 @@ async def get_node_tasks(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
+    """List all tasks linked to a specific node."""
     # Verify node exists
     service = NodeService(db)
     require_found(await service.get(id), "Node")
@@ -264,6 +272,7 @@ async def get_node_stakeholders(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[NodeStakeholderResponse]:
+    """List stakeholders (eigenaar/betrokken/adviseur) of a node."""
     # Verify node exists
     service = NodeService(db)
     require_found(await service.get(id), "Node")
@@ -285,6 +294,7 @@ async def add_node_stakeholder(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> NodeStakeholderResponse:
+    """Add a person as stakeholder on a node with a role."""
     service = NodeService(db)
     node = require_found(await service.get(id), "Node")
     require_found(await db.get(Person, data.person_id), "Person")
@@ -333,6 +343,7 @@ async def update_node_stakeholder(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> NodeStakeholderResponse:
+    """Update a stakeholder's role on a node. Notifies if role changed."""
     repo = NodeStakeholderRepository(db)
     stakeholder = require_found(
         await repo.get_with_person(stakeholder_id, id),
@@ -385,6 +396,7 @@ async def remove_node_stakeholder(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Remove a stakeholder from a node."""
     repo = NodeStakeholderRepository(db)
     stakeholder = require_found(
         await repo.get_with_person(stakeholder_id, id),
@@ -419,6 +431,7 @@ async def get_node_tags(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[NodeTagResponse]:
+    """List all tags applied to a node."""
     from bouwmeester.repositories.tag import TagRepository
 
     service = NodeService(db)
@@ -441,6 +454,10 @@ async def add_tag_to_node(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> NodeTagResponse:
+    """Add a tag to a node.
+
+    Creates the tag if tag_name is given and it doesn't exist.
+    """
     from bouwmeester.repositories.tag import TagRepository
 
     service = NodeService(db)
@@ -484,6 +501,7 @@ async def remove_tag_from_node(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Remove a tag from a node."""
     from bouwmeester.repositories.tag import TagRepository
 
     tag_repo = TagRepository(db)
@@ -507,6 +525,7 @@ async def get_node_title_history(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[NodeTitleRecord]:
+    """Get temporal history of title changes for a node."""
     service = NodeService(db)
     require_found(await service.get(id), "Node")
     records = await service.get_title_history(id)
@@ -519,6 +538,7 @@ async def get_node_status_history(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[NodeStatusRecord]:
+    """Get temporal history of status changes for a node."""
     service = NodeService(db)
     require_found(await service.get(id), "Node")
     records = await service.get_status_history(id)
@@ -577,7 +597,10 @@ async def get_node_parlementair_item(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict | None:
-    """Get linked parliamentary item data for a politieke_input node."""
+    """Get linked parliamentary item data for a politieke_input node.
+
+    Returns null if none.
+    """
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 

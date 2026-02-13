@@ -50,6 +50,7 @@ async def list_people(
     limit: int = Query(1000, ge=1, le=10000),
     db: AsyncSession = Depends(get_db),
 ) -> list[PersonResponse]:
+    """List all people (users and agents)."""
     repo = PersonRepository(db)
     people = await repo.get_all(skip=skip, limit=limit)
     result = []
@@ -71,6 +72,10 @@ async def create_person(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> PersonCreateResponse:
+    """Create a person.
+
+    Agents (is_agent=true) get an auto-generated API key (admin only).
+    """
     # Agent creation requires admin privileges (agents bypass email whitelist).
     # In dev mode (no OIDC) current_user is None so all access is open.
     if data.is_agent and current_user is not None and not current_user.is_admin:
@@ -135,6 +140,7 @@ async def search_people(
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ) -> list[PersonResponse]:
+    """Search people by name. Returns all people if query is empty."""
     repo = PersonRepository(db)
     if not q.strip():
         people = await repo.get_all(limit=limit)
@@ -220,6 +226,7 @@ async def get_person(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
+    """Get detailed person info including emails, phones, and org placements."""
     repo = PersonRepository(db)
     person = require_found(await repo.get(id), "Person")
     resp = PersonDetailResponse.model_validate(person)
@@ -235,6 +242,7 @@ async def update_person(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
+    """Update person fields (naam, functie, etc.)."""
     repo = PersonRepository(db)
     require_found(await repo.update(id, data), "Person")
 
@@ -261,6 +269,7 @@ async def delete_person(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete a person permanently."""
     repo = PersonRepository(db)
     person = await repo.get(id)
     person_naam = person.naam if person else None
@@ -320,6 +329,7 @@ async def list_person_organisaties(
     actief: bool = Query(True),
     db: AsyncSession = Depends(get_db),
 ) -> list[PersonOrganisatieResponse]:
+    """List org unit placements for a person. Defaults to active placements only."""
     require_found(await db.get(Person, id), "Person")
 
     stmt = (
@@ -357,6 +367,7 @@ async def add_person_organisatie(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> PersonOrganisatieResponse:
+    """Place a person in an org unit. Returns 409 if already active in that unit."""
     require_found(await db.get(Person, id), "Person")
 
     eenheid = require_found(
@@ -425,6 +436,7 @@ async def update_person_organisatie(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> PersonOrganisatieResponse:
+    """Update an org placement (e.g. set eind_datum to end placement)."""
     stmt = select(PersonOrganisatieEenheid).where(
         PersonOrganisatieEenheid.id == placement_id,
         PersonOrganisatieEenheid.person_id == id,
@@ -473,6 +485,7 @@ async def delete_person_organisatie(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete an org placement permanently."""
     stmt = select(PersonOrganisatieEenheid).where(
         PersonOrganisatieEenheid.id == placement_id,
         PersonOrganisatieEenheid.person_id == id,
@@ -505,6 +518,7 @@ async def add_person_email(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> PersonEmailResponse:
+    """Add an email address to a person. First email auto-becomes default."""
     require_found(await db.get(Person, id), "Person")
     email = data.email.strip().lower()
 
@@ -556,6 +570,7 @@ async def remove_person_email(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Remove an email address. Auto-promotes another email to default if needed."""
     stmt = select(PersonEmail).where(
         PersonEmail.id == email_id,
         PersonEmail.person_id == id,
@@ -591,6 +606,7 @@ async def set_default_email(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> PersonEmailResponse:
+    """Set an email as the default for a person."""
     # Unset all defaults for this person
     all_emails = (
         (await db.execute(select(PersonEmail).where(PersonEmail.person_id == id)))
@@ -627,6 +643,7 @@ async def add_person_phone(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> PersonPhoneResponse:
+    """Add a phone number to a person. First phone auto-becomes default."""
     require_found(await db.get(Person, id), "Person")
 
     if data.label not in PHONE_LABELS:
@@ -676,6 +693,7 @@ async def remove_person_phone(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Remove a phone number. Auto-promotes another to default if needed."""
     stmt = select(PersonPhone).where(
         PersonPhone.id == phone_id,
         PersonPhone.person_id == id,
@@ -711,6 +729,7 @@ async def set_default_phone(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> PersonPhoneResponse:
+    """Set a phone number as the default for a person."""
     all_phones = (
         (await db.execute(select(PersonPhone).where(PersonPhone.person_id == id)))
         .scalars()
