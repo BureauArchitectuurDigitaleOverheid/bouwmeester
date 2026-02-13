@@ -90,14 +90,17 @@ def create_app() -> FastAPI:
     )
     app.state.session_store = session_store
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
-        expose_headers=["Content-Disposition"],
-    )
+    # ---- Middleware registration order ----
+    # Starlette's add_middleware *prepends*, so the LAST added middleware
+    # becomes the OUTERMOST layer.  Request flow (outermost → innermost):
+    #
+    #   CORS → Session → Auth → CSRF → Route handler
+    #
+    # CORS MUST be outermost so that ALL responses (including error
+    # responses short-circuited by Auth/CSRF middleware, and any
+    # unhandled-exception 500s from inner layers) carry the correct
+    # Access-Control-Allow-Origin header.  Without this, the browser
+    # blocks the response and JS only sees "Failed to fetch".
 
     app.add_middleware(
         CSRFMiddleware,
@@ -118,6 +121,16 @@ def create_app() -> FastAPI:
         cookie_domain=settings.SESSION_COOKIE_DOMAIN,
         cookie_secure=settings.SESSION_COOKIE_SECURE,
         cookie_max_age=settings.SESSION_TTL_SECONDS,
+    )
+
+    # CORS must be added LAST so it is the outermost middleware.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
+        expose_headers=["Content-Disposition"],
     )
 
     from bouwmeester.api.routes import api_router
