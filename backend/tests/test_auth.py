@@ -183,7 +183,7 @@ async def test_onboarding_creates_placement(db_session, sample_organisatie):
 async def test_onboarding_idempotent_no_duplicate_placement(
     db_session, sample_organisatie
 ):
-    """Re-submitting onboarding updates naam/functie but does not duplicate placement."""
+    """Re-submitting onboarding updates naam/functie without duplicating placement."""
     person = Person(
         id=uuid.uuid4(),
         naam="First Name",
