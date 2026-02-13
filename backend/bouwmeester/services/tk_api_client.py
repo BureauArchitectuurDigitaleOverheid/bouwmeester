@@ -461,6 +461,12 @@ class TweedeKamerClient:
                 import re
 
                 text = response.text
+                # Reject binary content that was misidentified as text
+                if "\x00" in text:
+                    logger.debug(
+                        f"Document {doc_id} contains null bytes, skipping"
+                    )
+                    return None
                 # Strip HTML tags to get plain text
                 text = re.sub(r"<[^>]+>", " ", text)
                 text = re.sub(r"\s+", " ", text).strip()
