@@ -181,9 +181,7 @@ async def reopen_import(
     try:
         await service.create_review_task(item)
     except Exception:
-        logger.exception(
-            "Error creating review task for reopened item %s", import_id
-        )
+        logger.exception("Error creating review task for reopened item %s", import_id)
 
     await log_activity(
         db,
