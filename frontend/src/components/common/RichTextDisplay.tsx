@@ -1,6 +1,24 @@
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
+
+// Regex to detect URLs in plain text.
+// Matches http(s) URLs, then trims common trailing sentence punctuation that
+// is unlikely to be part of the URL itself.
+const URL_REGEX_RAW = /(https?:\/\/[^\s<>)"'\]]+)/;
+const URL_REGEX_RAW_GLOBAL = new RegExp(URL_REGEX_RAW.source, 'g');
+const TRAILING_PUNCT = /[.,;:!?]+$/;
+
+/** Return true when href is a safe URL (http/https only). */
+function isSafeHref(href: string): boolean {
+  try {
+    const url = new URL(href);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 interface RichTextDisplayProps {
   content: string | null | undefined;
@@ -41,8 +59,8 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
 
   const doc = isTipTapJson(content);
   if (!doc) {
-    // Plain text fallback
-    return <p className="text-sm text-text-secondary whitespace-pre-wrap">{content}</p>;
+    // Plain text fallback — auto-linkify URLs
+    return <p className="text-sm text-text-secondary whitespace-pre-wrap">{linkifyText(content)}</p>;
   }
 
   const handlers: MentionHandlers = { openTaskDetail, openNodeDetail, navigate };
@@ -188,7 +206,12 @@ function renderNode(node: TipTapNode, key: number, handlers: MentionHandlers): R
 }
 
 function renderText(node: TipTapNode, key: number): React.ReactNode {
-  let element: React.ReactNode = node.text ?? '';
+  const hasLinkMark = node.marks?.some((m) => m.type === 'link');
+
+  // Auto-linkify plain text that has no explicit link mark
+  let element: React.ReactNode = hasLinkMark
+    ? (node.text ?? '')
+    : linkifyText(node.text ?? '');
 
   if (node.marks) {
     for (const mark of node.marks) {
@@ -205,9 +228,63 @@ function renderText(node: TipTapNode, key: number): React.ReactNode {
         case 'strike':
           element = <s key={key}>{element}</s>;
           break;
+        case 'link': {
+          const href = mark.attrs?.href as string | undefined;
+          if (href && isSafeHref(href)) {
+            element = (
+              <a
+                key={key}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-600 underline hover:text-primary-800 break-all"
+              >
+                {element}
+              </a>
+            );
+          }
+          break;
+        }
       }
     }
   }
 
   return <span key={key}>{element}</span>;
+}
+
+/**
+ * Split text on URLs and return a mix of strings and <a> elements.
+ * Trailing sentence punctuation (.,;:!?) is stripped from matched URLs
+ * and appended as plain text so "Visit https://example.com." works correctly.
+ */
+function linkifyText(text: string): React.ReactNode {
+  const parts = text.split(URL_REGEX_RAW_GLOBAL);
+  if (parts.length === 1) return text; // no URLs found
+
+  const result: React.ReactNode[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (URL_REGEX_RAW.test(part)) {
+      // Strip trailing punctuation that likely belongs to the sentence, not the URL
+      const trimmed = part.replace(TRAILING_PUNCT, '');
+      const trailing = part.slice(trimmed.length);
+      result.push(
+        <a
+          key={`l${i}`}
+          href={trimmed}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary-600 underline hover:text-primary-800 break-all"
+        >
+          {trimmed}
+        </a>,
+      );
+      if (trailing) {
+        result.push(<React.Fragment key={`t${i}`}>{trailing}</React.Fragment>);
+      }
+    } else {
+      result.push(<React.Fragment key={`p${i}`}>{part}</React.Fragment>);
+    }
+  }
+  return result;
 }
