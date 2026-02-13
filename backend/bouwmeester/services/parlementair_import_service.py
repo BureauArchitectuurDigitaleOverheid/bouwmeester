@@ -241,8 +241,11 @@ class ParlementairImportService:
                         )
 
         # Step 5: Create CorpusNode + PolitiekeInput
+        title = item.onderwerp
+        if len(title) > 500:
+            title = title[:497] + "..."
         node = CorpusNode(
-            title=item.onderwerp,
+            title=title,
             node_type="politieke_input",
             description=samenvatting or f"Zaak: {item.titel}",
             status="actief",
@@ -359,8 +362,11 @@ class ParlementairImportService:
 
         strategy = get_strategy(item.type)
 
+        title = item.onderwerp
+        if len(title) > 500:
+            title = title[:497] + "..."
         node = CorpusNode(
-            title=item.onderwerp,
+            title=title,
             node_type="politieke_input",
             description=item.llm_samenvatting or f"Zaak: {item.titel}",
             status="actief",
