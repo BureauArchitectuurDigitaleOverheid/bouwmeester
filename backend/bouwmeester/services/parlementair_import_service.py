@@ -107,7 +107,7 @@ class ParlementairImportService:
             logger.info(
                 f"Fetched {len(tk_items)} {strategy.item_type} items from Tweede Kamer"
             )
-        except httpx.HTTPError:
+        except Exception:
             logger.exception(f"Error fetching {strategy.item_type} from Tweede Kamer")
             tk_items = []
 
@@ -129,7 +129,7 @@ class ParlementairImportService:
                     f"Fetched {len(ek_items)} {strategy.item_type} "
                     f"items from Eerste Kamer"
                 )
-            except (httpx.HTTPError, NotImplementedError):
+            except Exception:
                 logger.exception(
                     f"Error fetching {strategy.item_type} from Eerste Kamer"
                 )
