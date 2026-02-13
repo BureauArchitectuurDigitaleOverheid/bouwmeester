@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Send, ArrowLeft, Smile } from 'lucide-react';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
@@ -25,14 +25,15 @@ interface MessageBubbleProps {
 function MessageBubble({ message, isCurrentUser, reactions = [], onReact }: MessageBubbleProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const smileRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
       <div className="max-w-[80%]">
         <div
-          className="relative group"
+          className={`relative flex items-start gap-1 ${isCurrentUser ? 'flex-row-reverse' : 'flex-row'}`}
           onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => { setHovered(false); setShowPicker(false); }}
+          onMouseLeave={() => { if (!showPicker) setHovered(false); }}
         >
           <div
             className={`rounded-2xl px-4 py-2.5 ${
@@ -51,22 +52,22 @@ function MessageBubble({ message, isCurrentUser, reactions = [], onReact }: Mess
               {timeAgo(message.created_at)}
             </p>
           </div>
-          {onReact && hovered && (
-            <div className={`absolute top-0 ${isCurrentUser ? 'right-full mr-1' : 'left-full ml-1'}`}>
-              <div className="relative">
-                <button
-                  onClick={() => setShowPicker(!showPicker)}
-                  className="p-1 rounded-full bg-surface border border-border shadow-sm text-text-secondary hover:text-text hover:bg-gray-50 transition-colors"
-                >
-                  <Smile className="h-4 w-4" />
-                </button>
-                {showPicker && (
-                  <EmojiPicker
-                    onSelect={(emoji) => { onReact(emoji); setShowPicker(false); }}
-                    onClose={() => setShowPicker(false)}
-                  />
-                )}
-              </div>
+          {onReact && (
+            <div className={`shrink-0 pt-1 ${hovered || showPicker ? 'visible' : 'invisible'}`}>
+              <button
+                ref={smileRef}
+                onClick={() => setShowPicker(!showPicker)}
+                className="p-1 rounded-full bg-surface border border-border shadow-sm text-text-secondary hover:text-text hover:bg-gray-50 transition-colors"
+              >
+                <Smile className="h-4 w-4" />
+              </button>
+              {showPicker && (
+                <EmojiPicker
+                  anchorRef={smileRef}
+                  onSelect={(emoji) => { onReact(emoji); setShowPicker(false); setHovered(false); }}
+                  onClose={() => { setShowPicker(false); setHovered(false); }}
+                />
+              )}
             </div>
           )}
         </div>
@@ -172,7 +173,7 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
           <MessageBubble
             message={parentMessage}
             isCurrentUser={parentMessage.sender_id === currentPerson?.id}
-            reactions={parentMessage.reactions || []}
+            reactions={parentMessage.reactions}
             onReact={(emoji) => handleReact(parentMessage.id, emoji)}
           />
 
@@ -182,7 +183,7 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
               key={reply.id}
               message={reply}
               isCurrentUser={reply.sender_id === currentPerson?.id}
-              reactions={reply.reactions || []}
+              reactions={reply.reactions}
               onReact={(emoji) => handleReact(reply.id, emoji)}
             />
           ))}

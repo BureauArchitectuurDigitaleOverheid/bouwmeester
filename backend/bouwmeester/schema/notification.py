@@ -1,10 +1,11 @@
 """Pydantic schemas for Notification."""
 
 import enum
+import re
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class NotificationType(enum.StrEnum):
@@ -72,9 +73,21 @@ class ReplyRequest(BaseModel):
     message: str = Field(max_length=10000)
 
 
+_EMOJI_RE = re.compile(
+    r"^[\U0001f300-\U0001f9ff\U00002600-\U000027bf\U0000fe0f\U0000200d]+$"
+)
+
+
 class ReactionRequest(BaseModel):
     sender_id: UUID
     emoji: str = Field(max_length=10)
+
+    @field_validator("emoji")
+    @classmethod
+    def emoji_must_be_emoji(cls, v: str) -> str:
+        if not _EMOJI_RE.match(v):
+            raise ValueError("Alleen emoji-tekens zijn toegestaan")
+        return v
 
 
 class UnreadCountResponse(BaseModel):

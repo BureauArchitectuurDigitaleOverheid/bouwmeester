@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { SmilePlus } from 'lucide-react';
 import { EmojiPicker } from './EmojiPicker';
 import type { ReactionSummary } from '@/api/notifications';
@@ -10,6 +10,7 @@ interface ReactionBarProps {
 
 export function ReactionBar({ reactions, onReact }: ReactionBarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
 
   if (reactions.length === 0 && !pickerOpen) {
     return null;
@@ -32,20 +33,20 @@ export function ReactionBar({ reactions, onReact }: ReactionBarProps) {
           <span>{r.count}</span>
         </button>
       ))}
-      <div className="relative">
-        <button
-          onClick={() => setPickerOpen(!pickerOpen)}
-          className="inline-flex items-center justify-center w-6 h-6 rounded-full text-text-secondary hover:bg-gray-100 transition-colors"
-        >
-          <SmilePlus className="h-3.5 w-3.5" />
-        </button>
-        {pickerOpen && (
-          <EmojiPicker
-            onSelect={onReact}
-            onClose={() => setPickerOpen(false)}
-          />
-        )}
-      </div>
+      <button
+        ref={btnRef}
+        onClick={() => setPickerOpen(!pickerOpen)}
+        className="inline-flex items-center justify-center w-6 h-6 rounded-full text-text-secondary hover:bg-gray-100 transition-colors"
+      >
+        <SmilePlus className="h-3.5 w-3.5" />
+      </button>
+      {pickerOpen && (
+        <EmojiPicker
+          anchorRef={btnRef}
+          onSelect={onReact}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }

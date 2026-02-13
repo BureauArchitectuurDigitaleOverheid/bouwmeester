@@ -1,18 +1,34 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const EMOJIS = ['👍', '👎', '❤️', '😊', '😂', '🎉', '👀', '🤔', '✅', '🔥', '💯', '👏'];
 
 interface EmojiPickerProps {
   onSelect: (emoji: string) => void;
   onClose: () => void;
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
 }
 
-export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
+export function EmojiPicker({ onSelect, onClose, anchorRef }: EmojiPickerProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (anchorRef.current) {
+      const rect = anchorRef.current.getBoundingClientRect();
+      setPos({
+        top: rect.top - 4,
+        left: rect.left,
+      });
+    }
+  }, [anchorRef]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      if (
+        ref.current && !ref.current.contains(e.target as Node) &&
+        anchorRef.current && !anchorRef.current.contains(e.target as Node)
+      ) {
         onClose();
       }
     };
@@ -28,12 +44,15 @@ export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [onClose]);
+  }, [onClose, anchorRef]);
 
-  return (
+  if (!pos) return null;
+
+  return createPortal(
     <div
       ref={ref}
-      className="absolute bottom-full mb-1 bg-surface border border-border rounded-lg shadow-lg p-2 grid grid-cols-6 gap-1 z-50"
+      className="fixed bg-surface border border-border rounded-lg shadow-lg p-2 grid grid-cols-6 gap-1 z-[60] w-[220px]"
+      style={{ top: pos.top, left: pos.left, transform: 'translateY(-100%)' }}
     >
       {EMOJIS.map((emoji) => (
         <button
@@ -47,6 +66,7 @@ export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
           {emoji}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }

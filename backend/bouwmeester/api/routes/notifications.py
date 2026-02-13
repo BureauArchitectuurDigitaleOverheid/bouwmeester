@@ -393,10 +393,12 @@ async def react_to_message(
         await service.repo.delete(existing)
         return {"action": "removed"}
 
-    # Create new reaction: parent_id = the specific message being reacted to
+    # Create new reaction: parent_id = the specific message being reacted to.
+    # person_id = the message author (so the reaction conceptually "belongs to" them).
     sender = require_found(await db.get(Person, body.sender_id), "Sender")
+    message_author_id = message.sender_id or message.person_id
     data = NotificationCreate(
-        person_id=message.person_id,
+        person_id=message_author_id,
         type="emoji_reaction",
         title=f"{sender.naam} reageerde met {body.emoji}",
         message=body.emoji,

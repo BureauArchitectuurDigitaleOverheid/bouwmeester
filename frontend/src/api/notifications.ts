@@ -1,5 +1,12 @@
 import { apiGet, apiPost, apiPut } from './client';
 
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  sender_names: string[];
+  reacted_by_me: boolean;
+}
+
 export interface Notification {
   id: string;
   person_id: string;
@@ -17,14 +24,7 @@ export interface Notification {
   created_at: string;
   last_activity_at?: string;
   last_message?: string;
-  reactions?: ReactionSummary[];
-}
-
-export interface ReactionSummary {
-  emoji: string;
-  count: number;
-  sender_names: string[];
-  reacted_by_me: boolean;
+  reactions: ReactionSummary[];
 }
 
 export interface UnreadCountResponse {
