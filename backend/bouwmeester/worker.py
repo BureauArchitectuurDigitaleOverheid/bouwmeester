@@ -29,7 +29,6 @@ async def main() -> None:
 
                 service = ParlementairImportService(session)
                 count = await service.poll_and_import()
-                await session.commit()
                 logger.info(f"Import cycle complete: {count} items imported")
         except Exception:
             logger.exception("Error in parlementair import cycle")

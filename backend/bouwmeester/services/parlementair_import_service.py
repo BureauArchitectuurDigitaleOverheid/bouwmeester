@@ -139,13 +139,13 @@ class ParlementairImportService:
         for item in all_items:
             try:
                 result = await self._process_item(item, strategy)
+                await self.session.commit()
                 if result:
                     imported_count += 1
             except Exception:
                 logger.exception(
                     f"Error processing {strategy.item_type} {item.zaak_id}"
                 )
-                # Rollback so the session is usable for subsequent items
                 await self.session.rollback()
 
         return imported_count
