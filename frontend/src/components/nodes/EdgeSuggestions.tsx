@@ -17,6 +17,7 @@ export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
   const [error, setError] = useState<string | null>(null);
   const [approved, setApproved] = useState<Set<string>>(new Set());
   const [rejected, setRejected] = useState<Set<string>>(new Set());
+  const [approving, setApproving] = useState<Set<string>>(new Set());
 
   const handleSuggest = async () => {
     setLoading(true);
@@ -39,6 +40,7 @@ export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
   };
 
   const handleApprove = async (suggestion: EdgeSuggestionItem) => {
+    setApproving((prev) => new Set([...prev, suggestion.target_node_id]));
     try {
       await apiPost('/api/edges', {
         from_node_id: nodeId,
@@ -49,6 +51,12 @@ export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
       setApproved((prev) => new Set([...prev, suggestion.target_node_id]));
     } catch {
       setError('Fout bij aanmaken van relatie. Mogelijk bestaat deze al.');
+    } finally {
+      setApproving((prev) => {
+        const next = new Set(prev);
+        next.delete(suggestion.target_node_id);
+        return next;
+      });
     }
   };
 
@@ -110,14 +118,20 @@ export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
                     <>
                       <button
                         onClick={() => handleApprove(s)}
-                        className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
+                        disabled={approving.has(s.target_node_id)}
+                        className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Goedkeuren"
                       >
-                        <Check className="h-4 w-4" />
+                        {approving.has(s.target_node_id) ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Check className="h-4 w-4" />
+                        )}
                       </button>
                       <button
                         onClick={() => setRejected((prev) => new Set([...prev, s.target_node_id]))}
-                        className="p-1.5 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors"
+                        disabled={approving.has(s.target_node_id)}
+                        className="p-1.5 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Afwijzen"
                       >
                         <X className="h-4 w-4" />

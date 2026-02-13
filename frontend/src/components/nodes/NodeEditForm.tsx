@@ -56,7 +56,11 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
 
     // Apply suggested tags
     for (const tag of pendingTags) {
-      addTag.mutate({ nodeId: node.id, data: { tag_name: tag.name } });
+      try {
+        await addTag.mutateAsync({ nodeId: node.id, data: { tag_name: tag.name } });
+      } catch {
+        // Non-critical: tag may already exist
+      }
     }
 
     onClose();
