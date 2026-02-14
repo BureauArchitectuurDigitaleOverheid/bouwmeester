@@ -11,6 +11,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import delete, select
+from sqlalchemy import func as sa_func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from webauthn import (
     generate_authentication_options,
@@ -44,6 +46,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webauthn", tags=["webauthn"])
 
+_MAX_CREDENTIALS_PER_USER = 10
+
 
 def _init_webauthn_session(session: dict, person: Person) -> None:
     """Populate a cleared session dict for a WebAuthn-only login."""
@@ -68,8 +72,17 @@ _RATE_LIMIT_MAX_KEYS = 10_000
 _rate_limit_store: OrderedDict[str, list[float]] = OrderedDict()
 
 
+def _get_client_ip(request: Request) -> str:
+    """Return the real client IP, respecting X-Forwarded-For behind a proxy."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        # First entry is the original client IP.
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 def _check_rate_limit(request: Request) -> None:
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     now = time.monotonic()
     window_start = now - _RATE_LIMIT_WINDOW
 
@@ -147,6 +160,18 @@ async def register_options(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict:
+    # Check credential count limit.
+    count_result = await db.execute(
+        select(sa_func.count())
+        .select_from(WebAuthnCredential)
+        .where(WebAuthnCredential.person_id == current_user.id)
+    )
+    if (count_result.scalar() or 0) >= _MAX_CREDENTIALS_PER_USER:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximaal {_MAX_CREDENTIALS_PER_USER} credentials toegestaan",
+        )
+
     # Get existing credentials to exclude them.
     result = await db.execute(
         select(WebAuthnCredential.credential_id).where(
@@ -222,7 +247,14 @@ async def register_verify(
         label=body.label[:100],
     )
     db.add(credential)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Deze credential is al geregistreerd",
+        ) from e
 
     return WebAuthnCredentialResponse.model_validate(credential)
 
