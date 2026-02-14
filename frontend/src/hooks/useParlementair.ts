@@ -52,7 +52,7 @@ export function useReprocessParlementairItems(options?: {
   onSuccess?: (data: ReprocessResult) => void;
 }) {
   return useMutationWithError({
-    mutationFn: (itemType?: string) => reprocessParlementairItems(itemType),
+    mutationFn: () => reprocessParlementairItems(),
     errorMessage: 'Fout bij herverwerken kamerstukken',
     invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
     onSuccess: options?.onSuccess,
