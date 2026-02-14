@@ -25,6 +25,12 @@ import type { ReprocessResult } from '@/api/parlementair';
 
 const REPROCESS_TYPES = ['toezegging', 'motie', 'kamervraag'] as const;
 
+const REPROCESS_TYPE_PLURALS: Record<string, string> = {
+  toezegging: 'Toezeggingen',
+  motie: 'Moties',
+  kamervraag: 'Kamervragen',
+};
+
 const parlementairTypeOptions: MultiSelectOption[] = ALL_PARLEMENTAIR_TYPES.map((t) => ({
   value: t,
   label: PARLEMENTAIR_TYPE_LABELS[t] ?? t,
@@ -88,33 +94,30 @@ export function ParlementairPage() {
     }
   }, [reprocessDropdownOpen]);
 
-  const formatReprocessResult = (result: ReprocessResult, label: string) => {
-    if (result.error === 'no_llm') return null;
-    if (result.total === 0) return `Geen ongekoppelde ${label} om te herverwerken.`;
+  const formatReprocessResult = (result: ReprocessResult, plural: string) => {
+    if (result.total === 0) return `Geen ongekoppelde ${plural.toLowerCase()} om te herverwerken.`;
     const parts: string[] = [];
     if (result.matched > 0) parts.push(`${result.matched} gekoppeld`);
     if (result.out_of_scope > 0) parts.push(`${result.out_of_scope} buiten scope`);
     if (result.skipped > 0) parts.push(`${result.skipped} overgeslagen`);
-    return `${result.total} ${label} herverwerkt: ${parts.join(', ')}.`;
+    return `${result.total} ${plural.toLowerCase()} herverwerkt: ${parts.join(', ')}.`;
   };
 
-  const reprocess = useReprocessParlementairItems({
-    onSuccess: (result: ReprocessResult, itemType: string) => {
-      if (result.error === 'no_llm') {
-        showError('Geen LLM-provider geconfigureerd. Herverwerken is niet mogelijk.');
-        return;
-      }
-      const label = (PARLEMENTAIR_TYPE_LABELS[itemType]?.toLowerCase() ?? itemType) + 'en';
-      const msg = formatReprocessResult(result, label);
-      if (msg) showSuccess(msg);
-    },
-  });
+  const reprocess = useReprocessParlementairItems();
 
   const handleReprocessType = (itemType: string) => {
     setReprocessDropdownOpen(false);
-    const label = PARLEMENTAIR_TYPE_LABELS[itemType] ?? itemType;
-    if (!window.confirm(`Alle ongekoppelde ${label.toLowerCase()}en herverwerken via LLM-matching? Dit kan even duren.`)) return;
-    reprocess.mutate(itemType);
+    const plural = REPROCESS_TYPE_PLURALS[itemType] ?? itemType;
+    if (!window.confirm(`Alle ongekoppelde ${plural.toLowerCase()} herverwerken via LLM-matching? Dit kan even duren.`)) return;
+    reprocess.mutate(itemType, {
+      onSuccess: (result) => {
+        if (result.error === 'no_llm') {
+          showError('Geen LLM-provider geconfigureerd. Herverwerken is niet mogelijk.');
+          return;
+        }
+        showSuccess(formatReprocessResult(result, plural));
+      },
+    });
   };
 
   const handleReprocessAll = async () => {
@@ -129,9 +132,8 @@ export function ParlementairPage() {
           showError('Geen LLM-provider geconfigureerd. Herverwerken is niet mogelijk.');
           return;
         }
-        const label = (PARLEMENTAIR_TYPE_LABELS[t]?.toLowerCase() ?? t) + 'en';
-        const msg = formatReprocessResult(result, label);
-        if (msg) results.push(msg);
+        const plural = REPROCESS_TYPE_PLURALS[t] ?? t;
+        results.push(formatReprocessResult(result, plural));
       } catch {
         // Error already shown by useMutationWithError
         return;
@@ -181,7 +183,7 @@ export function ParlementairPage() {
                       className="w-full px-4 py-2 text-left text-sm hover:bg-surface-hover"
                       onClick={() => handleReprocessType(t)}
                     >
-                      {PARLEMENTAIR_TYPE_LABELS[t]}en
+                      {REPROCESS_TYPE_PLURALS[t]}
                     </button>
                   ))}
                 </div>

@@ -48,14 +48,11 @@ export function useTriggerParlementairImport() {
   });
 }
 
-export function useReprocessParlementairItems(options?: {
-  onSuccess?: (data: ReprocessResult, itemType: string) => void;
-}) {
+export function useReprocessParlementairItems() {
   return useMutationWithError<ReprocessResult, string>({
     mutationFn: (itemType: string) => reprocessParlementairItems(itemType),
     errorMessage: 'Fout bij herverwerken kamerstukken',
     invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
-    onSuccess: options?.onSuccess,
   });
 }
 
