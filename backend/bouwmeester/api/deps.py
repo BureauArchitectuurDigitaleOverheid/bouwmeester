@@ -1,6 +1,11 @@
 """Shared API dependencies and utilities."""
 
+import logging
+
 from fastapi import HTTPException, UploadFile
+from pydantic import BaseModel, ValidationError
+
+logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
 ALLOWED_CSV_TYPES = {
@@ -52,3 +57,27 @@ def require_deleted(deleted: bool, name: str = "Resource") -> None:
             status_code=404,
             detail=f"{name} not found",
         )
+
+
+def validate_list[T: BaseModel](
+    schema: type[T],
+    items: list,
+) -> list[T]:
+    """Validate a list of ORM objects, skipping items that fail serialisation.
+
+    This prevents a single broken record from crashing an entire list endpoint.
+    Failures are logged with full Pydantic error details.
+    """
+    results: list[T] = []
+    for item in items:
+        try:
+            results.append(schema.model_validate(item))
+        except ValidationError:
+            item_id = getattr(item, "id", "?")
+            logger.warning(
+                "Skipping %s id=%s: serialisation failed",
+                schema.__name__,
+                item_id,
+                exc_info=True,
+            )
+    return results

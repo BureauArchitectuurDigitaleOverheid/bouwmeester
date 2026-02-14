@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.edge import Edge
@@ -66,7 +67,7 @@ async def list_imports(
         skip=skip,
         limit=limit,
     )
-    return [ParlementairItemResponse.model_validate(i) for i in imports]
+    return validate_list(ParlementairItemResponse, imports)
 
 
 @router.get("/imports/{import_id}", response_model=ParlementairItemResponse)
@@ -118,7 +119,7 @@ async def get_review_queue(
     """Get parliamentary items pending review, optionally filtered by type."""
     repo = ParlementairItemRepository(db)
     imports = await repo.get_review_queue(item_type=type_filter)
-    return [ParlementairItemResponse.model_validate(i) for i in imports]
+    return validate_list(ParlementairItemResponse, imports)
 
 
 @router.put("/imports/{import_id}/reject", response_model=ParlementairItemResponse)

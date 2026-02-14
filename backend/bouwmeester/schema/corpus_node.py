@@ -81,10 +81,12 @@ class CorpusNodeUpdate(BaseModel):
 
 
 class CorpusNodeResponse(CorpusNodeBase):
-    # Override title without max_length — response schemas must be able to
-    # return data that already exists in the database (e.g. long titles from
-    # the parlementaire import).
+    # Override fields without length constraints — response schemas must be
+    # able to return data that already exists in the database (e.g. long
+    # titles from the parlementaire import).
     title: str
+    description: str | None = None
+    status: str = "actief"
 
     id: UUID
     geldig_van: date | None = None

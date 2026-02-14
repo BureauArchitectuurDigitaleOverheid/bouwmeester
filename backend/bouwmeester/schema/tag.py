@@ -23,6 +23,11 @@ class TagUpdate(BaseModel):
 
 
 class TagResponse(TagBase):
+    # Override fields without length constraints — response schemas must be
+    # able to return data that already exists in the database.
+    name: str
+    description: str | None = None
+
     id: UUID
     created_at: datetime
 

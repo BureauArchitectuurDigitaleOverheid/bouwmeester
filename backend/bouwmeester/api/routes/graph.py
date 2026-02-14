@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.graph import GraphRepository
@@ -36,8 +37,8 @@ async def graph_search(
     )
 
     return GraphViewResponse(
-        nodes=[CorpusNodeResponse.model_validate(n) for n in result["nodes"]],
-        edges=[EdgeResponse.model_validate(e) for e in result["edges"]],
+        nodes=validate_list(CorpusNodeResponse, result["nodes"]),
+        edges=validate_list(EdgeResponse, result["edges"]),
     )
 
 

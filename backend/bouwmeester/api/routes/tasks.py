@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_deleted, require_found
+from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
@@ -62,7 +62,7 @@ async def list_tasks(
             limit=limit,
             status=status_filter,
         )
-    return [TaskResponse.model_validate(t) for t in tasks]
+    return validate_list(TaskResponse, tasks)
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -137,7 +137,7 @@ async def get_my_tasks(
         raise HTTPException(status_code=400, detail="person_id is required")
     repo = TaskRepository(db)
     tasks = await repo.get_by_assignee(effective_id, skip=skip, limit=limit)
-    return [TaskResponse.model_validate(t) for t in tasks]
+    return validate_list(TaskResponse, tasks)
 
 
 @router.get("/inbox", response_model=InboxResponse)
@@ -160,7 +160,7 @@ async def get_unassigned_tasks(
     """List tasks that have no assignee, optionally filtered by org unit."""
     repo = TaskRepository(db)
     tasks = await repo.get_unassigned(organisatie_eenheid_id)
-    return [TaskResponse.model_validate(t) for t in tasks]
+    return validate_list(TaskResponse, tasks)
 
 
 @router.get("/eenheid-overview", response_model=EenheidOverviewResponse)

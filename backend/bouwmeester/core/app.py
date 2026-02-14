@@ -1,9 +1,12 @@
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import async_session, close_db, init_db
@@ -11,6 +14,8 @@ from bouwmeester.core.session_store import DatabaseSessionStore, run_cleanup_loo
 from bouwmeester.middleware.auth_required import AuthRequiredMiddleware
 from bouwmeester.middleware.csrf import CSRFMiddleware
 from bouwmeester.middleware.session import ServerSideSessionMiddleware
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -136,6 +141,39 @@ def create_app() -> FastAPI:
     from bouwmeester.api.routes import api_router
 
     app.include_router(api_router, prefix="/api")
+
+    @app.exception_handler(ValidationError)
+    async def pydantic_validation_error_handler(
+        request: Request, exc: ValidationError
+    ) -> JSONResponse:
+        """Catch Pydantic ValidationError during response serialisation.
+
+        Without this handler, a schema constraint violation on *output* data
+        (e.g. a title exceeding max_length) results in a bare 500 with no log
+        entry.  We log the full error details so the root cause is immediately
+        visible, and return a descriptive JSON body.
+        """
+        logger.error(
+            "Response serialisation error on %s %s: %s",
+            request.method,
+            request.url.path,
+            exc.errors(),
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Response serialisation error — stored data does "
+                "not match the response schema.",
+                "errors": [
+                    {
+                        "loc": list(e["loc"]),
+                        "msg": e["msg"],
+                        "type": e["type"],
+                    }
+                    for e in exc.errors()
+                ],
+            },
+        )
 
     @app.get("/api/health/live")
     async def liveness() -> dict[str, str]:

@@ -40,6 +40,11 @@ class EdgeUpdate(BaseModel):
 
 
 class EdgeResponse(EdgeBase):
+    # Override fields without length constraints — response schemas must be
+    # able to return data that already exists in the database.
+    edge_type_id: str
+    description: str | None = None
+
     id: UUID
     created_at: datetime
 
