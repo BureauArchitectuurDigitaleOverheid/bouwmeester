@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { RefreshCw, RotateCcw, Search } from 'lucide-react';
+import { RefreshCw, RotateCcw, Search, ChevronDown } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useToast } from '@/contexts/ToastContext';
 import { Button } from '@/components/common/Button';
@@ -22,6 +22,8 @@ import {
   ALL_PARLEMENTAIR_TYPES,
 } from '@/types';
 import type { ReprocessResult } from '@/api/parlementair';
+
+const REPROCESS_TYPES = ['toezegging', 'motie', 'kamervraag'] as const;
 
 const parlementairTypeOptions: MultiSelectOption[] = ALL_PARLEMENTAIR_TYPES.map((t) => ({
   value: t,
@@ -71,23 +73,73 @@ export function ParlementairPage() {
 
   const { showSuccess, showError } = useToast();
   const triggerImport = useTriggerParlementairImport();
+  const [reprocessDropdownOpen, setReprocessDropdownOpen] = useState(false);
+  const reprocessDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (reprocessDropdownRef.current && !reprocessDropdownRef.current.contains(e.target as Node)) {
+        setReprocessDropdownOpen(false);
+      }
+    }
+    if (reprocessDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [reprocessDropdownOpen]);
+
+  const formatReprocessResult = (result: ReprocessResult, label: string) => {
+    if (result.error === 'no_llm') return null;
+    if (result.total === 0) return `Geen ongekoppelde ${label} om te herverwerken.`;
+    const parts: string[] = [];
+    if (result.matched > 0) parts.push(`${result.matched} gekoppeld`);
+    if (result.out_of_scope > 0) parts.push(`${result.out_of_scope} buiten scope`);
+    if (result.skipped > 0) parts.push(`${result.skipped} overgeslagen`);
+    return `${result.total} ${label} herverwerkt: ${parts.join(', ')}.`;
+  };
+
   const reprocess = useReprocessParlementairItems({
-    onSuccess: (result: ReprocessResult) => {
+    onSuccess: (result: ReprocessResult, itemType: string) => {
       if (result.error === 'no_llm') {
         showError('Geen LLM-provider geconfigureerd. Herverwerken is niet mogelijk.');
         return;
       }
-      if (result.total === 0) {
-        showSuccess('Geen ongekoppelde toezeggingen om te herverwerken.');
-      } else {
-        const parts: string[] = [];
-        if (result.matched > 0) parts.push(`${result.matched} gekoppeld`);
-        if (result.out_of_scope > 0) parts.push(`${result.out_of_scope} buiten scope`);
-        if (result.skipped > 0) parts.push(`${result.skipped} overgeslagen`);
-        showSuccess(`${result.total} toezeggingen herverwerkt: ${parts.join(', ')}.`);
-      }
+      const label = (PARLEMENTAIR_TYPE_LABELS[itemType]?.toLowerCase() ?? itemType) + 'en';
+      const msg = formatReprocessResult(result, label);
+      if (msg) showSuccess(msg);
     },
   });
+
+  const handleReprocessType = (itemType: string) => {
+    setReprocessDropdownOpen(false);
+    const label = PARLEMENTAIR_TYPE_LABELS[itemType] ?? itemType;
+    if (!window.confirm(`Alle ongekoppelde ${label.toLowerCase()}en herverwerken via LLM-matching? Dit kan even duren.`)) return;
+    reprocess.mutate(itemType);
+  };
+
+  const handleReprocessAll = async () => {
+    setReprocessDropdownOpen(false);
+    if (!window.confirm('Alle ongekoppelde kamerstukken herverwerken via LLM-matching? Dit kan even duren.')) return;
+
+    const results: string[] = [];
+    for (const t of REPROCESS_TYPES) {
+      try {
+        const result = await reprocess.mutateAsync(t);
+        if (result.error === 'no_llm') {
+          showError('Geen LLM-provider geconfigureerd. Herverwerken is niet mogelijk.');
+          return;
+        }
+        const label = (PARLEMENTAIR_TYPE_LABELS[t]?.toLowerCase() ?? t) + 'en';
+        const msg = formatReprocessResult(result, label);
+        if (msg) results.push(msg);
+      } catch {
+        // Error already shown by useMutationWithError
+        return;
+      }
+    }
+    if (results.length > 0) showSuccess(results.join('\n'));
+  };
+
   const eitherPending = triggerImport.isPending || reprocess.isPending;
 
   return (
@@ -98,24 +150,44 @@ export function ParlementairPage() {
           Beheer geïmporteerde kamerstukken uit de Tweede en Eerste Kamer.
         </p>
         <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            icon={<RotateCcw className={`h-4 w-4 ${reprocess.isPending ? 'animate-spin' : ''}`} />}
-            onClick={() => {
-              if (window.confirm('Alle ongekoppelde toezeggingen herverwerken via LLM-matching? Dit kan even duren.')) {
-                reprocess.mutate();
-              }
-            }}
-            disabled={eitherPending}
-            title="Herverwerk toezeggingen die nog geen koppelingen hebben via LLM-matching"
-          >
-            <span className="hidden sm:inline">
-              {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk toezeggingen'}
-            </span>
-            <span className="sm:hidden">
-              {reprocess.isPending ? 'Laden...' : 'Herverwerk'}
-            </span>
-          </Button>
+          <div className="relative" ref={reprocessDropdownRef}>
+            <Button
+              variant="secondary"
+              icon={<RotateCcw className={`h-4 w-4 ${reprocess.isPending ? 'animate-spin' : ''}`} />}
+              onClick={() => setReprocessDropdownOpen((prev) => !prev)}
+              disabled={eitherPending}
+              title="Herverwerk kamerstukken die nog geen koppelingen hebben via LLM-matching"
+            >
+              <span className="hidden sm:inline">
+                {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk kamerstukken'}
+              </span>
+              <span className="sm:hidden">
+                {reprocess.isPending ? 'Laden...' : 'Herverwerk'}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 ml-1" />
+            </Button>
+            {reprocessDropdownOpen && (
+              <div className="absolute right-0 mt-1 w-56 rounded-md border border-border bg-surface shadow-lg z-50">
+                <div className="py-1">
+                  <button
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-surface-hover"
+                    onClick={handleReprocessAll}
+                  >
+                    Alle kamerstukken
+                  </button>
+                  {REPROCESS_TYPES.map((t) => (
+                    <button
+                      key={t}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-surface-hover"
+                      onClick={() => handleReprocessType(t)}
+                    >
+                      {PARLEMENTAIR_TYPE_LABELS[t]}en
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <Button
             icon={<RefreshCw className={`h-4 w-4 ${triggerImport.isPending ? 'animate-spin' : ''}`} />}
             onClick={() => triggerImport.mutate()}
