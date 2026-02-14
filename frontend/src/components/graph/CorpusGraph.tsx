@@ -318,19 +318,6 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: C
     setEdges(rfEdges);
   }, [rfNodes, rfEdges, setNodes, setEdges]);
 
-  // Re-fit viewport when filters change (skip initial render — ReactFlow's
-  // fitView prop handles that).
-  const isInitialRender = useRef(true);
-  useEffect(() => {
-    if (isInitialRender.current) {
-      isInitialRender.current = false;
-      return;
-    }
-    const timer = setTimeout(() => {
-      reactFlowInstance.fitView({ padding: 0.2, maxZoom: 1.5, duration: 300 });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [rfNodes, rfEdges, reactFlowInstance]);
 
   // Handle connection drag completion
   const handleConnect = useCallback((connection: Connection) => {
