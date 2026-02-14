@@ -136,7 +136,7 @@ async def test_update_edge_weight(client, sample_edge):
     assert data["weight"] == 5.0
     # Other fields remain unchanged
     assert data["description"] == "Test edge"
-    assert data["edge_type_id"] == "test_relatie"
+    assert data["edge_type_id"] == sample_edge.edge_type_id
 
 
 async def test_update_edge_description(client, sample_edge):

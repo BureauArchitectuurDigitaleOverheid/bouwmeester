@@ -59,7 +59,7 @@ async def test_get_person(client, sample_person):
     data = resp.json()
     assert data["id"] == str(sample_person.id)
     assert data["naam"] == "Jan Tester"
-    assert data["email"] == "jan@example.com"
+    assert data["email"] == sample_person.email
 
 
 async def test_get_person_not_found(client):
@@ -79,7 +79,7 @@ async def test_update_person(client, sample_person):
     data = resp.json()
     assert data["naam"] == "Jan Updated"
     assert data["functie"] == "manager"
-    assert data["email"] == "jan@example.com"
+    assert data["email"] == sample_person.email
 
 
 async def test_update_person_not_found(client):
@@ -116,9 +116,9 @@ async def test_list_people_has_emails_phones(client, sample_person):
     data = resp.json()
     person = next(p for p in data if p["id"] == str(sample_person.id))
     assert len(person["emails"]) == 1
-    assert person["emails"][0]["email"] == "jan@example.com"
+    assert person["emails"][0]["email"] == sample_person.email
     assert person["phones"] == []
-    assert person["default_email"] == "jan@example.com"
+    assert person["default_email"] == sample_person.email
 
 
 async def test_search_people_with_query(client, sample_person, second_person):
@@ -137,7 +137,7 @@ async def test_search_people_has_emails_phones(client, sample_person):
     data = resp.json()
     person = next(p for p in data if p["id"] == str(sample_person.id))
     assert len(person["emails"]) == 1
-    assert person["emails"][0]["email"] == "jan@example.com"
+    assert person["emails"][0]["email"] == sample_person.email
     assert person["phones"] == []
 
 

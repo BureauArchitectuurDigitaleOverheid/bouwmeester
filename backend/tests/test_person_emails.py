@@ -40,7 +40,7 @@ async def test_add_email_duplicate_409(client, sample_person):
     """Adding an email that already exists returns 409."""
     resp = await client.post(
         f"/api/people/{sample_person.id}/emails",
-        json={"email": "jan@example.com"},  # already exists from fixture
+        json={"email": sample_person.email},  # already exists from fixture
     )
     assert resp.status_code == 409
 
@@ -111,8 +111,8 @@ async def test_person_response_includes_emails(client, sample_person):
     data = resp.json()
     assert "emails" in data
     assert len(data["emails"]) >= 1
-    assert data["emails"][0]["email"] == "jan@example.com"
-    assert data["default_email"] == "jan@example.com"
+    assert data["emails"][0]["email"] == sample_person.email
+    assert data["default_email"] == sample_person.email
 
 
 async def test_create_person_creates_email(client):
