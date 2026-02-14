@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, RotateCcw, Search } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useToast } from '@/contexts/ToastContext';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { MultiSelect } from '@/components/common/MultiSelect';
@@ -20,6 +21,7 @@ import {
   PARLEMENTAIR_TYPE_HEX_COLORS,
   ALL_PARLEMENTAIR_TYPES,
 } from '@/types';
+import type { ReprocessResult } from '@/api/parlementair';
 
 const parlementairTypeOptions: MultiSelectOption[] = ALL_PARLEMENTAIR_TYPES.map((t) => ({
   value: t,
@@ -67,8 +69,21 @@ export function ParlementairPage() {
     allTypesSelected || enabledTypes.has(item.type)
   );
 
+  const { showSuccess } = useToast();
   const triggerImport = useTriggerParlementairImport();
-  const reprocess = useReprocessParlementairItems();
+  const reprocess = useReprocessParlementairItems({
+    onSuccess: (result: ReprocessResult) => {
+      if (result.total === 0) {
+        showSuccess('Geen items om te herverwerken.');
+      } else {
+        const parts: string[] = [];
+        if (result.matched > 0) parts.push(`${result.matched} gekoppeld`);
+        if (result.out_of_scope > 0) parts.push(`${result.out_of_scope} buiten scope`);
+        if (result.skipped > 0) parts.push(`${result.skipped} overgeslagen`);
+        showSuccess(`${result.total} items herverwerkt: ${parts.join(', ')}.`);
+      }
+    },
+  });
 
   return (
     <div className="space-y-6">
@@ -83,9 +98,10 @@ export function ParlementairPage() {
             icon={<RotateCcw className={`h-4 w-4 ${reprocess.isPending ? 'animate-spin' : ''}`} />}
             onClick={() => reprocess.mutate()}
             disabled={reprocess.isPending}
+            title="Herverwerk toezeggingen die nog geen koppelingen hebben via LLM-matching"
           >
             <span className="hidden sm:inline">
-              {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk zonder koppelingen'}
+              {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk ongekoppelde'}
             </span>
             <span className="sm:hidden">
               {reprocess.isPending ? 'Laden...' : 'Herverwerk'}
