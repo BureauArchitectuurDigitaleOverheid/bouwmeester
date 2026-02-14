@@ -16,6 +16,7 @@ from sqlalchemy.pool import NullPool
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import get_db
 from bouwmeester.core.session_store import SessionStore
+from bouwmeester.middleware.session import ServerSideSessionMiddleware
 
 settings = get_settings()
 
@@ -57,15 +58,40 @@ class InMemorySessionStore(SessionStore):
         return 0
 
 
-@pytest.fixture
-async def db_session():
-    """Yield a session wrapped in a transaction that is rolled back after the test."""
+# ---------------------------------------------------------------------------
+# Session-scoped fixtures: engine + app created once for the whole test run
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def _test_engine():
+    """Create one async engine for the entire test session."""
     engine = create_async_engine(
         settings.DATABASE_URL,
         echo=False,
         poolclass=NullPool,
     )
-    async with engine.connect() as conn:
+    yield engine
+    # Engine disposal happens in an async fixture below
+
+
+@pytest.fixture(scope="session")
+def _test_app():
+    """Create the FastAPI app once for the entire test session."""
+    from bouwmeester.core.app import create_app
+
+    return create_app()
+
+
+# ---------------------------------------------------------------------------
+# Per-test fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def db_session(_test_engine):
+    """Yield a session wrapped in a transaction that is rolled back after the test."""
+    async with _test_engine.connect() as conn:
         txn = await conn.begin()
         session = AsyncSession(bind=conn, expire_on_commit=False)
         try:
@@ -73,37 +99,45 @@ async def db_session():
         finally:
             await session.close()
             await txn.rollback()
-    await engine.dispose()
+
+
+def _find_session_middleware(app):
+    """Walk the middleware stack to find the ServerSideSessionMiddleware instance."""
+    mw = app.middleware_stack
+    while mw is not None:
+        if isinstance(mw, ServerSideSessionMiddleware):
+            return mw
+        mw = getattr(mw, "app", None)
+    return None
 
 
 @pytest.fixture
-async def client(db_session: AsyncSession):
+async def client(db_session: AsyncSession, _test_app):
     """HTTPX async client talking to the FastAPI app with overridden DB session.
 
     Automatically obtains a CSRF token and injects it into all
     state-changing requests so existing tests pass without modification.
     """
-    from bouwmeester.core.app import create_app
-
-    app = create_app()
+    app = _test_app
 
     async def _override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
 
-    transport = ASGITransport(app=app)
-    # Use an in-memory session store to avoid opening extra DB connections
-    # (which exhaust the pool during parallel test runs).
+    # Use an in-memory session store to avoid opening extra DB connections.
     mem_store = InMemorySessionStore()
     app.state.session_store = mem_store
-    # Also patch the session middleware's store reference.
-    for mw in app.user_middleware:
-        if hasattr(mw, "kwargs") and "store" in mw.kwargs:
-            mw.kwargs["store"] = mem_store
 
-    # Rebuild the middleware stack after patching.
-    app.middleware_stack = app.build_middleware_stack()
+    # Patch the session middleware's store directly on the already-built
+    # middleware stack instance — avoids expensive build_middleware_stack().
+    session_mw = _find_session_middleware(app)
+    original_store = None
+    if session_mw is not None:
+        original_store = session_mw.store
+        session_mw.store = mem_store
+
+    transport = ASGITransport(app=app)
 
     csrf = {"token": ""}
 
@@ -125,6 +159,9 @@ async def client(db_session: AsyncSession):
         yield ac
 
     app.dependency_overrides.clear()
+    # Restore original store so the shared app is clean for the next test
+    if session_mw is not None and original_store is not None:
+        session_mw.store = original_store
 
 
 @pytest.fixture
@@ -167,17 +204,19 @@ async def sample_person(db_session: AsyncSession):
     from bouwmeester.models.person import Person
     from bouwmeester.models.person_email import PersonEmail
 
+    uid = uuid.uuid4()
+    email = f"jan-{uid.hex[:8]}@example.com"
     person = Person(
-        id=uuid.uuid4(),
+        id=uid,
         naam="Jan Tester",
-        email="jan@example.com",
+        email=email,
         functie="beleidsmedewerker",
         is_active=True,
     )
     db_session.add(person)
     await db_session.flush()
     db_session.add(
-        PersonEmail(person_id=person.id, email="jan@example.com", is_default=True)
+        PersonEmail(person_id=person.id, email=email, is_default=True)
     )
     await db_session.flush()
     return person
@@ -189,17 +228,19 @@ async def second_person(db_session: AsyncSession):
     from bouwmeester.models.person import Person
     from bouwmeester.models.person_email import PersonEmail
 
+    uid = uuid.uuid4()
+    email = f"piet-{uid.hex[:8]}@example.com"
     person = Person(
-        id=uuid.uuid4(),
+        id=uid,
         naam="Piet Tester",
-        email="piet@example.com",
+        email=email,
         functie="adviseur",
         is_active=True,
     )
     db_session.add(person)
     await db_session.flush()
     db_session.add(
-        PersonEmail(person_id=person.id, email="piet@example.com", is_default=True)
+        PersonEmail(person_id=person.id, email=email, is_default=True)
     )
     await db_session.flush()
     return person
@@ -211,7 +252,7 @@ async def sample_edge_type(db_session: AsyncSession):
     from bouwmeester.models.edge_type import EdgeType
 
     et = EdgeType(
-        id="test_relatie",
+        id=f"test_relatie_{uuid.uuid4().hex[:8]}",
         label_nl="Test relatie",
         label_en="Test relation",
         description="Een test relatie",
@@ -356,17 +397,19 @@ async def third_person(db_session: AsyncSession):
     from bouwmeester.models.person import Person
     from bouwmeester.models.person_email import PersonEmail
 
+    uid = uuid.uuid4()
+    email = f"klaas-{uid.hex[:8]}@example.com"
     person = Person(
-        id=uuid.uuid4(),
+        id=uid,
         naam="Klaas Manager",
-        email="klaas@example.com",
+        email=email,
         functie="manager",
         is_active=True,
     )
     db_session.add(person)
     await db_session.flush()
     db_session.add(
-        PersonEmail(person_id=person.id, email="klaas@example.com", is_default=True)
+        PersonEmail(person_id=person.id, email=email, is_default=True)
     )
     await db_session.flush()
     return person
