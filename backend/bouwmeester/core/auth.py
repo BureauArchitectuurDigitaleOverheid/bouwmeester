@@ -681,6 +681,11 @@ async def _person_from_claims(
     )
 
 
+def is_webauthn_session(session: dict) -> bool:
+    """Return True if the session dict represents a WebAuthn-only session."""
+    return bool(session.get("webauthn_session") and session.get("person_db_id"))
+
+
 async def _person_from_webauthn_session(
     request: Request,
     db: AsyncSession,
@@ -692,7 +697,7 @@ async def _person_from_webauthn_session(
     to load the Person by PK.
     """
     session = getattr(request, "session", None) or request.scope.get("session", {})
-    if not session or not session.get("webauthn_session"):
+    if not session or not is_webauthn_session(session):
         return None
 
     person_id_str = session.get("person_db_id")

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { BASE_URL } from '@/api/client';
-import { getStoredPersonId, isWebAuthnAvailable } from '@/api/webauthn';
+import { clearStoredPersonId, getStoredPersonId, isWebAuthnAvailable } from '@/api/webauthn';
 
 interface AuthPerson {
   sub: string;
@@ -15,6 +15,7 @@ interface AuthState {
   loading: boolean;
   authenticated: boolean;
   oidcConfigured: boolean;
+  webauthnSession: boolean;
   person: AuthPerson | null;
   error: string | null;
   authError: string | null;
@@ -39,6 +40,7 @@ async function fetchAuthStatus(): Promise<AuthState> {
     loading: false,
     authenticated: data.authenticated,
     oidcConfigured: data.oidc_configured,
+    webauthnSession: data.webauthn_session ?? false,
     person: data.person
       ? {
           sub: data.person.sub ?? '',
@@ -61,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading: true,
     authenticated: false,
     oidcConfigured: false,
+    webauthnSession: false,
     person: null,
     error: null,
     authError: null,
@@ -125,6 +128,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    // Clear biometric person ID so the next user on this device doesn't
+    // see a stale biometric login button.
+    clearStoredPersonId();
     // Clear cached API responses to prevent data leakage across sessions
     if ('caches' in window) {
       await caches.delete('api-cache').catch(() => {});

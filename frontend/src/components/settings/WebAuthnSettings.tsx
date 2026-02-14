@@ -7,6 +7,7 @@ import {
   registerCredential,
   isWebAuthnAvailable,
   isWebAuthnCancellation,
+  clearStoredPersonId,
   setStoredPersonId,
 } from '@/api/webauthn';
 import { useAuth } from '@/contexts/AuthContext';
@@ -46,7 +47,12 @@ export function WebAuthnSettings() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteCredential,
-    onSuccess: () => {
+    onSuccess: (_data, deletedId) => {
+      // If we just deleted the last credential, clear the stored person ID
+      // so the biometric login button no longer appears on the login page.
+      if (credentials && credentials.length === 1 && credentials[0].id === deletedId) {
+        clearStoredPersonId();
+      }
       queryClient.invalidateQueries({ queryKey: ['webauthn-credentials'] });
     },
   });

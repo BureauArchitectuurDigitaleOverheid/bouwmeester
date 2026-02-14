@@ -19,6 +19,7 @@ from bouwmeester.core.auth import (
     CurrentUser,
     get_oauth,
     get_or_create_person,
+    is_webauthn_session,
     revoke_tokens,
     validate_session_token,
 )
@@ -251,7 +252,7 @@ async def auth_status(
     # We must verify the person is still active since this endpoint is on a
     # public prefix and skips the auth middleware entirely.
     webauthn_session = False
-    if request.session.get("webauthn_session") and request.session.get("person_db_id"):
+    if is_webauthn_session(request.session):
         try:
             person_obj = await db.get(Person, UUID(request.session["person_db_id"]))
             if person_obj is not None and person_obj.is_active:
@@ -260,7 +261,7 @@ async def auth_status(
             else:
                 # Person deactivated — clear the stale session.
                 request.session.clear()
-        except (ValueError, Exception):
+        except Exception:
             request.session.clear()
     else:
         try:

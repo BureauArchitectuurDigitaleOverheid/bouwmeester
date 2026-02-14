@@ -73,6 +73,14 @@ export function setStoredPersonId(personId: string): void {
   }
 }
 
+export function clearStoredPersonId(): void {
+  try {
+    localStorage.removeItem(WEBAUTHN_PERSON_ID_KEY);
+  } catch {
+    // localStorage unavailable
+  }
+}
+
 /** Returns true if the error indicates the user cancelled the WebAuthn prompt. */
 export function isWebAuthnCancellation(err: unknown): boolean {
   if (err instanceof Error) {

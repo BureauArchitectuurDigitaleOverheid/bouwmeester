@@ -44,6 +44,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webauthn", tags=["webauthn"])
 
+
+def _init_webauthn_session(session: dict, person: Person) -> None:
+    """Populate a cleared session dict for a WebAuthn-only login."""
+    session["webauthn_session"] = True
+    session["person_db_id"] = str(person.id)
+    session["person_email"] = person.email or ""
+    session["person_name"] = person.naam
+    session["person_sub"] = person.oidc_subject or ""
+    session["is_admin"] = person.is_admin
+    session["_rotate"] = True
+
+
 # ---------------------------------------------------------------------------
 # Rate limiter for authentication endpoints (unauthenticated).
 # NOTE: In-process store — with multiple workers each has its own state,
@@ -149,7 +161,7 @@ async def register_options(
         exclude_credentials=existing,
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.PREFERRED,
-            user_verification=UserVerificationRequirement.PREFERRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
         ),
         timeout=60000,
     )
@@ -247,7 +259,7 @@ async def authenticate_options(
     options = generate_authentication_options(
         rp_id=settings.WEBAUTHN_RP_ID,
         allow_credentials=allow_credentials,
-        user_verification=UserVerificationRequirement.PREFERRED,
+        user_verification=UserVerificationRequirement.REQUIRED,
         timeout=60000,
     )
 
@@ -345,13 +357,7 @@ async def authenticate_verify(
     # Create a WebAuthn-only session (no OIDC tokens).
     session = request.session
     session.clear()
-    session["webauthn_session"] = True
-    session["person_db_id"] = str(person.id)
-    session["person_email"] = email
-    session["person_name"] = person.naam
-    session["person_sub"] = person.oidc_subject or ""
-    session["is_admin"] = person.is_admin
-    session["_rotate"] = True
+    _init_webauthn_session(session, person)
 
     logger.info("WebAuthn authentication successful for %s", email)
 
