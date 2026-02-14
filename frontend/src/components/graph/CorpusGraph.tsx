@@ -8,7 +8,6 @@ import ReactFlow, {
   MarkerType,
   useNodesState,
   useEdgesState,
-  useReactFlow,
   ReactFlowProvider,
   type Node as RFNode,
   type Edge as RFEdge,
@@ -136,7 +135,6 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: C
   const isMobile = useIsMobile();
   const { edgeLabel: vocabEdgeLabel } = useVocabulary();
   const { data, isLoading, error } = useGraphView();
-  const reactFlowInstance = useReactFlow();
 
   // Stable refs for callbacks used inside the layout memo, so they don't
   // cause the expensive dagre layout to recompute.
@@ -318,19 +316,6 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: C
     setEdges(rfEdges);
   }, [rfNodes, rfEdges, setNodes, setEdges]);
 
-  // Re-fit viewport when filters change (skip initial render — ReactFlow's
-  // fitView prop handles that).
-  const isInitialRender = useRef(true);
-  useEffect(() => {
-    if (isInitialRender.current) {
-      isInitialRender.current = false;
-      return;
-    }
-    const timer = setTimeout(() => {
-      reactFlowInstance.fitView({ padding: 0.2, maxZoom: 1.5, duration: 300 });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [rfNodes, rfEdges, reactFlowInstance]);
 
   // Handle connection drag completion
   const handleConnect = useCallback((connection: Connection) => {
