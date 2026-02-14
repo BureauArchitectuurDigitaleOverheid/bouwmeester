@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_deleted, require_found
+from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.corpus_node import CorpusNode
@@ -46,7 +46,7 @@ async def list_edges(
         node_id=node_id,
         edge_type_id=edge_type_id,
     )
-    return [EdgeWithNodes.model_validate(e) for e in edges]
+    return validate_list(EdgeWithNodes, edges)
 
 
 @router.post("", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)

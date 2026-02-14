@@ -15,6 +15,13 @@ class EdgeTypeCreate(EdgeTypeBase):
 
 
 class EdgeTypeResponse(EdgeTypeBase):
+    # Override fields without length constraints — response schemas must be
+    # able to return data that already exists in the database.
+    id: str
+    label_nl: str
+    label_en: str | None = None
+    description: str | None = None
+
     is_custom: bool
 
     model_config = ConfigDict(from_attributes=True)

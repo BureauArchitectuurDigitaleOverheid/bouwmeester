@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_deleted, require_found
+from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
@@ -61,7 +61,7 @@ async def list_nodes(
     service = NodeService(db)
     node_type_str = node_type.value if node_type else None
     nodes = await service.get_all(skip=skip, limit=limit, node_type=node_type_str)
-    return [CorpusNodeResponse.model_validate(n) for n in nodes]
+    return validate_list(CorpusNodeResponse, nodes)
 
 
 @router.post("", response_model=CorpusNodeResponse, status_code=status.HTTP_201_CREATED)
@@ -243,8 +243,8 @@ async def get_graph(
     service = NodeService(db)
     result = await service.get_graph(id, depth=depth)
     return GraphViewResponse(
-        nodes=[CorpusNodeResponse.model_validate(n) for n in result["nodes"]],
-        edges=[EdgeResponse.model_validate(e) for e in result["edges"]],
+        nodes=validate_list(CorpusNodeResponse, result["nodes"]),
+        edges=validate_list(EdgeResponse, result["edges"]),
     )
 
 
@@ -263,7 +263,7 @@ async def get_node_tasks(
 
     task_repo = TaskRepository(db)
     tasks = await task_repo.get_by_node(id, skip=skip, limit=limit)
-    return [TaskResponse.model_validate(t) for t in tasks]
+    return validate_list(TaskResponse, tasks)
 
 
 @router.get("/{id}/stakeholders", response_model=list[NodeStakeholderResponse])

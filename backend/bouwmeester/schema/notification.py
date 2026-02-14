@@ -50,6 +50,11 @@ class ReactionSummary(BaseModel):
 
 
 class NotificationResponse(NotificationBase):
+    # Override fields without length constraints — response schemas must be
+    # able to return data that already exists in the database.
+    title: str
+    message: str | None = None
+
     id: UUID
     is_read: bool = False
     created_at: datetime

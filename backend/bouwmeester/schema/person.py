@@ -82,6 +82,13 @@ class PersonUpdate(BaseModel):
 class PersonResponse(PersonBase):
     """Response schema for person lists — api_key excluded for security."""
 
+    # Override fields without length constraints — response schemas must be
+    # able to return data that already exists in the database.
+    naam: str
+    email: str | None = None
+    functie: str | None = None
+    description: str | None = None
+
     id: UUID
     is_active: bool
     is_agent: bool
