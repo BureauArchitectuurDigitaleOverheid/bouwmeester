@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BASE_URL } from '@/api/client';
+import { getStoredPersonId, isWebAuthnAvailable } from '@/api/webauthn';
 
 interface AuthPerson {
   sub: string;
@@ -25,6 +26,7 @@ interface AuthContextValue extends AuthState {
   login: () => void;
   logout: () => void;
   refreshAuthStatus: () => Promise<void>;
+  canBiometricReauth: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -87,6 +89,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Re-check auth when the app regains focus (e.g. after being backgrounded on mobile).
+  // Throttled to at most once per 60 seconds to avoid hammering the backend.
+  const lastRefreshRef = useRef(0);
+  useEffect(() => {
+    const throttledRefresh = () => {
+      const now = Date.now();
+      if (now - lastRefreshRef.current < 60_000) return;
+      lastRefreshRef.current = now;
+      refreshAuthStatus();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') throttledRefresh();
+    };
+    const onFocus = () => throttledRefresh();
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshAuthStatus]);
+
+  // Periodic background ping every 4 minutes to keep the Keycloak refresh token alive.
+  useEffect(() => {
+    if (!state.authenticated) return;
+    const interval = setInterval(() => refreshAuthStatus(), 4 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [state.authenticated, refreshAuthStatus]);
+
   const login = useCallback(() => {
     window.location.href = `${BASE_URL}/api/auth/login`;
   }, []);
@@ -99,8 +132,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = `${BASE_URL}/api/auth/logout`;
   }, []);
 
+  const canBiometricReauth = useMemo(
+    () => isWebAuthnAvailable() && !!getStoredPersonId(),
+    [],
+  );
+
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, refreshAuthStatus }}>
+    <AuthContext.Provider value={{ ...state, login, logout, refreshAuthStatus, canBiometricReauth }}>
       {children}
     </AuthContext.Provider>
   );

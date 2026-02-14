@@ -114,6 +114,14 @@ from bouwmeester.schema.task import (
     TaskSubtaskSummary,
     TaskUpdate,
 )
+from bouwmeester.schema.webauthn import (
+    AuthenticateOptionsRequest,
+    AuthenticateOptionsResponse,
+    AuthenticateVerifyRequest,
+    RegisterOptionsResponse,
+    RegisterVerifyRequest,
+    WebAuthnCredentialResponse,
+)
 from bouwmeester.schema.whitelist import (
     AdminToggleRequest,
     AdminUserResponse,
@@ -244,6 +252,13 @@ __all__ = [
     # whitelist / admin
     "AdminToggleRequest",
     "AdminUserResponse",
+    # webauthn
+    "AuthenticateOptionsRequest",
+    "AuthenticateOptionsResponse",
+    "AuthenticateVerifyRequest",
+    "RegisterOptionsResponse",
+    "RegisterVerifyRequest",
+    "WebAuthnCredentialResponse",
     "WhitelistEmailCreate",
     "WhitelistEmailResponse",
 ]

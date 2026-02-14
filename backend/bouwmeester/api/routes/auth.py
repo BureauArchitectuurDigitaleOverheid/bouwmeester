@@ -246,17 +246,22 @@ async def auth_status(
     oidc_configured = bool(settings.OIDC_ISSUER)
     authenticated = False
 
-    try:
-        if request.session.get("access_token") and oidc_configured:
-            authenticated = await validate_session_token(request.session, settings)
-    except Exception:
-        logger.exception("Token validation failed in auth_status")
-        authenticated = False
-        return {
-            "authenticated": False,
-            "oidc_configured": oidc_configured,
-            "error": "token_validation_failed",
-        }
+    # WebAuthn-only sessions have no OIDC tokens — the session itself is
+    # the sole authentication mechanism (bounded by session TTL).
+    if request.session.get("webauthn_session") and request.session.get("person_db_id"):
+        authenticated = True
+    else:
+        try:
+            if request.session.get("access_token") and oidc_configured:
+                authenticated = await validate_session_token(request.session, settings)
+        except Exception:
+            logger.exception("Token validation failed in auth_status")
+            authenticated = False
+            return {
+                "authenticated": False,
+                "oidc_configured": oidc_configured,
+                "error": "token_validation_failed",
+            }
 
     result: dict = {
         "authenticated": authenticated,

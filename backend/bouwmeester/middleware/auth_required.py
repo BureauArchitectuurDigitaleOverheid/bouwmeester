@@ -47,6 +47,7 @@ _PUBLIC_PREFIXES = (
     "/api/openapi.json",
     "/api/docs",
     "/api/redoc",
+    "/api/webauthn/authenticate/",
 )
 
 
@@ -277,6 +278,34 @@ class AuthRequiredMiddleware:
                 scope["_auth_validated"] = True
                 await self.app(scope, receive, send)
                 return
+
+        # 4. WebAuthn-only sessions (no OIDC tokens — session TTL is the
+        #    sole expiry mechanism).
+        if session.get("webauthn_session") and session.get("person_db_id"):
+            from bouwmeester.core.whitelist import is_email_allowed
+
+            email = session.get("person_email", "")
+            if not is_email_allowed(email):
+                session.clear()
+                body = json.dumps(
+                    {"detail": "Access denied — not on whitelist"}
+                ).encode("utf-8")
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 403,
+                        "headers": [
+                            (b"content-type", b"application/json"),
+                            (b"content-length", str(len(body)).encode()),
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": body})
+                return
+
+            scope["_auth_validated"] = True
+            await self.app(scope, receive, send)
+            return
 
         # No valid session or Bearer token -- return 401.
         body = json.dumps({"detail": "Authentication required"}).encode("utf-8")

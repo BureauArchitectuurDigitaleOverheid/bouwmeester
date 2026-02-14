@@ -20,6 +20,7 @@ import { EenheidOverzichtPage } from '@/pages/EenheidOverzichtPage';
 import { AdminPage } from '@/pages/AdminPage';
 import { AuditLogPage } from '@/pages/AuditLogPage';
 import { DocsPage } from '@/pages/DocsPage';
+import { InstellingenPage } from '@/pages/InstellingenPage';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
@@ -115,6 +116,7 @@ export default function App() {
                     <Route path="/admin" element={<AdminPage />} />
                     <Route path="/auditlog" element={<AuditLogPage />} />
                     <Route path="/docs" element={<DocsPage />} />
+                    <Route path="/instellingen" element={<InstellingenPage />} />
                   </Route>
                 </Routes>
                 <DetailModals />

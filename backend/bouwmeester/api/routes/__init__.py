@@ -21,6 +21,7 @@ from bouwmeester.api.routes.search import router as search_router
 from bouwmeester.api.routes.skill import router as skill_router
 from bouwmeester.api.routes.tags import router as tags_router
 from bouwmeester.api.routes.tasks import router as tasks_router
+from bouwmeester.api.routes.webauthn import router as webauthn_router
 
 api_router = APIRouter()
 
@@ -43,3 +44,4 @@ api_router.include_router(organisatie_router)
 api_router.include_router(skill_router)
 api_router.include_router(tags_router)
 api_router.include_router(parlementair_router)
+api_router.include_router(webauthn_router)
