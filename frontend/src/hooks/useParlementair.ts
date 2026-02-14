@@ -3,6 +3,7 @@ import {
   getParlementairItems,
   getParlementairItem,
   triggerParlementairImport,
+  reprocessParlementairItems,
   rejectParlementairItem,
   reopenParlementairItem,
   completeParlementairReview,
@@ -43,6 +44,14 @@ export function useTriggerParlementairImport() {
   return useMutationWithError({
     mutationFn: () => triggerParlementairImport(),
     errorMessage: 'Fout bij importeren kamerstukken',
+    invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
+  });
+}
+
+export function useReprocessParlementairItems() {
+  return useMutationWithError({
+    mutationFn: (itemType?: string) => reprocessParlementairItems(itemType),
+    errorMessage: 'Fout bij herverwerken kamerstukken',
     invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
   });
 }

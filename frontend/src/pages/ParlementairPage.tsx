@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { RefreshCw, Search } from 'lucide-react';
+import { RefreshCw, RotateCcw, Search } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
@@ -12,6 +12,7 @@ import { ParlementairReviewCard } from '@/components/parlementair/ParlementairRe
 import {
   useParlementairItems,
   useTriggerParlementairImport,
+  useReprocessParlementairItems,
 } from '@/hooks/useParlementair';
 import type { ParlementairItemStatus } from '@/types';
 import {
@@ -67,6 +68,7 @@ export function ParlementairPage() {
   );
 
   const triggerImport = useTriggerParlementairImport();
+  const reprocess = useReprocessParlementairItems();
 
   return (
     <div className="space-y-6">
@@ -75,18 +77,33 @@ export function ParlementairPage() {
         <p className="text-sm text-text-secondary">
           Beheer geïmporteerde kamerstukken uit de Tweede en Eerste Kamer.
         </p>
-        <Button
-          icon={<RefreshCw className={`h-4 w-4 ${triggerImport.isPending ? 'animate-spin' : ''}`} />}
-          onClick={() => triggerImport.mutate()}
-          disabled={triggerImport.isPending}
-        >
-          <span className="hidden sm:inline">
-            {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
-          </span>
-          <span className="sm:hidden">
-            {triggerImport.isPending ? 'Laden...' : 'Importeren'}
-          </span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            icon={<RotateCcw className={`h-4 w-4 ${reprocess.isPending ? 'animate-spin' : ''}`} />}
+            onClick={() => reprocess.mutate()}
+            disabled={reprocess.isPending}
+          >
+            <span className="hidden sm:inline">
+              {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk zonder koppelingen'}
+            </span>
+            <span className="sm:hidden">
+              {reprocess.isPending ? 'Laden...' : 'Herverwerk'}
+            </span>
+          </Button>
+          <Button
+            icon={<RefreshCw className={`h-4 w-4 ${triggerImport.isPending ? 'animate-spin' : ''}`} />}
+            onClick={() => triggerImport.mutate()}
+            disabled={triggerImport.isPending}
+          >
+            <span className="hidden sm:inline">
+              {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
+            </span>
+            <span className="sm:hidden">
+              {triggerImport.isPending ? 'Laden...' : 'Importeren'}
+            </span>
+          </Button>
+        </div>
       </div>
 
       {/* Filter bar (matching Corpus page layout) */}

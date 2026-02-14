@@ -20,6 +20,18 @@ export async function triggerParlementairImport(): Promise<{ message: string; im
   return apiPost('/api/parlementair/imports/trigger');
 }
 
+export interface ReprocessResult {
+  total: number;
+  matched: number;
+  out_of_scope: number;
+  skipped: number;
+  error?: string;
+}
+
+export async function reprocessParlementairItems(itemType = 'toezegging'): Promise<ReprocessResult> {
+  return apiPost(`/api/parlementair/imports/reprocess?item_type=${encodeURIComponent(itemType)}`);
+}
+
 export async function rejectParlementairItem(id: string): Promise<ParlementairItem> {
   return apiPut<ParlementairItem>(`/api/parlementair/imports/${id}/reject`);
 }
