@@ -621,9 +621,7 @@ async def set_default_email(
 
     # Bulk unset all defaults, then set the target
     await db.execute(
-        update(PersonEmail)
-        .where(PersonEmail.person_id == id)
-        .values(is_default=False)
+        update(PersonEmail).where(PersonEmail.person_id == id).values(is_default=False)
     )
     await db.execute(
         update(PersonEmail)
@@ -751,9 +749,7 @@ async def set_default_phone(
 
     # Bulk unset all defaults, then set the target
     await db.execute(
-        update(PersonPhone)
-        .where(PersonPhone.person_id == id)
-        .values(is_default=False)
+        update(PersonPhone).where(PersonPhone.person_id == id).values(is_default=False)
     )
     await db.execute(
         update(PersonPhone)

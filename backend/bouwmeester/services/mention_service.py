@@ -145,9 +145,7 @@ class MentionService:
                 titles[("node", row[0])] = row[1]
 
         if "task" in ids_by_type:
-            stmt = select(Task.id, Task.title).where(
-                Task.id.in_(ids_by_type["task"])
-            )
+            stmt = select(Task.id, Task.title).where(Task.id.in_(ids_by_type["task"]))
             for row in (await self.session.execute(stmt)).all():
                 titles[("task", row[0])] = row[1]
 

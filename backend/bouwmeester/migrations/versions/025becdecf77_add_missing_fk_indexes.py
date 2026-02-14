@@ -92,9 +92,7 @@ _INDEXES = [
 
 def upgrade() -> None:
     for name, table, columns in _INDEXES:
-        op.create_index(
-            name, table, columns, if_not_exists=True
-        )
+        op.create_index(name, table, columns, if_not_exists=True)
 
 
 def downgrade() -> None:
