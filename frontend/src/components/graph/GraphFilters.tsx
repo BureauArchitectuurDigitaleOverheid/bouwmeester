@@ -1,20 +1,5 @@
-import { NodeType } from '@/types';
+import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
-
-const NODE_TYPE_HEX_COLORS: Record<string, string> = {
-  [NodeType.DOSSIER]: '#3B82F6',
-  [NodeType.DOEL]: '#10B981',
-  [NodeType.INSTRUMENT]: '#8B5CF6',
-  [NodeType.BELEIDSKADER]: '#F59E0B',
-  [NodeType.MAATREGEL]: '#06B6D4',
-  [NodeType.POLITIEKE_INPUT]: '#F43F5E',
-  [NodeType.PROBLEEM]: '#EF4444',
-  [NodeType.EFFECT]: '#059669',
-  [NodeType.BELEIDSOPTIE]: '#6366F1',
-  [NodeType.BRON]: '#F97316',
-  [NodeType.NOTITIE]: '#64748b',
-  [NodeType.OVERIG]: '#9ca3af',
-};
 
 interface GraphFiltersProps {
   enabledNodeTypes: Set<NodeType>;

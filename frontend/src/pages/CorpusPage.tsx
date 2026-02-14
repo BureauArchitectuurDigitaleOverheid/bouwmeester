@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, LayoutGrid, GitFork, Search } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -10,24 +10,10 @@ import { NodeList } from '@/components/nodes/NodeList';
 import { NodeCreateForm } from '@/components/nodes/NodeCreateForm';
 import { ExportButton } from '@/components/nodes/ExportButton';
 import { CorpusGraph } from '@/components/graph/CorpusGraph';
-import { NodeType } from '@/types';
+import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useGraphView } from '@/hooks/useGraph';
-
-const NODE_TYPE_HEX_COLORS: Record<string, string> = {
-  [NodeType.DOSSIER]: '#3B82F6',
-  [NodeType.DOEL]: '#10B981',
-  [NodeType.INSTRUMENT]: '#8B5CF6',
-  [NodeType.BELEIDSKADER]: '#F59E0B',
-  [NodeType.MAATREGEL]: '#06B6D4',
-  [NodeType.POLITIEKE_INPUT]: '#F43F5E',
-  [NodeType.PROBLEEM]: '#EF4444',
-  [NodeType.EFFECT]: '#059669',
-  [NodeType.BELEIDSOPTIE]: '#6366F1',
-  [NodeType.BRON]: '#F97316',
-  [NodeType.NOTITIE]: '#64748b',
-  [NodeType.OVERIG]: '#9ca3af',
-};
+import { useDebounce } from '@/hooks/useDebounce';
 
 type ViewMode = 'list' | 'graph';
 
@@ -41,12 +27,13 @@ export function CorpusPage() {
   const [enabledNodeTypes, setEnabledNodeTypes] = useState<Set<NodeType>>(
     () => new Set(Object.values(NodeType)),
   );
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const searchQuery = useDebounce(searchInput, 200);
 
-  // Edge type filter state (graph-specific, lifted here for layout)
-  const { data: graphData } = useGraphView();
+  // Edge type filter state (graph-specific, only fetched in graph mode)
+  const { data: graphData } = useGraphView(undefined, undefined, viewMode === 'graph');
   const [enabledEdgeTypes, setEnabledEdgeTypes] = useState<Set<string>>(new Set());
-  const [edgeTypesInitialized, setEdgeTypesInitialized] = useState(false);
+  const prevAvailableRef = useRef<string>('');
 
   const availableEdgeTypes = useMemo(() => {
     if (!graphData?.edges) return [];
@@ -57,12 +44,14 @@ export function CorpusPage() {
     return [...types].sort();
   }, [graphData?.edges]);
 
+  // Auto-enable new edge types when available set changes
   useEffect(() => {
-    if (availableEdgeTypes.length > 0 && !edgeTypesInitialized) {
+    const key = availableEdgeTypes.join(',');
+    if (key && key !== prevAvailableRef.current) {
       setEnabledEdgeTypes(new Set(availableEdgeTypes));
-      setEdgeTypesInitialized(true);
+      prevAvailableRef.current = key;
     }
-  }, [availableEdgeTypes, edgeTypesInitialized]);
+  }, [availableEdgeTypes]);
 
   const edgeTypeFilterOptions: MultiSelectOption[] = useMemo(
     () => availableEdgeTypes.map((t) => ({ value: t, label: vocabEdgeLabel(t) })),
@@ -142,8 +131,8 @@ export function CorpusPage() {
         <div className="relative w-full sm:w-56">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
           <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Zoek in corpus..."
             className="pl-9"
           />

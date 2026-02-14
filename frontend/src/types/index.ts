@@ -44,6 +44,21 @@ export const NODE_TYPE_COLORS: Record<NodeType, string> = {
   [NodeType.OVERIG]: 'gray',
 };
 
+export const NODE_TYPE_HEX_COLORS: Record<NodeType, string> = {
+  [NodeType.DOSSIER]: '#3B82F6',
+  [NodeType.DOEL]: '#10B981',
+  [NodeType.INSTRUMENT]: '#8B5CF6',
+  [NodeType.BELEIDSKADER]: '#F59E0B',
+  [NodeType.MAATREGEL]: '#06B6D4',
+  [NodeType.POLITIEKE_INPUT]: '#F43F5E',
+  [NodeType.PROBLEEM]: '#EF4444',
+  [NodeType.EFFECT]: '#059669',
+  [NodeType.BELEIDSOPTIE]: '#6366F1',
+  [NodeType.BRON]: '#F97316',
+  [NodeType.NOTITIE]: '#64748b',
+  [NodeType.OVERIG]: '#9ca3af',
+};
+
 export const BRON_TYPE_LABELS: Record<string, string> = {
   rapport: 'Rapport',
   onderzoek: 'Onderzoek',
@@ -754,6 +769,20 @@ export const PARLEMENTAIR_TYPE_COLORS: Record<string, string> = {
   commissiedebat: 'cyan',
   schriftelijk_overleg: 'slate',
   interpellatie: 'red',
+};
+
+export const ALL_PARLEMENTAIR_TYPES: ParlementairItemType[] = Object.keys(
+  PARLEMENTAIR_TYPE_LABELS,
+) as ParlementairItemType[];
+
+export const PARLEMENTAIR_TYPE_HEX_COLORS: Record<string, string> = {
+  motie: '#F43F5E',
+  kamervraag: '#3B82F6',
+  toezegging: '#F59E0B',
+  amendement: '#8B5CF6',
+  commissiedebat: '#06B6D4',
+  schriftelijk_overleg: '#64748b',
+  interpellatie: '#EF4444',
 };
 
 export interface ParlementairItem {
