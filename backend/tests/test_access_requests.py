@@ -27,11 +27,11 @@ def _whitelist_active():
 @pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     """Clear the access-request rate limiter between tests."""
-    from bouwmeester.api.routes.auth import _access_request_rate_store
+    from bouwmeester.api.routes.auth import _access_request_rate_limiter
 
-    _access_request_rate_store.clear()
+    _access_request_rate_limiter.clear()
     yield
-    _access_request_rate_store.clear()
+    _access_request_rate_limiter.clear()
 
 
 # ---------------------------------------------------------------------------

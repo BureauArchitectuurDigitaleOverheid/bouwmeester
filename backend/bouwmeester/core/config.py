@@ -49,7 +49,13 @@ class Settings(BaseSettings):
     BACKEND_URL: str = ""  # Used for OIDC redirect URIs
     SESSION_COOKIE_DOMAIN: str = ""
     SESSION_COOKIE_SECURE: bool = False
-    SESSION_TTL_SECONDS: int = 86400
+    SESSION_TTL_SECONDS: int = 604800  # 7 days
+
+    # WebAuthn (biometric re-authentication)
+    WEBAUTHN_RP_ID: str = ""
+    WEBAUTHN_RP_NAME: str = "Bouwmeester"
+    WEBAUTHN_ORIGIN: str = ""
+    WEBAUTHN_SESSION_TTL_SECONDS: int = 86400  # 24 hours (shorter than OIDC's 7 days)
 
     ANTHROPIC_API_KEY: str = ""
     TK_API_BASE_URL: str = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0"
@@ -152,6 +158,16 @@ class Settings(BaseSettings):
             self.BACKEND_URL = self.PUBLIC_HOST.rstrip("/")
         if not self.BACKEND_URL:
             self.BACKEND_URL = "http://localhost:8000"
+
+        # Derive WebAuthn settings from FRONTEND_URL.
+        frontend_parsed = urlparse(self.FRONTEND_URL)
+        if not self.WEBAUTHN_RP_ID and frontend_parsed.hostname:
+            self.WEBAUTHN_RP_ID = frontend_parsed.hostname
+        if not self.WEBAUTHN_ORIGIN:
+            self.WEBAUTHN_ORIGIN = (
+                f"{frontend_parsed.scheme}://{frontend_parsed.hostname}"
+                + (f":{frontend_parsed.port}" if frontend_parsed.port else "")
+            )
         return self
 
 

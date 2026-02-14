@@ -10,6 +10,7 @@ import {
   Users,
   ScrollText,
   History,
+  Settings,
   Shield,
   PanelLeftClose,
   PanelLeftOpen,
@@ -55,6 +56,7 @@ export function Sidebar({ mobile }: SidebarProps) {
 
   const bottomNavItems = useMemo(() => {
     const items = [
+      { to: '/instellingen', icon: Settings, label: 'Instellingen' },
       { to: '/auditlog', icon: History, label: 'Auditlog' },
     ];
     if (!oidcConfigured || authPerson?.is_admin) {
