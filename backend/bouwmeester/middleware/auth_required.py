@@ -276,7 +276,8 @@ class AuthRequiredMiddleware:
                 email = session.get("person_email", "")
                 if not is_email_allowed(email):
                     await _deny(
-                        session, send,
+                        session,
+                        send,
                         status_code=403,
                         detail="Access denied — not on whitelist",
                     )
@@ -302,7 +303,8 @@ class AuthRequiredMiddleware:
             email = session.get("person_email", "")
             if not is_email_allowed(email):
                 await _deny(
-                    session, send,
+                    session,
+                    send,
                     status_code=403,
                     detail="Access denied — not on whitelist",
                 )
@@ -313,7 +315,8 @@ class AuthRequiredMiddleware:
             ttl = self.settings.WEBAUTHN_SESSION_TTL_SECONDS
             if not created_at or (time.time() - created_at) > ttl:
                 await _deny(
-                    session, send,
+                    session,
+                    send,
                     status_code=401,
                     detail="Authentication required",
                 )
@@ -325,11 +328,13 @@ class AuthRequiredMiddleware:
                 try:
                     async with async_session() as db:
                         person = await db.get(
-                            Person, UUID(person_db_id),
+                            Person,
+                            UUID(person_db_id),
                         )
                         if not person or not person.is_active:
                             await _deny(
-                                session, send,
+                                session,
+                                send,
                                 status_code=401,
                                 detail="Authentication required",
                             )
@@ -339,7 +344,8 @@ class AuthRequiredMiddleware:
                         "WebAuthn session person check failed",
                     )
                     await _deny(
-                        session, send,
+                        session,
+                        send,
                         status_code=401,
                         detail="Authentication required",
                     )
