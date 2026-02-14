@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, Search } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
-import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { MultiSelect } from '@/components/common/MultiSelect';
+import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ParlementairReviewCard } from '@/components/parlementair/ParlementairReviewCard';
@@ -14,7 +15,27 @@ import {
 } from '@/hooks/useParlementair';
 import type { ParlementairItemStatus, ParlementairItemType } from '@/types';
 import { PARLEMENTAIR_TYPE_LABELS } from '@/types';
-import type { SelectOption } from '@/components/common/CreatableSelect';
+
+const PARLEMENTAIR_TYPE_HEX_COLORS: Record<string, string> = {
+  motie: '#F43F5E',
+  kamervraag: '#3B82F6',
+  toezegging: '#F59E0B',
+  amendement: '#8B5CF6',
+  commissiedebat: '#06B6D4',
+  schriftelijk_overleg: '#64748b',
+  interpellatie: '#EF4444',
+};
+
+const ALL_PARLEMENTAIR_TYPES: ParlementairItemType[] = [
+  'motie', 'kamervraag', 'toezegging', 'amendement',
+  'commissiedebat', 'schriftelijk_overleg', 'interpellatie',
+];
+
+const parlementairTypeOptions: MultiSelectOption[] = ALL_PARLEMENTAIR_TYPES.map((t) => ({
+  value: t,
+  label: PARLEMENTAIR_TYPE_LABELS[t] ?? t,
+  color: PARLEMENTAIR_TYPE_HEX_COLORS[t],
+}));
 
 const statusFilters: { value: ParlementairItemStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'Alles' },
@@ -25,31 +46,37 @@ const statusFilters: { value: ParlementairItemStatus | 'all'; label: string }[] 
   { value: 'pending', label: 'In wachtrij' },
 ];
 
-const typeOptions: SelectOption[] = [
-  { value: '', label: 'Alle typen' },
-  ...(['motie', 'kamervraag', 'toezegging'] as ParlementairItemType[]).map((t) => ({
-    value: t,
-    label: PARLEMENTAIR_TYPE_LABELS[t] ?? t,
-  })),
-];
-
 export function ParlementairPage() {
   const [searchParams] = useSearchParams();
   const highlightItemId = searchParams.get('item') || searchParams.get('motie');
   const [statusFilter, setStatusFilter] = useState<ParlementairItemStatus | 'all'>(
     highlightItemId ? 'all' : 'imported'
   );
-  const [typeFilter, setTypeFilter] = useState('');
+  const [enabledTypes, setEnabledTypes] = useState<Set<string>>(
+    () => new Set(ALL_PARLEMENTAIR_TYPES),
+  );
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
+
+  const handleTypesChange = useCallback((next: Set<string>) => {
+    setEnabledTypes(next);
+  }, []);
+
+  // Build API filters — only send type filter when not all types are selected
+  const allTypesSelected = enabledTypes.size === ALL_PARLEMENTAIR_TYPES.length;
   const filters = {
     ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-    ...(typeFilter ? { type: typeFilter } : {}),
     ...(debouncedSearch ? { search: debouncedSearch } : {}),
   };
   const { data: imports, isLoading } = useParlementairItems(
     Object.keys(filters).length > 0 ? filters : undefined
   );
+
+  // Client-side type filter
+  const filteredImports = imports?.filter((item) =>
+    allTypesSelected || enabledTypes.has(item.type)
+  );
+
   const triggerImport = useTriggerParlementairImport();
 
   return (
@@ -73,24 +100,23 @@ export function ParlementairPage() {
         </Button>
       </div>
 
-      {/* Type filter + Search (same row, matching Corpus page) */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="w-44">
-          <CreatableSelect
-            value={typeFilter}
-            onChange={setTypeFilter}
-            options={typeOptions}
-            placeholder="Alle typen"
-          />
-        </div>
-
-        <div className="relative max-w-sm">
+      {/* Filter bar (matching Corpus page layout) */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+        <div className="relative w-full sm:w-56">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
           <Input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Zoek in lijst..."
+            placeholder="Zoek in kamerstukken..."
             className="pl-9"
+          />
+        </div>
+        <div className="w-full sm:w-52">
+          <MultiSelect
+            value={enabledTypes}
+            onChange={handleTypesChange}
+            options={parlementairTypeOptions}
+            allLabel="Alle typen"
           />
         </div>
       </div>
@@ -117,7 +143,7 @@ export function ParlementairPage() {
       {/* Content */}
       {isLoading ? (
         <LoadingSpinner className="py-16" />
-      ) : !imports || imports.length === 0 ? (
+      ) : !filteredImports || filteredImports.length === 0 ? (
         <EmptyState
           title="Geen kamerstukken gevonden"
           description={
@@ -128,7 +154,7 @@ export function ParlementairPage() {
         />
       ) : (
         <div className="space-y-3">
-          {imports.map((item) => (
+          {filteredImports.map((item) => (
             <ParlementairReviewCard
               key={item.id}
               item={item}

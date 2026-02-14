@@ -5,9 +5,10 @@ import { exportNodesUrl, exportEdgesUrl, exportCorpusUrl, exportArchimateUrl } f
 
 interface ExportButtonProps {
   nodeType?: string;
+  hideLabel?: boolean;
 }
 
-export function ExportButton({ nodeType }: ExportButtonProps) {
+export function ExportButton({ nodeType, hideLabel }: ExportButtonProps) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -30,12 +31,11 @@ export function ExportButton({ nodeType }: ExportButtonProps) {
     <div className="relative" ref={menuRef}>
       <Button
         variant="secondary"
-        size="sm"
         onClick={() => setOpen(!open)}
         icon={<Download className="h-4 w-4" />}
       >
-        Exporteren
-        <ChevronDown className="h-3 w-3 ml-1" />
+        <span className={hideLabel ? 'hidden sm:inline' : undefined}>Exporteren</span>
+        <ChevronDown className={`h-3 w-3 ${hideLabel ? 'sm:ml-1' : 'ml-1'}`} />
       </Button>
 
       {open && (
