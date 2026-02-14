@@ -18,7 +18,7 @@ export function useNotifications(personId: string | undefined, unreadOnly = fals
     queryKey: ['notifications', personId, unreadOnly],
     queryFn: () => getNotifications(personId!, unreadOnly),
     enabled: !!personId,
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
     refetchIntervalInBackground: true,
   });
 }
