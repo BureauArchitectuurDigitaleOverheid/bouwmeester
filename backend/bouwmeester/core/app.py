@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from starlette.middleware.gzip import GZipMiddleware
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import async_session, close_db, init_db
@@ -106,6 +107,9 @@ def create_app() -> FastAPI:
     # unhandled-exception 500s from inner layers) carry the correct
     # Access-Control-Allow-Origin header.  Without this, the browser
     # blocks the response and JS only sees "Failed to fetch".
+
+    # GZip is the innermost middleware — compresses responses ≥500 bytes.
+    app.add_middleware(GZipMiddleware, minimum_size=500)
 
     app.add_middleware(
         CSRFMiddleware,

@@ -110,9 +110,12 @@ class MentionService:
         if not mentions:
             return []
 
+        # Batch-fetch titles by source type to avoid N+1 queries
+        titles = await self._get_source_titles_batch(mentions)
+
         refs: list[MentionReference] = []
         for m in mentions:
-            title = await self._get_source_title(m.source_type, m.source_id)
+            title = titles.get((m.source_type, m.source_id))
             if title:
                 refs.append(
                     MentionReference(
@@ -123,24 +126,32 @@ class MentionService:
                 )
         return refs
 
-    async def _get_source_title(self, source_type: str, source_id: UUID) -> str | None:
-        if source_type == "node":
-            node = await self.session.get(CorpusNode, source_id)
-            return node.title if node else None
-        elif source_type == "task":
-            task = await self.session.get(Task, source_id)
-            return task.title if task else None
-        elif source_type == "organisatie":
-            from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+    async def _get_source_titles_batch(
+        self, mentions: list[Mention]
+    ) -> dict[tuple[str, UUID], str]:
+        """Fetch titles for all mentions in batched IN-clause queries."""
+        # Group source IDs by type
+        ids_by_type: dict[str, list[UUID]] = {}
+        for m in mentions:
+            ids_by_type.setdefault(m.source_type, []).append(m.source_id)
 
-            org = await self.session.get(OrganisatieEenheid, source_id)
-            return org.naam if org else None
-        elif source_type == "notification":
-            from bouwmeester.models.notification import Notification
+        titles: dict[tuple[str, UUID], str] = {}
 
-            notif = await self.session.get(Notification, source_id)
-            return notif.title if notif else None
-        return None
+        if "node" in ids_by_type:
+            stmt = select(CorpusNode.id, CorpusNode.title).where(
+                CorpusNode.id.in_(ids_by_type["node"])
+            )
+            for row in (await self.session.execute(stmt)).all():
+                titles[("node", row[0])] = row[1]
+
+        if "task" in ids_by_type:
+            stmt = select(Task.id, Task.title).where(
+                Task.id.in_(ids_by_type["task"])
+            )
+            for row in (await self.session.execute(stmt)).all():
+                titles[("task", row[0])] = row[1]
+
+        return titles
 
     async def search_mentionables(
         self, query: str, types: list[str] | None = None, limit: int = 10
