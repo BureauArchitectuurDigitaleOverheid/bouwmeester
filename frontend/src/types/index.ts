@@ -59,6 +59,21 @@ export const NODE_TYPE_HEX_COLORS: Record<NodeType, string> = {
   [NodeType.OVERIG]: '#9ca3af',
 };
 
+export const NODE_TYPE_BG_COLORS: Record<NodeType, string> = {
+  [NodeType.DOSSIER]: '#EFF6FF',
+  [NodeType.DOEL]: '#ECFDF5',
+  [NodeType.INSTRUMENT]: '#F5F3FF',
+  [NodeType.BELEIDSKADER]: '#FFFBEB',
+  [NodeType.MAATREGEL]: '#ECFEFF',
+  [NodeType.POLITIEKE_INPUT]: '#FFF1F2',
+  [NodeType.PROBLEEM]: '#FEF2F2',
+  [NodeType.EFFECT]: '#ECFDF5',
+  [NodeType.BELEIDSOPTIE]: '#EEF2FF',
+  [NodeType.BRON]: '#FFF7ED',
+  [NodeType.NOTITIE]: '#F8FAFC',
+  [NodeType.OVERIG]: '#F9FAFB',
+};
+
 export const BRON_TYPE_LABELS: Record<string, string> = {
   rapport: 'Rapport',
   onderzoek: 'Onderzoek',
@@ -364,6 +379,19 @@ export const ORGANISATIE_TYPE_LABELS: Record<string, string> = {
   afdeling: 'Afdeling',
   cluster: 'Cluster',
   team: 'Team',
+};
+
+export type BadgeVariant = 'blue' | 'green' | 'purple' | 'amber' | 'cyan' | 'rose' | 'slate' | 'gray' | 'red' | 'orange';
+
+export const ORGANISATIE_TYPE_BADGE_COLORS: Record<string, BadgeVariant> = {
+  ministerie: 'blue',
+  directoraat_generaal: 'purple',
+  directie: 'amber',
+  dienst: 'gray',
+  bureau: 'gray',
+  cluster: 'gray',
+  afdeling: 'cyan',
+  team: 'green',
 };
 
 export const ORGANISATIE_TYPE_OPTIONS: { value: string; label: string }[] = [

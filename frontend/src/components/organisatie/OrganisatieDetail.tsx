@@ -6,7 +6,7 @@ import { Badge } from '@/components/common/Badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { useOrganisatieEenheid, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
-import { ORGANISATIE_TYPE_LABELS, formatFunctie } from '@/types';
+import { ORGANISATIE_TYPE_LABELS, ORGANISATIE_TYPE_BADGE_COLORS, formatFunctie } from '@/types';
 import type { Person, OrganisatieEenheidPersonenGroup } from '@/types';
 
 /** Org types where the manager role is labeled "Coördinator" instead of "Manager". */
@@ -18,27 +18,14 @@ function managerLabelForType(orgType: string, functie?: string | null): string {
   return COORDINATOR_TYPES.has(orgType) ? 'Coördinator' : 'Manager';
 }
 
-const TYPE_BADGE_COLORS: Record<string, 'blue' | 'purple' | 'amber' | 'cyan' | 'green' | 'gray'> = {
-  ministerie: 'blue',
-  directoraat_generaal: 'purple',
-  directie: 'amber',
-  dienst: 'gray',
-  bureau: 'gray',
-  cluster: 'gray',
-  afdeling: 'cyan',
-  team: 'green',
+// Tailwind bg classes for each badge color (green uses emerald in our design system)
+const BADGE_BG_CLASS: Record<string, string> = {
+  blue: 'bg-blue-50/40', purple: 'bg-purple-50/40', amber: 'bg-amber-50/40',
+  cyan: 'bg-cyan-50/40', green: 'bg-emerald-50/40', gray: 'bg-gray-50/40',
 };
-
-const TYPE_BG_COLORS: Record<string, string> = {
-  ministerie: 'bg-blue-50/40',
-  directoraat_generaal: 'bg-purple-50/40',
-  directie: 'bg-amber-50/40',
-  dienst: 'bg-gray-50/40',
-  bureau: 'bg-gray-50/40',
-  cluster: 'bg-gray-50/40',
-  afdeling: 'bg-cyan-50/40',
-  team: 'bg-emerald-50/40',
-};
+function orgTypeBg(type: string): string {
+  return BADGE_BG_CLASS[ORGANISATIE_TYPE_BADGE_COLORS[type] ?? 'gray'] ?? '';
+}
 
 function countAllPersonen(group: OrganisatieEenheidPersonenGroup): number {
   return group.personen.length + group.children.reduce((sum, child) => sum + countAllPersonen(child), 0);
@@ -153,7 +140,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
     <div
       className={clsx(
         'border rounded-lg p-3 space-y-2 transition-all duration-150',
-        TYPE_BG_COLORS[group.eenheid.type] || '',
+        orgTypeBg(group.eenheid.type),
         dragOver
           ? 'border-primary-400 ring-2 ring-primary-200'
           : 'border-border',
@@ -173,7 +160,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
           <ChevronRight className="h-3.5 w-3.5 text-text-secondary shrink-0" />
         )}
         <Badge
-          variant={TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}
+          variant={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}
           className="text-xs px-2 py-0.5"
         >
           {ORGANISATIE_TYPE_LABELS[group.eenheid.type] || group.eenheid.type}
@@ -274,7 +261,7 @@ export function OrganisatieDetail({
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Badge
-              variant={TYPE_BADGE_COLORS[eenheid.type] || 'gray'}
+              variant={ORGANISATIE_TYPE_BADGE_COLORS[eenheid.type] || 'gray'}
               dot
             >
               {ORGANISATIE_TYPE_LABELS[eenheid.type] || eenheid.type}
