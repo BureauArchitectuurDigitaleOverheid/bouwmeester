@@ -32,6 +32,34 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return Notification.requestPermission();
 }
 
+// --- Notification sound (synthesized chime, no audio file needed) ---
+
+function playNotificationChime(): void {
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+
+    // Two-tone chime: C6 → E6, gentle and short
+    const frequencies = [1047, 1319];
+    for (let i = 0; i < frequencies.length; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = frequencies[i];
+      gain.gain.setValueAtTime(0, now + i * 0.12);
+      gain.gain.linearRampToValueAtTime(0.15, now + i * 0.12 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.3);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + i * 0.12);
+      osc.stop(now + i * 0.12 + 0.3);
+    }
+    // Clean up context after sounds finish
+    setTimeout(() => ctx.close(), 600);
+  } catch {
+    // AudioContext unavailable — silently skip
+  }
+}
+
 // --- Hook ---
 
 export function useBrowserNotifications(personId: string | undefined): void {
@@ -78,6 +106,9 @@ export function useBrowserNotifications(personId: string | undefined): void {
     ) {
       return;
     }
+
+    // Play a single chime for the batch of new notifications
+    playNotificationChime();
 
     // Fire browser notifications for genuinely new unread items
     for (const id of newIds) {
