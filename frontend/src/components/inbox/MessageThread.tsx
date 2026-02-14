@@ -45,7 +45,7 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
             {!isCurrentUser && message.sender_name && (
               <p className="text-xs font-medium mb-1 opacity-70">{message.sender_name}</p>
             )}
-            <div className={`text-sm ${isCurrentUser ? '[&_*]:text-white [&_button]:bg-white/20 [&_button]:text-white [&_a]:text-white [&_a]:underline [&_a]:decoration-white/60 [&_a]:hover:decoration-white' : ''}`}>
+            <div className={`text-sm ${isCurrentUser ? '[&_*]:text-white [&_button]:bg-white/20 [&_button]:text-white [&_a]:text-white [&_a]:underline [&_a]:decoration-white/60 [&_a:hover]:!text-white [&_a:hover]:decoration-white' : ''}`}>
               <RichTextDisplay content={message.message} fallback="" />
             </div>
             <p className={`text-[10px] mt-1 ${isCurrentUser ? 'text-white/60' : 'text-text-secondary'}`}>
