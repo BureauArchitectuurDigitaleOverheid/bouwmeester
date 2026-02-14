@@ -196,8 +196,33 @@ class ParlementairImportService:
                     )
                     extraction = None
 
-            matched_tag_names = extraction.matched_tags if extraction else []
-            samenvatting = extraction.samenvatting if extraction else None
+            if extraction is None:
+                # LLM required but unavailable/failed — queue for later
+                await self.import_repo.create(
+                    type=strategy.item_type,
+                    zaak_id=item.zaak_id,
+                    zaak_nummer=item.zaak_nummer,
+                    titel=item.titel,
+                    onderwerp=item.onderwerp,
+                    bron=item.bron,
+                    datum=item.datum,
+                    status="pending",
+                    indieners=item.indieners,
+                    document_tekst=item.document_tekst,
+                    document_url=item.document_url,
+                    deadline=item.deadline,
+                    ministerie=item.ministerie,
+                    extra_data=item.extra_data,
+                )
+                logger.warning(
+                    "%s %s queued as pending: LLM extraction failed",
+                    strategy.item_type,
+                    item.zaak_nummer,
+                )
+                return False
+
+            matched_tag_names = extraction.matched_tags
+            samenvatting = extraction.samenvatting
 
         # Step 3: Find matching corpus nodes via tag overlap
         matched_nodes = await self._find_matching_nodes(matched_tag_names)
@@ -671,6 +696,7 @@ class ParlementairImportService:
 
         matched_count = 0
         out_of_scope_count = 0
+        skipped_count = 0
 
         for item in items:
             try:
@@ -683,8 +709,11 @@ class ParlementairImportService:
                 )
             except Exception:
                 logger.exception(
-                    "LLM extraction failed for %s %s", item.type, item.zaak_nummer
+                    "LLM extraction failed for %s %s",
+                    item.type,
+                    item.zaak_nummer,
                 )
+                skipped_count += 1
                 continue
 
             matched_tag_names = extraction.matched_tags if extraction else []
@@ -694,15 +723,6 @@ class ParlementairImportService:
             item.matched_tags = matched_tag_names
             if samenvatting:
                 item.llm_samenvatting = samenvatting
-
-            # Tag the corpus node
-            if item.corpus_node_id and matched_tag_names:
-                tag_map = await self.tag_repo.get_by_names(matched_tag_names)
-                for tag_name, tag in tag_map.items():
-                    try:
-                        await self.tag_repo.add_tag_to_node(item.corpus_node_id, tag.id)
-                    except SQLAlchemyError:
-                        pass  # duplicate tag, ignore
 
             # Find matching nodes
             matched_nodes = await self._find_matching_nodes(matched_tag_names)
@@ -722,6 +742,15 @@ class ParlementairImportService:
                 )
                 continue
 
+            # Tag the corpus node (only for items that matched)
+            if item.corpus_node_id and matched_tag_names:
+                tag_map = await self.tag_repo.get_by_names(matched_tag_names)
+                for tag_name, tag in tag_map.items():
+                    try:
+                        await self.tag_repo.add_tag_to_node(item.corpus_node_id, tag.id)
+                    except SQLAlchemyError:
+                        pass  # duplicate tag, ignore
+
             # Create suggested edges
             for match in matched_nodes:
                 target_node = match["node"]
@@ -736,7 +765,8 @@ class ParlementairImportService:
                     )
                 except SQLAlchemyError:
                     logger.exception(
-                        "Error creating suggested edge to node %s", target_node.id
+                        "Error creating suggested edge to node %s",
+                        target_node.id,
                     )
 
             matched_count += 1
@@ -754,6 +784,7 @@ class ParlementairImportService:
             "total": len(items),
             "matched": matched_count,
             "out_of_scope": out_of_scope_count,
+            "skipped": skipped_count,
         }
 
     async def _detach_corpus_node(
