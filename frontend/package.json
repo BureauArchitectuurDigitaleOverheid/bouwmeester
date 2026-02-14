@@ -36,6 +36,7 @@
     "reactflow": "^11.11.4",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.4.0",
+    "vite-plugin-pwa": "^1.2.0",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

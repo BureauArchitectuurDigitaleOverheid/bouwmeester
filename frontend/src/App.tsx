@@ -23,6 +23,7 @@ import { DocsPage } from '@/pages/DocsPage';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
+import { ReloadPrompt } from '@/components/common/ReloadPrompt';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -91,6 +92,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
+      <ReloadPrompt />
       <AuthProvider>
         <AuthGate>
           <OnboardingGate>
