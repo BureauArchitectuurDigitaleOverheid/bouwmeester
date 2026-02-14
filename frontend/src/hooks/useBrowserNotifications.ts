@@ -4,6 +4,7 @@ import { richTextToPlain } from '@/utils/richtext';
 import { NOTIFICATION_TYPE_LABELS, titleCase } from '@/types';
 
 const STORAGE_KEY = 'browser-notifications-enabled';
+const SOUND_STORAGE_KEY = 'browser-notifications-sound-enabled';
 
 // --- localStorage helpers ---
 
@@ -23,6 +24,24 @@ export function setBrowserNotificationsEnabled(enabled: boolean): void {
   }
 }
 
+export function isNotificationSoundEnabled(): boolean {
+  try {
+    // Default to true when notifications are enabled
+    const val = localStorage.getItem(SOUND_STORAGE_KEY);
+    return val === null ? true : val === 'true';
+  } catch {
+    return true;
+  }
+}
+
+export function setNotificationSoundEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(SOUND_STORAGE_KEY, String(enabled));
+  } catch {
+    // storage unavailable
+  }
+}
+
 // --- Permission helper ---
 
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
@@ -30,6 +49,34 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   if (Notification.permission === 'granted') return 'granted';
   if (Notification.permission === 'denied') return 'denied';
   return Notification.requestPermission();
+}
+
+// --- Notification sound (synthesized chime, no audio file needed) ---
+
+function playNotificationChime(): void {
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+
+    // Two-tone chime: C6 → E6, gentle and short
+    const frequencies = [1047, 1319];
+    for (let i = 0; i < frequencies.length; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = frequencies[i];
+      gain.gain.setValueAtTime(0, now + i * 0.12);
+      gain.gain.linearRampToValueAtTime(0.15, now + i * 0.12 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.3);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + i * 0.12);
+      osc.stop(now + i * 0.12 + 0.3);
+    }
+    // Clean up context after sounds finish
+    setTimeout(() => ctx.close(), 600);
+  } catch {
+    // AudioContext unavailable — silently skip
+  }
 }
 
 // --- Hook ---
@@ -77,6 +124,11 @@ export function useBrowserNotifications(personId: string | undefined): void {
       Notification.permission !== 'granted'
     ) {
       return;
+    }
+
+    // Play a single chime for the batch of new notifications
+    if (isNotificationSoundEnabled()) {
+      playNotificationChime();
     }
 
     // Fire browser notifications for genuinely new unread items
