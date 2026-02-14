@@ -215,9 +215,7 @@ async def sample_person(db_session: AsyncSession):
     )
     db_session.add(person)
     await db_session.flush()
-    db_session.add(
-        PersonEmail(person_id=person.id, email=email, is_default=True)
-    )
+    db_session.add(PersonEmail(person_id=person.id, email=email, is_default=True))
     await db_session.flush()
     return person
 
@@ -239,9 +237,7 @@ async def second_person(db_session: AsyncSession):
     )
     db_session.add(person)
     await db_session.flush()
-    db_session.add(
-        PersonEmail(person_id=person.id, email=email, is_default=True)
-    )
+    db_session.add(PersonEmail(person_id=person.id, email=email, is_default=True))
     await db_session.flush()
     return person
 
@@ -408,9 +404,7 @@ async def third_person(db_session: AsyncSession):
     )
     db_session.add(person)
     await db_session.flush()
-    db_session.add(
-        PersonEmail(person_id=person.id, email=email, is_default=True)
-    )
+    db_session.add(PersonEmail(person_id=person.id, email=email, is_default=True))
     await db_session.flush()
     return person
 
