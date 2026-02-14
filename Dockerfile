@@ -68,6 +68,18 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Service worker — never cache
+    location = /sw.js {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        try_files $uri =404;
+    }
+
+    # PWA manifest — light caching
+    location = /manifest.webmanifest {
+        add_header Cache-Control "no-cache";
+        try_files $uri =404;
+    }
+
     # Hashed assets — immutable, cache forever
     location /assets/ {
         expires 1y;

@@ -23,6 +23,7 @@ import { DocsPage } from '@/pages/DocsPage';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
+import { ReloadPrompt } from '@/components/common/ReloadPrompt';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -90,6 +91,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <ReloadPrompt />
       <ToastProvider>
       <AuthProvider>
         <AuthGate>
