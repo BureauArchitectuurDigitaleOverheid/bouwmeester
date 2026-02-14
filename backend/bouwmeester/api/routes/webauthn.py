@@ -5,11 +5,10 @@ from __future__ import annotations
 import json as _json
 import logging
 import time
-from collections import OrderedDict
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import delete, select
 from sqlalchemy import func as sa_func
 from sqlalchemy.exc import IntegrityError
@@ -32,6 +31,7 @@ from webauthn.helpers.structs import (
 from bouwmeester.core.auth import CurrentUser
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.core.database import get_db
+from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.core.whitelist import is_email_allowed
 from bouwmeester.models.person import Person
 from bouwmeester.models.webauthn_credential import WebAuthnCredential
@@ -61,58 +61,8 @@ def _init_webauthn_session(session: dict, person: Person) -> None:
     session["_rotate"] = True
 
 
-# ---------------------------------------------------------------------------
-# Rate limiter for authentication endpoints (unauthenticated).
-# NOTE: In-process store — with multiple workers each has its own state,
-# so effective limit is N × _RATE_LIMIT_MAX per window. Acceptable for
-# this use case; switch to Redis if stricter limits are needed.
-# ---------------------------------------------------------------------------
-_RATE_LIMIT_WINDOW = 60
-_RATE_LIMIT_MAX = 20
-_RATE_LIMIT_MAX_KEYS = 10_000
-_rate_limit_store: OrderedDict[str, list[float]] = OrderedDict()
-
-
-def _get_client_ip(request: Request) -> str:
-    """Return the client IP from the direct TCP connection.
-
-    X-Forwarded-For is intentionally NOT used because it is trivially
-    spoofable by any client.  The direct ``request.client.host`` is set
-    by the ASGI server from the TCP socket and cannot be forged.
-
-    When running behind a trusted reverse proxy (e.g. nginx, Traefik),
-    the proxy's IP is what we see here — which means all clients behind
-    the same proxy share a rate-limit bucket.  This is acceptable:
-    the limit is lenient (20/min) and a stricter per-user limit would
-    require Redis.
-    """
-    return request.client.host if request.client else "unknown"
-
-
-def _check_rate_limit(request: Request) -> None:
-    client_ip = _get_client_ip(request)
-    now = time.monotonic()
-    window_start = now - _RATE_LIMIT_WINDOW
-
-    if client_ip not in _rate_limit_store:
-        _rate_limit_store[client_ip] = []
-
-    timestamps = _rate_limit_store[client_ip]
-    # In-place modification avoids race conditions between async coroutines
-    # that could overwrite each other's appended timestamps.
-    timestamps[:] = [t for t in timestamps if t > window_start]
-
-    if len(timestamps) >= _RATE_LIMIT_MAX:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many requests, try again later",
-        )
-
-    timestamps.append(now)
-    _rate_limit_store.move_to_end(client_ip)
-
-    while len(_rate_limit_store) > _RATE_LIMIT_MAX_KEYS:
-        _rate_limit_store.popitem(last=False)
+# Rate limiter for unauthenticated WebAuthn endpoints.
+_rate_limiter = InMemoryRateLimiter(window=60, max_requests=20)
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +202,7 @@ async def register_verify(
         credential_id=verification.credential_id,
         public_key=verification.credential_public_key,
         sign_count=verification.sign_count,
-        label=body.label[:100],
+        label=body.label,
     )
     db.add(credential)
     try:
@@ -279,7 +229,7 @@ async def authenticate_options(
     settings: Settings = Depends(get_settings),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    _check_rate_limit(request)
+    _rate_limiter.check(request)
 
     # Verify the person exists before checking credentials to prevent
     # enumeration of valid person IDs (both cases return the same 400).
@@ -334,7 +284,7 @@ async def authenticate_verify(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    _check_rate_limit(request)
+    _rate_limiter.check(request)
 
     challenge_hex = request.session.pop("webauthn_auth_challenge", None)
     expected_person_id = request.session.pop("webauthn_auth_person_id", None)

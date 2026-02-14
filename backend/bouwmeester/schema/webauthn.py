@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WebAuthnCredentialResponse(BaseModel):
@@ -21,7 +21,7 @@ class RegisterVerifyRequest(BaseModel):
     """Browser's attestation response after navigator.credentials.create()."""
 
     credential: str  # JSON string from the browser
-    label: str = "Biometrie"
+    label: str = Field("Biometrie", max_length=100)
 
 
 class AuthenticateOptionsRequest(BaseModel):

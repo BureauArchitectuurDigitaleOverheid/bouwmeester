@@ -9,10 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.routes.webauthn import (
     _MAX_CREDENTIALS_PER_USER,
-    _RATE_LIMIT_MAX,
-    _get_client_ip,
-    _rate_limit_store,
+    _rate_limiter,
 )
+from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.models.person import Person
 from bouwmeester.models.webauthn_credential import WebAuthnCredential
 
@@ -72,19 +71,9 @@ async def webauthn_credential(db_session: AsyncSession, webauthn_person):
 @pytest.fixture(autouse=True)
 def _clear_rate_limit_store():
     """Clear the rate limit store before and after each test."""
-    _rate_limit_store.clear()
+    _rate_limiter.clear()
     yield
-    _rate_limit_store.clear()
-
-
-def _set_webauthn_session(client, person):
-    """Helper to inject a WebAuthn session into the test client's cookies.
-
-    Uses the in-memory session store from the test fixtures by calling
-    auth/status with a session pre-populated via a helper endpoint.
-    """
-    # We can't easily set session data directly, so we test via the API.
-    pass
+    _rate_limiter.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -96,19 +85,19 @@ class TestGetClientIp:
     def test_uses_client_host(self):
         request = MagicMock()
         request.client.host = "192.168.1.1"
-        assert _get_client_ip(request) == "192.168.1.1"
+        assert InMemoryRateLimiter.get_client_ip(request) == "192.168.1.1"
 
     def test_ignores_forwarded_for_header(self):
         """X-Forwarded-For is intentionally ignored to prevent spoofing."""
         request = MagicMock()
         request.headers = {"x-forwarded-for": "1.2.3.4, 10.0.0.1"}
         request.client.host = "10.0.0.1"
-        assert _get_client_ip(request) == "10.0.0.1"
+        assert InMemoryRateLimiter.get_client_ip(request) == "10.0.0.1"
 
     def test_no_client(self):
         request = MagicMock()
         request.client = None
-        assert _get_client_ip(request) == "unknown"
+        assert InMemoryRateLimiter.get_client_ip(request) == "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -122,19 +111,9 @@ async def test_list_credentials_unauthenticated(client):
     assert resp.status_code == 401
 
 
-async def test_list_credentials_via_webauthn_session(
-    client, db_session, webauthn_person
-):
-    """Authenticated via WebAuthn session with no credentials gets empty list."""
-    # Authenticate via a WebAuthn session by calling authenticate/options +
-    # verifying.  Since we can't do the full crypto flow in tests, we inject
-    # a WebAuthn session by calling an endpoint that populates the session.
-    # The simplest approach: call authenticate/options (stores session data),
-    # then manually set session fields via a follow-up request cycle.
-    #
-    # In practice, CurrentUser requires a valid auth method.  Without OIDC
-    # the only way to get an authenticated session is WebAuthn — but that
-    # needs the full crypto handshake.  So we just verify auth is enforced.
+async def test_list_credentials_requires_auth(client, db_session, webauthn_person):
+    """Auth is enforced even when a person exists — full WebAuthn handshake
+    required but not available in unit tests, so we just verify 401."""
     resp = await client.get("/api/webauthn/credentials")
     assert resp.status_code == 401
 
@@ -275,7 +254,7 @@ async def test_authenticate_verify_person_id_mismatch(
 
 async def test_rate_limit_authenticate_options(client, webauthn_person):
     """Rate limiter blocks after too many requests."""
-    for i in range(_RATE_LIMIT_MAX):
+    for i in range(_rate_limiter.max_requests):
         resp = await client.post(
             "/api/webauthn/authenticate/options",
             json={"person_id": str(webauthn_person.id)},
@@ -293,7 +272,7 @@ async def test_rate_limit_authenticate_options(client, webauthn_person):
 
 async def test_rate_limit_authenticate_verify(client, webauthn_person):
     """Rate limiter also applies to the verify endpoint."""
-    for _ in range(_RATE_LIMIT_MAX):
+    for _ in range(_rate_limiter.max_requests):
         await client.post(
             "/api/webauthn/authenticate/verify",
             json={
@@ -452,6 +431,35 @@ def test_is_webauthn_session_false_empty():
     from bouwmeester.core.auth import is_webauthn_session
 
     assert is_webauthn_session({}) is False
+
+
+# ---------------------------------------------------------------------------
+# is_webauthn_session_expired predicate
+# ---------------------------------------------------------------------------
+
+
+def test_is_webauthn_session_expired_valid():
+    import time
+
+    from bouwmeester.core.auth import is_webauthn_session_expired
+
+    session = {"webauthn_created_at": time.time() - 10}
+    assert is_webauthn_session_expired(session, 86400) is False
+
+
+def test_is_webauthn_session_expired_past_ttl():
+    import time
+
+    from bouwmeester.core.auth import is_webauthn_session_expired
+
+    session = {"webauthn_created_at": time.time() - 90000}
+    assert is_webauthn_session_expired(session, 86400) is True
+
+
+def test_is_webauthn_session_expired_no_created_at():
+    from bouwmeester.core.auth import is_webauthn_session_expired
+
+    assert is_webauthn_session_expired({}, 86400) is True
 
 
 # ---------------------------------------------------------------------------

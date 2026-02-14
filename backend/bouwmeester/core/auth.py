@@ -686,6 +686,17 @@ def is_webauthn_session(session: dict) -> bool:
     return bool(session.get("webauthn_session") and session.get("person_db_id"))
 
 
+def is_webauthn_session_expired(session: dict, ttl_seconds: int) -> bool:
+    """Return True if the WebAuthn session has exceeded the given TTL.
+
+    Should only be called after :func:`is_webauthn_session` returns True.
+    """
+    created_at = session.get("webauthn_created_at")
+    if not created_at:
+        return True
+    return (time.time() - created_at) > ttl_seconds
+
+
 async def _person_from_webauthn_session(
     request: Request,
     db: AsyncSession,

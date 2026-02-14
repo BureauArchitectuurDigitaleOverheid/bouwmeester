@@ -291,9 +291,12 @@ class AuthRequiredMiddleware:
         #    - email whitelist
         #    - WebAuthn-specific session TTL (shorter than the cookie TTL)
         #    - person is still active (deactivation may post-date session)
-        from bouwmeester.core.auth import is_webauthn_session
+        from bouwmeester.core.auth import (
+            is_webauthn_session,
+            is_webauthn_session_expired,
+        )
 
-        if is_webauthn_session(session):
+        if is_webauthn_session(session) and self.settings:
             from uuid import UUID
 
             from bouwmeester.core.database import async_session
@@ -311,9 +314,8 @@ class AuthRequiredMiddleware:
                 return
 
             # Enforce WebAuthn-specific session TTL.
-            created_at = session.get("webauthn_created_at")
             ttl = self.settings.WEBAUTHN_SESSION_TTL_SECONDS
-            if not created_at or (time.time() - created_at) > ttl:
+            if is_webauthn_session_expired(session, ttl):
                 await _deny(
                     session,
                     send,

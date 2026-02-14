@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import OrderedDict
 from datetime import date
 from urllib.parse import urlencode
 from uuid import UUID
@@ -20,11 +19,13 @@ from bouwmeester.core.auth import (
     get_oauth,
     get_or_create_person,
     is_webauthn_session,
+    is_webauthn_session_expired,
     revoke_tokens,
     validate_session_token,
 )
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.core.database import get_db
+from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.core.whitelist import is_email_allowed
 from bouwmeester.models.access_request import AccessRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
@@ -45,51 +46,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# ---------------------------------------------------------------------------
-# In-memory rate limiter for auth endpoints (login/callback/logout only)
-# ---------------------------------------------------------------------------
-
-_RATE_LIMIT_WINDOW = 60  # seconds
-_RATE_LIMIT_MAX = 30  # requests per window per IP
-_RATE_LIMIT_MAX_KEYS = 10_000  # max tracked IPs (LRU eviction)
-_rate_limit_store: OrderedDict[str, list[float]] = OrderedDict()
-
-
-def _get_client_ip(request: Request) -> str:
-    """Extract the client IP from the ASGI connection.
-
-    We intentionally do NOT trust X-Forwarded-For here because any client can
-    spoof that header.  The reverse proxy (nginx / k8s ingress) should be
-    configured to set the real remote address on the ASGI connection instead
-    (e.g. uvicorn ``--proxy-headers`` with ``--forwarded-allow-ips``).
-    """
-    return request.client.host if request.client else "unknown"
-
-
-def _check_rate_limit(request: Request) -> None:
-    """Raise 429 if the client IP has exceeded the rate limit."""
-    client_ip = _get_client_ip(request)
-    now = time.monotonic()
-    window_start = now - _RATE_LIMIT_WINDOW
-
-    # Prune old entries for this IP.
-    timestamps = _rate_limit_store.get(client_ip, [])
-    pruned = [t for t in timestamps if t > window_start]
-
-    if len(pruned) >= _RATE_LIMIT_MAX:
-        _rate_limit_store[client_ip] = pruned
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many requests, try again later",
-        )
-
-    pruned.append(now)
-    _rate_limit_store[client_ip] = pruned
-    _rate_limit_store.move_to_end(client_ip)
-
-    # Evict oldest entries if we exceed the max tracked keys.
-    while len(_rate_limit_store) > _RATE_LIMIT_MAX_KEYS:
-        _rate_limit_store.popitem(last=False)
+# Rate limiter for auth endpoints (login/callback/logout).
+_rate_limiter = InMemoryRateLimiter(window=60, max_requests=30)
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +61,7 @@ async def login(
     settings: Settings = Depends(get_settings),
 ) -> RedirectResponse:
     """Redirect the user to the OIDC provider login page."""
-    _check_rate_limit(request)
+    _rate_limiter.check(request)
     oauth = get_oauth(settings)
     if oauth is None:
         raise HTTPException(
@@ -132,7 +90,7 @@ async def callback(
     Exchanges the authorization code for tokens, stores them in the
     server-side session, and redirects the user to the frontend.
     """
-    _check_rate_limit(request)
+    _rate_limiter.check(request)
     oauth = get_oauth(settings)
     if oauth is None:
         raise HTTPException(
@@ -179,7 +137,7 @@ async def logout(
     settings: Settings = Depends(get_settings),
 ) -> RedirectResponse:
     """Clear local session state and redirect to the OIDC end-session endpoint."""
-    _check_rate_limit(request)
+    _rate_limiter.check(request)
     id_token = request.session.get("id_token")
     access_token = request.session.get("access_token")
     refresh_token = request.session.get("refresh_token")
@@ -253,9 +211,8 @@ async def auth_status(
     # public prefix and skips the auth middleware entirely.
     webauthn_session = False
     if is_webauthn_session(request.session):
-        created_at = request.session.get("webauthn_created_at")
         ttl = settings.WEBAUTHN_SESSION_TTL_SECONDS
-        if not created_at or (time.time() - created_at) > ttl:
+        if is_webauthn_session_expired(request.session, ttl):
             request.session.clear()
         else:
             try:
@@ -439,34 +396,8 @@ async def complete_onboarding(
 # POST /request-access -- submit an access request (public, rate-limited)
 # ---------------------------------------------------------------------------
 
-# Separate rate limiter for access requests (stricter)
-_ACCESS_REQUEST_RATE_LIMIT_WINDOW = 300  # 5 minutes
-_ACCESS_REQUEST_RATE_LIMIT_MAX = 5  # requests per window per IP
-_access_request_rate_store: OrderedDict[str, list[float]] = OrderedDict()
-
-
-def _check_access_request_rate_limit(request: Request) -> None:
-    """Raise 429 if the client IP has exceeded the access request rate limit."""
-    client_ip = _get_client_ip(request)
-    now = time.monotonic()
-    window_start = now - _ACCESS_REQUEST_RATE_LIMIT_WINDOW
-
-    timestamps = _access_request_rate_store.get(client_ip, [])
-    pruned = [t for t in timestamps if t > window_start]
-
-    if len(pruned) >= _ACCESS_REQUEST_RATE_LIMIT_MAX:
-        _access_request_rate_store[client_ip] = pruned
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Te veel verzoeken, probeer het later opnieuw",
-        )
-
-    pruned.append(now)
-    _access_request_rate_store[client_ip] = pruned
-    _access_request_rate_store.move_to_end(client_ip)
-
-    while len(_access_request_rate_store) > _RATE_LIMIT_MAX_KEYS:
-        _access_request_rate_store.popitem(last=False)
+# Stricter rate limiter for access requests.
+_access_request_rate_limiter = InMemoryRateLimiter(window=300, max_requests=5)
 
 
 @router.post("/request-access", response_model=AccessRequestStatusResponse)
@@ -476,7 +407,7 @@ async def request_access(
     db: AsyncSession = Depends(get_db),
 ) -> AccessRequestStatusResponse:
     """Submit an access request. Public endpoint (no auth required)."""
-    _check_access_request_rate_limit(request)
+    _access_request_rate_limiter.check(request)
 
     email = body.email.strip().lower()
 
