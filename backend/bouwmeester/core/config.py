@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     WEBAUTHN_RP_ID: str = ""
     WEBAUTHN_RP_NAME: str = "Bouwmeester"
     WEBAUTHN_ORIGIN: str = ""
+    WEBAUTHN_SESSION_TTL_SECONDS: int = 86400  # 24 hours (shorter than OIDC's 7 days)
 
     ANTHROPIC_API_KEY: str = ""
     TK_API_BASE_URL: str = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0"

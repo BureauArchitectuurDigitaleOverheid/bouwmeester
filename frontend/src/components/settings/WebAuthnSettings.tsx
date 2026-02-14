@@ -18,7 +18,7 @@ export function WebAuthnSettings() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const { data: credentials, isLoading } = useQuery({
+  const { data: credentials, isLoading, isError: queryError } = useQuery({
     queryKey: ['webauthn-credentials'],
     queryFn: listCredentials,
   });
@@ -90,6 +90,12 @@ export function WebAuthnSettings() {
       {success && (
         <div className="mb-4 rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700">
           {success}
+        </div>
+      )}
+
+      {queryError && (
+        <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+          Credentials konden niet worden opgehaald. Probeer de pagina te vernieuwen.
         </div>
       )}
 

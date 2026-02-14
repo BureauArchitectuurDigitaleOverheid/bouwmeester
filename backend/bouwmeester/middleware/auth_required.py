@@ -61,14 +61,14 @@ def _get_bearer_token(scope: Scope) -> str | None:
     return None
 
 
-async def _deny_whitelist(session: dict, send: Send) -> None:
-    """Clear session and send a 403 whitelist-denied response."""
+async def _deny(session: dict, send: Send, *, status_code: int, detail: str) -> None:
+    """Clear session and send a JSON error response."""
     session.clear()
-    body = json.dumps({"detail": "Access denied — not on whitelist"}).encode("utf-8")
+    body = json.dumps({"detail": detail}).encode("utf-8")
     await send(
         {
             "type": "http.response.start",
-            "status": 403,
+            "status": status_code,
             "headers": [
                 (b"content-type", b"application/json"),
                 (b"content-length", str(len(body)).encode()),
@@ -275,71 +275,74 @@ class AuthRequiredMiddleware:
 
                 email = session.get("person_email", "")
                 if not is_email_allowed(email):
-                    await _deny_whitelist(session, send)
+                    await _deny(
+                        session, send,
+                        status_code=403,
+                        detail="Access denied — not on whitelist",
+                    )
                     return
 
                 scope["_auth_validated"] = True
                 await self.app(scope, receive, send)
                 return
 
-        # 4. WebAuthn-only sessions (no OIDC tokens — session TTL is the
-        #    sole expiry mechanism).  We also verify the person is still
-        #    active since deactivation may have occurred after session
-        #    creation and the 7-day TTL is long.
+        # 4. WebAuthn-only sessions (no OIDC tokens).  We check:
+        #    - email whitelist
+        #    - WebAuthn-specific session TTL (shorter than the cookie TTL)
+        #    - person is still active (deactivation may post-date session)
         from bouwmeester.core.auth import is_webauthn_session
 
         if is_webauthn_session(session):
-            from bouwmeester.core.database import async_session as _async_session
-            from bouwmeester.core.whitelist import is_email_allowed as _wl_check
-            from bouwmeester.models.person import Person as _Person
+            from uuid import UUID
+
+            from bouwmeester.core.database import async_session
+            from bouwmeester.core.whitelist import is_email_allowed
+            from bouwmeester.models.person import Person
 
             email = session.get("person_email", "")
-            if not _wl_check(email):
-                await _deny_whitelist(session, send)
+            if not is_email_allowed(email):
+                await _deny(
+                    session, send,
+                    status_code=403,
+                    detail="Access denied — not on whitelist",
+                )
+                return
+
+            # Enforce WebAuthn-specific session TTL.
+            created_at = session.get("webauthn_created_at")
+            ttl = self.settings.WEBAUTHN_SESSION_TTL_SECONDS
+            if not created_at or (time.time() - created_at) > ttl:
+                await _deny(
+                    session, send,
+                    status_code=401,
+                    detail="Authentication required",
+                )
                 return
 
             # Verify person is still active.
             person_db_id = session.get("person_db_id")
             if person_db_id:
                 try:
-                    from uuid import UUID as _UUID
-
-                    async with _async_session() as _db:
-                        person = await _db.get(_Person, _UUID(person_db_id))
-                        if person is None or not person.is_active:
-                            session.clear()
-                            body = json.dumps(
-                                {"detail": "Authentication required"}
-                            ).encode("utf-8")
-                            await send(
-                                {
-                                    "type": "http.response.start",
-                                    "status": 401,
-                                    "headers": [
-                                        (b"content-type", b"application/json"),
-                                        (b"content-length", str(len(body)).encode()),
-                                    ],
-                                }
+                    async with async_session() as db:
+                        person = await db.get(
+                            Person, UUID(person_db_id),
+                        )
+                        if not person or not person.is_active:
+                            await _deny(
+                                session, send,
+                                status_code=401,
+                                detail="Authentication required",
                             )
-                            await send({"type": "http.response.body", "body": body})
                             return
                 except (ValueError, SQLAlchemyError, OSError):
-                    logger.exception("WebAuthn session person check failed")
-                    session.clear()
-                    body = json.dumps({"detail": "Authentication required"}).encode(
-                        "utf-8"
+                    logger.exception(
+                        "WebAuthn session person check failed",
                     )
-                    await send(
-                        {
-                            "type": "http.response.start",
-                            "status": 401,
-                            "headers": [
-                                (b"content-type", b"application/json"),
-                                (b"content-length", str(len(body)).encode()),
-                            ],
-                        }
+                    await _deny(
+                        session, send,
+                        status_code=401,
+                        detail="Authentication required",
                     )
-                    await send({"type": "http.response.body", "body": body})
                     return
 
             scope["_auth_validated"] = True

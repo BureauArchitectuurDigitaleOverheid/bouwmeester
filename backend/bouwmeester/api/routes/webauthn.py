@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json as json_mod
+import json as _json
 import logging
 import time
 from collections import OrderedDict
@@ -52,6 +52,7 @@ _MAX_CREDENTIALS_PER_USER = 10
 def _init_webauthn_session(session: dict, person: Person) -> None:
     """Populate a cleared session dict for a WebAuthn-only login."""
     session["webauthn_session"] = True
+    session["webauthn_created_at"] = time.time()
     session["person_db_id"] = str(person.id)
     session["person_email"] = person.email or ""
     session["person_name"] = person.naam
@@ -73,11 +74,18 @@ _rate_limit_store: OrderedDict[str, list[float]] = OrderedDict()
 
 
 def _get_client_ip(request: Request) -> str:
-    """Return the real client IP, respecting X-Forwarded-For behind a proxy."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        # First entry is the original client IP.
-        return forwarded.split(",")[0].strip()
+    """Return the client IP from the direct TCP connection.
+
+    X-Forwarded-For is intentionally NOT used because it is trivially
+    spoofable by any client.  The direct ``request.client.host`` is set
+    by the ASGI server from the TCP socket and cannot be forged.
+
+    When running behind a trusted reverse proxy (e.g. nginx, Traefik),
+    the proxy's IP is what we see here — which means all clients behind
+    the same proxy share a rate-limit bucket.  This is acceptable:
+    the limit is lenient (20/min) and a stricter per-user limit would
+    require Redis.
+    """
     return request.client.host if request.client else "unknown"
 
 
@@ -345,7 +353,7 @@ async def authenticate_verify(
     # Extract the credential ID from the browser's assertion response so we
     # can look up the exact credential rather than iterating all of them.
     try:
-        cred_data = json_mod.loads(body.credential)
+        cred_data = _json.loads(body.credential)
         raw_id_b64 = cred_data.get("rawId") or cred_data.get("id")
         if not raw_id_b64:
             raise ValueError("missing rawId/id")
