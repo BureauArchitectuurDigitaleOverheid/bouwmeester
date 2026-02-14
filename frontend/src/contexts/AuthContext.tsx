@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { BASE_URL } from '@/api/client';
-import { clearStoredPersonId, getStoredPersonId, isWebAuthnAvailable } from '@/api/webauthn';
+import { getStoredPersonId, isWebAuthnAvailable } from '@/api/webauthn';
 
 interface AuthPerson {
   sub: string;
@@ -128,9 +128,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    // Clear biometric person ID so the next user on this device doesn't
-    // see a stale biometric login button.
-    clearStoredPersonId();
+    // Intentionally NOT clearing the stored biometric person ID here.
+    // If the user has registered a biometric credential, they should see
+    // the biometric login button after logout. If a different person uses
+    // the device, the biometric auth will simply fail (wrong fingerprint)
+    // and they can use SSO instead.
+
     // Clear cached API responses to prevent data leakage across sessions
     if ('caches' in window) {
       await caches.delete('api-cache').catch(() => {});
