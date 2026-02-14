@@ -69,11 +69,13 @@ export function CorpusPage() {
     [availableEdgeTypes, vocabEdgeLabel],
   );
 
-  const nodeTypeFilterOptions: MultiSelectOption[] = Object.values(NodeType).map((t) => ({
-    value: t,
-    label: nodeLabel(t),
-    color: NODE_TYPE_HEX_COLORS[t],
-  }));
+  const nodeTypeFilterOptions: MultiSelectOption[] = useMemo(() =>
+    Object.values(NodeType).map((t) => ({
+      value: t,
+      label: nodeLabel(t),
+      color: NODE_TYPE_HEX_COLORS[t],
+    })),
+  [nodeLabel]);
 
   const handleNodeTypesChange = useCallback((next: Set<string>) => {
     setEnabledNodeTypes(next as Set<NodeType>);

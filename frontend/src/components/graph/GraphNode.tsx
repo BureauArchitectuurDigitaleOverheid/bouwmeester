@@ -36,6 +36,7 @@ const NODE_TYPE_BG_COLORS: Record<string, string> = {
 
 export interface GraphNodeData {
   label: string;
+  description?: string;
   nodeType: NodeType;
   onClick?: () => void;
 }

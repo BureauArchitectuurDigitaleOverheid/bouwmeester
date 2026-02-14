@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import ReactFlow, {
@@ -8,6 +8,8 @@ import ReactFlow, {
   MarkerType,
   useNodesState,
   useEdgesState,
+  useReactFlow,
+  ReactFlowProvider,
   type Node as RFNode,
   type Edge as RFEdge,
   type Connection,
@@ -27,6 +29,7 @@ import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 import type { CorpusNode, Edge } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
+import { generateBridgeEdges, type BridgeEdge } from '@/utils/bridgeEdges';
 
 // ---- Layout algorithm using dagre ----
 
@@ -84,8 +87,6 @@ function computeLayout(
     g.setNode(node.id, { width: 220, height: 80 });
   }
 
-  // Orient edges for dagre: always point from lower rank (top) to higher rank
-  // (bottom). When both endpoints have the same rank, keep original direction.
   for (const edge of edges) {
     if (nodeIds.has(edge.from_node_id) && nodeIds.has(edge.to_node_id)) {
       const fromRank = NODE_TYPE_RANK[nodeTypeMap.get(edge.from_node_id) ?? ''] ?? 3;
@@ -103,7 +104,6 @@ function computeLayout(
   for (const node of nodes) {
     const n = g.node(node.id);
     if (n) {
-      // dagre returns center positions; React Flow uses top-left
       positions.set(node.id, {
         x: n.x - 110,
         y: n.y - 40,
@@ -146,12 +146,23 @@ interface CorpusGraphProps {
   enabledEdgeTypes: Set<string>;
 }
 
-export function CorpusGraph({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: CorpusGraphProps) {
+// Inner component that uses useReactFlow (must be inside ReactFlowProvider)
+function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: CorpusGraphProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
   const { edgeLabel: vocabEdgeLabel } = useVocabulary();
   const { data, isLoading, error } = useGraphView();
+  const reactFlowInstance = useReactFlow();
+
+  // Stable refs for callbacks used inside the layout memo, so they don't
+  // cause the expensive dagre layout to recompute.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const locationRef = useRef(location);
+  locationRef.current = location;
+  const vocabEdgeLabelRef = useRef(vocabEdgeLabel);
+  vocabEdgeLabelRef.current = vocabEdgeLabel;
 
   const edgeTypeOptions: SelectOption[] = Object.keys(EDGE_TYPE_VOCABULARY).map((key) => ({
     value: key,
@@ -166,9 +177,10 @@ export function CorpusGraph({ enabledNodeTypes, searchQuery, enabledEdgeTypes }:
 
   // ---- Step 1: Compute stable layout with ALL nodes and edges ----
   // Only recomputes when the underlying data changes, NOT when filters change.
-  const { allRfNodes, allRfEdges, positions } = useMemo(() => {
+  // Uses refs for navigate/vocabEdgeLabel to keep deps stable.
+  const { allRfNodes, allRfEdges } = useMemo(() => {
     if (!data?.nodes || !data?.edges) {
-      return { allRfNodes: [], allRfEdges: [], positions: new Map<string, { x: number; y: number }>() };
+      return { allRfNodes: [], allRfEdges: [] };
     }
 
     const positions = computeLayout(data.nodes, data.edges);
@@ -181,8 +193,9 @@ export function CorpusGraph({ enabledNodeTypes, searchQuery, enabledEdgeTypes }:
         position: pos,
         data: {
           label: node.title,
+          description: node.description,
           nodeType: node.node_type,
-          onClick: () => navigate(`/nodes/${node.id}`, { state: { fromCorpus: location.pathname + location.search } }),
+          onClick: () => navigateRef.current(`/nodes/${node.id}`, { state: { fromCorpus: locationRef.current.pathname + locationRef.current.search } }),
         },
       };
     });
@@ -199,7 +212,7 @@ export function CorpusGraph({ enabledNodeTypes, searchQuery, enabledEdgeTypes }:
         id: edge.id,
         source: goesUpward ? edge.to_node_id : edge.from_node_id,
         target: goesUpward ? edge.from_node_id : edge.to_node_id,
-        label: vocabEdgeLabel(edge.edge_type_id),
+        label: vocabEdgeLabelRef.current(edge.edge_type_id),
         type: 'bezier',
         animated: isDashed,
         ...(goesUpward
@@ -225,7 +238,7 @@ export function CorpusGraph({ enabledNodeTypes, searchQuery, enabledEdgeTypes }:
     });
 
     return { allRfNodes, allRfEdges };
-  }, [data, navigate, vocabEdgeLabel]);
+  }, [data]);
 
   // Build a lookup from RF edge id → original edge_type_id for fast filtering
   const edgeTypeById = useMemo(() => {
@@ -236,8 +249,9 @@ export function CorpusGraph({ enabledNodeTypes, searchQuery, enabledEdgeTypes }:
     return map;
   }, [data?.edges]);
 
-  // ---- Step 2: Apply filters as visibility (hide, don't remove) ----
-  // This only toggles `hidden` — positions stay the same.
+  // ---- Step 2: Apply filters as visibility + generate bridge edges ----
+  // Positions stay the same; hidden nodes disappear in place.
+  // Bridge edges connect visible neighbours of hidden nodes.
   const { rfNodes, rfEdges } = useMemo(() => {
     const q = searchQuery.toLowerCase();
 
@@ -247,22 +261,69 @@ export function CorpusGraph({ enabledNodeTypes, searchQuery, enabledEdgeTypes }:
       const nodeData = node.data as GraphNodeData;
       const matchesType = enabledNodeTypes.has(nodeData.nodeType as NodeType);
       const matchesSearch = !q
-        || nodeData.label.toLowerCase().includes(q);
+        || nodeData.label.toLowerCase().includes(q)
+        || nodeData.description?.toLowerCase().includes(q);
       const isVisible = matchesType && matchesSearch;
       if (isVisible) visibleNodeIds.add(node.id);
       return { ...node, hidden: !isVisible };
     });
 
     // Hide edges where either endpoint is hidden or edge type is filtered out
-    const rfEdges = allRfEdges.map((edge) => {
+    const filteredRfEdges = allRfEdges.map((edge) => {
       const edgeType = edgeTypeById.get(edge.id);
       const edgeTypeMatch = edgeType ? enabledEdgeTypes.has(edgeType) : true;
       const bothEndpointsVisible = visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target);
       return { ...edge, hidden: !edgeTypeMatch || !bothEndpointsVisible };
     });
 
-    return { rfNodes, rfEdges };
-  }, [allRfNodes, allRfEdges, edgeTypeById, enabledNodeTypes, enabledEdgeTypes, searchQuery]);
+    // Generate bridge edges for hidden nodes that connect visible nodes
+    if (data?.nodes && data?.edges) {
+      const visibleNodes = data.nodes.filter((n) => visibleNodeIds.has(n.id));
+      const edgeTypeFilteredEdges = data.edges.filter((e) => enabledEdgeTypes.has(e.edge_type_id));
+      const { bridgeEdges } = generateBridgeEdges(data.nodes, edgeTypeFilteredEdges, visibleNodes);
+
+      // Find positions from the allRfNodes (which have stable layout positions)
+      const positionMap = new Map(allRfNodes.map((n) => [n.id, n.position]));
+
+      const rfBridgeEdges: RFEdge[] = bridgeEdges.map((bridge: BridgeEdge) => {
+        const fromPos = positionMap.get(bridge.from_node_id);
+        const toPos = positionMap.get(bridge.to_node_id);
+        const goesUp = fromPos && toPos && fromPos.y > toPos.y;
+        const bMarker = { type: MarkerType.ArrowClosed, width: 14, height: 14, color: '#94a3b8' };
+        return {
+          id: bridge.id,
+          source: goesUp ? bridge.to_node_id : bridge.from_node_id,
+          target: goesUp ? bridge.from_node_id : bridge.to_node_id,
+          label: `via ${bridge.bridgedThrough.length} nodes`,
+          type: 'bezier',
+          animated: false,
+          ...(goesUp ? { markerStart: bMarker } : { markerEnd: bMarker }),
+          style: {
+            stroke: '#94a3b8',
+            strokeWidth: 1.5,
+            strokeDasharray: '3 3',
+            opacity: 0.6,
+          },
+          labelStyle: {
+            fontSize: 9,
+            fill: '#94a3b8',
+            fontStyle: 'italic',
+            fontWeight: 400,
+          },
+          labelBgStyle: {
+            fill: '#ffffff',
+            fillOpacity: 0.9,
+          },
+          labelBgPadding: [4, 2] as [number, number],
+          labelBgBorderRadius: 4,
+        };
+      });
+
+      return { rfNodes, rfEdges: [...filteredRfEdges, ...rfBridgeEdges] };
+    }
+
+    return { rfNodes, rfEdges: filteredRfEdges };
+  }, [allRfNodes, allRfEdges, edgeTypeById, enabledNodeTypes, enabledEdgeTypes, searchQuery, data]);
 
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
@@ -273,6 +334,17 @@ export function CorpusGraph({ enabledNodeTypes, searchQuery, enabledEdgeTypes }:
     setNodes(rfNodes);
     setEdges(rfEdges);
   }, [rfNodes, rfEdges, setNodes, setEdges]);
+
+  // Re-fit viewport when visible nodes change so filtered views don't show
+  // a tiny cluster in a corner of empty space.
+  const fitViewTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    clearTimeout(fitViewTimerRef.current);
+    fitViewTimerRef.current = setTimeout(() => {
+      reactFlowInstance.fitView({ padding: 0.2, maxZoom: 1.5, duration: 300 });
+    }, 50);
+    return () => clearTimeout(fitViewTimerRef.current);
+  }, [rfNodes, rfEdges, reactFlowInstance]);
 
   // Handle connection drag completion
   const handleConnect = useCallback((connection: Connection) => {
@@ -395,5 +467,14 @@ export function CorpusGraph({ enabledNodeTypes, searchQuery, enabledEdgeTypes }:
         />
       </Modal>
     </div>
+  );
+}
+
+// Wrap in ReactFlowProvider so useReactFlow() works
+export function CorpusGraph(props: CorpusGraphProps) {
+  return (
+    <ReactFlowProvider>
+      <CorpusGraphInner {...props} />
+    </ReactFlowProvider>
   );
 }
