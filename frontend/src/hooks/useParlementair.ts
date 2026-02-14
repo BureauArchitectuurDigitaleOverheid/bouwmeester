@@ -3,6 +3,7 @@ import {
   getParlementairItems,
   getParlementairItem,
   triggerParlementairImport,
+  reprocessParlementairItems,
   rejectParlementairItem,
   reopenParlementairItem,
   completeParlementairReview,
@@ -13,7 +14,7 @@ import {
   resetSuggestedEdge,
 } from '@/api/parlementair';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
-import type { ParlementairItemFilters, CompleteReviewData } from '@/api/parlementair';
+import type { ParlementairItemFilters, CompleteReviewData, ReprocessResult } from '@/api/parlementair';
 
 export function useParlementairItems(filters?: ParlementairItemFilters) {
   return useQuery({
@@ -44,6 +45,17 @@ export function useTriggerParlementairImport() {
     mutationFn: () => triggerParlementairImport(),
     errorMessage: 'Fout bij importeren kamerstukken',
     invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
+  });
+}
+
+export function useReprocessParlementairItems(options?: {
+  onSuccess?: (data: ReprocessResult) => void;
+}) {
+  return useMutationWithError({
+    mutationFn: (itemType?: string) => reprocessParlementairItems(itemType),
+    errorMessage: 'Fout bij herverwerken kamerstukken',
+    invalidateKeys: PARLEMENTAIR_INVALIDATE_KEYS,
+    onSuccess: options?.onSuccess,
   });
 }
 

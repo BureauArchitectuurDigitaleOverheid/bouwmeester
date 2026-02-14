@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { RefreshCw, Search } from 'lucide-react';
+import { RefreshCw, RotateCcw, Search } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useToast } from '@/contexts/ToastContext';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { MultiSelect } from '@/components/common/MultiSelect';
@@ -12,6 +13,7 @@ import { ParlementairReviewCard } from '@/components/parlementair/ParlementairRe
 import {
   useParlementairItems,
   useTriggerParlementairImport,
+  useReprocessParlementairItems,
 } from '@/hooks/useParlementair';
 import type { ParlementairItemStatus } from '@/types';
 import {
@@ -19,6 +21,7 @@ import {
   PARLEMENTAIR_TYPE_HEX_COLORS,
   ALL_PARLEMENTAIR_TYPES,
 } from '@/types';
+import type { ReprocessResult } from '@/api/parlementair';
 
 const parlementairTypeOptions: MultiSelectOption[] = ALL_PARLEMENTAIR_TYPES.map((t) => ({
   value: t,
@@ -66,7 +69,26 @@ export function ParlementairPage() {
     allTypesSelected || enabledTypes.has(item.type)
   );
 
+  const { showSuccess, showError } = useToast();
   const triggerImport = useTriggerParlementairImport();
+  const reprocess = useReprocessParlementairItems({
+    onSuccess: (result: ReprocessResult) => {
+      if (result.error === 'no_llm') {
+        showError('Geen LLM-provider geconfigureerd. Herverwerken is niet mogelijk.');
+        return;
+      }
+      if (result.total === 0) {
+        showSuccess('Geen ongekoppelde toezeggingen om te herverwerken.');
+      } else {
+        const parts: string[] = [];
+        if (result.matched > 0) parts.push(`${result.matched} gekoppeld`);
+        if (result.out_of_scope > 0) parts.push(`${result.out_of_scope} buiten scope`);
+        if (result.skipped > 0) parts.push(`${result.skipped} overgeslagen`);
+        showSuccess(`${result.total} toezeggingen herverwerkt: ${parts.join(', ')}.`);
+      }
+    },
+  });
+  const eitherPending = triggerImport.isPending || reprocess.isPending;
 
   return (
     <div className="space-y-6">
@@ -75,18 +97,39 @@ export function ParlementairPage() {
         <p className="text-sm text-text-secondary">
           Beheer geïmporteerde kamerstukken uit de Tweede en Eerste Kamer.
         </p>
-        <Button
-          icon={<RefreshCw className={`h-4 w-4 ${triggerImport.isPending ? 'animate-spin' : ''}`} />}
-          onClick={() => triggerImport.mutate()}
-          disabled={triggerImport.isPending}
-        >
-          <span className="hidden sm:inline">
-            {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
-          </span>
-          <span className="sm:hidden">
-            {triggerImport.isPending ? 'Laden...' : 'Importeren'}
-          </span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            icon={<RotateCcw className={`h-4 w-4 ${reprocess.isPending ? 'animate-spin' : ''}`} />}
+            onClick={() => {
+              if (window.confirm('Alle ongekoppelde toezeggingen herverwerken via LLM-matching? Dit kan even duren.')) {
+                reprocess.mutate();
+              }
+            }}
+            disabled={eitherPending}
+            title="Herverwerk toezeggingen die nog geen koppelingen hebben via LLM-matching"
+          >
+            <span className="hidden sm:inline">
+              {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk toezeggingen'}
+            </span>
+            <span className="sm:hidden">
+              {reprocess.isPending ? 'Laden...' : 'Herverwerk'}
+            </span>
+          </Button>
+          <Button
+            icon={<RefreshCw className={`h-4 w-4 ${triggerImport.isPending ? 'animate-spin' : ''}`} />}
+            onClick={() => triggerImport.mutate()}
+            disabled={eitherPending}
+            title="Haal nieuwe kamerstukken op uit de Tweede en Eerste Kamer"
+          >
+            <span className="hidden sm:inline">
+              {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
+            </span>
+            <span className="sm:hidden">
+              {triggerImport.isPending ? 'Laden...' : 'Importeren'}
+            </span>
+          </Button>
+        </div>
       </div>
 
       {/* Filter bar (matching Corpus page layout) */}
