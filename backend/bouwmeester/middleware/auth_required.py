@@ -285,12 +285,11 @@ class AuthRequiredMiddleware:
         # 4. WebAuthn-only sessions (no OIDC tokens — session TTL is the
         #    sole expiry mechanism).
         from bouwmeester.core.auth import is_webauthn_session
+        from bouwmeester.core.whitelist import is_email_allowed as _wl_check
 
         if is_webauthn_session(session):
-            from bouwmeester.core.whitelist import is_email_allowed
-
             email = session.get("person_email", "")
-            if not is_email_allowed(email):
+            if not _wl_check(email):
                 await _deny_whitelist(session, send)
                 return
 

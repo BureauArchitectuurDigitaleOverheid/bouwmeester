@@ -73,18 +73,21 @@ def _check_rate_limit(request: Request) -> None:
     now = time.monotonic()
     window_start = now - _RATE_LIMIT_WINDOW
 
-    timestamps = _rate_limit_store.get(client_ip, [])
-    pruned = [t for t in timestamps if t > window_start]
+    if client_ip not in _rate_limit_store:
+        _rate_limit_store[client_ip] = []
 
-    if len(pruned) >= _RATE_LIMIT_MAX:
-        _rate_limit_store[client_ip] = pruned
+    timestamps = _rate_limit_store[client_ip]
+    # In-place modification avoids race conditions between async coroutines
+    # that could overwrite each other's appended timestamps.
+    timestamps[:] = [t for t in timestamps if t > window_start]
+
+    if len(timestamps) >= _RATE_LIMIT_MAX:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many requests, try again later",
         )
 
-    pruned.append(now)
-    _rate_limit_store[client_ip] = pruned
+    timestamps.append(now)
     _rate_limit_store.move_to_end(client_ip)
 
     while len(_rate_limit_store) > _RATE_LIMIT_MAX_KEYS:
@@ -238,6 +241,15 @@ async def authenticate_options(
 ) -> dict:
     _check_rate_limit(request)
 
+    # Verify the person exists before checking credentials to prevent
+    # enumeration of valid person IDs (both cases return the same 400).
+    person = await db.get(Person, body.person_id)
+    if not person or not person.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Authenticatie niet beschikbaar",
+        )
+
     # Look up credentials for the given person.
     result = await db.execute(
         select(WebAuthnCredential.credential_id).where(
@@ -249,8 +261,6 @@ async def authenticate_options(
     ]
 
     if not allow_credentials:
-        # Return a generic error to prevent enumerating which users have
-        # registered biometric credentials.
         raise HTTPException(
             status_code=400,
             detail="Authenticatie niet beschikbaar",
@@ -308,8 +318,10 @@ async def authenticate_verify(
         if not raw_id_b64:
             raise ValueError("missing rawId/id")
         credential_id_bytes = base64url_to_bytes(raw_id_b64)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Ongeldig credential formaat")
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail="Ongeldig credential formaat"
+        ) from e
 
     result = await db.execute(
         select(WebAuthnCredential).where(
@@ -332,8 +344,10 @@ async def authenticate_verify(
             credential_current_sign_count=matched_credential.sign_count,
             require_user_verification=True,
         )
-    except Exception:
-        raise HTTPException(status_code=400, detail="Authenticatie-verificatie mislukt")
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail="Authenticatie-verificatie mislukt"
+        ) from e
 
     # Update sign count and last_used_at.
     matched_credential.sign_count = verified.new_sign_count
