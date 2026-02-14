@@ -130,9 +130,9 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               </span>
             )}
             {person.description && person.is_agent && (
-              <span className="flex items-center gap-1 truncate">
-                <Briefcase className="h-3 w-3" />
-                {person.description}
+              <span className={clsx('flex items-start gap-1', !expanded && 'truncate')}>
+                <Briefcase className="h-3 w-3 shrink-0 mt-0.5" />
+                <span className={expanded ? 'whitespace-normal' : 'truncate'}>{person.description}</span>
               </span>
             )}
           </div>
