@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, LayoutGrid, GitFork, Search } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -17,23 +17,44 @@ import { useDebounce } from '@/hooks/useDebounce';
 
 type ViewMode = 'list' | 'graph';
 
+const ALL_NODE_TYPES = Object.values(NodeType);
+
 export function CorpusPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const viewMode: ViewMode = searchParams.get('view') === 'graph' ? 'graph' : 'list';
   const { nodeLabel, edgeLabel: vocabEdgeLabel } = useVocabulary();
 
-  // Shared filter state
-  const [enabledNodeTypes, setEnabledNodeTypes] = useState<Set<NodeType>>(
-    () => new Set(Object.values(NodeType)),
-  );
-  const [searchInput, setSearchInput] = useState('');
+  // Node type filter: derived from URL, omit param when all selected
+  const enabledNodeTypes = useMemo<Set<NodeType>>(() => {
+    const typesParam = searchParams.get('types');
+    if (!typesParam) return new Set(ALL_NODE_TYPES);
+    const parsed = typesParam
+      .split(',')
+      .filter((t) => ALL_NODE_TYPES.includes(t as NodeType)) as NodeType[];
+    return parsed.length > 0 ? new Set(parsed) : new Set(ALL_NODE_TYPES);
+  }, [searchParams]);
+
+  // Search: local state for responsive typing, synced to URL via debounce
+  const [searchInput, setSearchInput] = useState(() => searchParams.get('q') ?? '');
   const searchQuery = useDebounce(searchInput, 200);
+
+  // Sync URL → local input when URL changes externally (e.g., browser back/forward)
+  useEffect(() => {
+    const urlQuery = searchParams.get('q') ?? '';
+    setSearchInput((prev) => (prev !== urlQuery ? urlQuery : prev));
+  }, [searchParams]);
+
+  // Sync debounced search value to URL
+  useEffect(() => {
+    setSearchParams((prev) => {
+      if (searchQuery) prev.set('q', searchQuery); else prev.delete('q');
+      return prev;
+    }, { replace: true });
+  }, [searchQuery, setSearchParams]);
 
   // Edge type filter state (graph-specific, only fetched in graph mode)
   const { data: graphData } = useGraphView(undefined, undefined, viewMode === 'graph');
-  const [enabledEdgeTypes, setEnabledEdgeTypes] = useState<Set<string>>(new Set());
-  const prevAvailableRef = useRef<string>('');
 
   const availableEdgeTypes = useMemo(() => {
     if (!graphData?.edges) return [];
@@ -44,14 +65,13 @@ export function CorpusPage() {
     return [...types].sort();
   }, [graphData?.edges]);
 
-  // Auto-enable new edge types when available set changes
-  useEffect(() => {
-    const key = availableEdgeTypes.join(',');
-    if (key && key !== prevAvailableRef.current) {
-      setEnabledEdgeTypes(new Set(availableEdgeTypes));
-      prevAvailableRef.current = key;
-    }
-  }, [availableEdgeTypes]);
+  // Edge type filter: derived from URL, default to all available when param absent
+  const enabledEdgeTypes = useMemo<Set<string>>(() => {
+    const edgesParam = searchParams.get('edges');
+    if (!edgesParam) return new Set(availableEdgeTypes);
+    const parsed = edgesParam.split(',').filter((t) => availableEdgeTypes.includes(t));
+    return parsed.length > 0 ? new Set(parsed) : new Set(availableEdgeTypes);
+  }, [searchParams, availableEdgeTypes]);
 
   const edgeTypeFilterOptions: MultiSelectOption[] = useMemo(
     () => availableEdgeTypes.map((t) => ({ value: t, label: vocabEdgeLabel(t) })),
@@ -59,7 +79,7 @@ export function CorpusPage() {
   );
 
   const nodeTypeFilterOptions: MultiSelectOption[] = useMemo(() =>
-    Object.values(NodeType).map((t) => ({
+    ALL_NODE_TYPES.map((t) => ({
       value: t,
       label: nodeLabel(t),
       color: NODE_TYPE_HEX_COLORS[t],
@@ -67,8 +87,22 @@ export function CorpusPage() {
   [nodeLabel]);
 
   const handleNodeTypesChange = useCallback((next: Set<string>) => {
-    setEnabledNodeTypes(next as Set<NodeType>);
-  }, []);
+    setSearchParams((prev) => {
+      const allSelected = ALL_NODE_TYPES.every((t) => next.has(t));
+      if (allSelected || next.size === 0) prev.delete('types');
+      else prev.set('types', [...next].join(','));
+      return prev;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const handleEdgeTypesChange = useCallback((next: Set<string>) => {
+    setSearchParams((prev) => {
+      const allSelected = availableEdgeTypes.every((t) => next.has(t));
+      if (allSelected || next.size === 0) prev.delete('edges');
+      else prev.set('edges', [...next].join(','));
+      return prev;
+    }, { replace: true });
+  }, [setSearchParams, availableEdgeTypes]);
 
   const setViewMode = useCallback((mode: ViewMode) => {
     setSearchParams((prev) => {
@@ -149,7 +183,7 @@ export function CorpusPage() {
           <div className="w-full sm:w-52">
             <MultiSelect
               value={enabledEdgeTypes}
-              onChange={setEnabledEdgeTypes}
+              onChange={handleEdgeTypesChange}
               options={edgeTypeFilterOptions}
               allLabel="Alle relaties"
             />

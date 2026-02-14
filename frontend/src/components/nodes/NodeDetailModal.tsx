@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Calendar,
   Link as LinkIcon,
@@ -57,6 +57,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
   );
   const [showEdit, setShowEdit] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { nodeLabel, nodeAltLabel } = useVocabulary();
   const { openTaskDetail } = useTaskDetail();
 
@@ -115,7 +116,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
               icon={<ExternalLink className="h-4 w-4" />}
               onClick={() => {
                 onClose();
-                navigate(`/nodes/${nodeId}`);
+                navigate(`/nodes/${nodeId}`, { state: { fromCorpus: location.pathname + location.search } });
               }}
               disabled={!node}
             >
@@ -255,7 +256,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                     key={neighbor.id}
                     onClick={() => {
                       onClose();
-                      navigate(`/nodes/${neighbor.id}`);
+                      navigate(`/nodes/${neighbor.id}`, { state: { fromCorpus: location.pathname + location.search } });
                     }}
                     className="flex items-center gap-2 w-full p-1.5 rounded-lg hover:bg-gray-50 transition-colors text-left group"
                   >
@@ -276,7 +277,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                   <button
                     onClick={() => {
                       onClose();
-                      navigate(`/nodes/${nodeId}`);
+                      navigate(`/nodes/${nodeId}`, { state: { fromCorpus: location.pathname + location.search } });
                     }}
                     className="text-xs text-primary-700 hover:text-primary-900 transition-colors pl-1.5 pt-1"
                   >
@@ -323,7 +324,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                   <button
                     onClick={() => {
                       onClose();
-                      navigate(`/nodes/${nodeId}`);
+                      navigate(`/nodes/${nodeId}`, { state: { fromCorpus: location.pathname + location.search } });
                     }}
                     className="text-xs text-primary-700 hover:text-primary-900 transition-colors pl-1.5 pt-1"
                   >

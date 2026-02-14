@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import ReactFlow, {
   Background,
@@ -25,6 +24,7 @@ import { useGraphView } from '@/hooks/useGraph';
 import { useCreateEdge } from '@/hooks/useEdges';
 import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
+import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 import type { CorpusNode, Edge } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
@@ -130,18 +130,15 @@ interface CorpusGraphProps {
 
 // Inner component that uses useReactFlow (must be inside ReactFlowProvider)
 function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: CorpusGraphProps) {
-  const navigate = useNavigate();
-  const location = useLocation();
   const isMobile = useIsMobile();
   const { edgeLabel: vocabEdgeLabel } = useVocabulary();
+  const { openNodeDetail } = useNodeDetail();
   const { data, isLoading, error } = useGraphView();
 
   // Stable refs for callbacks used inside the layout memo, so they don't
   // cause the expensive dagre layout to recompute.
-  const navigateRef = useRef(navigate);
-  navigateRef.current = navigate;
-  const locationRef = useRef(location);
-  locationRef.current = location;
+  const openNodeDetailRef = useRef(openNodeDetail);
+  openNodeDetailRef.current = openNodeDetail;
   const vocabEdgeLabelRef = useRef(vocabEdgeLabel);
   vocabEdgeLabelRef.current = vocabEdgeLabel;
 
@@ -158,7 +155,7 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: C
 
   // ---- Step 1: Compute stable layout with ALL nodes and edges ----
   // Only recomputes when the underlying data changes, NOT when filters change.
-  // Uses refs for navigate/vocabEdgeLabel to keep deps stable.
+  // Uses refs for openNodeDetail/vocabEdgeLabel to keep deps stable.
   const { allRfNodes, allRfEdges } = useMemo(() => {
     if (!data?.nodes || !data?.edges) {
       return { allRfNodes: [], allRfEdges: [] };
@@ -176,7 +173,7 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: C
           label: node.title,
           description: node.description,
           nodeType: node.node_type,
-          onClick: () => navigateRef.current(`/nodes/${node.id}`, { state: { fromCorpus: locationRef.current.pathname + locationRef.current.search } }),
+          onClick: () => openNodeDetailRef.current(node.id),
         },
       };
     });
