@@ -8,7 +8,6 @@ import ReactFlow, {
   MarkerType,
   useNodesState,
   useEdgesState,
-  useReactFlow,
   ReactFlowProvider,
   type Node as RFNode,
   type Edge as RFEdge,
@@ -136,7 +135,6 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: C
   const isMobile = useIsMobile();
   const { edgeLabel: vocabEdgeLabel } = useVocabulary();
   const { data, isLoading, error } = useGraphView();
-  const reactFlowInstance = useReactFlow();
 
   // Stable refs for callbacks used inside the layout memo, so they don't
   // cause the expensive dagre layout to recompute.
