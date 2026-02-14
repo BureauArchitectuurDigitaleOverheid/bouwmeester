@@ -79,6 +79,7 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
 
 export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
   const [replyText, setReplyText] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const { currentPerson } = useCurrentPerson();
   const personId = currentPerson?.id;
   const { data: parentMessage } = useNotification(notificationId, personId);
@@ -94,6 +95,11 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
       data: { sender_id: currentPerson.id, emoji },
     });
   };
+
+  // Scroll to bottom when replies change (new messages arrive or on first load)
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [replies]);
 
   // Close modal on Escape key (guard against mention popup consuming Escape first)
   useEffect(() => {
@@ -183,6 +189,7 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
               onReact={(emoji) => handleReact(reply.id, emoji)}
             />
           ))}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Reply input */}

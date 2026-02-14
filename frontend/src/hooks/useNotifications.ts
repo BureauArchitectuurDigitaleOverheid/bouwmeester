@@ -45,6 +45,7 @@ export function useReplies(notificationId: string | undefined, personId?: string
     queryKey: ['notifications', 'replies', notificationId, personId],
     queryFn: () => getReplies(notificationId!, personId),
     enabled: !!notificationId,
+    refetchInterval: 5_000,
   });
 }
 
