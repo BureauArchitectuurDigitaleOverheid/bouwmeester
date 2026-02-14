@@ -1,5 +1,8 @@
 """Comprehensive API tests for the graph router."""
 
+import uuid
+
+from bouwmeester.models.corpus_node import CorpusNode
 
 # ---------------------------------------------------------------------------
 # Graph search
@@ -35,6 +38,49 @@ async def test_graph_search_filter_by_node_type(client, sample_node):
     data = resp.json()
     for n in data["nodes"]:
         assert n["node_type"] == "dossier"
+
+
+async def test_graph_search_with_long_title(client, db_session):
+    """Nodes with titles > 500 chars must not crash graph/search (regression #107)."""
+    long_title = "A" * 719  # reproduces parlementaire import with long onderwerp
+    node = CorpusNode(
+        id=uuid.uuid4(),
+        title=long_title,
+        node_type="politieke_input",
+        description="Test node with long title",
+        status="actief",
+    )
+    db_session.add(node)
+    await db_session.flush()
+
+    resp = await client.get("/api/graph/search")
+    assert resp.status_code == 200
+    data = resp.json()
+    node_ids = {n["id"] for n in data["nodes"]}
+    assert str(node.id) in node_ids
+    # The long title must be returned in full
+    matched = [n for n in data["nodes"] if n["id"] == str(node.id)]
+    assert matched[0]["title"] == long_title
+
+
+async def test_list_nodes_with_long_title(client, db_session):
+    """Nodes list must not 500 on titles > 500 chars (regression #107)."""
+    long_title = "B" * 600
+    node = CorpusNode(
+        id=uuid.uuid4(),
+        title=long_title,
+        node_type="politieke_input",
+        description="Test node with long title",
+        status="actief",
+    )
+    db_session.add(node)
+    await db_session.flush()
+
+    resp = await client.get("/api/nodes", params={"node_type": "politieke_input"})
+    assert resp.status_code == 200
+    data = resp.json()
+    node_ids = {n["id"] for n in data}
+    assert str(node.id) in node_ids
 
 
 # ---------------------------------------------------------------------------
