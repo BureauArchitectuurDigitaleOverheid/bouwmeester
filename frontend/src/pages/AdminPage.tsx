@@ -46,14 +46,14 @@ export function AdminPage() {
   ];
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl">
+    <div className="max-w-4xl">
       {/* Tab bar */}
-      <div className="flex gap-1 border-b border-border mb-6">
+      <div className="flex border-b border-border mb-6 overflow-x-auto scrollbar-hide -mx-4 px-4 md:-mx-6 md:px-6">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => handleTabChange(tab.id)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               activeTab === tab.id
                 ? 'border-primary-600 text-primary-700'
                 : 'border-transparent text-text-secondary hover:text-text hover:border-gray-300'

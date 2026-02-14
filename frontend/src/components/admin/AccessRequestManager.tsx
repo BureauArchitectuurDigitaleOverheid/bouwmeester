@@ -47,7 +47,7 @@ export function AccessRequestManager() {
       </div>
 
       {/* Request list */}
-      <div className="border border-border rounded-xl overflow-hidden">
+      <div className="border border-border rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-border">
@@ -62,7 +62,7 @@ export function AccessRequestManager() {
             {requests?.map((req) => (
               <tr key={req.id} className="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-2.5 text-text font-medium">{req.naam}</td>
-                <td className="px-4 py-2.5 text-text">{req.email}</td>
+                <td className="px-4 py-2.5 text-text break-all">{req.email}</td>
                 <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
                   {new Date(req.requested_at).toLocaleDateString('nl-NL', {
                     day: 'numeric',

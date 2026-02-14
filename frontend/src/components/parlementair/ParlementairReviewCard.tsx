@@ -321,7 +321,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
             <Badge variant={typeColor}>
               {typeLabel}
             </Badge>
@@ -334,13 +334,13 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             <span className="text-xs text-text-secondary">{item.zaak_nummer}</span>
             {item.datum && (
               <span className="text-xs text-text-secondary flex items-center gap-0.5">
-                <Calendar className="h-3 w-3" />
+                <Calendar className="h-3 w-3 shrink-0" />
                 {formatDateLong(item.datum)}
               </span>
             )}
             {item.deadline && (
               <span className="text-xs text-orange-600 flex items-center gap-0.5">
-                <Calendar className="h-3 w-3" />
+                <Calendar className="h-3 w-3 shrink-0" />
                 Deadline: {formatDateLong(item.deadline)}
               </span>
             )}

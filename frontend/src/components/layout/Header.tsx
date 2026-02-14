@@ -93,15 +93,15 @@ export function Header() {
   return (
     <header className="flex items-center justify-between h-16 px-4 md:px-6 bg-surface border-b border-border shrink-0">
       {/* Left: Hamburger + Title / Breadcrumbs */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 min-w-0 shrink">
         <button
           onClick={toggleMobileSidebar}
-          className="md:hidden flex items-center justify-center h-10 w-10 -ml-1 rounded-lg text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
+          className="md:hidden flex items-center justify-center h-9 w-9 -ml-1 rounded-lg text-text-secondary hover:bg-gray-100 hover:text-text transition-colors shrink-0"
         >
           <Menu className="h-5 w-5" />
         </button>
         {breadcrumbs ? (
-          <nav className="flex items-center gap-1.5 text-sm">
+          <nav className="flex items-center gap-1.5 text-sm min-w-0">
             {breadcrumbs.map((crumb, i) => (
               <span key={i} className="flex items-center gap-1.5">
                 {i > 0 && <span className="text-text-secondary">/</span>}
@@ -113,25 +113,25 @@ export function Header() {
                     {crumb.label}
                   </button>
                 ) : (
-                  <span className="text-text font-medium">{crumb.label}</span>
+                  <span className="text-text font-medium truncate">{crumb.label}</span>
                 )}
               </span>
             ))}
           </nav>
         ) : (
-          <h1 className="text-lg font-semibold text-text">{title}</h1>
+          <h1 className="text-lg font-semibold text-text truncate">{title}</h1>
         )}
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* Vocabulary toggle */}
-        <div className="hidden sm:flex items-center rounded-lg border border-border text-xs overflow-hidden">
+        <div className="hidden sm:flex items-center h-9 rounded-xl border border-border text-xs overflow-hidden">
           {(Object.keys(VOCABULARY_LABELS) as VocabularyId[]).map((id) => (
             <button
               key={id}
               onClick={() => setVocabularyId(id)}
-              className={`px-2.5 py-1.5 transition-colors ${
+              className={`h-full px-2.5 transition-colors ${
                 vocabularyId === id
                   ? 'bg-primary-100 text-primary-700 font-medium'
                   : 'text-text-secondary hover:text-text hover:bg-gray-50'
@@ -148,7 +148,7 @@ export function Header() {
         {/* Search shortcut */}
         <button
           onClick={() => navigate('/search')}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border text-sm text-text-secondary hover:border-border-hover hover:text-text transition-all"
+          className="flex items-center justify-center gap-2 h-9 px-2.5 sm:px-3 rounded-xl border border-border text-sm text-text-secondary hover:border-border-hover hover:text-text transition-all"
         >
           <Search className="h-4 w-4" />
           <span className="hidden sm:inline">Zoeken...</span>
@@ -159,7 +159,7 @@ export function Header() {
 
         {/* "Viewing as" indicator (SSO mode only) */}
         {isViewingAsOther && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700">
+          <div className="flex items-center gap-1.5 h-9 px-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700">
             <Eye className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Bekijk als {currentPerson?.naam}</span>
             <button
@@ -176,9 +176,9 @@ export function Header() {
         <div className="relative" ref={pickerRef}>
           <button
             onClick={() => setShowPersonPicker(!showPersonPicker)}
-            className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-border hover:border-border-hover transition-all"
+            className="flex items-center gap-1.5 h-9 px-2 rounded-xl border border-border hover:border-border-hover transition-all"
           >
-            <div className="flex items-center justify-center h-7 w-7 rounded-full bg-primary-100 text-primary-700 text-xs font-medium">
+            <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary-100 text-primary-700 text-[11px] font-medium">
               {initials || <User className="h-3.5 w-3.5" />}
             </div>
             {currentPerson && (
@@ -245,7 +245,7 @@ export function Header() {
         {authenticated && (
           <button
             onClick={logout}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-border text-sm text-text-secondary hover:border-border-hover hover:text-text transition-all"
+            className="flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl border border-border text-sm text-text-secondary hover:border-border-hover hover:text-text transition-all"
             title="Uitloggen"
           >
             <LogOut className="h-4 w-4" />
