@@ -12,6 +12,17 @@
     />
     <title>Bouwmeester</title>
     <script src="/config.js"></script>
+    <script>
+      // Auto-reload when chunks from a previous deploy are no longer available.
+      // After a new deployment, hashed asset filenames change and the old
+      // index.html (served from browser cache) references stale chunks.
+      // Nginx's try_files fallback returns index.html (text/html) instead of JS,
+      // causing "Failed to load module script" errors.
+      window.addEventListener('vite:preloadError', function (e) {
+        e.preventDefault();
+        window.location.reload();
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>

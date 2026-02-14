@@ -58,8 +58,20 @@ http {
         root /usr/share/nginx/html;
         index index.html;
 
+        # Prevent nginx from including the internal port in redirects
+        # (we run behind a reverse proxy on a different port)
+        absolute_redirect off;
+
+        # Hashed assets — immutable, cache forever
+        location /assets/ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+
+        # Frontend SPA fallback — never cache index.html so deploys take effect
         location / {
-            try_files $uri $uri/ /index.html;
+            try_files $uri /index.html;
+            add_header Cache-Control "no-cache";
         }
     }
 }
