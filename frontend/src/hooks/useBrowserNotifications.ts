@@ -69,13 +69,12 @@ export function useBrowserNotifications(personId: string | undefined): void {
       seenIdsRef.current.add(id);
     }
 
-    // Guard: user must have opted in, permission must be granted, tab not visible
+    // Guard: user must have opted in, permission must be granted
     if (
       newIds.length === 0 ||
       !isBrowserNotificationsEnabled() ||
       !('Notification' in window) ||
-      Notification.permission !== 'granted' ||
-      document.visibilityState === 'visible'
+      Notification.permission !== 'granted'
     ) {
       return;
     }
