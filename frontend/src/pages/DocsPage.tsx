@@ -75,7 +75,7 @@ export function DocsPage() {
     <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
       {/* Tabs */}
       {tabs.length > 1 && (
-        <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto">
+        <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto scrollbar-hide">
           {tabs.map((tab) => (
             <button
               key={tab.id}
