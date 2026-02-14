@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, BellOff, BellRing, Check, CheckCheck } from 'lucide-react';
+import { Bell, BellOff, BellRing, Check, CheckCheck, Volume2, VolumeOff } from 'lucide-react';
 import { useNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNotificationsRead } from '@/hooks/useNotifications';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
@@ -13,6 +13,8 @@ import {
   useBrowserNotifications,
   isBrowserNotificationsEnabled,
   setBrowserNotificationsEnabled,
+  isNotificationSoundEnabled,
+  setNotificationSoundEnabled,
   requestNotificationPermission,
 } from '@/hooks/useBrowserNotifications';
 import { useToast } from '@/contexts/ToastContext';
@@ -103,6 +105,29 @@ function BrowserNotificationToggle() {
   );
 }
 
+function NotificationSoundToggle() {
+  const [soundOn, setSoundOn] = useState(isNotificationSoundEnabled);
+  const notificationsOn = isBrowserNotificationsEnabled();
+
+  if (!notificationsOn) return null;
+
+  const Icon = soundOn ? Volume2 : VolumeOff;
+
+  return (
+    <button
+      onClick={() => {
+        const next = !soundOn;
+        setNotificationSoundEnabled(next);
+        setSoundOn(next);
+      }}
+      className="flex items-center gap-1 text-xs text-text-secondary hover:text-text transition-colors"
+      title={soundOn ? 'Geluid uitschakelen' : 'Geluid inschakelen'}
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
 export function NotificationBell({ personId }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -153,6 +178,7 @@ export function NotificationBell({ personId }: NotificationBellProps) {
             <h3 className="text-sm font-semibold text-text">Meldingen</h3>
             <div className="flex items-center gap-2">
               <BrowserNotificationToggle />
+              <NotificationSoundToggle />
               {unreadCount > 0 && (
                 <button
                   onClick={() => markAllRead.mutate(personId)}

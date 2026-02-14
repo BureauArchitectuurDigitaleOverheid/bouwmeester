@@ -4,6 +4,7 @@ import { richTextToPlain } from '@/utils/richtext';
 import { NOTIFICATION_TYPE_LABELS, titleCase } from '@/types';
 
 const STORAGE_KEY = 'browser-notifications-enabled';
+const SOUND_STORAGE_KEY = 'browser-notifications-sound-enabled';
 
 // --- localStorage helpers ---
 
@@ -18,6 +19,24 @@ export function isBrowserNotificationsEnabled(): boolean {
 export function setBrowserNotificationsEnabled(enabled: boolean): void {
   try {
     localStorage.setItem(STORAGE_KEY, String(enabled));
+  } catch {
+    // storage unavailable
+  }
+}
+
+export function isNotificationSoundEnabled(): boolean {
+  try {
+    // Default to true when notifications are enabled
+    const val = localStorage.getItem(SOUND_STORAGE_KEY);
+    return val === null ? true : val === 'true';
+  } catch {
+    return true;
+  }
+}
+
+export function setNotificationSoundEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(SOUND_STORAGE_KEY, String(enabled));
   } catch {
     // storage unavailable
   }
@@ -108,7 +127,9 @@ export function useBrowserNotifications(personId: string | undefined): void {
     }
 
     // Play a single chime for the batch of new notifications
-    playNotificationChime();
+    if (isNotificationSoundEnabled()) {
+      playNotificationChime();
+    }
 
     // Fire browser notifications for genuinely new unread items
     for (const id of newIds) {
