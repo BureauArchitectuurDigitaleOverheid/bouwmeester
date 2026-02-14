@@ -168,7 +168,8 @@ Production access is restricted to whitelisted email addresses stored in the `wh
 ## Pull requests
 
 - Always branch from the latest remote main: `git fetch origin && git checkout -b <branch> origin/main`
-- When asked to create a PR and merge: create the PR, wait for all CI checks to pass (green), then merge.
+- Do **not** merge PRs automatically. After CI passes, do a critical self-review of the diff (check for correctness, edge cases, missing tests, style). Share findings with the user. Expect one or more review rounds before merging.
+- Only merge when the user explicitly asks to merge (e.g. "merge it", "looks good, merge").
 - Use squash merge with `--delete-branch` by default.
 
 ## Database
