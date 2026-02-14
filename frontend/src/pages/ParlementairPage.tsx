@@ -69,21 +69,26 @@ export function ParlementairPage() {
     allTypesSelected || enabledTypes.has(item.type)
   );
 
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const triggerImport = useTriggerParlementairImport();
   const reprocess = useReprocessParlementairItems({
     onSuccess: (result: ReprocessResult) => {
+      if (result.error === 'no_llm') {
+        showError('Geen LLM-provider geconfigureerd. Herverwerken is niet mogelijk.');
+        return;
+      }
       if (result.total === 0) {
-        showSuccess('Geen items om te herverwerken.');
+        showSuccess('Geen ongekoppelde toezeggingen om te herverwerken.');
       } else {
         const parts: string[] = [];
         if (result.matched > 0) parts.push(`${result.matched} gekoppeld`);
         if (result.out_of_scope > 0) parts.push(`${result.out_of_scope} buiten scope`);
         if (result.skipped > 0) parts.push(`${result.skipped} overgeslagen`);
-        showSuccess(`${result.total} items herverwerkt: ${parts.join(', ')}.`);
+        showSuccess(`${result.total} toezeggingen herverwerkt: ${parts.join(', ')}.`);
       }
     },
   });
+  const eitherPending = triggerImport.isPending || reprocess.isPending;
 
   return (
     <div className="space-y-6">
@@ -96,12 +101,16 @@ export function ParlementairPage() {
           <Button
             variant="secondary"
             icon={<RotateCcw className={`h-4 w-4 ${reprocess.isPending ? 'animate-spin' : ''}`} />}
-            onClick={() => reprocess.mutate()}
-            disabled={reprocess.isPending}
+            onClick={() => {
+              if (window.confirm('Alle ongekoppelde toezeggingen herverwerken via LLM-matching? Dit kan even duren.')) {
+                reprocess.mutate();
+              }
+            }}
+            disabled={eitherPending}
             title="Herverwerk toezeggingen die nog geen koppelingen hebben via LLM-matching"
           >
             <span className="hidden sm:inline">
-              {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk ongekoppelde'}
+              {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk toezeggingen'}
             </span>
             <span className="sm:hidden">
               {reprocess.isPending ? 'Laden...' : 'Herverwerk'}
@@ -110,7 +119,8 @@ export function ParlementairPage() {
           <Button
             icon={<RefreshCw className={`h-4 w-4 ${triggerImport.isPending ? 'animate-spin' : ''}`} />}
             onClick={() => triggerImport.mutate()}
-            disabled={triggerImport.isPending}
+            disabled={eitherPending}
+            title="Haal nieuwe kamerstukken op uit de Tweede en Eerste Kamer"
           >
             <span className="hidden sm:inline">
               {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
