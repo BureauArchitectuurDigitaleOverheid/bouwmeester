@@ -91,8 +91,8 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ReloadPrompt />
       <ToastProvider>
+      <ReloadPrompt />
       <AuthProvider>
         <AuthGate>
           <OnboardingGate>

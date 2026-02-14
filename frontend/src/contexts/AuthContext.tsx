@@ -91,7 +91,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = `${BASE_URL}/api/auth/login`;
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Clear cached API responses to prevent data leakage across sessions
+    if ('caches' in window) {
+      await caches.delete('api-cache').catch(() => {});
+    }
     window.location.href = `${BASE_URL}/api/auth/logout`;
   }, []);
 

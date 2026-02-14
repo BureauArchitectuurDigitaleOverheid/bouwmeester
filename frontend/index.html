@@ -23,6 +23,12 @@
       // causing "Failed to load module script" errors.
       window.addEventListener('vite:preloadError', function (e) {
         e.preventDefault();
+        // Guard against infinite reload loops (e.g. when a service worker
+        // serves a stale index.html that keeps referencing missing chunks).
+        var key = 'vite-preload-reload';
+        var last = sessionStorage.getItem(key);
+        if (last && Date.now() - Number(last) < 10000) return;
+        sessionStorage.setItem(key, String(Date.now()));
         window.location.reload();
       });
     </script>

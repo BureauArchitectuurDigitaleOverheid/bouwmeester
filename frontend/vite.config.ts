@@ -19,6 +19,8 @@ export default defineConfig({
         theme_color: '#1E3A5F',
         background_color: '#F8F9FA',
         display: 'standalone',
+        start_url: '/',
+        scope: '/',
         lang: 'nl',
         icons: [
           { src: 'pwa-64x64.png', sizes: '64x64', type: 'image/png' },
@@ -34,12 +36,13 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//, /^\/docs\//],
         runtimeCaching: [
           {
-            urlPattern: /^\/api\//,
+            urlPattern: /^\/api\/(?!auth\/).*/,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
               expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 },
-              networkTimeoutSeconds: 10,
+              networkTimeoutSeconds: 5,
+              cacheableResponse: { statuses: [200] },
             },
           },
           {

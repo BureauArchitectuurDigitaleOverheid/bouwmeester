@@ -8,7 +8,9 @@ export function ReloadPrompt() {
     onRegisteredSW(_swUrl, registration) {
       if (!registration) return;
       // Check for updates every hour
-      setInterval(() => registration.update(), 60 * 60 * 1000);
+      const id = setInterval(() => registration.update(), 60 * 60 * 1000);
+      // Clean up on SW re-registration (defensive)
+      return () => clearInterval(id);
     },
   });
 
