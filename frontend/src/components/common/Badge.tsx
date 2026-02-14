@@ -1,7 +1,7 @@
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-type BadgeVariant = 'blue' | 'green' | 'purple' | 'amber' | 'cyan' | 'rose' | 'slate' | 'gray' | 'red' | 'orange';
+import type { BadgeVariant } from '@/types';
 
 const variantClasses: Record<BadgeVariant, string> = {
   blue: 'bg-blue-50 text-blue-700 ring-blue-600/20',
@@ -14,6 +14,8 @@ const variantClasses: Record<BadgeVariant, string> = {
   gray: 'bg-gray-50 text-gray-600 ring-gray-500/20',
   red: 'bg-red-50 text-red-700 ring-red-600/20',
   orange: 'bg-orange-50 text-orange-700 ring-orange-600/20',
+  emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+  indigo: 'bg-indigo-50 text-indigo-700 ring-indigo-600/20',
 };
 
 interface BadgeProps {

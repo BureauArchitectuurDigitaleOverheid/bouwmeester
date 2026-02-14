@@ -24,7 +24,7 @@ import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useGraphView } from '@/hooks/useGraph';
 import { useCreateEdge } from '@/hooks/useEdges';
-import { NodeType } from '@/types';
+import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 import type { CorpusNode, Edge } from '@/types';
@@ -113,23 +113,6 @@ function computeLayout(
 
   return positions;
 }
-
-// ---- Node type color map for minimap ----
-
-const NODE_TYPE_HEX_COLORS: Record<string, string> = {
-  [NodeType.DOSSIER]: '#3B82F6',
-  [NodeType.DOEL]: '#10B981',
-  [NodeType.INSTRUMENT]: '#8B5CF6',
-  [NodeType.BELEIDSKADER]: '#F59E0B',
-  [NodeType.MAATREGEL]: '#06B6D4',
-  [NodeType.POLITIEKE_INPUT]: '#F43F5E',
-  [NodeType.PROBLEEM]: '#EF4444',
-  [NodeType.EFFECT]: '#059669',
-  [NodeType.BELEIDSOPTIE]: '#6366F1',
-  [NodeType.BRON]: '#F97316',
-  [NodeType.NOTITIE]: '#64748b',
-  [NodeType.OVERIG]: '#9ca3af',
-};
 
 // ---- Edge type styling ----
 
@@ -335,15 +318,18 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: C
     setEdges(rfEdges);
   }, [rfNodes, rfEdges, setNodes, setEdges]);
 
-  // Re-fit viewport when visible nodes change so filtered views don't show
-  // a tiny cluster in a corner of empty space.
-  const fitViewTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  // Re-fit viewport when filters change (skip initial render — ReactFlow's
+  // fitView prop handles that).
+  const isInitialRender = useRef(true);
   useEffect(() => {
-    clearTimeout(fitViewTimerRef.current);
-    fitViewTimerRef.current = setTimeout(() => {
+    if (isInitialRender.current) {
+      isInitialRender.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
       reactFlowInstance.fitView({ padding: 0.2, maxZoom: 1.5, duration: 300 });
     }, 50);
-    return () => clearTimeout(fitViewTimerRef.current);
+    return () => clearTimeout(timer);
   }, [rfNodes, rfEdges, reactFlowInstance]);
 
   // Handle connection drag completion

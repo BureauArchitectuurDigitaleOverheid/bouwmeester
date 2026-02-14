@@ -1,38 +1,8 @@
 import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 import type { NodeProps } from 'reactflow';
-import { NodeType } from '@/types';
+import { NodeType, NODE_TYPE_HEX_COLORS, NODE_TYPE_BG_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
-
-const NODE_TYPE_HEX_COLORS: Record<string, string> = {
-  [NodeType.DOSSIER]: '#3B82F6',
-  [NodeType.DOEL]: '#10B981',
-  [NodeType.INSTRUMENT]: '#8B5CF6',
-  [NodeType.BELEIDSKADER]: '#F59E0B',
-  [NodeType.MAATREGEL]: '#06B6D4',
-  [NodeType.POLITIEKE_INPUT]: '#F43F5E',
-  [NodeType.PROBLEEM]: '#EF4444',
-  [NodeType.EFFECT]: '#059669',
-  [NodeType.BELEIDSOPTIE]: '#6366F1',
-  [NodeType.BRON]: '#F97316',
-  [NodeType.NOTITIE]: '#64748b',
-  [NodeType.OVERIG]: '#9ca3af',
-};
-
-const NODE_TYPE_BG_COLORS: Record<string, string> = {
-  [NodeType.DOSSIER]: '#EFF6FF',
-  [NodeType.DOEL]: '#ECFDF5',
-  [NodeType.INSTRUMENT]: '#F5F3FF',
-  [NodeType.BELEIDSKADER]: '#FFFBEB',
-  [NodeType.MAATREGEL]: '#ECFEFF',
-  [NodeType.POLITIEKE_INPUT]: '#FFF1F2',
-  [NodeType.PROBLEEM]: '#FEF2F2',
-  [NodeType.EFFECT]: '#ECFDF5',
-  [NodeType.BELEIDSOPTIE]: '#EEF2FF',
-  [NodeType.BRON]: '#FFF7ED',
-  [NodeType.NOTITIE]: '#F8FAFC',
-  [NodeType.OVERIG]: '#F9FAFB',
-};
 
 export interface GraphNodeData {
   label: string;

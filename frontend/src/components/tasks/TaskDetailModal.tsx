@@ -13,10 +13,11 @@ import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { isOverdue as checkOverdue, formatDateLong, formatDateShort } from '@/utils/dates';
 import {
+  TaskStatus,
   TASK_STATUS_LABELS,
+  TASK_STATUS_COLORS,
   TASK_PRIORITY_LABELS,
   TASK_PRIORITY_COLORS,
-  TaskStatus,
 } from '@/types';
 
 interface TaskDetailModalProps {
@@ -24,13 +25,6 @@ interface TaskDetailModalProps {
   open: boolean;
   onClose: () => void;
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  [TaskStatus.OPEN]: 'blue',
-  [TaskStatus.IN_PROGRESS]: 'amber',
-  [TaskStatus.DONE]: 'green',
-  [TaskStatus.CANCELLED]: 'gray',
-};
 
 export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps) {
   const { data: task, isLoading } = useTask(taskId);
@@ -98,10 +92,10 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
           <div className="space-y-5">
             {/* Status / Priority / Deadline row */}
             <div className="flex items-center gap-3 flex-wrap">
-              <Badge variant={(STATUS_COLORS[task.status] ?? 'gray') as 'blue'} dot>
+              <Badge variant={TASK_STATUS_COLORS[task.status] ?? 'gray'} dot>
                 {TASK_STATUS_LABELS[task.status]}
               </Badge>
-              <Badge variant={(TASK_PRIORITY_COLORS[task.priority] ?? 'gray') as 'blue'} dot>
+              <Badge variant={TASK_PRIORITY_COLORS[task.priority] ?? 'gray'} dot>
                 {TASK_PRIORITY_LABELS[task.priority]}
               </Badge>
               {task.due_date && (

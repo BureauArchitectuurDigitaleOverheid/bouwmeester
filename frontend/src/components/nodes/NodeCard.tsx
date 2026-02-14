@@ -26,7 +26,7 @@ export function NodeCard({ node }: NodeCardProps) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <Badge variant={color as 'blue'} dot title={nodeAltLabel(node.node_type)}>
+            <Badge variant={color} dot title={nodeAltLabel(node.node_type)}>
               {nodeLabel(node.node_type)}
             </Badge>
             {node.status && (

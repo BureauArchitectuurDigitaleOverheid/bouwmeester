@@ -140,7 +140,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
         <div className="space-y-5">
           {/* Type, status, edge count badges */}
           <div className="flex items-center gap-3 flex-wrap">
-            <Badge variant={(NODE_TYPE_COLORS[node.node_type] ?? 'gray') as 'blue'} dot title={nodeAltLabel(node.node_type)}>
+            <Badge variant={NODE_TYPE_COLORS[node.node_type] ?? 'gray'} dot title={nodeAltLabel(node.node_type)}>
               {nodeLabel(node.node_type)}
             </Badge>
             {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
@@ -260,7 +260,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                     className="flex items-center gap-2 w-full p-1.5 rounded-lg hover:bg-gray-50 transition-colors text-left group"
                   >
                     <Badge
-                      variant={(NODE_TYPE_COLORS[neighbor.node_type] ?? 'gray') as 'blue'}
+                      variant={NODE_TYPE_COLORS[neighbor.node_type] ?? 'gray'}
                       dot
                       title={nodeAltLabel(neighbor.node_type)}
                     >
@@ -308,7 +308,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                       {task.title}
                     </span>
                     {task.priority && task.priority !== 'normaal' && (
-                      <Badge variant={(TASK_PRIORITY_COLORS[task.priority] ?? 'gray') as 'blue'}>
+                      <Badge variant={TASK_PRIORITY_COLORS[task.priority] ?? 'gray'}>
                         {task.priority}
                       </Badge>
                     )}

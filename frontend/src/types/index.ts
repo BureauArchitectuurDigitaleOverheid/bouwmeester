@@ -29,7 +29,7 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   [NodeType.OVERIG]: 'Overig',
 };
 
-export const NODE_TYPE_COLORS: Record<NodeType, string> = {
+export const NODE_TYPE_COLORS: Record<NodeType, BadgeVariant> = {
   [NodeType.DOSSIER]: 'blue',
   [NodeType.DOEL]: 'green',
   [NodeType.INSTRUMENT]: 'purple',
@@ -42,6 +42,36 @@ export const NODE_TYPE_COLORS: Record<NodeType, string> = {
   [NodeType.BRON]: 'orange',
   [NodeType.NOTITIE]: 'slate',
   [NodeType.OVERIG]: 'gray',
+};
+
+export const NODE_TYPE_HEX_COLORS: Record<NodeType, string> = {
+  [NodeType.DOSSIER]: '#3B82F6',
+  [NodeType.DOEL]: '#10B981',
+  [NodeType.INSTRUMENT]: '#8B5CF6',
+  [NodeType.BELEIDSKADER]: '#F59E0B',
+  [NodeType.MAATREGEL]: '#06B6D4',
+  [NodeType.POLITIEKE_INPUT]: '#F43F5E',
+  [NodeType.PROBLEEM]: '#EF4444',
+  [NodeType.EFFECT]: '#059669',
+  [NodeType.BELEIDSOPTIE]: '#6366F1',
+  [NodeType.BRON]: '#F97316',
+  [NodeType.NOTITIE]: '#64748b',
+  [NodeType.OVERIG]: '#9ca3af',
+};
+
+export const NODE_TYPE_BG_COLORS: Record<NodeType, string> = {
+  [NodeType.DOSSIER]: '#EFF6FF',
+  [NodeType.DOEL]: '#ECFDF5',
+  [NodeType.INSTRUMENT]: '#F5F3FF',
+  [NodeType.BELEIDSKADER]: '#FFFBEB',
+  [NodeType.MAATREGEL]: '#ECFEFF',
+  [NodeType.POLITIEKE_INPUT]: '#FFF1F2',
+  [NodeType.PROBLEEM]: '#FEF2F2',
+  [NodeType.EFFECT]: '#ECFDF5',
+  [NodeType.BELEIDSOPTIE]: '#EEF2FF',
+  [NodeType.BRON]: '#FFF7ED',
+  [NodeType.NOTITIE]: '#F8FAFC',
+  [NodeType.OVERIG]: '#F9FAFB',
 };
 
 export const BRON_TYPE_LABELS: Record<string, string> = {
@@ -178,11 +208,18 @@ export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   [TaskPriority.LAAG]: 'Laag',
 };
 
-export const TASK_PRIORITY_COLORS: Record<TaskPriority, string> = {
+export const TASK_PRIORITY_COLORS: Record<TaskPriority, BadgeVariant> = {
   [TaskPriority.KRITIEK]: 'red',
   [TaskPriority.HOOG]: 'orange',
   [TaskPriority.NORMAAL]: 'blue',
   [TaskPriority.LAAG]: 'gray',
+};
+
+export const TASK_STATUS_COLORS: Record<TaskStatus, BadgeVariant> = {
+  [TaskStatus.OPEN]: 'blue',
+  [TaskStatus.IN_PROGRESS]: 'amber',
+  [TaskStatus.DONE]: 'green',
+  [TaskStatus.CANCELLED]: 'gray',
 };
 
 export interface TaskOrgEenheidSummary {
@@ -349,6 +386,19 @@ export const ORGANISATIE_TYPE_LABELS: Record<string, string> = {
   afdeling: 'Afdeling',
   cluster: 'Cluster',
   team: 'Team',
+};
+
+export type BadgeVariant = 'blue' | 'green' | 'purple' | 'amber' | 'cyan' | 'rose' | 'slate' | 'gray' | 'red' | 'orange' | 'emerald' | 'indigo';
+
+export const ORGANISATIE_TYPE_BADGE_COLORS: Record<string, BadgeVariant> = {
+  ministerie: 'blue',
+  directoraat_generaal: 'purple',
+  directie: 'amber',
+  dienst: 'gray',
+  bureau: 'gray',
+  cluster: 'gray',
+  afdeling: 'cyan',
+  team: 'green',
 };
 
 export const ORGANISATIE_TYPE_OPTIONS: { value: string; label: string }[] = [
@@ -571,6 +621,13 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   access_request: 'bg-amber-100 text-amber-700',
 };
 
+export const INBOX_TYPE_COLORS: Record<string, BadgeVariant> = {
+  task: 'blue',
+  node: 'purple',
+  notification: 'amber',
+  message: 'green',
+};
+
 // Activity
 export interface Activity {
   id: string;
@@ -677,7 +734,7 @@ export const SEARCH_RESULT_TYPE_LABELS: Record<SearchResultType, string> = {
   tag: 'Tag',
 };
 
-export const SEARCH_RESULT_TYPE_COLORS: Record<SearchResultType, string> = {
+export const SEARCH_RESULT_TYPE_COLORS: Record<SearchResultType, BadgeVariant> = {
   corpus_node: 'blue',
   task: 'amber',
   person: 'green',
@@ -746,7 +803,7 @@ export const PARLEMENTAIR_TYPE_LABELS: Record<string, string> = {
   interpellatie: 'Interpellatie',
 };
 
-export const PARLEMENTAIR_TYPE_COLORS: Record<string, string> = {
+export const PARLEMENTAIR_TYPE_COLORS: Record<string, BadgeVariant> = {
   motie: 'rose',
   kamervraag: 'blue',
   toezegging: 'amber',
@@ -754,6 +811,20 @@ export const PARLEMENTAIR_TYPE_COLORS: Record<string, string> = {
   commissiedebat: 'cyan',
   schriftelijk_overleg: 'slate',
   interpellatie: 'red',
+};
+
+export const ALL_PARLEMENTAIR_TYPES: ParlementairItemType[] = Object.keys(
+  PARLEMENTAIR_TYPE_LABELS,
+) as ParlementairItemType[];
+
+export const PARLEMENTAIR_TYPE_HEX_COLORS: Record<string, string> = {
+  motie: '#F43F5E',
+  kamervraag: '#3B82F6',
+  toezegging: '#F59E0B',
+  amendement: '#8B5CF6',
+  commissiedebat: '#06B6D4',
+  schriftelijk_overleg: '#64748b',
+  interpellatie: '#EF4444',
 };
 
 export interface ParlementairItem {
@@ -803,7 +874,7 @@ export const PARLEMENTAIR_ITEM_STATUS_LABELS: Record<ParlementairItemStatus, str
   out_of_scope: 'Buiten scope',
 };
 
-export const PARLEMENTAIR_ITEM_STATUS_COLORS: Record<ParlementairItemStatus, string> = {
+export const PARLEMENTAIR_ITEM_STATUS_COLORS: Record<ParlementairItemStatus, BadgeVariant> = {
   pending: 'amber',
   imported: 'blue',
   reviewed: 'green',

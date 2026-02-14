@@ -67,7 +67,7 @@ export function EdgeList({ nodeId }: EdgeListProps) {
                         className="text-sm text-text hover:text-primary-700 transition-colors text-left"
                       >
                         <Badge
-                          variant={NODE_TYPE_COLORS[connectedNode.node_type] as 'blue'}
+                          variant={NODE_TYPE_COLORS[connectedNode.node_type]}
                           className="mr-2"
                           title={nodeAltLabel(connectedNode.node_type)}
                         >

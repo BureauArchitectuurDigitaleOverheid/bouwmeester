@@ -322,11 +322,11 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <Badge variant={typeColor as 'blue'}>
+            <Badge variant={typeColor}>
               {typeLabel}
             </Badge>
             <Badge
-              variant={PARLEMENTAIR_ITEM_STATUS_COLORS[item.status] as 'blue'}
+              variant={PARLEMENTAIR_ITEM_STATUS_COLORS[item.status]}
             >
               {PARLEMENTAIR_ITEM_STATUS_LABELS[item.status]}
             </Badge>
@@ -574,7 +574,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                       {edge.target_node && (
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <Badge
-                            variant={NODE_TYPE_COLORS[edge.target_node.node_type] as 'blue'}
+                            variant={NODE_TYPE_COLORS[edge.target_node.node_type]}
                             dot
                           >
                             {nodeLabel(edge.target_node.node_type)}
@@ -655,7 +655,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                         {otherNode && (
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <Badge
-                              variant={NODE_TYPE_COLORS[otherNode.node_type] as 'blue'}
+                              variant={NODE_TYPE_COLORS[otherNode.node_type]}
                               dot
                             >
                               {nodeLabel(otherNode.node_type)}

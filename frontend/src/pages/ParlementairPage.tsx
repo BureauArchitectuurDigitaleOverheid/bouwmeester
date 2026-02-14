@@ -13,23 +13,12 @@ import {
   useParlementairItems,
   useTriggerParlementairImport,
 } from '@/hooks/useParlementair';
-import type { ParlementairItemStatus, ParlementairItemType } from '@/types';
-import { PARLEMENTAIR_TYPE_LABELS } from '@/types';
-
-const PARLEMENTAIR_TYPE_HEX_COLORS: Record<string, string> = {
-  motie: '#F43F5E',
-  kamervraag: '#3B82F6',
-  toezegging: '#F59E0B',
-  amendement: '#8B5CF6',
-  commissiedebat: '#06B6D4',
-  schriftelijk_overleg: '#64748b',
-  interpellatie: '#EF4444',
-};
-
-const ALL_PARLEMENTAIR_TYPES: ParlementairItemType[] = [
-  'motie', 'kamervraag', 'toezegging', 'amendement',
-  'commissiedebat', 'schriftelijk_overleg', 'interpellatie',
-];
+import type { ParlementairItemStatus } from '@/types';
+import {
+  PARLEMENTAIR_TYPE_LABELS,
+  PARLEMENTAIR_TYPE_HEX_COLORS,
+  ALL_PARLEMENTAIR_TYPES,
+} from '@/types';
 
 const parlementairTypeOptions: MultiSelectOption[] = ALL_PARLEMENTAIR_TYPES.map((t) => ({
   value: t,

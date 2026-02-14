@@ -164,9 +164,7 @@ export function SearchPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <Badge
-                            variant={
-                              SEARCH_RESULT_TYPE_COLORS[result.result_type] as 'blue'
-                            }
+                            variant={SEARCH_RESULT_TYPE_COLORS[result.result_type]}
                             dot
                           >
                             {SEARCH_RESULT_TYPE_LABELS[result.result_type]}
