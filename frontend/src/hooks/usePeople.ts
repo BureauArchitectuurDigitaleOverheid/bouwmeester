@@ -58,7 +58,7 @@ export function useUpdatePerson() {
     mutationFn: ({ id, data }: { id: string; data: Partial<PersonCreate> }) =>
       updatePerson(id, data),
     errorMessage: 'Fout bij bijwerken persoon',
-    invalidateKeys: [['people']],
+    invalidateKeys: [['people'], ['organisatie']],
   });
 }
 

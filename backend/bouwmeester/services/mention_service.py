@@ -151,6 +151,24 @@ class MentionService:
             for row in (await self.session.execute(stmt)).all():
                 titles[("task", row[0])] = row[1]
 
+        if "organisatie" in ids_by_type:
+            from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+            stmt = select(OrganisatieEenheid.id, OrganisatieEenheid.naam).where(
+                OrganisatieEenheid.id.in_(ids_by_type["organisatie"])
+            )
+            for row in (await self.session.execute(stmt)).all():
+                titles[("organisatie", row[0])] = row[1]
+
+        if "notification" in ids_by_type:
+            from bouwmeester.models.notification import Notification
+
+            stmt = select(Notification.id, Notification.title).where(
+                Notification.id.in_(ids_by_type["notification"])
+            )
+            for row in (await self.session.execute(stmt)).all():
+                titles[("notification", row[0])] = row[1]
+
         return titles
 
     async def search_mentionables(
