@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json as json_mod
 import logging
 import time
 from collections import OrderedDict
@@ -18,6 +19,7 @@ from webauthn import (
     verify_authentication_response,
     verify_registration_response,
 )
+from webauthn.helpers import base64url_to_bytes
 from webauthn.helpers.structs import (
     AuthenticatorSelectionCriteria,
     PublicKeyCredentialDescriptor,
@@ -43,7 +45,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webauthn", tags=["webauthn"])
 
 # ---------------------------------------------------------------------------
-# Rate limiter for authentication endpoints (unauthenticated)
+# Rate limiter for authentication endpoints (unauthenticated).
+# NOTE: In-process store — with multiple workers each has its own state,
+# so effective limit is N × _RATE_LIMIT_MAX per window. Acceptable for
+# this use case; switch to Redis if stricter limits are needed.
 # ---------------------------------------------------------------------------
 _RATE_LIMIT_WINDOW = 60
 _RATE_LIMIT_MAX = 20
@@ -185,7 +190,7 @@ async def register_verify(
             expected_challenge=expected_challenge,
             expected_rp_id=settings.WEBAUTHN_RP_ID,
             expected_origin=settings.WEBAUTHN_ORIGIN,
-            require_user_verification=False,
+            require_user_verification=True,
         )
     except Exception as e:
         logger.warning("WebAuthn registration verification failed: %s", e)
@@ -232,9 +237,11 @@ async def authenticate_options(
     ]
 
     if not allow_credentials:
+        # Return a generic error to prevent enumerating which users have
+        # registered biometric credentials.
         raise HTTPException(
-            status_code=404,
-            detail="Geen biometrische credentials gevonden",
+            status_code=400,
+            detail="Authenticatie niet beschikbaar",
         )
 
     options = generate_authentication_options(
@@ -281,35 +288,39 @@ async def authenticate_verify(
 
     expected_challenge = bytes.fromhex(challenge_hex)
 
-    # Find the credential in the DB — we need to try each one for this person.
+    # Extract the credential ID from the browser's assertion response so we
+    # can look up the exact credential rather than iterating all of them.
+    try:
+        cred_data = json_mod.loads(body.credential)
+        raw_id_b64 = cred_data.get("rawId") or cred_data.get("id")
+        if not raw_id_b64:
+            raise ValueError("missing rawId/id")
+        credential_id_bytes = base64url_to_bytes(raw_id_b64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Ongeldig credential formaat")
+
     result = await db.execute(
-        select(WebAuthnCredential).where(WebAuthnCredential.person_id == body.person_id)
+        select(WebAuthnCredential).where(
+            WebAuthnCredential.credential_id == credential_id_bytes,
+            WebAuthnCredential.person_id == body.person_id,
+        )
     )
-    credentials = result.scalars().all()
+    matched_credential = result.scalar_one_or_none()
 
-    if not credentials:
-        raise HTTPException(status_code=404, detail="Geen credentials gevonden")
+    if not matched_credential:
+        raise HTTPException(status_code=400, detail="Authenticatie-verificatie mislukt")
 
-    # Try each credential — the browser response includes which credential was used.
-    verified = None
-    matched_credential = None
-    for cred in credentials:
-        try:
-            verified = verify_authentication_response(
-                credential=body.credential,
-                expected_challenge=expected_challenge,
-                expected_rp_id=settings.WEBAUTHN_RP_ID,
-                expected_origin=settings.WEBAUTHN_ORIGIN,
-                credential_public_key=cred.public_key,
-                credential_current_sign_count=cred.sign_count,
-                require_user_verification=False,
-            )
-            matched_credential = cred
-            break
-        except Exception:
-            continue
-
-    if not verified or not matched_credential:
+    try:
+        verified = verify_authentication_response(
+            credential=body.credential,
+            expected_challenge=expected_challenge,
+            expected_rp_id=settings.WEBAUTHN_RP_ID,
+            expected_origin=settings.WEBAUTHN_ORIGIN,
+            credential_public_key=matched_credential.public_key,
+            credential_current_sign_count=matched_credential.sign_count,
+            require_user_verification=True,
+        )
+    except Exception:
         raise HTTPException(status_code=400, detail="Authenticatie-verificatie mislukt")
 
     # Update sign count and last_used_at.

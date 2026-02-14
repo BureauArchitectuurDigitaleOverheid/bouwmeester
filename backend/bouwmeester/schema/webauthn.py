@@ -17,16 +17,6 @@ class WebAuthnCredentialResponse(BaseModel):
     last_used_at: datetime | None = None
 
 
-class RegisterOptionsRequest(BaseModel):
-    """Empty request body — user comes from session."""
-
-
-class RegisterOptionsResponse(BaseModel):
-    """JSON-serialised PublicKeyCredentialCreationOptions."""
-
-    options_json: str  # JSON string for the browser
-
-
 class RegisterVerifyRequest(BaseModel):
     """Browser's attestation response after navigator.credentials.create()."""
 
@@ -38,12 +28,6 @@ class AuthenticateOptionsRequest(BaseModel):
     """Request body for generating authentication options."""
 
     person_id: UUID
-
-
-class AuthenticateOptionsResponse(BaseModel):
-    """JSON-serialised PublicKeyCredentialRequestOptions."""
-
-    options_json: str  # JSON string for the browser
 
 
 class AuthenticateVerifyRequest(BaseModel):

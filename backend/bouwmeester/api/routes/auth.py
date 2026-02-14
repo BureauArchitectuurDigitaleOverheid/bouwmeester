@@ -248,8 +248,20 @@ async def auth_status(
 
     # WebAuthn-only sessions have no OIDC tokens — the session itself is
     # the sole authentication mechanism (bounded by session TTL).
+    # We must verify the person is still active since this endpoint is on a
+    # public prefix and skips the auth middleware entirely.
+    webauthn_session = False
     if request.session.get("webauthn_session") and request.session.get("person_db_id"):
-        authenticated = True
+        try:
+            person_obj = await db.get(Person, UUID(request.session["person_db_id"]))
+            if person_obj is not None and person_obj.is_active:
+                authenticated = True
+                webauthn_session = True
+            else:
+                # Person deactivated — clear the stale session.
+                request.session.clear()
+        except (ValueError, Exception):
+            request.session.clear()
     else:
         try:
             if request.session.get("access_token") and oidc_configured:
@@ -266,6 +278,7 @@ async def auth_status(
     result: dict = {
         "authenticated": authenticated,
         "oidc_configured": oidc_configured,
+        "webauthn_session": webauthn_session,
     }
 
     if authenticated:

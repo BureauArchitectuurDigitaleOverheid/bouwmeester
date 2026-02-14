@@ -38,12 +38,8 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.Column(
-            "last_used_at", sa.DateTime(timezone=True), nullable=True
-        ),
-        sa.ForeignKeyConstraint(
-            ["person_id"], ["person.id"], ondelete="CASCADE"
-        ),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(["person_id"], ["person.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("credential_id"),
     )

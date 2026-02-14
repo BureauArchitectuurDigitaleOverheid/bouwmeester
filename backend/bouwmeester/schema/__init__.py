@@ -116,9 +116,7 @@ from bouwmeester.schema.task import (
 )
 from bouwmeester.schema.webauthn import (
     AuthenticateOptionsRequest,
-    AuthenticateOptionsResponse,
     AuthenticateVerifyRequest,
-    RegisterOptionsResponse,
     RegisterVerifyRequest,
     WebAuthnCredentialResponse,
 )
@@ -254,9 +252,7 @@ __all__ = [
     "AdminUserResponse",
     # webauthn
     "AuthenticateOptionsRequest",
-    "AuthenticateOptionsResponse",
     "AuthenticateVerifyRequest",
-    "RegisterOptionsResponse",
     "RegisterVerifyRequest",
     "WebAuthnCredentialResponse",
     "WhitelistEmailCreate",

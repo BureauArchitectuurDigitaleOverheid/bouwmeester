@@ -681,23 +681,58 @@ async def _person_from_claims(
     )
 
 
+async def _person_from_webauthn_session(
+    request: Request,
+    db: AsyncSession,
+) -> Person | None:
+    """Resolve the current request to a :class:`Person` via WebAuthn session.
+
+    WebAuthn-only sessions store ``person_db_id`` in the session (no OIDC
+    tokens).  The middleware has already validated the session; we just need
+    to load the Person by PK.
+    """
+    session = getattr(request, "session", None) or request.scope.get("session", {})
+    if not session or not session.get("webauthn_session"):
+        return None
+
+    person_id_str = session.get("person_db_id")
+    if not person_id_str:
+        return None
+
+    try:
+        person_id = UUID(person_id_str)
+    except (ValueError, AttributeError):
+        return None
+
+    person = await db.get(Person, person_id)
+    if person is not None and person.is_active:
+        return person
+    return None
+
+
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Person:
-    """Dependency that requires a valid token (API key or OIDC).
+    """Dependency that requires a valid token (API key, OIDC, or WebAuthn).
 
-    Checks API key first, then OIDC.  In development mode without OIDC and
-    without an API key this raises 401 — prefer :func:`get_optional_user`
-    for endpoints that should also work unauthenticated.
+    Checks API key first, then WebAuthn session, then OIDC.  In development
+    mode without OIDC and without an API key this raises 401 — prefer
+    :func:`get_optional_user` for endpoints that should also work
+    unauthenticated.
     """
     # 1. API key auth (works with or without OIDC).
     person = await _person_from_api_key(request, db)
     if person is not None:
         return person
 
-    # 2. OIDC auth.
+    # 2. WebAuthn session auth.
+    person = await _person_from_webauthn_session(request, db)
+    if person is not None:
+        return person
+
+    # 3. OIDC auth.
     if not settings.OIDC_ISSUER:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -727,15 +762,20 @@ async def get_optional_user(
 ) -> Person | None:
     """Dependency that returns the current user when authenticated, or ``None``.
 
-    Checks API key first, then OIDC.  If neither is present/configured,
-    returns ``None`` (dev mode).
+    Checks API key first, then WebAuthn session, then OIDC.  If none are
+    present/configured, returns ``None`` (dev mode).
     """
     # 1. API key auth (works with or without OIDC).
     person = await _person_from_api_key(request, db)
     if person is not None:
         return person
 
-    # 2. OIDC auth.
+    # 2. WebAuthn session auth.
+    person = await _person_from_webauthn_session(request, db)
+    if person is not None:
+        return person
+
+    # 3. OIDC auth.
     if not settings.OIDC_ISSUER:
         return None
 
@@ -753,8 +793,8 @@ async def get_admin_user(
 ) -> Person | None:
     """Dependency that requires the current user to be an admin.
 
-    Checks API key first, then OIDC.  In development mode (no OIDC and
-    no API key) returns ``None`` (all access open).
+    Checks API key first, then WebAuthn session, then OIDC.  In development
+    mode (no OIDC and no API key) returns ``None`` (all access open).
     Raises 403 if the user is authenticated but not an admin.
     """
     # 1. API key auth.
@@ -767,7 +807,17 @@ async def get_admin_user(
             )
         return person
 
-    # 2. OIDC auth.
+    # 2. WebAuthn session auth.
+    person = await _person_from_webauthn_session(request, db)
+    if person is not None:
+        if not person.is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required",
+            )
+        return person
+
+    # 3. OIDC auth.
     if not settings.OIDC_ISSUER:
         return None
 

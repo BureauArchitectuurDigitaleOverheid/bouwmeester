@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { BASE_URL } from '@/api/client';
 import { getStoredPersonId, isWebAuthnAvailable } from '@/api/webauthn';
 
@@ -132,10 +132,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = `${BASE_URL}/api/auth/logout`;
   }, []);
 
-  const canBiometricReauth = useMemo(
-    () => isWebAuthnAvailable() && !!getStoredPersonId(),
-    [],
-  );
+  // Recalculated on every render (both calls are trivial) so it picks up
+  // localStorage changes after registration or logout.
+  const canBiometricReauth = isWebAuthnAvailable() && !!getStoredPersonId();
 
   return (
     <AuthContext.Provider value={{ ...state, login, logout, refreshAuthStatus, canBiometricReauth }}>

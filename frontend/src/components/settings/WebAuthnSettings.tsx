@@ -6,6 +6,7 @@ import {
   deleteCredential,
   registerCredential,
   isWebAuthnAvailable,
+  isWebAuthnCancellation,
   setStoredPersonId,
 } from '@/api/webauthn';
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,7 +36,7 @@ export function WebAuthnSettings() {
     },
     onError: (err: Error) => {
       setSuccess(null);
-      if (err.message.includes('NotAllowed') || err.message.includes('AbortError')) {
+      if (isWebAuthnCancellation(err)) {
         setError('Registratie geannuleerd');
       } else {
         setError('Registratie mislukt. Probeer het opnieuw.');
@@ -113,7 +114,11 @@ export function WebAuthnSettings() {
                     </div>
                   </div>
                   <button
-                    onClick={() => deleteMutation.mutate(cred.id)}
+                    onClick={() => {
+                      if (window.confirm('Weet je zeker dat je deze biometrische inlog wilt verwijderen?')) {
+                        deleteMutation.mutate(cred.id);
+                      }
+                    }}
                     disabled={deleteMutation.isPending}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
                   >

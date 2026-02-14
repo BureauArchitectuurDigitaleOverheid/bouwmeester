@@ -72,3 +72,11 @@ export function setStoredPersonId(personId: string): void {
     // localStorage unavailable
   }
 }
+
+/** Returns true if the error indicates the user cancelled the WebAuthn prompt. */
+export function isWebAuthnCancellation(err: unknown): boolean {
+  if (err instanceof Error) {
+    return err.name === 'NotAllowedError' || err.name === 'AbortError';
+  }
+  return false;
+}

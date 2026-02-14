@@ -61,6 +61,23 @@ def _get_bearer_token(scope: Scope) -> str | None:
     return None
 
 
+async def _deny_whitelist(session: dict, send: Send) -> None:
+    """Clear session and send a 403 whitelist-denied response."""
+    session.clear()
+    body = json.dumps({"detail": "Access denied — not on whitelist"}).encode("utf-8")
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 403,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
 class AuthRequiredMiddleware:
     """ASGI middleware that enforces authentication on API routes."""
 
@@ -258,21 +275,7 @@ class AuthRequiredMiddleware:
 
                 email = session.get("person_email", "")
                 if not is_email_allowed(email):
-                    session.clear()
-                    body = json.dumps(
-                        {"detail": "Access denied — not on whitelist"}
-                    ).encode("utf-8")
-                    await send(
-                        {
-                            "type": "http.response.start",
-                            "status": 403,
-                            "headers": [
-                                (b"content-type", b"application/json"),
-                                (b"content-length", str(len(body)).encode()),
-                            ],
-                        }
-                    )
-                    await send({"type": "http.response.body", "body": body})
+                    await _deny_whitelist(session, send)
                     return
 
                 scope["_auth_validated"] = True
@@ -286,21 +289,7 @@ class AuthRequiredMiddleware:
 
             email = session.get("person_email", "")
             if not is_email_allowed(email):
-                session.clear()
-                body = json.dumps(
-                    {"detail": "Access denied — not on whitelist"}
-                ).encode("utf-8")
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 403,
-                        "headers": [
-                            (b"content-type", b"application/json"),
-                            (b"content-length", str(len(body)).encode()),
-                        ],
-                    }
-                )
-                await send({"type": "http.response.body", "body": body})
+                await _deny_whitelist(session, send)
                 return
 
             scope["_auth_validated"] = True

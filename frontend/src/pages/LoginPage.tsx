@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Fingerprint, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { authenticateWithBiometric, getStoredPersonId } from '@/api/webauthn';
+import { authenticateWithBiometric, getStoredPersonId, isWebAuthnCancellation } from '@/api/webauthn';
 
 export function LoginPage() {
   const { login, refreshAuthStatus, authError, canBiometricReauth } = useAuth();
@@ -23,7 +23,7 @@ export function LoginPage() {
         setBiometricError('Biometrische verificatie mislukt. Probeer het opnieuw.');
       }
     } catch (err) {
-      if (err instanceof Error && (err.message.includes('NotAllowed') || err.message.includes('AbortError'))) {
+      if (isWebAuthnCancellation(err)) {
         setBiometricError(null); // User cancelled
       } else {
         setBiometricError('Biometrische inlog mislukt. Gebruik SSO om in te loggen.');
