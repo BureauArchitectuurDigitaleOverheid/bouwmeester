@@ -63,9 +63,7 @@ async def list_organisatie(
     flat = [OrganisatieEenheidResponse.model_validate(item) for item in items]
 
     if format == "tree":
-        personen_counts: dict[UUID, int] = {}
-        for item in items:
-            personen_counts[item.id] = await repo.count_personen(item.id)
+        personen_counts = await repo.count_personen_batch([item.id for item in items])
         return _build_tree(flat, personen_counts)
 
     return flat

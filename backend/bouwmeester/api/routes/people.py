@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -543,17 +543,17 @@ async def add_person_email(
     )
     db.add(email_obj)
 
-    # If setting as default, unset others
+    # If setting as default, unset others with a bulk update
     if email_obj.is_default:
-        for existing_email in (
-            await db.execute(
-                select(PersonEmail).where(
-                    PersonEmail.person_id == id,
-                    PersonEmail.email != email,
-                )
+        await db.flush()  # flush to get email_obj.id assigned
+        await db.execute(
+            update(PersonEmail)
+            .where(
+                PersonEmail.person_id == id,
+                PersonEmail.id != email_obj.id,
             )
-        ).scalars():
-            existing_email.is_default = False
+            .values(is_default=False)
+        )
 
     await db.flush()
     await db.refresh(email_obj)
@@ -607,22 +607,27 @@ async def set_default_email(
     db: AsyncSession = Depends(get_db),
 ) -> PersonEmailResponse:
     """Set an email as the default for a person."""
-    # Unset all defaults for this person
-    all_emails = (
-        (await db.execute(select(PersonEmail).where(PersonEmail.person_id == id)))
-        .scalars()
-        .all()
-    )
-    target = None
-    for e in all_emails:
-        if e.id == email_id:
-            e.is_default = True
-            target = e
-        else:
-            e.is_default = False
-
+    # Verify the target email exists and belongs to this person
+    target = (
+        await db.execute(
+            select(PersonEmail).where(
+                PersonEmail.id == email_id,
+                PersonEmail.person_id == id,
+            )
+        )
+    ).scalar_one_or_none()
     if target is None:
         raise HTTPException(status_code=404, detail="Email niet gevonden")
+
+    # Bulk unset all defaults, then set the target
+    await db.execute(
+        update(PersonEmail).where(PersonEmail.person_id == id).values(is_default=False)
+    )
+    await db.execute(
+        update(PersonEmail)
+        .where(PersonEmail.id == email_id, PersonEmail.person_id == id)
+        .values(is_default=True)
+    )
 
     await db.flush()
     await db.refresh(target)
@@ -666,17 +671,17 @@ async def add_person_phone(
     )
     db.add(phone_obj)
 
-    # If setting as default, unset others
+    # If setting as default, unset others with a bulk update
     if phone_obj.is_default:
-        for existing_phone in (
-            await db.execute(
-                select(PersonPhone).where(
-                    PersonPhone.person_id == id,
-                )
+        await db.flush()  # flush to get phone_obj.id assigned
+        await db.execute(
+            update(PersonPhone)
+            .where(
+                PersonPhone.person_id == id,
+                PersonPhone.id != phone_obj.id,
             )
-        ).scalars():
-            if existing_phone is not phone_obj:
-                existing_phone.is_default = False
+            .values(is_default=False)
+        )
 
     await db.flush()
     await db.refresh(phone_obj)
@@ -730,21 +735,27 @@ async def set_default_phone(
     db: AsyncSession = Depends(get_db),
 ) -> PersonPhoneResponse:
     """Set a phone number as the default for a person."""
-    all_phones = (
-        (await db.execute(select(PersonPhone).where(PersonPhone.person_id == id)))
-        .scalars()
-        .all()
-    )
-    target = None
-    for p in all_phones:
-        if p.id == phone_id:
-            p.is_default = True
-            target = p
-        else:
-            p.is_default = False
-
+    # Verify the target phone exists and belongs to this person
+    target = (
+        await db.execute(
+            select(PersonPhone).where(
+                PersonPhone.id == phone_id,
+                PersonPhone.person_id == id,
+            )
+        )
+    ).scalar_one_or_none()
     if target is None:
         raise HTTPException(status_code=404, detail="Telefoonnummer niet gevonden")
+
+    # Bulk unset all defaults, then set the target
+    await db.execute(
+        update(PersonPhone).where(PersonPhone.person_id == id).values(is_default=False)
+    )
+    await db.execute(
+        update(PersonPhone)
+        .where(PersonPhone.id == phone_id, PersonPhone.person_id == id)
+        .values(is_default=True)
+    )
 
     await db.flush()
     await db.refresh(target)
