@@ -337,7 +337,7 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: C
 
   // Re-fit viewport when visible nodes change so filtered views don't show
   // a tiny cluster in a corner of empty space.
-  const fitViewTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const fitViewTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     clearTimeout(fitViewTimerRef.current);
     fitViewTimerRef.current = setTimeout(() => {
