@@ -161,7 +161,7 @@ export function NotificationBell({ personId }: NotificationBellProps) {
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setOpen(!open)}
-        className="relative flex items-center justify-center h-10 w-10 md:h-8 md:w-8 rounded-full text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
+        className="relative flex items-center justify-center h-9 w-9 rounded-xl border border-transparent hover:border-border hover:bg-gray-100 text-text-secondary hover:text-text transition-colors"
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (

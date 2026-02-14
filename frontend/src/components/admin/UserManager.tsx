@@ -13,7 +13,7 @@ export function UserManager() {
 
   return (
     <div className="space-y-4">
-      <div className="border border-border rounded-xl overflow-hidden">
+      <div className="border border-border rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-border">

@@ -63,7 +63,7 @@ export function DocsPage() {
 
   if (tabsLoading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
+      <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-center py-12">
           <div className="text-sm text-text-secondary">Laden...</div>
         </div>
@@ -72,7 +72,7 @@ export function DocsPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 md:px-6 py-6">
+    <div className="max-w-4xl mx-auto">
       {/* Tabs */}
       {tabs.length > 1 && (
         <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto scrollbar-hide">

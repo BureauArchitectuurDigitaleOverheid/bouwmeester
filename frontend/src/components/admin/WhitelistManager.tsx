@@ -31,19 +31,19 @@ export function WhitelistManager() {
   return (
     <div className="space-y-4">
       {/* Add form */}
-      <form onSubmit={handleAdd} className="flex gap-2">
+      <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2">
         <input
           type="email"
           value={newEmail}
           onChange={(e) => setNewEmail(e.target.value)}
           placeholder="E-mailadres toevoegen..."
-          className="flex-1 px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
+          className="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
           required
         />
         <button
           type="submit"
           disabled={addEmail.isPending || !newEmail.trim()}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+          className="flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors shrink-0"
         >
           <Plus className="h-4 w-4" />
           Toevoegen
@@ -51,7 +51,7 @@ export function WhitelistManager() {
       </form>
 
       {/* Email list */}
-      <div className="border border-border rounded-xl overflow-hidden">
+      <div className="border border-border rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-border">
@@ -64,7 +64,7 @@ export function WhitelistManager() {
           <tbody>
             {emails?.map((entry) => (
               <tr key={entry.id} className="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-2.5 text-text">{entry.email}</td>
+                <td className="px-4 py-2.5 text-text break-all">{entry.email}</td>
                 <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
                   {entry.added_by || '-'}
                 </td>
