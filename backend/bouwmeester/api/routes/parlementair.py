@@ -2,6 +2,7 @@
 
 import logging
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -108,6 +109,36 @@ async def trigger_import(
     )
 
     return {"message": f"{count} items geïmporteerd", "imported": count}
+
+
+@router.post("/imports/reprocess")
+async def reprocess_imports(
+    current_user: OptionalUser,
+    item_type: Literal["motie", "kamervraag", "toezegging"] = Query("toezegging"),
+    actor_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Re-process imported items that have no suggested edges.
+
+    Runs LLM tag extraction and matching on items that were imported
+    without it (e.g. toezeggingen before LLM was enabled).
+    """
+    from bouwmeester.services.parlementair_import_service import (
+        ParlementairImportService,
+    )
+
+    service = ParlementairImportService(db)
+    result = await service.reprocess_imported_items(item_type=item_type)
+
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "parlementair.reprocess_triggered",
+        details=result,
+    )
+
+    return result
 
 
 @router.get("/review-queue", response_model=list[ParlementairItemResponse])
