@@ -89,7 +89,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
 
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <Badge
-              variant={TASK_PRIORITY_COLORS[task.priority] as 'blue'}
+              variant={TASK_PRIORITY_COLORS[task.priority]}
               dot
             >
               {priorityIcons[task.priority]}

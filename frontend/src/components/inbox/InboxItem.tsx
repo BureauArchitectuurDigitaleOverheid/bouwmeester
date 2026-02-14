@@ -5,7 +5,7 @@ import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { formatDateTimeShort } from '@/utils/dates';
-import { NOTIFICATION_TYPE_LABELS } from '@/types';
+import { NOTIFICATION_TYPE_LABELS, INBOX_TYPE_COLORS } from '@/types';
 import type { InboxItem as InboxItemType } from '@/types';
 
 interface InboxItemProps {
@@ -19,13 +19,6 @@ const typeIcons: Record<string, React.ReactNode> = {
   node: <FileText className="h-4 w-4" />,
   notification: <Bell className="h-4 w-4" />,
   message: <MessageSquare className="h-4 w-4" />,
-};
-
-const typeColors: Record<string, string> = {
-  task: 'blue',
-  node: 'purple',
-  notification: 'amber',
-  message: 'green',
 };
 
 
@@ -80,7 +73,7 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
           )}
 
           <div className="flex items-center gap-2">
-            <Badge variant={typeColors[item.type] as 'blue'}>
+            <Badge variant={INBOX_TYPE_COLORS[item.type] ?? 'gray'}>
               {(item.notification_type && NOTIFICATION_TYPE_LABELS[item.notification_type]) || item.type}
             </Badge>
             {item.reply_count != null && item.reply_count > 0 && (

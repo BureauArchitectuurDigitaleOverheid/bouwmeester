@@ -100,7 +100,7 @@ export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <Badge variant={NODE_TYPE_COLORS[s.target_node_type as keyof typeof NODE_TYPE_COLORS] as 'blue'} dot>
+                  <Badge variant={NODE_TYPE_COLORS[s.target_node_type as keyof typeof NODE_TYPE_COLORS]} dot>
                     {s.target_node_type}
                   </Badge>
                   <button

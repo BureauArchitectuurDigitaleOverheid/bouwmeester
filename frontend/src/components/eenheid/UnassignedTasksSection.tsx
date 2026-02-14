@@ -97,7 +97,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
         </button>
         <div className="flex items-center gap-2 mt-1">
           <Badge
-            variant={TASK_PRIORITY_COLORS[task.priority] as 'blue'}
+            variant={TASK_PRIORITY_COLORS[task.priority]}
             dot
           >
             {TASK_PRIORITY_LABELS[task.priority]}

@@ -202,7 +202,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
       <div className="flex flex-col sm:flex-row items-start sm:justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <Badge variant={color as 'blue'} dot title={nodeAltLabel(node.node_type)}>
+            <Badge variant={color} dot title={nodeAltLabel(node.node_type)}>
               {nodeLabel(node.node_type)}
             </Badge>
             {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
@@ -653,7 +653,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       onClick={() => navigate(`/nodes/${neighbor.id}`)}
                       className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
                     >
-                      <Badge variant={NODE_TYPE_COLORS[neighbor.node_type] as 'blue'} dot title={nodeAltLabel(neighbor.node_type)}>
+                      <Badge variant={NODE_TYPE_COLORS[neighbor.node_type]} dot title={nodeAltLabel(neighbor.node_type)}>
                         {nodeLabel(neighbor.node_type)}
                       </Badge>
                       <span className="text-sm text-text truncate">

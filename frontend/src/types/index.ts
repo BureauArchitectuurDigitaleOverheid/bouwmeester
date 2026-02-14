@@ -29,7 +29,7 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   [NodeType.OVERIG]: 'Overig',
 };
 
-export const NODE_TYPE_COLORS: Record<NodeType, string> = {
+export const NODE_TYPE_COLORS: Record<NodeType, BadgeVariant> = {
   [NodeType.DOSSIER]: 'blue',
   [NodeType.DOEL]: 'green',
   [NodeType.INSTRUMENT]: 'purple',
@@ -208,11 +208,18 @@ export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   [TaskPriority.LAAG]: 'Laag',
 };
 
-export const TASK_PRIORITY_COLORS: Record<TaskPriority, string> = {
+export const TASK_PRIORITY_COLORS: Record<TaskPriority, BadgeVariant> = {
   [TaskPriority.KRITIEK]: 'red',
   [TaskPriority.HOOG]: 'orange',
   [TaskPriority.NORMAAL]: 'blue',
   [TaskPriority.LAAG]: 'gray',
+};
+
+export const TASK_STATUS_COLORS: Record<TaskStatus, BadgeVariant> = {
+  [TaskStatus.OPEN]: 'blue',
+  [TaskStatus.IN_PROGRESS]: 'amber',
+  [TaskStatus.DONE]: 'green',
+  [TaskStatus.CANCELLED]: 'gray',
 };
 
 export interface TaskOrgEenheidSummary {
@@ -381,7 +388,7 @@ export const ORGANISATIE_TYPE_LABELS: Record<string, string> = {
   team: 'Team',
 };
 
-export type BadgeVariant = 'blue' | 'green' | 'purple' | 'amber' | 'cyan' | 'rose' | 'slate' | 'gray' | 'red' | 'orange';
+export type BadgeVariant = 'blue' | 'green' | 'purple' | 'amber' | 'cyan' | 'rose' | 'slate' | 'gray' | 'red' | 'orange' | 'emerald' | 'indigo';
 
 export const ORGANISATIE_TYPE_BADGE_COLORS: Record<string, BadgeVariant> = {
   ministerie: 'blue',
@@ -614,6 +621,13 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   access_request: 'bg-amber-100 text-amber-700',
 };
 
+export const INBOX_TYPE_COLORS: Record<string, BadgeVariant> = {
+  task: 'blue',
+  node: 'purple',
+  notification: 'amber',
+  message: 'green',
+};
+
 // Activity
 export interface Activity {
   id: string;
@@ -720,7 +734,7 @@ export const SEARCH_RESULT_TYPE_LABELS: Record<SearchResultType, string> = {
   tag: 'Tag',
 };
 
-export const SEARCH_RESULT_TYPE_COLORS: Record<SearchResultType, string> = {
+export const SEARCH_RESULT_TYPE_COLORS: Record<SearchResultType, BadgeVariant> = {
   corpus_node: 'blue',
   task: 'amber',
   person: 'green',
@@ -789,7 +803,7 @@ export const PARLEMENTAIR_TYPE_LABELS: Record<string, string> = {
   interpellatie: 'Interpellatie',
 };
 
-export const PARLEMENTAIR_TYPE_COLORS: Record<string, string> = {
+export const PARLEMENTAIR_TYPE_COLORS: Record<string, BadgeVariant> = {
   motie: 'rose',
   kamervraag: 'blue',
   toezegging: 'amber',
@@ -860,7 +874,7 @@ export const PARLEMENTAIR_ITEM_STATUS_LABELS: Record<ParlementairItemStatus, str
   out_of_scope: 'Buiten scope',
 };
 
-export const PARLEMENTAIR_ITEM_STATUS_COLORS: Record<ParlementairItemStatus, string> = {
+export const PARLEMENTAIR_ITEM_STATUS_COLORS: Record<ParlementairItemStatus, BadgeVariant> = {
   pending: 'amber',
   imported: 'blue',
   reviewed: 'green',

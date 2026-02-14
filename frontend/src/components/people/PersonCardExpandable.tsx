@@ -271,7 +271,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                         <FileText className="h-3 w-3 text-text-secondary shrink-0" />
                         <span className="truncate">{node.node_title}</span>
                         <Badge
-                          variant={(NODE_TYPE_COLORS[node.node_type as keyof typeof NODE_TYPE_COLORS] || 'gray') as 'blue' | 'green' | 'purple' | 'amber' | 'cyan' | 'rose' | 'slate' | 'gray'}
+                          variant={NODE_TYPE_COLORS[node.node_type as keyof typeof NODE_TYPE_COLORS] || 'gray'}
                           className="text-[10px] px-1.5 py-0 shrink-0"
                         >
                           {nodeLabel(node.node_type)}
