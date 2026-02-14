@@ -2,6 +2,7 @@
 
 import logging
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -113,7 +114,7 @@ async def trigger_import(
 @router.post("/imports/reprocess")
 async def reprocess_imports(
     current_user: OptionalUser,
-    item_type: str = Query("toezegging"),
+    item_type: Literal["motie", "kamervraag", "toezegging"] = Query("toezegging"),
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict:

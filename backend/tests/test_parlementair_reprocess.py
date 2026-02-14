@@ -24,7 +24,7 @@ TEST_TYPE = "motie"
 # ---------------------------------------------------------------------------
 
 
-async def _make_item(db_session, *, with_node=True, with_edges=0):
+async def _make_item(db_session, *, with_node=True, with_edges=0, status="imported"):
     """Create an imported parlementair item with optional corpus node and edges."""
     node = None
     if with_node:
@@ -56,7 +56,7 @@ async def _make_item(db_session, *, with_node=True, with_edges=0):
         onderwerp="De Kamer verzoekt de minister iets te doen",
         bron="tweede_kamer",
         datum=date(2025, 1, 15),
-        status="imported",
+        status=status,
         corpus_node_id=node.id if node else None,
     )
     db_session.add(item)
@@ -107,7 +107,7 @@ async def test_reprocess_no_items_to_process(db_session):
     """Reprocess returns zeros when no items need processing."""
     service = ParlementairImportService(db_session)
     result = await service.reprocess_imported_items(item_type=TEST_TYPE)
-    assert result == {"total": 0, "matched": 0, "out_of_scope": 0}
+    assert result == {"total": 0, "matched": 0, "out_of_scope": 0, "skipped": 0}
 
 
 async def test_reprocess_skips_items_with_existing_edges(db_session):
@@ -116,6 +116,22 @@ async def test_reprocess_skips_items_with_existing_edges(db_session):
     service = ParlementairImportService(db_session)
     result = await service.reprocess_imported_items(item_type=TEST_TYPE)
     assert result["total"] == 0
+
+
+async def test_reprocess_picks_up_pending_items(db_session):
+    """Pending items (from earlier LLM failures) are also reprocessed."""
+    item, _ = await _make_item(db_session, status="pending", with_node=False)
+
+    service = ParlementairImportService(db_session)
+
+    with patch(
+        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        new=AsyncMock(return_value=_mock_llm(matched_tags=[])),
+    ):
+        result = await service.reprocess_imported_items(item_type=TEST_TYPE)
+
+    assert result["total"] == 1
+    assert item.status == "out_of_scope"
 
 
 async def test_reprocess_no_llm_provider(db_session):
@@ -162,15 +178,8 @@ async def test_reprocess_no_matches_moves_to_out_of_scope(db_session):
     assert deleted_node is None
 
 
-async def test_reprocess_no_matches_cancels_review_tasks(db_session):
-    """Review tasks are cancelled when item moves to out_of_scope.
-
-    We verify task status via a fresh query because the cascade delete
-    of the corpus node also removes tasks linked via node_id.  The
-    _detach_corpus_node method cancels tasks *before* deleting the node,
-    so we check the task's status was set to cancelled by querying for
-    cancelled tasks on this parlementair_item.
-    """
+async def test_reprocess_no_matches_cascade_deletes_tasks(db_session):
+    """Tasks linked to the corpus node are cascade-deleted when node is removed."""
     item, node = await _make_item(db_session)
 
     task = Task(
@@ -193,13 +202,9 @@ async def test_reprocess_no_matches_cancels_review_tasks(db_session):
     ):
         await service.reprocess_imported_items(item_type=TEST_TYPE)
 
-    # Task was cascade-deleted with the node, but its status was set to
-    # "cancelled" before deletion.  We can verify by checking the node
-    # and item are properly cleaned up (the task cancel is an intermediate
-    # step covered by the _detach_corpus_node unit test below).
     assert item.status == "out_of_scope"
     assert item.corpus_node_id is None
-    # Task should be gone (cascade deleted with the node)
+    # Task is cascade-deleted with the corpus node (ondelete=CASCADE on Task.node_id)
     assert await db_session.get(Task, task_id) is None
 
 
@@ -372,8 +377,8 @@ async def test_detach_corpus_node_deletes_node(db_session):
     assert await db_session.get(CorpusNode, node_id) is None
 
 
-async def test_detach_corpus_node_cancels_open_tasks(db_session):
-    """_detach_corpus_node cancels open tasks before deleting the node."""
+async def test_detach_corpus_node_cascade_deletes_tasks(db_session):
+    """_detach_corpus_node cascade-deletes tasks linked to the corpus node."""
     item, node = await _make_item(db_session)
 
     open_task = Task(
@@ -388,16 +393,11 @@ async def test_detach_corpus_node_cancels_open_tasks(db_session):
     await db_session.flush()
 
     service = ParlementairImportService(db_session)
-
-    # Verify task is set to cancelled (we check before cascade-delete
-    # removes it, by inspecting the object in the session identity map)
     await service._detach_corpus_node(item)
 
-    # After detach, node is deleted. The task was cancelled before
-    # deletion. We verify the node is gone (and tasks cascaded away).
     assert item.corpus_node_id is None
     assert await db_session.get(CorpusNode, node.id) is None
-    # Task was cascade-deleted with the node
+    # Task is cascade-deleted with the corpus node
     assert await db_session.get(Task, open_task.id) is None
 
 

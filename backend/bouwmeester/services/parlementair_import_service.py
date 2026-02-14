@@ -666,7 +666,7 @@ class ParlementairImportService:
             select(ParlementairItem)
             .where(
                 ParlementairItem.type == item_type,
-                ParlementairItem.status == "imported",
+                ParlementairItem.status.in_(["imported", "pending"]),
             )
             .outerjoin(
                 SuggestedEdge,
@@ -679,7 +679,7 @@ class ParlementairImportService:
         items = result.scalars().all()
 
         if not items:
-            return {"total": 0, "matched": 0, "out_of_scope": 0}
+            return {"total": 0, "matched": 0, "out_of_scope": 0, "skipped": 0}
 
         all_tags = await self.tag_repo.get_all()
         tag_names = [t.name for t in all_tags]
@@ -691,6 +691,7 @@ class ParlementairImportService:
                 "total": len(items),
                 "matched": 0,
                 "out_of_scope": 0,
+                "skipped": 0,
                 "error": "no_llm",
             }
 
@@ -795,18 +796,8 @@ class ParlementairImportService:
 
         Deletes the CorpusNode (cascading to PolitiekeInput, edges,
         tasks, stakeholders, node_tags) and clears the FK on the item.
-        Also closes any open review tasks for this item.
         """
-        # Close open review tasks linked to this parlementair item
-        task_stmt = select(Task).where(
-            Task.parlementair_item_id == item.id,
-            Task.status.notin_(["done", "cancelled"]),
-        )
-        task_result = await self.session.execute(task_stmt)
-        for task in task_result.scalars().all():
-            task.status = "cancelled"
-
-        # Delete the corpus node (cascades to politieke_input, etc.)
+        # Delete the corpus node (cascades to politieke_input, tasks, etc.)
         if item.corpus_node_id:
             node = await self.session.get(CorpusNode, item.corpus_node_id)
             if node:
