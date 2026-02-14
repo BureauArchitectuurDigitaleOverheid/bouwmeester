@@ -10,14 +10,14 @@ import uuid
 from collections import Counter
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.node_stakeholder import NodeStakeholder
-from bouwmeester.models.parlementair_item import ParlementairItem
+from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.person import Person
 from bouwmeester.models.politieke_input import PolitiekeInput
 from bouwmeester.models.task import Task
@@ -622,6 +622,167 @@ class ParlementairImportService:
 
         results.sort(key=lambda x: x["confidence"], reverse=True)
         return results[:10]
+
+    async def reprocess_imported_items(
+        self,
+        item_type: str = "toezegging",
+    ) -> dict:
+        """Re-process imported items that have no suggested edges.
+
+        Runs LLM tag extraction and node matching on items that were
+        imported without matching (e.g. toezeggingen before LLM was
+        enabled).  Items that still don't match after LLM extraction
+        are moved to out_of_scope.
+        """
+        strategy = get_strategy(item_type)
+
+        # Find imported items of this type with zero suggested edges
+        stmt = (
+            select(ParlementairItem)
+            .where(
+                ParlementairItem.type == item_type,
+                ParlementairItem.status == "imported",
+            )
+            .outerjoin(
+                SuggestedEdge,
+                SuggestedEdge.parlementair_item_id == ParlementairItem.id,
+            )
+            .group_by(ParlementairItem.id)
+            .having(func.count(SuggestedEdge.id) == 0)
+        )
+        result = await self.session.execute(stmt)
+        items = result.scalars().all()
+
+        if not items:
+            return {"total": 0, "matched": 0, "out_of_scope": 0}
+
+        all_tags = await self.tag_repo.get_all()
+        tag_names = [t.name for t in all_tags]
+
+        llm_service = await get_llm_service(self.session)
+        if not llm_service:
+            logger.warning("No LLM provider configured, cannot reprocess")
+            return {
+                "total": len(items),
+                "matched": 0,
+                "out_of_scope": 0,
+                "error": "no_llm",
+            }
+
+        matched_count = 0
+        out_of_scope_count = 0
+
+        for item in items:
+            try:
+                extraction = await llm_service.extract_tags(
+                    titel=item.titel,
+                    onderwerp=item.onderwerp,
+                    document_tekst=item.document_tekst,
+                    bestaande_tags=tag_names,
+                    context_hint=strategy.context_hint(),
+                )
+            except Exception:
+                logger.exception(
+                    "LLM extraction failed for %s %s", item.type, item.zaak_nummer
+                )
+                continue
+
+            matched_tag_names = extraction.matched_tags if extraction else []
+            samenvatting = extraction.samenvatting if extraction else None
+
+            # Update item with LLM results
+            item.matched_tags = matched_tag_names
+            if samenvatting:
+                item.llm_samenvatting = samenvatting
+
+            # Tag the corpus node
+            if item.corpus_node_id and matched_tag_names:
+                tag_map = await self.tag_repo.get_by_names(matched_tag_names)
+                for tag_name, tag in tag_map.items():
+                    try:
+                        await self.tag_repo.add_tag_to_node(item.corpus_node_id, tag.id)
+                    except SQLAlchemyError:
+                        pass  # duplicate tag, ignore
+
+            # Find matching nodes
+            matched_nodes = await self._find_matching_nodes(matched_tag_names)
+
+            if not matched_nodes:
+                # No matches after LLM — move to out_of_scope and
+                # remove the orphaned corpus node that was created
+                # during the original (matchless) import.
+                await self._detach_corpus_node(item)
+                item.status = "out_of_scope"
+                out_of_scope_count += 1
+                await self.session.flush()
+                logger.info(
+                    "%s %s moved to out_of_scope (no matches after LLM)",
+                    item.type,
+                    item.zaak_nummer,
+                )
+                continue
+
+            # Create suggested edges
+            for match in matched_nodes:
+                target_node = match["node"]
+                try:
+                    await self.edge_repo.create(
+                        parlementair_item_id=item.id,
+                        target_node_id=target_node.id,
+                        edge_type_id=strategy.default_edge_type(),
+                        confidence=match["confidence"],
+                        reason=match["reason"],
+                        status="pending",
+                    )
+                except SQLAlchemyError:
+                    logger.exception(
+                        "Error creating suggested edge to node %s", target_node.id
+                    )
+
+            matched_count += 1
+            await self.session.flush()
+
+            logger.info(
+                "%s %s reprocessed: %d suggested edges",
+                item.type,
+                item.zaak_nummer,
+                len(matched_nodes),
+            )
+
+        await self.session.flush()
+        return {
+            "total": len(items),
+            "matched": matched_count,
+            "out_of_scope": out_of_scope_count,
+        }
+
+    async def _detach_corpus_node(
+        self,
+        item: ParlementairItem,
+    ) -> None:
+        """Remove the corpus node created during a matchless import.
+
+        Deletes the CorpusNode (cascading to PolitiekeInput, edges,
+        tasks, stakeholders, node_tags) and clears the FK on the item.
+        Also closes any open review tasks for this item.
+        """
+        # Close open review tasks linked to this parlementair item
+        task_stmt = select(Task).where(
+            Task.parlementair_item_id == item.id,
+            Task.status.notin_(["done", "cancelled"]),
+        )
+        task_result = await self.session.execute(task_stmt)
+        for task in task_result.scalars().all():
+            task.status = "cancelled"
+
+        # Delete the corpus node (cascades to politieke_input, etc.)
+        if item.corpus_node_id:
+            node = await self.session.get(CorpusNode, item.corpus_node_id)
+            if node:
+                await self.session.delete(node)
+            item.corpus_node_id = None
+
+        await self.session.flush()
 
     async def _link_indieners(
         self,

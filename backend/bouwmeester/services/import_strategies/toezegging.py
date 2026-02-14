@@ -26,7 +26,7 @@ class ToezeggingStrategy(ImportStrategy):
 
     @property
     def requires_llm(self) -> bool:
-        return False
+        return True
 
     @property
     def supports_ek(self) -> bool:

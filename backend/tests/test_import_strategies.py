@@ -213,8 +213,8 @@ class TestToezeggingStrategy:
     def test_politieke_input_type(self):
         assert self.strategy.politieke_input_type == "toezegging"
 
-    def test_requires_llm_is_false(self):
-        assert self.strategy.requires_llm is False
+    def test_requires_llm_is_true(self):
+        assert self.strategy.requires_llm is True
 
     def test_task_title(self):
         item = FetchedItem(
