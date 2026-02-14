@@ -139,7 +139,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
   return (
     <div
       className={clsx(
-        'border rounded-lg p-3 space-y-2 transition-all duration-150',
+        'border rounded-lg p-2 sm:p-3 space-y-2 transition-all duration-150',
         orgTypeBg(group.eenheid.type),
         dragOver
           ? 'border-primary-400 ring-2 ring-primary-200'
