@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import ReactFlow, {
@@ -54,6 +54,7 @@ const NODE_TYPE_RANK: Record<string, number> = {
   [NodeType.INSTRUMENT]: 4,
   [NodeType.MAATREGEL]: 4,
   [NodeType.EFFECT]: 5,
+  [NodeType.BRON]: 3,
   [NodeType.NOTITIE]: 3,
   [NodeType.OVERIG]: 3,
 };
@@ -133,6 +134,7 @@ const NODE_TYPE_HEX_COLORS: Record<string, string> = {
   [NodeType.PROBLEEM]: '#EF4444',
   [NodeType.EFFECT]: '#059669',
   [NodeType.BELEIDSOPTIE]: '#6366F1',
+  [NodeType.BRON]: '#F97316',
   [NodeType.NOTITIE]: '#64748b',
   [NodeType.OVERIG]: '#9ca3af',
 };
@@ -173,6 +175,7 @@ export function CorpusGraph() {
   );
   const [enabledEdgeTypes, setEnabledEdgeTypes] = useState<Set<string>>(new Set());
   const [edgeTypesInitialized, setEdgeTypesInitialized] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Edge creation state
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
@@ -209,8 +212,12 @@ export function CorpusGraph() {
       return { rfNodes: [], rfEdges: [] };
     }
 
-    // Filter nodes by enabled types
-    const filteredNodes = data.nodes.filter((n) => enabledNodeTypes.has(n.node_type));
+    // Filter nodes by enabled types and search query
+    const q = searchQuery.toLowerCase();
+    const filteredNodes = data.nodes.filter((n) =>
+      enabledNodeTypes.has(n.node_type) &&
+      (!q || n.title.toLowerCase().includes(q) || n.description?.toLowerCase().includes(q)),
+    );
 
     // Filter edges by enabled edge types only (not by visible node endpoints)
     const typeFilteredEdges = data.edges.filter((e) => enabledEdgeTypes.has(e.edge_type_id));
@@ -319,7 +326,7 @@ export function CorpusGraph() {
     const rfEdges: RFEdge[] = [...rfNormalEdges, ...rfBridgeEdges];
 
     return { rfNodes, rfEdges };
-  }, [data, enabledNodeTypes, enabledEdgeTypes, navigate, vocabEdgeLabel]);
+  }, [data, enabledNodeTypes, enabledEdgeTypes, searchQuery, navigate, vocabEdgeLabel]);
 
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
@@ -416,6 +423,15 @@ export function CorpusGraph() {
     <div className="space-y-4">
       {/* Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+        <div className="relative w-full sm:w-56">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Zoek in netwerk..."
+            className="pl-9"
+          />
+        </div>
         <div className="w-full sm:w-52">
           <MultiSelect
             value={enabledNodeTypes as Set<string>}
