@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from bouwmeester.schema.corpus_node import CorpusNodeResponse
 
@@ -47,6 +47,14 @@ class ParlementairItemResponse(BaseModel):
     reviewed_at: datetime | None = None
     created_at: datetime
     suggested_edges: list[SuggestedEdgeResponse] = []
+
+    @field_validator("datum", "deadline", mode="before")
+    @classmethod
+    def _nullify_sentinel_dates(cls, v: date | None) -> date | None:
+        """TK API uses 0001-01-01 as sentinel for missing dates."""
+        if v is not None and hasattr(v, "year") and v.year <= 1:
+            return None
+        return v
 
     model_config = ConfigDict(from_attributes=True)
 

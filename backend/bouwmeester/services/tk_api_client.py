@@ -253,14 +253,20 @@ class TweedeKamerClient:
         datum = None
         if zaak.get("GestartOp"):
             try:
-                datum = datetime.fromisoformat(zaak["GestartOp"].replace("Z", "+00:00"))
+                parsed = datetime.fromisoformat(
+                    zaak["GestartOp"].replace("Z", "+00:00")
+                )
+                if parsed.year > 1:
+                    datum = parsed
             except (ValueError, AttributeError):
                 pass
 
         termijn = None
         if zaak.get("Termijn"):
             try:
-                termijn = datetime.fromisoformat(zaak["Termijn"].replace("Z", "+00:00"))
+                parsed = datetime.fromisoformat(zaak["Termijn"].replace("Z", "+00:00"))
+                if parsed.year > 1:
+                    termijn = parsed
             except (ValueError, AttributeError):
                 pass
 
@@ -331,9 +337,12 @@ class TweedeKamerClient:
                 datum_nakoming = None
                 if item.get("DatumNakoming"):
                     try:
-                        datum_nakoming = datetime.fromisoformat(
+                        parsed = datetime.fromisoformat(
                             item["DatumNakoming"].replace("Z", "+00:00")
                         )
+                        # TK API uses 0001-01-01 as sentinel for missing dates
+                        if parsed.year > 1:
+                            datum_nakoming = parsed
                     except (ValueError, AttributeError):
                         pass
 
