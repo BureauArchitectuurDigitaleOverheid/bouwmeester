@@ -20,7 +20,7 @@ export function AppLayout() {
   }, [mobileSidebarOpen, setMobileSidebarOpen]);
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
       {/* Desktop sidebar */}
       {!isMobile && <Sidebar />}
 
@@ -39,7 +39,7 @@ export function AppLayout() {
 
       <div className="flex flex-col flex-1 min-w-0">
         <Header />
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto">
+        <main className="flex-1 p-4 md:p-6 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
           <Outlet />
         </main>
       </div>
