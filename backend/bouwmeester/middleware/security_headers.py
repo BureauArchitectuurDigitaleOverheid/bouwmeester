@@ -14,7 +14,6 @@ class SecurityHeadersMiddleware:
     - X-Frame-Options: DENY
     - Referrer-Policy: strict-origin-when-cross-origin
     - Permissions-Policy: (restrictive defaults)
-    - Content-Security-Policy: (defence-in-depth policy)
 
     Strict-Transport-Security is intentionally omitted here because the
     reverse proxy (nginx / ZAD ingress) should own that header.

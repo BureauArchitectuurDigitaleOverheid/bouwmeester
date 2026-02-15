@@ -1,16 +1,73 @@
-"""Security tests for H2 (is_agent mass assignment) and H3 (security headers)."""
+"""Security tests for is_agent mass assignment guard and security headers."""
 
 import uuid
-from unittest.mock import MagicMock
 
 import pytest
-from fastapi import HTTPException
+from httpx import ASGITransport, AsyncClient
 
-from bouwmeester.schema.person import PersonUpdate
+from bouwmeester.core.auth import get_optional_user
+from bouwmeester.core.database import get_db
+
+
+# ---------------------------------------------------------------------------
+# Fixtures: build clients with a specific authenticated user injected
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def _test_app():
+    """Create a fresh app instance for auth-override tests."""
+    from bouwmeester.core.app import create_app
+
+    return create_app()
+
+
+@pytest.fixture
+async def authed_client(db_session, _test_app, create_person, request):
+    """HTTPX client with an authenticated user injected via dependency override.
+
+    Use ``@pytest.mark.parametrize("authed_client", [True], indirect=True)``
+    for admin, or ``[False]`` for non-admin.
+    """
+    is_admin = request.param
+    user = await create_person(
+        naam="Auth Override",
+        prefix="auth",
+        is_admin=is_admin,
+    )
+
+    app = _test_app
+
+    async def _override_get_db():
+        yield db_session
+
+    def _override_get_user():
+        return user
+
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_optional_user] = _override_get_user
+
+    transport = ASGITransport(app=app)
+
+    # A Bearer header exempts requests from CSRF checks (line 72 of csrf.py).
+    # The token value doesn't matter because get_optional_user is overridden.
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer test-override"},
+    ) as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Security headers tests
+# ---------------------------------------------------------------------------
 
 
 async def test_security_headers_present(client):
-    """All responses include standard security headers (H3)."""
+    """All responses include standard security headers."""
     resp = await client.get("/api/health/live")
     assert resp.status_code == 200
     assert resp.headers["X-Content-Type-Options"] == "nosniff"
@@ -38,12 +95,13 @@ async def test_security_headers_on_mutation(client, sample_person):
     assert resp.headers["X-Frame-Options"] == "DENY"
 
 
-async def test_update_person_is_agent_allowed_in_dev_mode(client, sample_person):
-    """In dev mode (no OIDC, current_user=None), is_agent update goes through.
+# ---------------------------------------------------------------------------
+# is_agent guard tests — integration tests hitting the real route
+# ---------------------------------------------------------------------------
 
-    This is expected: dev mode has no auth enforcement so the guard is
-    transparent (current_user is None).
-    """
+
+async def test_update_person_is_agent_allowed_in_dev_mode(client, sample_person):
+    """In dev mode (no OIDC, current_user=None), is_agent update goes through."""
     resp = await client.put(
         f"/api/people/{sample_person.id}",
         json={"is_agent": True},
@@ -52,48 +110,37 @@ async def test_update_person_is_agent_allowed_in_dev_mode(client, sample_person)
     assert resp.json()["is_agent"] is True
 
 
-async def test_update_person_is_agent_guard_rejects_non_admin():
-    """When current_user is a non-admin, setting is_agent is rejected (H2)."""
-    non_admin = MagicMock()
-    non_admin.is_admin = False
-    non_admin.id = uuid.uuid4()
-
-    data = PersonUpdate(is_agent=True)
-
-    with pytest.raises(HTTPException) as exc_info:
-        if (
-            data.is_agent is not None
-            and non_admin is not None
-            and not non_admin.is_admin
-        ):
-            raise HTTPException(status_code=403, detail="Forbidden")
-
-    assert exc_info.value.status_code == 403
+@pytest.mark.parametrize("authed_client", [False], indirect=True)
+async def test_update_person_is_agent_rejected_for_non_admin(
+    authed_client, sample_person
+):
+    """Non-admin user gets 403 when trying to set is_agent."""
+    resp = await authed_client.put(
+        f"/api/people/{sample_person.id}",
+        json={"is_agent": True},
+    )
+    assert resp.status_code == 403
 
 
-async def test_update_person_is_agent_guard_allows_admin():
+@pytest.mark.parametrize("authed_client", [True], indirect=True)
+async def test_update_person_is_agent_allowed_for_admin(authed_client, sample_person):
     """Admin user CAN set is_agent."""
-    admin = MagicMock()
-    admin.is_admin = True
-    admin.id = uuid.uuid4()
-
-    data = PersonUpdate(is_agent=True)
-
-    should_block = (
-        data.is_agent is not None and admin is not None and not admin.is_admin
+    resp = await authed_client.put(
+        f"/api/people/{sample_person.id}",
+        json={"is_agent": True},
     )
-    assert should_block is False
+    assert resp.status_code == 200
+    assert resp.json()["is_agent"] is True
 
 
-async def test_update_person_is_agent_guard_allows_none_field():
-    """is_agent=None (field not sent) passes the guard for non-admin."""
-    non_admin = MagicMock()
-    non_admin.is_admin = False
-    non_admin.id = uuid.uuid4()
-
-    data = PersonUpdate(naam="New Name")  # is_agent not set → None
-
-    should_block = (
-        data.is_agent is not None and non_admin is not None and not non_admin.is_admin
+@pytest.mark.parametrize("authed_client", [False], indirect=True)
+async def test_update_person_without_is_agent_allowed_for_non_admin(
+    authed_client, sample_person
+):
+    """Non-admin can update other fields when is_agent is not in the payload."""
+    resp = await authed_client.put(
+        f"/api/people/{sample_person.id}",
+        json={"naam": "Nieuwe Naam"},
     )
-    assert should_block is False
+    assert resp.status_code == 200
+    assert resp.json()["naam"] == "Nieuwe Naam"
