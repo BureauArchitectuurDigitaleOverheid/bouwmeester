@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getNodes, getNode, createNode, updateNode, deleteNode,
   getNodeNeighbors, getNodeStakeholders, addNodeStakeholder,
@@ -67,12 +67,10 @@ export function useNodeStakeholders(id: string | undefined) {
 export function useAddNodeStakeholder() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({ nodeId, data }: { nodeId: string; data: { person_id: string; rol: string } }) =>
       addNodeStakeholder(nodeId, data),
-    onError: (error: Error) => {
-      console.error('Fout bij toevoegen stakeholder:', error);
-    },
+    errorMessage: 'Fout bij toevoegen stakeholder',
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', 'detail', variables.nodeId, 'stakeholders'] });
     },
@@ -82,12 +80,10 @@ export function useAddNodeStakeholder() {
 export function useUpdateNodeStakeholder() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({ nodeId, stakeholderId, data }: { nodeId: string; stakeholderId: string; data: { rol: string } }) =>
       updateNodeStakeholder(nodeId, stakeholderId, data),
-    onError: (error: Error) => {
-      console.error('Fout bij bijwerken stakeholder:', error);
-    },
+    errorMessage: 'Fout bij bijwerken stakeholder',
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', 'detail', variables.nodeId, 'stakeholders'] });
     },
@@ -97,12 +93,10 @@ export function useUpdateNodeStakeholder() {
 export function useRemoveNodeStakeholder() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({ nodeId, stakeholderId }: { nodeId: string; stakeholderId: string }) =>
       removeNodeStakeholder(nodeId, stakeholderId),
-    onError: (error: Error) => {
-      console.error('Fout bij verwijderen stakeholder:', error);
-    },
+    errorMessage: 'Fout bij verwijderen stakeholder',
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['nodes', 'detail', variables.nodeId, 'stakeholders'] });
     },

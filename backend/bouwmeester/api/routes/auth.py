@@ -25,6 +25,7 @@ from bouwmeester.core.auth import (
 )
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.core.database import get_db
+from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.core.whitelist import is_email_allowed
 from bouwmeester.models.access_request import AccessRequest
@@ -409,7 +410,7 @@ async def request_access(
     """Submit an access request. Public endpoint (no auth required)."""
     _access_request_rate_limiter.check(request)
 
-    email = body.email.strip().lower()
+    email = normalize_email(body.email)
 
     # If already on whitelist, tell the user
     if is_email_allowed(email):
@@ -465,7 +466,7 @@ async def access_request_status(
     db: AsyncSession = Depends(get_db),
 ) -> AccessRequestStatusResponse:
     """Check the status of the latest access request for an email."""
-    email = email.strip().lower()
+    email = normalize_email(email)
 
     # If already on whitelist, they're allowed now
     if is_email_allowed(email):

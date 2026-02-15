@@ -15,6 +15,10 @@ from bouwmeester.models.edge import Edge
 from bouwmeester.models.node_status import CorpusNodeStatus
 from bouwmeester.models.node_title import CorpusNodeTitle
 from bouwmeester.repositories.base import BaseRepository
+from bouwmeester.repositories.temporal import (
+    close_active_records,
+    rotate_temporal_record,
+)
 from bouwmeester.schema.corpus_node import CorpusNodeCreate, CorpusNodeUpdate
 
 
@@ -261,20 +265,13 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         new_title: str,
         effective: date,
     ) -> None:
-        stmt = select(CorpusNodeTitle).where(
-            CorpusNodeTitle.node_id == node_id,
-            CorpusNodeTitle.geldig_tot.is_(None),
-        )
-        result = await self.session.execute(stmt)
-        active = result.scalar_one_or_none()
-        if active:
-            active.geldig_tot = effective
-        self.session.add(
-            CorpusNodeTitle(
-                node_id=node_id,
-                title=new_title,
-                geldig_van=effective,
-            )
+        await rotate_temporal_record(
+            self.session,
+            CorpusNodeTitle,
+            CorpusNodeTitle.node_id,
+            node_id,
+            effective,
+            CorpusNodeTitle(node_id=node_id, title=new_title, geldig_van=effective),
         )
 
     async def _rotate_status(
@@ -283,20 +280,13 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         new_status: str,
         effective: date,
     ) -> None:
-        stmt = select(CorpusNodeStatus).where(
-            CorpusNodeStatus.node_id == node_id,
-            CorpusNodeStatus.geldig_tot.is_(None),
-        )
-        result = await self.session.execute(stmt)
-        active = result.scalar_one_or_none()
-        if active:
-            active.geldig_tot = effective
-        self.session.add(
-            CorpusNodeStatus(
-                node_id=node_id,
-                status=new_status,
-                geldig_van=effective,
-            )
+        await rotate_temporal_record(
+            self.session,
+            CorpusNodeStatus,
+            CorpusNodeStatus.node_id,
+            node_id,
+            effective,
+            CorpusNodeStatus(node_id=node_id, status=new_status, geldig_van=effective),
         )
 
     async def _close_all_active(
@@ -305,11 +295,12 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         end_date: date,
     ) -> None:
         """Close all active temporal records for a dissolved node."""
-        for model_cls in (CorpusNodeTitle, CorpusNodeStatus):
-            stmt = select(model_cls).where(
-                model_cls.node_id == node_id,
-                model_cls.geldig_tot.is_(None),
-            )
-            result = await self.session.execute(stmt)
-            for record in result.scalars().all():
-                record.geldig_tot = end_date
+        await close_active_records(
+            self.session,
+            [
+                (CorpusNodeTitle, CorpusNodeTitle.node_id),
+                (CorpusNodeStatus, CorpusNodeStatus.node_id),
+            ],
+            node_id,
+            end_date,
+        )

@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.repositories.base import BaseRepository
@@ -47,7 +48,7 @@ class PersonRepository(BaseRepository[Person]):
         return result.scalar_one_or_none()
 
     async def search(self, query: str, limit: int = 10) -> list[Person]:
-        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        escaped = escape_like(query)
         stmt = (
             select(Person)
             .options(*self._eager_options())

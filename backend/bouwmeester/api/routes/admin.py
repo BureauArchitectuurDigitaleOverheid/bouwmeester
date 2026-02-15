@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.auth import AdminUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.encryption import decrypt_value, encrypt_value
+from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.whitelist import refresh_whitelist_cache, seed_admins_from_file
 from bouwmeester.models.access_request import AccessRequest
 from bouwmeester.models.app_config import AppConfig
@@ -75,7 +76,7 @@ async def add_whitelist_email(
     db: AsyncSession = Depends(get_db),
 ) -> WhitelistEmailResponse:
     """Add an email to the access whitelist. Returns 409 if already present."""
-    email = data.email.strip().lower()
+    email = normalize_email(data.email)
 
     existing = await db.execute(
         select(WhitelistEmail).where(WhitelistEmail.email == email)
@@ -115,7 +116,7 @@ async def remove_whitelist_email(
 
     # Guard: prevent admin from removing their own email (lockout)
     admin_email = admin.default_email if admin else None
-    if admin_email and entry.email == admin_email.strip().lower():
+    if admin_email and entry.email == normalize_email(admin_email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Je kunt je eigen e-mailadres niet van de toegangslijst verwijderen",
@@ -226,7 +227,7 @@ async def review_access_request(
         access_request.status = "approved"
 
         # Add to whitelist
-        email = access_request.email.strip().lower()
+        email = normalize_email(access_request.email)
         existing = await db.execute(
             select(WhitelistEmail).where(WhitelistEmail.email == email)
         )

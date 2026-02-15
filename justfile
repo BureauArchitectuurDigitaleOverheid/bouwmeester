@@ -153,35 +153,24 @@ db-import FILE:
     @echo "Import complete."
 
 # ---------------------------------------------------------------------------
-# Seed data encryption (age)
+# Age encryption (shared recipes)
 # ---------------------------------------------------------------------------
 
-# Decrypt seed_persons.json from the committed .age file
-decrypt-seed:
-    age -d -i ~/.age/key.txt -o backend/scripts/seed_persons.json backend/scripts/seed_persons.json.age
-    @echo "Decrypted → backend/scripts/seed_persons.json"
+# Decrypt a JSON file from the committed .age file
+_decrypt file:
+    age -d -i ~/.age/key.txt -o backend/scripts/{{file}} backend/scripts/{{file}}.age
+    @echo "Decrypted → backend/scripts/{{file}}"
 
-# Encrypt seed_persons.json for committing (recipients from age-recipients.txt)
-encrypt-seed:
+# Encrypt a JSON file for committing (recipients from age-recipients.txt)
+_encrypt file:
     @test -f age-recipients.txt || { echo "Error: age-recipients.txt not found"; exit 1; }
     age $(grep -v '^#' age-recipients.txt | grep -v '^\s*$' | sed 's/^/-r /') \
-        -o backend/scripts/seed_persons.json.age \
-        backend/scripts/seed_persons.json
-    @echo "Encrypted → backend/scripts/seed_persons.json.age"
+        -o backend/scripts/{{file}}.age \
+        backend/scripts/{{file}}
+    @echo "Encrypted → backend/scripts/{{file}}.age"
 
-# ---------------------------------------------------------------------------
-# Admin emails encryption (age)
-# ---------------------------------------------------------------------------
-
-# Decrypt admin_emails.json from the committed .age file
-decrypt-admins:
-    age -d -i ~/.age/key.txt -o backend/scripts/admin_emails.json backend/scripts/admin_emails.json.age
-    @echo "Decrypted → backend/scripts/admin_emails.json"
-
-# Encrypt admin_emails.json for committing (recipients from age-recipients.txt)
-encrypt-admins:
-    @test -f age-recipients.txt || { echo "Error: age-recipients.txt not found"; exit 1; }
-    age $(grep -v '^#' age-recipients.txt | grep -v '^\s*$' | sed 's/^/-r /') \
-        -o backend/scripts/admin_emails.json.age \
-        backend/scripts/admin_emails.json
-    @echo "Encrypted → backend/scripts/admin_emails.json.age"
+# Convenience aliases
+decrypt-seed: (_decrypt "seed_persons.json")
+encrypt-seed: (_encrypt "seed_persons.json")
+decrypt-admins: (_decrypt "admin_emails.json")
+encrypt-admins: (_encrypt "admin_emails.json")
