@@ -7,6 +7,7 @@ Settings are read from:
 """
 
 import logging
+import time
 from uuid import UUID
 
 import httpx
@@ -19,20 +20,25 @@ from bouwmeester.repositories.mattermost_user import MattermostUserRepository
 
 logger = logging.getLogger(__name__)
 
-# In-memory config cache — cleared by admin config update endpoint.
+# In-memory config cache with TTL — also cleared by admin config update endpoint.
 _mm_config_cache: dict[str, str] | None = None
+_mm_config_cache_ts: float = 0.0
+_MM_CONFIG_CACHE_TTL = 60  # seconds
 
 
 def clear_mattermost_config_cache() -> None:
     """Clear the Mattermost config cache so the next call rebuilds from DB."""
-    global _mm_config_cache  # noqa: PLW0603
+    global _mm_config_cache, _mm_config_cache_ts  # noqa: PLW0603
     _mm_config_cache = None
+    _mm_config_cache_ts = 0.0
 
 
 async def _load_mattermost_config(db: AsyncSession) -> dict[str, str]:
     """Load Mattermost config from the AppConfig table, decrypting secrets."""
-    global _mm_config_cache  # noqa: PLW0603
-    if _mm_config_cache is not None:
+    global _mm_config_cache, _mm_config_cache_ts  # noqa: PLW0603
+    now = time.monotonic()
+    cache_fresh = (now - _mm_config_cache_ts) < _MM_CONFIG_CACHE_TTL
+    if _mm_config_cache is not None and cache_fresh:
         return _mm_config_cache
 
     try:
@@ -54,9 +60,11 @@ async def _load_mattermost_config(db: AsyncSession) -> dict[str, str]:
         for key, value, is_secret in result.all():
             if value:
                 _mm_config_cache[key] = decrypt_value(value) if is_secret else value
+        _mm_config_cache_ts = now
     except Exception:
         logger.debug("Could not load Mattermost config from database, using env vars")
         _mm_config_cache = {}
+        _mm_config_cache_ts = now
 
     return _mm_config_cache
 
@@ -310,10 +318,13 @@ class MattermostService:
 
         return await self.send_dm(notification.person_id, text, props)
 
-    async def get_bot_dm_posts(self, since: int) -> list[dict]:
+    async def get_bot_dm_posts(
+        self, since: int, *, max_channels: int = 50
+    ) -> list[dict]:
         """Poll for new DMs sent to the bot since a given timestamp (ms).
 
         Used by the link code poller to detect incoming link codes.
+        Caps the number of DM channels checked to avoid API rate-limiting.
         """
         bot_user_id = await self.get_bot_user_id()
         if not bot_user_id:
@@ -330,6 +341,10 @@ class MattermostService:
             channels = resp.json()
 
             dm_channels = [ch for ch in channels if ch.get("type") == "D"]
+            # Sort by last_post_at descending so we check the most recently
+            # active channels first, then cap to avoid API storms.
+            dm_channels.sort(key=lambda c: c.get("last_post_at", 0), reverse=True)
+            dm_channels = dm_channels[:max_channels]
 
             posts = []
             for ch in dm_channels:
@@ -387,6 +402,16 @@ class MattermostService:
         except httpx.HTTPError:
             logger.exception("Failed to update post %s", post_id)
             return False
+
+    async def get_username(self, mattermost_user_id: str) -> str:
+        """Fetch the Mattermost username for a user ID."""
+        client = await self._get_client()
+        try:
+            resp = await client.get(f"/api/v4/users/{mattermost_user_id}")
+            resp.raise_for_status()
+            return resp.json().get("username", mattermost_user_id)
+        except httpx.HTTPError:
+            return mattermost_user_id
 
     async def close(self) -> None:
         if self._client:

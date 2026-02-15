@@ -3,6 +3,8 @@ and polling Mattermost for link codes."""
 
 import asyncio
 import logging
+import time
+from collections import OrderedDict
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import async_session
@@ -13,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_MATTERMOST_POLL_INTERVAL_SECONDS = 5
+_MATTERMOST_POLL_INTERVAL_SECONDS = 15
 
 
 async def _parlementair_loop(settings) -> None:  # type: ignore[no-untyped-def]
@@ -40,13 +42,13 @@ async def _mattermost_link_loop() -> None:
     Checks DB config each iteration so the poller starts automatically
     when MATTERMOST_ENABLED is toggled to true in Beheer > Instellingen.
     """
-    import time
-
     started = False
     last_poll_ms: int = int(time.time() * 1000)
-    seen_post_ids: set[str] = set()
+    # OrderedDict preserves insertion order for correct eviction.
+    seen_post_ids: OrderedDict[str, None] = OrderedDict()
 
     while True:
+        mm = None
         try:
             async with async_session() as session:
                 from bouwmeester.services.mattermost_service import (
@@ -75,14 +77,14 @@ async def _mattermost_link_loop() -> None:
                     p for p in posts if p.get("id") not in seen_post_ids
                 ]
                 for p in new_posts:
-                    seen_post_ids.add(p.get("id", ""))
+                    seen_post_ids[p.get("id", "")] = None
 
                 if new_posts:
                     from bouwmeester.services.mattermost_link_poller import (
                         MattermostLinkPoller,
                     )
 
-                    poller = MattermostLinkPoller(session)
+                    poller = MattermostLinkPoller(session, mm_service=mm)
                     count = await poller.process_posts(new_posts)
                     if count:
                         logger.info(
@@ -90,13 +92,16 @@ async def _mattermost_link_loop() -> None:
                         )
                     await poller.cleanup()
 
-                # Cap the set size to prevent unbounded growth.
-                if len(seen_post_ids) > 1000:
-                    seen_post_ids = set(list(seen_post_ids)[-500:])
+                # Cap the dict size — evict oldest entries first.
+                while len(seen_post_ids) > 1000:
+                    seen_post_ids.popitem(last=False)
 
                 await session.commit()
         except Exception:
             logger.exception("Error in Mattermost link poll cycle")
+        finally:
+            if mm:
+                await mm.close()
 
         await asyncio.sleep(_MATTERMOST_POLL_INTERVAL_SECONDS)
 

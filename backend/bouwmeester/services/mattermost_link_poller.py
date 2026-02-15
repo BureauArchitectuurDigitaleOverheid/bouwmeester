@@ -17,9 +17,13 @@ _LINK_CODE_PATTERN = re.compile(r"BM-[a-z0-9]{6}", re.IGNORECASE)
 
 
 class MattermostLinkPoller:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        mm_service: MattermostService | None = None,
+    ) -> None:
         self.session = session
-        self.mm_service = MattermostService(session)
+        self.mm_service = mm_service or MattermostService(session)
         self.repo = MattermostUserRepository(session)
 
     async def process_posts(self, posts: list[dict]) -> int:
@@ -63,7 +67,7 @@ class MattermostLinkPoller:
                 continue
 
             # Get the Mattermost username.
-            username = await self._get_username(mm_user_id)
+            username = await self.mm_service.get_username(mm_user_id)
 
             # Create the mapping.
             await self.repo.create_mapping(
@@ -92,13 +96,3 @@ class MattermostLinkPoller:
     async def cleanup(self) -> None:
         """Clean up expired codes."""
         await self.repo.cleanup_expired_codes()
-
-    async def _get_username(self, mattermost_user_id: str) -> str:
-        """Fetch the Mattermost username for a user ID."""
-        client = await self.mm_service._get_client()
-        try:
-            resp = await client.get(f"/api/v4/users/{mattermost_user_id}")
-            resp.raise_for_status()
-            return resp.json().get("username", mattermost_user_id)
-        except Exception:
-            return mattermost_user_id

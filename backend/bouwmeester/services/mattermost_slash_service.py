@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.config import get_settings
+from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.mattermost_user import MattermostUserRepository
@@ -141,11 +142,12 @@ class MattermostSlashService:
             )
 
         # Find dossier by title search.
+        escaped_args = escape_like(args)
         stmt = (
             select(CorpusNode)
             .where(
                 CorpusNode.node_type == "dossier",
-                CorpusNode.title.ilike(f"%{args}%"),
+                CorpusNode.title.ilike(f"%{escaped_args}%"),
             )
             .limit(1)
         )

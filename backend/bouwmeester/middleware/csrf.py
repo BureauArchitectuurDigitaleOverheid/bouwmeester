@@ -24,7 +24,9 @@ _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 _CSRF_EXEMPT_PREFIXES = (
     "/api/auth/callback",
     "/api/health/",
-    "/api/mattermost/",
+    "/api/mattermost/slash",
+    "/api/mattermost/action",
+    "/api/mattermost/verify-link",
 )
 
 

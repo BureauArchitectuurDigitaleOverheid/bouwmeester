@@ -36,10 +36,12 @@ def _get_person_id(
     current_user: OptionalUser,
     person_id: UUID | None = Query(None),
 ) -> UUID:
-    """Resolve person ID from auth or query param (dev fallback)."""
+    """Resolve person ID from auth or query param (dev-only fallback)."""
     if current_user is not None:
         return current_user.id
-    if person_id is not None:
+    # Only allow the query-param fallback when OIDC is not configured (local dev).
+    settings = get_settings()
+    if not settings.OIDC_ISSUER and person_id is not None:
         return person_id
     raise HTTPException(status_code=401, detail="Niet ingelogd")
 
@@ -194,17 +196,8 @@ async def handle_action(
     if not token:
         token = body.get("token", "")
 
-    # For action callbacks, Mattermost may not include a token if configured
-    # as an integration. We still verify if a webhook token is set.
-    from bouwmeester.services.mattermost_service import _load_mattermost_config
-
-    config = await _load_mattermost_config(db)
-    settings = get_settings()
-    expected = (
-        config.get("MATTERMOST_WEBHOOK_TOKEN") or settings.MATTERMOST_WEBHOOK_TOKEN
-    )
-    if expected and token:
-        await _verify_webhook_token(token, db)
+    # Always verify — reject if no token is provided.
+    await _verify_webhook_token(token, db)
 
     from bouwmeester.services.mattermost_slash_service import MattermostSlashService
 
