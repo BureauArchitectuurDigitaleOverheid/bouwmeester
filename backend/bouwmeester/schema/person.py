@@ -94,6 +94,7 @@ class PersonResponse(PersonBase):
     is_agent: bool
     is_admin: bool
     created_at: datetime
+    last_seen_at: datetime | None = None
     emails: list[PersonEmailResponse] = []
     phones: list[PersonPhoneResponse] = []
     default_email: str | None = None

@@ -1,6 +1,6 @@
 import { User, Mail, Briefcase, Bot, Phone } from 'lucide-react';
 import { Card } from '@/components/common/Card';
-import { formatFunctie } from '@/types';
+import { formatFunctie, isPersonOnline } from '@/types';
 import type { Person } from '@/types';
 
 interface PersonCardProps {
@@ -18,6 +18,8 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
     .join('')
     .toUpperCase();
 
+  const online = isPersonOnline(person);
+
   return (
     <Card
       hoverable
@@ -27,15 +29,20 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
     >
       <div className="flex items-start gap-3">
         {/* Avatar */}
-        {person.is_agent ? (
-          <div className="flex items-center justify-center h-10 w-10 rounded-full bg-purple-100 text-purple-700 shrink-0">
-            <Bot className="h-5 w-5" />
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-10 w-10 rounded-full bg-primary-100 text-primary-700 font-semibold text-sm shrink-0">
-            {initials || <User className="h-5 w-5" />}
-          </div>
-        )}
+        <div className="relative shrink-0">
+          {person.is_agent ? (
+            <div className="flex items-center justify-center h-10 w-10 rounded-full bg-purple-100 text-purple-700">
+              <Bot className="h-5 w-5" />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-10 w-10 rounded-full bg-primary-100 text-primary-700 font-semibold text-sm">
+              {initials || <User className="h-5 w-5" />}
+            </div>
+          )}
+          {online && (
+            <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-white" />
+          )}
+        </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">

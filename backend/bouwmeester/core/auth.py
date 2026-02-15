@@ -32,6 +32,10 @@ from bouwmeester.models.person_email import PersonEmail
 
 logger = logging.getLogger(__name__)
 
+# Throttle last_seen_at updates: at most once per 60s per person per worker.
+_LAST_SEEN_THROTTLE_SECONDS = 60
+_last_seen_updated: dict[str, float] = {}
+
 # Revalidate the access token against Keycloak at most every 5 minutes.
 _TOKEN_REVALIDATION_INTERVAL = 300
 
@@ -710,6 +714,20 @@ async def _person_from_webauthn_session(
     return None
 
 
+async def _touch_last_seen(db: AsyncSession, person: Person) -> None:
+    """Update ``last_seen_at`` with throttling (≤1 write/60s/person)."""
+    now = time.monotonic()
+    key = str(person.id)
+    last = _last_seen_updated.get(key, 0.0)
+    if (now - last) < _LAST_SEEN_THROTTLE_SECONDS:
+        return
+    import datetime as _dt
+
+    person.last_seen_at = _dt.datetime.now(_dt.UTC)
+    _last_seen_updated[key] = now
+    await db.flush()
+
+
 async def _resolve_user(
     request: Request,
     db: AsyncSession,
@@ -723,11 +741,13 @@ async def _resolve_user(
     # 1. API key auth (works with or without OIDC).
     person = await _person_from_api_key(request, db)
     if person is not None:
+        await _touch_last_seen(db, person)
         return person
 
     # 2. WebAuthn session auth.
     person = await _person_from_webauthn_session(request, db)
     if person is not None:
+        await _touch_last_seen(db, person)
         return person
 
     # 3. OIDC auth.
@@ -738,7 +758,10 @@ async def _resolve_user(
     if claims is None:
         return None
 
-    return await _person_from_claims(db, claims)
+    person = await _person_from_claims(db, claims)
+    if person is not None:
+        await _touch_last_seen(db, person)
+    return person
 
 
 async def get_current_user(

@@ -5,7 +5,7 @@ import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
-import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS } from '@/types';
+import { formatFunctie, isPersonOnline, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDateShort, todayISO } from '@/utils/dates';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
@@ -62,6 +62,8 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
     .join('')
     .toUpperCase();
 
+  const online = isPersonOnline(person);
+
   return (
     <Card
       hoverable
@@ -70,15 +72,20 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
       onDragStart={onDragStartPerson ? (e: React.DragEvent) => onDragStartPerson(e, person) : undefined}
     >
       <div className="flex items-center gap-3">
-        {person.is_agent ? (
-          <div className="relative flex items-center justify-center h-9 w-9 rounded-full bg-violet-100 text-violet-700 shrink-0">
-            <Bot className="h-4.5 w-4.5" />
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-9 w-9 rounded-full bg-primary-100 text-primary-700 text-sm font-medium shrink-0">
-            {initials}
-          </div>
-        )}
+        <div className="relative shrink-0">
+          {person.is_agent ? (
+            <div className="flex items-center justify-center h-9 w-9 rounded-full bg-violet-100 text-violet-700">
+              <Bot className="h-4.5 w-4.5" />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-9 w-9 rounded-full bg-primary-100 text-primary-700 text-sm font-medium">
+              {initials}
+            </div>
+          )}
+          {online && (
+            <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-white" />
+          )}
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-text truncate">
