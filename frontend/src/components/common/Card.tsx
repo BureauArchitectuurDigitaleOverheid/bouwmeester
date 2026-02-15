@@ -23,7 +23,7 @@ export function Card({
     <div
       className={twMerge(
         clsx(
-          'group bg-surface rounded-xl border border-border shadow-sm',
+          'group bg-surface rounded-xl border border-border shadow-sm overflow-hidden',
           hoverable && 'hover:shadow-md hover:border-border-hover transition-all duration-200 cursor-pointer',
           className,
         ),
@@ -35,7 +35,7 @@ export function Card({
           {header}
         </div>
       )}
-      <div className={clsx(padding && 'px-5 py-4')}>
+      <div className={clsx(padding && 'px-3 py-3 sm:px-5 sm:py-4')}>
         {children}
       </div>
       {footer && (

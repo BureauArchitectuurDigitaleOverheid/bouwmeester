@@ -102,15 +102,15 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             })()}
             {extraBadge && <div className="shrink-0 ml-auto">{extraBadge}</div>}
           </div>
-          <div className="flex items-center gap-3 text-xs text-text-secondary mt-0.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-secondary mt-0.5">
             {displayEmail && (
               <button
-                className="flex items-center gap-1 hover:text-primary-600 transition-colors"
+                className="flex items-center gap-1 hover:text-primary-600 transition-colors truncate"
                 onClick={handleCopyEmail}
                 title="Klik om e-mail te kopiëren"
               >
-                <Mail className="h-3 w-3" />
-                {copied ? 'Gekopieerd!' : displayEmail}
+                <Mail className="h-3 w-3 shrink-0" />
+                <span className="truncate">{copied ? 'Gekopieerd!' : displayEmail}</span>
               </button>
             )}
             {person.default_phone && (
@@ -119,14 +119,14 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 className="flex items-center gap-1 hover:text-primary-600 transition-colors"
                 onClick={(e) => e.stopPropagation()}
               >
-                <Phone className="h-3 w-3" />
+                <Phone className="h-3 w-3 shrink-0" />
                 {person.default_phone}
               </a>
             )}
             {person.functie && !person.is_agent && (
-              <span className="flex items-center gap-1">
-                <Briefcase className="h-3 w-3" />
-                {formatFunctie(person.functie)}
+              <span className="flex items-center gap-1 hidden sm:flex">
+                <Briefcase className="h-3 w-3 shrink-0" />
+                <span className="truncate">{formatFunctie(person.functie)}</span>
               </span>
             )}
             {person.description && person.is_agent && (
