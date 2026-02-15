@@ -14,6 +14,7 @@ from bouwmeester.core.database import async_session, close_db, init_db
 from bouwmeester.core.session_store import DatabaseSessionStore, run_cleanup_loop
 from bouwmeester.middleware.auth_required import AuthRequiredMiddleware
 from bouwmeester.middleware.csrf import CSRFMiddleware
+from bouwmeester.middleware.security_headers import SecurityHeadersMiddleware
 from bouwmeester.middleware.session import ServerSideSessionMiddleware
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,9 @@ def create_app() -> FastAPI:
 
     # GZip is the innermost middleware — compresses responses ≥500 bytes.
     app.add_middleware(GZipMiddleware, minimum_size=500)
+
+    # Security headers on all responses (inside GZip, outside CSRF).
+    app.add_middleware(SecurityHeadersMiddleware)
 
     app.add_middleware(
         CSRFMiddleware,
