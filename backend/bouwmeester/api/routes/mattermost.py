@@ -12,6 +12,7 @@ Webhook endpoints (token-verified, no user auth):
 """
 
 import logging
+import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -60,7 +61,7 @@ async def _verify_webhook_token(token: str, db: AsyncSession) -> None:
         raise HTTPException(
             status_code=503, detail="Mattermost integration not configured"
         )
-    if token != expected:
+    if not secrets.compare_digest(token, expected):
         raise HTTPException(status_code=403, detail="Invalid webhook token")
 
 

@@ -238,7 +238,10 @@ class MattermostSlashService:
         if not task_id_str:
             return {"ephemeral_text": "Geen taak-ID gevonden."}
 
-        task_id = UUID(task_id_str)
+        try:
+            task_id = UUID(task_id_str)
+        except (ValueError, AttributeError):
+            return {"ephemeral_text": "Ongeldig taak-ID."}
         task = await self.session.get(Task, task_id)
         if not task:
             return {"ephemeral_text": "Taak niet gevonden."}
