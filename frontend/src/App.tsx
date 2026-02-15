@@ -41,7 +41,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center px-4">
         <div className="text-text-secondary">Laden...</div>
       </div>
     );
@@ -50,7 +50,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // Show error state when auth status check failed
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="max-w-sm w-full space-y-4 text-center">
           <h1 className="text-xl font-semibold text-text">Verbindingsfout</h1>
           <p className="text-sm text-text-secondary">{error}</p>
