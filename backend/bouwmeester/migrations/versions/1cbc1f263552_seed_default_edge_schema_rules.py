@@ -29,6 +29,8 @@ ALL_NODE_TYPES = [
     "effect",
     "beleidsoptie",
     "bron",
+    "notitie",
+    "overig",
 ]
 
 
@@ -143,4 +145,21 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DELETE FROM edge_schema_rule")
+    rules = _build_rules()
+    conn = op.get_bind()
+    edge_schema_rule = sa.table(
+        "edge_schema_rule",
+        sa.column("from_node_type", sa.String),
+        sa.column("to_node_type", sa.String),
+        sa.column("edge_type_id", sa.String),
+    )
+    for from_nt, to_nt, et_id in rules:
+        conn.execute(
+            edge_schema_rule.delete().where(
+                sa.and_(
+                    edge_schema_rule.c.from_node_type == from_nt,
+                    edge_schema_rule.c.to_node_type == to_nt,
+                    edge_schema_rule.c.edge_type_id == et_id,
+                )
+            )
+        )
