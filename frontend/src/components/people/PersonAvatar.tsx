@@ -1,3 +1,4 @@
+import { clsx } from 'clsx';
 import { User, Bot } from 'lucide-react';
 import { isPersonOnline } from '@/utils/people';
 
@@ -29,11 +30,11 @@ export function PersonAvatar({
   return (
     <div className="relative shrink-0">
       {person.is_agent ? (
-        <div className={`flex items-center justify-center ${size} rounded-full ${agentColor}`}>
+        <div className={clsx('flex items-center justify-center rounded-full', size, agentColor)}>
           <Bot className={iconSize} />
         </div>
       ) : (
-        <div className={`flex items-center justify-center ${size} rounded-full bg-primary-100 text-primary-700 font-semibold text-sm`}>
+        <div className={clsx('flex items-center justify-center rounded-full bg-primary-100 text-primary-700 font-semibold text-sm', size)}>
           {initials || <User className={iconSize} />}
         </div>
       )}

@@ -38,7 +38,7 @@ class Person(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     last_seen_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(timezone=True), nullable=True, index=True
     )
 
     # Relationships

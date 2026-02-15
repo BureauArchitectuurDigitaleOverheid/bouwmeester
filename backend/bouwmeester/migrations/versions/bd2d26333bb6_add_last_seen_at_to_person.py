@@ -23,7 +23,9 @@ def upgrade() -> None:
         "person",
         sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True),
     )
+    op.create_index("ix_person_last_seen_at", "person", ["last_seen_at"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_person_last_seen_at", table_name="person")
     op.drop_column("person", "last_seen_at")

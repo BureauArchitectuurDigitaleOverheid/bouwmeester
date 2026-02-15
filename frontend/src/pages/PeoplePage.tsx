@@ -14,7 +14,7 @@ export function PeoplePage() {
   const [editPerson, setEditPerson] = useState<Person | null>(null);
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
 
-  const { data: people = [], isLoading } = usePeople();
+  const { data: people = [], isLoading } = usePeople({ refetchInterval: 60_000 });
 
   // Open person detail when navigated via ?person={id}
   useEffect(() => {

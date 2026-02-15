@@ -29,6 +29,7 @@ export function formatRelativeTime(timestamp?: string | null): string {
   if (diffHour < 24) return `${diffHour} uur geleden`;
   const diffDay = Math.floor(diffHour / 24);
   if (diffDay === 1) return 'gisteren';
+  if (diffDay === 2) return 'eergisteren';
   if (diffDay < 7) return `${diffDay} dagen geleden`;
   return new Date(timestamp).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
 }

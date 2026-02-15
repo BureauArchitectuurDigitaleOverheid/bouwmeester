@@ -23,11 +23,11 @@ import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { PersonCreate } from '@/types';
 
-export function usePeople() {
+export function usePeople(options?: { refetchInterval?: number }) {
   return useQuery({
     queryKey: queryKeys.people.all,
     queryFn: getPeople,
-    refetchInterval: 60_000,
+    refetchInterval: options?.refetchInterval,
   });
 }
 
