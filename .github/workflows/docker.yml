@@ -28,7 +28,7 @@ jobs:
             target: production
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Copy age-recipients.txt into backend context
         if: matrix.image == 'backend'
