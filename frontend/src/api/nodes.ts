@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete, BASE_URL, getCsrfToken } from './client';
-import type { CorpusNode, CorpusNodeCreate, CorpusNodeUpdate, GraphViewResponse, NodeStakeholder, NodeTitleRecord, NodeStatusRecord, NodeType } from '@/types';
+import type { CorpusNode, CorpusNodeCreate, CorpusNodeUpdate, GraphViewResponse, NodeStakeholder, NodeTitleRecord, NodeStatusRecord, NodeType, NodeParlementairItem, NodeBronDetail, BijlageInfo } from '@/types';
 
 export async function getNodes(nodeType?: NodeType): Promise<CorpusNode[]> {
   return apiGet<CorpusNode[]>('/api/nodes', {
@@ -66,29 +66,11 @@ export async function getNodeStatusHistory(id: string): Promise<NodeStatusRecord
   return apiGet<NodeStatusRecord[]>(`/api/nodes/${id}/history/statuses`);
 }
 
-export interface NodeParlementairItem {
-  type: string;
-  indieners: string[];
-  document_url: string | null;
-  zaak_nummer: string;
-  bron: string;
-  datum: string | null;
-  deadline: string | null;
-  ministerie: string | null;
-}
-
 export async function getNodeParlementairItem(id: string): Promise<NodeParlementairItem | null> {
   return apiGet<NodeParlementairItem | null>(`/api/nodes/${id}/parlementair-item`);
 }
 
 // --- Bron detail ---
-
-export interface NodeBronDetail {
-  type: string;
-  auteur: string | null;
-  publicatie_datum: string | null;
-  url: string | null;
-}
 
 export async function getNodeBronDetail(id: string): Promise<NodeBronDetail | null> {
   return apiGet<NodeBronDetail | null>(`/api/nodes/${id}/bron-detail`);
@@ -99,14 +81,6 @@ export async function updateNodeBronDetail(id: string, data: Partial<NodeBronDet
 }
 
 // --- Bijlage ---
-
-export interface BijlageInfo {
-  id: string;
-  bestandsnaam: string;
-  content_type: string;
-  bestandsgrootte: number;
-  created_at: string;
-}
 
 export async function getBijlageInfo(nodeId: string): Promise<BijlageInfo | null> {
   return apiGet<BijlageInfo | null>(`/api/nodes/${nodeId}/bijlage`);

@@ -1,10 +1,5 @@
 import { BASE_URL, getCsrfToken } from '@/api/client';
-
-export interface ImportResult {
-  imported: number;
-  skipped: number;
-  errors: string[];
-}
+import type { ImportResult, DatabaseBackupInfo, DatabaseRestoreResult, DatabaseResetResult } from '@/types';
 
 export async function importPolitiekeInputs(file: File): Promise<ImportResult> {
   const formData = new FormData();
@@ -79,22 +74,6 @@ export function exportArchimateUrl(): string {
 
 // ── Database backup / restore ──────────────────────────────────────
 
-export interface DatabaseBackupInfo {
-  exported_at: string;
-  alembic_revision: string;
-  format_version: number;
-  encrypted: boolean;
-}
-
-export interface DatabaseRestoreResult {
-  success: boolean;
-  tables_restored: number;
-  alembic_revision_from: string;
-  alembic_revision_to: string;
-  migrations_applied: number;
-  message: string;
-}
-
 export async function exportDatabase(): Promise<void> {
   const response = await fetch(`${BASE_URL}/api/admin/database/export`, {
     credentials: 'include',
@@ -123,13 +102,6 @@ export async function getDatabaseInfo(): Promise<DatabaseBackupInfo> {
     throw new Error(`Failed to fetch database info: ${response.statusText}`);
   }
   return response.json();
-}
-
-export interface DatabaseResetResult {
-  success: boolean;
-  tables_cleared: number;
-  admin_persons_created: number;
-  message: string;
 }
 
 export async function resetDatabase(confirm: string): Promise<DatabaseResetResult> {

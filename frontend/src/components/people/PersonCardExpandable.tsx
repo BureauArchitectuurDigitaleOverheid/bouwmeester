@@ -305,14 +305,11 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  endPlacement.mutate(
-                                    {
-                                      personId: person.id,
-                                      placementId: p.id,
-                                      data: { eind_datum: todayISO() },
-                                    },
-                                    { onError: () => alert('Plaatsing beëindigen mislukt.') },
-                                  );
+                                  endPlacement.mutate({
+                                    personId: person.id,
+                                    placementId: p.id,
+                                    data: { eind_datum: todayISO() },
+                                  });
                                 }}
                                 className="text-text-secondary hover:text-amber-600 transition-colors"
                                 title="Plaatsing beëindigen"
@@ -328,10 +325,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                                     e.stopPropagation();
                                     removePlacement.mutate(
                                       { personId: person.id, placementId: p.id },
-                                      {
-                                        onSettled: () => setConfirmDeleteId(null),
-                                        onError: () => alert('Verwijderen mislukt.'),
-                                      },
+                                      { onSettled: () => setConfirmDeleteId(null) },
                                     );
                                   }}
                                   className="font-medium hover:underline"

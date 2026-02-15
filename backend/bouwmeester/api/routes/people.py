@@ -11,6 +11,7 @@ from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
 from bouwmeester.core.auth import AdminUser, OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
@@ -520,7 +521,7 @@ async def add_person_email(
 ) -> PersonEmailResponse:
     """Add an email address to a person. First email auto-becomes default."""
     require_found(await db.get(Person, id), "Person")
-    email = data.email.strip().lower()
+    email = normalize_email(data.email)
 
     # Check uniqueness
     existing = await db.execute(select(PersonEmail).where(PersonEmail.email == email))

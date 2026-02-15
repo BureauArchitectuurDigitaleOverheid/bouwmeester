@@ -1,12 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
-import type { Edge, EdgeCreate } from '@/types';
-
-export interface EdgeFilters {
-  from_node_id?: string;
-  to_node_id?: string;
-  edge_type_id?: string;
-  node_id?: string;
-}
+import type { Edge, EdgeCreate, EdgeFilters } from '@/types';
 
 export async function getEdges(filters?: EdgeFilters): Promise<Edge[]> {
   return apiGet<Edge[]>('/api/edges', filters as Record<string, string>);

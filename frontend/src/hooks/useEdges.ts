@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { getEdges, createEdge, deleteEdge } from '@/api/edges';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
-import type { EdgeCreate } from '@/types';
-import type { EdgeFilters } from '@/api/edges';
+import { queryKeys } from '@/hooks/queryKeys';
+import type { EdgeCreate, EdgeFilters } from '@/types';
 
 export function useEdges(filters?: EdgeFilters) {
   return useQuery({
-    queryKey: ['edges', filters],
+    queryKey: queryKeys.edges.list(filters),
     queryFn: () => getEdges(filters),
   });
 }
@@ -15,7 +15,7 @@ export function useCreateEdge() {
   return useMutationWithError({
     mutationFn: (data: EdgeCreate) => createEdge(data),
     errorMessage: 'Fout bij aanmaken relatie',
-    invalidateKeys: [['edges'], ['nodes'], ['graph'], ['parlementair-items'], ['parlementair-review-queue']],
+    invalidateKeys: [queryKeys.edges.all, queryKeys.nodes.all, queryKeys.graph.all, queryKeys.parlementair.all, queryKeys.parlementair.reviewQueue()],
   });
 }
 
@@ -23,6 +23,6 @@ export function useDeleteEdge() {
   return useMutationWithError({
     mutationFn: (id: string) => deleteEdge(id),
     errorMessage: 'Fout bij verwijderen relatie',
-    invalidateKeys: [['edges'], ['nodes'], ['graph'], ['parlementair-items'], ['parlementair-review-queue']],
+    invalidateKeys: [queryKeys.edges.all, queryKeys.nodes.all, queryKeys.graph.all, queryKeys.parlementair.all, queryKeys.parlementair.reviewQueue()],
   });
 }

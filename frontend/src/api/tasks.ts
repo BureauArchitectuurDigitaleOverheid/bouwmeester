@@ -1,14 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete } from './client';
-import type { Task, TaskCreate, TaskUpdate, TaskStatus, TaskPriority, EenheidOverviewResponse } from '@/types';
-
-export interface TaskFilters {
-  status?: TaskStatus;
-  priority?: TaskPriority;
-  assignee_id?: string;
-  node_id?: string;
-  organisatie_eenheid_id?: string;
-  include_children?: boolean;
-}
+import type { Task, TaskCreate, TaskUpdate, EenheidOverviewResponse, TaskFilters } from '@/types';
 
 export async function getTasks(filters?: TaskFilters): Promise<Task[]> {
   return apiGet<Task[]>('/api/tasks', filters as Record<string, string>);

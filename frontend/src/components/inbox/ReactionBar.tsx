@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { SmilePlus } from 'lucide-react';
 import { EmojiPicker } from './EmojiPicker';
-import type { ReactionSummary } from '@/api/notifications';
+import type { ReactionSummary } from '@/types';
 
 interface ReactionBarProps {
   reactions: ReactionSummary[];

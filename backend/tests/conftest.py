@@ -199,47 +199,54 @@ async def second_node(db_session: AsyncSession):
 
 
 @pytest.fixture
-async def sample_person(db_session: AsyncSession):
-    """Create a person for testing."""
+def create_person(db_session: AsyncSession):
+    """Factory fixture for creating test persons.
+
+    Usage::
+
+        person = await create_person()
+        person = await create_person(naam="Klaas", functie="manager")
+    """
     from bouwmeester.models.person import Person
     from bouwmeester.models.person_email import PersonEmail
 
-    uid = uuid.uuid4()
-    email = f"jan-{uid.hex[:8]}@example.com"
-    person = Person(
-        id=uid,
-        naam="Jan Tester",
-        email=email,
-        functie="beleidsmedewerker",
-        is_active=True,
-    )
-    db_session.add(person)
-    await db_session.flush()
-    db_session.add(PersonEmail(person_id=person.id, email=email, is_default=True))
-    await db_session.flush()
-    return person
+    async def _create(
+        naam: str = "Test Persoon",
+        prefix: str = "test",
+        functie: str = "beleidsmedewerker",
+        **kwargs: Any,
+    ) -> Person:
+        uid = uuid.uuid4()
+        email = f"{prefix}-{uid.hex[:8]}@example.com"
+        person = Person(
+            id=uid,
+            naam=naam,
+            email=email,
+            functie=functie,
+            is_active=True,
+            **kwargs,
+        )
+        db_session.add(person)
+        await db_session.flush()
+        db_session.add(PersonEmail(person_id=person.id, email=email, is_default=True))
+        await db_session.flush()
+        return person
+
+    return _create
 
 
 @pytest.fixture
-async def second_person(db_session: AsyncSession):
-    """Create a second person for testing."""
-    from bouwmeester.models.person import Person
-    from bouwmeester.models.person_email import PersonEmail
-
-    uid = uuid.uuid4()
-    email = f"piet-{uid.hex[:8]}@example.com"
-    person = Person(
-        id=uid,
-        naam="Piet Tester",
-        email=email,
-        functie="adviseur",
-        is_active=True,
+async def sample_person(create_person):
+    """Create a person for testing."""
+    return await create_person(
+        naam="Jan Tester", prefix="jan", functie="beleidsmedewerker"
     )
-    db_session.add(person)
-    await db_session.flush()
-    db_session.add(PersonEmail(person_id=person.id, email=email, is_default=True))
-    await db_session.flush()
-    return person
+
+
+@pytest.fixture
+async def second_person(create_person):
+    """Create a second person for testing."""
+    return await create_person(naam="Piet Tester", prefix="piet", functie="adviseur")
 
 
 @pytest.fixture
@@ -388,25 +395,9 @@ async def sample_notification(db_session: AsyncSession, sample_person, second_pe
 
 
 @pytest.fixture
-async def third_person(db_session: AsyncSession):
+async def third_person(create_person):
     """Create a third person (manager) for testing."""
-    from bouwmeester.models.person import Person
-    from bouwmeester.models.person_email import PersonEmail
-
-    uid = uuid.uuid4()
-    email = f"klaas-{uid.hex[:8]}@example.com"
-    person = Person(
-        id=uid,
-        naam="Klaas Manager",
-        email=email,
-        functie="manager",
-        is_active=True,
-    )
-    db_session.add(person)
-    await db_session.flush()
-    db_session.add(PersonEmail(person_id=person.id, email=email, is_default=True))
-    await db_session.flush()
-    return person
+    return await create_person(naam="Klaas Manager", prefix="klaas", functie="manager")
 
 
 @pytest.fixture

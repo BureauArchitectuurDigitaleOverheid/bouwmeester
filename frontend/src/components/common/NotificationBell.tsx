@@ -5,7 +5,7 @@ import { useNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNo
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { timeAgo } from '@/utils/dates';
-import type { Notification } from '@/api/notifications';
+import type { Notification } from '@/types';
 import { richTextToPlain } from '@/utils/richtext';
 import { MessageThread } from '@/components/inbox/MessageThread';
 import { NOTIFICATION_TYPE_COLORS, NOTIFICATION_TYPE_LABELS, titleCase } from '@/types';

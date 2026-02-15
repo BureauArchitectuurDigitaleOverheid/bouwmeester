@@ -20,9 +20,12 @@ import json
 import logging
 import os
 from pathlib import Path
+from uuid import UUID
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from bouwmeester.core.query_utils import normalize_email
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +54,7 @@ def _load_emails_from_file(json_path: Path, age_path: Path) -> set[str] | None:
     if json_path.exists():
         with open(json_path) as f:
             data = json.load(f)
-        return {e.strip().lower() for e in data.get("emails", [])}
+        return {normalize_email(e) for e in data.get("emails", [])}
 
     if os.environ.get("AGE_SECRET_KEY") and age_path.exists():
         from pyrage import decrypt as age_decrypt
@@ -60,7 +63,7 @@ def _load_emails_from_file(json_path: Path, age_path: Path) -> set[str] | None:
         identity = x25519.Identity.from_str(os.environ["AGE_SECRET_KEY"])
         decrypted = age_decrypt(age_path.read_bytes(), [identity])
         data = json.loads(decrypted)
-        return {e.strip().lower() for e in data.get("emails", [])}
+        return {normalize_email(e) for e in data.get("emails", [])}
 
     return None
 
@@ -68,6 +71,44 @@ def _load_emails_from_file(json_path: Path, age_path: Path) -> set[str] | None:
 # ---------------------------------------------------------------------------
 # Startup: seed admin emails from file
 # ---------------------------------------------------------------------------
+
+
+async def _get_person_ids_by_emails(
+    session: AsyncSession, emails: set[str]
+) -> set[UUID]:
+    """Return person IDs matching the given emails (person_email + legacy)."""
+    from bouwmeester.models.person import Person
+    from bouwmeester.models.person_email import PersonEmail
+
+    result = await session.execute(
+        select(PersonEmail.person_id).where(func.lower(PersonEmail.email).in_(emails))
+    )
+    ids = {row[0] for row in result.all()}
+
+    legacy = await session.execute(
+        select(Person.id).where(func.lower(Person.email).in_(emails))
+    )
+    ids |= {row[0] for row in legacy.all()}
+    return ids
+
+
+async def _get_existing_emails(session: AsyncSession, emails: set[str]) -> set[str]:
+    """Return the subset of *emails* that already exist in the DB."""
+    from bouwmeester.models.person import Person
+    from bouwmeester.models.person_email import PersonEmail
+
+    result = await session.execute(
+        select(func.lower(PersonEmail.email)).where(
+            func.lower(PersonEmail.email).in_(emails)
+        )
+    )
+    found = {row[0] for row in result.all()}
+
+    legacy = await session.execute(
+        select(func.lower(Person.email)).where(func.lower(Person.email).in_(emails))
+    )
+    found |= {row[0] for row in legacy.all() if row[0]}
+    return found
 
 
 async def seed_admins_from_file(session: AsyncSession) -> int:
@@ -97,19 +138,7 @@ async def seed_admins_from_file(session: AsyncSession) -> int:
     if not emails:
         return 0
 
-    # Update existing persons found via person_email table
-    person_email_result = await session.execute(
-        select(PersonEmail.person_id).where(func.lower(PersonEmail.email).in_(emails))
-    )
-    person_ids_from_email_table = {row[0] for row in person_email_result.all()}
-
-    # Also check legacy Person.email column
-    legacy_result = await session.execute(
-        select(Person.id).where(func.lower(Person.email).in_(emails))
-    )
-    person_ids_from_legacy = {row[0] for row in legacy_result.all()}
-
-    all_person_ids = person_ids_from_email_table | person_ids_from_legacy
+    all_person_ids = await _get_person_ids_by_emails(session, emails)
     updated = 0
     if all_person_ids:
         result = await session.execute(
@@ -117,20 +146,7 @@ async def seed_admins_from_file(session: AsyncSession) -> int:
         )
         updated = result.rowcount
 
-    # Find which admin emails already have a person
-    existing_emails_result = await session.execute(
-        select(func.lower(PersonEmail.email)).where(
-            func.lower(PersonEmail.email).in_(emails)
-        )
-    )
-    existing_emails = {row[0] for row in existing_emails_result.all()}
-
-    # Also check legacy column
-    legacy_emails_result = await session.execute(
-        select(func.lower(Person.email)).where(func.lower(Person.email).in_(emails))
-    )
-    existing_emails |= {row[0] for row in legacy_emails_result.all() if row[0]}
-
+    existing_emails = await _get_existing_emails(session, emails)
     missing_emails = emails - existing_emails
 
     for email in missing_emails:
@@ -175,7 +191,7 @@ async def refresh_whitelist_cache(session: AsyncSession) -> None:
     from bouwmeester.models.whitelist_email import WhitelistEmail
 
     result = await session.execute(select(WhitelistEmail.email))
-    emails = {row[0].strip().lower() for row in result.all()}
+    emails = {normalize_email(row[0]) for row in result.all()}
 
     if emails:
         _allowed_emails = emails
@@ -219,4 +235,4 @@ def is_email_allowed(email: str) -> bool:
     """
     if not _whitelist_active or _allowed_emails is None:
         return True
-    return email.strip().lower() in _allowed_emails
+    return normalize_email(email) in _allowed_emails

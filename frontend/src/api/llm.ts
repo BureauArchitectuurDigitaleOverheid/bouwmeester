@@ -1,35 +1,5 @@
 import { apiPost } from './client';
-
-export interface TagSuggestionRequest {
-  title: string;
-  description?: string | null;
-  node_type?: string;
-}
-
-export interface TagSuggestionResponse {
-  matched_tags: string[];
-  suggested_new_tags: string[];
-  available: boolean;
-}
-
-export interface EdgeSuggestionItem {
-  target_node_id: string;
-  target_node_title: string;
-  target_node_type: string;
-  confidence: number;
-  suggested_edge_type: string;
-  reason: string;
-}
-
-export interface EdgeSuggestionResponse {
-  suggestions: EdgeSuggestionItem[];
-  available: boolean;
-}
-
-export interface SummarizeResponse {
-  summary: string;
-  available: boolean;
-}
+import type { TagSuggestionRequest, TagSuggestionResponse, EdgeSuggestionResponse, SummarizeResponse } from '@/types';
 
 export function suggestTags(data: TagSuggestionRequest): Promise<TagSuggestionResponse> {
   return apiPost<TagSuggestionResponse>('/api/llm/suggest-tags', data);

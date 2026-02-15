@@ -130,21 +130,14 @@ export function OrganisatiePage() {
   };
 
   const handleDropPerson = (personId: string, targetNodeId: string) => {
-    addPlacementMutation.mutate(
-      {
-        personId,
-        data: {
-          organisatie_eenheid_id: targetNodeId,
-          dienstverband: 'in_dienst',
-          start_datum: todayISO(),
-        },
+    addPlacementMutation.mutate({
+      personId,
+      data: {
+        organisatie_eenheid_id: targetNodeId,
+        dienstverband: 'in_dienst',
+        start_datum: todayISO(),
       },
-      {
-        onError: (error) => {
-          console.error('Plaatsing mislukt:', error);
-        },
-      },
-    );
+    });
   };
 
   if (isLoading) {

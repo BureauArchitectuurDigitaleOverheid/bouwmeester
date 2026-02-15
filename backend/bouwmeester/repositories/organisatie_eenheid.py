@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
+from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.org_manager import OrganisatieEenheidManager
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam
 from bouwmeester.models.org_parent import OrganisatieEenheidParent
@@ -17,6 +18,10 @@ from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.repositories.base import BaseRepository
+from bouwmeester.repositories.temporal import (
+    close_active_records,
+    rotate_temporal_record,
+)
 from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidCreate,
     OrganisatieEenheidUpdate,
@@ -268,7 +273,7 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         limit: int = 10,
     ) -> list[OrganisatieEenheid]:
         """Search across all names (historical + current), active units only."""
-        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        escaped = escape_like(query)
         stmt = (
             select(OrganisatieEenheid)
             .join(
@@ -383,20 +388,15 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         new_naam: str,
         effective: date,
     ) -> None:
-        stmt = select(OrganisatieEenheidNaam).where(
-            OrganisatieEenheidNaam.eenheid_id == eenheid_id,
-            OrganisatieEenheidNaam.geldig_tot.is_(None),
-        )
-        result = await self.session.execute(stmt)
-        active = result.scalar_one_or_none()
-        if active:
-            active.geldig_tot = effective
-        self.session.add(
+        await rotate_temporal_record(
+            self.session,
+            OrganisatieEenheidNaam,
+            OrganisatieEenheidNaam.eenheid_id,
+            eenheid_id,
+            effective,
             OrganisatieEenheidNaam(
-                eenheid_id=eenheid_id,
-                naam=new_naam,
-                geldig_van=effective,
-            )
+                eenheid_id=eenheid_id, naam=new_naam, geldig_van=effective
+            ),
         )
 
     async def _rotate_parent(
@@ -405,22 +405,21 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         new_parent_id: UUID | None,
         effective: date,
     ) -> None:
-        stmt = select(OrganisatieEenheidParent).where(
-            OrganisatieEenheidParent.eenheid_id == eenheid_id,
-            OrganisatieEenheidParent.geldig_tot.is_(None),
-        )
-        result = await self.session.execute(stmt)
-        active = result.scalar_one_or_none()
-        if active:
-            active.geldig_tot = effective
-        if new_parent_id is not None:
-            self.session.add(
-                OrganisatieEenheidParent(
-                    eenheid_id=eenheid_id,
-                    parent_id=new_parent_id,
-                    geldig_van=effective,
-                )
+        new_record = (
+            OrganisatieEenheidParent(
+                eenheid_id=eenheid_id, parent_id=new_parent_id, geldig_van=effective
             )
+            if new_parent_id is not None
+            else None
+        )
+        await rotate_temporal_record(
+            self.session,
+            OrganisatieEenheidParent,
+            OrganisatieEenheidParent.eenheid_id,
+            eenheid_id,
+            effective,
+            new_record,
+        )
 
     async def _rotate_manager(
         self,
@@ -428,22 +427,21 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         new_manager_id: UUID | None,
         effective: date,
     ) -> None:
-        stmt = select(OrganisatieEenheidManager).where(
-            OrganisatieEenheidManager.eenheid_id == eenheid_id,
-            OrganisatieEenheidManager.geldig_tot.is_(None),
-        )
-        result = await self.session.execute(stmt)
-        active = result.scalar_one_or_none()
-        if active:
-            active.geldig_tot = effective
-        if new_manager_id is not None:
-            self.session.add(
-                OrganisatieEenheidManager(
-                    eenheid_id=eenheid_id,
-                    manager_id=new_manager_id,
-                    geldig_van=effective,
-                )
+        new_record = (
+            OrganisatieEenheidManager(
+                eenheid_id=eenheid_id, manager_id=new_manager_id, geldig_van=effective
             )
+            if new_manager_id is not None
+            else None
+        )
+        await rotate_temporal_record(
+            self.session,
+            OrganisatieEenheidManager,
+            OrganisatieEenheidManager.eenheid_id,
+            eenheid_id,
+            effective,
+            new_record,
+        )
 
     async def _close_all_active(
         self,
@@ -451,15 +449,13 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         end_date: date,
     ) -> None:
         """Close all active temporal records for a dissolved unit."""
-        for model_cls in (
-            OrganisatieEenheidNaam,
-            OrganisatieEenheidParent,
-            OrganisatieEenheidManager,
-        ):
-            stmt = select(model_cls).where(
-                model_cls.eenheid_id == eenheid_id,
-                model_cls.geldig_tot.is_(None),
-            )
-            result = await self.session.execute(stmt)
-            for record in result.scalars().all():
-                record.geldig_tot = end_date
+        await close_active_records(
+            self.session,
+            [
+                (OrganisatieEenheidNaam, OrganisatieEenheidNaam.eenheid_id),
+                (OrganisatieEenheidParent, OrganisatieEenheidParent.eenheid_id),
+                (OrganisatieEenheidManager, OrganisatieEenheidManager.eenheid_id),
+            ],
+            eenheid_id,
+            end_date,
+        )

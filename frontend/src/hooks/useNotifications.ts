@@ -12,10 +12,11 @@ import {
   getDashboardStats,
 } from '@/api/notifications';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
+import { queryKeys } from '@/hooks/queryKeys';
 
 export function useNotifications(personId: string | undefined, unreadOnly = false) {
   return useQuery({
-    queryKey: ['notifications', personId, unreadOnly],
+    queryKey: queryKeys.notifications.list(personId, unreadOnly),
     queryFn: () => getNotifications(personId!, unreadOnly),
     enabled: !!personId,
     refetchInterval: 10_000,
@@ -25,7 +26,7 @@ export function useNotifications(personId: string | undefined, unreadOnly = fals
 
 export function useNotification(id: string | undefined, personId?: string) {
   return useQuery({
-    queryKey: ['notifications', 'detail', id, personId],
+    queryKey: queryKeys.notifications.detail(id, personId),
     queryFn: () => getNotification(id!, personId),
     enabled: !!id,
   });
@@ -33,7 +34,7 @@ export function useNotification(id: string | undefined, personId?: string) {
 
 export function useUnreadCount(personId: string | undefined) {
   return useQuery({
-    queryKey: ['notifications', 'count', personId],
+    queryKey: queryKeys.notifications.count(personId),
     queryFn: () => getUnreadCount(personId!),
     enabled: !!personId,
     refetchInterval: 30_000,
@@ -42,7 +43,7 @@ export function useUnreadCount(personId: string | undefined) {
 
 export function useReplies(notificationId: string | undefined, personId?: string) {
   return useQuery({
-    queryKey: ['notifications', 'replies', notificationId, personId],
+    queryKey: queryKeys.notifications.replies(notificationId, personId),
     queryFn: () => getReplies(notificationId!, personId),
     enabled: !!notificationId,
     refetchInterval: 5_000,
@@ -53,7 +54,7 @@ export function useMarkNotificationRead() {
   return useMutationWithError({
     mutationFn: (id: string) => markNotificationRead(id),
     errorMessage: 'Fout bij markeren als gelezen',
-    invalidateKeys: [['notifications']],
+    invalidateKeys: [queryKeys.notifications.all],
   });
 }
 
@@ -61,7 +62,7 @@ export function useMarkAllNotificationsRead() {
   return useMutationWithError({
     mutationFn: (personId: string) => markAllNotificationsRead(personId),
     errorMessage: 'Fout bij markeren notificaties',
-    invalidateKeys: [['notifications']],
+    invalidateKeys: [queryKeys.notifications.all],
   });
 }
 
@@ -69,13 +70,13 @@ export function useSendMessage() {
   return useMutationWithError({
     mutationFn: sendMessage,
     errorMessage: 'Fout bij verzenden bericht',
-    invalidateKeys: [['notifications']],
+    invalidateKeys: [queryKeys.notifications.all],
   });
 }
 
 export function useDashboardStats(personId: string | undefined) {
   return useQuery({
-    queryKey: ['dashboard-stats', personId],
+    queryKey: queryKeys.dashboardStats(personId),
     queryFn: () => getDashboardStats(personId!),
     enabled: !!personId,
     refetchInterval: 60_000,
@@ -87,7 +88,7 @@ export function useReactToMessage() {
     mutationFn: ({ notificationId, data }: { notificationId: string; data: { sender_id: string; emoji: string } }) =>
       reactToMessage(notificationId, data),
     errorMessage: 'Fout bij emoji-reactie',
-    invalidateKeys: [['notifications']],
+    invalidateKeys: [queryKeys.notifications.all],
   });
 }
 
@@ -96,6 +97,6 @@ export function useReplyToNotification() {
     mutationFn: ({ notificationId, data }: { notificationId: string; data: { sender_id: string; message: string } }) =>
       replyToNotification(notificationId, data),
     errorMessage: 'Fout bij verzenden reactie',
-    invalidateKeys: [['notifications']],
+    invalidateKeys: [queryKeys.notifications.all],
   });
 }

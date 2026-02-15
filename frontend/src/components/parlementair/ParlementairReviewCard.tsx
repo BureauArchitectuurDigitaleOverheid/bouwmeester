@@ -37,7 +37,7 @@ import { NodeDetailModal } from '@/components/nodes/NodeDetailModal';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 import { formatDateLong } from '@/utils/dates';
-import type { CompleteReviewData } from '@/api/parlementair';
+import type { CompleteReviewData } from '@/types';
 
 interface FollowUpTaskRow {
   title: string;

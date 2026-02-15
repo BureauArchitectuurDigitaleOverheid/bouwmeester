@@ -11,25 +11,26 @@ import {
   getManagedEenheden,
 } from '@/api/organisatie';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
+import { queryKeys } from '@/hooks/queryKeys';
 import type { OrganisatieEenheidCreate, OrganisatieEenheidUpdate } from '@/types';
 
 export function useOrganisatieTree() {
   return useQuery({
-    queryKey: ['organisatie', 'tree'],
+    queryKey: queryKeys.organisatie.tree(),
     queryFn: getOrganisatieTree,
   });
 }
 
 export function useOrganisatieFlat() {
   return useQuery({
-    queryKey: ['organisatie', 'flat'],
+    queryKey: queryKeys.organisatie.flat(),
     queryFn: getOrganisatieFlat,
   });
 }
 
 export function useOrganisatieEenheid(id: string | null) {
   return useQuery({
-    queryKey: ['organisatie', id],
+    queryKey: queryKeys.organisatie.detail(id),
     queryFn: () => getOrganisatieEenheid(id!),
     enabled: !!id,
   });
@@ -37,7 +38,7 @@ export function useOrganisatieEenheid(id: string | null) {
 
 export function useOrganisatiePersonen(id: string | null) {
   return useQuery({
-    queryKey: ['organisatie', id, 'personen'],
+    queryKey: queryKeys.organisatie.personen(id),
     queryFn: () => getOrganisatiePersonen(id!),
     enabled: !!id,
   });
@@ -45,7 +46,7 @@ export function useOrganisatiePersonen(id: string | null) {
 
 export function useOrganisatiePersonenRecursive(id: string | null) {
   return useQuery({
-    queryKey: ['organisatie', id, 'personen', 'recursive'],
+    queryKey: queryKeys.organisatie.personenRecursive(id),
     queryFn: () => getOrganisatiePersonenRecursive(id!),
     enabled: !!id,
   });
@@ -55,7 +56,7 @@ export function useCreateOrganisatieEenheid() {
   return useMutationWithError({
     mutationFn: (data: OrganisatieEenheidCreate) => createOrganisatieEenheid(data),
     errorMessage: 'Fout bij aanmaken eenheid',
-    invalidateKeys: [['organisatie']],
+    invalidateKeys: [queryKeys.organisatie.all],
   });
 }
 
@@ -64,7 +65,7 @@ export function useUpdateOrganisatieEenheid() {
     mutationFn: ({ id, data }: { id: string; data: OrganisatieEenheidUpdate }) =>
       updateOrganisatieEenheid(id, data),
     errorMessage: 'Fout bij bijwerken eenheid',
-    invalidateKeys: [['organisatie']],
+    invalidateKeys: [queryKeys.organisatie.all],
   });
 }
 
@@ -72,13 +73,13 @@ export function useDeleteOrganisatieEenheid() {
   return useMutationWithError({
     mutationFn: (id: string) => deleteOrganisatieEenheid(id),
     errorMessage: 'Fout bij verwijderen eenheid',
-    invalidateKeys: [['organisatie']],
+    invalidateKeys: [queryKeys.organisatie.all],
   });
 }
 
 export function useManagedEenheden(personId: string | undefined) {
   return useQuery({
-    queryKey: ['organisatie', 'managed-by', personId],
+    queryKey: queryKeys.organisatie.managedBy(personId),
     queryFn: () => getManagedEenheden(personId!),
     enabled: !!personId,
   });

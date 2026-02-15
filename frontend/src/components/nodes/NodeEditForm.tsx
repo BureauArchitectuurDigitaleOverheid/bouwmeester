@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { FormModalFooter } from '@/components/common/FormModalFooter';
-import { RichTextEditor } from '@/components/common/RichTextEditor';
+import { RichTextFormField } from '@/components/common/RichTextFormField';
+import { PendingTagsList } from './PendingTagsList';
 import { TagSuggestions } from './TagSuggestions';
 import { useUpdateNode } from '@/hooks/useNodes';
 import { useNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
@@ -99,17 +99,7 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
           disabled
         />
 
-        <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-text">
-            Beschrijving
-          </label>
-          <RichTextEditor
-            value={description}
-            onChange={setDescription}
-            placeholder="Optionele beschrijving... Gebruik @ voor personen, # voor nodes/taken, **vet** voor opmaak"
-            rows={4}
-          />
-        </div>
+        <RichTextFormField label="Beschrijving" value={description} onChange={setDescription} rows={4} />
 
         <TagSuggestions
           title={title}
@@ -124,25 +114,10 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
           }}
         />
 
-        {pendingTags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {pendingTags.map((tag) => (
-              <span
-                key={tag.name}
-                className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2.5 py-0.5 text-xs font-medium"
-              >
-                {tag.name}
-                <button
-                  type="button"
-                  onClick={() => setPendingTags((prev) => prev.filter((t) => t.name !== tag.name))}
-                  className="hover:text-red-500 transition-colors ml-0.5"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
+        <PendingTagsList
+          tags={pendingTags}
+          onRemove={(name) => setPendingTags((prev) => prev.filter((t) => t.name !== name))}
+        />
 
         <Select
           label="Status"

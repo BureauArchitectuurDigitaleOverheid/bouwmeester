@@ -8,7 +8,6 @@ application can run without authentication.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from typing import Annotated, Any
@@ -24,8 +23,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.async_cache import AsyncTTLCache
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.core.database import get_db
+from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 
@@ -78,31 +79,26 @@ def _get_discovery_url(settings: Settings) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Cached OIDC discovery metadata
+# Cached OIDC discovery metadata & JWKS keys (1-hour TTL each)
 # ---------------------------------------------------------------------------
 
-_oidc_metadata: dict[str, Any] | None = None
-_oidc_metadata_fetched_at: float = 0
-_oidc_metadata_lock = asyncio.Lock()
-_OIDC_METADATA_TTL = 3600  # Re-fetch discovery doc every hour
+_oidc_cache: AsyncTTLCache[dict[str, Any]] = AsyncTTLCache(ttl=3600)
+_jwks_cache: AsyncTTLCache[Any] = AsyncTTLCache(ttl=3600)
 
 
 async def get_oidc_metadata(settings: Settings) -> dict[str, Any] | None:
     """Return cached OIDC discovery metadata, fetching if stale."""
-    global _oidc_metadata, _oidc_metadata_fetched_at  # noqa: PLW0603
-
     if not settings.OIDC_ISSUER:
         return None
 
-    now = time.monotonic()
-    if _oidc_metadata and (now - _oidc_metadata_fetched_at) < _OIDC_METADATA_TTL:
-        return _oidc_metadata
+    cached = _oidc_cache.get_if_fresh()
+    if cached is not None:
+        return cached
 
-    async with _oidc_metadata_lock:
-        # Re-check after acquiring lock (another coroutine may have fetched).
-        now = time.monotonic()
-        if _oidc_metadata and (now - _oidc_metadata_fetched_at) < _OIDC_METADATA_TTL:
-            return _oidc_metadata
+    async with _oidc_cache.lock:
+        cached = _oidc_cache.get_if_fresh()
+        if cached is not None:
+            return cached
 
         url = _get_discovery_url(settings)
         if not require_https(url, "OIDC discovery URL"):
@@ -110,33 +106,21 @@ async def get_oidc_metadata(settings: Settings) -> dict[str, Any] | None:
         client = get_http_client()
         resp = await client.get(url)
         resp.raise_for_status()
-        _oidc_metadata = resp.json()
-        _oidc_metadata_fetched_at = now
-        return _oidc_metadata
-
-
-# ---------------------------------------------------------------------------
-# Cached JWKS keys for local JWT validation
-# ---------------------------------------------------------------------------
-
-_jwks_keys: Any | None = None
-_jwks_fetched_at: float = 0
-_jwks_lock = asyncio.Lock()
-_JWKS_TTL = 3600  # Re-fetch JWKS every hour
+        metadata = resp.json()
+        _oidc_cache.set(metadata)
+        return metadata
 
 
 async def get_jwks(settings: Settings) -> Any | None:
     """Return cached JWKS key set, fetching if stale."""
-    global _jwks_keys, _jwks_fetched_at  # noqa: PLW0603
+    cached = _jwks_cache.get_if_fresh()
+    if cached is not None:
+        return cached
 
-    now = time.monotonic()
-    if _jwks_keys and (now - _jwks_fetched_at) < _JWKS_TTL:
-        return _jwks_keys
-
-    async with _jwks_lock:
-        now = time.monotonic()
-        if _jwks_keys and (now - _jwks_fetched_at) < _JWKS_TTL:
-            return _jwks_keys
+    async with _jwks_cache.lock:
+        cached = _jwks_cache.get_if_fresh()
+        if cached is not None:
+            return cached
 
         metadata = await get_oidc_metadata(settings)
         if not metadata:
@@ -153,12 +137,12 @@ async def get_jwks(settings: Settings) -> Any | None:
         try:
             resp = await client.get(jwks_uri)
             resp.raise_for_status()
-            _jwks_keys = JsonWebKey.import_key_set(resp.json())
-            _jwks_fetched_at = now
-            return _jwks_keys
+            keys = JsonWebKey.import_key_set(resp.json())
+            _jwks_cache.set(keys)
+            return keys
         except (httpx.HTTPError, Exception) as exc:
             logger.warning("Failed to fetch JWKS: %s", exc)
-            return _jwks_keys  # Return stale keys if available
+            return _jwks_cache.get_stale()  # Return stale keys if available
 
 
 def validate_jwt_locally(
@@ -252,7 +236,7 @@ def get_oauth(settings: Settings | None = None) -> OAuth | None:
 
 async def _ensure_email_linked(db: AsyncSession, person_id: UUID, email: str) -> None:
     """Add email to person_email if not already present (is_default=False)."""
-    email = email.strip().lower()
+    email = normalize_email(email)
 
     existing = await db.execute(select(PersonEmail).where(PersonEmail.email == email))
     existing_row = existing.scalar_one_or_none()

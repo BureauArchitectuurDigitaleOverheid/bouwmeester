@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { FileUpload } from '@/components/common/FileUpload';
-import { importNodes, importEdges, importPolitiekeInputs, type ImportResult } from '@/api/import-export';
+import { importNodes, importEdges, importPolitiekeInputs } from '@/api/import-export';
+import type { ImportResult } from '@/types';
 import { Upload, CheckCircle, AlertTriangle } from 'lucide-react';
 
 type ImportType = 'nodes' | 'edges' | 'politieke-inputs';

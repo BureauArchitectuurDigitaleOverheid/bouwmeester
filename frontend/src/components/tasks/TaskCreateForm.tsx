@@ -3,7 +3,7 @@ import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { FormModalFooter } from '@/components/common/FormModalFooter';
-import { RichTextEditor } from '@/components/common/RichTextEditor';
+import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { useCreateTask } from '@/hooks/useTasks';
 import { useTaskFormOptions } from '@/hooks/useTaskFormOptions';
@@ -99,17 +99,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
             autoFocus
           />
 
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-text">
-              Beschrijving
-            </label>
-            <RichTextEditor
-              value={description}
-              onChange={setDescription}
-              placeholder="Optionele beschrijving... Gebruik @ voor personen, # voor nodes/taken, **vet** voor opmaak"
-              rows={3}
-            />
-          </div>
+          <RichTextFormField label="Beschrijving" value={description} onChange={setDescription} />
 
           <CreatableSelect
             label="Node"

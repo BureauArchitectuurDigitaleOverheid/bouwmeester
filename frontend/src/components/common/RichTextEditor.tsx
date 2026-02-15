@@ -6,8 +6,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import { apiGet } from '@/api/client';
 import { formatFunctie, titleCase } from '@/types';
-import type { Person, OrganisatieEenheid } from '@/types';
-import type { MentionSearchResult } from '@/api/mentions';
+import type { Person, OrganisatieEenheid, MentionSearchResult } from '@/types';
 import type { SuggestionProps, SuggestionKeyDownProps } from '@tiptap/suggestion';
 import { ReactRenderer } from '@tiptap/react';
 

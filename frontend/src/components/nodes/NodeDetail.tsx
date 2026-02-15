@@ -25,6 +25,7 @@ import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { NODE_TYPE_COLORS, NODE_STATUS_LABELS, STAKEHOLDER_ROL_LABELS, BRON_TYPE_LABELS, NodeType, type NodeStatus, formatFunctie, titleCase } from '@/types';
 import { uploadBijlage, deleteBijlage, getBijlageDownloadUrl, updateNodeBronDetail } from '@/api/nodes';
 import { useVocabulary } from '@/contexts/VocabularyContext';
+import { useToast } from '@/contexts/ToastContext';
 import { formatDate } from '@/utils/dates';
 
 type TabId = 'overview' | 'connections' | 'stakeholders' | 'tasks' | 'activity';
@@ -73,6 +74,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const updateStakeholder = useUpdateNodeStakeholder();
   const removeStakeholder = useRemoveNodeStakeholder();
   const { data: allPeople } = usePeople();
+  const { showError } = useToast();
   const [newStakeholderPersonId, setNewStakeholderPersonId] = useState('');
   const [newStakeholderRol, setNewStakeholderRol] = useState('betrokken');
   const [personCreateName, setPersonCreateName] = useState('');
@@ -356,7 +358,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                             refetchBronDetail();
                           } catch (err) {
                             console.error('Fout bij opslaan brongegevens:', err);
-                            alert('Fout bij opslaan brongegevens. Probeer het opnieuw.');
+                            showError('Fout bij opslaan brongegevens. Probeer het opnieuw.');
                           }
                         }}
                       >
@@ -444,7 +446,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                               await deleteBijlage(nodeId);
                               refetchBijlage();
                             } catch {
-                              alert('Bijlage verwijderen mislukt.');
+                              showError('Bijlage verwijderen mislukt.');
                             }
                           }
                         }}
@@ -470,7 +472,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                           refetchBijlage();
                         } catch (err) {
                           const msg = err instanceof Error ? err.message : 'Onbekende fout';
-                          alert(`Upload mislukt: ${msg}`);
+                          showError(`Upload mislukt: ${msg}`);
                         } finally {
                           setBijlageUploading(false);
                         }

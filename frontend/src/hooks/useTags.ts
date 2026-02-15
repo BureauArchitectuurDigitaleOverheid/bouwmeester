@@ -1,18 +1,19 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getTags, createTag, getNodeTags, addTagToNode, removeTagFromNode } from '@/api/tags';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
+import { queryKeys } from '@/hooks/queryKeys';
 import type { TagCreate } from '@/types';
 
 export function useTags(params?: { tree?: boolean; search?: string }) {
   return useQuery({
-    queryKey: ['tags', params],
+    queryKey: queryKeys.tags.list(params),
     queryFn: () => getTags(params),
   });
 }
 
 export function useNodeTags(nodeId: string) {
   return useQuery({
-    queryKey: ['node-tags', nodeId],
+    queryKey: queryKeys.tags.forNode(nodeId),
     queryFn: () => getNodeTags(nodeId),
     enabled: !!nodeId,
   });
@@ -22,22 +23,20 @@ export function useCreateTag() {
   return useMutationWithError({
     mutationFn: (data: TagCreate) => createTag(data),
     errorMessage: 'Fout bij aanmaken tag',
-    invalidateKeys: [['tags']],
+    invalidateKeys: [queryKeys.tags.all],
   });
 }
 
 export function useAddTagToNode() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({ nodeId, data }: { nodeId: string; data: { tag_id?: string; tag_name?: string } }) =>
       addTagToNode(nodeId, data),
-    onError: (error: Error) => {
-      console.error('Fout bij toevoegen tag:', error);
-    },
+    errorMessage: 'Fout bij toevoegen tag',
+    invalidateKeys: [queryKeys.tags.all],
     onSuccess: (_, { nodeId }) => {
-      queryClient.invalidateQueries({ queryKey: ['node-tags', nodeId] });
-      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags.forNode(nodeId) });
     },
   });
 }
@@ -45,14 +44,12 @@ export function useAddTagToNode() {
 export function useRemoveTagFromNode() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutationWithError({
     mutationFn: ({ nodeId, tagId }: { nodeId: string; tagId: string }) =>
       removeTagFromNode(nodeId, tagId),
-    onError: (error: Error) => {
-      console.error('Fout bij verwijderen tag:', error);
-    },
+    errorMessage: 'Fout bij verwijderen tag',
     onSuccess: (_, { nodeId }) => {
-      queryClient.invalidateQueries({ queryKey: ['node-tags', nodeId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags.forNode(nodeId) });
     },
   });
 }
