@@ -27,6 +27,7 @@ export function usePeople() {
   return useQuery({
     queryKey: queryKeys.people.all,
     queryFn: getPeople,
+    refetchInterval: 60_000,
   });
 }
 

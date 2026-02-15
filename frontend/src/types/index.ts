@@ -482,9 +482,6 @@ export interface Person {
   default_phone?: string | null;
 }
 
-// Re-export from canonical location for backwards compatibility
-export { isPersonOnline, formatRelativeTime } from '@/utils/people';
-
 /** Extended response from POST /api/people — includes one-time api_key for agents. */
 export interface PersonCreateResult extends Person {
   api_key?: string | null;

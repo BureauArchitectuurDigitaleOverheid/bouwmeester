@@ -20,6 +20,7 @@ export function isPersonOnline(
 export function formatRelativeTime(timestamp?: string | null): string {
   if (!timestamp) return '-';
   const diffMs = Date.now() - new Date(timestamp).getTime();
+  if (diffMs < 0) return 'zojuist';
   const diffSec = Math.floor(diffMs / 1000);
   if (diffSec < 60) return 'zojuist';
   const diffMin = Math.floor(diffSec / 60);
