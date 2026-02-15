@@ -19,6 +19,10 @@ from bouwmeester.models.effect import Effect  # noqa: F401
 from bouwmeester.models.http_session import HttpSession  # noqa: F401
 from bouwmeester.models.instrument import Instrument  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
+from bouwmeester.models.mattermost_user import (  # noqa: F401
+    MattermostLinkCode,
+    MattermostUser,
+)
 from bouwmeester.models.mention import Mention  # noqa: F401
 from bouwmeester.models.node_stakeholder import NodeStakeholder  # noqa: F401
 from bouwmeester.models.node_status import CorpusNodeStatus  # noqa: F401
@@ -65,6 +69,8 @@ __all__ = [
     "HttpSession",
     "Instrument",
     "Maatregel",
+    "MattermostLinkCode",
+    "MattermostUser",
     "Mention",
     "ParlementairItem",
     "NodeStakeholder",

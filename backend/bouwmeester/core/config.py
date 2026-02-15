@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     VLAM_MODEL_ID: str = ""
     ENABLED_IMPORT_TYPES: list[str] = ["motie", "kamervraag", "toezegging"]
 
+    # Mattermost integration
+    MATTERMOST_ENABLED: bool = False
+    MATTERMOST_URL: str = "http://mattermost:8065"
+    MATTERMOST_BOT_TOKEN: str = ""
+    MATTERMOST_NOTIFICATION_CHANNEL_ID: str = ""  # Default channel for broadcast notifications
+    MATTERMOST_WEBHOOK_TOKEN: str = ""  # Verify incoming slash commands
+
     # Age encryption for database backups
     AGE_SECRET_KEY: str = ""  # Age secret key for decryption (set on production)
 

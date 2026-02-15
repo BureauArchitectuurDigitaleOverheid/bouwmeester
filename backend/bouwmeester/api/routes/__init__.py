@@ -12,6 +12,7 @@ from bouwmeester.api.routes.edges import router as edges_router
 from bouwmeester.api.routes.graph import router as graph_router
 from bouwmeester.api.routes.import_export import router as import_export_router
 from bouwmeester.api.routes.llm import router as llm_router
+from bouwmeester.api.routes.mattermost import router as mattermost_router
 from bouwmeester.api.routes.mentions import router as mentions_router
 from bouwmeester.api.routes.nodes import router as nodes_router
 from bouwmeester.api.routes.notifications import router as notifications_router
@@ -40,6 +41,7 @@ api_router.include_router(graph_router)
 api_router.include_router(search_router)
 api_router.include_router(import_export_router)
 api_router.include_router(llm_router)
+api_router.include_router(mattermost_router)
 api_router.include_router(mentions_router)
 api_router.include_router(notifications_router)
 api_router.include_router(organisatie_router)

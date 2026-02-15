@@ -1,31 +1,102 @@
-import { useState } from 'react';
-import { Check, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Bot, Check, Eye, EyeOff, Loader2, MessageSquare } from 'lucide-react';
 import { useAppConfig, useUpdateAppConfig, type AppConfigEntry } from '@/hooks/useAdmin';
+
+interface ConfigGroup {
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+  entries: AppConfigEntry[];
+}
+
+const GROUP_DEFS: { prefix: string[]; label: string; description: string; icon: React.ReactNode }[] = [
+  {
+    prefix: ['ANTHROPIC_', 'LLM_', 'VLAM_'],
+    label: 'LLM-instellingen',
+    description: 'API-sleutels en modelconfiguratie voor Claude en VLAM.',
+    icon: <Bot className="h-5 w-5 text-violet-700" />,
+  },
+  {
+    prefix: ['MATTERMOST_'],
+    label: 'Mattermost',
+    description: 'Configuratie voor de Mattermost-integratie (notificaties, slash-commando\u2019s).',
+    icon: <MessageSquare className="h-5 w-5 text-blue-700" />,
+  },
+];
+
+function groupConfig(entries: AppConfigEntry[]): ConfigGroup[] {
+  const groups: ConfigGroup[] = GROUP_DEFS.map((def) => ({
+    label: def.label,
+    description: def.description,
+    icon: def.icon,
+    entries: [],
+  }));
+  const other: AppConfigEntry[] = [];
+
+  for (const entry of entries) {
+    const idx = GROUP_DEFS.findIndex((def) =>
+      def.prefix.some((p) => entry.key.startsWith(p)),
+    );
+    if (idx >= 0) {
+      groups[idx].entries.push(entry);
+    } else {
+      other.push(entry);
+    }
+  }
+
+  // Append ungrouped entries as "Overig" if any
+  if (other.length > 0) {
+    groups.push({
+      label: 'Overig',
+      description: 'Overige configuratie.',
+      icon: null,
+      entries: other,
+    });
+  }
+
+  return groups.filter((g) => g.entries.length > 0);
+}
 
 export function ConfigManager() {
   const { data: config, isLoading } = useAppConfig();
+  const groups = useMemo(() => groupConfig(config ?? []), [config]);
 
   if (isLoading) {
     return <div className="text-sm text-text-secondary py-8 text-center">Laden...</div>;
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <p className="text-xs text-text-secondary">
-        Stel API-sleutels en modelinstellingen in voor LLM-integraties (Claude, VLAM).
         Wijzigingen worden direct actief.
       </p>
 
-      <div className="space-y-3">
-        {config?.map((entry) => (
-          <ConfigRow key={entry.id} entry={entry} />
-        ))}
-        {(!config || config.length === 0) && (
-          <p className="text-sm text-text-secondary py-4 text-center">
-            Geen configuratie beschikbaar.
-          </p>
-        )}
-      </div>
+      {groups.map((group) => (
+        <div key={group.label}>
+          <div className="flex items-center gap-2 mb-1">
+            {group.icon && (
+              <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gray-100">
+                {group.icon}
+              </div>
+            )}
+            <div>
+              <h3 className="text-sm font-semibold text-text">{group.label}</h3>
+              <p className="text-xs text-text-secondary">{group.description}</p>
+            </div>
+          </div>
+          <div className="space-y-3 mt-3">
+            {group.entries.map((entry) => (
+              <ConfigRow key={entry.id} entry={entry} />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {groups.length === 0 && (
+        <p className="text-sm text-text-secondary py-4 text-center">
+          Geen configuratie beschikbaar.
+        </p>
+      )}
     </div>
   );
 }

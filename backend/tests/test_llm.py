@@ -323,10 +323,20 @@ class TestFactory:
     @pytest.mark.asyncio
     async def test_load_config_from_db(self, db_session):
         """Config values are loaded from the app_config table."""
+        from sqlalchemy.dialects.postgresql import insert
+
         from bouwmeester.models.app_config import AppConfig
 
-        db_session.add(AppConfig(key="LLM_PROVIDER", value="vlam", is_secret=False))
-        db_session.add(AppConfig(key="LLM_MODEL", value="test-model", is_secret=False))
+        for key, value in [("LLM_PROVIDER", "vlam"), ("LLM_MODEL", "test-model")]:
+            stmt = (
+                insert(AppConfig)
+                .values(key=key, value=value, is_secret=False)
+                .on_conflict_do_update(
+                    index_elements=["key"],
+                    set_={"value": value},
+                )
+            )
+            await db_session.execute(stmt)
         await db_session.flush()
 
         config = await _load_config(db_session)
@@ -336,9 +346,19 @@ class TestFactory:
     @pytest.mark.asyncio
     async def test_load_config_skips_empty_values(self, db_session):
         """Empty values are not included in the config dict."""
+        from sqlalchemy.dialects.postgresql import insert
+
         from bouwmeester.models.app_config import AppConfig
 
-        db_session.add(AppConfig(key="VLAM_API_KEY", value="", is_secret=True))
+        stmt = (
+            insert(AppConfig)
+            .values(key="VLAM_API_KEY", value="", is_secret=True)
+            .on_conflict_do_update(
+                index_elements=["key"],
+                set_={"value": ""},
+            )
+        )
+        await db_session.execute(stmt)
         await db_session.flush()
 
         config = await _load_config(db_session)
@@ -347,15 +367,19 @@ class TestFactory:
     @pytest.mark.asyncio
     async def test_ensure_services_builds_claude(self, db_session):
         """With an Anthropic key, Claude service is built."""
+        from sqlalchemy.dialects.postgresql import insert
+
         from bouwmeester.models.app_config import AppConfig
 
-        db_session.add(
-            AppConfig(
-                key="ANTHROPIC_API_KEY",
-                value="sk-test-key",
-                is_secret=False,
+        stmt = (
+            insert(AppConfig)
+            .values(key="ANTHROPIC_API_KEY", value="sk-test-key", is_secret=False)
+            .on_conflict_do_update(
+                index_elements=["key"],
+                set_={"value": "sk-test-key"},
             )
         )
+        await db_session.execute(stmt)
         await db_session.flush()
 
         await _ensure_services(db_session)
@@ -367,15 +391,19 @@ class TestFactory:
     @pytest.mark.asyncio
     async def test_clear_config_cache_resets_all(self, db_session):
         """clear_config_cache resets config and service caches."""
+        from sqlalchemy.dialects.postgresql import insert
+
         from bouwmeester.models.app_config import AppConfig
 
-        db_session.add(
-            AppConfig(
-                key="ANTHROPIC_API_KEY",
-                value="sk-test",
-                is_secret=False,
+        stmt = (
+            insert(AppConfig)
+            .values(key="ANTHROPIC_API_KEY", value="sk-test", is_secret=False)
+            .on_conflict_do_update(
+                index_elements=["key"],
+                set_={"value": "sk-test"},
             )
         )
+        await db_session.execute(stmt)
         await db_session.flush()
         await _ensure_services(db_session)
 

@@ -139,6 +139,18 @@ import-type TYPE:
 import-moties: import-parlementair
 
 # ---------------------------------------------------------------------------
+# Mattermost
+# ---------------------------------------------------------------------------
+
+# Start services including local Mattermost
+mattermost-up:
+    docker compose --profile mattermost up -d --build
+
+# View Mattermost logs
+mattermost-logs:
+    docker compose logs -f mattermost
+
+# ---------------------------------------------------------------------------
 # Database backup / restore (via API)
 # ---------------------------------------------------------------------------
 

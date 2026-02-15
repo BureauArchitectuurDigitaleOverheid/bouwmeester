@@ -48,6 +48,9 @@ _PUBLIC_PREFIXES = (
     "/api/docs",
     "/api/redoc",
     "/api/webauthn/authenticate/",
+    "/api/mattermost/slash",
+    "/api/mattermost/action",
+    "/api/mattermost/verify-link",
 )
 
 

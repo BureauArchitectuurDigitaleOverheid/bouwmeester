@@ -267,39 +267,13 @@ async def send_message(
     recipient = require_found(await db.get(Person, body.person_id), "Recipient")
     sender = require_found(await db.get(Person, body.sender_id), "Sender")
 
-    is_agent = recipient.is_agent
-    notif_type = "agent_prompt" if is_agent else "direct_message"
-    title = f"{'Prompt' if is_agent else 'Bericht'} van {sender.naam}"
-
     service = NotificationService(db)
-
-    # Create recipient's root (unread)
-    recipient_data = NotificationCreate(
-        person_id=body.person_id,
-        type=notif_type,
-        title=title,
-        message=body.message,
-        sender_id=body.sender_id,
+    recipient_root, sender_root = await service.notify_direct_message(
+        recipient=recipient, sender=sender, message=body.message,
     )
-    recipient_root = await service.repo.create(recipient_data)
-    await db.flush()
 
-    # Set thread_id on recipient's root (points to itself)
-    recipient_root.thread_id = recipient_root.id
-    await db.flush()
-
-    # Create sender's root (read — they sent it)
-    sender_data = NotificationCreate(
-        person_id=body.sender_id,
-        type=notif_type,
-        title=f"{'Prompt' if is_agent else 'Bericht'} aan {recipient.naam}",
-        message=body.message,
-        sender_id=body.sender_id,
-        thread_id=recipient_root.id,
-    )
-    sender_root = await service.repo.create(sender_data)
-    sender_root.is_read = True
-    await db.flush()
+    is_agent = recipient.is_agent
+    title = f"{'Prompt' if is_agent else 'Bericht'} van {sender.naam}"
 
     await sync_and_notify_mentions(
         db,
@@ -340,33 +314,26 @@ async def reply_to_notification(
     thread_id = root.thread_id if root.thread_id else root.id
 
     sender = require_found(await db.get(Person, body.sender_id), "Sender")
-    title = f"Reactie van {sender.naam}"
 
     # Find the other party's root so we can mark it unread.
-    # get_other_root queries for thread_id=thread_id AND person_id != sender_id,
-    # which works regardless of whether the sender replies from their own root
-    # or from the recipient's root — in both cases sender_id identifies the
-    # replier and the "other" root belongs to the counterparty.
     other_root = await service.repo.get_other_root(thread_id, body.sender_id)
     reply_recipient = other_root.person_id if other_root else root.person_id
 
-    data = NotificationCreate(
-        person_id=reply_recipient,
-        type="direct_message",
-        title=title,
+    reply = await service.notify_reply(
+        recipient_id=reply_recipient,
+        sender=sender,
         message=body.message,
-        sender_id=body.sender_id,
-        parent_id=thread_id,
+        thread_id=thread_id,
         related_node_id=root.related_node_id,
         related_task_id=root.related_task_id,
     )
-    reply = await service.repo.create(data)
 
     # Mark the other party's root as unread
     if other_root:
         other_root.is_read = False
         await db.flush()
 
+    title = f"Reactie van {sender.naam}"
     await sync_and_notify_mentions(
         db,
         "notification",

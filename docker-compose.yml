@@ -18,6 +18,7 @@ services:
       POSTGRES_DB: bouwmeester
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./docker/init-mattermost-db.sql:/docker-entrypoint-initdb.d/init-mattermost-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bouwmeester -d bouwmeester"]
       interval: 5s
@@ -39,6 +40,11 @@ services:
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-local-dev-secret-key}
       FRONTEND_URL: http://localhost:5173
       BACKEND_URL: http://localhost:8000
+      MATTERMOST_ENABLED: ${MATTERMOST_ENABLED:-false}
+      MATTERMOST_URL: ${MATTERMOST_URL:-http://mattermost:8065}
+      MATTERMOST_BOT_TOKEN: ${MATTERMOST_BOT_TOKEN:-}
+      MATTERMOST_WEBHOOK_TOKEN: ${MATTERMOST_WEBHOOK_TOKEN:-}
+      MATTERMOST_NOTIFICATION_CHANNEL_ID: ${MATTERMOST_NOTIFICATION_CHANNEL_ID:-}
     volumes: *backend-volumes
     entrypoint: []
     command: uv run uvicorn bouwmeester.core.app:create_app --factory --host 0.0.0.0 --port 8000 --reload
@@ -64,11 +70,43 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      MATTERMOST_ENABLED: ${MATTERMOST_ENABLED:-false}
+      MATTERMOST_URL: ${MATTERMOST_URL:-http://mattermost:8065}
+      MATTERMOST_BOT_TOKEN: ${MATTERMOST_BOT_TOKEN:-}
     volumes: *backend-volumes
     entrypoint: []
     command: uv run python -m bouwmeester.worker
 
+  mattermost:
+    image: mattermost/mattermost-team-edition:9.5
+    profiles: [mattermost]
+    ports:
+      - "8065:8065"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: postgres://bouwmeester:bouwmeester@db:5432/mattermost?sslmode=disable
+      MM_SERVICESETTINGS_SITEURL: http://localhost:8065
+      MM_SERVICESETTINGS_ENABLEBOTACCOUNTCREATION: "true"
+      MM_SERVICESETTINGS_ENABLEINCOMINGWEBHOOKS: "true"
+      MM_SERVICESETTINGS_ENABLEOUTGOINGWEBHOOKS: "true"
+      MM_SERVICESETTINGS_ENABLEPOSTUSERNAMEOVERRIDE: "true"
+      MM_SERVICESETTINGS_ENABLEPOSTICONOVERRIDE: "true"
+      MM_SERVICESETTINGS_ENABLECUSTOMEMOJI: "true"
+    volumes:
+      - mattermost_config:/mattermost/config
+      - mattermost_data:/mattermost/data
+      - mattermost_logs:/mattermost/logs
+      - mattermost_plugins:/mattermost/plugins
+
 volumes:
   pgdata:
   bijlagen:
+  mattermost_config:
+  mattermost_data:
+  mattermost_logs:
+  mattermost_plugins:

@@ -295,6 +295,37 @@ _DEFAULT_CONFIG = [
         "description": "Standaard LLM-provider: 'claude' of 'vlam'",
         "is_secret": False,
     },
+    # Mattermost integration
+    {
+        "key": "MATTERMOST_ENABLED",
+        "value": "false",
+        "description": "Mattermost-integratie inschakelen (true/false)",
+        "is_secret": False,
+    },
+    {
+        "key": "MATTERMOST_URL",
+        "value": "",
+        "description": "Mattermost server URL (bijv. https://mattermost.example.com)",
+        "is_secret": False,
+    },
+    {
+        "key": "MATTERMOST_BOT_TOKEN",
+        "value": "",
+        "description": "Mattermost bot access token",
+        "is_secret": True,
+    },
+    {
+        "key": "MATTERMOST_WEBHOOK_TOKEN",
+        "value": "",
+        "description": "Token voor slash-commando verificatie",
+        "is_secret": True,
+    },
+    {
+        "key": "MATTERMOST_NOTIFICATION_CHANNEL_ID",
+        "value": "",
+        "description": "Kanaal-ID voor broadcast-notificaties",
+        "is_secret": False,
+    },
 ]
 
 
@@ -373,10 +404,12 @@ async def update_config(
     await db.flush()
     await db.refresh(entry)
 
-    # Clear the LLM factory cache so new values take effect immediately
+    # Clear caches so new values take effect immediately
     from bouwmeester.services.llm import clear_config_cache
+    from bouwmeester.services.mattermost_service import clear_mattermost_config_cache
 
     clear_config_cache()
+    clear_mattermost_config_cache()
 
     await ActivityService(db).log_event(
         "admin.config_update",
@@ -569,6 +602,8 @@ _ALL_MODEL_TABLES = [
     "absence",
     "team_member",
     "team",
+    "mattermost_link_code",
+    "mattermost_user",
     "person",
     "organisatie_eenheid",
 ]
