@@ -73,15 +73,15 @@ export function CorpusMatrix({
   }
 
   if (allRowNodes.length === 0 && allColNodes.length === 0) {
-    return <EmptyState message="Geen nodes gevonden voor de geselecteerde types." />;
+    return <EmptyState title="Geen nodes gevonden voor de geselecteerde types." />;
   }
 
   if (allRowNodes.length === 0) {
-    return <EmptyState message="Geen rij-nodes gevonden voor het geselecteerde type." />;
+    return <EmptyState title="Geen rij-nodes gevonden voor het geselecteerde type." />;
   }
 
   if (allColNodes.length === 0) {
-    return <EmptyState message="Geen kolom-nodes gevonden voor het geselecteerde type." />;
+    return <EmptyState title="Geen kolom-nodes gevonden voor het geselecteerde type." />;
   }
 
   const rowColor = NODE_TYPE_HEX_COLORS[rowNodeType];
