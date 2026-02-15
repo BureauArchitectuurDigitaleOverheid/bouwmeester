@@ -206,8 +206,8 @@ class TaskRepository(BaseRepository[Task]):
                 raise ValueError(f"Task {tid} is not a subtask of {parent_id}")
 
         # Validate completeness: all subtasks of the parent must be included
-        count_stmt = select(func.count()).select_from(Task).where(
-            Task.parent_id == parent_id
+        count_stmt = (
+            select(func.count()).select_from(Task).where(Task.parent_id == parent_id)
         )
         actual_count = (await self.session.execute(count_stmt)).scalar_one()
         if len(task_ids) != actual_count:
