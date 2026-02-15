@@ -29,6 +29,17 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   [NodeType.OVERIG]: 'Overig',
 };
 
+/** Dutch plural forms for node type labels. */
+export const NODE_TYPE_LABELS_PLURAL: Partial<Record<NodeType, string>> = {
+  [NodeType.PROBLEEM]: 'problemen',
+  [NodeType.DOEL]: 'doelen',
+  [NodeType.BELEIDSOPTIE]: 'beleidsopties',
+  [NodeType.BELEIDSKADER]: 'beleidskaders',
+  [NodeType.INSTRUMENT]: 'instrumenten',
+  [NodeType.MAATREGEL]: 'maatregelen',
+  [NodeType.EFFECT]: 'effecten',
+};
+
 export const NODE_TYPE_COLORS: Record<NodeType, BadgeVariant> = {
   [NodeType.DOSSIER]: 'blue',
   [NodeType.DOEL]: 'green',

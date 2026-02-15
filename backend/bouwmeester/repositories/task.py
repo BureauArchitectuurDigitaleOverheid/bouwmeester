@@ -3,7 +3,7 @@
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import distinct, select
+from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.task import Task
@@ -204,6 +204,16 @@ class TaskRepository(BaseRepository[Task]):
             task = tasks_by_id.get(tid)
             if task is None or task.parent_id != parent_id:
                 raise ValueError(f"Task {tid} is not a subtask of {parent_id}")
+
+        # Validate completeness: all subtasks of the parent must be included
+        count_stmt = select(func.count()).select_from(Task).where(
+            Task.parent_id == parent_id
+        )
+        actual_count = (await self.session.execute(count_stmt)).scalar_one()
+        if len(task_ids) != actual_count:
+            raise ValueError(
+                f"Expected {actual_count} subtask(s) but received {len(task_ids)}"
+            )
 
         # Build order lookup from the requested sequence
         for idx, tid in enumerate(task_ids):

@@ -243,6 +243,40 @@ async def test_reorder_subtasks_nonexistent_parent(client):
     assert resp.status_code == 404
 
 
+async def test_reorder_subtasks_rejects_partial_list(
+    client, sample_task, sample_node, db_session
+):
+    """Reorder returns 400 when only a subset of subtasks is provided."""
+    from bouwmeester.models.task import Task
+
+    sub_a = Task(
+        id=uuid.uuid4(),
+        title="Subtaak A",
+        node_id=sample_node.id,
+        parent_id=sample_task.id,
+        status="open",
+        priority="normaal",
+    )
+    sub_b = Task(
+        id=uuid.uuid4(),
+        title="Subtaak B",
+        node_id=sample_node.id,
+        parent_id=sample_task.id,
+        status="open",
+        priority="normaal",
+    )
+    db_session.add_all([sub_a, sub_b])
+    await db_session.flush()
+
+    # Send only one of the two subtasks
+    resp = await client.put(
+        f"/api/tasks/{sample_task.id}/subtasks/reorder",
+        json={"task_ids": [str(sub_a.id)]},
+    )
+    assert resp.status_code == 400
+    assert "Expected 2" in resp.json()["detail"]
+
+
 async def test_reorder_subtasks_rejects_foreign_ids(
     client, sample_task, sample_node, db_session
 ):

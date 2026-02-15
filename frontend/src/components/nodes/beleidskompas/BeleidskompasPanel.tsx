@@ -8,8 +8,7 @@ import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useCompletenessAnalysis, type StepStatus } from './useCompletenessAnalysis';
 import { LinkExistingNodeModal } from './LinkExistingNodeModal';
 import { NodeCreateForm } from '../NodeCreateForm';
-import { NODE_TYPE_LABELS, NODE_TYPE_COLORS, type NodeType } from '@/types';
-import { NODE_TYPE_LABELS_PLURAL } from './config';
+import { NODE_TYPE_LABELS, NODE_TYPE_LABELS_PLURAL, NODE_TYPE_COLORS, type NodeType } from '@/types';
 import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
 
 interface BeleidskompasStepRowProps {
@@ -117,7 +116,7 @@ interface BeleidskompasPanelProps {
 }
 
 export function BeleidskompasPanel({ nodeId }: BeleidskompasPanelProps) {
-  const { data: graphData, isLoading, isError } = useNodeGraph(nodeId, 2);
+  const { data: graphData, isLoading, isError } = useNodeGraph(nodeId, 1);
   const { steps, completedCount, totalSteps } = useCompletenessAnalysis(graphData, nodeId);
   const [linkModalType, setLinkModalType] = useState<NodeType | null>(null);
   const [createModalType, setCreateModalType] = useState<NodeType | null>(null);
