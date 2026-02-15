@@ -90,7 +90,7 @@ export const queryKeys = {
     whitelist: () => ['admin', 'whitelist'] as const,
     users: () => ['admin', 'users'] as const,
     accessRequestsAll: () => ['admin', 'access-requests'] as const,
-    accessRequests: (status: string) => ['admin', 'access-requests', status] as const,
+    accessRequests: (status?: string) => ['admin', 'access-requests', status] as const,
     config: () => ['admin', 'config'] as const,
   },
 
