@@ -127,10 +127,11 @@ interface CorpusGraphProps {
   enabledEdgeTypes: Set<string>;
   graphData?: GraphViewResponse;
   isLoading: boolean;
+  error?: Error | null;
 }
 
 // Inner component that uses useReactFlow (must be inside ReactFlowProvider)
-function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, graphData: data, isLoading }: CorpusGraphProps) {
+function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, graphData: data, isLoading, error }: CorpusGraphProps) {
   const isMobile = useIsMobile();
   const { edgeLabel: vocabEdgeLabel } = useVocabulary();
   const { openNodeDetail } = useNodeDetail();
@@ -341,6 +342,15 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
 
   if (isLoading) {
     return <LoadingSpinner className="py-12" />;
+  }
+
+  if (error) {
+    return (
+      <EmptyState
+        title="Fout bij laden"
+        description="Er is een fout opgetreden bij het laden van de grafiek. Probeer het opnieuw."
+      />
+    );
   }
 
   if (!data?.nodes?.length) {

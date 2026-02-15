@@ -9,7 +9,6 @@ import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { NodeList } from '@/components/nodes/NodeList';
 import { NodeCreateForm } from '@/components/nodes/NodeCreateForm';
 import { ExportButton } from '@/components/nodes/ExportButton';
-import { EmptyState } from '@/components/common/EmptyState';
 import { CorpusGraph } from '@/components/graph/CorpusGraph';
 import { CorpusMatrix } from '@/components/graph/CorpusMatrix';
 import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
@@ -132,8 +131,6 @@ export function CorpusPage() {
       } else {
         prev.set('view', mode);
       }
-      // Reset edge filter when switching modes to avoid stale filters hiding everything
-      prev.delete('edges');
       return prev;
     }, { replace: true });
   }, [setSearchParams]);
@@ -257,15 +254,10 @@ export function CorpusPage() {
       </div>
 
       {/* View content */}
-      {graphError && (viewMode === 'graph' || viewMode === 'matrix') ? (
-        <EmptyState
-          title="Fout bij laden"
-          description="Er is een fout opgetreden bij het laden van de data. Probeer het opnieuw."
-        />
-      ) : viewMode === 'list' ? (
+      {viewMode === 'list' ? (
         <NodeList enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} />
       ) : viewMode === 'graph' ? (
-        <CorpusGraph enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} enabledEdgeTypes={enabledEdgeTypes} graphData={graphData} isLoading={isGraphLoading} />
+        <CorpusGraph enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} enabledEdgeTypes={enabledEdgeTypes} graphData={graphData} isLoading={isGraphLoading} error={graphError} />
       ) : viewMode === 'matrix' ? (
         <CorpusMatrix
           rowNodeType={matrixRowType}
@@ -274,6 +266,7 @@ export function CorpusPage() {
           searchQuery={searchQuery}
           graphData={graphData}
           isLoading={isGraphLoading}
+          error={graphError}
         />
       ) : null}
 
