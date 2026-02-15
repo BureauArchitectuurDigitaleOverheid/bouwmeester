@@ -29,7 +29,7 @@ export function useCreateNode() {
   return useMutationWithError({
     mutationFn: (data: CorpusNodeCreate) => createNode(data),
     errorMessage: 'Fout bij aanmaken node',
-    invalidateKeys: [queryKeys.nodes.lists(), ['graph']],
+    invalidateKeys: [queryKeys.nodes.lists(), queryKeys.graph.all],
   });
 }
 

@@ -20,6 +20,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from uuid import UUID
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,7 +73,9 @@ def _load_emails_from_file(json_path: Path, age_path: Path) -> set[str] | None:
 # ---------------------------------------------------------------------------
 
 
-async def _get_person_ids_by_emails(session: AsyncSession, emails: set[str]) -> set:
+async def _get_person_ids_by_emails(
+    session: AsyncSession, emails: set[str]
+) -> set[UUID]:
     """Return person IDs matching the given emails (person_email + legacy)."""
     from bouwmeester.models.person import Person
     from bouwmeester.models.person_email import PersonEmail

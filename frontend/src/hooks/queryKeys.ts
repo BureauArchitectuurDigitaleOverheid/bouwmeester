@@ -89,7 +89,8 @@ export const queryKeys = {
   admin: {
     whitelist: () => ['admin', 'whitelist'] as const,
     users: () => ['admin', 'users'] as const,
-    accessRequests: (status?: string) => ['admin', 'access-requests', status] as const,
+    accessRequestsAll: () => ['admin', 'access-requests'] as const,
+    accessRequests: (status: string) => ['admin', 'access-requests', status] as const,
     config: () => ['admin', 'config'] as const,
   },
 
@@ -100,7 +101,10 @@ export const queryKeys = {
   dashboardStats: (personId: string | undefined) => ['dashboard-stats', personId] as const,
 
   // --- Graph ---
-  graph: (nodeTypes?: string[], limit?: number) => ['graph', nodeTypes, limit] as const,
+  graph: {
+    all: ['graph'] as const,
+    view: (nodeTypes?: string[], limit?: number) => ['graph', nodeTypes, limit] as const,
+  },
 
   // --- Search ---
   search: (query: string, resultTypes?: SearchResultType[]) => ['search', query, resultTypes] as const,

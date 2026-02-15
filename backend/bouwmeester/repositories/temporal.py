@@ -8,7 +8,7 @@ means closing the current active record and inserting a new one.
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy import select
@@ -16,13 +16,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InspectionAttr
 
 
+class TemporalModel(Protocol):
+    """Protocol for models with geldig_van/geldig_tot temporal columns."""
+
+    geldig_tot: Any
+
+
 async def rotate_temporal_record(
     session: AsyncSession,
-    model_cls: type,
+    model_cls: type[TemporalModel],
     fk_column: InspectionAttr,
     owner_id: UUID,
     effective: date,
-    new_record: Any,
+    new_record: TemporalModel | None,
 ) -> None:
     """Close the active record and insert a new one.
 
@@ -50,7 +56,7 @@ async def rotate_temporal_record(
 
 async def close_active_records(
     session: AsyncSession,
-    model_classes: list[tuple[type, InspectionAttr]],
+    model_classes: list[tuple[type[TemporalModel], InspectionAttr]],
     owner_id: UUID,
     end_date: date,
 ) -> None:

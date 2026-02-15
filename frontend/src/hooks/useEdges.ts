@@ -15,7 +15,7 @@ export function useCreateEdge() {
   return useMutationWithError({
     mutationFn: (data: EdgeCreate) => createEdge(data),
     errorMessage: 'Fout bij aanmaken relatie',
-    invalidateKeys: [queryKeys.edges.all, queryKeys.nodes.all, ['graph'], queryKeys.parlementair.all, queryKeys.parlementair.reviewQueue()],
+    invalidateKeys: [queryKeys.edges.all, queryKeys.nodes.all, queryKeys.graph.all, queryKeys.parlementair.all, queryKeys.parlementair.reviewQueue()],
   });
 }
 
@@ -23,6 +23,6 @@ export function useDeleteEdge() {
   return useMutationWithError({
     mutationFn: (id: string) => deleteEdge(id),
     errorMessage: 'Fout bij verwijderen relatie',
-    invalidateKeys: [queryKeys.edges.all, queryKeys.nodes.all, ['graph'], queryKeys.parlementair.all, queryKeys.parlementair.reviewQueue()],
+    invalidateKeys: [queryKeys.edges.all, queryKeys.nodes.all, queryKeys.graph.all, queryKeys.parlementair.all, queryKeys.parlementair.reviewQueue()],
   });
 }

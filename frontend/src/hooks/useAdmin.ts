@@ -73,7 +73,7 @@ export function useReviewAccessRequest() {
     mutationFn: ({ id, action, deny_reason }: { id: string; action: 'approve' | 'deny'; deny_reason?: string }) =>
       apiPatch<AccessRequest>(`/api/admin/access-requests/${id}`, { action, deny_reason }),
     errorMessage: 'Fout bij beoordelen van toegangsverzoek',
-    invalidateKeys: [queryKeys.admin.accessRequests(), queryKeys.admin.whitelist()],
+    invalidateKeys: [queryKeys.admin.accessRequestsAll(), queryKeys.admin.whitelist()],
   });
 }
 
