@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -94,6 +95,9 @@ async def db_session(_test_engine):
     async with _test_engine.connect() as conn:
         txn = await conn.begin()
         session = AsyncSession(bind=conn, expire_on_commit=False)
+        # Clear migration-seeded schema rules so tests start with a clean
+        # slate (the data migration populates default rules).
+        await session.execute(text("DELETE FROM edge_schema_rule"))
         try:
             yield session
         finally:
