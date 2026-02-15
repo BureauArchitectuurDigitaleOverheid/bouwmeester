@@ -181,10 +181,21 @@ class TaskRepository(BaseRepository[Task]):
             select(Task)
             .where(Task.parent_id == parent_id)
             .options(*_task_options())
-            .order_by(Task.created_at.asc())
+            .order_by(Task.order.asc().nulls_last(), Task.created_at.asc())
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def reorder_subtasks(
+        self, parent_id: UUID, task_ids: list[UUID]
+    ) -> list[Task]:
+        """Set order field on subtasks according to the given ID list."""
+        for index, task_id in enumerate(task_ids):
+            task = await self.session.get(Task, task_id)
+            if task and task.parent_id == parent_id:
+                task.order = index
+        await self.session.flush()
+        return await self.get_subtasks(parent_id)
 
     async def _get_descendant_ids(self, root_id: UUID) -> list[UUID]:
         """Get all descendant unit IDs (including root) using a recursive CTE."""

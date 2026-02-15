@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, User, Bot, Calendar, Link as LinkIcon, Pencil, Building2, ListTree, Plus, CheckCircle2, Circle, FileSearch } from 'lucide-react';
+import { Clock, User, Bot, Calendar, Link as LinkIcon, Pencil, Building2, ListTree, Plus, CheckCircle2, Circle, FileSearch, ChevronUp, ChevronDown } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
@@ -8,7 +8,7 @@ import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { ReferencesList } from '@/components/common/ReferencesList';
 import { TaskEditForm } from './TaskEditForm';
 import { TaskCreateForm } from './TaskCreateForm';
-import { useTask } from '@/hooks/useTasks';
+import { useTask, useReorderSubtasks } from '@/hooks/useTasks';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { isOverdue as checkOverdue, formatDateLong, formatDateShort } from '@/utils/dates';
@@ -33,6 +33,16 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
   const { openNodeDetail } = useNodeDetail();
   const { openTaskDetail } = useTaskDetail();
   const navigate = useNavigate();
+  const reorderSubtasks = useReorderSubtasks();
+
+  const handleMoveSubtask = (index: number, direction: 'up' | 'down') => {
+    if (!task) return;
+    const subs = [...(task.subtasks ?? [])];
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= subs.length) return;
+    [subs[index], subs[newIndex]] = [subs[newIndex], subs[index]];
+    reorderSubtasks.mutate({ taskId: task.id, taskIds: subs.map((s) => s.id) });
+  };
 
   if (!open) return null;
 
@@ -227,34 +237,59 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
               </div>
               {subtasks.length > 0 ? (
                 <div className="space-y-1">
-                  {subtasks.map((sub) => {
+                  {subtasks.map((sub, idx) => {
                     const subDone = sub.status === TaskStatus.DONE;
                     return (
-                      <button
+                      <div
                         key={sub.id}
-                        onClick={() => {
-                          onClose();
-                          openTaskDetail(sub.id);
-                        }}
-                        className="flex items-center gap-2 w-full px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
+                        className="flex items-center gap-1 w-full"
                       >
-                        {subDone ? (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                        ) : (
-                          <Circle className="h-4 w-4 text-text-secondary shrink-0" />
-                        )}
-                        <span className={`text-sm flex-1 ${subDone ? 'text-text-secondary line-through' : 'text-text'}`}>
-                          {sub.title}
-                        </span>
-                        {sub.assignee && (
-                          <span className="text-xs text-text-secondary">{sub.assignee.naam}</span>
-                        )}
-                        {sub.due_date && (
-                          <span className="text-xs text-text-secondary">
-                            {formatDateShort(sub.due_date)}
+                        <div className="flex flex-col shrink-0">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleMoveSubtask(idx, 'up'); }}
+                            disabled={idx === 0}
+                            className="p-0.5 text-text-secondary hover:text-text disabled:opacity-25 disabled:cursor-default transition-colors"
+                            title="Omhoog"
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleMoveSubtask(idx, 'down'); }}
+                            disabled={idx === subtasks.length - 1}
+                            className="p-0.5 text-text-secondary hover:text-text disabled:opacity-25 disabled:cursor-default transition-colors"
+                            title="Omlaag"
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => {
+                            onClose();
+                            openTaskDetail(sub.id);
+                          }}
+                          className="flex items-center gap-2 flex-1 min-w-0 px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
+                        >
+                          {subDone ? (
+                            <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                          ) : (
+                            <Circle className="h-4 w-4 text-text-secondary shrink-0" />
+                          )}
+                          <span className={`text-sm flex-1 ${subDone ? 'text-text-secondary line-through' : 'text-text'}`}>
+                            {sub.title}
                           </span>
-                        )}
-                      </button>
+                          {sub.work_type && (
+                            <Badge variant="slate">{sub.work_type}</Badge>
+                          )}
+                          {sub.assignee && (
+                            <span className="text-xs text-text-secondary">{sub.assignee.naam}</span>
+                          )}
+                          {sub.due_date && (
+                            <span className="text-xs text-text-secondary">
+                              {formatDateShort(sub.due_date)}
+                            </span>
+                          )}
+                        </button>
+                      </div>
                     );
                   })}
                 </div>

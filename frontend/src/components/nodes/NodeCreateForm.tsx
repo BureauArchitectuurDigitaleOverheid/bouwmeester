@@ -9,23 +9,29 @@ import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { PendingTagsList } from './PendingTagsList';
 import { TagSuggestions } from './TagSuggestions';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCreateNode } from '@/hooks/useNodes';
 import { useCreatableNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
+import { queryKeys } from '@/hooks/queryKeys';
 import { NodeType, NodeStatus, NODE_STATUS_LABELS, BRON_TYPE_LABELS } from '@/types';
 import { updateNodeBronDetail, uploadBijlage } from '@/api/nodes';
+import { createEdge } from '@/api/edges';
 import { addTagToNode } from '@/api/tags';
 import { useToast } from '@/contexts/ToastContext';
 
 interface NodeCreateFormProps {
   open: boolean;
   onClose: () => void;
+  defaultNodeType?: NodeType;
+  linkToDossierId?: string;
 }
 
-export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
+export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId }: NodeCreateFormProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const nodeTypeOptions = useCreatableNodeTypeOptions();
   const [title, setTitle] = useState('');
-  const [nodeType, setNodeType] = useState<string>(NodeType.DOSSIER);
+  const [nodeType, setNodeType] = useState<string>(defaultNodeType ?? NodeType.DOSSIER);
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState(NodeStatus.ACTIEF);
   const createNode = useCreateNode();
@@ -47,7 +53,7 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
 
   const resetForm = () => {
     setTitle('');
-    setNodeType(NodeType.DOSSIER);
+    setNodeType(defaultNodeType ?? NodeType.DOSSIER);
     setDescription('');
     setStatus(NodeStatus.ACTIEF);
     setBronType('rapport');
@@ -88,7 +94,23 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
         await uploadBijlage(node.id, bijlageFile);
       }
 
-      // 4. Apply suggested tags
+      // 4. If linkToDossierId is set, create an onderdeel_van edge
+      if (linkToDossierId) {
+        try {
+          await createEdge({
+            from_node_id: node.id,
+            to_node_id: linkToDossierId,
+            edge_type_id: 'onderdeel_van',
+          });
+          await queryClient.invalidateQueries({ queryKey: queryKeys.nodes.graph(linkToDossierId, 2) });
+          await queryClient.invalidateQueries({ queryKey: queryKeys.nodes.neighbors(linkToDossierId) });
+          await queryClient.invalidateQueries({ queryKey: queryKeys.edges.all });
+        } catch {
+          // Non-critical: edge creation may fail if already linked
+        }
+      }
+
+      // 5. Apply suggested tags
       for (const tag of pendingTags) {
         try {
           await addTagToNode(node.id, { tag_name: tag.name });
@@ -99,7 +121,9 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
 
       resetForm();
       onClose();
-      navigate(`/nodes/${node.id}`);
+      if (!linkToDossierId) {
+        navigate(`/nodes/${node.id}`);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Onbekende fout';
       showError(`Aanmaken mislukt: ${msg}`);

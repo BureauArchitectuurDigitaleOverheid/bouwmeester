@@ -68,6 +68,8 @@ class Task(Base):
         comment="laag|normaal|hoog|kritiek",
     )
     deadline: Mapped[date | None] = mapped_column(nullable=True)
+    order: Mapped[int | None] = mapped_column(nullable=True, default=None)
+    work_type: Mapped[str | None] = mapped_column(nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

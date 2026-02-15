@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
@@ -27,6 +28,11 @@ from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
+
+
+class ReorderRequest(BaseModel):
+    task_ids: list[UUID]
+
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -195,6 +201,19 @@ async def get_task_subtasks(
     """List subtasks of a parent task."""
     repo = TaskRepository(db)
     subtasks = await repo.get_subtasks(id)
+    return [TaskResponse.model_validate(t) for t in subtasks]
+
+
+@router.put("/{id}/subtasks/reorder", response_model=list[TaskResponse])
+async def reorder_subtasks(
+    id: UUID,
+    data: ReorderRequest,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[TaskResponse]:
+    """Reorder subtasks of a parent task."""
+    repo = TaskRepository(db)
+    subtasks = await repo.reorder_subtasks(id, data.task_ids)
     return [TaskResponse.model_validate(t) for t in subtasks]
 
 

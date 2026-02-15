@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks, getTasksByPerson } from '@/api/tasks';
+import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks, getTasksByPerson, reorderSubtasks } from '@/api/tasks';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { TaskCreate, TaskUpdate, TaskFilters } from '@/types';
@@ -71,5 +71,14 @@ export function useTasksByPerson(personId: string | null) {
     queryKey: queryKeys.tasks.byPerson(personId),
     queryFn: () => getTasksByPerson(personId!),
     enabled: !!personId,
+  });
+}
+
+export function useReorderSubtasks() {
+  return useMutationWithError({
+    mutationFn: ({ taskId, taskIds }: { taskId: string; taskIds: string[] }) =>
+      reorderSubtasks(taskId, taskIds),
+    errorMessage: 'Fout bij herordenen subtaken',
+    invalidateKeys: [queryKeys.tasks.lists()],
   });
 }

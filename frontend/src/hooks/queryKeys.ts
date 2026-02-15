@@ -22,6 +22,7 @@ export const queryKeys = {
     parlementairItem: (id: string | undefined) => ['nodes', 'detail', id, 'parlementair-item'] as const,
     bronDetail: (id: string | undefined) => ['nodes', 'detail', id, 'bron-detail'] as const,
     bijlage: (id: string | undefined) => ['nodes', 'detail', id, 'bijlage'] as const,
+    graph: (id: string | undefined, depth?: number) => ['nodes', 'detail', id, 'graph', depth] as const,
   },
 
   // --- Tasks ---

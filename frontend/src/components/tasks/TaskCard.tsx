@@ -131,6 +131,10 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
               </span>
             )}
 
+            {task.work_type && (
+              <Badge variant="slate">{task.work_type}</Badge>
+            )}
+
             {subtasks.length > 0 && (
               <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
                 <ListTree className="h-3 w-3" />

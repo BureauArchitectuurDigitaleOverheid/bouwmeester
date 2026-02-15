@@ -32,6 +32,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
   const [selectedNodeId, setSelectedNodeId] = useState(task.node_id ?? '');
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
   const [organisatieEenheidId, setOrganisatieEenheidId] = useState(task.organisatie_eenheid_id ?? '');
+  const [workType, setWorkType] = useState(task.work_type ?? '');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const priorityOptions = useEnumOptions(TaskPriority, TASK_PRIORITY_LABELS);
@@ -55,6 +56,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
     setSelectedNodeId(task.node_id ?? '');
     setAssigneeId(task.assignee_id ?? '');
     setOrganisatieEenheidId(task.organisatie_eenheid_id ?? '');
+    setWorkType(task.work_type ?? '');
     setShowDeleteConfirm(false);
   }, [task]);
 
@@ -76,6 +78,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
         due_date: dueDate || undefined,
         assignee_id: assigneeId || undefined,
         organisatie_eenheid_id: organisatieEenheidId || undefined,
+        work_type: workType.trim() || undefined,
       },
     });
 
@@ -197,6 +200,13 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
             placeholder="Selecteer een persoon..."
             onCreate={handleCreatePerson}
             createLabel="Nieuw aanmaken"
+          />
+
+          <Input
+            label="Werktype"
+            value={workType}
+            onChange={(e) => setWorkType(e.target.value)}
+            placeholder="bijv. Analyse, Overleg, Review..."
           />
 
           <Input

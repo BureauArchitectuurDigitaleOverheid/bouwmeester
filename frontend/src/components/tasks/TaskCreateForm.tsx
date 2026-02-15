@@ -28,6 +28,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
   const [selectedNodeId, setSelectedNodeId] = useState(nodeId ?? '');
   const [assigneeId, setAssigneeId] = useState('');
   const [organisatieEenheidId, setOrganisatieEenheidId] = useState('');
+  const [workType, setWorkType] = useState('');
 
   const priorityOptions = useEnumOptions(TaskPriority, TASK_PRIORITY_LABELS);
 
@@ -41,6 +42,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
       setSelectedNodeId(nodeId ?? '');
       setAssigneeId('');
       setOrganisatieEenheidId('');
+      setWorkType('');
     }
   }, [open, nodeId]);
 
@@ -68,6 +70,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
       assignee_id: assigneeId || undefined,
       organisatie_eenheid_id: organisatieEenheidId || undefined,
       parent_id: parentId || undefined,
+      work_type: workType.trim() || undefined,
     });
 
     onClose();
@@ -137,6 +140,13 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
             onChange={setPriority}
             options={priorityOptions}
             searchable={false}
+          />
+
+          <Input
+            label="Werktype"
+            value={workType}
+            onChange={(e) => setWorkType(e.target.value)}
+            placeholder="bijv. Analyse, Overleg, Review..."
           />
 
           <Input

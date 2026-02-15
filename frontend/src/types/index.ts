@@ -235,6 +235,8 @@ export interface TaskSubtask {
   priority: TaskPriority;
   assignee?: { id: string; naam: string; is_agent: boolean };
   due_date?: string;
+  order?: number;
+  work_type?: string;
 }
 
 export interface Task {
@@ -253,6 +255,8 @@ export interface Task {
   subtasks?: TaskSubtask[];
   node_id?: string;
   node?: CorpusNode;
+  order?: number;
+  work_type?: string;
   created_at: string;
   updated_at: string;
 }
@@ -268,6 +272,7 @@ export interface TaskCreate {
   parent_id?: string;
   parlementair_item_id?: string;
   node_id: string;
+  work_type?: string;
 }
 
 export interface TaskUpdate {
@@ -279,6 +284,7 @@ export interface TaskUpdate {
   assignee_id?: string | null;
   organisatie_eenheid_id?: string | null;
   parent_id?: string | null;
+  work_type?: string | null;
 }
 
 export interface EenheidPersonTaskStats {
