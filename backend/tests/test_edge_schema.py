@@ -25,10 +25,10 @@ async def _create_rule(client, from_type, to_type, edge_type_id):
 
 
 async def test_list_rules_empty(client):
-    """GET /api/edge-schema-rules returns 200 and empty list initially."""
+    """GET /api/edge-schema-rules returns 200 and empty list when no rules."""
     resp = await client.get("/api/edge-schema-rules")
     assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+    assert resp.json() == []
 
 
 async def test_create_rule(client, sample_edge_type):
