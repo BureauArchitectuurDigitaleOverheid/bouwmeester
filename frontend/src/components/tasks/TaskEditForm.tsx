@@ -159,6 +159,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
               value={status}
               onChange={setStatus}
               options={statusOptions}
+              searchable={false}
             />
 
             <CreatableSelect
@@ -166,6 +167,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
               value={priority}
               onChange={setPriority}
               options={priorityOptions}
+              searchable={false}
             />
           </div>
 

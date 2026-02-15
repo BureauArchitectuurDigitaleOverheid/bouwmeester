@@ -125,6 +125,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
               onChange={setStatusFilter}
               options={statusOptions}
               placeholder="Alle statussen"
+              searchable={false}
             />
           </div>
 
@@ -134,6 +135,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
               onChange={setPriorityFilter}
               options={priorityOptions}
               placeholder="Alle prioriteiten"
+              searchable={false}
             />
           </div>
 
