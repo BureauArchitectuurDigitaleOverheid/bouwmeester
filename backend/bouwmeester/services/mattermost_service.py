@@ -248,6 +248,7 @@ class MattermostService:
             "title_link": deep_link,
             "text": plain_message,
             "fields": fields,
+            "footer": f"[Bekijken in Bouwmeester]({deep_link})",
         }
 
         # Add interactive buttons for actionable notification types.
@@ -263,22 +264,6 @@ class MattermostService:
         """Build interactive button actions for a notification."""
         backend_url = self.settings.BACKEND_URL.rstrip("/")
         actions: list[dict] = []
-
-        # Always add a "Bekijken" link button.
-        actions.append(
-            {
-                "id": "view",
-                "name": "Bekijken",
-                "integration": {
-                    "url": f"{backend_url}/api/mattermost/action",
-                    "context": {
-                        "action": "view",
-                        "notification_id": str(notification.id),
-                        "deep_link": deep_link,
-                    },
-                },
-            }
-        )
 
         # Add "Taak afronden" for task-related notifications.
         if (

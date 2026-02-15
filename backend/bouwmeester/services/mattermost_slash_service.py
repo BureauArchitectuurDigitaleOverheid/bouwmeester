@@ -221,9 +221,6 @@ class MattermostSlashService:
         """Handle an interactive button click."""
         if action == "complete_task":
             return await self._action_complete_task(mattermost_user_id, context)
-        if action == "view":
-            deep_link = context.get("deep_link", "")
-            return {"goto_location": deep_link}
         return {"ephemeral_text": "Onbekende actie."}
 
     async def _action_complete_task(

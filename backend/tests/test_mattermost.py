@@ -194,7 +194,9 @@ async def test_format_notification(db_session: AsyncSession, sample_person):
         attachment = props["attachments"][0]
         assert attachment["color"] == "#3B82F6"  # blue for task_assigned
         assert attachment["title"] == "Nieuwe taak: Test"
-        assert len(attachment["actions"]) == 2  # Bekijken + Taak afronden
+        assert len(attachment["actions"]) == 1  # Taak afronden
+        assert attachment["actions"][0]["name"] == "Taak afronden"
+        assert "Bekijken in Bouwmeester" in attachment["footer"]
 
 
 # ---------------------------------------------------------------------------
