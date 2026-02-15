@@ -147,6 +147,9 @@ class GraphRepository:
     ) -> dict:
         """Return all nodes and edges, optionally filtered by type.
 
+        By default, politieke_input nodes are only included when they have
+        at least one edge (i.e. they are connected to the policy graph).
+
         Returns ``{"nodes": [...], "edges": [...]}``.
         """
         # -- Nodes --
@@ -156,6 +159,26 @@ class GraphRepository:
         nodes_stmt = nodes_stmt.order_by(CorpusNode.created_at.desc())
         nodes_result = await self.session.execute(nodes_stmt)
         nodes = list(nodes_result.scalars().all())
+
+        # Filter politieke_input to only those with at least one edge
+        if not node_types or "politieke_input" in node_types:
+            connected_pi_stmt = (
+                select(CorpusNode.id)
+                .where(CorpusNode.node_type == "politieke_input")
+                .where(
+                    CorpusNode.id.in_(
+                        select(Edge.from_node_id).union(select(Edge.to_node_id))
+                    )
+                )
+            )
+            connected_pi_result = await self.session.execute(connected_pi_stmt)
+            connected_pi_ids = {row[0] for row in connected_pi_result}
+
+            nodes = [
+                n
+                for n in nodes
+                if n.node_type != "politieke_input" or n.id in connected_pi_ids
+            ]
 
         node_ids = {n.id for n in nodes}
 

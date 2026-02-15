@@ -53,14 +53,24 @@ router = APIRouter(prefix="/nodes", tags=["nodes"])
 async def list_nodes(
     current_user: OptionalUser,
     node_type: NodeType | None = None,
+    include_unconnected_pi: bool = Query(False),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[CorpusNodeResponse]:
-    """List all corpus nodes, optionally filtered by node_type."""
+    """List all corpus nodes, optionally filtered by node_type.
+
+    By default, politieke_input nodes without any edges are hidden.
+    Pass ``include_unconnected_pi=true`` to include them.
+    """
     service = NodeService(db)
     node_type_str = node_type.value if node_type else None
-    nodes = await service.get_all(skip=skip, limit=limit, node_type=node_type_str)
+    nodes = await service.get_all(
+        skip=skip,
+        limit=limit,
+        node_type=node_type_str,
+        include_unconnected_pi=include_unconnected_pi,
+    )
     return validate_list(CorpusNodeResponse, nodes)
 
 

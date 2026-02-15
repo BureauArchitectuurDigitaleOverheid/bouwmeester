@@ -31,8 +31,15 @@ class NodeService:
         skip: int = 0,
         limit: int = 100,
         node_type: str | None = None,
+        *,
+        include_unconnected_pi: bool = False,
     ) -> list[CorpusNode]:
-        return await self.repo.get_all(skip=skip, limit=limit, node_type=node_type)
+        return await self.repo.get_all(
+            skip=skip,
+            limit=limit,
+            node_type=node_type,
+            include_unconnected_pi=include_unconnected_pi,
+        )
 
     async def create(self, data: CorpusNodeCreate) -> CorpusNode:
         node = await self.repo.create(data)

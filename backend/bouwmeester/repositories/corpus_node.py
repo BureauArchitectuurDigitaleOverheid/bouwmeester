@@ -121,6 +121,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         node_type: str | None = None,
         *,
         active_only: bool = True,
+        include_unconnected_pi: bool = False,
     ) -> list[CorpusNode]:
         stmt = select(CorpusNode).offset(skip).limit(limit)
         if node_type is not None:
@@ -129,7 +130,31 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
             stmt = stmt.where(CorpusNode.geldig_tot.is_(None))
         stmt = stmt.order_by(CorpusNode.created_at.desc())
         result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        nodes = list(result.scalars().all())
+
+        # Hide unconnected politieke_input nodes unless explicitly requested
+        if not include_unconnected_pi and (
+            node_type is None or node_type == "politieke_input"
+        ):
+            connected_pi_stmt = (
+                select(CorpusNode.id)
+                .where(CorpusNode.node_type == "politieke_input")
+                .where(
+                    CorpusNode.id.in_(
+                        select(Edge.from_node_id).union(select(Edge.to_node_id))
+                    )
+                )
+            )
+            connected_pi_result = await self.session.execute(connected_pi_stmt)
+            connected_pi_ids = {row[0] for row in connected_pi_result}
+
+            nodes = [
+                n
+                for n in nodes
+                if n.node_type != "politieke_input" or n.id in connected_pi_ids
+            ]
+
+        return nodes
 
     async def get_neighbors(self, id: UUID) -> dict:
         """Return the node and its directly connected nodes with edges."""
