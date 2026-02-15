@@ -8,7 +8,6 @@ from httpx import ASGITransport, AsyncClient
 from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
 
-
 # ---------------------------------------------------------------------------
 # Fixtures: build clients with a specific authenticated user injected
 # ---------------------------------------------------------------------------
