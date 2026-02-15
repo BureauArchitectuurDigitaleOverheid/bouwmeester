@@ -117,6 +117,68 @@ async def test_list_nodes_with_long_title(client, db_session, sample_edge_type):
 
 
 # ---------------------------------------------------------------------------
+# Unconnected politieke_input filtering
+# ---------------------------------------------------------------------------
+
+
+async def test_unconnected_pi_hidden_from_node_list(client, db_session):
+    """Unconnected politieke_input nodes are excluded from GET /api/nodes."""
+    node = CorpusNode(
+        id=uuid.uuid4(),
+        title="Orphan PI",
+        node_type="politieke_input",
+        description="No edges",
+        status="actief",
+    )
+    db_session.add(node)
+    await db_session.flush()
+
+    resp = await client.get("/api/nodes", params={"node_type": "politieke_input"})
+    assert resp.status_code == 200
+    node_ids = {n["id"] for n in resp.json()}
+    assert str(node.id) not in node_ids
+
+
+async def test_unconnected_pi_shown_with_include_flag(client, db_session):
+    """include_unconnected_pi=true makes unconnected PI nodes visible."""
+    node = CorpusNode(
+        id=uuid.uuid4(),
+        title="Included Orphan PI",
+        node_type="politieke_input",
+        description="No edges but explicitly included",
+        status="actief",
+    )
+    db_session.add(node)
+    await db_session.flush()
+
+    resp = await client.get(
+        "/api/nodes",
+        params={"node_type": "politieke_input", "include_unconnected_pi": "true"},
+    )
+    assert resp.status_code == 200
+    node_ids = {n["id"] for n in resp.json()}
+    assert str(node.id) in node_ids
+
+
+async def test_unconnected_pi_hidden_from_graph(client, db_session):
+    """Unconnected politieke_input nodes are excluded from the graph view."""
+    node = CorpusNode(
+        id=uuid.uuid4(),
+        title="Graph Orphan PI",
+        node_type="politieke_input",
+        description="No edges",
+        status="actief",
+    )
+    db_session.add(node)
+    await db_session.flush()
+
+    resp = await client.get("/api/graph/search")
+    assert resp.status_code == 200
+    node_ids = {n["id"] for n in resp.json()["nodes"]}
+    assert str(node.id) not in node_ids
+
+
+# ---------------------------------------------------------------------------
 # Find path
 # ---------------------------------------------------------------------------
 

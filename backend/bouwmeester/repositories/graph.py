@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
@@ -156,29 +156,22 @@ class GraphRepository:
         nodes_stmt = select(CorpusNode)
         if node_types:
             nodes_stmt = nodes_stmt.where(CorpusNode.node_type.in_(node_types))
+
+        # Exclude unconnected politieke_input at the SQL level.
+        if not node_types or "politieke_input" in node_types:
+            has_edge = CorpusNode.id.in_(
+                select(Edge.from_node_id).union(select(Edge.to_node_id))
+            )
+            nodes_stmt = nodes_stmt.where(
+                or_(
+                    CorpusNode.node_type != "politieke_input",
+                    has_edge,
+                )
+            )
+
         nodes_stmt = nodes_stmt.order_by(CorpusNode.created_at.desc())
         nodes_result = await self.session.execute(nodes_stmt)
         nodes = list(nodes_result.scalars().all())
-
-        # Filter politieke_input to only those with at least one edge
-        if not node_types or "politieke_input" in node_types:
-            connected_pi_stmt = (
-                select(CorpusNode.id)
-                .where(CorpusNode.node_type == "politieke_input")
-                .where(
-                    CorpusNode.id.in_(
-                        select(Edge.from_node_id).union(select(Edge.to_node_id))
-                    )
-                )
-            )
-            connected_pi_result = await self.session.execute(connected_pi_stmt)
-            connected_pi_ids = {row[0] for row in connected_pi_result}
-
-            nodes = [
-                n
-                for n in nodes
-                if n.node_type != "politieke_input" or n.id in connected_pi_ids
-            ]
 
         node_ids = {n.id for n in nodes}
 
