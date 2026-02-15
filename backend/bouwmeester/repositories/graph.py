@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
+from bouwmeester.repositories.graph_filters import exclude_unconnected_pi
 
 
 class GraphRepository:
@@ -159,15 +160,7 @@ class GraphRepository:
 
         # Exclude unconnected politieke_input at the SQL level.
         if not node_types or "politieke_input" in node_types:
-            has_edge = CorpusNode.id.in_(
-                select(Edge.from_node_id).union(select(Edge.to_node_id))
-            )
-            nodes_stmt = nodes_stmt.where(
-                or_(
-                    CorpusNode.node_type != "politieke_input",
-                    has_edge,
-                )
-            )
+            nodes_stmt = nodes_stmt.where(exclude_unconnected_pi())
 
         nodes_stmt = nodes_stmt.order_by(CorpusNode.created_at.desc())
         nodes_result = await self.session.execute(nodes_stmt)

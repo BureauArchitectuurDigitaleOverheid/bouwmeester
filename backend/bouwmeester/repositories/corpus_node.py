@@ -7,7 +7,7 @@ Overrides BaseRepository.create() and update() to manage temporal records
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.corpus_node import CorpusNode
@@ -15,6 +15,7 @@ from bouwmeester.models.edge import Edge
 from bouwmeester.models.node_status import CorpusNodeStatus
 from bouwmeester.models.node_title import CorpusNodeTitle
 from bouwmeester.repositories.base import BaseRepository
+from bouwmeester.repositories.graph_filters import exclude_unconnected_pi
 from bouwmeester.repositories.temporal import (
     close_active_records,
     rotate_temporal_record,
@@ -134,15 +135,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         if not include_unconnected_pi and (
             node_type is None or node_type == "politieke_input"
         ):
-            has_edge = CorpusNode.id.in_(
-                select(Edge.from_node_id).union(select(Edge.to_node_id))
-            )
-            stmt = stmt.where(
-                or_(
-                    CorpusNode.node_type != "politieke_input",
-                    has_edge,
-                )
-            )
+            stmt = stmt.where(exclude_unconnected_pi())
 
         stmt = stmt.order_by(CorpusNode.created_at.desc()).offset(skip).limit(limit)
         result = await self.session.execute(stmt)
