@@ -3,6 +3,7 @@
 import uuid
 
 from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.edge import Edge
 
 # ---------------------------------------------------------------------------
 # Graph search
@@ -40,7 +41,7 @@ async def test_graph_search_filter_by_node_type(client, sample_node):
         assert n["node_type"] == "dossier"
 
 
-async def test_graph_search_with_long_title(client, db_session):
+async def test_graph_search_with_long_title(client, db_session, sample_edge_type):
     """Nodes with titles > 500 chars must not crash graph/search (regression #107)."""
     long_title = "A" * 719  # reproduces parlementaire import with long onderwerp
     node = CorpusNode(
@@ -50,7 +51,23 @@ async def test_graph_search_with_long_title(client, db_session):
         description="Test node with long title",
         status="actief",
     )
-    db_session.add(node)
+    # PI nodes need at least one edge to appear in the graph
+    anchor = CorpusNode(
+        id=uuid.uuid4(),
+        title="Anchor dossier",
+        node_type="dossier",
+        status="actief",
+    )
+    db_session.add_all([node, anchor])
+    await db_session.flush()
+    db_session.add(
+        Edge(
+            id=uuid.uuid4(),
+            from_node_id=node.id,
+            to_node_id=anchor.id,
+            edge_type_id=sample_edge_type.id,
+        )
+    )
     await db_session.flush()
 
     resp = await client.get("/api/graph/search")
@@ -63,7 +80,7 @@ async def test_graph_search_with_long_title(client, db_session):
     assert matched[0]["title"] == long_title
 
 
-async def test_list_nodes_with_long_title(client, db_session):
+async def test_list_nodes_with_long_title(client, db_session, sample_edge_type):
     """Nodes list must not 500 on titles > 500 chars (regression #107)."""
     long_title = "B" * 600
     node = CorpusNode(
@@ -73,7 +90,23 @@ async def test_list_nodes_with_long_title(client, db_session):
         description="Test node with long title",
         status="actief",
     )
-    db_session.add(node)
+    # PI nodes need at least one edge to appear in the list
+    anchor = CorpusNode(
+        id=uuid.uuid4(),
+        title="Anchor dossier",
+        node_type="dossier",
+        status="actief",
+    )
+    db_session.add_all([node, anchor])
+    await db_session.flush()
+    db_session.add(
+        Edge(
+            id=uuid.uuid4(),
+            from_node_id=node.id,
+            to_node_id=anchor.id,
+            edge_type_id=sample_edge_type.id,
+        )
+    )
     await db_session.flush()
 
     resp = await client.get("/api/nodes", params={"node_type": "politieke_input"})
