@@ -34,7 +34,7 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="max-w-sm w-full space-y-6 text-center">
         <div>
           <h1 className="text-2xl font-semibold text-text">Bouwmeester</h1>
