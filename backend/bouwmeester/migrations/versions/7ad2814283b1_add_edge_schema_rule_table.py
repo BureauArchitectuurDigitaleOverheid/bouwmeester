@@ -1,7 +1,7 @@
 """add edge_schema_rule table
 
 Revision ID: 7ad2814283b1
-Revises: 76f60edf7c9c
+Revises: bd2d26333bb6
 Create Date: 2026-02-15 11:14:42.766755
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "7ad2814283b1"
-down_revision: str | None = "76f60edf7c9c"
+down_revision: str | None = "bd2d26333bb6"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
