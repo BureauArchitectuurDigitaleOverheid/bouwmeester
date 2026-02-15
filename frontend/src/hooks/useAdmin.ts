@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/api/client';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
+import { queryKeys } from '@/hooks/queryKeys';
 import type { AccessRequest } from '@/types';
 
 export interface WhitelistEmail {
@@ -21,7 +22,7 @@ export interface AdminUser {
 
 export function useWhitelist() {
   return useQuery({
-    queryKey: ['admin', 'whitelist'],
+    queryKey: queryKeys.admin.whitelist(),
     queryFn: () => apiGet<WhitelistEmail[]>('/api/admin/whitelist'),
   });
 }
@@ -31,7 +32,7 @@ export function useAddWhitelistEmail() {
     mutationFn: (email: string) =>
       apiPost<WhitelistEmail>('/api/admin/whitelist', { email }),
     errorMessage: 'Fout bij toevoegen van e-mailadres',
-    invalidateKeys: [['admin', 'whitelist']],
+    invalidateKeys: [queryKeys.admin.whitelist()],
   });
 }
 
@@ -39,13 +40,13 @@ export function useRemoveWhitelistEmail() {
   return useMutationWithError({
     mutationFn: (id: string) => apiDelete(`/api/admin/whitelist/${id}`),
     errorMessage: 'Fout bij verwijderen van e-mailadres',
-    invalidateKeys: [['admin', 'whitelist']],
+    invalidateKeys: [queryKeys.admin.whitelist()],
   });
 }
 
 export function useAdminUsers() {
   return useQuery({
-    queryKey: ['admin', 'users'],
+    queryKey: queryKeys.admin.users(),
     queryFn: () => apiGet<AdminUser[]>('/api/admin/users'),
   });
 }
@@ -55,13 +56,13 @@ export function useToggleAdmin() {
     mutationFn: ({ id, is_admin }: { id: string; is_admin: boolean }) =>
       apiPatch<AdminUser>(`/api/admin/users/${id}`, { is_admin }),
     errorMessage: 'Fout bij wijzigen van admin-status',
-    invalidateKeys: [['admin', 'users']],
+    invalidateKeys: [queryKeys.admin.users()],
   });
 }
 
 export function useAccessRequests(status?: string) {
   return useQuery({
-    queryKey: ['admin', 'access-requests', status],
+    queryKey: queryKeys.admin.accessRequests(status),
     queryFn: () =>
       apiGet<AccessRequest[]>('/api/admin/access-requests', status ? { status } : undefined),
   });
@@ -72,7 +73,7 @@ export function useReviewAccessRequest() {
     mutationFn: ({ id, action, deny_reason }: { id: string; action: 'approve' | 'deny'; deny_reason?: string }) =>
       apiPatch<AccessRequest>(`/api/admin/access-requests/${id}`, { action, deny_reason }),
     errorMessage: 'Fout bij beoordelen van toegangsverzoek',
-    invalidateKeys: [['admin', 'access-requests'], ['admin', 'whitelist']],
+    invalidateKeys: [queryKeys.admin.accessRequests(), queryKeys.admin.whitelist()],
   });
 }
 
@@ -93,7 +94,7 @@ export interface AppConfigEntry {
 
 export function useAppConfig() {
   return useQuery({
-    queryKey: ['admin', 'config'],
+    queryKey: queryKeys.admin.config(),
     queryFn: () => apiGet<AppConfigEntry[]>('/api/admin/config'),
   });
 }
@@ -103,6 +104,6 @@ export function useUpdateAppConfig() {
     mutationFn: ({ key, value }: { key: string; value: string }) =>
       apiPatch<AppConfigEntry>(`/api/admin/config/${key}`, { value }),
     errorMessage: 'Fout bij opslaan van configuratie',
-    invalidateKeys: [['admin', 'config']],
+    invalidateKeys: [queryKeys.admin.config()],
   });
 }

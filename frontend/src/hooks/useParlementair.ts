@@ -14,18 +14,19 @@ import {
   resetSuggestedEdge,
 } from '@/api/parlementair';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
+import { queryKeys } from '@/hooks/queryKeys';
 import type { ParlementairItemFilters, CompleteReviewData, ReprocessResult } from '@/types';
 
 export function useParlementairItems(filters?: ParlementairItemFilters) {
   return useQuery({
-    queryKey: ['parlementair-items', filters],
+    queryKey: queryKeys.parlementair.list(filters),
     queryFn: () => getParlementairItems(filters),
   });
 }
 
 export function useParlementairItem(id: string) {
   return useQuery({
-    queryKey: ['parlementair-items', id],
+    queryKey: queryKeys.parlementair.detail(id),
     queryFn: () => getParlementairItem(id),
     enabled: !!id,
   });
@@ -33,12 +34,12 @@ export function useParlementairItem(id: string) {
 
 export function useReviewQueue() {
   return useQuery({
-    queryKey: ['parlementair-review-queue'],
+    queryKey: queryKeys.parlementair.reviewQueue(),
     queryFn: () => getReviewQueue(),
   });
 }
 
-const PARLEMENTAIR_INVALIDATE_KEYS = [['parlementair-items'], ['parlementair-review-queue']];
+const PARLEMENTAIR_INVALIDATE_KEYS = [queryKeys.parlementair.all, queryKeys.parlementair.reviewQueue()];
 
 export function useTriggerParlementairImport() {
   return useMutationWithError({
@@ -77,7 +78,7 @@ export function useCompleteParlementairReview() {
     mutationFn: ({ id, data }: { id: string; data: CompleteReviewData }) =>
       completeParlementairReview(id, data),
     errorMessage: 'Fout bij afronden review',
-    invalidateKeys: [...PARLEMENTAIR_INVALIDATE_KEYS, ['tasks', 'list'], ['nodes', 'list']],
+    invalidateKeys: [...PARLEMENTAIR_INVALIDATE_KEYS, queryKeys.tasks.lists(), queryKeys.nodes.lists()],
   });
 }
 
@@ -110,6 +111,6 @@ export function useResetSuggestedEdge() {
   return useMutationWithError({
     mutationFn: (id: string) => resetSuggestedEdge(id),
     errorMessage: 'Fout bij ongedaan maken',
-    invalidateKeys: [...PARLEMENTAIR_INVALIDATE_KEYS, ['edges']],
+    invalidateKeys: [...PARLEMENTAIR_INVALIDATE_KEYS, queryKeys.edges.all],
   });
 }

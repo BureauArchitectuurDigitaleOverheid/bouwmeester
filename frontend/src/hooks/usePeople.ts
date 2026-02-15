@@ -20,18 +20,19 @@ import {
 } from '@/api/people';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
+import { queryKeys } from '@/hooks/queryKeys';
 import type { PersonCreate } from '@/types';
 
 export function usePeople() {
   return useQuery({
-    queryKey: ['people'],
+    queryKey: queryKeys.people.all,
     queryFn: getPeople,
   });
 }
 
 export function usePerson(id: string | null) {
   return useQuery({
-    queryKey: ['people', id],
+    queryKey: queryKeys.people.detail(id),
     queryFn: () => getPerson(id!),
     enabled: !!id,
   });
@@ -41,13 +42,13 @@ export function useCreatePerson() {
   return useMutationWithError({
     mutationFn: (data: PersonCreate) => createPerson(data),
     errorMessage: 'Fout bij aanmaken persoon',
-    invalidateKeys: [['people'], ['organisatie']],
+    invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
   });
 }
 
 export function usePersonSummary(id: string | null) {
   return useQuery({
-    queryKey: ['people', id, 'summary'],
+    queryKey: queryKeys.people.summary(id),
     queryFn: () => getPersonSummary(id!),
     enabled: !!id,
   });
@@ -58,7 +59,7 @@ export function useUpdatePerson() {
     mutationFn: ({ id, data }: { id: string; data: Partial<PersonCreate> }) =>
       updatePerson(id, data),
     errorMessage: 'Fout bij bijwerken persoon',
-    invalidateKeys: [['people'], ['organisatie']],
+    invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
   });
 }
 
@@ -66,7 +67,7 @@ export function useUpdatePerson() {
 
 export function usePersonOrganisaties(personId: string | null, actief = true) {
   return useQuery({
-    queryKey: ['people', personId, 'organisaties', { actief }],
+    queryKey: queryKeys.people.organisaties(personId, actief),
     queryFn: () => getPersonOrganisaties(personId!, actief),
     enabled: !!personId,
   });
@@ -82,7 +83,7 @@ export function useAddPersonOrganisatie() {
       data: { organisatie_eenheid_id: string; dienstverband?: string; start_datum: string };
     }) => addPersonOrganisatie(personId, data),
     errorMessage: 'Fout bij toevoegen plaatsing',
-    invalidateKeys: [['people'], ['organisatie']],
+    invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
   });
 }
 
@@ -98,7 +99,7 @@ export function useUpdatePersonOrganisatie() {
       data: { dienstverband?: string; eind_datum?: string | null };
     }) => updatePersonOrganisatie(personId, placementId, data),
     errorMessage: 'Fout bij bijwerken plaatsing',
-    invalidateKeys: [['people'], ['organisatie']],
+    invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
   });
 }
 
@@ -112,14 +113,14 @@ export function useRemovePersonOrganisatie() {
       placementId: string;
     }) => removePersonOrganisatie(personId, placementId),
     errorMessage: 'Fout bij verwijderen plaatsing',
-    invalidateKeys: [['people'], ['organisatie']],
+    invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
   });
 }
 
 export function useSearchPeople(query: string) {
   const debouncedQuery = useDebounce(query, 300);
   return useQuery({
-    queryKey: ['people', 'search', debouncedQuery],
+    queryKey: queryKeys.people.search(debouncedQuery),
     queryFn: () => searchPeople(debouncedQuery),
     enabled: debouncedQuery.length >= 2,
   });
@@ -131,7 +132,7 @@ export function useRotateApiKey() {
   return useMutationWithError({
     mutationFn: (personId: string) => rotateApiKey(personId),
     errorMessage: 'Fout bij roteren API key',
-    invalidateKeys: [['people']],
+    invalidateKeys: [queryKeys.people.all],
   });
 }
 
@@ -147,7 +148,7 @@ export function useAddPersonEmail() {
       data: { email: string; is_default?: boolean };
     }) => addPersonEmail(personId, data),
     errorMessage: 'Fout bij toevoegen e-mail',
-    invalidateKeys: [['people']],
+    invalidateKeys: [queryKeys.people.all],
   });
 }
 
@@ -161,7 +162,7 @@ export function useRemovePersonEmail() {
       emailId: string;
     }) => removePersonEmail(personId, emailId),
     errorMessage: 'Fout bij verwijderen e-mail',
-    invalidateKeys: [['people']],
+    invalidateKeys: [queryKeys.people.all],
   });
 }
 
@@ -175,7 +176,7 @@ export function useSetDefaultEmail() {
       emailId: string;
     }) => setDefaultEmail(personId, emailId),
     errorMessage: 'Fout bij instellen standaard e-mail',
-    invalidateKeys: [['people']],
+    invalidateKeys: [queryKeys.people.all],
   });
 }
 
@@ -191,7 +192,7 @@ export function useAddPersonPhone() {
       data: { phone_number: string; label: string; is_default?: boolean };
     }) => addPersonPhone(personId, data),
     errorMessage: 'Fout bij toevoegen telefoon',
-    invalidateKeys: [['people']],
+    invalidateKeys: [queryKeys.people.all],
   });
 }
 
@@ -205,7 +206,7 @@ export function useRemovePersonPhone() {
       phoneId: string;
     }) => removePersonPhone(personId, phoneId),
     errorMessage: 'Fout bij verwijderen telefoon',
-    invalidateKeys: [['people']],
+    invalidateKeys: [queryKeys.people.all],
   });
 }
 
@@ -219,6 +220,6 @@ export function useSetDefaultPhone() {
       phoneId: string;
     }) => setDefaultPhone(personId, phoneId),
     errorMessage: 'Fout bij instellen standaard telefoon',
-    invalidateKeys: [['people']],
+    invalidateKeys: [queryKeys.people.all],
   });
 }

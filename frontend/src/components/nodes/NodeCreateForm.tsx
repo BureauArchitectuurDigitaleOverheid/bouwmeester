@@ -14,6 +14,7 @@ import { useNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
 import { NodeType, NodeStatus, NODE_STATUS_LABELS, BRON_TYPE_LABELS } from '@/types';
 import { updateNodeBronDetail, uploadBijlage } from '@/api/nodes';
 import { addTagToNode } from '@/api/tags';
+import { useToast } from '@/contexts/ToastContext';
 
 interface NodeCreateFormProps {
   open: boolean;
@@ -28,6 +29,7 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState(NodeStatus.ACTIEF);
   const createNode = useCreateNode();
+  const { showError } = useToast();
 
   // Bron-specific state
   const [bronType, setBronType] = useState('rapport');
@@ -100,7 +102,7 @@ export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
       navigate(`/nodes/${node.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Onbekende fout';
-      alert(`Aanmaken mislukt: ${msg}`);
+      showError(`Aanmaken mislukt: ${msg}`);
     } finally {
       setIsSubmitting(false);
     }
