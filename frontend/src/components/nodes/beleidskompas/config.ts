@@ -7,6 +7,17 @@ export interface BeleidskompasStep {
   nodeType: NodeType;
 }
 
+/** Dutch plural forms for node type labels used in the Beleidskompas panel. */
+export const NODE_TYPE_LABELS_PLURAL: Partial<Record<NodeType, string>> = {
+  [NodeType.PROBLEEM]: 'problemen',
+  [NodeType.DOEL]: 'doelen',
+  [NodeType.BELEIDSOPTIE]: 'beleidsopties',
+  [NodeType.BELEIDSKADER]: 'beleidskaders',
+  [NodeType.INSTRUMENT]: 'instrumenten',
+  [NodeType.MAATREGEL]: 'maatregelen',
+  [NodeType.EFFECT]: 'effecten',
+};
+
 export const BELEIDSKOMPAS_STEPS: BeleidskompasStep[] = [
   {
     id: 'probleem',

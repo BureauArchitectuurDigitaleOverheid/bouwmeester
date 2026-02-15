@@ -9,15 +9,15 @@ import { useCompletenessAnalysis, type StepStatus } from './useCompletenessAnaly
 import { LinkExistingNodeModal } from './LinkExistingNodeModal';
 import { NodeCreateForm } from '../NodeCreateForm';
 import { NODE_TYPE_LABELS, NODE_TYPE_COLORS, type NodeType } from '@/types';
+import { NODE_TYPE_LABELS_PLURAL } from './config';
 
 interface BeleidskompasStepRowProps {
   status: StepStatus;
-  dossierId: string;
   onCreateNew: (nodeType: NodeType) => void;
   onLinkExisting: (nodeType: NodeType) => void;
 }
 
-function BeleidskompasStepRow({ status, dossierId, onCreateNew, onLinkExisting }: BeleidskompasStepRowProps) {
+function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: BeleidskompasStepRowProps) {
   const [expanded, setExpanded] = useState(false);
   const { openNodeDetail } = useNodeDetail();
 
@@ -31,8 +31,10 @@ function BeleidskompasStepRow({ status, dossierId, onCreateNew, onLinkExisting }
           <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500 shrink-0" />
           <span className="text-sm font-medium text-text flex-1">{status.step.label}</span>
           <span className="text-xs text-text-secondary mr-2">
-            {status.count} {NODE_TYPE_LABELS[status.step.nodeType].toLowerCase()}
-            {status.count !== 1 ? 's' : ''}
+            {status.count}{' '}
+            {status.count === 1
+              ? NODE_TYPE_LABELS[status.step.nodeType].toLowerCase()
+              : (NODE_TYPE_LABELS_PLURAL[status.step.nodeType] ?? NODE_TYPE_LABELS[status.step.nodeType].toLowerCase())}
           </span>
           {expanded ? (
             <ChevronDown className="h-4 w-4 text-text-secondary" />
@@ -109,11 +111,11 @@ function BeleidskompasStepRow({ status, dossierId, onCreateNew, onLinkExisting }
   );
 }
 
-interface BeleidskompansPanelProps {
+interface BeleidskompsPanelProps {
   nodeId: string;
 }
 
-export function BeleidskompasPanel({ nodeId }: BeleidskompansPanelProps) {
+export function BeleidskompasPanel({ nodeId }: BeleidskompsPanelProps) {
   const { data: graphData, isLoading } = useNodeGraph(nodeId, 2);
   const { steps, completedCount, totalSteps } = useCompletenessAnalysis(graphData, nodeId);
   const [linkModalType, setLinkModalType] = useState<NodeType | null>(null);
@@ -155,7 +157,6 @@ export function BeleidskompasPanel({ nodeId }: BeleidskompansPanelProps) {
             <BeleidskompasStepRow
               key={status.step.id}
               status={status}
-              dossierId={nodeId}
               onCreateNew={(nodeType) => setCreateModalType(nodeType)}
               onLinkExisting={(nodeType) => setLinkModalType(nodeType)}
             />

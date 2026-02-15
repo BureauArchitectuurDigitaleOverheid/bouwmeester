@@ -129,7 +129,8 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         if node_type is not None:
             stmt = stmt.where(CorpusNode.node_type == node_type)
         if search:
-            stmt = stmt.where(CorpusNode.title.ilike(f"%{search}%"))
+            escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            stmt = stmt.where(CorpusNode.title.ilike(f"%{escaped}%"))
         if active_only:
             stmt = stmt.where(CorpusNode.geldig_tot.is_(None))
 
