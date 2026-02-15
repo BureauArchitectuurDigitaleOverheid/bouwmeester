@@ -56,7 +56,7 @@ export function CorpusPage() {
   }, [searchQuery, setSearchParams]);
 
   // Edge type filter state (fetched in graph and matrix modes)
-  const { data: graphData } = useGraphView(undefined, undefined, viewMode === 'graph' || viewMode === 'matrix');
+  const { data: graphData, isLoading: isGraphLoading } = useGraphView(undefined, undefined, viewMode === 'graph' || viewMode === 'matrix');
 
   const availableEdgeTypes = useMemo(() => {
     if (!graphData?.edges) return [];
@@ -207,14 +207,16 @@ export function CorpusPage() {
             className="pl-9"
           />
         </div>
-        <div className="w-full sm:w-52">
-          <MultiSelect
-            value={enabledNodeTypes as Set<string>}
-            onChange={handleNodeTypesChange}
-            options={nodeTypeFilterOptions}
-            allLabel="Alle types"
-          />
-        </div>
+        {viewMode !== 'matrix' && (
+          <div className="w-full sm:w-52">
+            <MultiSelect
+              value={enabledNodeTypes as Set<string>}
+              onChange={handleNodeTypesChange}
+              options={nodeTypeFilterOptions}
+              allLabel="Alle types"
+            />
+          </div>
+        )}
         {(viewMode === 'graph' || viewMode === 'matrix') && edgeTypeFilterOptions.length > 0 && (
           <div className="w-full sm:w-52">
             <MultiSelect
@@ -264,6 +266,8 @@ export function CorpusPage() {
           colNodeType={matrixColType}
           enabledEdgeTypes={enabledEdgeTypes}
           searchQuery={searchQuery}
+          graphData={graphData}
+          isLoading={isGraphLoading}
         />
       )}
 

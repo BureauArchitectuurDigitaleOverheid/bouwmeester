@@ -2,17 +2,18 @@ import { useMemo } from 'react';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { useGraphView } from '@/hooks/useGraph';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { NODE_TYPE_HEX_COLORS } from '@/types';
-import type { NodeType, CorpusNode, Edge } from '@/types';
+import type { NodeType, CorpusNode, GraphViewResponse } from '@/types';
 
 interface CorpusMatrixProps {
   rowNodeType: NodeType;
   colNodeType: NodeType;
   enabledEdgeTypes: Set<string>;
   searchQuery?: string;
+  graphData?: GraphViewResponse;
+  isLoading: boolean;
 }
 
 interface CellEdge {
@@ -25,10 +26,13 @@ export function CorpusMatrix({
   colNodeType,
   enabledEdgeTypes,
   searchQuery,
+  graphData,
+  isLoading,
 }: CorpusMatrixProps) {
-  const { data: graphData, isLoading } = useGraphView(undefined, undefined, true);
   const { edgeLabel } = useVocabulary();
   const { openNodeDetail } = useNodeDetail();
+
+  const sameType = rowNodeType === colNodeType;
 
   // Filter nodes by type, then optionally by search
   const rowNodes = useMemo(() => {
@@ -43,13 +47,15 @@ export function CorpusMatrix({
 
   const colNodes = useMemo(() => {
     if (!graphData?.nodes) return [];
+    // When same type, rows and columns share the same node set
+    if (sameType) return rowNodes;
     let nodes = graphData.nodes.filter((n: CorpusNode) => n.node_type === colNodeType);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       nodes = nodes.filter((n: CorpusNode) => n.title.toLowerCase().includes(q));
     }
     return nodes.sort((a: CorpusNode, b: CorpusNode) => a.title.localeCompare(b.title));
-  }, [graphData?.nodes, colNodeType, searchQuery]);
+  }, [graphData?.nodes, colNodeType, searchQuery, sameType, rowNodes]);
 
   // Build adjacency lookup: key = `${rowNodeId}_${colNodeId}` -> edges[]
   const adjacency = useMemo(() => {
@@ -58,6 +64,7 @@ export function CorpusMatrix({
     const rowIds = new Set(rowNodes.map((n: CorpusNode) => n.id));
     const colIds = new Set(colNodes.map((n: CorpusNode) => n.id));
     const map = new Map<string, CellEdge[]>();
+    const seen = new Set<string>();
 
     for (const edge of graphData.edges) {
       if (!enabledEdgeTypes.has(edge.edge_type_id)) continue;
@@ -75,15 +82,30 @@ export function CorpusMatrix({
       }
 
       if (rowId && colId) {
-        const key = `${rowId}_${colId}`;
-        const existing = map.get(key) ?? [];
-        existing.push({ id: edge.id, edge_type_id: edge.edge_type_id });
-        map.set(key, existing);
+        // When same type, avoid double-counting: normalize key so smaller id is first
+        if (sameType) {
+          const normalizedKey = `${edge.id}`;
+          if (seen.has(normalizedKey)) continue;
+          seen.add(normalizedKey);
+          // Place edge in both (row,col) and (col,row) cells
+          for (const [r, c] of [[rowId, colId], [colId, rowId]] as [string, string][]) {
+            if (r === c) continue; // skip self-edges on diagonal
+            const key = `${r}_${c}`;
+            const existing = map.get(key) ?? [];
+            existing.push({ id: edge.id, edge_type_id: edge.edge_type_id });
+            map.set(key, existing);
+          }
+        } else {
+          const key = `${rowId}_${colId}`;
+          const existing = map.get(key) ?? [];
+          existing.push({ id: edge.id, edge_type_id: edge.edge_type_id });
+          map.set(key, existing);
+        }
       }
     }
 
     return map;
-  }, [graphData?.edges, rowNodes, colNodes, enabledEdgeTypes]);
+  }, [graphData?.edges, rowNodes, colNodes, enabledEdgeTypes, sameType]);
 
   if (isLoading) {
     return <LoadingSpinner className="py-12" />;
@@ -104,11 +126,14 @@ export function CorpusMatrix({
   const rowColor = NODE_TYPE_HEX_COLORS[rowNodeType];
   const colColor = NODE_TYPE_HEX_COLORS[colNodeType];
 
-  // Count total connections
-  const connectionCount = Array.from(adjacency.values()).reduce(
-    (sum, edges) => sum + edges.length,
-    0,
-  );
+  // Count unique edges in the matrix
+  const connectionCount = useMemo(() => {
+    const edgeIds = new Set<string>();
+    for (const edges of adjacency.values()) {
+      for (const e of edges) edgeIds.add(e.id);
+    }
+    return edgeIds.size;
+  }, [adjacency]);
 
   return (
     <div className="space-y-3">
@@ -169,13 +194,16 @@ export function CorpusMatrix({
                     const key = `${row.id}_${col.id}`;
                     const cellEdges = adjacency.get(key);
                     const hasEdge = cellEdges && cellEdges.length > 0;
+                    const isDiagonal = sameType && row.id === col.id;
 
                     return (
                       <td
                         key={col.id}
-                        className="border-b border-border/50 px-1 py-1.5 text-center"
+                        className={`border-b border-border/50 px-1 py-1.5 text-center ${isDiagonal ? 'bg-gray-50' : ''}`}
                       >
-                        {hasEdge ? (
+                        {isDiagonal ? (
+                          <span className="inline-block h-6 w-6 text-gray-300">&mdash;</span>
+                        ) : hasEdge ? (
                           <button
                             onClick={() => openNodeDetail(row.id)}
                             className="inline-flex items-center justify-center h-6 w-6 rounded-full transition-colors hover:ring-2 hover:ring-primary-300"
