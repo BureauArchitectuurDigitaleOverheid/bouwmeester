@@ -26,6 +26,7 @@ from bouwmeester.schema.parlementair_item import (
     SuggestedEdgeResponse,
 )
 from bouwmeester.services.activity_service import log_activity
+from bouwmeester.services.edge_schema_service import EdgeSchemaService
 
 logger = logging.getLogger(__name__)
 
@@ -354,6 +355,21 @@ async def approve_edge(
             status_code=400,
             detail="Import has no linked corpus node",
         )
+
+    # Validate against edge schema rules
+    from bouwmeester.models.corpus_node import CorpusNode
+
+    from_node = await db.get(CorpusNode, item.corpus_node_id)
+    to_node = await db.get(CorpusNode, suggested_edge.target_node_id)
+    if from_node and to_node:
+        error = await EdgeSchemaService(db).validate_edge(
+            from_node.node_type, to_node.node_type, suggested_edge.edge_type_id
+        )
+        if error:
+            raise HTTPException(
+                status_code=422,
+                detail=error,
+            )
 
     # Create actual Edge
     edge = Edge(

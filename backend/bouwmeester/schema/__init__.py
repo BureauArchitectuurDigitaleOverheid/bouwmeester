@@ -37,6 +37,11 @@ from bouwmeester.schema.edge import (
     EdgeUpdate,
     EdgeWithNodes,
 )
+from bouwmeester.schema.edge_schema_rule import (
+    EdgeSchemaRuleCreate,
+    EdgeSchemaRuleResponse,
+    ValidEdgeTypesResponse,
+)
 from bouwmeester.schema.edge_type import EdgeTypeBase, EdgeTypeCreate, EdgeTypeResponse
 from bouwmeester.schema.graph import (
     GraphNeighborsResponse,
@@ -159,6 +164,10 @@ __all__ = [
     "EdgeResponse",
     "EdgeUpdate",
     "EdgeWithNodes",
+    # edge_schema_rule
+    "EdgeSchemaRuleCreate",
+    "EdgeSchemaRuleResponse",
+    "ValidEdgeTypesResponse",
     # edge_type
     "EdgeTypeBase",
     "EdgeTypeCreate",
