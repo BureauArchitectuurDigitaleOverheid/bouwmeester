@@ -247,7 +247,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
                         <div className="flex flex-col shrink-0">
                           <button
                             onClick={(e) => { e.stopPropagation(); handleMoveSubtask(idx, 'up'); }}
-                            disabled={idx === 0}
+                            disabled={idx === 0 || reorderSubtasks.isPending}
                             className="p-0.5 text-text-secondary hover:text-text disabled:opacity-25 disabled:cursor-default transition-colors"
                             title="Omhoog"
                           >
@@ -255,7 +255,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); handleMoveSubtask(idx, 'down'); }}
-                            disabled={idx === subtasks.length - 1}
+                            disabled={idx === subtasks.length - 1 || reorderSubtasks.isPending}
                             className="p-0.5 text-text-secondary hover:text-text disabled:opacity-25 disabled:cursor-default transition-colors"
                             title="Omlaag"
                           >

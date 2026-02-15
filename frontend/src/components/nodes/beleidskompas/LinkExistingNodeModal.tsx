@@ -31,8 +31,9 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excl
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Server-side filtered query, excluding already-linked nodes
-  const { data: nodes, isLoading } = useNodes(nodeType, debouncedSearch || undefined);
+  // Server-side filtered query, excluding already-linked nodes (min 2 chars to avoid overly broad queries)
+  const searchQuery = debouncedSearch.length >= 2 ? debouncedSearch : undefined;
+  const { data: nodes, isLoading } = useNodes(nodeType, searchQuery);
   const filteredNodes = (nodes ?? []).filter((n) => !excludeNodeIds?.has(n.id));
 
   const handleLink = async (targetNodeId: string) => {

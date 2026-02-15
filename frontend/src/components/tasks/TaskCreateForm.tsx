@@ -72,7 +72,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
       assignee_id: assigneeId || undefined,
       organisatie_eenheid_id: organisatieEenheidId || undefined,
       parent_id: parentId || undefined,
-      work_type: workType || undefined,
+      work_type: workType.trim() || undefined,
     });
 
     onClose();

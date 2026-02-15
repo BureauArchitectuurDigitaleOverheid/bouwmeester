@@ -117,7 +117,7 @@ interface BeleidskompasPanelProps {
 }
 
 export function BeleidskompasPanel({ nodeId }: BeleidskompasPanelProps) {
-  const { data: graphData, isLoading } = useNodeGraph(nodeId, 2);
+  const { data: graphData, isLoading, isError } = useNodeGraph(nodeId, 2);
   const { steps, completedCount, totalSteps } = useCompletenessAnalysis(graphData, nodeId);
   const [linkModalType, setLinkModalType] = useState<NodeType | null>(null);
   const [createModalType, setCreateModalType] = useState<NodeType | null>(null);
@@ -139,6 +139,16 @@ export function BeleidskompasPanel({ nodeId }: BeleidskompasPanelProps) {
       <Card>
         <div className="px-4 py-6 text-center text-sm text-text-secondary">
           Beleidskompas laden...
+        </div>
+      </Card>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Card>
+        <div className="px-4 py-6 text-center text-sm text-text-secondary">
+          Beleidskompas kon niet geladen worden.
         </div>
       </Card>
     );

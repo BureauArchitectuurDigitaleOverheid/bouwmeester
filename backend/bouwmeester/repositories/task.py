@@ -217,6 +217,7 @@ class TaskRepository(BaseRepository[Task]):
         stmt = (
             select(distinct(Task.work_type))
             .where(Task.work_type.isnot(None))
+            .where(Task.work_type != "")
             .order_by(Task.work_type)
         )
         result = await self.session.execute(stmt)

@@ -71,7 +71,7 @@ async def test_list_nodes_search_escapes_wildcards(client, db_session):
     from bouwmeester.models.corpus_node import CorpusNode
 
     node = CorpusNode(
-        id=__import__("uuid").uuid4(),
+        id=uuid.uuid4(),
         title="100% beleid",
         node_type="dossier",
         status="actief",
