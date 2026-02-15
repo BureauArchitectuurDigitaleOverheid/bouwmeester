@@ -30,9 +30,7 @@ def upgrade() -> None:
         sa.Column("from_node_type", sa.String(length=50), nullable=False),
         sa.Column("to_node_type", sa.String(length=50), nullable=False),
         sa.Column("edge_type_id", sa.String(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["edge_type_id"], ["edge_type.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["edge_type_id"], ["edge_type.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
             "from_node_type",
