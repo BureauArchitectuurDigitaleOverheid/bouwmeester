@@ -5,7 +5,7 @@ import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
-import { useCreateTask } from '@/hooks/useTasks';
+import { useCreateTask, useWorkTypes } from '@/hooks/useTasks';
 import { useTaskFormOptions } from '@/hooks/useTaskFormOptions';
 import { useEnumOptions } from '@/hooks/useEnumOptions';
 import {
@@ -31,6 +31,8 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
   const [workType, setWorkType] = useState('');
 
   const priorityOptions = useEnumOptions(TaskPriority, TASK_PRIORITY_LABELS);
+  const { data: workTypes = [] } = useWorkTypes();
+  const workTypeOptions = workTypes.map((wt) => ({ value: wt, label: wt }));
 
   // Reset form state when dialog opens
   useEffect(() => {
@@ -70,7 +72,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
       assignee_id: assigneeId || undefined,
       organisatie_eenheid_id: organisatieEenheidId || undefined,
       parent_id: parentId || undefined,
-      work_type: workType.trim() || undefined,
+      work_type: workType || undefined,
     });
 
     onClose();
@@ -142,11 +144,15 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
             searchable={false}
           />
 
-          <Input
+          <CreatableSelect
             label="Werktype"
             value={workType}
-            onChange={(e) => setWorkType(e.target.value)}
+            onChange={setWorkType}
+            options={workTypeOptions}
             placeholder="bijv. Analyse, Overleg, Review..."
+            onCreate={async (text) => { setWorkType(text); return text; }}
+            createLabel="Nieuw werktype"
+            onClear={() => setWorkType('')}
           />
 
           <Input

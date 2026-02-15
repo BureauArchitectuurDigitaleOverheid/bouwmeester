@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
-import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks, getTasksByPerson, reorderSubtasks } from '@/api/tasks';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks, getTasksByPerson, reorderSubtasks, getWorkTypes } from '@/api/tasks';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
-import type { TaskCreate, TaskUpdate, TaskFilters } from '@/types';
+import { useToast } from '@/contexts/ToastContext';
+import type { Task, TaskCreate, TaskUpdate, TaskFilters } from '@/types';
 
 export function useTasks(filters?: TaskFilters) {
   return useQuery({
@@ -23,7 +24,7 @@ export function useCreateTask() {
   return useMutationWithError({
     mutationFn: (data: TaskCreate) => createTask(data),
     errorMessage: 'Fout bij aanmaken taak',
-    invalidateKeys: [queryKeys.tasks.lists()],
+    invalidateKeys: [queryKeys.tasks.lists(), queryKeys.tasks.workTypes()],
   });
 }
 
@@ -31,7 +32,7 @@ export function useUpdateTask() {
   return useMutationWithError({
     mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) => updateTask(id, data),
     errorMessage: 'Fout bij bijwerken taak',
-    invalidateKeys: [queryKeys.tasks.lists()],
+    invalidateKeys: [queryKeys.tasks.lists(), queryKeys.tasks.workTypes()],
   });
 }
 
@@ -74,11 +75,55 @@ export function useTasksByPerson(personId: string | null) {
   });
 }
 
+export function useWorkTypes() {
+  return useQuery({
+    queryKey: queryKeys.tasks.workTypes(),
+    queryFn: getWorkTypes,
+  });
+}
+
 export function useReorderSubtasks() {
-  return useMutationWithError({
+  const queryClient = useQueryClient();
+  const { showError } = useToast();
+
+  return useMutation({
     mutationFn: ({ taskId, taskIds }: { taskId: string; taskIds: string[] }) =>
       reorderSubtasks(taskId, taskIds),
-    errorMessage: 'Fout bij herordenen subtaken',
-    invalidateKeys: [queryKeys.tasks.lists()],
+    onMutate: async ({ taskId, taskIds }) => {
+      // Cancel outgoing refetches so they don't overwrite optimistic update
+      await queryClient.cancelQueries({ queryKey: queryKeys.tasks.detail(taskId) });
+
+      const previousTask = queryClient.getQueryData<Task>(queryKeys.tasks.detail(taskId));
+
+      if (previousTask?.subtasks) {
+        const subtaskMap = new Map(previousTask.subtasks.map((s) => [s.id, s]));
+        const reorderedSubtasks = taskIds
+          .map((id) => subtaskMap.get(id))
+          .filter(Boolean);
+
+        queryClient.setQueryData(queryKeys.tasks.detail(taskId), {
+          ...previousTask,
+          subtasks: reorderedSubtasks,
+        });
+      }
+
+      return { previousTask, taskId };
+    },
+    onError: (error, _variables, context) => {
+      // Roll back to previous state
+      if (context?.previousTask) {
+        queryClient.setQueryData(
+          queryKeys.tasks.detail(context.taskId),
+          context.previousTask,
+        );
+      }
+      console.error('Fout bij herordenen subtaken:', error);
+      showError('Fout bij herordenen subtaken');
+    },
+    onSettled: (_data, _error, variables) => {
+      // Refetch to ensure server state is authoritative
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(variables.taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
+    },
   });
 }

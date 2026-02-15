@@ -16,6 +16,7 @@ import { queryKeys } from '@/hooks/queryKeys';
 import { NodeType, NodeStatus, NODE_STATUS_LABELS, BRON_TYPE_LABELS } from '@/types';
 import { updateNodeBronDetail, uploadBijlage } from '@/api/nodes';
 import { createEdge } from '@/api/edges';
+import { EDGE_TYPE_ONDERDEEL_VAN } from './beleidskompas/constants';
 import { addTagToNode } from '@/api/tags';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -100,7 +101,7 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
           await createEdge({
             from_node_id: node.id,
             to_node_id: linkToDossierId,
-            edge_type_id: 'onderdeel_van',
+            edge_type_id: EDGE_TYPE_ONDERDEEL_VAN,
           });
           await queryClient.invalidateQueries({ queryKey: queryKeys.nodes.graph(linkToDossierId, 2) });
           await queryClient.invalidateQueries({ queryKey: queryKeys.nodes.neighbors(linkToDossierId) });

@@ -54,6 +54,10 @@ class TaskCreate(TaskBase):
     )
 
 
+class ReorderRequest(BaseModel):
+    task_ids: list[UUID]
+
+
 class TaskUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=500)
     description: str | None = Field(None, max_length=10000)

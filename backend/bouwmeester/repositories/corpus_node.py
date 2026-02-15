@@ -121,12 +121,15 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         limit: int = 100,
         node_type: str | None = None,
         *,
+        search: str | None = None,
         active_only: bool = True,
         include_unconnected_pi: bool = False,
     ) -> list[CorpusNode]:
         stmt = select(CorpusNode)
         if node_type is not None:
             stmt = stmt.where(CorpusNode.node_type == node_type)
+        if search:
+            stmt = stmt.where(CorpusNode.title.ilike(f"%{search}%"))
         if active_only:
             stmt = stmt.where(CorpusNode.geldig_tot.is_(None))
 

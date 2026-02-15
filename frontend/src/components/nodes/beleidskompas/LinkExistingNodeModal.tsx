@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
@@ -8,6 +8,7 @@ import { createEdge } from '@/api/edges';
 import { queryKeys } from '@/hooks/queryKeys';
 import { NODE_TYPE_LABELS, NODE_TYPE_COLORS, type NodeType } from '@/types';
 import { useToast } from '@/contexts/ToastContext';
+import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
 
 interface LinkExistingNodeModalProps {
   open: boolean;
@@ -16,18 +17,22 @@ interface LinkExistingNodeModalProps {
   nodeType: NodeType;
 }
 
-const ONDERDEEL_VAN_EDGE_TYPE = 'onderdeel_van';
-
 export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType }: LinkExistingNodeModalProps) {
-  const { data: nodes, isLoading } = useNodes(nodeType);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isLinking, setIsLinking] = useState(false);
   const queryClient = useQueryClient();
   const { showError } = useToast();
 
-  const filteredNodes = (nodes ?? []).filter((n) =>
-    n.title.toLowerCase().includes(search.toLowerCase()),
-  );
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Server-side filtered query
+  const { data: nodes, isLoading } = useNodes(nodeType, debouncedSearch || undefined);
+  const filteredNodes = nodes ?? [];
 
   const handleLink = async (targetNodeId: string) => {
     setIsLinking(true);
@@ -35,7 +40,7 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType }: Li
       await createEdge({
         from_node_id: targetNodeId,
         to_node_id: dossierId,
-        edge_type_id: ONDERDEEL_VAN_EDGE_TYPE,
+        edge_type_id: EDGE_TYPE_ONDERDEEL_VAN,
       });
       await queryClient.invalidateQueries({ queryKey: queryKeys.nodes.graph(dossierId, 2) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.nodes.neighbors(dossierId) });

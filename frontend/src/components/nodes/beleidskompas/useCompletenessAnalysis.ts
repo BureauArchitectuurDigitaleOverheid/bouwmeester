@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { GraphViewResponse, CorpusNode } from '@/types';
 import { BELEIDSKOMPAS_STEPS, type BeleidskompasStep } from './config';
+import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
 
 export interface StepStatus {
   step: BeleidskompasStep;
@@ -27,10 +28,29 @@ export function useCompletenessAnalysis(
       };
     }
 
-    // Group subgraph nodes by type, excluding the dossier itself
-    const nodesByType = new Map<string, CorpusNode[]>();
+    // Build a set of node IDs directly linked to the dossier via onderdeel_van edges.
+    // The edge direction is: child --onderdeel_van--> dossier (to_node_id = dossierId).
+    const directChildIds = new Set<string>();
+    for (const edge of graphData.edges) {
+      if (
+        edge.edge_type_id === EDGE_TYPE_ONDERDEEL_VAN &&
+        edge.to_node_id === dossierId
+      ) {
+        directChildIds.add(edge.from_node_id);
+      }
+    }
+
+    // Index nodes by id for fast lookup
+    const nodesById = new Map<string, CorpusNode>();
     for (const node of graphData.nodes) {
-      if (node.id === dossierId) continue;
+      nodesById.set(node.id, node);
+    }
+
+    // Group only directly-linked nodes by type
+    const nodesByType = new Map<string, CorpusNode[]>();
+    for (const childId of directChildIds) {
+      const node = nodesById.get(childId);
+      if (!node) continue;
       const existing = nodesByType.get(node.node_type) ?? [];
       existing.push(node);
       nodesByType.set(node.node_type, existing);

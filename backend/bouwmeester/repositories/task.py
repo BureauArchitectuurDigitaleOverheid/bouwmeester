@@ -190,12 +190,32 @@ class TaskRepository(BaseRepository[Task]):
         self, parent_id: UUID, task_ids: list[UUID]
     ) -> list[Task]:
         """Set order field on subtasks according to the given ID list."""
-        for index, task_id in enumerate(task_ids):
-            task = await self.session.get(Task, task_id)
-            if task and task.parent_id == parent_id:
-                task.order = index
+        # Batch-fetch all referenced tasks in one query
+        stmt = select(Task).where(Task.id.in_(task_ids))
+        result = await self.session.execute(stmt)
+        tasks_by_id = {t.id: t for t in result.scalars().all()}
+
+        # Build order lookup from the requested sequence
+        order_by_id = {tid: idx for idx, tid in enumerate(task_ids)}
+
+        for task_id, task in tasks_by_id.items():
+            if task.parent_id == parent_id and task_id in order_by_id:
+                task.order = order_by_id[task_id]
+
         await self.session.flush()
         return await self.get_subtasks(parent_id)
+
+    async def get_distinct_work_types(self) -> list[str]:
+        """Return all distinct non-null work_type values, sorted alphabetically."""
+        from sqlalchemy import distinct
+
+        stmt = (
+            select(distinct(Task.work_type))
+            .where(Task.work_type.isnot(None))
+            .order_by(Task.work_type)
+        )
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.all()]
 
     async def _get_descendant_ids(self, root_id: UUID) -> list[UUID]:
         """Get all descendant unit IDs (including root) using a recursive CTE."""

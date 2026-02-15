@@ -3,7 +3,6 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
@@ -14,6 +13,7 @@ from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.inbox import InboxResponse
 from bouwmeester.schema.task import (
     EenheidOverviewResponse,
+    ReorderRequest,
     TaskCreate,
     TaskResponse,
     TaskStatus,
@@ -28,11 +28,6 @@ from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
-
-
-class ReorderRequest(BaseModel):
-    task_ids: list[UUID]
-
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -169,6 +164,16 @@ async def get_unassigned_tasks(
     return validate_list(TaskResponse, tasks)
 
 
+@router.get("/work-types", response_model=list[str])
+async def get_work_types(
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[str]:
+    """Return distinct work_type values for autocomplete."""
+    repo = TaskRepository(db)
+    return await repo.get_distinct_work_types()
+
+
 @router.get("/eenheid-overview", response_model=EenheidOverviewResponse)
 async def get_eenheid_overview(
     current_user: OptionalUser,
@@ -213,6 +218,7 @@ async def reorder_subtasks(
 ) -> list[TaskResponse]:
     """Reorder subtasks of a parent task."""
     repo = TaskRepository(db)
+    require_found(await repo.get(id), "Task")
     subtasks = await repo.reorder_subtasks(id, data.task_ids)
     return [TaskResponse.model_validate(t) for t in subtasks]
 

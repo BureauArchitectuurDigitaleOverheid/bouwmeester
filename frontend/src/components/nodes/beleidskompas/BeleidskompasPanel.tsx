@@ -109,11 +109,11 @@ function BeleidskompasStepRow({ status, dossierId, onCreateNew, onLinkExisting }
   );
 }
 
-interface BeleidskompanPanelProps {
+interface BeleidskompansPanelProps {
   nodeId: string;
 }
 
-export function BeleidskompasPanel({ nodeId }: BeleidskompanPanelProps) {
+export function BeleidskompasPanel({ nodeId }: BeleidskompansPanelProps) {
   const { data: graphData, isLoading } = useNodeGraph(nodeId, 2);
   const { steps, completedCount, totalSteps } = useCompletenessAnalysis(graphData, nodeId);
   const [linkModalType, setLinkModalType] = useState<NodeType | null>(null);

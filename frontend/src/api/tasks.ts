@@ -44,3 +44,7 @@ export async function getTasksByPerson(personId: string): Promise<Task[]> {
 export async function reorderSubtasks(taskId: string, taskIds: string[]): Promise<Task[]> {
   return apiPut<Task[]>(`/api/tasks/${taskId}/subtasks/reorder`, { task_ids: taskIds });
 }
+
+export async function getWorkTypes(): Promise<string[]> {
+  return apiGet<string[]>('/api/tasks/work-types');
+}
