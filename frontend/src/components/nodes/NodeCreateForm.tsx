@@ -10,7 +10,7 @@ import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { PendingTagsList } from './PendingTagsList';
 import { TagSuggestions } from './TagSuggestions';
 import { useCreateNode } from '@/hooks/useNodes';
-import { useNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
+import { useCreatableNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
 import { NodeType, NodeStatus, NODE_STATUS_LABELS, BRON_TYPE_LABELS } from '@/types';
 import { updateNodeBronDetail, uploadBijlage } from '@/api/nodes';
 import { addTagToNode } from '@/api/tags';
@@ -23,7 +23,7 @@ interface NodeCreateFormProps {
 
 export function NodeCreateForm({ open, onClose }: NodeCreateFormProps) {
   const navigate = useNavigate();
-  const nodeTypeOptions = useNodeTypeOptions();
+  const nodeTypeOptions = useCreatableNodeTypeOptions();
   const [title, setTitle] = useState('');
   const [nodeType, setNodeType] = useState<string>(NodeType.DOSSIER);
   const [description, setDescription] = useState('');

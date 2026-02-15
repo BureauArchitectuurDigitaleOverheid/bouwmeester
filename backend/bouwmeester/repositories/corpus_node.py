@@ -7,7 +7,7 @@ Overrides BaseRepository.create() and update() to manage temporal records
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.corpus_node import CorpusNode
@@ -123,38 +123,30 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         active_only: bool = True,
         include_unconnected_pi: bool = False,
     ) -> list[CorpusNode]:
-        stmt = select(CorpusNode).offset(skip).limit(limit)
+        stmt = select(CorpusNode)
         if node_type is not None:
             stmt = stmt.where(CorpusNode.node_type == node_type)
         if active_only:
             stmt = stmt.where(CorpusNode.geldig_tot.is_(None))
-        stmt = stmt.order_by(CorpusNode.created_at.desc())
-        result = await self.session.execute(stmt)
-        nodes = list(result.scalars().all())
 
-        # Hide unconnected politieke_input nodes unless explicitly requested
+        # Exclude unconnected politieke_input nodes at the SQL level so
+        # pagination (offset/limit) remains correct.
         if not include_unconnected_pi and (
             node_type is None or node_type == "politieke_input"
         ):
-            connected_pi_stmt = (
-                select(CorpusNode.id)
-                .where(CorpusNode.node_type == "politieke_input")
-                .where(
-                    CorpusNode.id.in_(
-                        select(Edge.from_node_id).union(select(Edge.to_node_id))
-                    )
+            has_edge = CorpusNode.id.in_(
+                select(Edge.from_node_id).union(select(Edge.to_node_id))
+            )
+            stmt = stmt.where(
+                or_(
+                    CorpusNode.node_type != "politieke_input",
+                    has_edge,
                 )
             )
-            connected_pi_result = await self.session.execute(connected_pi_stmt)
-            connected_pi_ids = {row[0] for row in connected_pi_result}
 
-            nodes = [
-                n
-                for n in nodes
-                if n.node_type != "politieke_input" or n.id in connected_pi_ids
-            ]
-
-        return nodes
+        stmt = stmt.order_by(CorpusNode.created_at.desc()).offset(skip).limit(limit)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
     async def get_neighbors(self, id: UUID) -> dict:
         """Return the node and its directly connected nodes with edges."""
