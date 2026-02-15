@@ -32,6 +32,8 @@ interface CreatableSelectProps {
   onClear?: () => void;
   /** Message to show when the dropdown is open but has no results (default: "Geen resultaten") */
   emptyMessage?: string;
+  /** When false, hide the search input and show a plain dropdown. @default true */
+  searchable?: boolean;
 }
 
 export function CreatableSelect({
@@ -50,6 +52,7 @@ export function CreatableSelect({
   displayValue,
   onClear,
   emptyMessage = 'Geen resultaten',
+  searchable = true,
 }: CreatableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -195,7 +198,7 @@ export function CreatableSelect({
               : 'border-border hover:border-border-hover focus-within:ring-2 focus-within:ring-primary-500/20 focus-within:border-primary-500'
           } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          {isOpen ? (
+          {isOpen && searchable ? (
             <input
               ref={inputRef}
               id={selectId}

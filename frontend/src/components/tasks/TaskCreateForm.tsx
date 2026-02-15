@@ -136,6 +136,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
             value={priority}
             onChange={setPriority}
             options={priorityOptions}
+            searchable={false}
           />
 
           <Input
