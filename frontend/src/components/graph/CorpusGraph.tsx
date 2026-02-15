@@ -20,13 +20,12 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
-import { useGraphView } from '@/hooks/useGraph';
 import { useCreateEdge } from '@/hooks/useEdges';
 import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
-import type { CorpusNode, Edge } from '@/types';
+import type { CorpusNode, Edge, GraphViewResponse } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 import { generateBridgeEdges, type BridgeEdge } from '@/utils/bridgeEdges';
 
@@ -126,14 +125,16 @@ interface CorpusGraphProps {
   enabledNodeTypes: Set<NodeType>;
   searchQuery: string;
   enabledEdgeTypes: Set<string>;
+  graphData?: GraphViewResponse;
+  isLoading: boolean;
+  error?: Error | null;
 }
 
 // Inner component that uses useReactFlow (must be inside ReactFlowProvider)
-function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes }: CorpusGraphProps) {
+function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, graphData: data, isLoading, error }: CorpusGraphProps) {
   const isMobile = useIsMobile();
   const { edgeLabel: vocabEdgeLabel } = useVocabulary();
   const { openNodeDetail } = useNodeDetail();
-  const { data, isLoading, error } = useGraphView();
 
   // Stable refs for callbacks used inside the layout memo, so they don't
   // cause the expensive dagre layout to recompute.

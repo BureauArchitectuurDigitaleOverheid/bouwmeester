@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, LayoutGrid, GitFork, Search } from 'lucide-react';
+import { Plus, LayoutGrid, GitFork, Grid3x3, Search } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
@@ -10,19 +10,21 @@ import { NodeList } from '@/components/nodes/NodeList';
 import { NodeCreateForm } from '@/components/nodes/NodeCreateForm';
 import { ExportButton } from '@/components/nodes/ExportButton';
 import { CorpusGraph } from '@/components/graph/CorpusGraph';
+import { CorpusMatrix } from '@/components/graph/CorpusMatrix';
 import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useGraphView } from '@/hooks/useGraph';
 import { useDebounce } from '@/hooks/useDebounce';
 
-type ViewMode = 'list' | 'graph';
+type ViewMode = 'list' | 'graph' | 'matrix';
 
 const ALL_NODE_TYPES = Object.values(NodeType);
 
 export function CorpusPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const viewMode: ViewMode = searchParams.get('view') === 'graph' ? 'graph' : 'list';
+  const viewParam = searchParams.get('view');
+  const viewMode: ViewMode = viewParam === 'graph' ? 'graph' : viewParam === 'matrix' ? 'matrix' : 'list';
   const { nodeLabel, edgeLabel: vocabEdgeLabel } = useVocabulary();
 
   // Node type filter: derived from URL, omit param when all selected
@@ -53,8 +55,8 @@ export function CorpusPage() {
     }, { replace: true });
   }, [searchQuery, setSearchParams]);
 
-  // Edge type filter state (graph-specific, only fetched in graph mode)
-  const { data: graphData } = useGraphView(undefined, undefined, viewMode === 'graph');
+  // Edge type filter state (fetched in graph and matrix modes)
+  const { data: graphData, isLoading: isGraphLoading, error: graphError } = useGraphView(undefined, undefined, viewMode === 'graph' || viewMode === 'matrix');
 
   const availableEdgeTypes = useMemo(() => {
     if (!graphData?.edges) return [];
@@ -104,9 +106,31 @@ export function CorpusPage() {
     }, { replace: true });
   }, [setSearchParams, availableEdgeTypes]);
 
+  // Matrix-specific: row and column node type selectors from URL
+  const matrixRowType = (searchParams.get('rowType') as NodeType) || NodeType.DOEL;
+  const matrixColType = (searchParams.get('colType') as NodeType) || NodeType.INSTRUMENT;
+
+  const setMatrixRowType = useCallback((type: NodeType) => {
+    setSearchParams((prev) => {
+      prev.set('rowType', type);
+      return prev;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const setMatrixColType = useCallback((type: NodeType) => {
+    setSearchParams((prev) => {
+      prev.set('colType', type);
+      return prev;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   const setViewMode = useCallback((mode: ViewMode) => {
     setSearchParams((prev) => {
-      if (mode === 'graph') prev.set('view', 'graph'); else prev.delete('view');
+      if (mode === 'list') {
+        prev.delete('view');
+      } else {
+        prev.set('view', mode);
+      }
       return prev;
     }, { replace: true });
   }, [setSearchParams]);
@@ -147,6 +171,18 @@ export function CorpusPage() {
               <GitFork className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Netwerk</span>
             </button>
+            <button
+              onClick={() => setViewMode('matrix')}
+              className={clsx(
+                'flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-150',
+                viewMode === 'matrix'
+                  ? 'bg-white text-text shadow-sm'
+                  : 'text-text-secondary hover:text-text',
+              )}
+            >
+              <Grid3x3 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Matrix</span>
+            </button>
           </div>
 
           <ExportButton hideLabel />
@@ -171,15 +207,17 @@ export function CorpusPage() {
             className="pl-9"
           />
         </div>
-        <div className="w-full sm:w-52">
-          <MultiSelect
-            value={enabledNodeTypes as Set<string>}
-            onChange={handleNodeTypesChange}
-            options={nodeTypeFilterOptions}
-            allLabel="Alle types"
-          />
-        </div>
-        {viewMode === 'graph' && edgeTypeFilterOptions.length > 0 && (
+        {viewMode !== 'matrix' && (
+          <div className="w-full sm:w-52">
+            <MultiSelect
+              value={enabledNodeTypes as Set<string>}
+              onChange={handleNodeTypesChange}
+              options={nodeTypeFilterOptions}
+              allLabel="Alle types"
+            />
+          </div>
+        )}
+        {(viewMode === 'graph' || viewMode === 'matrix') && edgeTypeFilterOptions.length > 0 && (
           <div className="w-full sm:w-52">
             <MultiSelect
               value={enabledEdgeTypes}
@@ -189,13 +227,48 @@ export function CorpusPage() {
             />
           </div>
         )}
+        {viewMode === 'matrix' && (
+          <>
+            <select
+              value={matrixRowType}
+              onChange={(e) => setMatrixRowType(e.target.value as NodeType)}
+              className="w-full sm:w-44 rounded-lg border border-border bg-white px-3 py-2 text-sm text-text focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+              aria-label="Rij-type"
+            >
+              {ALL_NODE_TYPES.map((t) => (
+                <option key={t} value={t}>{nodeLabel(t)} (rij)</option>
+              ))}
+            </select>
+            <select
+              value={matrixColType}
+              onChange={(e) => setMatrixColType(e.target.value as NodeType)}
+              className="w-full sm:w-44 rounded-lg border border-border bg-white px-3 py-2 text-sm text-text focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+              aria-label="Kolom-type"
+            >
+              {ALL_NODE_TYPES.map((t) => (
+                <option key={t} value={t}>{nodeLabel(t)} (kolom)</option>
+              ))}
+            </select>
+          </>
+        )}
       </div>
 
       {/* View content */}
-      {viewMode === 'list'
-        ? <NodeList enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} />
-        : <CorpusGraph enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} enabledEdgeTypes={enabledEdgeTypes} />
-      }
+      {viewMode === 'list' ? (
+        <NodeList enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} />
+      ) : viewMode === 'graph' ? (
+        <CorpusGraph enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} enabledEdgeTypes={enabledEdgeTypes} graphData={graphData} isLoading={isGraphLoading} error={graphError} />
+      ) : viewMode === 'matrix' ? (
+        <CorpusMatrix
+          rowNodeType={matrixRowType}
+          colNodeType={matrixColType}
+          enabledEdgeTypes={enabledEdgeTypes}
+          searchQuery={searchQuery}
+          graphData={graphData}
+          isLoading={isGraphLoading}
+          error={graphError}
+        />
+      ) : null}
 
       {/* Create form modal */}
       <NodeCreateForm
