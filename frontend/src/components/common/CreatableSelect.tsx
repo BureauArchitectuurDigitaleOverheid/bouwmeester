@@ -206,7 +206,7 @@ export function CreatableSelect({
               value={query}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              className="flex-1 outline-none bg-transparent text-text placeholder:text-text-secondary/50"
+              className="flex-1 min-w-0 outline-none ring-0 border-none bg-transparent text-text placeholder:text-text-secondary/50 focus:outline-none focus:ring-0"
               placeholder={closedDisplayText || placeholder}
               autoFocus
             />
