@@ -683,7 +683,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         )}
 
         {activeTab === 'connections' && (
-          <EdgeList nodeId={nodeId} />
+          <EdgeList nodeId={nodeId} nodeType={node.node_type} />
         )}
 
         {activeTab === 'stakeholders' && (

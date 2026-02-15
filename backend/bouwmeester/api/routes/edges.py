@@ -17,6 +17,7 @@ from bouwmeester.services.activity_service import (
     log_activity,
     resolve_actor,
 )
+from bouwmeester.services.edge_schema_service import EdgeSchemaService
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/edges", tags=["edges"])
@@ -57,6 +58,19 @@ async def create_edge(
     db: AsyncSession = Depends(get_db),
 ) -> EdgeResponse:
     """Create a directed edge between two nodes. Returns 409 if duplicate."""
+    # Validate against edge schema rules
+    from_node = await db.get(CorpusNode, data.from_node_id)
+    to_node = await db.get(CorpusNode, data.to_node_id)
+    if from_node and to_node:
+        error = await EdgeSchemaService(db).validate_edge(
+            from_node.node_type, to_node.node_type, data.edge_type_id
+        )
+        if error:
+            raise HTTPException(
+                status_code=422,
+                detail=error,
+            )
+
     repo = EdgeRepository(db)
     try:
         edge = await repo.create(data)
@@ -68,9 +82,11 @@ async def create_edge(
 
     resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
 
-    # Notify stakeholders of both nodes
-    from_node = await db.get(CorpusNode, data.from_node_id)
-    to_node = await db.get(CorpusNode, data.to_node_id)
+    # Notify stakeholders of both nodes (from_node/to_node already fetched above)
+    if not from_node:
+        from_node = await db.get(CorpusNode, data.from_node_id)
+    if not to_node:
+        to_node = await db.get(CorpusNode, data.to_node_id)
     if from_node and to_node:
         notif_svc = NotificationService(db)
         await notif_svc.notify_edge_created(from_node, to_node, actor_id=resolved_id)
@@ -114,6 +130,23 @@ async def update_edge(
 ) -> EdgeResponse:
     """Update edge weight, description, or type."""
     repo = EdgeRepository(db)
+
+    # If edge_type_id is changing, validate against schema rules
+    if data.edge_type_id is not None:
+        existing = await repo.get(id)
+        if existing and data.edge_type_id != existing.edge_type_id:
+            from_node = await db.get(CorpusNode, existing.from_node_id)
+            to_node = await db.get(CorpusNode, existing.to_node_id)
+            if from_node and to_node:
+                error = await EdgeSchemaService(db).validate_edge(
+                    from_node.node_type, to_node.node_type, data.edge_type_id
+                )
+                if error:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=error,
+                    )
+
     edge = require_found(await repo.update(id, data), "Edge")
 
     await log_activity(

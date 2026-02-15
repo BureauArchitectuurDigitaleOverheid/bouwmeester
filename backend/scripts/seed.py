@@ -216,6 +216,7 @@ async def seed(db: AsyncSession) -> None:
         "task",
         "node_stakeholder",
         "edge",
+        "edge_schema_rule",
         "edge_type",
         "probleem",
         "effect",
@@ -1197,6 +1198,146 @@ async def seed(db: AsyncSession) -> None:
         await edge_type_repo.create(et)
 
     print(f"  Edge types: {len(edge_types)} types aangemaakt")
+
+    # =========================================================================
+    # 3b. EDGE SCHEMA RULES
+    # =========================================================================
+
+    from bouwmeester.models.edge_schema_rule import EdgeSchemaRule
+
+    # Node types in the system
+    all_node_types = [
+        "dossier",
+        "doel",
+        "instrument",
+        "beleidskader",
+        "maatregel",
+        "politieke_input",
+        "probleem",
+        "effect",
+        "beleidsoptie",
+        "bron",
+    ]
+
+    schema_rules: list[tuple[str, str, str]] = []
+
+    # --- Core beleidstheorie / ArchiMate Motivation patterns ---
+
+    # probleem -> doel: leidt_tot
+    schema_rules.append(("probleem", "doel", "leidt_tot"))
+    # probleem -> probleem: leidt_tot, onderdeel_van
+    schema_rules.append(("probleem", "probleem", "leidt_tot"))
+    schema_rules.append(("probleem", "probleem", "onderdeel_van"))
+
+    # doel -> doel: draagt_bij_aan, onderdeel_van, conflicteert_met
+    schema_rules.append(("doel", "doel", "draagt_bij_aan"))
+    schema_rules.append(("doel", "doel", "onderdeel_van"))
+    schema_rules.append(("doel", "doel", "conflicteert_met"))
+
+    # instrument -> doel: implementeert, draagt_bij_aan
+    schema_rules.append(("instrument", "doel", "implementeert"))
+    schema_rules.append(("instrument", "doel", "draagt_bij_aan"))
+    # instrument -> probleem: adresseert
+    schema_rules.append(("instrument", "probleem", "adresseert"))
+    # instrument -> instrument: onderdeel_van, conflicteert_met, vervangt, aanvulling
+    schema_rules.append(("instrument", "instrument", "onderdeel_van"))
+    schema_rules.append(("instrument", "instrument", "conflicteert_met"))
+    schema_rules.append(("instrument", "instrument", "vervangt"))
+    schema_rules.append(("instrument", "instrument", "vloeit_voort_uit"))
+
+    # maatregel -> doel: implementeert, draagt_bij_aan
+    schema_rules.append(("maatregel", "doel", "implementeert"))
+    schema_rules.append(("maatregel", "doel", "draagt_bij_aan"))
+    # maatregel -> probleem: adresseert
+    schema_rules.append(("maatregel", "probleem", "adresseert"))
+    # maatregel -> effect: leidt_tot
+    schema_rules.append(("maatregel", "effect", "leidt_tot"))
+    # maatregel -> maatregel: onderdeel_van, conflicteert_met, vervangt
+    schema_rules.append(("maatregel", "maatregel", "onderdeel_van"))
+    schema_rules.append(("maatregel", "maatregel", "conflicteert_met"))
+    schema_rules.append(("maatregel", "maatregel", "vervangt"))
+    schema_rules.append(("maatregel", "maatregel", "vloeit_voort_uit"))
+    # maatregel -> instrument: implementeert
+    schema_rules.append(("maatregel", "instrument", "implementeert"))
+
+    # effect -> doel: meet, draagt_bij_aan
+    schema_rules.append(("effect", "doel", "meet"))
+    schema_rules.append(("effect", "doel", "draagt_bij_aan"))
+    # effect -> effect: leidt_tot, onderdeel_van
+    schema_rules.append(("effect", "effect", "leidt_tot"))
+    schema_rules.append(("effect", "effect", "onderdeel_van"))
+
+    # beleidskader -> doel: draagt_bij_aan
+    schema_rules.append(("beleidskader", "doel", "draagt_bij_aan"))
+    # beleidskader -> beleidskader: onderdeel_van, vervangt, vloeit_voort_uit
+    schema_rules.append(("beleidskader", "beleidskader", "onderdeel_van"))
+    schema_rules.append(("beleidskader", "beleidskader", "vervangt"))
+    schema_rules.append(("beleidskader", "beleidskader", "vloeit_voort_uit"))
+    # beleidskader -> instrument: vereist
+    schema_rules.append(("beleidskader", "instrument", "vereist"))
+    # beleidskader -> maatregel: vereist
+    schema_rules.append(("beleidskader", "maatregel", "vereist"))
+
+    # beleidsoptie -> doel: draagt_bij_aan
+    schema_rules.append(("beleidsoptie", "doel", "draagt_bij_aan"))
+    # beleidsoptie -> probleem: adresseert
+    schema_rules.append(("beleidsoptie", "probleem", "adresseert"))
+    # beleidsoptie -> beleidsoptie: conflicteert_met, vervangt
+    schema_rules.append(("beleidsoptie", "beleidsoptie", "conflicteert_met"))
+    schema_rules.append(("beleidsoptie", "beleidsoptie", "vervangt"))
+
+    # politieke_input -> doel: draagt_bij_aan, vereist
+    schema_rules.append(("politieke_input", "doel", "draagt_bij_aan"))
+    schema_rules.append(("politieke_input", "doel", "vereist"))
+    # politieke_input -> instrument: evalueert, vereist
+    schema_rules.append(("politieke_input", "instrument", "evalueert"))
+    schema_rules.append(("politieke_input", "instrument", "vereist"))
+    # politieke_input -> maatregel: evalueert, vereist
+    schema_rules.append(("politieke_input", "maatregel", "evalueert"))
+    schema_rules.append(("politieke_input", "maatregel", "vereist"))
+    # politieke_input -> probleem: adresseert
+    schema_rules.append(("politieke_input", "probleem", "adresseert"))
+    # politieke_input -> beleidskader: evalueert
+    schema_rules.append(("politieke_input", "beleidskader", "evalueert"))
+    # politieke_input -> politieke_input: verwijst_naar, vloeit_voort_uit
+    schema_rules.append(("politieke_input", "politieke_input", "verwijst_naar"))
+    schema_rules.append(("politieke_input", "politieke_input", "vloeit_voort_uit"))
+
+    # --- Universal patterns ---
+
+    # Everything can be onderdeel_van a dossier
+    for nt in all_node_types:
+        if nt != "dossier":
+            schema_rules.append((nt, "dossier", "onderdeel_van"))
+    # Dossier -> dossier: onderdeel_van
+    schema_rules.append(("dossier", "dossier", "onderdeel_van"))
+
+    # Everything can verwijst_naar a bron
+    for nt in all_node_types:
+        if nt != "bron":
+            schema_rules.append((nt, "bron", "verwijst_naar"))
+
+    # verwijst_naar: broad coverage (any -> any)
+    for from_nt in all_node_types:
+        for to_nt in all_node_types:
+            rule = (from_nt, to_nt, "verwijst_naar")
+            if rule not in schema_rules:
+                schema_rules.append(rule)
+
+    # Deduplicate
+    schema_rules = list(dict.fromkeys(schema_rules))
+
+    for from_nt, to_nt, et_id in schema_rules:
+        db.add(
+            EdgeSchemaRule(
+                from_node_type=from_nt,
+                to_node_type=to_nt,
+                edge_type_id=et_id,
+            )
+        )
+    await db.flush()
+
+    print(f"  Edge schema rules: {len(schema_rules)} regels aangemaakt")
 
     # =========================================================================
     # 4. CORPUS NODES

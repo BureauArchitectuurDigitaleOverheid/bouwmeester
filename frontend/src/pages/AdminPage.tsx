@@ -6,8 +6,9 @@ import { UserManager } from '@/components/admin/UserManager';
 import { DatabaseBackup } from '@/components/admin/DatabaseBackup';
 import { AccessRequestManager } from '@/components/admin/AccessRequestManager';
 import { ConfigManager } from '@/components/admin/ConfigManager';
+import { EdgeSchemaManager } from '@/components/admin/EdgeSchemaManager';
 
-type Tab = 'whitelist' | 'users' | 'database' | 'requests' | 'config';
+type Tab = 'whitelist' | 'users' | 'database' | 'requests' | 'config' | 'schema';
 
 export function AdminPage() {
   const { person, oidcConfigured, loading } = useAuth();
@@ -17,7 +18,7 @@ export function AdminPage() {
 
   // Sync tab from URL param
   useEffect(() => {
-    if (tabParam && ['whitelist', 'users', 'database', 'requests', 'config'].includes(tabParam)) {
+    if (tabParam && ['whitelist', 'users', 'database', 'requests', 'config', 'schema'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [tabParam]);
@@ -43,6 +44,7 @@ export function AdminPage() {
     { id: 'users', label: 'Gebruikers' },
     { id: 'database', label: 'Database' },
     { id: 'config', label: 'Instellingen' },
+    { id: 'schema', label: 'Relatieschema' },
   ];
 
   return (
@@ -70,6 +72,7 @@ export function AdminPage() {
       {activeTab === 'users' && <UserManager />}
       {activeTab === 'database' && <DatabaseBackup />}
       {activeTab === 'config' && <ConfigManager />}
+      {activeTab === 'schema' && <EdgeSchemaManager />}
     </div>
   );
 }

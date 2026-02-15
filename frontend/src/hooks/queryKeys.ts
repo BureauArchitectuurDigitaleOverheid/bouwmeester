@@ -69,6 +69,17 @@ export const queryKeys = {
     list: (filters?: EdgeFilters) => ['edges', filters] as const,
   },
 
+  // --- Edge Types ---
+  edgeTypes: {
+    all: ['edge-types'] as const,
+    valid: (fromNodeType?: string, toNodeType?: string) => ['edge-types', 'valid', fromNodeType, toNodeType] as const,
+  },
+
+  // --- Edge Schema Rules ---
+  edgeSchemaRules: {
+    all: ['edge-schema-rules'] as const,
+  },
+
   // --- Notifications ---
   notifications: {
     all: ['notifications'] as const,

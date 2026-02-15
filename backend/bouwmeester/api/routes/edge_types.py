@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.repositories.edge_schema_rule import EdgeSchemaRuleRepository
 from bouwmeester.repositories.edge_type import EdgeTypeRepository
+from bouwmeester.schema.edge_schema_rule import ValidEdgeTypesResponse
 from bouwmeester.schema.edge_type import EdgeTypeCreate, EdgeTypeResponse
 
 router = APIRouter(prefix="/edge-types", tags=["edge-types"])
@@ -23,6 +25,25 @@ async def list_edge_types(
     repo = EdgeTypeRepository(db)
     edge_types = await repo.get_all(skip=skip, limit=limit)
     return [EdgeTypeResponse.model_validate(et) for et in edge_types]
+
+
+@router.get("/valid", response_model=ValidEdgeTypesResponse)
+async def get_valid_edge_types(
+    current_user: OptionalUser,
+    from_node_type: str | None = Query(None),
+    to_node_type: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> ValidEdgeTypesResponse:
+    """Return valid edge type IDs for a given node type pair.
+
+    If no schema rules exist, returns schema_active=false and an empty list.
+    """
+    repo = EdgeSchemaRuleRepository(db)
+    has_rules = await repo.has_any_rules()
+    if not has_rules:
+        return ValidEdgeTypesResponse(edge_type_ids=[], schema_active=False)
+    ids = await repo.get_valid_edge_type_ids(from_node_type, to_node_type)
+    return ValidEdgeTypesResponse(edge_type_ids=sorted(ids), schema_active=True)
 
 
 @router.post("", response_model=EdgeTypeResponse, status_code=status.HTTP_201_CREATED)

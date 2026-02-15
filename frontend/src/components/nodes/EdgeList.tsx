@@ -13,9 +13,10 @@ import { useVocabulary } from '@/contexts/VocabularyContext';
 
 interface EdgeListProps {
   nodeId: string;
+  nodeType?: string;
 }
 
-export function EdgeList({ nodeId }: EdgeListProps) {
+export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
   const navigate = useNavigate();
   const { nodeLabel, nodeAltLabel, edgeLabel } = useVocabulary();
   const [showAddForm, setShowAddForm] = useState(false);
@@ -114,6 +115,7 @@ export function EdgeList({ nodeId }: EdgeListProps) {
         open={showAddForm}
         onClose={() => setShowAddForm(false)}
         sourceNodeId={nodeId}
+        sourceNodeType={nodeType}
       />
     </div>
   );

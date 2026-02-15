@@ -964,6 +964,25 @@ export interface MentionReference {
   source_title: string;
 }
 
+// Edge Schema Rules
+export interface EdgeSchemaRule {
+  id: string;
+  from_node_type: string;
+  to_node_type: string;
+  edge_type_id: string;
+}
+
+export interface EdgeSchemaRuleCreate {
+  from_node_type: string;
+  to_node_type: string;
+  edge_type_id: string;
+}
+
+export interface ValidEdgeTypesResponse {
+  edge_type_ids: string[];
+  schema_active: boolean;
+}
+
 // Filter types
 export interface EdgeFilters {
   from_node_id?: string;
