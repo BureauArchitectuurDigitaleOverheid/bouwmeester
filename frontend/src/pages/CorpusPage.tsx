@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, LayoutGrid, GitFork, Grid3x3, Search } from 'lucide-react';
-import { clsx } from 'clsx';
 import { Button } from '@/components/common/Button';
+import { ViewToggle } from '@/components/common/ViewToggle';
+import type { ViewToggleOption } from '@/components/common/ViewToggle';
 import { Input } from '@/components/common/Input';
 import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
@@ -17,6 +18,12 @@ import { useGraphView } from '@/hooks/useGraph';
 import { useDebounce } from '@/hooks/useDebounce';
 
 type ViewMode = 'list' | 'graph' | 'matrix';
+
+const VIEW_OPTIONS: ViewToggleOption<ViewMode>[] = [
+  { value: 'list', label: 'Lijst', icon: <LayoutGrid className="h-3.5 w-3.5" /> },
+  { value: 'graph', label: 'Netwerk', icon: <GitFork className="h-3.5 w-3.5" /> },
+  { value: 'matrix', label: 'Matrix', icon: <Grid3x3 className="h-3.5 w-3.5" /> },
+];
 
 const ALL_NODE_TYPES = Object.values(NodeType);
 
@@ -146,44 +153,7 @@ export function CorpusPage() {
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* View mode toggle */}
-          <div className="flex items-center bg-gray-100 rounded-xl p-0.5">
-            <button
-              onClick={() => setViewMode('list')}
-              className={clsx(
-                'flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-150',
-                viewMode === 'list'
-                  ? 'bg-white text-text shadow-sm'
-                  : 'text-text-secondary hover:text-text',
-              )}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Lijst</span>
-            </button>
-            <button
-              onClick={() => setViewMode('graph')}
-              className={clsx(
-                'flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-150',
-                viewMode === 'graph'
-                  ? 'bg-white text-text shadow-sm'
-                  : 'text-text-secondary hover:text-text',
-              )}
-            >
-              <GitFork className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Netwerk</span>
-            </button>
-            <button
-              onClick={() => setViewMode('matrix')}
-              className={clsx(
-                'flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-150',
-                viewMode === 'matrix'
-                  ? 'bg-white text-text shadow-sm'
-                  : 'text-text-secondary hover:text-text',
-              )}
-            >
-              <Grid3x3 className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Matrix</span>
-            </button>
-          </div>
+          <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
 
           <ExportButton hideLabel />
 

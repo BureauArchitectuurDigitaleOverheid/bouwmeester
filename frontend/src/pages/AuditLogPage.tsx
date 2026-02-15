@@ -246,7 +246,7 @@ export function AuditLogPage() {
   }, [totalPages, page]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Filters */}
       <div className="flex items-center gap-3">
         <select

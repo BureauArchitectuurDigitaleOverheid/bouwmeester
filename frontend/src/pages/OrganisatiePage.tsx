@@ -149,18 +149,18 @@ export function OrganisatiePage() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <p className="text-sm text-text-secondary">
             Beheer de organisatiestructuur: Ministerie, DG, Directie, Afdeling, Team.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             icon={<Plus className="h-4 w-4" />}
             onClick={() => handleAdd(null)}
           >
-            Eenheid toevoegen
+            <span className="hidden sm:inline">Eenheid toevoegen</span>
           </Button>
         </div>
       </div>
