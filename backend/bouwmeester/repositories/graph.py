@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
+from bouwmeester.repositories.graph_filters import exclude_unconnected_pi
 
 
 class GraphRepository:
@@ -147,12 +148,20 @@ class GraphRepository:
     ) -> dict:
         """Return all nodes and edges, optionally filtered by type.
 
+        By default, politieke_input nodes are only included when they have
+        at least one edge (i.e. they are connected to the policy graph).
+
         Returns ``{"nodes": [...], "edges": [...]}``.
         """
         # -- Nodes --
         nodes_stmt = select(CorpusNode)
         if node_types:
             nodes_stmt = nodes_stmt.where(CorpusNode.node_type.in_(node_types))
+
+        # Exclude unconnected politieke_input at the SQL level.
+        if not node_types or "politieke_input" in node_types:
+            nodes_stmt = nodes_stmt.where(exclude_unconnected_pi())
+
         nodes_stmt = nodes_stmt.order_by(CorpusNode.created_at.desc())
         nodes_result = await self.session.execute(nodes_stmt)
         nodes = list(nodes_result.scalars().all())

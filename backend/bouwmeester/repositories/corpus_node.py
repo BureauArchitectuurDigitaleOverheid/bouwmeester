@@ -15,6 +15,7 @@ from bouwmeester.models.edge import Edge
 from bouwmeester.models.node_status import CorpusNodeStatus
 from bouwmeester.models.node_title import CorpusNodeTitle
 from bouwmeester.repositories.base import BaseRepository
+from bouwmeester.repositories.graph_filters import exclude_unconnected_pi
 from bouwmeester.repositories.temporal import (
     close_active_records,
     rotate_temporal_record,
@@ -121,13 +122,22 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         node_type: str | None = None,
         *,
         active_only: bool = True,
+        include_unconnected_pi: bool = False,
     ) -> list[CorpusNode]:
-        stmt = select(CorpusNode).offset(skip).limit(limit)
+        stmt = select(CorpusNode)
         if node_type is not None:
             stmt = stmt.where(CorpusNode.node_type == node_type)
         if active_only:
             stmt = stmt.where(CorpusNode.geldig_tot.is_(None))
-        stmt = stmt.order_by(CorpusNode.created_at.desc())
+
+        # Exclude unconnected politieke_input nodes at the SQL level so
+        # pagination (offset/limit) remains correct.
+        if not include_unconnected_pi and (
+            node_type is None or node_type == "politieke_input"
+        ):
+            stmt = stmt.where(exclude_unconnected_pi())
+
+        stmt = stmt.order_by(CorpusNode.created_at.desc()).offset(skip).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
