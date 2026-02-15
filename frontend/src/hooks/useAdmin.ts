@@ -18,6 +18,7 @@ export interface AdminUser {
   functie: string | null;
   is_admin: boolean;
   is_active: boolean;
+  last_seen_at?: string | null;
 }
 
 export function useWhitelist() {
@@ -48,6 +49,7 @@ export function useAdminUsers() {
   return useQuery({
     queryKey: queryKeys.admin.users(),
     queryFn: () => apiGet<AdminUser[]>('/api/admin/users'),
+    refetchInterval: 60_000,
   });
 }
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -31,6 +32,11 @@ from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 
 logger = logging.getLogger(__name__)
+
+# Throttle last_seen_at updates: at most once per 60s per person per worker.
+_LAST_SEEN_THROTTLE_SECONDS = 60
+_LAST_SEEN_MAX_ENTRIES = 2000
+_last_seen_updated: dict[str, float] = {}
 
 # Revalidate the access token against Keycloak at most every 5 minutes.
 _TOKEN_REVALIDATION_INTERVAL = 300
@@ -710,6 +716,34 @@ async def _person_from_webauthn_session(
     return None
 
 
+async def _touch_last_seen(db: AsyncSession, person: Person) -> None:
+    """Update ``last_seen_at`` with throttling (≤1 write/60s/person/worker).
+
+    The throttle timestamp is recorded *after* flush so that a rolled-back
+    transaction doesn't suppress the next retry.  Errors are swallowed —
+    failing to record activity must never break authentication.
+    """
+    now = time.monotonic()
+    key = str(person.id)
+    last = _last_seen_updated.get(key, 0.0)
+    if (now - last) < _LAST_SEEN_THROTTLE_SECONDS:
+        return
+    try:
+        person.last_seen_at = datetime.now(UTC)
+        await db.flush()
+    except Exception:
+        logger.warning(
+            "Failed to update last_seen_at for person %s", key, exc_info=True
+        )
+        await db.rollback()
+        return
+    _last_seen_updated[key] = time.monotonic()
+    # Evict oldest entries if the throttle dict grows too large.
+    if len(_last_seen_updated) > _LAST_SEEN_MAX_ENTRIES:
+        oldest = min(_last_seen_updated, key=_last_seen_updated.get)  # type: ignore[arg-type]
+        del _last_seen_updated[oldest]
+
+
 async def _resolve_user(
     request: Request,
     db: AsyncSession,
@@ -723,11 +757,13 @@ async def _resolve_user(
     # 1. API key auth (works with or without OIDC).
     person = await _person_from_api_key(request, db)
     if person is not None:
+        await _touch_last_seen(db, person)
         return person
 
     # 2. WebAuthn session auth.
     person = await _person_from_webauthn_session(request, db)
     if person is not None:
+        await _touch_last_seen(db, person)
         return person
 
     # 3. OIDC auth.
@@ -738,7 +774,10 @@ async def _resolve_user(
     if claims is None:
         return None
 
-    return await _person_from_claims(db, claims)
+    person = await _person_from_claims(db, claims)
+    if person is not None:
+        await _touch_last_seen(db, person)
+    return person
 
 
 async def get_current_user(

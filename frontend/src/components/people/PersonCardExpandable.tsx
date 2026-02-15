@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
 import { clsx } from 'clsx';
-import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, Bot, MessageSquare, Terminal, Building2, X, Phone, Star } from 'lucide-react';
+import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, MessageSquare, Terminal, Building2, X, Phone, Star } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
+import { PersonAvatar } from '@/components/people/PersonAvatar';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
 import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
@@ -55,13 +56,6 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
     }
   }, [displayEmail]);
 
-  const initials = person.naam
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
   return (
     <Card
       hoverable
@@ -70,15 +64,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
       onDragStart={onDragStartPerson ? (e: React.DragEvent) => onDragStartPerson(e, person) : undefined}
     >
       <div className="flex items-center gap-3">
-        {person.is_agent ? (
-          <div className="relative flex items-center justify-center h-9 w-9 rounded-full bg-violet-100 text-violet-700 shrink-0">
-            <Bot className="h-4.5 w-4.5" />
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-9 w-9 rounded-full bg-primary-100 text-primary-700 text-sm font-medium shrink-0">
-            {initials}
-          </div>
-        )}
+        <PersonAvatar person={person} size="h-9 w-9" iconSize="h-4.5 w-4.5" agentColor="bg-violet-100 text-violet-700" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-text truncate">

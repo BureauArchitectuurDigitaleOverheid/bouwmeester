@@ -475,6 +475,7 @@ export interface Person {
   has_api_key?: boolean;
   is_active: boolean;
   created_at: string;
+  last_seen_at?: string | null;
   emails: PersonEmail[];
   phones: PersonPhone[];
   default_email?: string | null;

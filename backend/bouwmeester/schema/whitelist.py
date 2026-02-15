@@ -26,6 +26,7 @@ class AdminUserResponse(BaseModel):
     functie: str | None = None
     is_admin: bool
     is_active: bool
+    last_seen_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

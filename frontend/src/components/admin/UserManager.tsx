@@ -1,6 +1,7 @@
 import { useAdminUsers, useToggleAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatFunctie } from '@/types';
+import { isPersonOnline, formatRelativeTime } from '@/utils/people';
 
 export function UserManager() {
   const { data: users, isLoading } = useAdminUsers();
@@ -20,12 +21,14 @@ export function UserManager() {
               <th className="text-left px-4 py-2.5 font-medium text-text-secondary">Naam</th>
               <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden sm:table-cell">E-mail</th>
               <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden md:table-cell">Functie</th>
+              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden lg:table-cell">Laatst actief</th>
               <th className="text-center px-4 py-2.5 font-medium text-text-secondary w-24">Admin</th>
             </tr>
           </thead>
           <tbody>
             {users?.map((user) => {
               const isSelf = authPerson?.id === user.id;
+              const online = isPersonOnline(user);
               return (
                 <tr key={user.id} className="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-2.5 text-text">
@@ -39,6 +42,16 @@ export function UserManager() {
                   </td>
                   <td className="px-4 py-2.5 text-text-secondary hidden md:table-cell">
                     {formatFunctie(user.functie) || '-'}
+                  </td>
+                  <td className="px-4 py-2.5 text-text-secondary hidden lg:table-cell">
+                    {online ? (
+                      <span className="inline-flex items-center gap-1.5 text-green-600">
+                        <span className="block h-2 w-2 rounded-full bg-green-500" />
+                        Nu actief
+                      </span>
+                    ) : (
+                      formatRelativeTime(user.last_seen_at)
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-center">
                     <button
@@ -68,7 +81,7 @@ export function UserManager() {
             })}
             {(!users || users.length === 0) && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-text-secondary">
+                <td colSpan={5} className="px-4 py-8 text-center text-text-secondary">
                   Geen gebruikers gevonden
                 </td>
               </tr>
