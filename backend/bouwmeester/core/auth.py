@@ -8,6 +8,7 @@ application can run without authentication.
 
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 import time
 from typing import Annotated, Any
@@ -721,8 +722,6 @@ async def _touch_last_seen(db: AsyncSession, person: Person) -> None:
     last = _last_seen_updated.get(key, 0.0)
     if (now - last) < _LAST_SEEN_THROTTLE_SECONDS:
         return
-    import datetime as _dt
-
     person.last_seen_at = _dt.datetime.now(_dt.UTC)
     _last_seen_updated[key] = now
     await db.flush()

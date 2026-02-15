@@ -1,6 +1,7 @@
 import { useAdminUsers, useToggleAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/contexts/AuthContext';
-import { formatFunctie, isPersonOnline, formatRelativeTime } from '@/types';
+import { formatFunctie } from '@/types';
+import { isPersonOnline, formatRelativeTime } from '@/utils/people';
 
 export function UserManager() {
   const { data: users, isLoading } = useAdminUsers();

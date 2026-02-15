@@ -1,6 +1,7 @@
-import { User, Mail, Briefcase, Bot, Phone } from 'lucide-react';
+import { Mail, Briefcase, Phone } from 'lucide-react';
 import { Card } from '@/components/common/Card';
-import { formatFunctie, isPersonOnline } from '@/types';
+import { PersonAvatar } from '@/components/people/PersonAvatar';
+import { formatFunctie } from '@/types';
 import type { Person } from '@/types';
 
 interface PersonCardProps {
@@ -11,15 +12,6 @@ interface PersonCardProps {
 }
 
 export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCardProps) {
-  const initials = person.naam
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
-  const online = isPersonOnline(person);
-
   return (
     <Card
       hoverable
@@ -28,21 +20,7 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
       onDragStart={onDragStart ? (e: React.DragEvent) => onDragStart(e, person) : undefined}
     >
       <div className="flex items-start gap-3">
-        {/* Avatar */}
-        <div className="relative shrink-0">
-          {person.is_agent ? (
-            <div className="flex items-center justify-center h-10 w-10 rounded-full bg-purple-100 text-purple-700">
-              <Bot className="h-5 w-5" />
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-10 w-10 rounded-full bg-primary-100 text-primary-700 font-semibold text-sm">
-              {initials || <User className="h-5 w-5" />}
-            </div>
-          )}
-          {online && (
-            <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-white" />
-          )}
-        </div>
+        <PersonAvatar person={person} />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
