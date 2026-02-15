@@ -2,7 +2,6 @@
 
 import uuid
 
-
 # ---------------------------------------------------------------------------
 # Helper to create a schema rule via API
 # ---------------------------------------------------------------------------
@@ -167,7 +166,7 @@ async def test_valid_types_no_match_returns_empty(client, sample_edge_type):
 
 
 async def test_valid_types_partial_filter(client, sample_edge_type):
-    """GET /api/edge-types/valid with only from_node_type returns all types for that source."""
+    """GET /api/edge-types/valid with only from_node_type returns all types."""
     await _create_rule(client, "dossier", "doel", sample_edge_type.id)
 
     resp = await client.get(

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.person import Person
@@ -26,7 +27,6 @@ from bouwmeester.schema.parlementair_item import (
     SuggestedEdgeResponse,
 )
 from bouwmeester.services.activity_service import log_activity
-from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.services.edge_schema_service import EdgeSchemaService
 
 logger = logging.getLogger(__name__)
