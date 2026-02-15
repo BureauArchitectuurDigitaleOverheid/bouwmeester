@@ -26,6 +26,7 @@ from bouwmeester.schema.parlementair_item import (
     SuggestedEdgeResponse,
 )
 from bouwmeester.services.activity_service import log_activity
+from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.services.edge_schema_service import EdgeSchemaService
 
 logger = logging.getLogger(__name__)
@@ -357,8 +358,6 @@ async def approve_edge(
         )
 
     # Validate against edge schema rules
-    from bouwmeester.models.corpus_node import CorpusNode
-
     from_node = await db.get(CorpusNode, item.corpus_node_id)
     to_node = await db.get(CorpusNode, suggested_edge.target_node_id)
     if from_node and to_node:

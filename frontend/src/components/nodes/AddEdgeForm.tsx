@@ -37,7 +37,7 @@ export function AddEdgeForm({ open, onClose, sourceNodeId, sourceNodeType }: Add
   // Fetch valid edge types based on schema rules
   const { data: validTypes } = useValidEdgeTypes(sourceNodeType, targetNodeType);
 
-  const allEdgeTypeKeys = Object.keys(EDGE_TYPE_VOCABULARY);
+  const allEdgeTypeKeys = useMemo(() => Object.keys(EDGE_TYPE_VOCABULARY), []);
 
   const filteredEdgeTypeKeys = useMemo(() => {
     if (!validTypes?.schema_active) return allEdgeTypeKeys;
