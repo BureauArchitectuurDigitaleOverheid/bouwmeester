@@ -72,9 +72,7 @@ def _load_emails_from_file(json_path: Path, age_path: Path) -> set[str] | None:
 # ---------------------------------------------------------------------------
 
 
-async def _get_person_ids_by_emails(
-    session: AsyncSession, emails: set[str]
-) -> set:
+async def _get_person_ids_by_emails(session: AsyncSession, emails: set[str]) -> set:
     """Return person IDs matching the given emails (person_email + legacy)."""
     from bouwmeester.models.person import Person
     from bouwmeester.models.person_email import PersonEmail
@@ -91,9 +89,7 @@ async def _get_person_ids_by_emails(
     return ids
 
 
-async def _get_existing_emails(
-    session: AsyncSession, emails: set[str]
-) -> set[str]:
+async def _get_existing_emails(session: AsyncSession, emails: set[str]) -> set[str]:
     """Return the subset of *emails* that already exist in the DB."""
     from bouwmeester.models.person import Person
     from bouwmeester.models.person_email import PersonEmail
