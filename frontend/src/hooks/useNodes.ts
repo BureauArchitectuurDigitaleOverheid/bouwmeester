@@ -37,7 +37,7 @@ export function useUpdateNode() {
   return useMutationWithError({
     mutationFn: ({ id, data, actorId }: { id: string; data: CorpusNodeUpdate; actorId?: string }) => updateNode(id, data, actorId),
     errorMessage: 'Fout bij bijwerken node',
-    invalidateKeys: [['nodes', 'detail'], queryKeys.nodes.lists()],
+    invalidateKeys: [queryKeys.nodes.all],
   });
 }
 
