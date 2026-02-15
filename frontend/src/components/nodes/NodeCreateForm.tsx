@@ -106,8 +106,8 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
           await queryClient.invalidateQueries({ queryKey: queryKeys.nodes.graph(linkToDossierId, 2) });
           await queryClient.invalidateQueries({ queryKey: queryKeys.nodes.neighbors(linkToDossierId) });
           await queryClient.invalidateQueries({ queryKey: queryKeys.edges.all });
-        } catch {
-          // Non-critical: edge creation may fail if already linked
+        } catch (edgeErr) {
+          console.warn('Edge creation failed (may already be linked):', edgeErr);
         }
       }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { CheckCircle2, AlertTriangle, ChevronDown, ChevronRight, Plus, Link as LinkIcon } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
@@ -10,6 +10,7 @@ import { LinkExistingNodeModal } from './LinkExistingNodeModal';
 import { NodeCreateForm } from '../NodeCreateForm';
 import { NODE_TYPE_LABELS, NODE_TYPE_COLORS, type NodeType } from '@/types';
 import { NODE_TYPE_LABELS_PLURAL } from './config';
+import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
 
 interface BeleidskompasStepRowProps {
   status: StepStatus;
@@ -111,15 +112,27 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
   );
 }
 
-interface BeleidskompsPanelProps {
+interface BeleidskompasPanelProps {
   nodeId: string;
 }
 
-export function BeleidskompasPanel({ nodeId }: BeleidskompsPanelProps) {
+export function BeleidskompasPanel({ nodeId }: BeleidskompasPanelProps) {
   const { data: graphData, isLoading } = useNodeGraph(nodeId, 2);
   const { steps, completedCount, totalSteps } = useCompletenessAnalysis(graphData, nodeId);
   const [linkModalType, setLinkModalType] = useState<NodeType | null>(null);
   const [createModalType, setCreateModalType] = useState<NodeType | null>(null);
+
+  // Collect IDs of nodes already linked to this dossier via onderdeel_van
+  const linkedNodeIds = useMemo(() => {
+    if (!graphData) return new Set<string>();
+    const ids = new Set<string>();
+    for (const edge of graphData.edges) {
+      if (edge.edge_type_id === EDGE_TYPE_ONDERDEEL_VAN && edge.to_node_id === nodeId) {
+        ids.add(edge.from_node_id);
+      }
+    }
+    return ids;
+  }, [graphData, nodeId]);
 
   if (isLoading) {
     return (
@@ -170,6 +183,7 @@ export function BeleidskompasPanel({ nodeId }: BeleidskompsPanelProps) {
           onClose={() => setLinkModalType(null)}
           dossierId={nodeId}
           nodeType={linkModalType}
+          excludeNodeIds={linkedNodeIds}
         />
       )}
 

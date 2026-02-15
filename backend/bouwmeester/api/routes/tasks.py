@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
@@ -219,7 +219,10 @@ async def reorder_subtasks(
     """Reorder subtasks of a parent task."""
     repo = TaskRepository(db)
     require_found(await repo.get(id), "Task")
-    subtasks = await repo.reorder_subtasks(id, data.task_ids)
+    try:
+        subtasks = await repo.reorder_subtasks(id, data.task_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return [TaskResponse.model_validate(t) for t in subtasks]
 
 

@@ -3,7 +3,7 @@
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import distinct, select
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.task import Task
@@ -189,26 +189,31 @@ class TaskRepository(BaseRepository[Task]):
     async def reorder_subtasks(
         self, parent_id: UUID, task_ids: list[UUID]
     ) -> list[Task]:
-        """Set order field on subtasks according to the given ID list."""
+        """Set order field on subtasks according to the given ID list.
+
+        Returns the reordered subtask list.
+        Raises ValueError if any task_id does not belong to the parent.
+        """
         # Batch-fetch all referenced tasks in one query
         stmt = select(Task).where(Task.id.in_(task_ids))
         result = await self.session.execute(stmt)
         tasks_by_id = {t.id: t for t in result.scalars().all()}
 
-        # Build order lookup from the requested sequence
-        order_by_id = {tid: idx for idx, tid in enumerate(task_ids)}
+        # Validate: every provided ID must be an actual subtask of this parent
+        for tid in task_ids:
+            task = tasks_by_id.get(tid)
+            if task is None or task.parent_id != parent_id:
+                raise ValueError(f"Task {tid} is not a subtask of {parent_id}")
 
-        for task_id, task in tasks_by_id.items():
-            if task.parent_id == parent_id and task_id in order_by_id:
-                task.order = order_by_id[task_id]
+        # Build order lookup from the requested sequence
+        for idx, tid in enumerate(task_ids):
+            tasks_by_id[tid].order = idx
 
         await self.session.flush()
         return await self.get_subtasks(parent_id)
 
     async def get_distinct_work_types(self) -> list[str]:
         """Return all distinct non-null work_type values, sorted alphabetically."""
-        from sqlalchemy import distinct
-
         stmt = (
             select(distinct(Task.work_type))
             .where(Task.work_type.isnot(None))

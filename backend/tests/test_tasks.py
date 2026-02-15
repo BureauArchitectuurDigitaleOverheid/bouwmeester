@@ -243,10 +243,10 @@ async def test_reorder_subtasks_nonexistent_parent(client):
     assert resp.status_code == 404
 
 
-async def test_reorder_subtasks_ignores_foreign_ids(
+async def test_reorder_subtasks_rejects_foreign_ids(
     client, sample_task, sample_node, db_session
 ):
-    """Reorder silently ignores task IDs that don't belong to the parent."""
+    """Reorder returns 400 when task IDs don't belong to the parent."""
     from bouwmeester.models.task import Task
 
     sub = Task(
@@ -272,12 +272,7 @@ async def test_reorder_subtasks_ignores_foreign_ids(
         f"/api/tasks/{sample_task.id}/subtasks/reorder",
         json={"task_ids": [str(unrelated.id), str(sub.id)]},
     )
-    assert resp.status_code == 200
-    data = resp.json()
-    # Only the legitimate subtask should have order set
-    assert len(data) == 1
-    assert data[0]["id"] == str(sub.id)
-    assert data[0]["order"] == 1
+    assert resp.status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -343,3 +338,10 @@ async def test_get_work_types(client, sample_node, sample_person, db_session):
     assert "Review" in data
     # Should be deduplicated
     assert data.count("Analyse") == 1
+
+
+async def test_get_work_types_empty(client):
+    """GET /api/tasks/work-types returns empty list when no tasks have work_type."""
+    resp = await client.get("/api/tasks/work-types")
+    assert resp.status_code == 200
+    assert resp.json() == []

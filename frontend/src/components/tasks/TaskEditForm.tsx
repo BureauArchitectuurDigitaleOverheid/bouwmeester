@@ -80,7 +80,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
         due_date: dueDate || undefined,
         assignee_id: assigneeId || undefined,
         organisatie_eenheid_id: organisatieEenheidId || undefined,
-        work_type: workType || null,
+        work_type: workType.trim() || null,
       },
     });
 

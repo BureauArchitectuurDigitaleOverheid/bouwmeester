@@ -15,9 +15,10 @@ interface LinkExistingNodeModalProps {
   onClose: () => void;
   dossierId: string;
   nodeType: NodeType;
+  excludeNodeIds?: Set<string>;
 }
 
-export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType }: LinkExistingNodeModalProps) {
+export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excludeNodeIds }: LinkExistingNodeModalProps) {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isLinking, setIsLinking] = useState(false);
@@ -30,9 +31,9 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType }: Li
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Server-side filtered query
+  // Server-side filtered query, excluding already-linked nodes
   const { data: nodes, isLoading } = useNodes(nodeType, debouncedSearch || undefined);
-  const filteredNodes = nodes ?? [];
+  const filteredNodes = (nodes ?? []).filter((n) => !excludeNodeIds?.has(n.id));
 
   const handleLink = async (targetNodeId: string) => {
     setIsLinking(true);

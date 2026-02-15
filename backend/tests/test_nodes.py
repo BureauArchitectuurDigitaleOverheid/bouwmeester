@@ -37,6 +37,71 @@ async def test_list_nodes_filtered_by_type(client, sample_node, second_node):
 
 
 # ---------------------------------------------------------------------------
+# Search nodes
+# ---------------------------------------------------------------------------
+
+
+async def test_list_nodes_search_by_title(client, sample_node, second_node):
+    """GET /api/nodes?search=dossier returns matching nodes (case-insensitive)."""
+    resp = await client.get("/api/nodes", params={"search": "dossier"})
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = {n["id"] for n in data}
+    assert str(sample_node.id) in ids  # "Test dossier"
+    assert str(second_node.id) not in ids  # "Test doel"
+
+
+async def test_list_nodes_search_case_insensitive(client, sample_node):
+    """Search is case-insensitive."""
+    resp = await client.get("/api/nodes", params={"search": "DOSSIER"})
+    assert resp.status_code == 200
+    ids = {n["id"] for n in resp.json()}
+    assert str(sample_node.id) in ids
+
+
+async def test_list_nodes_search_no_match(client, sample_node):
+    """Search with no match returns empty list."""
+    resp = await client.get("/api/nodes", params={"search": "xyznonexistent"})
+    assert resp.status_code == 200
+    assert len(resp.json()) == 0
+
+
+async def test_list_nodes_search_escapes_wildcards(client, db_session):
+    """LIKE wildcards in search are escaped properly."""
+    from bouwmeester.models.corpus_node import CorpusNode
+
+    node = CorpusNode(
+        id=__import__("uuid").uuid4(),
+        title="100% beleid",
+        node_type="dossier",
+        status="actief",
+    )
+    db_session.add(node)
+    await db_session.flush()
+
+    # Search for literal "%" — should find the node
+    resp = await client.get("/api/nodes", params={"search": "100%"})
+    assert resp.status_code == 200
+    ids = {n["id"] for n in resp.json()}
+    assert str(node.id) in ids
+
+    # Search for "_" — should NOT match "100% beleid"
+    resp2 = await client.get("/api/nodes", params={"search": "1_0"})
+    assert resp2.status_code == 200
+    ids2 = {n["id"] for n in resp2.json()}
+    assert str(node.id) not in ids2
+
+
+async def test_list_nodes_search_empty_returns_all(client, sample_node):
+    """Empty search parameter returns all nodes (same as no search)."""
+    resp_all = await client.get("/api/nodes")
+    resp_empty = await client.get("/api/nodes", params={"search": ""})
+    assert resp_all.status_code == 200
+    assert resp_empty.status_code == 200
+    assert len(resp_all.json()) == len(resp_empty.json())
+
+
+# ---------------------------------------------------------------------------
 # Create node
 # ---------------------------------------------------------------------------
 
