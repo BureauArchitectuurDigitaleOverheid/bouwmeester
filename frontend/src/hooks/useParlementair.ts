@@ -14,7 +14,7 @@ import {
   resetSuggestedEdge,
 } from '@/api/parlementair';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
-import type { ParlementairItemFilters, CompleteReviewData, ReprocessResult } from '@/api/parlementair';
+import type { ParlementairItemFilters, CompleteReviewData, ReprocessResult } from '@/types';
 
 export function useParlementairItems(filters?: ParlementairItemFilters) {
   return useQuery({

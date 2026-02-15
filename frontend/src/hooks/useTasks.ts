@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks, getTasksByPerson } from '@/api/tasks';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
-import type { TaskCreate, TaskUpdate } from '@/types';
-import type { TaskFilters } from '@/api/tasks';
+import type { TaskCreate, TaskUpdate, TaskFilters } from '@/types';
 
 export function useTasks(filters?: TaskFilters) {
   return useQuery({

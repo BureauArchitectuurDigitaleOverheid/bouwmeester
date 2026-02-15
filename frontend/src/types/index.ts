@@ -401,16 +401,8 @@ export const ORGANISATIE_TYPE_BADGE_COLORS: Record<string, BadgeVariant> = {
   team: 'green',
 };
 
-export const ORGANISATIE_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'ministerie', label: 'Ministerie' },
-  { value: 'directoraat_generaal', label: 'Directoraat-Generaal' },
-  { value: 'directie', label: 'Directie' },
-  { value: 'dienst', label: 'Dienst' },
-  { value: 'bureau', label: 'Bureau' },
-  { value: 'afdeling', label: 'Afdeling' },
-  { value: 'cluster', label: 'Cluster' },
-  { value: 'team', label: 'Team' },
-];
+export const ORGANISATIE_TYPE_OPTIONS: { value: string; label: string }[] =
+  Object.entries(ORGANISATIE_TYPE_LABELS).map(([value, label]) => ({ value, label }));
 
 export const FUNCTIE_LABELS: Record<string, string> = {
   minister: 'Minister',
@@ -602,6 +594,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   mention: 'vermelding',
   politieke_input_imported: 'parlementair item',
   access_request: 'toegangsverzoek',
+  emoji_reaction: 'reactie',
 };
 
 export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
@@ -619,6 +612,7 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   mention: 'bg-cyan-100 text-cyan-700',
   politieke_input_imported: 'bg-rose-100 text-rose-700',
   access_request: 'bg-amber-100 text-amber-700',
+  emoji_reaction: 'bg-pink-100 text-pink-700',
 };
 
 export const INBOX_TYPE_COLORS: Record<string, BadgeVariant> = {
@@ -894,4 +888,199 @@ export interface AccessRequest {
   reviewed_at?: string | null;
   reviewed_by_id?: string | null;
   deny_reason?: string | null;
+}
+
+// Node sub-detail types (parlementair item, bron, bijlage)
+export interface NodeParlementairItem {
+  type: string;
+  indieners: string[];
+  document_url: string | null;
+  zaak_nummer: string;
+  bron: string;
+  datum: string | null;
+  deadline: string | null;
+  ministerie: string | null;
+}
+
+export interface NodeBronDetail {
+  type: string;
+  auteur: string | null;
+  publicatie_datum: string | null;
+  url: string | null;
+}
+
+export interface BijlageInfo {
+  id: string;
+  bestandsnaam: string;
+  content_type: string;
+  bestandsgrootte: number;
+  created_at: string;
+}
+
+// LLM suggestion types
+export interface TagSuggestionRequest {
+  title: string;
+  description?: string | null;
+  node_type?: string;
+}
+
+export interface TagSuggestionResponse {
+  matched_tags: string[];
+  suggested_new_tags: string[];
+  available: boolean;
+}
+
+export interface EdgeSuggestionItem {
+  target_node_id: string;
+  target_node_title: string;
+  target_node_type: string;
+  confidence: number;
+  suggested_edge_type: string;
+  reason: string;
+}
+
+export interface EdgeSuggestionResponse {
+  suggestions: EdgeSuggestionItem[];
+  available: boolean;
+}
+
+export interface SummarizeResponse {
+  summary: string;
+  available: boolean;
+}
+
+// Mention types
+export interface MentionSearchResult {
+  id: string;
+  label: string;
+  type: string;
+  subtitle?: string;
+}
+
+export interface MentionReference {
+  source_type: string;
+  source_id: string;
+  source_title: string;
+}
+
+// Filter types
+export interface EdgeFilters {
+  from_node_id?: string;
+  to_node_id?: string;
+  edge_type_id?: string;
+  node_id?: string;
+}
+
+export interface TaskFilters {
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  assignee_id?: string;
+  node_id?: string;
+  organisatie_eenheid_id?: string;
+  include_children?: boolean;
+}
+
+export interface ActivityFeedParams {
+  [key: string]: string | number | boolean | undefined;
+  skip?: number;
+  limit?: number;
+  event_type?: string;
+  actor_id?: string;
+}
+
+export interface ParlementairItemFilters {
+  status?: string;
+  bron?: string;
+  type?: string;
+  search?: string;
+}
+
+// Parlementair review types
+export interface ReprocessResult {
+  total: number;
+  matched: number;
+  out_of_scope: number;
+  skipped: number;
+  error?: string;
+}
+
+export interface CompleteReviewData {
+  eigenaar_id: string;
+  tasks?: { title: string; description?: string; assignee_id?: string; deadline?: string }[];
+}
+
+// Notification types
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  sender_names: string[];
+  reacted_by_me: boolean;
+}
+
+export interface Notification {
+  id: string;
+  person_id: string;
+  sender_id?: string;
+  sender_name?: string;
+  type: string;
+  title: string;
+  message?: string;
+  is_read: boolean;
+  related_node_id?: string;
+  related_task_id?: string;
+  parent_id?: string;
+  thread_id?: string;
+  reply_count: number;
+  created_at: string;
+  last_activity_at?: string;
+  last_message?: string;
+  reactions: ReactionSummary[];
+}
+
+export interface UnreadCountResponse {
+  count: number;
+}
+
+export interface DashboardStats {
+  corpus_node_count: number;
+  open_task_count: number;
+  overdue_task_count: number;
+}
+
+// Import/Export types
+export interface ImportResult {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
+export interface DatabaseBackupInfo {
+  exported_at: string;
+  alembic_revision: string;
+  format_version: number;
+  encrypted: boolean;
+}
+
+export interface DatabaseRestoreResult {
+  success: boolean;
+  tables_restored: number;
+  alembic_revision_from: string;
+  alembic_revision_to: string;
+  migrations_applied: number;
+  message: string;
+}
+
+export interface DatabaseResetResult {
+  success: boolean;
+  tables_cleared: number;
+  admin_persons_created: number;
+  message: string;
+}
+
+// WebAuthn types
+export interface WebAuthnCredential {
+  id: string;
+  label: string;
+  created_at: string;
+  last_used_at: string | null;
 }

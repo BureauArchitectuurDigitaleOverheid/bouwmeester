@@ -1,41 +1,5 @@
 import { apiGet, apiPost, apiPut } from './client';
-
-export interface ReactionSummary {
-  emoji: string;
-  count: number;
-  sender_names: string[];
-  reacted_by_me: boolean;
-}
-
-export interface Notification {
-  id: string;
-  person_id: string;
-  sender_id?: string;
-  sender_name?: string;
-  type: string;
-  title: string;
-  message?: string;
-  is_read: boolean;
-  related_node_id?: string;
-  related_task_id?: string;
-  parent_id?: string;
-  thread_id?: string;
-  reply_count: number;
-  created_at: string;
-  last_activity_at?: string;
-  last_message?: string;
-  reactions: ReactionSummary[];
-}
-
-export interface UnreadCountResponse {
-  count: number;
-}
-
-export interface DashboardStats {
-  corpus_node_count: number;
-  open_task_count: number;
-  overdue_task_count: number;
-}
+import type { Notification, UnreadCountResponse, DashboardStats } from '@/types';
 
 export async function getNotifications(
   personId: string,

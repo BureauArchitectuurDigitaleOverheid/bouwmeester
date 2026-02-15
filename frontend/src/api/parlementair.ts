@@ -1,12 +1,5 @@
 import { apiGet, apiPost, apiPut, apiPatch } from './client';
-import type { ParlementairItem, SuggestedEdge } from '@/types';
-
-export interface ParlementairItemFilters {
-  status?: string;
-  bron?: string;
-  type?: string;
-  search?: string;
-}
+import type { ParlementairItem, SuggestedEdge, ParlementairItemFilters, ReprocessResult, CompleteReviewData } from '@/types';
 
 export async function getParlementairItems(filters?: ParlementairItemFilters): Promise<ParlementairItem[]> {
   return apiGet<ParlementairItem[]>('/api/parlementair/imports', filters as Record<string, string>);
@@ -20,14 +13,6 @@ export async function triggerParlementairImport(): Promise<{ message: string; im
   return apiPost('/api/parlementair/imports/trigger');
 }
 
-export interface ReprocessResult {
-  total: number;
-  matched: number;
-  out_of_scope: number;
-  skipped: number;
-  error?: string;
-}
-
 export async function reprocessParlementairItems(itemType = 'toezegging'): Promise<ReprocessResult> {
   return apiPost(`/api/parlementair/imports/reprocess?item_type=${encodeURIComponent(itemType)}`);
 }
@@ -38,11 +23,6 @@ export async function rejectParlementairItem(id: string): Promise<ParlementairIt
 
 export async function reopenParlementairItem(id: string): Promise<ParlementairItem> {
   return apiPut<ParlementairItem>(`/api/parlementair/imports/${id}/reopen`);
-}
-
-export interface CompleteReviewData {
-  eigenaar_id: string;
-  tasks?: { title: string; description?: string; assignee_id?: string; deadline?: string }[];
 }
 
 export async function completeParlementairReview(id: string, data: CompleteReviewData): Promise<ParlementairItem> {

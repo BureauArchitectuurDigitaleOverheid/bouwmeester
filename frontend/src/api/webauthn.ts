@@ -1,12 +1,6 @@
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
 import { apiGet, apiPost, apiDelete } from '@/api/client';
-
-export interface WebAuthnCredential {
-  id: string;
-  label: string;
-  created_at: string;
-  last_used_at: string | null;
-}
+import type { WebAuthnCredential } from '@/types';
 
 export async function listCredentials(): Promise<WebAuthnCredential[]> {
   return apiGet<WebAuthnCredential[]>('/api/webauthn/credentials');

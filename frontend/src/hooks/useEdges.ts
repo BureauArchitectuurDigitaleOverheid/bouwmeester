@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getEdges, createEdge, deleteEdge } from '@/api/edges';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
-import type { EdgeCreate } from '@/types';
-import type { EdgeFilters } from '@/api/edges';
+import type { EdgeCreate, EdgeFilters } from '@/types';
 
 export function useEdges(filters?: EdgeFilters) {
   return useQuery({

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Sparkles, Loader2, Check, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { suggestEdges, type EdgeSuggestionItem } from '@/api/llm';
+import { suggestEdges } from '@/api/llm';
 import { Badge } from '@/components/common/Badge';
-import { NODE_TYPE_COLORS } from '@/types';
+import { NODE_TYPE_COLORS, type EdgeSuggestionItem } from '@/types';
 import { apiPost } from '@/api/client';
 
 interface EdgeSuggestionsProps {

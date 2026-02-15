@@ -8,7 +8,7 @@ import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { timeAgo } from '@/utils/dates';
 import { EmojiPicker } from './EmojiPicker';
 import { ReactionBar } from './ReactionBar';
-import type { Notification, ReactionSummary } from '@/api/notifications';
+import type { Notification, ReactionSummary } from '@/types';
 
 interface MessageThreadProps {
   notificationId: string;

@@ -21,7 +21,7 @@ import {
   PARLEMENTAIR_TYPE_HEX_COLORS,
   ALL_PARLEMENTAIR_TYPES,
 } from '@/types';
-import type { ReprocessResult } from '@/api/parlementair';
+import type { ReprocessResult } from '@/types';
 
 const REPROCESS_TYPES = ['toezegging', 'motie', 'kamervraag'] as const;
 

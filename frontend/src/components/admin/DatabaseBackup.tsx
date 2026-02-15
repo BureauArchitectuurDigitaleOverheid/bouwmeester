@@ -7,10 +7,8 @@ import {
   getDatabaseInfo,
   importDatabase,
   resetDatabase,
-  type DatabaseBackupInfo,
-  type DatabaseResetResult,
-  type DatabaseRestoreResult,
 } from '@/api/import-export';
+import type { DatabaseBackupInfo, DatabaseResetResult, DatabaseRestoreResult } from '@/types';
 
 export function DatabaseBackup() {
   const { showError, showSuccess } = useToast();
