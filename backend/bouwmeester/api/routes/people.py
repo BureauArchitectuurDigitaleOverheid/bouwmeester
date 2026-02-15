@@ -244,6 +244,18 @@ async def update_person(
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:
     """Update person fields (naam, functie, etc.)."""
+    # Changing is_agent requires admin privileges (agents bypass email whitelist).
+    # In dev mode (no OIDC) current_user is None so all access is open.
+    if (
+        data.is_agent is not None
+        and current_user is not None
+        and not current_user.is_admin
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Alleen administrators kunnen de agent-status wijzigen",
+        )
+
     repo = PersonRepository(db)
     require_found(await repo.update(id, data), "Person")
 
