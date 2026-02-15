@@ -9,6 +9,7 @@ import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { NodeList } from '@/components/nodes/NodeList';
 import { NodeCreateForm } from '@/components/nodes/NodeCreateForm';
 import { ExportButton } from '@/components/nodes/ExportButton';
+import { EmptyState } from '@/components/common/EmptyState';
 import { CorpusGraph } from '@/components/graph/CorpusGraph';
 import { CorpusMatrix } from '@/components/graph/CorpusMatrix';
 import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
@@ -56,7 +57,7 @@ export function CorpusPage() {
   }, [searchQuery, setSearchParams]);
 
   // Edge type filter state (fetched in graph and matrix modes)
-  const { data: graphData, isLoading: isGraphLoading } = useGraphView(undefined, undefined, viewMode === 'graph' || viewMode === 'matrix');
+  const { data: graphData, isLoading: isGraphLoading, error: graphError } = useGraphView(undefined, undefined, viewMode === 'graph' || viewMode === 'matrix');
 
   const availableEdgeTypes = useMemo(() => {
     if (!graphData?.edges) return [];
@@ -256,13 +257,16 @@ export function CorpusPage() {
       </div>
 
       {/* View content */}
-      {viewMode === 'list' && (
+      {graphError && (viewMode === 'graph' || viewMode === 'matrix') ? (
+        <EmptyState
+          title="Fout bij laden"
+          description="Er is een fout opgetreden bij het laden van de data. Probeer het opnieuw."
+        />
+      ) : viewMode === 'list' ? (
         <NodeList enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} />
-      )}
-      {viewMode === 'graph' && (
+      ) : viewMode === 'graph' ? (
         <CorpusGraph enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} enabledEdgeTypes={enabledEdgeTypes} graphData={graphData} isLoading={isGraphLoading} />
-      )}
-      {viewMode === 'matrix' && (
+      ) : viewMode === 'matrix' ? (
         <CorpusMatrix
           rowNodeType={matrixRowType}
           colNodeType={matrixColType}
@@ -271,7 +275,7 @@ export function CorpusPage() {
           graphData={graphData}
           isLoading={isGraphLoading}
         />
-      )}
+      ) : null}
 
       {/* Create form modal */}
       <NodeCreateForm
