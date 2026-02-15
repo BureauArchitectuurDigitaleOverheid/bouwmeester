@@ -17,6 +17,28 @@ from bouwmeester.repositories.search import SearchRepository
 
 logger = logging.getLogger(__name__)
 
+# Characters that have special meaning in Mattermost markdown.
+_MM_ESCAPE_CHARS = str.maketrans(
+    {
+        "[": "\\[",
+        "]": "\\]",
+        "(": "\\(",
+        ")": "\\)",
+        "@": "\\@",
+        "~": "\\~",
+        "*": "\\*",
+        "_": "\\_",
+        "`": "\\`",
+        "#": "\\#",
+        "|": "\\|",
+    }
+)
+
+
+def _escape_md(text: str) -> str:
+    """Escape Mattermost markdown special characters in user input."""
+    return text.translate(_MM_ESCAPE_CHARS)
+
 
 class MattermostSlashService:
     def __init__(self, session: AsyncSession) -> None:
@@ -119,10 +141,10 @@ class MattermostSlashService:
         )
 
         if not results:
-            return _ephemeral(f"Geen resultaten gevonden voor '{args}'.")
+            return _ephemeral(f"Geen resultaten gevonden voor '{_escape_md(args)}'.")
 
         frontend_url = get_settings().FRONTEND_URL.rstrip("/")
-        lines = [f"**Zoekresultaten** voor '{args}':\n"]
+        lines = [f"**Zoekresultaten** voor '{_escape_md(args)}':\n"]
         for r in results:
             url = f"{frontend_url}{r['url']}"
             subtitle = f" ({r['subtitle']})" if r.get("subtitle") else ""
@@ -155,7 +177,7 @@ class MattermostSlashService:
         dossier = result.scalar_one_or_none()
 
         if not dossier:
-            return _ephemeral(f"Geen dossier gevonden met '{args}'.")
+            return _ephemeral(f"Geen dossier gevonden met '{_escape_md(args)}'.")
 
         # Count tasks for this dossier.
         from sqlalchemy import func

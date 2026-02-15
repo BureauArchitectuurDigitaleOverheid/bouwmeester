@@ -1,5 +1,6 @@
 """Service layer for Notification operations."""
 
+import asyncio
 import logging
 from collections import defaultdict
 from datetime import date
@@ -21,24 +22,48 @@ from bouwmeester.schema.notification import NotificationCreate
 logger = logging.getLogger(__name__)
 
 
+async def _mattermost_send_background(notification_id: UUID) -> None:
+    """Send a notification to Mattermost in a background task.
+
+    Uses its own DB session so the caller's request is not blocked.
+    """
+    try:
+        from bouwmeester.core.database import async_session
+        from bouwmeester.services.mattermost_service import MattermostService
+
+        async with async_session() as session:
+            mm = MattermostService(session)
+            if not await mm.is_enabled():
+                return
+            notification = await session.get(Notification, notification_id)
+            if notification:
+                await mm.send_notification(notification)
+            await mm.close()
+    except Exception:
+        logger.exception(
+            "Mattermost background send failed for notification %s",
+            notification_id,
+        )
+
+
 class NotificationService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = NotificationRepository(session)
 
-    async def _send_to_mattermost(self, notification: Notification) -> None:
-        """Forward notification to Mattermost (best-effort)."""
-        try:
-            from bouwmeester.services.mattermost_service import MattermostService
+    def _send_to_mattermost(self, notification: Notification) -> None:
+        """Schedule Mattermost forwarding as a fire-and-forget background task.
 
-            mm = MattermostService(self.session)
-            if await mm.is_enabled():
-                await mm.send_notification(notification)
-        except Exception:
-            logger.exception(
-                "Mattermost send failed for notification %s",
-                notification.id,
-            )
+        The notification must already be flushed (have an id) before calling this.
+        The background task uses its own DB session so it doesn't block the
+        current request or hold the caller's session open.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_mattermost_send_background(notification.id))
+        except RuntimeError:
+            # No running event loop (e.g. in sync tests) — skip silently.
+            pass
 
     async def notify_task_assigned(
         self, task: Task, assignee: Person, actor_id: UUID | None = None
@@ -55,7 +80,7 @@ class NotificationService:
             related_task_id=task.id,
         )
         notification = await self.repo.create(data)
-        await self._send_to_mattermost(notification)
+        self._send_to_mattermost(notification)
         return notification
 
     async def notify_task_overdue(self, task: Task) -> Notification | None:
@@ -70,7 +95,7 @@ class NotificationService:
             related_task_id=task.id,
         )
         notification = await self.repo.create(data)
-        await self._send_to_mattermost(notification)
+        self._send_to_mattermost(notification)
         return notification
 
     async def notify_node_updated(
@@ -94,7 +119,7 @@ class NotificationService:
                 related_node_id=node.id,
             )
             notification = await self.repo.create(data)
-            await self._send_to_mattermost(notification)
+            self._send_to_mattermost(notification)
             notifications.append(notification)
         return notifications
 
@@ -134,7 +159,7 @@ class NotificationService:
                     related_node_id=node.id,
                 )
                 notification = await self.repo.create(data)
-                await self._send_to_mattermost(notification)
+                self._send_to_mattermost(notification)
                 notifications.append(notification)
         return notifications
 
@@ -191,7 +216,7 @@ class NotificationService:
                     related_node_id=item_node.id,
                 )
                 notification = await self.repo.create(data)
-                await self._send_to_mattermost(notification)
+                self._send_to_mattermost(notification)
                 notifications.append(notification)
 
         return notifications
@@ -219,7 +244,7 @@ class NotificationService:
                 related_task_id=task.id,
             )
             notification = await self.repo.create(data)
-            await self._send_to_mattermost(notification)
+            self._send_to_mattermost(notification)
             notifications.append(notification)
 
         # Notify node stakeholders
@@ -240,7 +265,7 @@ class NotificationService:
                     related_task_id=task.id,
                 )
                 notification = await self.repo.create(data)
-                await self._send_to_mattermost(notification)
+                self._send_to_mattermost(notification)
                 notifications.append(notification)
 
         return notifications
@@ -261,7 +286,7 @@ class NotificationService:
             related_task_id=task.id,
         )
         notification = await self.repo.create(data)
-        await self._send_to_mattermost(notification)
+        self._send_to_mattermost(notification)
         notifications.append(notification)
 
         # Notify new assignee
@@ -274,7 +299,7 @@ class NotificationService:
             related_task_id=task.id,
         )
         notification = await self.repo.create(data)
-        await self._send_to_mattermost(notification)
+        self._send_to_mattermost(notification)
         notifications.append(notification)
 
         return notifications
@@ -313,7 +338,7 @@ class NotificationService:
                 related_node_id=from_node.id,
             )
             notification = await self.repo.create(data)
-            await self._send_to_mattermost(notification)
+            self._send_to_mattermost(notification)
             notifications.append(notification)
 
         return notifications
@@ -337,7 +362,7 @@ class NotificationService:
             related_node_id=node.id,
         )
         notification = await self.repo.create(data)
-        await self._send_to_mattermost(notification)
+        self._send_to_mattermost(notification)
         return notification
 
     async def notify_stakeholder_role_changed(
@@ -354,7 +379,7 @@ class NotificationService:
             related_node_id=node.id,
         )
         notification = await self.repo.create(data)
-        await self._send_to_mattermost(notification)
+        self._send_to_mattermost(notification)
         return notification
 
     async def notify_team_manager(
@@ -401,7 +426,7 @@ class NotificationService:
             related_task_id=task.id,
         )
         notification = await self.repo.create(data)
-        await self._send_to_mattermost(notification)
+        self._send_to_mattermost(notification)
         return notification
 
     async def notify_direct_message(
@@ -428,7 +453,7 @@ class NotificationService:
         recipient_root.thread_id = recipient_root.id
         await self.session.flush()
 
-        await self._send_to_mattermost(recipient_root)
+        self._send_to_mattermost(recipient_root)
 
         # Sender's root (read — they sent it)
         sender_data = NotificationCreate(
@@ -466,7 +491,7 @@ class NotificationService:
             related_task_id=related_task_id,
         )
         reply = await self.repo.create(data)
-        await self._send_to_mattermost(reply)
+        self._send_to_mattermost(reply)
         return reply
 
     async def notify_mention(
@@ -489,7 +514,7 @@ class NotificationService:
             related_task_id=source_task_id,
         )
         notification = await self.repo.create(data)
-        await self._send_to_mattermost(notification)
+        self._send_to_mattermost(notification)
         return notification
 
     async def notify_access_request(self, email: str, naam: str) -> list[Notification]:
@@ -507,7 +532,7 @@ class NotificationService:
                 message=f"{naam} ({email}) vraagt toegang aan tot Bouwmeester.",
             )
             notification = await self.repo.create(data)
-            await self._send_to_mattermost(notification)
+            self._send_to_mattermost(notification)
             notifications.append(notification)
         return notifications
 

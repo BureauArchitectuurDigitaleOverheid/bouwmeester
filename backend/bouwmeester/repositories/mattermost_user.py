@@ -57,6 +57,16 @@ class MattermostUserRepository:
 
     # ---- Link codes ----
 
+    async def get_active_code(self, person_id: UUID) -> MattermostLinkCode | None:
+        """Return the active (non-expired) link code for a person, if any."""
+        now = datetime.now(UTC)
+        stmt = select(MattermostLinkCode).where(
+            MattermostLinkCode.person_id == person_id,
+            MattermostLinkCode.expires_at > now,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def create_link_code(self, person_id: UUID) -> MattermostLinkCode:
         # Delete any existing codes for this person.
         await self.session.execute(

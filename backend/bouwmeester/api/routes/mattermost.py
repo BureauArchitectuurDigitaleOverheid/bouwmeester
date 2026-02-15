@@ -12,6 +12,7 @@ Webhook endpoints (token-verified, no user auth):
 """
 
 import logging
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
@@ -81,6 +82,14 @@ async def generate_link_code(
     if existing:
         raise HTTPException(
             status_code=409, detail="Account is al gekoppeld aan Mattermost"
+        )
+
+    # Rate limit: reject if a code was created less than 60 seconds ago.
+    active = await repo.get_active_code(person_id)
+    if active and active.created_at > datetime.now(UTC) - timedelta(seconds=60):
+        raise HTTPException(
+            status_code=429,
+            detail="Wacht even voordat je een nieuwe code genereert.",
         )
 
     link_code = await repo.create_link_code(person_id)
