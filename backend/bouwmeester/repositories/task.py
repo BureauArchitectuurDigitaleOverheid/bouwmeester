@@ -3,7 +3,7 @@
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.task import Task
@@ -181,10 +181,57 @@ class TaskRepository(BaseRepository[Task]):
             select(Task)
             .where(Task.parent_id == parent_id)
             .options(*_task_options())
-            .order_by(Task.created_at.asc())
+            .order_by(Task.order.asc().nulls_last(), Task.created_at.asc())
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def reorder_subtasks(
+        self, parent_id: UUID, task_ids: list[UUID]
+    ) -> list[Task]:
+        """Set order field on subtasks according to the given ID list.
+
+        Returns the reordered subtask list.
+        Raises ValueError if any task_id does not belong to the parent.
+        """
+        # Batch-fetch all referenced tasks in one query
+        stmt = select(Task).where(Task.id.in_(task_ids))
+        result = await self.session.execute(stmt)
+        tasks_by_id = {t.id: t for t in result.scalars().all()}
+
+        # Validate: every provided ID must be an actual subtask of this parent
+        for tid in task_ids:
+            task = tasks_by_id.get(tid)
+            if task is None or task.parent_id != parent_id:
+                raise ValueError(f"Task {tid} is not a subtask of {parent_id}")
+
+        # Validate completeness: all subtasks of the parent must be included
+        count_stmt = (
+            select(func.count()).select_from(Task).where(Task.parent_id == parent_id)
+        )
+        actual_count = (await self.session.execute(count_stmt)).scalar_one()
+        if len(task_ids) != actual_count:
+            raise ValueError(
+                f"Expected {actual_count} subtask(s) but received {len(task_ids)}"
+            )
+
+        # Build order lookup from the requested sequence
+        for idx, tid in enumerate(task_ids):
+            tasks_by_id[tid].order = idx
+
+        await self.session.flush()
+        return await self.get_subtasks(parent_id)
+
+    async def get_distinct_work_types(self) -> list[str]:
+        """Return all distinct non-null work_type values, sorted alphabetically."""
+        stmt = (
+            select(distinct(Task.work_type))
+            .where(Task.work_type.isnot(None))
+            .where(Task.work_type != "")
+            .order_by(Task.work_type)
+        )
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.all()]
 
     async def _get_descendant_ids(self, root_id: UUID) -> list[UUID]:
         """Get all descendant unit IDs (including root) using a recursive CTE."""

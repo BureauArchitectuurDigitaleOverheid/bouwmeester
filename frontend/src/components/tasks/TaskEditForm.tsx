@@ -6,7 +6,7 @@ import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
-import { useUpdateTask, useDeleteTask } from '@/hooks/useTasks';
+import { useUpdateTask, useDeleteTask, useWorkTypes } from '@/hooks/useTasks';
 import { useTaskFormOptions } from '@/hooks/useTaskFormOptions';
 import { useEnumOptions } from '@/hooks/useEnumOptions';
 import {
@@ -32,10 +32,13 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
   const [selectedNodeId, setSelectedNodeId] = useState(task.node_id ?? '');
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
   const [organisatieEenheidId, setOrganisatieEenheidId] = useState(task.organisatie_eenheid_id ?? '');
+  const [workType, setWorkType] = useState(task.work_type ?? '');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const priorityOptions = useEnumOptions(TaskPriority, TASK_PRIORITY_LABELS);
   const statusOptions = useEnumOptions(TaskStatus, TASK_STATUS_LABELS);
+  const { data: workTypes = [] } = useWorkTypes();
+  const workTypeOptions = workTypes.map((wt) => ({ value: wt, label: wt }));
 
   const updateTask = useUpdateTask();
   const deleteTaskMutation = useDeleteTask();
@@ -55,6 +58,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
     setSelectedNodeId(task.node_id ?? '');
     setAssigneeId(task.assignee_id ?? '');
     setOrganisatieEenheidId(task.organisatie_eenheid_id ?? '');
+    setWorkType(task.work_type ?? '');
     setShowDeleteConfirm(false);
   }, [task]);
 
@@ -76,6 +80,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
         due_date: dueDate || undefined,
         assignee_id: assigneeId || undefined,
         organisatie_eenheid_id: organisatieEenheidId || undefined,
+        work_type: workType.trim() || null,
       },
     });
 
@@ -197,6 +202,17 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
             placeholder="Selecteer een persoon..."
             onCreate={handleCreatePerson}
             createLabel="Nieuw aanmaken"
+          />
+
+          <CreatableSelect
+            label="Werktype"
+            value={workType}
+            onChange={setWorkType}
+            options={workTypeOptions}
+            placeholder="bijv. Analyse, Overleg, Review..."
+            onCreate={async (text) => { setWorkType(text); return text; }}
+            createLabel="Nieuw werktype"
+            onClear={() => setWorkType('')}
           />
 
           <Input

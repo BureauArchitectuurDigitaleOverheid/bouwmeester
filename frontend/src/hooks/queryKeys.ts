@@ -12,7 +12,7 @@ export const queryKeys = {
   nodes: {
     all: ['nodes'] as const,
     lists: () => ['nodes', 'list'] as const,
-    list: (nodeType?: string) => ['nodes', 'list', nodeType] as const,
+    list: (nodeType?: string, search?: string) => ['nodes', 'list', nodeType, search] as const,
     details: () => ['nodes', 'detail'] as const,
     detail: (id: string | undefined) => ['nodes', 'detail', id] as const,
     neighbors: (id: string | undefined) => ['nodes', 'detail', id, 'neighbors'] as const,
@@ -22,6 +22,7 @@ export const queryKeys = {
     parlementairItem: (id: string | undefined) => ['nodes', 'detail', id, 'parlementair-item'] as const,
     bronDetail: (id: string | undefined) => ['nodes', 'detail', id, 'bron-detail'] as const,
     bijlage: (id: string | undefined) => ['nodes', 'detail', id, 'bijlage'] as const,
+    graph: (id: string | undefined, depth?: number) => ['nodes', 'detail', id, 'graph', depth] as const,
   },
 
   // --- Tasks ---
@@ -34,6 +35,7 @@ export const queryKeys = {
     unassigned: (orgId?: string) => ['tasks', 'list', 'unassigned', orgId] as const,
     eenheidOverview: (orgId: string | null) => ['tasks', 'list', 'eenheid-overview', orgId] as const,
     byPerson: (personId: string | null) => ['tasks', 'list', 'by-person', personId] as const,
+    workTypes: () => ['tasks', 'work-types'] as const,
   },
 
   // --- People ---

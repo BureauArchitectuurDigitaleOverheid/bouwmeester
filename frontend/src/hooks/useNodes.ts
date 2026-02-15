@@ -4,16 +4,16 @@ import {
   getNodeNeighbors, getNodeStakeholders, addNodeStakeholder,
   updateNodeStakeholder, removeNodeStakeholder, getNodeParlementairItem,
   getNodeTitleHistory, getNodeStatusHistory,
-  getNodeBronDetail, getBijlageInfo,
+  getNodeBronDetail, getBijlageInfo, getNodeGraph,
 } from '@/api/nodes';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { CorpusNodeCreate, CorpusNodeUpdate, NodeType } from '@/types';
 
-export function useNodes(nodeType?: NodeType) {
+export function useNodes(nodeType?: NodeType, search?: string) {
   return useQuery({
-    queryKey: queryKeys.nodes.list(nodeType),
-    queryFn: () => getNodes(nodeType),
+    queryKey: queryKeys.nodes.list(nodeType, search),
+    queryFn: () => getNodes(nodeType, search),
   });
 }
 
@@ -141,5 +141,13 @@ export function useNodeBijlage(id: string | undefined, nodeType?: string) {
     queryKey: queryKeys.nodes.bijlage(id),
     queryFn: () => getBijlageInfo(id!),
     enabled: !!id && nodeType === 'bron',
+  });
+}
+
+export function useNodeGraph(id: string | undefined, depth: number = 2, enabled: boolean = true) {
+  return useQuery({
+    queryKey: queryKeys.nodes.graph(id, depth),
+    queryFn: () => getNodeGraph(id!, depth),
+    enabled: !!id && enabled,
   });
 }
