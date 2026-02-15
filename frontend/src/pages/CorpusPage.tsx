@@ -131,6 +131,8 @@ export function CorpusPage() {
       } else {
         prev.set('view', mode);
       }
+      // Reset edge filter when switching modes to avoid stale filters hiding everything
+      prev.delete('edges');
       return prev;
     }, { replace: true });
   }, [setSearchParams]);
@@ -258,7 +260,7 @@ export function CorpusPage() {
         <NodeList enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} />
       )}
       {viewMode === 'graph' && (
-        <CorpusGraph enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} enabledEdgeTypes={enabledEdgeTypes} />
+        <CorpusGraph enabledNodeTypes={enabledNodeTypes} searchQuery={searchQuery} enabledEdgeTypes={enabledEdgeTypes} graphData={graphData} isLoading={isGraphLoading} />
       )}
       {viewMode === 'matrix' && (
         <CorpusMatrix
