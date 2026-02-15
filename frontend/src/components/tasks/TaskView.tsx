@@ -1,6 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Plus, LayoutList, Columns3, User } from 'lucide-react';
 import { Button } from '@/components/common/Button';
+import { ViewToggle } from '@/components/common/ViewToggle';
+import type { ViewToggleOption } from '@/components/common/ViewToggle';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { TaskList } from './TaskList';
 import { TaskBoard } from './TaskBoard';
@@ -22,6 +24,12 @@ import type { Task } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 
 type ViewMode = 'list' | 'board' | 'personal';
+
+const VIEW_OPTIONS: ViewToggleOption<ViewMode>[] = [
+  { value: 'list', label: 'Lijst', icon: <LayoutList className="h-3.5 w-3.5" /> },
+  { value: 'board', label: 'Bord', icon: <Columns3 className="h-3.5 w-3.5" /> },
+  { value: 'personal', label: 'Persoonlijk', icon: <User className="h-3.5 w-3.5" /> },
+];
 
 const VIEW_STORAGE_KEY = 'tasks-view-mode';
 const MY_TASKS_SENTINEL = '__me__';
@@ -114,11 +122,23 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
   }, [tasks, statusFilter, priorityFilter, personFilter, eenheidFilter, currentPerson]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+        {/* View toggle + New task (above filters on mobile/tablet, right on xl) */}
+        <div className="flex items-center gap-2 shrink-0 order-first xl:order-last">
+          <ViewToggle value={viewMode} onChange={handleViewChange} options={VIEW_OPTIONS} />
+
+          <Button
+            icon={<Plus className="h-4 w-4" />}
+            onClick={() => setShowCreateForm(true)}
+          >
+            <span className="hidden sm:inline">Nieuwe taak</span>
+          </Button>
+        </div>
+
         {/* Filters */}
-        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
           <div className="w-full sm:w-44">
             <CreatableSelect
               value={statusFilter}
@@ -156,53 +176,6 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
               placeholder="Alle eenheden"
             />
           </div>
-        </div>
-
-        {/* View toggle + New task */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center rounded-xl border border-border bg-white p-0.5">
-            <button
-              onClick={() => handleViewChange('list')}
-              className={`p-1.5 rounded-lg transition-colors ${
-                viewMode === 'list'
-                  ? 'bg-primary-900 text-white'
-                  : 'text-text-secondary hover:text-text'
-              }`}
-              title="Lijstweergave"
-            >
-              <LayoutList className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => handleViewChange('board')}
-              className={`p-1.5 rounded-lg transition-colors ${
-                viewMode === 'board'
-                  ? 'bg-primary-900 text-white'
-                  : 'text-text-secondary hover:text-text'
-              }`}
-              title="Bordweergave"
-            >
-              <Columns3 className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => handleViewChange('personal')}
-              className={`p-1.5 rounded-lg transition-colors ${
-                viewMode === 'personal'
-                  ? 'bg-primary-900 text-white'
-                  : 'text-text-secondary hover:text-text'
-              }`}
-              title="Persoonlijke weergave"
-            >
-              <User className="h-4 w-4" />
-            </button>
-          </div>
-
-          <Button
-            size="sm"
-            icon={<Plus className="h-4 w-4" />}
-            onClick={() => setShowCreateForm(true)}
-          >
-            Nieuwe taak
-          </Button>
         </div>
       </div>
 

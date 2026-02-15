@@ -58,18 +58,20 @@ export function PeoplePage() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <p className="text-sm text-text-secondary">
             Overzicht van alle betrokken personen.
           </p>
         </div>
-        <Button
-          icon={<Plus className="h-4 w-4" />}
-          onClick={handleAddPerson}
-        >
-          Persoon toevoegen
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            icon={<Plus className="h-4 w-4" />}
+            onClick={handleAddPerson}
+          >
+            <span className="hidden sm:inline">Persoon toevoegen</span>
+          </Button>
+        </div>
       </div>
 
       {/* People list */}
