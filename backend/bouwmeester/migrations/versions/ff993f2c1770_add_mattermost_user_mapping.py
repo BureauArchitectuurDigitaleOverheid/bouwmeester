@@ -1,7 +1,7 @@
 """add mattermost user mapping
 
 Revision ID: ff993f2c1770
-Revises: 1cbc1f263552
+Revises: 77ef3f614d36
 Create Date: 2026-02-15 14:45:47.558733
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "ff993f2c1770"
-down_revision: str | None = "1cbc1f263552"
+down_revision: str | None = "77ef3f614d36"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
