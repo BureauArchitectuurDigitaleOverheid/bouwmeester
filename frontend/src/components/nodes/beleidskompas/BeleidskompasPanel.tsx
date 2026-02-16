@@ -170,7 +170,8 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
     );
   }
 
-  // Incomplete step
+  // Incomplete step (may still have some nodes linked)
+  const hasNodes = status.count > 0;
   return (
     <div className="border-b border-border last:border-b-0">
       <div className="px-3 py-2.5 sm:px-4 sm:py-3">
@@ -193,22 +194,37 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
             <p className="text-xs text-text-secondary mt-0.5">{status.step.description}</p>
           </div>
         </div>
-        {/* Action buttons — stacked on mobile, inline on desktop */}
-        <div className="mt-2 ml-9 sm:ml-10">
+        <div className="mt-2 ml-9 sm:ml-10 space-y-1.5">
+          {/* Show already-linked nodes when the step is partially complete */}
+          {hasNodes && status.nodes.map((node) => (
+            <button
+              key={node.id}
+              onClick={() => openNodeDetail(node.id)}
+              className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
+            >
+              <Badge variant={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
+                {NODE_TYPE_LABELS[node.node_type as NodeType]}
+              </Badge>
+              <span className="text-sm text-text truncate">{node.title}</span>
+            </button>
+          ))}
+          {/* Action buttons — only show for node types that are still missing */}
           {isMultiType ? (
             <div className="space-y-1.5">
-              {status.step.nodeTypes.map((nt) => (
-                <div key={nt} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                  <span className="text-xs text-text-secondary font-medium min-w-[100px]">
-                    {NODE_TYPE_LABELS[nt]}:
-                  </span>
-                  <StepActionButtons
-                    nodeType={nt}
-                    onCreateNew={onCreateNew}
-                    onLinkExisting={onLinkExisting}
-                  />
-                </div>
-              ))}
+              {status.step.nodeTypes
+                .filter((nt) => (status.countsByType.get(nt) ?? 0) === 0)
+                .map((nt) => (
+                  <div key={nt} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                    <span className="text-xs text-text-secondary font-medium min-w-[100px]">
+                      {NODE_TYPE_LABELS[nt]}:
+                    </span>
+                    <StepActionButtons
+                      nodeType={nt}
+                      onCreateNew={onCreateNew}
+                      onLinkExisting={onLinkExisting}
+                    />
+                  </div>
+                ))}
             </div>
           ) : (
             <StepActionButtons
