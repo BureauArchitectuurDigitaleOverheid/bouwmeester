@@ -195,7 +195,7 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
           </div>
         </div>
         <div className="mt-2 ml-9 sm:ml-10 space-y-1.5">
-          {/* Show already-linked nodes when the step is partially complete */}
+          {/* Show already-linked nodes */}
           {hasNodes && status.nodes.map((node) => (
             <button
               key={node.id}
@@ -208,12 +208,10 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
               <span className="text-sm text-text truncate">{node.title}</span>
             </button>
           ))}
-          {/* Action buttons — only show for node types that are still missing */}
+          {/* Action buttons — always show so users can add multiple nodes per type */}
           {isMultiType ? (
             <div className="space-y-1.5">
-              {status.step.nodeTypes
-                .filter((nt) => (status.countsByType.get(nt) ?? 0) === 0)
-                .map((nt) => (
+              {status.step.nodeTypes.map((nt) => (
                   <div key={nt} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                     <span className="text-xs text-text-secondary font-medium min-w-[100px]">
                       {NODE_TYPE_LABELS[nt]}:
