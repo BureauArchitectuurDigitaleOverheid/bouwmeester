@@ -6,7 +6,6 @@ export interface BeleidskompasStep {
   id: string;
   number: number;
   question: string;
-  label: string;
   description: string;
   nodeTypes: NodeType[];
   kcbrUrl: string;
@@ -21,7 +20,6 @@ export const BELEIDSKOMPAS_STEPS: BeleidskompasStep[] = [
     id: 'probleem',
     number: 1,
     question: 'Wat is het probleem?',
-    label: 'Probleem',
     description: 'Definieer het maatschappelijk probleem dat aanleiding geeft tot beleid.',
     nodeTypes: [NodeType.PROBLEEM],
     kcbrUrl: `${KCBR_BASE_URL}/1-wat-het-probleem`,
@@ -30,7 +28,6 @@ export const BELEIDSKOMPAS_STEPS: BeleidskompasStep[] = [
     id: 'doel',
     number: 2,
     question: 'Wat is het beoogde doel?',
-    label: 'Doel',
     description: 'Formuleer de beleidsdoelen die je wilt bereiken.',
     nodeTypes: [NodeType.DOEL],
     kcbrUrl: `${KCBR_BASE_URL}/2-wat-het-beoogde-doel`,
@@ -39,7 +36,6 @@ export const BELEIDSKOMPAS_STEPS: BeleidskompasStep[] = [
     id: 'beleidsoptie',
     number: 3,
     question: 'Wat zijn opties om het doel te realiseren?',
-    label: 'Beleidsopties',
     description: 'Verken welke beleidsopties er zijn om het probleem aan te pakken.',
     nodeTypes: [NodeType.BELEIDSOPTIE],
     kcbrUrl: `${KCBR_BASE_URL}/3-wat-zijn-opties-om-het-doel-te-realiseren`,
@@ -48,7 +44,6 @@ export const BELEIDSKOMPAS_STEPS: BeleidskompasStep[] = [
     id: 'effect',
     number: 4,
     question: 'Wat zijn de gevolgen van deze opties?',
-    label: 'Gevolgen',
     description: 'Beschrijf de verwachte (en onverwachte) effecten van het beleid.',
     nodeTypes: [NodeType.EFFECT],
     kcbrUrl: `${KCBR_BASE_URL}/4-wat-zijn-de-gevolgen-van-deze-opties`,
@@ -57,7 +52,6 @@ export const BELEIDSKOMPAS_STEPS: BeleidskompasStep[] = [
     id: 'voorkeursoptie',
     number: 5,
     question: 'Wat is de voorkeursoptie?',
-    label: 'Voorkeursoptie',
     description: 'Werk de gekozen optie uit in beleidskader, instrumenten en maatregelen.',
     nodeTypes: [NodeType.BELEIDSKADER, NodeType.INSTRUMENT, NodeType.MAATREGEL],
     kcbrUrl: `${KCBR_BASE_URL}/5-wat-de-voorkeursoptie`,

@@ -18,17 +18,16 @@ import { useCompletenessAnalysis, type StepStatus } from './useCompletenessAnaly
 import { KCBR_MAIN_URL, KCBR_STAKEHOLDERS_URL } from './config';
 import { LinkExistingNodeModal } from './LinkExistingNodeModal';
 import { NodeCreateForm } from '../NodeCreateForm';
-import { NODE_TYPE_LABELS, NODE_TYPE_COLORS, type NodeType } from '@/types';
+import { NODE_TYPE_LABELS, NODE_TYPE_LABELS_PLURAL, NODE_TYPE_COLORS, type NodeType } from '@/types';
 import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
 
 interface StepActionButtonsProps {
   nodeType: NodeType;
   onCreateNew: (nodeType: NodeType) => void;
   onLinkExisting: (nodeType: NodeType) => void;
-  compact?: boolean;
 }
 
-function StepActionButtons({ nodeType, onCreateNew, onLinkExisting, compact }: StepActionButtonsProps) {
+function StepActionButtons({ nodeType, onCreateNew, onLinkExisting }: StepActionButtonsProps) {
   return (
     <div className="flex items-center gap-1">
       <Button
@@ -37,7 +36,7 @@ function StepActionButtons({ nodeType, onCreateNew, onLinkExisting, compact }: S
         icon={<Plus className="h-3.5 w-3.5" />}
         onClick={() => onCreateNew(nodeType)}
       >
-        {compact ? null : 'Nieuw'}
+        Nieuw
       </Button>
       <Button
         variant="ghost"
@@ -45,7 +44,7 @@ function StepActionButtons({ nodeType, onCreateNew, onLinkExisting, compact }: S
         icon={<LinkIcon className="h-3.5 w-3.5" />}
         onClick={() => onLinkExisting(nodeType)}
       >
-        {compact ? null : 'Koppelen'}
+        Koppelen
       </Button>
     </div>
   );
@@ -71,6 +70,25 @@ function StepNumberBadge({ number, complete }: { number: number; complete: boole
   );
 }
 
+function stepCountLabel(status: StepStatus): string {
+  if (status.step.nodeTypes.length === 1) {
+    const nt = status.step.nodeTypes[0];
+    if (status.count === 1) return `1 ${NODE_TYPE_LABELS[nt].toLowerCase()}`;
+    return `${status.count} ${NODE_TYPE_LABELS_PLURAL[nt] ?? NODE_TYPE_LABELS[nt].toLowerCase()}`;
+  }
+  // Multi-type step: group counts per type
+  const parts: string[] = [];
+  for (const nt of status.step.nodeTypes) {
+    const count = status.nodes.filter((n) => n.node_type === nt).length;
+    if (count === 0) continue;
+    const label = count === 1
+      ? NODE_TYPE_LABELS[nt].toLowerCase()
+      : (NODE_TYPE_LABELS_PLURAL[nt] ?? NODE_TYPE_LABELS[nt].toLowerCase());
+    parts.push(`${count} ${label}`);
+  }
+  return parts.join(', ');
+}
+
 function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: BeleidskompasStepRowProps) {
   const [expanded, setExpanded] = useState(false);
   const { openNodeDetail } = useNodeDetail();
@@ -79,9 +97,12 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
   if (status.isComplete) {
     return (
       <div className="border-b border-border last:border-b-0">
-        <button
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-3 w-full px-3 py-2.5 sm:px-4 sm:py-3 text-left hover:bg-gray-50/50 transition-colors"
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(!expanded); } }}
+          className="flex items-center gap-3 w-full px-3 py-2.5 sm:px-4 sm:py-3 text-left hover:bg-gray-50/50 transition-colors cursor-pointer"
         >
           <StepNumberBadge number={status.step.number} complete />
           <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
@@ -89,7 +110,7 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
             <span className="text-sm font-medium text-text">{status.step.question}</span>
           </div>
           <span className="text-xs text-text-secondary mr-1 hidden sm:inline">
-            {status.count} {status.count === 1 ? 'item' : 'items'}
+            {stepCountLabel(status)}
           </span>
           <a
             href={status.step.kcbrUrl}
@@ -106,7 +127,7 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
           ) : (
             <ChevronRight className="h-4 w-4 text-text-secondary shrink-0" />
           )}
-        </button>
+        </div>
         {expanded && (
           <div className="px-3 sm:px-4 pb-3 space-y-1.5 ml-9 sm:ml-10">
             {status.nodes.map((node) => (
