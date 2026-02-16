@@ -32,6 +32,7 @@ class TaskBase(BaseModel):
     status: TaskStatus = TaskStatus.open
     priority: TaskPriority = TaskPriority.normaal
     deadline: date | None = Field(None, alias="due_date")
+    work_type: str | None = Field(None, max_length=100)
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -53,6 +54,10 @@ class TaskCreate(TaskBase):
     )
 
 
+class ReorderRequest(BaseModel):
+    task_ids: list[UUID]
+
+
 class TaskUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=500)
     description: str | None = Field(None, max_length=10000)
@@ -64,6 +69,7 @@ class TaskUpdate(BaseModel):
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     deadline: date | None = Field(None, alias="due_date")
+    work_type: str | None = Field(None, max_length=100)
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -99,6 +105,8 @@ class TaskSubtaskSummary(BaseModel):
     priority: TaskPriority
     assignee: TaskAssigneeSummary | None = None
     due_date: date | None = Field(None, validation_alias="deadline")
+    order: int | None = None
+    work_type: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -119,6 +127,8 @@ class TaskResponse(BaseModel):
     status: TaskStatus
     priority: TaskPriority
     due_date: date | None = Field(None, validation_alias="deadline")
+    order: int | None = None
+    work_type: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
 

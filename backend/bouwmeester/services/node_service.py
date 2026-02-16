@@ -32,12 +32,14 @@ class NodeService:
         limit: int = 100,
         node_type: str | None = None,
         *,
+        search: str | None = None,
         include_unconnected_pi: bool = False,
     ) -> list[CorpusNode]:
         return await self.repo.get_all(
             skip=skip,
             limit=limit,
             node_type=node_type,
+            search=search,
             include_unconnected_pi=include_unconnected_pi,
         )
 

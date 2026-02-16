@@ -14,6 +14,7 @@ import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
 import { EdgeSuggestions } from './EdgeSuggestions';
 import { ContentSummary } from './ContentSummary';
+import { BeleidskompasPanel } from './beleidskompas/BeleidskompasPanel';
 import { TaskView } from '@/components/tasks/TaskView';
 import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeParlementairItem, useAddNodeStakeholder, useUpdateNodeStakeholder, useRemoveNodeStakeholder, useNodeTitleHistory, useNodeStatusHistory, useNodeBronDetail, useNodeBijlage } from '@/hooks/useNodes';
 import { useTasks } from '@/hooks/useTasks';
@@ -273,6 +274,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
       <div>
         {activeTab === 'overview' && (
           <div className="space-y-6">
+            {/* Beleidskompas panel for dossier nodes */}
+            {node.node_type === 'dossier' && <BeleidskompasPanel nodeId={nodeId} />}
+
             {/* Description */}
             <Card>
               <h3 className="text-sm font-medium text-text mb-2">Beschrijving</h3>
