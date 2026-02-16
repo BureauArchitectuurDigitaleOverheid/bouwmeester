@@ -1,9 +1,9 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowRight, Link as LinkIcon } from 'lucide-react';
+import { ArrowRight, Compass, Link as LinkIcon } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import type { CorpusNode, NodeStatus } from '@/types';
-import { NODE_TYPE_COLORS, NODE_STATUS_LABELS } from '@/types';
+import { NODE_TYPE_COLORS, NODE_STATUS_LABELS, NodeType } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { richTextToPlain } from '@/utils/richtext';
 import { formatDateShort } from '@/utils/dates';
@@ -54,6 +54,19 @@ export function NodeCard({ node }: NodeCardProps) {
           <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
             <LinkIcon className="h-3 w-3" />
             {node.edge_count} verbindingen
+          </span>
+        )}
+        {node.node_type === NodeType.DOSSIER && node.beleidskompas_progress && (
+          <span
+            className={`inline-flex items-center gap-1 text-xs font-medium ${
+              node.beleidskompas_progress.completed_steps === node.beleidskompas_progress.total_steps
+                ? 'text-emerald-600'
+                : 'text-text-secondary'
+            }`}
+            title={`Beleidskompas: ${node.beleidskompas_progress.completed_steps} van ${node.beleidskompas_progress.total_steps} stappen compleet`}
+          >
+            <Compass className="h-3 w-3" />
+            {node.beleidskompas_progress.completed_steps}/{node.beleidskompas_progress.total_steps}
           </span>
         )}
         <span className="text-xs text-text-secondary ml-auto">

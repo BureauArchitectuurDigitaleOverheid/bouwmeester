@@ -115,6 +115,12 @@ export const NODE_STATUS_LABELS: Record<NodeStatus, string> = {
   [NodeStatus.AFGEWEZEN]: 'Afgewezen',
 };
 
+// Beleidskompas progress (returned for dossier nodes)
+export interface BeleidskompasProgress {
+  completed_steps: number;
+  total_steps: number;
+}
+
 // Corpus Node
 export interface CorpusNode {
   id: string;
@@ -128,6 +134,7 @@ export interface CorpusNode {
   created_at: string;
   updated_at: string;
   edge_count?: number;
+  beleidskompas_progress?: BeleidskompasProgress | null;
 }
 
 export interface CorpusNodeCreate {

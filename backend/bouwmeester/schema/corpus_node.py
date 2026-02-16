@@ -80,6 +80,11 @@ class CorpusNodeUpdate(BaseModel):
     wijzig_datum: date | None = None  # effective date of the change
 
 
+class BeleidskompasProgress(BaseModel):
+    completed_steps: int
+    total_steps: int
+
+
 class CorpusNodeResponse(CorpusNodeBase):
     # Override fields without length constraints — response schemas must be
     # able to return data that already exists in the database (e.g. long
@@ -94,6 +99,7 @@ class CorpusNodeResponse(CorpusNodeBase):
     created_at: datetime
     updated_at: datetime | None = None
     edge_count: int | None = None
+    beleidskompas_progress: BeleidskompasProgress | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
