@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from bouwmeester.schema.externe_organisatie import ExterneOrganisatieResponse
 
@@ -52,18 +52,18 @@ class OpdrachtNodeResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @model_validator(mode="wrap")
     @classmethod
-    def from_model(cls, obj: object) -> "OpdrachtNodeResponse":
-        """Create response from OpdrachtNode ORM model, populating node fields."""
-        node = getattr(obj, "node", None)
-        return cls(
-            id=obj.id,  # type: ignore[attr-defined]
-            opdracht_id=obj.opdracht_id,  # type: ignore[attr-defined]
-            node_id=obj.node_id,  # type: ignore[attr-defined]
-            relatie_type=obj.relatie_type,  # type: ignore[attr-defined]
-            node_title=getattr(node, "title", None) if node else None,
-            node_type=getattr(node, "node_type", None) if node else None,
-        )
+    def _populate_node_fields(cls, data, handler):  # type: ignore[no-untyped-def]
+        """Populate node_title/node_type from the nested ORM relationship."""
+        if hasattr(data, "node"):
+            node = data.node
+            obj = handler(data)
+            if node is not None:
+                obj.node_title = getattr(node, "title", None)
+                obj.node_type = getattr(node, "node_type", None)
+            return obj
+        return handler(data)
 
 
 # --- Opdracht schemas ---

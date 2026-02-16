@@ -114,7 +114,7 @@ async def add_node_koppeling(
     repo = OpdrachtRepository(db)
     require_found(await repo.get(opdracht_id), "Opdracht")
     link = await repo.add_node_koppeling(opdracht_id, data)
-    return OpdrachtNodeResponse.from_model(link)
+    return OpdrachtNodeResponse.model_validate(link)
 
 
 @router.delete(
