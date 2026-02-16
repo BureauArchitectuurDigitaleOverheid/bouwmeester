@@ -134,7 +134,8 @@ class OpdrachtNode(Base):
     __tablename__ = "opdracht_node"
     __table_args__ = (
         UniqueConstraint(
-            "opdracht_id", "node_id",
+            "opdracht_id",
+            "node_id",
             name="uq_opdracht_node_opdracht_node",
         ),
     )

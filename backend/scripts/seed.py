@@ -4374,34 +4374,44 @@ async def seed(db: AsyncSession) -> None:
     ext_orgs: dict[str, ExterneOrganisatie] = {}
     ext_org_data = [
         (
-            "logius", "Logius", "Logius",
+            "logius",
+            "Logius",
+            "Logius",
             "uitvoeringsorganisatie",
             "Beheert en ontwikkelt de generieke digitale"
             " overheidsinfrastructuur"
             " (DigiD, MijnOverheid, PKIoverheid).",
         ),
         (
-            "ictu", "ICTU", "ICTU",
+            "ictu",
+            "ICTU",
+            "ICTU",
             "uitvoeringsorganisatie",
             "Advies- en projectorganisatie voor de"
             " overheid op het gebied van ICT"
             " en innovatie.",
         ),
         (
-            "vng", "Vereniging van Nederlandse Gemeenten",
-            "VNG", "koepelorganisatie",
+            "vng",
+            "Vereniging van Nederlandse Gemeenten",
+            "VNG",
+            "koepelorganisatie",
             "Behartigt de belangen van alle 342"
             " Nederlandse gemeenten. Ondersteunt"
             " gemeenten bij digitale transformatie.",
         ),
         (
-            "geonovum", "Geonovum", "Geonovum",
+            "geonovum",
+            "Geonovum",
+            "Geonovum",
             "stichting",
-            "Ontwikkelt en beheert geo-standaarden"
-            " voor de overheid.",
+            "Ontwikkelt en beheert geo-standaarden voor de overheid.",
         ),
         (
-            "rinis", "RINIS", "RINIS", "stichting",
+            "rinis",
+            "RINIS",
+            "RINIS",
+            "stichting",
             "Routeringsinstituut voor (inter)nationale"
             " informatiestromen in de sociale"
             " zekerheid.",
@@ -4409,32 +4419,38 @@ async def seed(db: AsyncSession) -> None:
         (
             "rvig",
             "Rijksdienst voor Identiteitsgegevens",
-            "RvIG", "uitvoeringsorganisatie",
+            "RvIG",
+            "uitvoeringsorganisatie",
             "Beheerder van de Basisregistratie Personen"
             " (BRP) en identiteitsinfrastructuur.",
         ),
         (
-            "kvk", "Kamer van Koophandel", "KvK", "zbo",
-            "Beheerder van het Handelsregister en"
-            " ondersteuner van ondernemers.",
+            "kvk",
+            "Kamer van Koophandel",
+            "KvK",
+            "zbo",
+            "Beheerder van het Handelsregister en ondersteuner van ondernemers.",
         ),
         (
-            "rdw", "Rijksdienst voor het Wegverkeer",
-            "RDW", "zbo",
-            "Beheerder van het kentekenregister en"
-            " toelating van voertuigen.",
+            "rdw",
+            "Rijksdienst voor het Wegverkeer",
+            "RDW",
+            "zbo",
+            "Beheerder van het kentekenregister en toelating van voertuigen.",
         ),
         (
-            "cibg", "CIBG", "CIBG",
+            "cibg",
+            "CIBG",
+            "CIBG",
             "uitvoeringsorganisatie",
-            "Uitvoeringsorganisatie voor registers"
-            " in de zorg, onderwijs en justitie.",
+            "Uitvoeringsorganisatie voor registers in de zorg, onderwijs en justitie.",
         ),
         (
-            "atos", "Atos Nederland", "Atos",
+            "atos",
+            "Atos Nederland",
+            "Atos",
             "marktpartij",
-            "IT-dienstverlener, voert opdrachten uit"
-            " voor diverse overheidssystemen.",
+            "IT-dienstverlener, voert opdrachten uit voor diverse overheidssystemen.",
         ),
     ]
     for key, naam, afkorting, type_, beschrijving in ext_org_data:
@@ -4619,8 +4635,18 @@ async def seed(db: AsyncSession) -> None:
     # Look up organisatie-eenheid for opdrachtgever (dir_ddo)
     opdrachtgever = dir_ddo
 
-    for (titel, type_, jaar, budget, gerealiseerd, instrument,
-         opdrachtnemer_key, status, kostensoort, beschrijving) in opdrachten_data:
+    for (
+        titel,
+        type_,
+        jaar,
+        budget,
+        gerealiseerd,
+        instrument,
+        opdrachtnemer_key,
+        status,
+        kostensoort,
+        beschrijving,
+    ) in opdrachten_data:
         o = Opdracht(
             type=type_,
             titel=titel,
@@ -4637,9 +4663,7 @@ async def seed(db: AsyncSession) -> None:
             startdatum=date(jaar, 1, 1),
             einddatum=date(jaar, 12, 31),
             volgend_jaar_benodigd=(
-                int(budget * 1.05)
-                if budget and jaar < 2026
-                else None
+                int(budget * 1.05) if budget and jaar < 2026 else None
             ),
         )
         db.add(o)
