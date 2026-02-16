@@ -131,6 +131,6 @@ export const queryKeys = {
   // --- Mattermost ---
   mattermost: {
     all: ['mattermost'] as const,
-    linkStatus: ['mattermost', 'link-status'] as const,
+    linkStatus: (personId?: string) => ['mattermost', 'link-status', personId] as const,
   },
 } as const;

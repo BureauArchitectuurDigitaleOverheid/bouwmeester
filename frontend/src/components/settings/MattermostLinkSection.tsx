@@ -26,7 +26,7 @@ export function MattermostLinkSection() {
   const hasPersonId = !!personId;
   const { data: linkStatus, isLoading, isError } = useMattermostLinkStatus(isCodeActive, hasPersonId, personId);
   const generateCode = useGenerateLinkCode();
-  const unlinkMutation = useUnlinkMattermost();
+  const unlinkMutation = useUnlinkMattermost(personId);
 
   // When linked while polling, clear the code so the UI switches to the linked state.
   useEffect(() => {
@@ -49,7 +49,9 @@ export function MattermostLinkSection() {
   };
 
   const handleUnlink = () => {
-    unlinkMutation.mutate(personId);
+    unlinkMutation.mutate(personId, {
+      onSuccess: () => setLinkCode(null),
+    });
   };
 
   return (
@@ -125,7 +127,7 @@ export function MattermostLinkSection() {
               <button
                 onClick={() => {
                   setLinkCode(null);
-                  queryClient.invalidateQueries({ queryKey: queryKeys.mattermost.linkStatus });
+                  queryClient.invalidateQueries({ queryKey: queryKeys.mattermost.linkStatus(personId) });
                 }}
                 className="text-sm text-text-secondary hover:text-text transition-colors"
               >

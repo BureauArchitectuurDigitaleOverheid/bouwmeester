@@ -76,6 +76,8 @@ services:
       MATTERMOST_ENABLED: ${MATTERMOST_ENABLED:-false}
       MATTERMOST_URL: ${MATTERMOST_URL:-http://mattermost:8065}
       MATTERMOST_BOT_TOKEN: ${MATTERMOST_BOT_TOKEN:-}
+      MATTERMOST_WEBHOOK_TOKEN: ${MATTERMOST_WEBHOOK_TOKEN:-}
+      MATTERMOST_NOTIFICATION_CHANNEL_ID: ${MATTERMOST_NOTIFICATION_CHANNEL_ID:-}
     volumes: *backend-volumes
     entrypoint: []
     command: uv run python -m bouwmeester.worker

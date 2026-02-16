@@ -222,6 +222,7 @@ async def verify_link(
             mattermost_username=payload.mattermost_username,
         )
     except IntegrityError:
+        await db.rollback()
         raise HTTPException(status_code=409, detail="Account is al gekoppeld")
     # Clean up the used code.
     await repo.delete_code(payload.code)

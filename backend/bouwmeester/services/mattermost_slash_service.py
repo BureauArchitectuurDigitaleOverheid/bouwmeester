@@ -148,7 +148,7 @@ class MattermostSlashService:
             select(CorpusNode)
             .where(
                 CorpusNode.node_type == "dossier",
-                CorpusNode.title.ilike(f"%{escaped_args}%"),
+                CorpusNode.title.ilike(f"%{escaped_args}%", escape="\\"),
             )
             .limit(1)
         )
