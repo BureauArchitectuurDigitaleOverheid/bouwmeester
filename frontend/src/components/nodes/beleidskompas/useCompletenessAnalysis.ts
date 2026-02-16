@@ -57,7 +57,14 @@ export function useCompletenessAnalysis(
     }
 
     const steps: StepStatus[] = BELEIDSKOMPAS_STEPS.map((step) => {
-      const nodes = nodesByType.get(step.nodeType) ?? [];
+      // Collect nodes from all nodeTypes in this step
+      const nodes: CorpusNode[] = [];
+      for (const nodeType of step.nodeTypes) {
+        const typeNodes = nodesByType.get(nodeType);
+        if (typeNodes) {
+          nodes.push(...typeNodes);
+        }
+      }
       return {
         step,
         nodes,

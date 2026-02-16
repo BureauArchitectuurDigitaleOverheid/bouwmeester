@@ -275,7 +275,13 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Beleidskompas panel for dossier nodes */}
-            {node.node_type === 'dossier' && <BeleidskompasPanel nodeId={nodeId} />}
+            {node.node_type === 'dossier' && (
+              <BeleidskompasPanel
+                nodeId={nodeId}
+                stakeholderCount={stakeholders?.length ?? 0}
+                onNavigateToStakeholders={() => setActiveTab('stakeholders')}
+              />
+            )}
 
             {/* Description */}
             <Card>
