@@ -16,6 +16,7 @@ from bouwmeester.models.edge import Edge  # noqa: F401
 from bouwmeester.models.edge_schema_rule import EdgeSchemaRule  # noqa: F401
 from bouwmeester.models.edge_type import EdgeType  # noqa: F401
 from bouwmeester.models.effect import Effect  # noqa: F401
+from bouwmeester.models.externe_organisatie import ExterneOrganisatie  # noqa: F401
 from bouwmeester.models.http_session import HttpSession  # noqa: F401
 from bouwmeester.models.instrument import Instrument  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
@@ -28,6 +29,7 @@ from bouwmeester.models.node_stakeholder import NodeStakeholder  # noqa: F401
 from bouwmeester.models.node_status import CorpusNodeStatus  # noqa: F401
 from bouwmeester.models.node_title import CorpusNodeTitle  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
+from bouwmeester.models.opdracht import Opdracht, OpdrachtNode  # noqa: F401
 from bouwmeester.models.org_manager import OrganisatieEenheidManager  # noqa: F401
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam  # noqa: F401
 from bouwmeester.models.org_parent import OrganisatieEenheidParent  # noqa: F401
@@ -66,6 +68,7 @@ __all__ = [
     "EdgeSchemaRule",
     "EdgeType",
     "Effect",
+    "ExterneOrganisatie",
     "HttpSession",
     "Instrument",
     "Maatregel",
@@ -76,6 +79,8 @@ __all__ = [
     "NodeStakeholder",
     "NodeTag",
     "Notification",
+    "Opdracht",
+    "OpdrachtNode",
     "OrganisatieEenheidManager",
     "OrganisatieEenheidNaam",
     "OrganisatieEenheidParent",

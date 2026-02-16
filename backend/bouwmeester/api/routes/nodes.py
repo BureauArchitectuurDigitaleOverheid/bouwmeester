@@ -620,6 +620,39 @@ async def update_node_bron_detail(
     return BronResponse.model_validate(bron)
 
 
+@router.get("/{id}/financieel")
+async def get_node_financieel(
+    id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Get financial overview for a node (aggregated from opdrachten)."""
+    from bouwmeester.services.financieel_service import FinancieelService
+
+    service = NodeService(db)
+    require_found(await service.get(id), "Node")
+    fin_service = FinancieelService(db)
+    overzicht = await fin_service.get_financieel_overzicht(id)
+    return overzicht.model_dump()
+
+
+@router.get("/{id}/opdrachten")
+async def get_node_opdrachten(
+    id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Get opdrachten linked to a node (via instrument_id or OpdrachtNode)."""
+    from bouwmeester.repositories.opdracht import OpdrachtRepository
+    from bouwmeester.schema.opdracht import OpdrachtResponse
+
+    service = NodeService(db)
+    require_found(await service.get(id), "Node")
+    repo = OpdrachtRepository(db)
+    opdrachten = await repo.get_by_node(id)
+    return [OpdrachtResponse.model_validate(o).model_dump() for o in opdrachten]
+
+
 @router.get("/{id}/parlementair-item")
 async def get_node_parlementair_item(
     id: UUID,

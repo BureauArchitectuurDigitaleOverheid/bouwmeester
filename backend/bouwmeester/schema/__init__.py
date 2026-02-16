@@ -44,6 +44,11 @@ from bouwmeester.schema.edge_schema_rule import (
     ValidEdgeTypesResponse,
 )
 from bouwmeester.schema.edge_type import EdgeTypeBase, EdgeTypeCreate, EdgeTypeResponse
+from bouwmeester.schema.externe_organisatie import (
+    ExterneOrganisatieCreate,
+    ExterneOrganisatieResponse,
+    ExterneOrganisatieUpdate,
+)
 from bouwmeester.schema.graph import (
     GraphNeighborsResponse,
     GraphSearchParams,
@@ -71,6 +76,15 @@ from bouwmeester.schema.mention import (
     MentionReference,
     MentionResponse,
     MentionSearchResult,
+)
+from bouwmeester.schema.opdracht import (
+    FinancieelJaar,
+    FinancieelOverzicht,
+    OpdrachtCreate,
+    OpdrachtNodeCreate,
+    OpdrachtNodeResponse,
+    OpdrachtResponse,
+    OpdrachtUpdate,
 )
 from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidCreate,
@@ -166,6 +180,10 @@ __all__ = [
     "NodeStatusRecord",
     "NodeTitleRecord",
     "NodeType",
+    # externe_organisatie
+    "ExterneOrganisatieCreate",
+    "ExterneOrganisatieResponse",
+    "ExterneOrganisatieUpdate",
     # edge
     "EdgeBase",
     "EdgeCreate",
@@ -192,6 +210,14 @@ __all__ = [
     "TaskStatus",
     "TaskSubtaskSummary",
     "TaskUpdate",
+    # opdracht
+    "FinancieelJaar",
+    "FinancieelOverzicht",
+    "OpdrachtCreate",
+    "OpdrachtNodeCreate",
+    "OpdrachtNodeResponse",
+    "OpdrachtResponse",
+    "OpdrachtUpdate",
     # organisatie_eenheid
     "OrgManagerRecord",
     "OrgNaamRecord",

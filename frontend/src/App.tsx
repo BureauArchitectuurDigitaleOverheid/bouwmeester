@@ -17,6 +17,8 @@ import { OrganisatiePage } from '@/pages/OrganisatiePage';
 import { SearchPage } from '@/pages/SearchPage';
 import { ParlementairPage } from '@/pages/ParlementairPage';
 import { EenheidOverzichtPage } from '@/pages/EenheidOverzichtPage';
+import { OpdrachtenPage } from '@/pages/OpdrachtenPage';
+import { ExterneOrganisatiesPage } from '@/pages/ExterneOrganisatiesPage';
 import { AdminPage } from '@/pages/AdminPage';
 import { AuditLogPage } from '@/pages/AuditLogPage';
 import { DocsPage } from '@/pages/DocsPage';
@@ -113,6 +115,8 @@ export default function App() {
                     <Route path="/eenheid-overzicht" element={<EenheidOverzichtPage />} />
                     <Route path="/search" element={<SearchPage />} />
                     <Route path="/parlementair" element={<ParlementairPage />} />
+                    <Route path="/opdrachten" element={<OpdrachtenPage />} />
+                    <Route path="/externe-organisaties" element={<ExterneOrganisatiesPage />} />
                     <Route path="/admin" element={<AdminPage />} />
                     <Route path="/auditlog" element={<AuditLogPage />} />
                     <Route path="/docs" element={<DocsPage />} />

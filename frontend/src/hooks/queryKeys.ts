@@ -5,7 +5,7 @@
  * Prefix keys are useful for broad invalidation (e.g. invalidate all nodes).
  */
 
-import type { ActivityFeedParams, EdgeFilters, ParlementairItemFilters, SearchResultType, TaskFilters } from '@/types';
+import type { ActivityFeedParams, EdgeFilters, OpdrachtFilters, ParlementairItemFilters, SearchResultType, TaskFilters } from '@/types';
 
 export const queryKeys = {
   // --- Nodes ---
@@ -132,5 +132,27 @@ export const queryKeys = {
   mattermost: {
     all: ['mattermost'] as const,
     linkStatus: (personId?: string) => ['mattermost', 'link-status', personId] as const,
+  },
+
+  // --- Opdrachten ---
+  opdrachten: {
+    all: ['opdrachten'] as const,
+    lists: () => ['opdrachten', 'list'] as const,
+    list: (filters?: OpdrachtFilters) => ['opdrachten', 'list', filters] as const,
+    detail: (id: string | undefined) => ['opdrachten', 'detail', id] as const,
+  },
+
+  // --- Externe Organisaties ---
+  externeOrganisaties: {
+    all: ['externe-organisaties'] as const,
+    lists: () => ['externe-organisaties', 'list'] as const,
+    list: (params?: { type?: string; search?: string }) => ['externe-organisaties', 'list', params] as const,
+    detail: (id: string | undefined) => ['externe-organisaties', 'detail', id] as const,
+  },
+
+  // --- Financieel ---
+  financieel: {
+    overzicht: (nodeId: string | undefined) => ['financieel', 'overzicht', nodeId] as const,
+    opdrachten: (nodeId: string | undefined) => ['financieel', 'opdrachten', nodeId] as const,
   },
 } as const;

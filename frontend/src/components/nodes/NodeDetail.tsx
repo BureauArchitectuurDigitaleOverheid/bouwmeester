@@ -15,6 +15,7 @@ import { EdgeList } from './EdgeList';
 import { EdgeSuggestions } from './EdgeSuggestions';
 import { ContentSummary } from './ContentSummary';
 import { BeleidskompasPanel } from './beleidskompas/BeleidskompasPanel';
+import { FinancieelOverzichtPanel } from '@/components/financieel/FinancieelOverzichtPanel';
 import { TaskView } from '@/components/tasks/TaskView';
 import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeParlementairItem, useAddNodeStakeholder, useUpdateNodeStakeholder, useRemoveNodeStakeholder, useNodeTitleHistory, useNodeStatusHistory, useNodeBronDetail, useNodeBijlage } from '@/hooks/useNodes';
 import { useTasks } from '@/hooks/useTasks';
@@ -289,6 +290,14 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
               <RichTextDisplay content={node.description} />
               <ContentSummary text={node.description ?? ''} />
             </Card>
+
+            {/* Financieel overzicht for instrument/maatregel/doel nodes */}
+            {(node.node_type === NodeType.INSTRUMENT || node.node_type === NodeType.MAATREGEL || node.node_type === NodeType.DOEL) && (
+              <Card>
+                <h3 className="text-sm font-medium text-text mb-3">Financieel overzicht</h3>
+                <FinancieelOverzichtPanel nodeId={nodeId} />
+              </Card>
+            )}
 
             {/* Bron detail */}
             {node.node_type === NodeType.BRON && bronDetail && (
