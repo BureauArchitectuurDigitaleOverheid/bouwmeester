@@ -20,14 +20,14 @@ from authlib.jose import JsonWebKey
 from authlib.jose import jwt as authlib_jwt
 from authlib.jose.errors import JoseError
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.async_cache import AsyncTTLCache
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.core.database import get_db
-from bouwmeester.core.query_utils import normalize_email
+from bouwmeester.core.query_utils import find_person_by_email, normalize_email
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 
@@ -244,7 +244,9 @@ async def _ensure_email_linked(db: AsyncSession, person_id: UUID, email: str) ->
     """Add email to person_email if not already present (is_default=False)."""
     email = normalize_email(email)
 
-    existing = await db.execute(select(PersonEmail).where(PersonEmail.email == email))
+    existing = await db.execute(
+        select(PersonEmail).where(func.lower(PersonEmail.email) == email)
+    )
     existing_row = existing.scalar_one_or_none()
     if existing_row is not None:
         if existing_row.person_id != person_id:
@@ -289,16 +291,7 @@ async def get_or_create_person(
 
     # Only link by email if the OIDC provider has verified the email address.
     if email_verified:
-        # Look up in person_email table
-        stmt_email = select(Person).join(PersonEmail).where(PersonEmail.email == email)
-        result_email = await db.execute(stmt_email)
-        person = result_email.scalar_one_or_none()
-
-        if person is None:
-            # Fallback: check legacy Person.email column
-            stmt_legacy = select(Person).where(Person.email == email)
-            result_legacy = await db.execute(stmt_legacy)
-            person = result_legacy.scalar_one_or_none()
+        person = await find_person_by_email(db, email)
 
         if person is not None:
             person.oidc_subject = sub
@@ -331,15 +324,7 @@ async def get_or_create_person(
         result = await db.execute(stmt)
         person = result.scalar_one_or_none()
         if person is None:
-            # Fall back to email match in person_email table.
-            stmt = select(Person).join(PersonEmail).where(PersonEmail.email == email)
-            result = await db.execute(stmt)
-            person = result.scalar_one_or_none()
-        if person is None:
-            # Legacy fallback
-            stmt = select(Person).where(Person.email == email)
-            result = await db.execute(stmt)
-            person = result.scalar_one_or_none()
+            person = await find_person_by_email(db, email)
         if person is None:
             raise  # Unexpected — re-raise the original error.
         return person
@@ -553,9 +538,15 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
                     if resp2.status_code == 200:
                         return resp2.json()
 
-        # All attempts failed — clear session if present.
+        # All attempts failed — clear auth keys (preserve CSRF and other state).
         if session and "access_token" in session:
-            session.clear()
+            for key in (
+                "access_token",
+                "refresh_token",
+                "id_token",
+                "_oidc_last_validated",
+            ):
+                session.pop(key, None)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",

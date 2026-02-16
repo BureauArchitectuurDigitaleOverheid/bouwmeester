@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { clsx } from 'clsx';
 import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, MessageSquare, Terminal, Building2, X, Phone, Star } from 'lucide-react';
 import { Card } from '@/components/common/Card';
@@ -6,6 +6,7 @@ import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { PersonAvatar } from '@/components/people/PersonAvatar';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDateShort, todayISO } from '@/utils/dates';
@@ -35,7 +36,7 @@ interface PersonCardExpandableProps {
 
 export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, isManager, managerLabel, extraBadge, showPlacementActions }: PersonCardExpandableProps) {
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard(1500);
   const [messageOpen, setMessageOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { nodeLabel } = useVocabulary();
@@ -47,14 +48,12 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
   const removePlacement = useRemovePersonOrganisatie();
 
   const displayEmail = person.default_email || person.email;
-  const handleCopyEmail = useCallback((e: React.MouseEvent) => {
+  const handleCopyEmail = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (displayEmail) {
-      navigator.clipboard.writeText(displayEmail);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      copy(displayEmail);
     }
-  }, [displayEmail]);
+  };
 
   return (
     <Card

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { CorpusMatrix } from './CorpusMatrix';
 import { NodeType } from '@/types';
@@ -186,7 +187,7 @@ describe('CorpusMatrix', () => {
   });
 
   it('opens row node detail when clicking a connection dot', async () => {
-    const { user } = await import('@testing-library/user-event').then(m => ({ user: m.default.setup() }));
+    const user = userEvent.setup();
 
     render(
       <CorpusMatrix

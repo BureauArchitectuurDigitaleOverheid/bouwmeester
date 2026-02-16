@@ -60,6 +60,12 @@ from bouwmeester.schema.llm import (
     TagSuggestionRequest,
     TagSuggestionResponse,
 )
+from bouwmeester.schema.mattermost_user import (
+    MattermostLinkCodeResponse,
+    MattermostLinkStatusResponse,
+    MattermostUserResponse,
+    MattermostVerifyLinkRequest,
+)
 from bouwmeester.schema.mention import (
     MentionCreate,
     MentionReference,
@@ -241,6 +247,11 @@ __all__ = [
     "TagResponse",
     "TagTreeResponse",
     "TagUpdate",
+    # mattermost
+    "MattermostLinkCodeResponse",
+    "MattermostLinkStatusResponse",
+    "MattermostUserResponse",
+    "MattermostVerifyLinkRequest",
     # mention
     "MentionCreate",
     "MentionReference",

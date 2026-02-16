@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.node_status import CorpusNodeStatus
@@ -129,9 +130,8 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         if node_type is not None:
             stmt = stmt.where(CorpusNode.node_type == node_type)
         if search:
-            escaped = search.replace("\\", "\\\\")
-            escaped = escaped.replace("%", "\\%").replace("_", "\\_")
-            stmt = stmt.where(CorpusNode.title.ilike(f"%{escaped}%"))
+            escaped = escape_like(search)
+            stmt = stmt.where(CorpusNode.title.ilike(f"%{escaped}%", escape="\\"))
         if active_only:
             stmt = stmt.where(CorpusNode.geldig_tot.is_(None))
 

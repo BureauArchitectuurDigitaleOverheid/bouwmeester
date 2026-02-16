@@ -6,9 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class EdgeSchemaRuleCreate(BaseModel):
-    from_node_type: str = Field(max_length=50)
-    to_node_type: str = Field(max_length=50)
-    edge_type_id: str = Field(max_length=100)
+    from_node_type: str = Field(min_length=1, max_length=50)
+    to_node_type: str = Field(min_length=1, max_length=50)
+    edge_type_id: str = Field(min_length=1, max_length=100)
 
 
 class EdgeSchemaRuleResponse(BaseModel):

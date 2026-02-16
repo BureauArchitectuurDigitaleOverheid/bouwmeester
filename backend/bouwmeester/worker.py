@@ -1,7 +1,10 @@
-"""Background worker for polling TK/EK APIs and importing parliamentary items."""
+"""Background worker for polling TK/EK APIs, importing parliamentary items,
+and polling Mattermost for link codes."""
 
 import asyncio
 import logging
+import time
+from collections import OrderedDict
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import async_session
@@ -13,13 +16,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def main() -> None:
-    settings = get_settings()
-    logger.info(
-        f"Parlementair import worker started. Poll interval: "
-        f"{settings.TK_POLL_INTERVAL_SECONDS}s"
-    )
-
+async def _parlementair_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Poll TK/EK APIs for parliamentary items."""
     while True:
         try:
             async with async_session() as session:
@@ -34,6 +32,86 @@ async def main() -> None:
             logger.exception("Error in parlementair import cycle")
 
         await asyncio.sleep(settings.TK_POLL_INTERVAL_SECONDS)
+
+
+async def _mattermost_link_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Poll Mattermost bot DMs for link codes.
+
+    Checks DB config each iteration so the poller starts automatically
+    when MATTERMOST_ENABLED is toggled to true in Beheer > Instellingen.
+    """
+    started = False
+    last_poll_ms: int = int(time.time() * 1000)
+    # OrderedDict preserves insertion order for correct eviction.
+    seen_post_ids: OrderedDict[str, None] = OrderedDict()
+
+    while True:
+        mm = None
+        try:
+            async with async_session() as session:
+                from bouwmeester.services.mattermost_service import (
+                    MattermostService,
+                )
+
+                mm = MattermostService(session)
+                if not await mm.is_enabled():
+                    if started:
+                        logger.info("Mattermost integration disabled, pausing poller")
+                        started = False
+                    await asyncio.sleep(settings.MATTERMOST_POLL_INTERVAL_SECONDS)
+                    continue
+
+                if not started:
+                    logger.info("Mattermost link poller started")
+                    started = True
+
+                since = last_poll_ms
+                last_poll_ms = int(time.time() * 1000)
+
+                posts = await mm.get_bot_dm_posts(since=since)
+                # Filter out posts we've already processed (Mattermost's
+                # `since` API also returns posts whose threads were updated).
+                new_posts = [p for p in posts if p.get("id") not in seen_post_ids]
+                for p in new_posts:
+                    seen_post_ids[p.get("id", "")] = None
+
+                if new_posts:
+                    from bouwmeester.services.mattermost_link_poller import (
+                        MattermostLinkPoller,
+                    )
+
+                    poller = MattermostLinkPoller(session, mm_service=mm)
+                    count = await poller.process_posts(new_posts)
+                    if count:
+                        logger.info(f"Mattermost link poll: {count} accounts linked")
+                    await poller.cleanup()
+
+                # Cap the dict size — evict oldest entries first.
+                while len(seen_post_ids) > 1000:
+                    seen_post_ids.popitem(last=False)
+
+                await session.commit()
+        except Exception:
+            logger.exception("Error in Mattermost link poll cycle")
+        finally:
+            if mm:
+                await mm.close()
+
+        await asyncio.sleep(settings.MATTERMOST_POLL_INTERVAL_SECONDS)
+
+
+async def main() -> None:
+    settings = get_settings()
+    logger.info(
+        f"Worker started. Parlementair poll interval: "
+        f"{settings.TK_POLL_INTERVAL_SECONDS}s"
+    )
+
+    tasks = [
+        asyncio.create_task(_parlementair_loop(settings)),
+        asyncio.create_task(_mattermost_link_loop(settings)),
+    ]
+    await asyncio.gather(*tasks)
 
 
 if __name__ == "__main__":

@@ -127,4 +127,10 @@ export const queryKeys = {
   mentions: {
     references: (targetId: string | undefined) => ['mentions', 'references', targetId] as const,
   },
+
+  // --- Mattermost ---
+  mattermost: {
+    all: ['mattermost'] as const,
+    linkStatus: (personId?: string) => ['mattermost', 'link-status', personId] as const,
+  },
 } as const;

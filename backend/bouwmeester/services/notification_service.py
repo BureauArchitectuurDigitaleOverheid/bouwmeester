@@ -1,10 +1,12 @@
 """Service layer for Notification operations."""
 
+import asyncio
+import logging
 from collections import defaultdict
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
@@ -17,11 +19,63 @@ from bouwmeester.models.task import Task
 from bouwmeester.repositories.notification import NotificationRepository
 from bouwmeester.schema.notification import NotificationCreate
 
+logger = logging.getLogger(__name__)
+
+
+async def _mattermost_send_background(notification_id: UUID) -> None:
+    """Send a notification to Mattermost in a background task.
+
+    Uses its own DB session so the caller's request is not blocked.
+    """
+    try:
+        from bouwmeester.core.database import async_session
+        from bouwmeester.services.mattermost_service import MattermostService
+
+        async with async_session() as session:
+            mm = MattermostService(session)
+            try:
+                if not await mm.is_enabled():
+                    return
+                notification = await session.get(Notification, notification_id)
+                if notification:
+                    await mm.send_notification(notification)
+                else:
+                    logger.warning(
+                        "Notification %s not found for Mattermost send",
+                        notification_id,
+                    )
+            finally:
+                await mm.close()
+    except Exception:
+        logger.exception(
+            "Mattermost background send failed for notification %s",
+            notification_id,
+        )
+
 
 class NotificationService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = NotificationRepository(session)
+
+    def _send_to_mattermost(self, notification: Notification) -> None:
+        """Schedule Mattermost forwarding after the current transaction commits.
+
+        The notification must already be flushed (have an id) before calling this.
+        The background task uses its own DB session, so we defer it until
+        after_commit to guarantee the notification is visible to the new session.
+        """
+        notification_id = notification.id
+        sync_session = self.session.sync_session
+
+        @event.listens_for(sync_session, "after_commit", once=True)
+        def _after_commit(session):  # noqa: ARG001
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(_mattermost_send_background(notification_id))
+            except RuntimeError:
+                # No running event loop (e.g. in sync tests) — skip silently.
+                pass
 
     async def notify_task_assigned(
         self, task: Task, assignee: Person, actor_id: UUID | None = None
@@ -37,7 +91,9 @@ class NotificationService:
             related_node_id=task.node_id,
             related_task_id=task.id,
         )
-        return await self.repo.create(data)
+        notification = await self.repo.create(data)
+        self._send_to_mattermost(notification)
+        return notification
 
     async def notify_task_overdue(self, task: Task) -> Notification | None:
         if task.assignee_id is None:
@@ -50,7 +106,9 @@ class NotificationService:
             related_node_id=task.node_id,
             related_task_id=task.id,
         )
-        return await self.repo.create(data)
+        notification = await self.repo.create(data)
+        self._send_to_mattermost(notification)
+        return notification
 
     async def notify_node_updated(
         self, node: CorpusNode, actor: Person
@@ -73,6 +131,7 @@ class NotificationService:
                 related_node_id=node.id,
             )
             notification = await self.repo.create(data)
+            self._send_to_mattermost(notification)
             notifications.append(notification)
         return notifications
 
@@ -112,6 +171,7 @@ class NotificationService:
                     related_node_id=node.id,
                 )
                 notification = await self.repo.create(data)
+                self._send_to_mattermost(notification)
                 notifications.append(notification)
         return notifications
 
@@ -168,6 +228,7 @@ class NotificationService:
                     related_node_id=item_node.id,
                 )
                 notification = await self.repo.create(data)
+                self._send_to_mattermost(notification)
                 notifications.append(notification)
 
         return notifications
@@ -194,7 +255,9 @@ class NotificationService:
                 related_node_id=task.node_id,
                 related_task_id=task.id,
             )
-            notifications.append(await self.repo.create(data))
+            notification = await self.repo.create(data)
+            self._send_to_mattermost(notification)
+            notifications.append(notification)
 
         # Notify node stakeholders
         if task.node_id:
@@ -213,7 +276,9 @@ class NotificationService:
                     related_node_id=task.node_id,
                     related_task_id=task.id,
                 )
-                notifications.append(await self.repo.create(data))
+                notification = await self.repo.create(data)
+                self._send_to_mattermost(notification)
+                notifications.append(notification)
 
         return notifications
 
@@ -232,7 +297,9 @@ class NotificationService:
             related_node_id=task.node_id,
             related_task_id=task.id,
         )
-        notifications.append(await self.repo.create(data))
+        notification = await self.repo.create(data)
+        self._send_to_mattermost(notification)
+        notifications.append(notification)
 
         # Notify new assignee
         data = NotificationCreate(
@@ -243,7 +310,9 @@ class NotificationService:
             related_node_id=task.node_id,
             related_task_id=task.id,
         )
-        notifications.append(await self.repo.create(data))
+        notification = await self.repo.create(data)
+        self._send_to_mattermost(notification)
+        notifications.append(notification)
 
         return notifications
 
@@ -280,7 +349,9 @@ class NotificationService:
                 ),
                 related_node_id=from_node.id,
             )
-            notifications.append(await self.repo.create(data))
+            notification = await self.repo.create(data)
+            self._send_to_mattermost(notification)
+            notifications.append(notification)
 
         return notifications
 
@@ -302,7 +373,9 @@ class NotificationService:
             message=f"Je bent toegevoegd als {rol} aan '{node.title}'.",
             related_node_id=node.id,
         )
-        return await self.repo.create(data)
+        notification = await self.repo.create(data)
+        self._send_to_mattermost(notification)
+        return notification
 
     async def notify_stakeholder_role_changed(
         self, node: CorpusNode, person_id: UUID, old_rol: str, new_rol: str
@@ -317,7 +390,9 @@ class NotificationService:
             ),
             related_node_id=node.id,
         )
-        return await self.repo.create(data)
+        notification = await self.repo.create(data)
+        self._send_to_mattermost(notification)
+        return notification
 
     async def notify_team_manager(
         self, task: Task, eenheid_id: UUID, exclude_person_id: UUID | None = None
@@ -362,7 +437,74 @@ class NotificationService:
             related_node_id=task.node_id,
             related_task_id=task.id,
         )
-        return await self.repo.create(data)
+        notification = await self.repo.create(data)
+        self._send_to_mattermost(notification)
+        return notification
+
+    async def notify_direct_message(
+        self,
+        recipient: Person,
+        sender: Person,
+        message: str,
+    ) -> tuple[Notification, Notification]:
+        """Send a direct message. Returns (recipient_root, sender_root)."""
+        is_agent = recipient.is_agent
+        notif_type = "agent_prompt" if is_agent else "direct_message"
+        label = "Prompt" if is_agent else "Bericht"
+
+        # Recipient's root (unread)
+        recipient_data = NotificationCreate(
+            person_id=recipient.id,
+            type=notif_type,
+            title=f"{label} van {sender.naam}",
+            message=message,
+            sender_id=sender.id,
+        )
+        recipient_root = await self.repo.create(recipient_data)
+        await self.session.flush()
+        recipient_root.thread_id = recipient_root.id
+        await self.session.flush()
+
+        self._send_to_mattermost(recipient_root)
+
+        # Sender's root (read — they sent it)
+        sender_data = NotificationCreate(
+            person_id=sender.id,
+            type=notif_type,
+            title=f"{label} aan {recipient.naam}",
+            message=message,
+            sender_id=sender.id,
+            thread_id=recipient_root.id,
+        )
+        sender_root = await self.repo.create(sender_data)
+        sender_root.is_read = True
+        await self.session.flush()
+
+        return recipient_root, sender_root
+
+    async def notify_reply(
+        self,
+        recipient_id: UUID,
+        sender: Person,
+        message: str,
+        thread_id: UUID,
+        related_node_id: UUID | None = None,
+        related_task_id: UUID | None = None,
+    ) -> Notification:
+        """Create a reply notification. Returns the reply."""
+        data = NotificationCreate(
+            person_id=recipient_id,
+            type="direct_message",
+            title=f"Reactie van {sender.naam}",
+            message=message,
+            sender_id=sender.id,
+            parent_id=thread_id,
+            related_node_id=related_node_id,
+            related_task_id=related_task_id,
+        )
+        reply = await self.repo.create(data)
+        self._send_to_mattermost(reply)
+        return reply
 
     async def notify_mention(
         self,
@@ -383,7 +525,9 @@ class NotificationService:
             related_node_id=source_node_id,
             related_task_id=source_task_id,
         )
-        return await self.repo.create(data)
+        notification = await self.repo.create(data)
+        self._send_to_mattermost(notification)
+        return notification
 
     async def notify_access_request(self, email: str, naam: str) -> list[Notification]:
         """Notify all admin users about a new access request."""
@@ -399,7 +543,9 @@ class NotificationService:
                 title=f"Nieuw toegangsverzoek: {naam}",
                 message=f"{naam} ({email}) vraagt toegang aan tot Bouwmeester.",
             )
-            notifications.append(await self.repo.create(data))
+            notification = await self.repo.create(data)
+            self._send_to_mattermost(notification)
+            notifications.append(notification)
         return notifications
 
     async def get_notifications(

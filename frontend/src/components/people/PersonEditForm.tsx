@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Copy, RefreshCw, Check, Eye, EyeOff, Mail, Phone, Star, X, Plus } from 'lucide-react';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
@@ -71,7 +72,7 @@ export function PersonEditForm({
 
   // Rotated API key one-time display
   const [rotatedApiKey, setRotatedApiKey] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   const [showKey, setShowKey] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
   const rotateApiKeyMutation = useRotateApiKey();
@@ -130,7 +131,6 @@ export function PersonEditForm({
   useEffect(() => {
     if (open) {
       setRotatedApiKey(null);
-      setCopied(false);
       setShowKey(false);
       setConfirmRotate(false);
       setNewEmail('');
@@ -270,12 +270,9 @@ export function PersonEditForm({
 
   const handleCopyKey = async () => {
     if (displayApiKey) {
-      try {
-        await navigator.clipboard.writeText(displayApiKey);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
-        // Fallback: select the text so user can copy manually
+      const ok = await copy(displayApiKey);
+      if (!ok) {
+        // Clipboard API unavailable — show the key so user can copy manually.
         setShowKey(true);
       }
     }
@@ -290,7 +287,6 @@ export function PersonEditForm({
     try {
       const result = await rotateApiKeyMutation.mutateAsync(editData.id);
       setRotatedApiKey(result.api_key);
-      setCopied(false);
       setConfirmRotate(false);
     } catch {
       setConfirmRotate(false);
