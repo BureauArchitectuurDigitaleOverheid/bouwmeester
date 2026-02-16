@@ -17,7 +17,7 @@ export function MattermostLinkSection() {
 
   // Poll for link status changes while a code is active.
   const isCodeActive = !!(linkCode && new Date(linkCode.expires_at) > new Date());
-  const { data: linkStatus, isLoading } = useMattermostLinkStatus(isCodeActive);
+  const { data: linkStatus, isLoading, isError } = useMattermostLinkStatus(isCodeActive);
   const generateCode = useGenerateLinkCode();
   const unlinkMutation = useUnlinkMattermost();
 
@@ -63,6 +63,10 @@ export function MattermostLinkSection() {
         <div className="flex items-center gap-2 text-sm text-text-secondary py-4">
           <Loader2 className="h-4 w-4 animate-spin" />
           Laden...
+        </div>
+      ) : isError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          Kon koppelingsstatus niet laden. Probeer het later opnieuw.
         </div>
       ) : linkStatus?.linked ? (
         <div className="space-y-3">

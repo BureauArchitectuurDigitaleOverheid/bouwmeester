@@ -35,8 +35,12 @@ const VIEW_STORAGE_KEY = 'tasks-view-mode';
 const MY_TASKS_SENTINEL = '__me__';
 
 function getStoredView(): ViewMode {
-  const stored = localStorage.getItem(VIEW_STORAGE_KEY);
-  if (stored === 'board' || stored === 'personal') return stored;
+  try {
+    const stored = localStorage.getItem(VIEW_STORAGE_KEY);
+    if (stored === 'board' || stored === 'personal') return stored;
+  } catch {
+    // localStorage unavailable (e.g. private browsing).
+  }
   return 'list';
 }
 
@@ -101,7 +105,11 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
 
   const handleViewChange = (mode: ViewMode) => {
     setViewMode(mode);
-    localStorage.setItem(VIEW_STORAGE_KEY, mode);
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, mode);
+    } catch {
+      // localStorage unavailable (e.g. private browsing).
+    }
   };
 
   const handleTaskClick = useCallback((task: Task) => {

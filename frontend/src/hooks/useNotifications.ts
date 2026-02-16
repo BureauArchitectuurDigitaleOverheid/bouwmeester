@@ -20,7 +20,7 @@ export function useNotifications(personId: string | undefined, unreadOnly = fals
     queryFn: () => getNotifications(personId!, unreadOnly),
     enabled: !!personId,
     refetchInterval: 10_000,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
   });
 }
 

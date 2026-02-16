@@ -153,13 +153,14 @@ def downgrade() -> None:
         sa.column("to_node_type", sa.String),
         sa.column("edge_type_id", sa.String),
     )
-    for from_nt, to_nt, et_id in rules:
-        conn.execute(
-            edge_schema_rule.delete().where(
-                sa.and_(
-                    edge_schema_rule.c.from_node_type == from_nt,
-                    edge_schema_rule.c.to_node_type == to_nt,
-                    edge_schema_rule.c.edge_type_id == et_id,
-                )
-            )
+    # Bulk delete using OR conditions instead of one DELETE per rule.
+    conditions = [
+        sa.and_(
+            edge_schema_rule.c.from_node_type == from_nt,
+            edge_schema_rule.c.to_node_type == to_nt,
+            edge_schema_rule.c.edge_type_id == et_id,
         )
+        for from_nt, to_nt, et_id in rules
+    ]
+    if conditions:
+        conn.execute(edge_schema_rule.delete().where(sa.or_(*conditions)))

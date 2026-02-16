@@ -51,6 +51,9 @@ _RATE_LIMITS: dict[str, tuple[int, int]] = {
     "action": (30, 60),
 }
 
+# Cap total tracked keys per bucket to prevent unbounded memory growth.
+_MAX_KEYS_PER_BUCKET = 10_000
+
 
 def _check_rate_limit(bucket: str, key: str) -> None:
     """Raise 429 if *key* has exceeded the rate limit for *bucket*."""
@@ -65,6 +68,17 @@ def _check_rate_limit(bucket: str, key: str) -> None:
             detail="Te veel verzoeken. Probeer het later opnieuw.",
         )
     _rate_limit_buckets[bucket][key].append(now)
+
+    # Evict empty entries and cap total keys to prevent memory growth.
+    bucket_dict = _rate_limit_buckets[bucket]
+    if len(bucket_dict) > _MAX_KEYS_PER_BUCKET:
+        empty_keys = [k for k, v in bucket_dict.items() if not v]
+        for k in empty_keys:
+            del bucket_dict[k]
+        # If still over limit, evict oldest entries.
+        while len(bucket_dict) > _MAX_KEYS_PER_BUCKET:
+            oldest_key = next(iter(bucket_dict))
+            del bucket_dict[oldest_key]
 
 
 def _get_person_id(
@@ -252,8 +266,10 @@ async def handle_action(
     service = MattermostSlashService(db)
     context = body.get("context", {})
 
-    return await service.handle_action(
+    result = await service.handle_action(
         mattermost_user_id=user_id,
         action=context.get("action", ""),
         context=context,
     )
+    await db.commit()
+    return result

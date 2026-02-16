@@ -116,17 +116,15 @@ def _validate_mattermost_url(url: str) -> None:
             raise ValueError("MATTERMOST_URL must not point to localhost")
         return
 
-    # It's an IP — block private, loopback, and link-local ranges.
-    if addr.is_loopback or addr.is_link_local:
+    # It's an IP — block private, loopback, link-local, reserved, and multicast.
+    if (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+    ):
         raise ValueError(f"MATTERMOST_URL must not point to {addr}")
-
-    # Block cloud metadata endpoints (169.254.169.254, fd00::, etc.)
-    blocked = [ipaddress.ip_network("169.254.169.254/32")]
-    for net in blocked:
-        if addr in net:
-            raise ValueError(
-                f"MATTERMOST_URL must not point to metadata endpoint {addr}"
-            )
 
 
 class MattermostService:

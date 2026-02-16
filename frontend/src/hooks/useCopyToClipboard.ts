@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 /**
  * Reusable hook for clipboard copy with auto-reset feedback.
@@ -9,6 +9,11 @@ import { useState, useCallback, useRef } from 'react';
 export function useCopyToClipboard(resetMs = 2000) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Clean up pending timer on unmount.
+  useEffect(() => {
+    return () => clearTimeout(timerRef.current);
+  }, []);
 
   const copy = useCallback(
     async (text: string): Promise<boolean> => {
