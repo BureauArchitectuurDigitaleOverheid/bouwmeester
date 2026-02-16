@@ -7,6 +7,7 @@ export interface StepStatus {
   step: BeleidskompasStep;
   nodes: CorpusNode[];
   count: number;
+  countsByType: Map<string, number>;
   isComplete: boolean;
 }
 
@@ -21,6 +22,7 @@ export function useCompletenessAnalysis(
           step,
           nodes: [],
           count: 0,
+          countsByType: new Map(),
           isComplete: false,
         })),
         completedCount: 0,
@@ -59,17 +61,20 @@ export function useCompletenessAnalysis(
     const steps: StepStatus[] = BELEIDSKOMPAS_STEPS.map((step) => {
       // Collect nodes from all nodeTypes in this step
       const nodes: CorpusNode[] = [];
+      const countsByType = new Map<string, number>();
       for (const nodeType of step.nodeTypes) {
-        const typeNodes = nodesByType.get(nodeType);
-        if (typeNodes) {
-          nodes.push(...typeNodes);
-        }
+        const typeNodes = nodesByType.get(nodeType) ?? [];
+        nodes.push(...typeNodes);
+        countsByType.set(nodeType, typeNodes.length);
       }
+      // Multi-type steps require every type to have at least one node
+      const isComplete = step.nodeTypes.every((nt) => (countsByType.get(nt) ?? 0) > 0);
       return {
         step,
         nodes,
         count: nodes.length,
-        isComplete: nodes.length > 0,
+        countsByType,
+        isComplete,
       };
     });
 

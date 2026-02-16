@@ -76,10 +76,10 @@ function stepCountLabel(status: StepStatus): string {
     if (status.count === 1) return `1 ${NODE_TYPE_LABELS[nt].toLowerCase()}`;
     return `${status.count} ${NODE_TYPE_LABELS_PLURAL[nt] ?? NODE_TYPE_LABELS[nt].toLowerCase()}`;
   }
-  // Multi-type step: group counts per type
+  // Multi-type step: use pre-computed counts per type
   const parts: string[] = [];
   for (const nt of status.step.nodeTypes) {
-    const count = status.nodes.filter((n) => n.node_type === nt).length;
+    const count = status.countsByType.get(nt) ?? 0;
     if (count === 0) continue;
     const label = count === 1
       ? NODE_TYPE_LABELS[nt].toLowerCase()
@@ -97,12 +97,9 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
   if (status.isComplete) {
     return (
       <div className="border-b border-border last:border-b-0">
-        <div
-          role="button"
-          tabIndex={0}
+        <button
           onClick={() => setExpanded(!expanded)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(!expanded); } }}
-          className="flex items-center gap-3 w-full px-3 py-2.5 sm:px-4 sm:py-3 text-left hover:bg-gray-50/50 transition-colors cursor-pointer"
+          className="flex items-center gap-3 w-full px-3 py-2.5 sm:px-4 sm:py-3 text-left hover:bg-gray-50/50 transition-colors"
         >
           <StepNumberBadge number={status.step.number} complete />
           <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
@@ -117,6 +114,7 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
             className="text-text-secondary hover:text-primary-700 transition-colors shrink-0"
             title="Bekijk op KCBR"
           >
@@ -127,7 +125,7 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
           ) : (
             <ChevronRight className="h-4 w-4 text-text-secondary shrink-0" />
           )}
-        </div>
+        </button>
         {expanded && (
           <div className="px-3 sm:px-4 pb-3 space-y-1.5 ml-9 sm:ml-10">
             {status.nodes.map((node) => (
@@ -301,30 +299,32 @@ export function BeleidskompasPanel({ nodeId, stakeholderCount, onNavigateToStake
           </div>
         </div>
 
-        {/* Stakeholders reference (recurring question) */}
-        <div className="mb-3 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg bg-slate-50 border border-slate-200">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Users className="h-4 w-4 text-slate-500 shrink-0" />
-            <span className="text-xs font-medium text-slate-600">
-              Wie zijn belanghebbenden?
-            </span>
-            <button
-              onClick={onNavigateToStakeholders}
-              className="text-xs text-primary-700 hover:text-primary-900 transition-colors"
-            >
-              {stakeholderCount} betrokkenen
-            </button>
-            <a
-              href={KCBR_STAKEHOLDERS_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-text-secondary hover:text-primary-700 transition-colors shrink-0"
-              title="Bekijk op KCBR"
-            >
-              <ExternalLink className="h-3 w-3" />
-            </a>
+        {/* Stakeholders reference (recurring question) — only shown when stakeholders exist */}
+        {stakeholderCount > 0 && (
+          <div className="mb-3 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg bg-slate-50 border border-slate-200">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Users className="h-4 w-4 text-slate-500 shrink-0" />
+              <span className="text-xs font-medium text-slate-600">
+                Wie zijn belanghebbenden?
+              </span>
+              <button
+                onClick={onNavigateToStakeholders}
+                className="text-xs text-primary-700 hover:text-primary-900 transition-colors"
+              >
+                {stakeholderCount} betrokkenen
+              </button>
+              <a
+                href={KCBR_STAKEHOLDERS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-text-secondary hover:text-primary-700 transition-colors shrink-0"
+                title="Bekijk op KCBR"
+              >
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Steps */}
         <div className="rounded-lg border border-border overflow-hidden">
