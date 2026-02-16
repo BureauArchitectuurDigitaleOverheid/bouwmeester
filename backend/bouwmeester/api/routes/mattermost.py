@@ -13,10 +13,13 @@ Webhook endpoints (token-verified, no user auth):
 
 import logging
 import secrets
+import time
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
@@ -33,18 +36,33 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mattermost", tags=["mattermost"])
 
+# Simple in-memory rate limiter for verify-link (keyed by client IP).
+_verify_link_attempts: dict[str, list[float]] = defaultdict(list)
+_VERIFY_LINK_MAX_ATTEMPTS = 10  # max attempts per window
+_VERIFY_LINK_WINDOW_SECONDS = 60  # sliding window
+
+
+def _check_verify_link_rate_limit(client_ip: str) -> None:
+    """Raise 429 if the client has exceeded the verify-link rate limit."""
+    now = time.monotonic()
+    cutoff = now - _VERIFY_LINK_WINDOW_SECONDS
+    # Prune old entries.
+    attempts = _verify_link_attempts[client_ip]
+    _verify_link_attempts[client_ip] = [t for t in attempts if t > cutoff]
+    if len(_verify_link_attempts[client_ip]) >= _VERIFY_LINK_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Te veel verificatiepogingen. Probeer het later opnieuw.",
+        )
+    _verify_link_attempts[client_ip].append(now)
+
 
 def _get_person_id(
     current_user: OptionalUser,
-    person_id: UUID | None = Query(None),
 ) -> UUID:
-    """Resolve person ID from auth or query param (dev-only fallback)."""
+    """Resolve person ID from authenticated user."""
     if current_user is not None:
         return current_user.id
-    # Only allow the query-param fallback when OIDC is not configured (local dev).
-    settings = get_settings()
-    if not settings.OIDC_ISSUER and person_id is not None:
-        return person_id
     raise HTTPException(status_code=401, detail="Niet ingelogd")
 
 
@@ -143,6 +161,10 @@ async def verify_link(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Verify a link code from the Mattermost bot and create the mapping."""
+    # Rate limit by client IP to prevent brute-forcing link codes.
+    client_ip = request.client.host if request.client else "unknown"
+    _check_verify_link_rate_limit(client_ip)
+
     # Token verification via header.
     token = request.headers.get("x-mattermost-token", "")
     await _verify_webhook_token(token, db)
@@ -159,12 +181,18 @@ async def verify_link(
             status_code=409, detail="Dit Mattermost-account is al gekoppeld"
         )
 
-    # Create the mapping.
-    await repo.create_mapping(
-        person_id=link_code.person_id,
-        mattermost_user_id=payload.mattermost_user_id,
-        mattermost_username=payload.mattermost_username,
-    )
+    # Create the mapping — handle race condition where another request
+    # already linked this user or person concurrently.
+    try:
+        await repo.create_mapping(
+            person_id=link_code.person_id,
+            mattermost_user_id=payload.mattermost_user_id,
+            mattermost_username=payload.mattermost_username,
+        )
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409, detail="Account is al gekoppeld"
+        )
     # Clean up the used code.
     await repo.delete_code(payload.code)
 
@@ -200,11 +228,9 @@ async def handle_action(
     """Handle interactive button actions from Mattermost."""
     body = await request.json()
 
-    # Mattermost sends the token inside the body for interactive messages.
-    token = body.get("context", {}).get("token", "")
-    # Also check top-level token field.
-    if not token:
-        token = body.get("token", "")
+    # Mattermost sends the integration token at the top level for interactive
+    # messages.  Never read from "context" — that is user/attacker-controllable.
+    token = body.get("token", "")
 
     # Always verify — reject if no token is provided.
     await _verify_webhook_token(token, db)

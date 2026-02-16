@@ -112,10 +112,10 @@ class MattermostSlashService:
                 if t.deadline and t.deadline < today
                 else ":large_blue_circle:"
             )
-            node_name = t.node.title if t.node else ""
+            node_name = _escape_md(t.node.title) if t.node else ""
             link = f"{frontend_url}/taken?task={t.id}"
             lines.append(
-                f"{status_icon} [{t.title}]({link}) — {deadline_str}"
+                f"{status_icon} [{_escape_md(t.title)}]({link}) — {deadline_str}"
                 + (f" ({node_name})" if node_name else "")
             )
 
@@ -147,8 +147,8 @@ class MattermostSlashService:
         lines = [f"**Zoekresultaten** voor '{_escape_md(args)}':\n"]
         for r in results:
             url = f"{frontend_url}{r['url']}"
-            subtitle = f" ({r['subtitle']})" if r.get("subtitle") else ""
-            lines.append(f"- [{r['title']}]({url}){subtitle}")
+            subtitle = f" ({_escape_md(r['subtitle'])})" if r.get("subtitle") else ""
+            lines.append(f"- [{_escape_md(r['title'])}]({url}){subtitle}")
 
         return _ephemeral("\n".join(lines))
 
@@ -196,7 +196,7 @@ class MattermostSlashService:
         link = f"{frontend_url}/nodes/{dossier.id}"
 
         return _ephemeral(
-            f"**[{dossier.title}]({link})**\n"
+            f"**[{_escape_md(dossier.title)}]({link})**\n"
             f"- Open taken: {row.open}\n"
             f"- Totaal taken: {row.total}\n"
         )
@@ -272,14 +272,15 @@ class MattermostSlashService:
         notif_service = NotificationService(self.session)
         await notif_service.notify_task_completed(task, actor_id=person_id)
 
+        escaped_title = _escape_md(task.title)
         return {
             "update": {
-                "message": f"Taak afgerond: **{task.title}**",
+                "message": f"Taak afgerond: **{escaped_title}**",
                 "props": {
                     "attachments": [
                         {
                             "color": "#22C55E",
-                            "text": f"Taak '{task.title}' is afgerond via Mattermost.",
+                            "text": f"Taak '{escaped_title}' is afgerond.",
                         }
                     ],
                 },

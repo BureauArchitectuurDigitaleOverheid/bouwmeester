@@ -15,28 +15,24 @@ const mattermostKeys = {
   linkStatus: ['mattermost', 'link-status'] as const,
 };
 
-export function useMattermostLinkStatus(personId?: string | null, poll = false) {
-  const params = personId ? { person_id: personId } : {};
+export function useMattermostLinkStatus(poll = false) {
   return useQuery({
-    queryKey: [...mattermostKeys.linkStatus, personId],
-    queryFn: () => apiGet<MattermostLinkStatus>('/api/mattermost/link-status', params),
-    enabled: !!personId,
+    queryKey: mattermostKeys.linkStatus,
+    queryFn: () => apiGet<MattermostLinkStatus>('/api/mattermost/link-status'),
     refetchInterval: poll ? 3000 : false,
   });
 }
 
-export function useGenerateLinkCode(personId?: string | null) {
-  const params = personId ? `?person_id=${personId}` : '';
+export function useGenerateLinkCode() {
   return useMutation({
-    mutationFn: () => apiPost<MattermostLinkCode>(`/api/mattermost/link-code${params}`),
+    mutationFn: () => apiPost<MattermostLinkCode>('/api/mattermost/link-code'),
   });
 }
 
-export function useUnlinkMattermost(personId?: string | null) {
+export function useUnlinkMattermost() {
   const queryClient = useQueryClient();
-  const params = personId ? `?person_id=${personId}` : '';
   return useMutation({
-    mutationFn: () => apiDelete(`/api/mattermost/link${params}`),
+    mutationFn: () => apiDelete('/api/mattermost/link'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: mattermostKeys.linkStatus });
     },

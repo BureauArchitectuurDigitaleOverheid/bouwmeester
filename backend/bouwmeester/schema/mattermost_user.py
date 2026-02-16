@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class MattermostUserResponse(BaseModel):
@@ -27,6 +27,13 @@ class MattermostLinkCodeResponse(BaseModel):
 
 
 class MattermostVerifyLinkRequest(BaseModel):
-    code: str
-    mattermost_user_id: str
-    mattermost_username: str
+    code: str = Field(..., pattern=r"^BM-[a-z0-9]{6}$", max_length=9)
+    mattermost_user_id: str = Field(
+        ..., pattern=r"^[a-z0-9]{26}$", max_length=26
+    )
+    mattermost_username: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator("mattermost_username")
+    @classmethod
+    def strip_username(cls, v: str) -> str:
+        return v.strip()

@@ -6,8 +6,10 @@ Settings are read from:
 2. Environment variables / config.py settings (fallback)
 """
 
+import ipaddress
 import logging
 import time
+from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
@@ -88,6 +90,60 @@ _NOTIFICATION_COLORS: dict[str, str] = {
 # Types that should go to the channel (broadcast) instead of DM.
 _CHANNEL_NOTIFICATION_TYPES = frozenset({"politieke_input_imported", "access_request"})
 
+# Characters that have special meaning in Mattermost markdown.
+_MM_ESCAPE_CHARS = str.maketrans(
+    {
+        "[": "\\[",
+        "]": "\\]",
+        "(": "\\(",
+        ")": "\\)",
+        "@": "\\@",
+        "~": "\\~",
+        "*": "\\*",
+        "_": "\\_",
+        "`": "\\`",
+        "#": "\\#",
+        "|": "\\|",
+    }
+)
+
+
+def _escape_md(text: str) -> str:
+    """Escape Mattermost markdown special characters in user-controlled text."""
+    return text.translate(_MM_ESCAPE_CHARS)
+
+
+def _validate_mattermost_url(url: str) -> None:
+    """Validate that MATTERMOST_URL is not pointing to internal/metadata endpoints."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"MATTERMOST_URL must use http or https, got: {parsed.scheme}")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("MATTERMOST_URL has no hostname")
+
+    # Allow Docker service names (no dots, not an IP).
+    try:
+        addr = ipaddress.ip_address(hostname)
+    except ValueError:
+        # It's a hostname — block localhost explicitly.
+        if hostname in ("localhost", "127.0.0.1", "0.0.0.0"):
+            raise ValueError("MATTERMOST_URL must not point to localhost")
+        return
+
+    # It's an IP — block private, loopback, and link-local ranges.
+    if addr.is_loopback or addr.is_link_local:
+        raise ValueError(f"MATTERMOST_URL must not point to {addr}")
+
+    # Block cloud metadata endpoints (169.254.169.254, fd00::, etc.)
+    blocked = [ipaddress.ip_network("169.254.169.254/32")]
+    for net in blocked:
+        if addr in net:
+            raise ValueError(
+                f"MATTERMOST_URL must not point to metadata endpoint {addr}"
+            )
+
 
 class MattermostService:
     def __init__(self, session: AsyncSession) -> None:
@@ -122,6 +178,9 @@ class MattermostService:
         if self._client is None:
             url = self._cfg("MATTERMOST_URL")
             token = self._cfg("MATTERMOST_BOT_TOKEN")
+            if not token:
+                raise ValueError("MATTERMOST_BOT_TOKEN is not configured")
+            _validate_mattermost_url(url)
             self._client = httpx.AsyncClient(
                 base_url=url,
                 headers={
@@ -202,6 +261,11 @@ class MattermostService:
     def _deep_link(self, notification: Notification) -> str:
         """Build a deep link back to the Bouwmeester frontend."""
         base = self.settings.FRONTEND_URL.rstrip("/")
+        # Validate scheme to prevent open redirect via misconfigured FRONTEND_URL.
+        parsed = urlparse(base)
+        if parsed.scheme not in ("http", "https"):
+            logger.warning("FRONTEND_URL has invalid scheme: %s", parsed.scheme)
+            return ""
         if notification.related_task_id:
             return f"{base}/taken?task={notification.related_task_id}"
         if notification.related_node_id:
@@ -241,12 +305,14 @@ class MattermostService:
 
         plain_message = tiptap_to_plain(notification.message) or ""
 
+        escaped_title = _escape_md(notification.title)
+        escaped_message = _escape_md(plain_message)
         attachment: dict = {
-            "fallback": notification.title,
+            "fallback": escaped_title,
             "color": color,
-            "title": notification.title,
+            "title": escaped_title,
             "title_link": deep_link,
-            "text": plain_message,
+            "text": escaped_message,
             "fields": fields,
             "footer": f"[Bekijken in Bouwmeester]({deep_link})",
         }

@@ -6,12 +6,9 @@ import {
   useUnlinkMattermost,
   type MattermostLinkCode,
 } from '@/hooks/useMattermost';
-import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useQueryClient } from '@tanstack/react-query';
 
 export function MattermostLinkSection() {
-  const { currentPerson } = useCurrentPerson();
-  const personId = currentPerson?.id ?? null;
   const queryClient = useQueryClient();
   const [linkCode, setLinkCode] = useState<MattermostLinkCode | null>(null);
   const [copied, setCopied] = useState(false);
@@ -19,9 +16,9 @@ export function MattermostLinkSection() {
 
   // Poll for link status changes while a code is active.
   const isCodeActive = !!(linkCode && new Date(linkCode.expires_at) > new Date());
-  const { data: linkStatus, isLoading } = useMattermostLinkStatus(personId, isCodeActive);
-  const generateCode = useGenerateLinkCode(personId);
-  const unlinkMutation = useUnlinkMattermost(personId);
+  const { data: linkStatus, isLoading } = useMattermostLinkStatus(isCodeActive);
+  const generateCode = useGenerateLinkCode();
+  const unlinkMutation = useUnlinkMattermost();
 
   // When linked while polling, clear the code so the UI switches to the linked state.
   useEffect(() => {

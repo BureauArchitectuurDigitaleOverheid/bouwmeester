@@ -6,6 +6,7 @@ Used by the worker loop which handles polling timing.
 import logging
 import re
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.repositories.mattermost_user import MattermostUserRepository
@@ -69,12 +70,22 @@ class MattermostLinkPoller:
             # Get the Mattermost username.
             username = await self.mm_service.get_username(mm_user_id)
 
-            # Create the mapping.
-            await self.repo.create_mapping(
-                person_id=link_code.person_id,
-                mattermost_user_id=mm_user_id,
-                mattermost_username=username,
-            )
+            # Create the mapping — handle race condition where another path
+            # already linked this user or person concurrently.
+            try:
+                await self.repo.create_mapping(
+                    person_id=link_code.person_id,
+                    mattermost_user_id=mm_user_id,
+                    mattermost_username=username,
+                )
+            except IntegrityError:
+                await self.mm_service.reply_to_post(
+                    channel_id,
+                    root_id,
+                    "Dit account is al gekoppeld. "
+                    "Wil je opnieuw koppelen? Ontkoppel eerst in Instellingen.",
+                )
+                continue
             await self.repo.delete_code(code)
             links_created += 1
 
