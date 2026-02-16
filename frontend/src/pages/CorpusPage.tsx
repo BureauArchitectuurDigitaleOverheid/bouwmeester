@@ -38,6 +38,7 @@ export function CorpusPage() {
   const enabledNodeTypes = useMemo<Set<NodeType>>(() => {
     const typesParam = searchParams.get('types');
     if (!typesParam) return new Set(ALL_NODE_TYPES);
+    if (typesParam === 'none') return new Set<NodeType>();
     const parsed = typesParam
       .split(',')
       .filter((t) => ALL_NODE_TYPES.includes(t as NodeType)) as NodeType[];
@@ -78,6 +79,7 @@ export function CorpusPage() {
   const enabledEdgeTypes = useMemo<Set<string>>(() => {
     const edgesParam = searchParams.get('edges');
     if (!edgesParam) return new Set(availableEdgeTypes);
+    if (edgesParam === 'none') return new Set<string>();
     const parsed = edgesParam.split(',').filter((t) => availableEdgeTypes.includes(t));
     return parsed.length > 0 ? new Set(parsed) : new Set(availableEdgeTypes);
   }, [searchParams, availableEdgeTypes]);
@@ -98,7 +100,8 @@ export function CorpusPage() {
   const handleNodeTypesChange = useCallback((next: Set<string>) => {
     setSearchParams((prev) => {
       const allSelected = ALL_NODE_TYPES.every((t) => next.has(t));
-      if (allSelected || next.size === 0) prev.delete('types');
+      if (allSelected) prev.delete('types');
+      else if (next.size === 0) prev.set('types', 'none');
       else prev.set('types', [...next].join(','));
       return prev;
     }, { replace: true });
@@ -107,7 +110,8 @@ export function CorpusPage() {
   const handleEdgeTypesChange = useCallback((next: Set<string>) => {
     setSearchParams((prev) => {
       const allSelected = availableEdgeTypes.every((t) => next.has(t));
-      if (allSelected || next.size === 0) prev.delete('edges');
+      if (allSelected) prev.delete('edges');
+      else if (next.size === 0) prev.set('edges', 'none');
       else prev.set('edges', [...next].join(','));
       return prev;
     }, { replace: true });
