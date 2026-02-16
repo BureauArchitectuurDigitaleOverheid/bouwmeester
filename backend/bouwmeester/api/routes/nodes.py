@@ -9,6 +9,7 @@ from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
+from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.repositories.node_stakeholder import NodeStakeholderRepository
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.bron import BronResponse, BronUpdate
@@ -79,8 +80,6 @@ async def list_nodes(
     # Enrich dossier nodes with beleidskompas progress
     dossier_ids = [r.id for r in responses if r.node_type == "dossier"]
     if dossier_ids:
-        from bouwmeester.repositories.corpus_node import CorpusNodeRepository
-
         repo = CorpusNodeRepository(db)
         progress_map = await repo.get_beleidskompas_progress(dossier_ids)
         for r in responses:

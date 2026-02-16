@@ -245,6 +245,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
 
         # The 5 KCBR steps and their required node types.
         # A step is complete when every node type in it has ≥1 child node.
+        # NOTE: keep in sync with frontend/src/components/nodes/beleidskompas/config.ts
         kcbr_steps: list[list[str]] = [
             ["probleem"],
             ["doel"],
@@ -263,7 +264,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
             )
             .join(CorpusNode, Edge.from_node_id == CorpusNode.id)
             .where(
-                Edge.to_node_id.in_([str(d) for d in dossier_ids]),
+                Edge.to_node_id.in_(dossier_ids),
                 Edge.edge_type_id == "onderdeel_van",
             )
             .distinct()
