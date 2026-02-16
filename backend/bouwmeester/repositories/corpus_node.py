@@ -229,6 +229,67 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
 
         return {"nodes": nodes, "edges": edges}
 
+    async def get_beleidskompas_progress(
+        self,
+        dossier_ids: list[UUID],
+    ) -> dict[UUID, tuple[int, int]]:
+        """Return beleidskompas progress for a list of dossier node IDs.
+
+        For each dossier, counts child node types connected via
+        ``onderdeel_van`` edges and checks against the 5 KCBR steps.
+
+        Returns a dict mapping dossier_id → (completed_steps, total_steps).
+        """
+        if not dossier_ids:
+            return {}
+
+        # The 5 KCBR steps and their required node types.
+        # A step is complete when every node type in it has ≥1 child node.
+        # NOTE: keep in sync with frontend/src/components/nodes/beleidskompas/config.ts
+        kcbr_steps: list[list[str]] = [
+            ["probleem"],
+            ["doel"],
+            ["beleidsoptie"],
+            ["effect"],
+            ["beleidskader", "instrument", "maatregel"],
+        ]
+        total_steps = len(kcbr_steps)
+
+        # Query: for each dossier, get the set of child node_types
+        # via onderdeel_van edges (child.from_node_id → dossier.to_node_id).
+        stmt = (
+            select(
+                Edge.to_node_id.label("dossier_id"),
+                CorpusNode.node_type,
+            )
+            .join(CorpusNode, Edge.from_node_id == CorpusNode.id)
+            .where(
+                Edge.to_node_id.in_(dossier_ids),
+                Edge.edge_type_id == "onderdeel_van",
+            )
+            .distinct()
+        )
+        result = await self.session.execute(stmt)
+        rows = result.all()
+
+        # Group node types by dossier
+        types_by_dossier: dict[UUID, set[str]] = {}
+        for row in rows:
+            did = UUID(str(row.dossier_id))
+            types_by_dossier.setdefault(did, set()).add(row.node_type)
+
+        progress: dict[UUID, tuple[int, int]] = {}
+        for did in dossier_ids:
+            present_types = types_by_dossier.get(did, set())
+            completed = sum(
+                1
+                for step_types in kcbr_steps
+                if all(nt in present_types for nt in step_types)
+            )
+            progress[did] = (completed, total_steps)
+
+        return progress
+
     async def count(self, node_type: str | None = None) -> int:
         stmt = select(func.count()).select_from(CorpusNode)
         if node_type is not None:

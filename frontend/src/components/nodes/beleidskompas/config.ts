@@ -15,6 +15,8 @@ export const KCBR_MAIN_URL = KCBR_BASE_URL;
 
 export const KCBR_STAKEHOLDERS_URL = `${KCBR_BASE_URL}/wie-zijn-belanghebbenden-en-waarom`;
 
+// NOTE: step definitions must stay in sync with
+// backend/bouwmeester/repositories/corpus_node.py (kcbr_steps)
 export const BELEIDSKOMPAS_STEPS: BeleidskompasStep[] = [
   {
     id: 'probleem',

@@ -8,6 +8,7 @@ import {
   Link as LinkIcon,
   ExternalLink,
   Users,
+  Compass,
 } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
@@ -89,10 +90,86 @@ function stepCountLabel(status: StepStatus): string {
   return parts.join(', ');
 }
 
-function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: BeleidskompasStepRowProps) {
-  const [expanded, setExpanded] = useState(false);
+/** Renders nodes and action buttons grouped by node type for a step. */
+function StepTypeGroups({
+  status,
+  onCreateNew,
+  onLinkExisting,
+}: {
+  status: StepStatus;
+  onCreateNew: (nodeType: NodeType) => void;
+  onLinkExisting: (nodeType: NodeType) => void;
+}) {
   const { openNodeDetail } = useNodeDetail();
   const isMultiType = status.step.nodeTypes.length > 1;
+
+  if (!isMultiType) {
+    // Single type: show nodes flat, then action buttons
+    return (
+      <>
+        {status.nodes.map((node) => (
+          <button
+            key={node.id}
+            onClick={() => openNodeDetail(node.id)}
+            className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
+          >
+            <Badge variant={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
+              {NODE_TYPE_LABELS[node.node_type as NodeType]}
+            </Badge>
+            <span className="text-sm text-text truncate">{node.title}</span>
+          </button>
+        ))}
+        <StepActionButtons
+          nodeType={status.step.nodeTypes[0]}
+          onCreateNew={onCreateNew}
+          onLinkExisting={onLinkExisting}
+        />
+      </>
+    );
+  }
+
+  // Multi-type: group nodes and actions per type
+  return (
+    <div className="space-y-2">
+      {status.step.nodeTypes.map((nt) => {
+        const typeNodes = status.nodes.filter(
+          (n) => n.node_type === nt,
+        );
+        return (
+          <div key={nt}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs text-text-secondary font-medium min-w-[100px]">
+                {NODE_TYPE_LABELS[nt]}:
+              </span>
+            </div>
+            {typeNodes.map((node) => (
+              <button
+                key={node.id}
+                onClick={() => openNodeDetail(node.id)}
+                className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-100 transition-colors text-left ml-2"
+              >
+                <Badge variant={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
+                  {NODE_TYPE_LABELS[node.node_type as NodeType]}
+                </Badge>
+                <span className="text-sm text-text truncate">{node.title}</span>
+              </button>
+            ))}
+            <div className="ml-2">
+              <StepActionButtons
+                nodeType={nt}
+                onCreateNew={onCreateNew}
+                onLinkExisting={onLinkExisting}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: BeleidskompasStepRowProps) {
+  const [expanded, setExpanded] = useState(false);
 
   if (status.isComplete) {
     return (
@@ -128,42 +205,11 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
         </button>
         {expanded && (
           <div className="px-3 sm:px-4 pb-3 space-y-1.5 ml-9 sm:ml-10">
-            {status.nodes.map((node) => (
-              <button
-                key={node.id}
-                onClick={() => openNodeDetail(node.id)}
-                className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
-              >
-                <Badge variant={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
-                  {NODE_TYPE_LABELS[node.node_type as NodeType]}
-                </Badge>
-                <span className="text-sm text-text truncate">{node.title}</span>
-              </button>
-            ))}
-            {isMultiType ? (
-              <div className="space-y-2 pt-1">
-                {status.step.nodeTypes.map((nt) => (
-                  <div key={nt} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                    <span className="text-xs text-text-secondary font-medium">
-                      {NODE_TYPE_LABELS[nt]}:
-                    </span>
-                    <StepActionButtons
-                      nodeType={nt}
-                      onCreateNew={onCreateNew}
-                      onLinkExisting={onLinkExisting}
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 pt-1">
-                <StepActionButtons
-                  nodeType={status.step.nodeTypes[0]}
-                  onCreateNew={onCreateNew}
-                  onLinkExisting={onLinkExisting}
-                />
-              </div>
-            )}
+            <StepTypeGroups
+              status={status}
+              onCreateNew={onCreateNew}
+              onLinkExisting={onLinkExisting}
+            />
           </div>
         )}
       </div>
@@ -171,7 +217,6 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
   }
 
   // Incomplete step (may still have some nodes linked)
-  const hasNodes = status.count > 0;
   return (
     <div className="border-b border-border last:border-b-0">
       <div className="px-3 py-2.5 sm:px-4 sm:py-3">
@@ -195,42 +240,11 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
           </div>
         </div>
         <div className="mt-2 ml-9 sm:ml-10 space-y-1.5">
-          {/* Show already-linked nodes */}
-          {hasNodes && status.nodes.map((node) => (
-            <button
-              key={node.id}
-              onClick={() => openNodeDetail(node.id)}
-              className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
-            >
-              <Badge variant={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
-                {NODE_TYPE_LABELS[node.node_type as NodeType]}
-              </Badge>
-              <span className="text-sm text-text truncate">{node.title}</span>
-            </button>
-          ))}
-          {/* Action buttons — always show so users can add multiple nodes per type */}
-          {isMultiType ? (
-            <div className="space-y-1.5">
-              {status.step.nodeTypes.map((nt) => (
-                  <div key={nt} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                    <span className="text-xs text-text-secondary font-medium min-w-[100px]">
-                      {NODE_TYPE_LABELS[nt]}:
-                    </span>
-                    <StepActionButtons
-                      nodeType={nt}
-                      onCreateNew={onCreateNew}
-                      onLinkExisting={onLinkExisting}
-                    />
-                  </div>
-                ))}
-            </div>
-          ) : (
-            <StepActionButtons
-              nodeType={status.step.nodeTypes[0]}
-              onCreateNew={onCreateNew}
-              onLinkExisting={onLinkExisting}
-            />
-          )}
+          <StepTypeGroups
+            status={status}
+            onCreateNew={onCreateNew}
+            onLinkExisting={onLinkExisting}
+          />
         </div>
       </div>
     </div>
@@ -289,6 +303,7 @@ export function BeleidskompasPanel({ nodeId, stakeholderCount, onNavigateToStake
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
+            <Compass className="h-4 w-4 text-primary-700 shrink-0" />
             <h3 className="text-sm font-semibold text-text">Beleidskompas</h3>
             <a
               href={KCBR_MAIN_URL}

@@ -15,6 +15,7 @@ from bouwmeester.schema.bron import (
     BronUpdate,
 )
 from bouwmeester.schema.corpus_node import (
+    BeleidskompasProgress,
     CorpusNodeBase,
     CorpusNodeCreate,
     CorpusNodeResponse,
@@ -150,6 +151,7 @@ __all__ = [
     "BronResponse",
     "BronUpdate",
     # corpus_node
+    "BeleidskompasProgress",
     "CorpusNodeBase",
     "CorpusNodeCreate",
     "CorpusNodeResponse",

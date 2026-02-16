@@ -9,10 +9,12 @@ from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
+from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.repositories.node_stakeholder import NodeStakeholderRepository
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.bron import BronResponse, BronUpdate
 from bouwmeester.schema.corpus_node import (
+    BeleidskompasProgress,
     CorpusNodeCreate,
     CorpusNodeResponse,
     CorpusNodeUpdate,
@@ -73,7 +75,22 @@ async def list_nodes(
         search=search,
         include_unconnected_pi=include_unconnected_pi,
     )
-    return validate_list(CorpusNodeResponse, nodes)
+    responses = validate_list(CorpusNodeResponse, nodes)
+
+    # Enrich dossier nodes with beleidskompas progress
+    dossier_ids = [r.id for r in responses if r.node_type == "dossier"]
+    if dossier_ids:
+        repo = CorpusNodeRepository(db)
+        progress_map = await repo.get_beleidskompas_progress(dossier_ids)
+        for r in responses:
+            if r.node_type == "dossier" and r.id in progress_map:
+                completed, total = progress_map[r.id]
+                r.beleidskompas_progress = BeleidskompasProgress(
+                    completed_steps=completed,
+                    total_steps=total,
+                )
+
+    return responses
 
 
 @router.post("", response_model=CorpusNodeResponse, status_code=status.HTTP_201_CREATED)
