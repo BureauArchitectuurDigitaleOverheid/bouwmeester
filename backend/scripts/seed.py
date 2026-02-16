@@ -4373,26 +4373,69 @@ async def seed(db: AsyncSession) -> None:
 
     ext_orgs: dict[str, ExterneOrganisatie] = {}
     ext_org_data = [
-        ("logius", "Logius", "Logius", "uitvoeringsorganisatie",
-         "Beheert en ontwikkelt de generieke digitale overheidsinfrastructuur (DigiD, MijnOverheid, PKIoverheid)."),
-        ("ictu", "ICTU", "ICTU", "uitvoeringsorganisatie",
-         "Advies- en projectorganisatie voor de overheid op het gebied van ICT en innovatie."),
-        ("vng", "Vereniging van Nederlandse Gemeenten", "VNG", "koepelorganisatie",
-         "Behartigt de belangen van alle 342 Nederlandse gemeenten. Ondersteunt gemeenten bij digitale transformatie."),
-        ("geonovum", "Geonovum", "Geonovum", "stichting",
-         "Ontwikkelt en beheert geo-standaarden voor de overheid."),
-        ("rinis", "RINIS", "RINIS", "stichting",
-         "Routeringsinstituut voor (inter)nationale informatiestromen in de sociale zekerheid."),
-        ("rvig", "Rijksdienst voor Identiteitsgegevens", "RvIG", "uitvoeringsorganisatie",
-         "Beheerder van de Basisregistratie Personen (BRP) en identiteitsinfrastructuur."),
-        ("kvk", "Kamer van Koophandel", "KvK", "zbo",
-         "Beheerder van het Handelsregister en ondersteuner van ondernemers."),
-        ("rdw", "Rijksdienst voor het Wegverkeer", "RDW", "zbo",
-         "Beheerder van het kentekenregister en toelating van voertuigen."),
-        ("cibg", "CIBG", "CIBG", "uitvoeringsorganisatie",
-         "Uitvoeringsorganisatie voor registers in de zorg, onderwijs en justitie."),
-        ("atos", "Atos Nederland", "Atos", "marktpartij",
-         "IT-dienstverlener, voert opdrachten uit voor diverse overheidssystemen."),
+        (
+            "logius", "Logius", "Logius",
+            "uitvoeringsorganisatie",
+            "Beheert en ontwikkelt de generieke digitale"
+            " overheidsinfrastructuur"
+            " (DigiD, MijnOverheid, PKIoverheid).",
+        ),
+        (
+            "ictu", "ICTU", "ICTU",
+            "uitvoeringsorganisatie",
+            "Advies- en projectorganisatie voor de"
+            " overheid op het gebied van ICT"
+            " en innovatie.",
+        ),
+        (
+            "vng", "Vereniging van Nederlandse Gemeenten",
+            "VNG", "koepelorganisatie",
+            "Behartigt de belangen van alle 342"
+            " Nederlandse gemeenten. Ondersteunt"
+            " gemeenten bij digitale transformatie.",
+        ),
+        (
+            "geonovum", "Geonovum", "Geonovum",
+            "stichting",
+            "Ontwikkelt en beheert geo-standaarden"
+            " voor de overheid.",
+        ),
+        (
+            "rinis", "RINIS", "RINIS", "stichting",
+            "Routeringsinstituut voor (inter)nationale"
+            " informatiestromen in de sociale"
+            " zekerheid.",
+        ),
+        (
+            "rvig",
+            "Rijksdienst voor Identiteitsgegevens",
+            "RvIG", "uitvoeringsorganisatie",
+            "Beheerder van de Basisregistratie Personen"
+            " (BRP) en identiteitsinfrastructuur.",
+        ),
+        (
+            "kvk", "Kamer van Koophandel", "KvK", "zbo",
+            "Beheerder van het Handelsregister en"
+            " ondersteuner van ondernemers.",
+        ),
+        (
+            "rdw", "Rijksdienst voor het Wegverkeer",
+            "RDW", "zbo",
+            "Beheerder van het kentekenregister en"
+            " toelating van voertuigen.",
+        ),
+        (
+            "cibg", "CIBG", "CIBG",
+            "uitvoeringsorganisatie",
+            "Uitvoeringsorganisatie voor registers"
+            " in de zorg, onderwijs en justitie.",
+        ),
+        (
+            "atos", "Atos Nederland", "Atos",
+            "marktpartij",
+            "IT-dienstverlener, voert opdrachten uit"
+            " voor diverse overheidssystemen.",
+        ),
     ]
     for key, naam, afkorting, type_, beschrijving in ext_org_data:
         org = ExterneOrganisatie(
@@ -4407,63 +4450,170 @@ async def seed(db: AsyncSession) -> None:
     print(f"  Externe organisaties: {len(ext_orgs)} aangemaakt")
 
     # Opdrachten — koppelen aan bestaande instrumenten en organisaties
+    # fmt: off
     opdrachten_data = [
-        # (titel, type, begrotingsjaar, budget, gerealiseerd, instrument_var, opdrachtnemer_key, status, kostensoort, beschrijving)
-        ("Beheer en doorontwikkeling DigiD", "opdracht", 2025, 42_000_000, 28_500_000,
-         instr_digid, "logius", "actief", "exploitatie",
-         "Jaarlijkse beheer- en doorontwikkelopdracht voor DigiD inclusief hoog-beschikbaarheid en security patches."),
-        ("DigiD upgrade betrouwbaarheidsniveau Hoog", "opdracht", 2025, 8_500_000, 3_200_000,
-         instr_digid, "logius", "actief", "investering",
-         "Project voor upgrade naar eIDAS betrouwbaarheidsniveau Hoog met NFC en gezichtherkenning."),
-        ("Beheer en doorontwikkeling DigiD", "opdracht", 2024, 39_000_000, 38_700_000,
-         instr_digid, "logius", "verantwoord", "exploitatie",
-         "Beheer- en doorontwikkelopdracht DigiD 2024."),
-        ("Beheer MijnOverheid", "opdracht", 2025, 18_000_000, 11_200_000,
-         instr_mijnoverheid, "logius", "actief", "exploitatie",
-         "Beheer en hosting van het MijnOverheid-portaal en Berichtenbox."),
-        ("Doorontwikkeling MijnOverheid UX", "opdracht", 2025, 3_500_000, 1_100_000,
-         instr_mijnoverheid, "ictu", "actief", "investering",
-         "Herontwerp van de gebruikerservaring MijnOverheid conform WCAG 2.2 en gebruikersonderzoek."),
-        ("Beheer MijnOverheid", "opdracht", 2024, 16_500_000, 16_300_000,
-         instr_mijnoverheid, "logius", "verantwoord", "exploitatie",
-         "Beheer MijnOverheid 2024."),
-        ("Algoritmeregister doorontwikkeling", "opdracht", 2025, 2_800_000, 1_600_000,
-         instr_algo_register, "ictu", "actief", "investering",
-         "Doorontwikkeling algoritmeregister: verplichte registratie, API-koppelingen, dashboards."),
-        ("NORA beheer en actualisatie", "opdracht", 2025, 1_200_000, 800_000,
-         instr_nora, "geonovum", "actief", "exploitatie",
-         "Beheer van de Nederlandse Overheid Referentie Architectuur en afstemming met Europese referenties."),
-        ("EUDIW Pilot Nederland", "opdracht", 2025, 6_000_000, 2_800_000,
-         instr_eidas_wallet, "ictu", "actief", "investering",
-         "Nederlandse pilotimplementatie van de Europese Digitale Identiteit Wallet."),
-        ("EUDIW Pilot Nederland", "opdracht", 2024, 4_500_000, 4_200_000,
-         instr_eidas_wallet, "ictu", "afgerond", "investering",
-         "Eerste fase EUDIW pilot: technisch ontwerp en proof of concept."),
-        ("BIO compliance tooling", "opdracht", 2025, 1_500_000, 600_000,
-         instr_bio, "ictu", "actief", "investering",
-         "Tooling voor geautomatiseerde BIO-compliance checks en rapportages."),
-        ("Subsidie VNG Realisatie — Gemeentelijke Digitale Dienstverlening", "subsidie", 2025, 5_000_000, 2_000_000,
-         instr_digid, "vng", "actief", "exploitatie",
-         "Subsidie aan VNG Realisatie voor ondersteuning gemeenten bij aansluiting op DigiD en MijnOverheid."),
-        ("Subsidie VNG — Data bij de Bron", "subsidie", 2025, 3_200_000, 1_800_000,
-         instr_nora, "vng", "actief", "investering",
-         "Subsidie voor het programma Data bij de Bron: gemeenten koppelen direct aan basisregistraties."),
-        ("CIO-stelsel ondersteuning", "opdracht", 2025, 2_200_000, 1_400_000,
-         instr_cio_overleg, "ictu", "actief", "exploitatie",
-         "Ondersteuning van het CIO-stelsel: secretariaat, advies, portfolio-overzichten."),
-        ("NDD oprichting voorbereiding", "opdracht", 2025, 1_800_000, 400_000,
-         instr_ndd, "ictu", "concept", "investering",
-         "Voorbereidingsfase oprichting Nederlandse Digitale Dienst: organisatie-ontwerp en mandaat."),
-        ("Identiteitsstelsel interoperabiliteit", "opdracht", 2025, 3_000_000, 1_200_000,
-         instr_eidas_wallet, "rvig", "actief", "investering",
-         "Aanpassing identiteitsstelsel voor interoperabiliteit met EUDIW en eIDAS 2.0."),
-        ("Beheer en doorontwikkeling DigiD", "opdracht", 2026, 45_000_000, None,
-         instr_digid, "logius", "concept", "exploitatie",
-         "Concept-opdracht DigiD beheer 2026 (begrotingsvoorbereiding)."),
-        ("Beheer MijnOverheid", "opdracht", 2026, 19_000_000, None,
-         instr_mijnoverheid, "logius", "concept", "exploitatie",
-         "Concept-opdracht MijnOverheid beheer 2026 (begrotingsvoorbereiding)."),
+        # (titel, type, jaar, budget, gerealiseerd,
+        #  instrument, opdrachtnemer_key, status,
+        #  kostensoort, beschrijving)
+        (
+            "Beheer en doorontwikkeling DigiD",
+            "opdracht", 2025, 42_000_000, 28_500_000,
+            instr_digid, "logius", "actief",
+            "exploitatie",
+            "Jaarlijkse beheer- en doorontwikkel"
+            "opdracht voor DigiD inclusief hoog-"
+            "beschikbaarheid en security patches.",
+        ),
+        (
+            "DigiD upgrade betrouwbaarheidsniveau"
+            " Hoog",
+            "opdracht", 2025, 8_500_000, 3_200_000,
+            instr_digid, "logius", "actief",
+            "investering",
+            "Project voor upgrade naar eIDAS"
+            " betrouwbaarheidsniveau Hoog met NFC"
+            " en gezichtherkenning.",
+        ),
+        (
+            "Beheer en doorontwikkeling DigiD",
+            "opdracht", 2024, 39_000_000, 38_700_000,
+            instr_digid, "logius", "verantwoord",
+            "exploitatie",
+            "Beheer- en doorontwikkelopdracht"
+            " DigiD 2024.",
+        ),
+        (
+            "Beheer MijnOverheid",
+            "opdracht", 2025, 18_000_000, 11_200_000,
+            instr_mijnoverheid, "logius", "actief",
+            "exploitatie",
+            "Beheer en hosting van het"
+            " MijnOverheid-portaal en Berichtenbox.",
+        ),
+        (
+            "Doorontwikkeling MijnOverheid UX",
+            "opdracht", 2025, 3_500_000, 1_100_000,
+            instr_mijnoverheid, "ictu", "actief",
+            "investering",
+            "Herontwerp van de gebruikerservaring"
+            " MijnOverheid conform WCAG 2.2 en"
+            " gebruikersonderzoek.",
+        ),
+        (
+            "Beheer MijnOverheid",
+            "opdracht", 2024, 16_500_000, 16_300_000,
+            instr_mijnoverheid, "logius",
+            "verantwoord", "exploitatie",
+            "Beheer MijnOverheid 2024.",
+        ),
+        (
+            "Algoritmeregister doorontwikkeling",
+            "opdracht", 2025, 2_800_000, 1_600_000,
+            instr_algo_register, "ictu", "actief",
+            "investering",
+            "Doorontwikkeling algoritmeregister:"
+            " verplichte registratie,"
+            " API-koppelingen, dashboards.",
+        ),
+        (
+            "NORA beheer en actualisatie",
+            "opdracht", 2025, 1_200_000, 800_000,
+            instr_nora, "geonovum", "actief",
+            "exploitatie",
+            "Beheer van de Nederlandse Overheid"
+            " Referentie Architectuur en afstemming"
+            " met Europese referenties.",
+        ),
+        (
+            "EUDIW Pilot Nederland",
+            "opdracht", 2025, 6_000_000, 2_800_000,
+            instr_eidas_wallet, "ictu", "actief",
+            "investering",
+            "Nederlandse pilotimplementatie van de"
+            " Europese Digitale Identiteit Wallet.",
+        ),
+        (
+            "EUDIW Pilot Nederland",
+            "opdracht", 2024, 4_500_000, 4_200_000,
+            instr_eidas_wallet, "ictu", "afgerond",
+            "investering",
+            "Eerste fase EUDIW pilot: technisch"
+            " ontwerp en proof of concept.",
+        ),
+        (
+            "BIO compliance tooling",
+            "opdracht", 2025, 1_500_000, 600_000,
+            instr_bio, "ictu", "actief",
+            "investering",
+            "Tooling voor geautomatiseerde"
+            " BIO-compliance checks en rapportages.",
+        ),
+        (
+            "Subsidie VNG Realisatie \u2014"
+            " Gemeentelijke Digitale"
+            " Dienstverlening",
+            "subsidie", 2025, 5_000_000, 2_000_000,
+            instr_digid, "vng", "actief",
+            "exploitatie",
+            "Subsidie aan VNG Realisatie voor"
+            " ondersteuning gemeenten bij"
+            " aansluiting op DigiD en MijnOverheid.",
+        ),
+        (
+            "Subsidie VNG \u2014 Data bij de Bron",
+            "subsidie", 2025, 3_200_000, 1_800_000,
+            instr_nora, "vng", "actief",
+            "investering",
+            "Subsidie voor het programma Data bij"
+            " de Bron: gemeenten koppelen direct"
+            " aan basisregistraties.",
+        ),
+        (
+            "CIO-stelsel ondersteuning",
+            "opdracht", 2025, 2_200_000, 1_400_000,
+            instr_cio_overleg, "ictu", "actief",
+            "exploitatie",
+            "Ondersteuning van het CIO-stelsel:"
+            " secretariaat, advies,"
+            " portfolio-overzichten.",
+        ),
+        (
+            "NDD oprichting voorbereiding",
+            "opdracht", 2025, 1_800_000, 400_000,
+            instr_ndd, "ictu", "concept",
+            "investering",
+            "Voorbereidingsfase oprichting"
+            " Nederlandse Digitale Dienst:"
+            " organisatie-ontwerp en mandaat.",
+        ),
+        (
+            "Identiteitsstelsel"
+            " interoperabiliteit",
+            "opdracht", 2025, 3_000_000, 1_200_000,
+            instr_eidas_wallet, "rvig", "actief",
+            "investering",
+            "Aanpassing identiteitsstelsel voor"
+            " interoperabiliteit met EUDIW"
+            " en eIDAS 2.0.",
+        ),
+        (
+            "Beheer en doorontwikkeling DigiD",
+            "opdracht", 2026, 45_000_000, None,
+            instr_digid, "logius", "concept",
+            "exploitatie",
+            "Concept-opdracht DigiD beheer 2026"
+            " (begrotingsvoorbereiding).",
+        ),
+        (
+            "Beheer MijnOverheid",
+            "opdracht", 2026, 19_000_000, None,
+            instr_mijnoverheid, "logius", "concept",
+            "exploitatie",
+            "Concept-opdracht MijnOverheid beheer"
+            " 2026 (begrotingsvoorbereiding).",
+        ),
     ]
+    # fmt: on
 
     opdracht_refs: list[Opdracht] = []
     # Look up organisatie-eenheid for opdrachtgever (dir_ddo)
@@ -4486,7 +4636,11 @@ async def seed(db: AsyncSession) -> None:
             status=status,
             startdatum=date(jaar, 1, 1),
             einddatum=date(jaar, 12, 31),
-            volgend_jaar_benodigd=int(budget * 1.05) if budget and jaar < 2026 else None,
+            volgend_jaar_benodigd=(
+                int(budget * 1.05)
+                if budget and jaar < 2026
+                else None
+            ),
         )
         db.add(o)
         opdracht_refs.append(o)
