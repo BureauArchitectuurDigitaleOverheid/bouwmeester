@@ -13,7 +13,7 @@ from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 
 @pytest.fixture
 async def onderdeel_van_type(db_session):
-    """Ensure the onderdeel_van edge type exists (may already be seeded by migrations)."""
+    """Ensure the onderdeel_van edge type exists."""
     result = await db_session.execute(
         select(EdgeType).where(EdgeType.id == "onderdeel_van")
     )
