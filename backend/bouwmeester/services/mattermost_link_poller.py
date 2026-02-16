@@ -9,6 +9,7 @@ import re
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.models.person import Person
 from bouwmeester.repositories.mattermost_user import MattermostUserRepository
 from bouwmeester.services.mattermost_service import MattermostService
 
@@ -70,11 +71,14 @@ class MattermostLinkPoller:
             # Check if Mattermost user is already linked.
             existing = await self.repo.get_by_mattermost_user_id(mm_user_id)
             if existing:
+                person = await self.session.get(Person, existing.person_id)
+                person_name = person.naam if person else "onbekend"
                 await self._safe_reply(
                     channel_id,
                     root_id,
-                    "Je bent al gekoppeld! "
-                    "Wil je opnieuw koppelen? Ontkoppel eerst in Instellingen.",
+                    f"Je Mattermost-account is al gekoppeld aan **{person_name}** "
+                    f"in Bouwmeester. Wil je opnieuw koppelen? "
+                    f"Ontkoppel eerst via Instellingen (als {person_name}).",
                 )
                 continue
 
@@ -93,8 +97,8 @@ class MattermostLinkPoller:
                 await self._safe_reply(
                     channel_id,
                     root_id,
-                    "Dit account is al gekoppeld. "
-                    "Wil je opnieuw koppelen? Ontkoppel eerst in Instellingen.",
+                    "Dit Bouwmeester-account is al gekoppeld aan een ander "
+                    "Mattermost-account. Ontkoppel eerst via Instellingen.",
                 )
                 continue
             await self.repo.delete_code(code)

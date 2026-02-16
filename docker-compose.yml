@@ -11,7 +11,7 @@ services:
   db:
     image: postgres:16
     ports:
-      - "5432:5432"
+      - "${DB_HOST_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: bouwmeester
       POSTGRES_PASSWORD: bouwmeester
@@ -47,7 +47,7 @@ services:
       MATTERMOST_NOTIFICATION_CHANNEL_ID: ${MATTERMOST_NOTIFICATION_CHANNEL_ID:-}
     volumes: *backend-volumes
     entrypoint: []
-    command: uv run uvicorn bouwmeester.core.app:create_app --factory --host 0.0.0.0 --port 8000 --reload
+    command: uv run uvicorn bouwmeester.core.app:create_app --factory --host 0.0.0.0 --port 8000 --reload --reload-exclude .venv
 
   frontend:
     build:

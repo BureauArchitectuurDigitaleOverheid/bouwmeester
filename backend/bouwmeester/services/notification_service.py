@@ -6,7 +6,7 @@ from collections import defaultdict
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
@@ -39,6 +39,11 @@ async def _mattermost_send_background(notification_id: UUID) -> None:
                 notification = await session.get(Notification, notification_id)
                 if notification:
                     await mm.send_notification(notification)
+                else:
+                    logger.warning(
+                        "Notification %s not found for Mattermost send",
+                        notification_id,
+                    )
             finally:
                 await mm.close()
     except Exception:
@@ -54,18 +59,23 @@ class NotificationService:
         self.repo = NotificationRepository(session)
 
     def _send_to_mattermost(self, notification: Notification) -> None:
-        """Schedule Mattermost forwarding as a fire-and-forget background task.
+        """Schedule Mattermost forwarding after the current transaction commits.
 
         The notification must already be flushed (have an id) before calling this.
-        The background task uses its own DB session so it doesn't block the
-        current request or hold the caller's session open.
+        The background task uses its own DB session, so we defer it until
+        after_commit to guarantee the notification is visible to the new session.
         """
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(_mattermost_send_background(notification.id))
-        except RuntimeError:
-            # No running event loop (e.g. in sync tests) — skip silently.
-            pass
+        notification_id = notification.id
+        sync_session = self.session.sync_session
+
+        @event.listens_for(sync_session, "after_commit", once=True)
+        def _after_commit(session):  # noqa: ARG001
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(_mattermost_send_background(notification_id))
+            except RuntimeError:
+                # No running event loop (e.g. in sync tests) — skip silently.
+                pass
 
     async def notify_task_assigned(
         self, task: Task, assignee: Person, actor_id: UUID | None = None

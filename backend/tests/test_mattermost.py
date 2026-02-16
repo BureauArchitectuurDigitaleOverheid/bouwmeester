@@ -196,7 +196,7 @@ async def test_format_notification(db_session: AsyncSession, sample_person):
         assert attachment["title"] == "Nieuwe taak: Test"
         assert len(attachment["actions"]) == 1  # Taak afronden
         assert attachment["actions"][0]["name"] == "Taak afronden"
-        assert "Bekijken in Bouwmeester" in attachment["footer"]
+        assert attachment["footer"] == "Bouwmeester"
 
 
 # ---------------------------------------------------------------------------

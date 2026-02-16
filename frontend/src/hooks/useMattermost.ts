@@ -13,25 +13,32 @@ export interface MattermostLinkCode {
   expires_at: string;
 }
 
-export function useMattermostLinkStatus(poll = false, enabled = true) {
+export function useMattermostLinkStatus(poll = false, enabled = true, personId?: string) {
+  const params = personId ? `?person_id=${personId}` : '';
   return useQuery({
     queryKey: queryKeys.mattermost.linkStatus,
-    queryFn: () => apiGet<MattermostLinkStatus>('/api/mattermost/link-status'),
+    queryFn: () => apiGet<MattermostLinkStatus>(`/api/mattermost/link-status${params}`),
     refetchInterval: poll ? 3000 : false,
     enabled,
   });
 }
 
 export function useGenerateLinkCode() {
-  return useMutationWithError<MattermostLinkCode>({
-    mutationFn: () => apiPost<MattermostLinkCode>('/api/mattermost/link-code'),
+  return useMutationWithError<MattermostLinkCode, string | undefined>({
+    mutationFn: (personId?: string) => {
+      const params = personId ? `?person_id=${personId}` : '';
+      return apiPost<MattermostLinkCode>(`/api/mattermost/link-code${params}`);
+    },
     errorMessage: 'Fout bij genereren van koppelcode',
   });
 }
 
 export function useUnlinkMattermost() {
-  return useMutationWithError({
-    mutationFn: () => apiDelete('/api/mattermost/link'),
+  return useMutationWithError<unknown, string | undefined>({
+    mutationFn: (personId?: string) => {
+      const params = personId ? `?person_id=${personId}` : '';
+      return apiDelete(`/api/mattermost/link${params}`);
+    },
     errorMessage: 'Fout bij ontkoppelen van Mattermost',
     invalidateKeys: [queryKeys.mattermost.linkStatus],
   });

@@ -10,17 +10,21 @@ import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/queryKeys';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 
 export function MattermostLinkSection() {
-  const { person } = useAuth();
+  const { person: authPerson } = useAuth();
+  const { currentPerson } = useCurrentPerson();
   const queryClient = useQueryClient();
   const [linkCode, setLinkCode] = useState<MattermostLinkCode | null>(null);
   const { copied, copy } = useCopyToClipboard();
 
-  // Only query link status when user is authenticated.
+  // Use auth person ID when available (SSO), fall back to currentPerson (dev mode).
+  const personId = authPerson?.id ?? currentPerson?.id ?? undefined;
+
   const isCodeActive = !!(linkCode && new Date(linkCode.expires_at) > new Date());
-  const hasPersonId = !!person?.id;
-  const { data: linkStatus, isLoading, isError } = useMattermostLinkStatus(isCodeActive, hasPersonId);
+  const hasPersonId = !!personId;
+  const { data: linkStatus, isLoading, isError } = useMattermostLinkStatus(isCodeActive, hasPersonId, personId);
   const generateCode = useGenerateLinkCode();
   const unlinkMutation = useUnlinkMattermost();
 
@@ -32,7 +36,7 @@ export function MattermostLinkSection() {
   }, [isCodeActive, linkStatus?.linked]);
 
   const handleGenerateCode = () => {
-    generateCode.mutate(undefined, {
+    generateCode.mutate(personId, {
       onSuccess: (data) => {
         setLinkCode(data);
       },
@@ -45,7 +49,7 @@ export function MattermostLinkSection() {
   };
 
   const handleUnlink = () => {
-    unlinkMutation.mutate();
+    unlinkMutation.mutate(personId);
   };
 
   return (

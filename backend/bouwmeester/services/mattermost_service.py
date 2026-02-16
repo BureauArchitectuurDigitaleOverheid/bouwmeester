@@ -289,6 +289,7 @@ class MattermostService:
 
         escaped_title = _escape_md(notification.title)
         escaped_message = _escape_md(plain_message)
+        frontend_url = self._cfg("FRONTEND_URL", "http://localhost:5173")
         attachment: dict = {
             "fallback": escaped_title,
             "color": color,
@@ -296,7 +297,8 @@ class MattermostService:
             "title_link": deep_link,
             "text": escaped_message,
             "fields": fields,
-            "footer": f"[Bekijken in Bouwmeester]({deep_link})",
+            "footer": "Bouwmeester",
+            "footer_icon": f"{frontend_url}/favicon.ico",
         }
 
         # Add interactive buttons for actionable notification types.

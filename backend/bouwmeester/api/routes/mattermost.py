@@ -81,12 +81,20 @@ def _check_rate_limit(bucket: str, key: str) -> None:
             del bucket_dict[oldest_key]
 
 
-def _get_person_id(
+async def _get_person_id(
     current_user: OptionalUser,
+    person_id: UUID | None = None,
 ) -> UUID:
-    """Resolve person ID from authenticated user."""
+    """Resolve person ID from authenticated user.
+
+    In dev mode (no OIDC), ``current_user`` is ``None``.  To keep the
+    Mattermost link flow functional during development, an explicit
+    ``person_id`` query parameter is accepted as fallback.
+    """
     if current_user is not None:
         return current_user.id
+    if person_id is not None:
+        return person_id
     raise HTTPException(status_code=401, detail="Niet ingelogd")
 
 
