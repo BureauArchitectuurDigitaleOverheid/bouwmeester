@@ -9,15 +9,18 @@ import {
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/queryKeys';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function MattermostLinkSection() {
+  const { person } = useAuth();
   const queryClient = useQueryClient();
   const [linkCode, setLinkCode] = useState<MattermostLinkCode | null>(null);
   const { copied, copy } = useCopyToClipboard();
 
-  // Poll for link status changes while a code is active.
+  // Only query link status when user is authenticated.
   const isCodeActive = !!(linkCode && new Date(linkCode.expires_at) > new Date());
-  const { data: linkStatus, isLoading, isError } = useMattermostLinkStatus(isCodeActive);
+  const hasPersonId = !!person?.id;
+  const { data: linkStatus, isLoading, isError } = useMattermostLinkStatus(isCodeActive, hasPersonId);
   const generateCode = useGenerateLinkCode();
   const unlinkMutation = useUnlinkMattermost();
 

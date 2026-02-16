@@ -13,11 +13,12 @@ export interface MattermostLinkCode {
   expires_at: string;
 }
 
-export function useMattermostLinkStatus(poll = false) {
+export function useMattermostLinkStatus(poll = false, enabled = true) {
   return useQuery({
     queryKey: queryKeys.mattermost.linkStatus,
     queryFn: () => apiGet<MattermostLinkStatus>('/api/mattermost/link-status'),
     refetchInterval: poll ? 3000 : false,
+    enabled,
   });
 }
 
