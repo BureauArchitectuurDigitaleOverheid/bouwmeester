@@ -1139,7 +1139,7 @@ export enum ExterneOrganisatieType {
   OVERIG = 'overig',
 }
 
-export const EXTERNE_ORGANISATIE_TYPE_LABELS: Record<ExterneOrganisatieType, string> = {
+export const EXTERNE_ORG_TYPE_LABELS: Record<ExterneOrganisatieType, string> = {
   [ExterneOrganisatieType.UITVOERINGSORGANISATIE]: 'Uitvoeringsorganisatie',
   [ExterneOrganisatieType.ZBO]: 'ZBO',
   [ExterneOrganisatieType.KOEPELORGANISATIE]: 'Koepelorganisatie',
@@ -1148,7 +1148,7 @@ export const EXTERNE_ORGANISATIE_TYPE_LABELS: Record<ExterneOrganisatieType, str
   [ExterneOrganisatieType.OVERIG]: 'Overig',
 };
 
-export const EXTERNE_ORGANISATIE_TYPE_COLORS: Record<ExterneOrganisatieType, BadgeVariant> = {
+export const EXTERNE_ORG_TYPE_COLORS: Record<ExterneOrganisatieType, BadgeVariant> = {
   [ExterneOrganisatieType.UITVOERINGSORGANISATIE]: 'blue',
   [ExterneOrganisatieType.ZBO]: 'purple',
   [ExterneOrganisatieType.KOEPELORGANISATIE]: 'green',

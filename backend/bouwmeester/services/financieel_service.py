@@ -103,34 +103,47 @@ class FinancieelService:
         self,
         node_id: UUID,
         node_type: str,
+        max_depth: int = 5,
     ) -> list[UUID]:
         """Collect instrument node IDs reachable from the given node.
 
         For instrument nodes, returns [node_id] directly.
-        For other nodes, uses a recursive CTE to traverse edges and find
-        connected instruments, deduplicating to prevent double-counting.
+        For other nodes, uses a bounded BFS via recursive CTE to traverse edges
+        and find connected instruments, using UNION to prevent cycles.
         """
         if node_type == "instrument":
             return [node_id]
 
-        # Recursive CTE: find all nodes reachable via edges, then filter for instruments
+        from sqlalchemy import literal_column
+
+        # Recursive CTE with depth tracking and UNION (not UNION ALL) to break cycles
         cte = (
-            select(Edge.to_node_id.label("id"))
+            select(
+                Edge.to_node_id.label("id"),
+                literal_column("1").label("depth"),
+            )
             .where(Edge.from_node_id == node_id)
             .cte(name="reachable", recursive=True)
         )
-        cte = cte.union_all(
-            select(Edge.to_node_id).join(cte, Edge.from_node_id == cte.c.id)
+        cte = cte.union(
+            select(Edge.to_node_id, (cte.c.depth + 1).label("depth"))
+            .join(cte, Edge.from_node_id == cte.c.id)
+            .where(cte.c.depth < max_depth)
         )
 
-        # Also traverse reverse edges (edges pointing TO this node)
+        # Also traverse reverse edges with the same protections
         cte_rev = (
-            select(Edge.from_node_id.label("id"))
+            select(
+                Edge.from_node_id.label("id"),
+                literal_column("1").label("depth"),
+            )
             .where(Edge.to_node_id == node_id)
             .cte(name="reachable_rev", recursive=True)
         )
-        cte_rev = cte_rev.union_all(
-            select(Edge.from_node_id).join(cte_rev, Edge.to_node_id == cte_rev.c.id)
+        cte_rev = cte_rev.union(
+            select(Edge.from_node_id, (cte_rev.c.depth + 1).label("depth"))
+            .join(cte_rev, Edge.to_node_id == cte_rev.c.id)
+            .where(cte_rev.c.depth < max_depth)
         )
 
         # Combine forward and reverse reachable, filter for instruments

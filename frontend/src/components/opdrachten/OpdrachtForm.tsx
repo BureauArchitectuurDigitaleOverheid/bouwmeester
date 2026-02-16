@@ -3,7 +3,6 @@ import { ArrowLeft } from 'lucide-react';
 import { useCreateOpdracht, useUpdateOpdracht } from '@/hooks/useOpdrachten';
 import { useExterneOrganisaties } from '@/hooks/useExterneOrganisaties';
 import { useNodes } from '@/hooks/useNodes';
-import { useOrganisatieTree } from '@/hooks/useOrganisatie';
 import { usePeople } from '@/hooks/usePeople';
 import {
   OpdrachtType,

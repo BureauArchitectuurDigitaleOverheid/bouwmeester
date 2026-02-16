@@ -1,22 +1,11 @@
 import { useNodeFinancieel, useNodeOpdrachten } from '@/hooks/useOpdrachten';
 import {
-  OPDRACHT_TYPE_LABELS,
   OPDRACHT_STATUS_LABELS,
   OPDRACHT_STATUS_COLORS,
-  OpdrachtType,
   OpdrachtStatus,
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
-
-function formatCurrency(value?: number | null): string {
-  if (value == null) return '-';
-  return new Intl.NumberFormat('nl-NL', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
+import { formatCurrency } from '@/utils/format';
 
 interface FinancieelOverzichtPanelProps {
   nodeId: string;
@@ -33,7 +22,7 @@ export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelPro
   if (!overzicht || overzicht.per_jaar.length === 0) {
     return (
       <div className="text-sm text-text-secondary py-4">
-        Geen financiele gegevens beschikbaar voor deze node.
+        Geen financiële gegevens beschikbaar voor deze node.
       </div>
     );
   }

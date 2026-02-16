@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Plus, Filter, X } from 'lucide-react';
 import { useOpdrachten } from '@/hooks/useOpdrachten';
 import { useExterneOrganisaties } from '@/hooks/useExterneOrganisaties';
-import { useNodes } from '@/hooks/useNodes';
 import { OpdrachtForm } from '@/components/opdrachten/OpdrachtForm';
 import { OpdrachtDetail } from '@/components/opdrachten/OpdrachtDetail';
 import {
@@ -11,24 +9,12 @@ import {
   OPDRACHT_STATUS_LABELS,
   OPDRACHT_STATUS_COLORS,
   OPDRACHT_TYPE_COLORS,
-  KOSTENSOORT_LABELS,
   type OpdrachtFilters,
-  type Opdracht,
-  type BadgeVariant,
   OpdrachtType,
   OpdrachtStatus,
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
-
-function formatCurrency(value?: number | null): string {
-  if (value == null) return '-';
-  return new Intl.NumberFormat('nl-NL', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
+import { formatCurrency } from '@/utils/format';
 
 export function OpdrachtenPage() {
   const [filters, setFilters] = useState<OpdrachtFilters>({});

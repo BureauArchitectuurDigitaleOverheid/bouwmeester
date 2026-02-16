@@ -16,6 +16,7 @@ import {
   PanelLeftOpen,
   BookOpen,
   Banknote,
+  Building,
 } from 'lucide-react';
 import { useUIStore } from '@/store/ui';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,6 +51,7 @@ export function Sidebar({ mobile }: SidebarProps) {
       { to: '/organisatie', icon: Building2, label: 'Organisatie' },
       { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel },
       { to: '/opdrachten', icon: Banknote, label: 'Opdrachten' },
+      { to: '/externe-organisaties', icon: Building, label: 'Ext. organisaties' },
       { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken' },
       { to: '/search', icon: Search, label: 'Zoeken' },
       { to: '/docs', icon: BookOpen, label: 'Documentatie' },

@@ -9,7 +9,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, Text, func, text
+from sqlalchemy import DateTime, ForeignKey, Numeric, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -132,6 +132,12 @@ class OpdrachtNode(Base):
     """Junction table linking an Opdracht to additional CorpusNodes."""
 
     __tablename__ = "opdracht_node"
+    __table_args__ = (
+        UniqueConstraint(
+            "opdracht_id", "node_id",
+            name="uq_opdracht_node_opdracht_node",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -161,4 +167,5 @@ class OpdrachtNode(Base):
     node: Mapped["CorpusNode"] = relationship(
         "CorpusNode",
         foreign_keys=[node_id],
+        lazy="joined",
     )

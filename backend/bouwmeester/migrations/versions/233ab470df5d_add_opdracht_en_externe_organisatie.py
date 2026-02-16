@@ -9,7 +9,6 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.sql import table, column
 
 
 # revision identifiers, used by Alembic.
@@ -69,39 +68,12 @@ def upgrade() -> None:
     sa.Column('relatie_type', sa.String(), server_default='bekostigt', nullable=False, comment='bekostigt|draagt_bij_aan'),
     sa.ForeignKeyConstraint(['node_id'], ['corpus_node.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['opdracht_id'], ['opdracht.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint(
+        'opdracht_id', 'node_id',
+        name='uq_opdracht_node_opdracht_node',
+    ),
     )
-
-
-    # Seed reference data: externe organisaties
-    externe_org = table('externe_organisatie',
-        column('naam', sa.String),
-        column('afkorting', sa.String),
-        column('type', sa.String),
-        column('beschrijving', sa.Text),
-    )
-    op.bulk_insert(externe_org, [
-        {'naam': 'Logius', 'afkorting': 'Logius', 'type': 'uitvoeringsorganisatie',
-         'beschrijving': 'Beheerorganisatie voor digitale overheidsvoorzieningen zoals DigiD, MijnOverheid en PKIoverheid.'},
-        {'naam': 'ICTU', 'afkorting': 'ICTU', 'type': 'stichting',
-         'beschrijving': 'ICT-uitvoeringsorganisatie die innovatieve ICT-projecten uitvoert voor de overheid.'},
-        {'naam': 'Vereniging van Nederlandse Gemeenten', 'afkorting': 'VNG', 'type': 'koepelorganisatie',
-         'beschrijving': 'Behartigt de belangen van alle 342 Nederlandse gemeenten. Ondersteunt gemeenten bij digitale transformatie.'},
-        {'naam': 'Geonovum', 'afkorting': 'Geonovum', 'type': 'stichting',
-         'beschrijving': 'Ontwikkelt en beheert geo-standaarden voor de overheid.'},
-        {'naam': 'RINIS', 'afkorting': 'RINIS', 'type': 'stichting',
-         'beschrijving': 'Routeringsinstituut voor (inter)nationale informatiestromen in de sociale zekerheid.'},
-        {'naam': 'Rijksdienst voor Identiteitsgegevens', 'afkorting': 'RvIG', 'type': 'uitvoeringsorganisatie',
-         'beschrijving': 'Beheerder van de Basisregistratie Personen (BRP) en identiteitsinfrastructuur.'},
-        {'naam': 'Kamer van Koophandel', 'afkorting': 'KvK', 'type': 'zbo',
-         'beschrijving': 'Beheerder van het Handelsregister en ondersteuner van ondernemers.'},
-        {'naam': 'Rijksdienst voor het Wegverkeer', 'afkorting': 'RDW', 'type': 'zbo',
-         'beschrijving': 'Beheerder van het kentekenregister en toelating van voertuigen.'},
-        {'naam': 'CIBG', 'afkorting': 'CIBG', 'type': 'uitvoeringsorganisatie',
-         'beschrijving': 'Uitvoeringsorganisatie voor registers in de zorg, onderwijs en justitie.'},
-        {'naam': 'Atos Nederland', 'afkorting': 'Atos', 'type': 'marktpartij',
-         'beschrijving': 'IT-dienstverlener, voert opdrachten uit voor diverse overheidssystemen.'},
-    ])
 
 
 def downgrade() -> None:

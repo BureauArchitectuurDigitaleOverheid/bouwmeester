@@ -52,6 +52,19 @@ class OpdrachtNodeResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @classmethod
+    def from_model(cls, obj: object) -> "OpdrachtNodeResponse":
+        """Create response from OpdrachtNode ORM model, populating node fields."""
+        node = getattr(obj, "node", None)
+        return cls(
+            id=obj.id,  # type: ignore[attr-defined]
+            opdracht_id=obj.opdracht_id,  # type: ignore[attr-defined]
+            node_id=obj.node_id,  # type: ignore[attr-defined]
+            relatie_type=obj.relatie_type,  # type: ignore[attr-defined]
+            node_title=getattr(node, "title", None) if node else None,
+            node_type=getattr(node, "node_type", None) if node else None,
+        )
+
 
 # --- Opdracht schemas ---
 

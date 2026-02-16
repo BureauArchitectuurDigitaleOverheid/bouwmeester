@@ -138,9 +138,11 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         await self.session.refresh(link)
         return link
 
-    async def remove_node_koppeling(self, koppeling_id: UUID) -> bool:
+    async def remove_node_koppeling(
+        self, opdracht_id: UUID, koppeling_id: UUID
+    ) -> bool:
         obj = await self.session.get(OpdrachtNode, koppeling_id)
-        if obj is None:
+        if obj is None or obj.opdracht_id != opdracht_id:
             return False
         await self.session.delete(obj)
         await self.session.flush()

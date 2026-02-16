@@ -114,7 +114,7 @@ async def add_node_koppeling(
     repo = OpdrachtRepository(db)
     require_found(await repo.get(opdracht_id), "Opdracht")
     link = await repo.add_node_koppeling(opdracht_id, data)
-    return OpdrachtNodeResponse.model_validate(link)
+    return OpdrachtNodeResponse.from_model(link)
 
 
 @router.delete(
@@ -128,4 +128,6 @@ async def remove_node_koppeling(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = OpdrachtRepository(db)
-    require_deleted(await repo.remove_node_koppeling(koppeling_id), "Koppeling")
+    require_deleted(
+        await repo.remove_node_koppeling(opdracht_id, koppeling_id), "Koppeling"
+    )

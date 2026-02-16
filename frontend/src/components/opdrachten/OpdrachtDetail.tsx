@@ -13,16 +13,7 @@ import {
   OpdrachtStatus,
   Kostensoort,
 } from '@/types';
-
-function formatCurrency(value?: number | null): string {
-  if (value == null) return '-';
-  return new Intl.NumberFormat('nl-NL', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
+import { formatCurrency } from '@/utils/format';
 
 interface OpdrachtDetailProps {
   opdrachtId: string;
