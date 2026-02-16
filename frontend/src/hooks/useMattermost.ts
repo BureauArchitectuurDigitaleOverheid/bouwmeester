@@ -1,5 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { apiGet, apiPost, apiDelete } from '@/api/client';
+import { useMutationWithError } from '@/hooks/useMutationWithError';
+import { queryKeys } from '@/hooks/queryKeys';
 
 export interface MattermostLinkStatus {
   linked: boolean;
@@ -11,30 +13,25 @@ export interface MattermostLinkCode {
   expires_at: string;
 }
 
-const mattermostKeys = {
-  linkStatus: ['mattermost', 'link-status'] as const,
-};
-
 export function useMattermostLinkStatus(poll = false) {
   return useQuery({
-    queryKey: mattermostKeys.linkStatus,
+    queryKey: queryKeys.mattermost.linkStatus,
     queryFn: () => apiGet<MattermostLinkStatus>('/api/mattermost/link-status'),
     refetchInterval: poll ? 3000 : false,
   });
 }
 
 export function useGenerateLinkCode() {
-  return useMutation({
+  return useMutationWithError<MattermostLinkCode>({
     mutationFn: () => apiPost<MattermostLinkCode>('/api/mattermost/link-code'),
+    errorMessage: 'Fout bij genereren van koppelcode',
   });
 }
 
 export function useUnlinkMattermost() {
-  const queryClient = useQueryClient();
-  return useMutation({
+  return useMutationWithError({
     mutationFn: () => apiDelete('/api/mattermost/link'),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: mattermostKeys.linkStatus });
-    },
+    errorMessage: 'Fout bij ontkoppelen van Mattermost',
+    invalidateKeys: [queryKeys.mattermost.linkStatus],
   });
 }

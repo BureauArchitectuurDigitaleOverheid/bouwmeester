@@ -8,11 +8,10 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.config import get_settings
 from bouwmeester.models.mattermost_user import MattermostLinkCode, MattermostUser
 
 _CODE_CHARS = string.ascii_lowercase + string.digits
-_CODE_LENGTH = 6
-_CODE_TTL_MINUTES = 10
 
 
 class MattermostUserRepository:
@@ -70,16 +69,21 @@ class MattermostUserRepository:
     async def create_link_code(self, person_id: UUID) -> MattermostLinkCode:
         # Delete any existing codes for this person.
         await self.session.execute(
-            delete(MattermostLinkCode).where(
-                MattermostLinkCode.person_id == person_id
-            )
+            delete(MattermostLinkCode).where(MattermostLinkCode.person_id == person_id)
         )
-        code = "BM-" + "".join(secrets.choice(_CODE_CHARS) for _ in range(_CODE_LENGTH))
+        settings = get_settings()
+        code = "BM-" + "".join(
+            secrets.choice(_CODE_CHARS)
+            for _ in range(settings.MATTERMOST_LINK_CODE_LENGTH)
+        )
         now = datetime.now(UTC)
         link_code = MattermostLinkCode(
             person_id=person_id,
             code=code,
-            expires_at=now + timedelta(minutes=_CODE_TTL_MINUTES),
+            expires_at=now
+            + timedelta(
+                minutes=settings.MATTERMOST_LINK_CODE_TTL_MINUTES,
+            ),
         )
         self.session.add(link_code)
         await self.session.flush()

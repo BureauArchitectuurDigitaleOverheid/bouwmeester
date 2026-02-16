@@ -29,9 +29,7 @@ class MattermostUser(Base):
     mattermost_user_id: Mapped[str] = mapped_column(
         String(26), unique=True, nullable=False
     )
-    mattermost_username: Mapped[str] = mapped_column(
-        String(255), nullable=False
-    )
+    mattermost_username: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -54,7 +52,7 @@ class MattermostLinkCode(Base):
         ForeignKey("person.id", ondelete="CASCADE"),
         nullable=False,
     )
-    code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(16), unique=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

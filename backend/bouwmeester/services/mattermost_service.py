@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.config import get_settings
 from bouwmeester.models.notification import Notification
 from bouwmeester.repositories.mattermost_user import MattermostUserRepository
+from bouwmeester.services.mattermost_utils import escape_mattermost_md
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +50,15 @@ async def _load_mattermost_config(db: AsyncSession) -> dict[str, str]:
 
         result = await db.execute(
             select(AppConfig.key, AppConfig.value, AppConfig.is_secret).where(
-                AppConfig.key.in_([
-                    "MATTERMOST_ENABLED",
-                    "MATTERMOST_URL",
-                    "MATTERMOST_BOT_TOKEN",
-                    "MATTERMOST_WEBHOOK_TOKEN",
-                    "MATTERMOST_NOTIFICATION_CHANNEL_ID",
-                ])
+                AppConfig.key.in_(
+                    [
+                        "MATTERMOST_ENABLED",
+                        "MATTERMOST_URL",
+                        "MATTERMOST_BOT_TOKEN",
+                        "MATTERMOST_WEBHOOK_TOKEN",
+                        "MATTERMOST_NOTIFICATION_CHANNEL_ID",
+                    ]
+                )
             )
         )
         _mm_config_cache = {}
@@ -65,8 +68,8 @@ async def _load_mattermost_config(db: AsyncSession) -> dict[str, str]:
         _mm_config_cache_ts = now
     except Exception:
         logger.debug("Could not load Mattermost config from database, using env vars")
-        _mm_config_cache = {}
-        _mm_config_cache_ts = now
+        # Return empty dict but do NOT cache — allow immediate retry next call.
+        return {}
 
     return _mm_config_cache
 
@@ -90,27 +93,8 @@ _NOTIFICATION_COLORS: dict[str, str] = {
 # Types that should go to the channel (broadcast) instead of DM.
 _CHANNEL_NOTIFICATION_TYPES = frozenset({"politieke_input_imported", "access_request"})
 
-# Characters that have special meaning in Mattermost markdown.
-_MM_ESCAPE_CHARS = str.maketrans(
-    {
-        "[": "\\[",
-        "]": "\\]",
-        "(": "\\(",
-        ")": "\\)",
-        "@": "\\@",
-        "~": "\\~",
-        "*": "\\*",
-        "_": "\\_",
-        "`": "\\`",
-        "#": "\\#",
-        "|": "\\|",
-    }
-)
-
-
-def _escape_md(text: str) -> str:
-    """Escape Mattermost markdown special characters in user-controlled text."""
-    return text.translate(_MM_ESCAPE_CHARS)
+# Re-export for backwards compatibility within this module.
+_escape_md = escape_mattermost_md
 
 
 def _validate_mattermost_url(url: str) -> None:

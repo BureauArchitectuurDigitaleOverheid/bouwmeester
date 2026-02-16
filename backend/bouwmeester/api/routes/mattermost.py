@@ -36,25 +36,35 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mattermost", tags=["mattermost"])
 
-# Simple in-memory rate limiter for verify-link (keyed by client IP).
-_verify_link_attempts: dict[str, list[float]] = defaultdict(list)
-_VERIFY_LINK_MAX_ATTEMPTS = 10  # max attempts per window
-_VERIFY_LINK_WINDOW_SECONDS = 60  # sliding window
+# ---------------------------------------------------------------------------
+# Simple in-memory rate limiter (keyed by arbitrary string).
+# ---------------------------------------------------------------------------
+
+_rate_limit_buckets: dict[str, dict[str, list[float]]] = defaultdict(
+    lambda: defaultdict(list)
+)
+
+# Per-endpoint settings: (max_attempts, window_seconds).
+_RATE_LIMITS: dict[str, tuple[int, int]] = {
+    "verify-link": (10, 60),
+    "slash": (30, 60),
+    "action": (30, 60),
+}
 
 
-def _check_verify_link_rate_limit(client_ip: str) -> None:
-    """Raise 429 if the client has exceeded the verify-link rate limit."""
+def _check_rate_limit(bucket: str, key: str) -> None:
+    """Raise 429 if *key* has exceeded the rate limit for *bucket*."""
+    max_attempts, window = _RATE_LIMITS[bucket]
     now = time.monotonic()
-    cutoff = now - _VERIFY_LINK_WINDOW_SECONDS
-    # Prune old entries.
-    attempts = _verify_link_attempts[client_ip]
-    _verify_link_attempts[client_ip] = [t for t in attempts if t > cutoff]
-    if len(_verify_link_attempts[client_ip]) >= _VERIFY_LINK_MAX_ATTEMPTS:
+    cutoff = now - window
+    attempts = _rate_limit_buckets[bucket][key]
+    _rate_limit_buckets[bucket][key] = [t for t in attempts if t > cutoff]
+    if len(_rate_limit_buckets[bucket][key]) >= max_attempts:
         raise HTTPException(
             status_code=429,
-            detail="Te veel verificatiepogingen. Probeer het later opnieuw.",
+            detail="Te veel verzoeken. Probeer het later opnieuw.",
         )
-    _verify_link_attempts[client_ip].append(now)
+    _rate_limit_buckets[bucket][key].append(now)
 
 
 def _get_person_id(
@@ -163,7 +173,7 @@ async def verify_link(
     """Verify a link code from the Mattermost bot and create the mapping."""
     # Rate limit by client IP to prevent brute-forcing link codes.
     client_ip = request.client.host if request.client else "unknown"
-    _check_verify_link_rate_limit(client_ip)
+    _check_rate_limit("verify-link", client_ip)
 
     # Token verification via header.
     token = request.headers.get("x-mattermost-token", "")
@@ -190,9 +200,7 @@ async def verify_link(
             mattermost_username=payload.mattermost_username,
         )
     except IntegrityError:
-        raise HTTPException(
-            status_code=409, detail="Account is al gekoppeld"
-        )
+        raise HTTPException(status_code=409, detail="Account is al gekoppeld")
     # Clean up the used code.
     await repo.delete_code(payload.code)
 
@@ -210,6 +218,7 @@ async def handle_slash_command(
 ) -> dict:
     """Handle /bouwmeester slash commands from Mattermost."""
     await _verify_webhook_token(token, db)
+    _check_rate_limit("slash", user_id or "unknown")
 
     from bouwmeester.services.mattermost_slash_service import MattermostSlashService
 
@@ -235,11 +244,13 @@ async def handle_action(
     # Always verify — reject if no token is provided.
     await _verify_webhook_token(token, db)
 
+    user_id = body.get("user_id", "unknown")
+    _check_rate_limit("action", user_id)
+
     from bouwmeester.services.mattermost_slash_service import MattermostSlashService
 
     service = MattermostSlashService(db)
     context = body.get("context", {})
-    user_id = body.get("user_id", "")
 
     return await service.handle_action(
         mattermost_user_id=user_id,

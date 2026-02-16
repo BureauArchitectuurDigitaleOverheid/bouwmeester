@@ -22,7 +22,7 @@ async def test_create_link_code(db_session: AsyncSession, sample_person):
     code = await repo.create_link_code(sample_person.id)
 
     assert code.code.startswith("BM-")
-    assert len(code.code) == 9  # "BM-" + 6 chars
+    assert len(code.code) == 11  # "BM-" + 8 chars (configurable)
     assert code.person_id == sample_person.id
     assert code.expires_at > datetime.now(UTC)
 

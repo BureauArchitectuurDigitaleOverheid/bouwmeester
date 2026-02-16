@@ -14,30 +14,9 @@ from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.mattermost_user import MattermostUserRepository
 from bouwmeester.repositories.search import SearchRepository
+from bouwmeester.services.mattermost_utils import escape_mattermost_md as _escape_md
 
 logger = logging.getLogger(__name__)
-
-# Characters that have special meaning in Mattermost markdown.
-_MM_ESCAPE_CHARS = str.maketrans(
-    {
-        "[": "\\[",
-        "]": "\\]",
-        "(": "\\(",
-        ")": "\\)",
-        "@": "\\@",
-        "~": "\\~",
-        "*": "\\*",
-        "_": "\\_",
-        "`": "\\`",
-        "#": "\\#",
-        "|": "\\|",
-    }
-)
-
-
-def _escape_md(text: str) -> str:
-    """Escape Mattermost markdown special characters in user input."""
-    return text.translate(_MM_ESCAPE_CHARS)
 
 
 class MattermostSlashService:

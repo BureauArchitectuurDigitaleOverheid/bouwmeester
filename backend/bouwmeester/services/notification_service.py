@@ -33,12 +33,14 @@ async def _mattermost_send_background(notification_id: UUID) -> None:
 
         async with async_session() as session:
             mm = MattermostService(session)
-            if not await mm.is_enabled():
-                return
-            notification = await session.get(Notification, notification_id)
-            if notification:
-                await mm.send_notification(notification)
-            await mm.close()
+            try:
+                if not await mm.is_enabled():
+                    return
+                notification = await session.get(Notification, notification_id)
+                if notification:
+                    await mm.send_notification(notification)
+            finally:
+                await mm.close()
     except Exception:
         logger.exception(
             "Mattermost background send failed for notification %s",

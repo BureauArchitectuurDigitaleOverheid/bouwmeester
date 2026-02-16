@@ -6,13 +6,14 @@ import {
   useUnlinkMattermost,
   type MattermostLinkCode,
 } from '@/hooks/useMattermost';
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/hooks/queryKeys';
 
 export function MattermostLinkSection() {
   const queryClient = useQueryClient();
   const [linkCode, setLinkCode] = useState<MattermostLinkCode | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { copied, copy } = useCopyToClipboard();
 
   // Poll for link status changes while a code is active.
   const isCodeActive = !!(linkCode && new Date(linkCode.expires_at) > new Date());
@@ -28,38 +29,20 @@ export function MattermostLinkSection() {
   }, [isCodeActive, linkStatus?.linked]);
 
   const handleGenerateCode = () => {
-    setError(null);
     generateCode.mutate(undefined, {
       onSuccess: (data) => {
         setLinkCode(data);
       },
-      onError: (err) => {
-        const message = err instanceof Error ? err.message : 'Fout bij genereren van koppelcode';
-        setError(message);
-      },
     });
   };
 
-  const handleCopyCode = async () => {
+  const handleCopyCode = () => {
     if (!linkCode) return;
-    try {
-      await navigator.clipboard.writeText(
-        `Hoi! Koppel mij alsjeblieft aan Bouwmeester: ${linkCode.code}`
-      );
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback: select the text
-    }
+    copy(`Hoi! Koppel mij alsjeblieft aan Bouwmeester: ${linkCode.code}`);
   };
 
   const handleUnlink = () => {
-    setError(null);
-    unlinkMutation.mutate(undefined, {
-      onError: () => {
-        setError('Fout bij ontkoppelen');
-      },
-    });
+    unlinkMutation.mutate();
   };
 
   return (
@@ -75,12 +58,6 @@ export function MattermostLinkSection() {
           </p>
         </div>
       </div>
-
-      {error && (
-        <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
 
       {isLoading ? (
         <div className="flex items-center gap-2 text-sm text-text-secondary py-4">
@@ -137,7 +114,7 @@ export function MattermostLinkSection() {
               <button
                 onClick={() => {
                   setLinkCode(null);
-                  queryClient.invalidateQueries({ queryKey: ['mattermost', 'link-status'] });
+                  queryClient.invalidateQueries({ queryKey: queryKeys.mattermost.linkStatus });
                 }}
                 className="text-sm text-text-secondary hover:text-text transition-colors"
               >

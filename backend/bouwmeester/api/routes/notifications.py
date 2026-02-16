@@ -269,7 +269,9 @@ async def send_message(
 
     service = NotificationService(db)
     recipient_root, sender_root = await service.notify_direct_message(
-        recipient=recipient, sender=sender, message=body.message,
+        recipient=recipient,
+        sender=sender,
+        message=body.message,
     )
 
     is_agent = recipient.is_agent

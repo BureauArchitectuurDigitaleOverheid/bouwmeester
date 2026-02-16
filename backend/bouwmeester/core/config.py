@@ -73,8 +73,13 @@ class Settings(BaseSettings):
     MATTERMOST_ENABLED: bool = False
     MATTERMOST_URL: str = "http://mattermost:8065"
     MATTERMOST_BOT_TOKEN: str = ""
-    MATTERMOST_NOTIFICATION_CHANNEL_ID: str = ""  # Default channel for broadcast notifications
-    MATTERMOST_WEBHOOK_TOKEN: str = ""  # Verify incoming slash commands
+    # Default channel for broadcast notifications
+    MATTERMOST_NOTIFICATION_CHANNEL_ID: str = ""
+    # Token to verify incoming slash commands
+    MATTERMOST_WEBHOOK_TOKEN: str = ""
+    MATTERMOST_POLL_INTERVAL_SECONDS: int = 15
+    MATTERMOST_LINK_CODE_TTL_MINUTES: int = 10
+    MATTERMOST_LINK_CODE_LENGTH: int = 8
 
     # Age encryption for database backups
     AGE_SECRET_KEY: str = ""  # Age secret key for decryption (set on production)

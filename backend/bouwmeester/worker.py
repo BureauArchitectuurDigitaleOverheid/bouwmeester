@@ -15,8 +15,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_MATTERMOST_POLL_INTERVAL_SECONDS = 15
-
 
 async def _parlementair_loop(settings) -> None:  # type: ignore[no-untyped-def]
     """Poll TK/EK APIs for parliamentary items."""
@@ -36,7 +34,7 @@ async def _parlementair_loop(settings) -> None:  # type: ignore[no-untyped-def]
         await asyncio.sleep(settings.TK_POLL_INTERVAL_SECONDS)
 
 
-async def _mattermost_link_loop() -> None:
+async def _mattermost_link_loop(settings) -> None:  # type: ignore[no-untyped-def]
     """Poll Mattermost bot DMs for link codes.
 
     Checks DB config each iteration so the poller starts automatically
@@ -60,7 +58,7 @@ async def _mattermost_link_loop() -> None:
                     if started:
                         logger.info("Mattermost integration disabled, pausing poller")
                         started = False
-                    await asyncio.sleep(_MATTERMOST_POLL_INTERVAL_SECONDS)
+                    await asyncio.sleep(settings.MATTERMOST_POLL_INTERVAL_SECONDS)
                     continue
 
                 if not started:
@@ -73,9 +71,7 @@ async def _mattermost_link_loop() -> None:
                 posts = await mm.get_bot_dm_posts(since=since)
                 # Filter out posts we've already processed (Mattermost's
                 # `since` API also returns posts whose threads were updated).
-                new_posts = [
-                    p for p in posts if p.get("id") not in seen_post_ids
-                ]
+                new_posts = [p for p in posts if p.get("id") not in seen_post_ids]
                 for p in new_posts:
                     seen_post_ids[p.get("id", "")] = None
 
@@ -87,9 +83,7 @@ async def _mattermost_link_loop() -> None:
                     poller = MattermostLinkPoller(session, mm_service=mm)
                     count = await poller.process_posts(new_posts)
                     if count:
-                        logger.info(
-                            f"Mattermost link poll: {count} accounts linked"
-                        )
+                        logger.info(f"Mattermost link poll: {count} accounts linked")
                     await poller.cleanup()
 
                 # Cap the dict size — evict oldest entries first.
@@ -103,7 +97,7 @@ async def _mattermost_link_loop() -> None:
             if mm:
                 await mm.close()
 
-        await asyncio.sleep(_MATTERMOST_POLL_INTERVAL_SECONDS)
+        await asyncio.sleep(settings.MATTERMOST_POLL_INTERVAL_SECONDS)
 
 
 async def main() -> None:
@@ -115,7 +109,7 @@ async def main() -> None:
 
     tasks = [
         asyncio.create_task(_parlementair_loop(settings)),
-        asyncio.create_task(_mattermost_link_loop()),
+        asyncio.create_task(_mattermost_link_loop(settings)),
     ]
     await asyncio.gather(*tasks)
 
