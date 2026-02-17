@@ -169,7 +169,7 @@ export function ParlementairPage() {
               <ChevronDown className="h-3.5 w-3.5 ml-1" />
             </Button>
             {reprocessDropdownOpen && (
-              <div className="absolute right-0 mt-1 w-56 rounded-md border border-border bg-surface shadow-lg z-50">
+              <div className="absolute left-0 sm:right-0 sm:left-auto mt-1 w-56 rounded-md border border-border bg-surface shadow-lg z-50">
                 <div className="py-1">
                   <button
                     className="w-full px-4 py-2 text-left text-sm hover:bg-surface-hover"
