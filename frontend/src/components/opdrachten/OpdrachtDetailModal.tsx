@@ -68,6 +68,8 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
     );
   }
 
+  const budget = Number(opdracht?.budget) || 0;
+  const gerealiseerd = Number(opdracht?.gerealiseerd) || 0;
   const uitnutting = calculateUtilization(opdracht?.budget, opdracht?.gerealiseerd);
 
   const handleDelete = async () => {
