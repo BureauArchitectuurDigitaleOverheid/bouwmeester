@@ -1,9 +1,16 @@
-import { useState } from 'react';
-import { Plus, Filter, X } from 'lucide-react';
-import { useOpdrachten } from '@/hooks/useOpdrachten';
+import { useState, useMemo } from 'react';
+import { Plus, Search } from 'lucide-react';
+import { useOpdrachten, useOpdrachtenSummary } from '@/hooks/useOpdrachten';
 import { useExterneOrganisaties } from '@/hooks/useExterneOrganisaties';
 import { OpdrachtForm } from '@/components/opdrachten/OpdrachtForm';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
+import { Button } from '@/components/common/Button';
+import { Input } from '@/components/common/Input';
+import { MultiSelect } from '@/components/common/MultiSelect';
+import type { MultiSelectOption } from '@/components/common/MultiSelect';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
+import type { SelectOption } from '@/components/common/CreatableSelect';
+import { useDebounce } from '@/hooks/useDebounce';
 import {
   OPDRACHT_TYPE_LABELS,
   OPDRACHT_STATUS_LABELS,
@@ -16,21 +23,87 @@ import {
 import { Badge } from '@/components/common/Badge';
 import { formatCurrency } from '@/utils/format';
 
+const TYPE_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_TYPE_LABELS).map(
+  ([value, label]) => ({ value, label }),
+);
+
+const STATUS_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_STATUS_LABELS).map(
+  ([value, label]) => ({ value, label }),
+);
+
 export function OpdrachtenPage() {
-  const [filters, setFilters] = useState<OpdrachtFilters>({});
   const [showForm, setShowForm] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const { openOpdrachtDetail } = useOpdrachtDetail();
 
-  const { data: opdrachten = [], isLoading } = useOpdrachten(filters);
+  // API-level filters (sent to backend)
+  const [apiFilters, setApiFilters] = useState<OpdrachtFilters>({});
+
+  // Client-side filters
+  const [searchInput, setSearchInput] = useState('');
+  const searchQuery = useDebounce(searchInput, 200);
+  const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+
+  const { data: opdrachten = [], isLoading } = useOpdrachten(apiFilters);
+  const { data: summary } = useOpdrachtenSummary(apiFilters);
   const { data: externeOrgs = [] } = useExterneOrganisaties();
 
-  const years = [...new Set(opdrachten.map(o => o.begrotingsjaar))].sort((a, b) => b - a);
-  const allYears = years.length > 0 ? years : [2024, 2025, 2026];
+  // Derive year options from data
+  const yearOptions: SelectOption[] = useMemo(() => {
+    const years = [...new Set(opdrachten.map((o) => o.begrotingsjaar))].sort((a, b) => b - a);
+    const allYears = years.length > 0 ? years : [2024, 2025, 2026];
+    return allYears.map((y) => ({ value: String(y), label: String(y) }));
+  }, [opdrachten]);
 
-  const totaalBudget = opdrachten.reduce((sum, o) => sum + (Number(o.budget) || 0), 0);
-  const totaalGerealiseerd = opdrachten.reduce((sum, o) => sum + (Number(o.gerealiseerd) || 0), 0);
-  const uitnutting = totaalBudget > 0 ? (totaalGerealiseerd / totaalBudget * 100) : 0;
+  // Derive opdrachtnemer options from externe organisaties
+  const opdrachtnemerOptions: SelectOption[] = useMemo(
+    () =>
+      externeOrgs.map((o) => ({
+        value: o.id,
+        label: o.afkorting || o.naam,
+      })),
+    [externeOrgs],
+  );
+
+  // Client-side filtering
+  const filteredOpdrachten = useMemo(() => {
+    let result = opdrachten;
+
+    // Search filter
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (o) =>
+          o.titel.toLowerCase().includes(q) ||
+          o.opdrachtnemer?.naam?.toLowerCase().includes(q) ||
+          o.opdrachtnemer?.afkorting?.toLowerCase().includes(q),
+      );
+    }
+
+    // Type filter (client-side multi-select)
+    if (typeFilter.size > 0) {
+      result = result.filter((o) => typeFilter.has(o.type));
+    }
+
+    // Status filter (client-side multi-select)
+    if (statusFilter.size > 0) {
+      result = result.filter((o) => statusFilter.has(o.status));
+    }
+
+    return result;
+  }, [opdrachten, searchQuery, typeFilter, statusFilter]);
+
+  // Totals from server-side summary (for summary cards)
+  const totaalBudget = summary?.totaal_budget ?? 0;
+  const totaalGerealiseerd = summary?.totaal_gerealiseerd ?? 0;
+  const uitnutting = summary?.uitnutting_percentage ?? 0;
+
+  // Totals from filtered list (for table footer)
+  const filteredBudget = filteredOpdrachten.reduce((sum, o) => sum + (o.budget ?? 0), 0);
+  const filteredGerealiseerd = filteredOpdrachten.reduce(
+    (sum, o) => sum + (o.gerealiseerd ?? 0),
+    0,
+  );
 
   if (showForm) {
     return (
@@ -42,12 +115,12 @@ export function OpdrachtenPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6">
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-sm text-text-secondary">Aantal opdrachten</p>
-          <p className="text-2xl font-semibold text-text">{opdrachten.length}</p>
+          <p className="text-2xl font-semibold text-text">{summary?.count ?? opdrachten.length}</p>
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-sm text-text-secondary">Totaal budget</p>
@@ -63,90 +136,81 @@ export function OpdrachtenPage() {
         </div>
       </div>
 
-      {/* Actions bar */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-border hover:bg-gray-50 transition-colors"
-          >
-            <Filter className="h-4 w-4" />
-            Filters
-          </button>
-          {Object.keys(filters).length > 0 && (
-            <button
-              onClick={() => setFilters({})}
-              className="flex items-center gap-1 px-2 py-1 text-xs text-text-secondary hover:text-text transition-colors"
-            >
-              <X className="h-3 w-3" />
-              Wis filters
-            </button>
-          )}
+      {/* Page header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <p className="text-sm text-text-secondary">
+            Beheer opdrachten, subsidies en bijbehorende budgetten.
+          </p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Nieuwe opdracht
-        </button>
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setShowForm(true)}>
+            <span className="hidden sm:inline">Nieuwe opdracht</span>
+          </Button>
+        </div>
       </div>
 
-      {/* Filters panel */}
-      {showFilters && (
-        <div className="bg-surface rounded-xl border border-border p-4 grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Begrotingsjaar</label>
-            <select
-              value={filters.begrotingsjaar ?? ''}
-              onChange={(e) => setFilters(f => ({ ...f, begrotingsjaar: e.target.value ? Number(e.target.value) : undefined }))}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-border"
-            >
-              <option value="">Alle jaren</option>
-              {allYears.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Type</label>
-            <select
-              value={filters.type ?? ''}
-              onChange={(e) => setFilters(f => ({ ...f, type: e.target.value || undefined }))}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-border"
-            >
-              <option value="">Alle typen</option>
-              {Object.entries(OPDRACHT_TYPE_LABELS).map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Status</label>
-            <select
-              value={filters.status ?? ''}
-              onChange={(e) => setFilters(f => ({ ...f, status: e.target.value || undefined }))}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-border"
-            >
-              <option value="">Alle statussen</option>
-              {Object.entries(OPDRACHT_STATUS_LABELS).map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Opdrachtnemer</label>
-            <select
-              value={filters.opdrachtnemer_id ?? ''}
-              onChange={(e) => setFilters(f => ({ ...f, opdrachtnemer_id: e.target.value || undefined }))}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-border"
-            >
-              <option value="">Alle opdrachtnemers</option>
-              {externeOrgs.map(o => (
-                <option key={o.id} value={o.id}>{o.afkorting || o.naam}</option>
-              ))}
-            </select>
-          </div>
+      {/* Filter bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+        <div className="relative w-full sm:w-56">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+          <Input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Zoek opdrachten..."
+            className="pl-9"
+          />
         </div>
-      )}
+        <div className="w-full sm:w-44">
+          <MultiSelect
+            value={typeFilter}
+            onChange={setTypeFilter}
+            options={TYPE_OPTIONS}
+            allLabel="Alle typen"
+          />
+        </div>
+        <div className="w-full sm:w-44">
+          <MultiSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={STATUS_OPTIONS}
+            allLabel="Alle statussen"
+          />
+        </div>
+        <div className="w-full sm:w-40">
+          <CreatableSelect
+            value={apiFilters.begrotingsjaar ? String(apiFilters.begrotingsjaar) : ''}
+            onChange={(v) =>
+              setApiFilters((f) => ({
+                ...f,
+                begrotingsjaar: v ? Number(v) : undefined,
+              }))
+            }
+            options={yearOptions}
+            placeholder="Alle jaren"
+            searchable={false}
+            onClear={() =>
+              setApiFilters((f) => ({ ...f, begrotingsjaar: undefined }))
+            }
+          />
+        </div>
+        <div className="w-full sm:w-52">
+          <CreatableSelect
+            value={apiFilters.opdrachtnemer_id ?? ''}
+            onChange={(v) =>
+              setApiFilters((f) => ({
+                ...f,
+                opdrachtnemer_id: v || undefined,
+              }))
+            }
+            options={opdrachtnemerOptions}
+            placeholder="Alle opdrachtnemers"
+            onClear={() =>
+              setApiFilters((f) => ({ ...f, opdrachtnemer_id: undefined }))
+            }
+          />
+        </div>
+      </div>
 
       {/* Table */}
       <div className="bg-surface rounded-xl border border-border overflow-x-auto">
@@ -166,10 +230,10 @@ export function OpdrachtenPage() {
           <tbody>
             {isLoading ? (
               <tr><td colSpan={8} className="px-4 py-8 text-center text-text-secondary">Laden...</td></tr>
-            ) : opdrachten.length === 0 ? (
+            ) : filteredOpdrachten.length === 0 ? (
               <tr><td colSpan={8} className="px-4 py-8 text-center text-text-secondary">Geen opdrachten gevonden</td></tr>
             ) : (
-              opdrachten.map((o) => (
+              filteredOpdrachten.map((o) => (
                 <tr
                   key={o.id}
                   onClick={() => openOpdrachtDetail(o.id)}
@@ -195,12 +259,12 @@ export function OpdrachtenPage() {
               ))
             )}
           </tbody>
-          {opdrachten.length > 0 && (
+          {filteredOpdrachten.length > 0 && (
             <tfoot>
               <tr className="border-t-2 border-border bg-gray-50/50 font-medium">
-                <td colSpan={5} className="px-4 py-3 text-text">Totaal ({opdrachten.length} opdrachten)</td>
-                <td className="px-4 py-3 text-right text-text tabular-nums">{formatCurrency(totaalBudget)}</td>
-                <td className="px-4 py-3 text-right text-text tabular-nums">{formatCurrency(totaalGerealiseerd)}</td>
+                <td colSpan={5} className="px-4 py-3 text-text">Totaal ({filteredOpdrachten.length} opdrachten)</td>
+                <td className="px-4 py-3 text-right text-text tabular-nums">{formatCurrency(filteredBudget)}</td>
+                <td className="px-4 py-3 text-right text-text tabular-nums">{formatCurrency(filteredGerealiseerd)}</td>
                 <td className="px-4 py-3"></td>
               </tr>
             </tfoot>
