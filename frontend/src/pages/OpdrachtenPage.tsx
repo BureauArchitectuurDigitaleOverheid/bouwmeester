@@ -152,7 +152,7 @@ export function OpdrachtenPage() {
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-sm text-text-secondary">Aantal opdrachten</p>
           <p className="text-2xl font-semibold text-text">{summary?.count ?? opdrachten.length}</p>
@@ -280,8 +280,56 @@ export function OpdrachtenPage() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-surface rounded-xl border border-border overflow-x-auto">
+      {/* Mobile card list */}
+      <div className="sm:hidden space-y-3">
+        {isLoading ? (
+          <p className="px-4 py-8 text-center text-text-secondary">Laden...</p>
+        ) : filteredOpdrachten.length === 0 ? (
+          <p className="px-4 py-8 text-center text-text-secondary">Geen opdrachten gevonden</p>
+        ) : (
+          <>
+            {filteredOpdrachten.map((o) => (
+              <div
+                key={o.id}
+                onClick={() => openOpdrachtDetail(o.id)}
+                className="bg-surface rounded-xl border border-border p-4 cursor-pointer hover:bg-gray-50 transition-colors space-y-2"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-medium text-text text-sm leading-tight">{o.titel}</span>
+                  <Badge variant={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'gray'}>
+                    {OPDRACHT_STATUS_LABELS[o.status as OpdrachtStatus] || o.status}
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge variant={OPDRACHT_TYPE_COLORS[o.type as OpdrachtType] || 'gray'}>
+                    {OPDRACHT_TYPE_LABELS[o.type as OpdrachtType] || o.type}
+                  </Badge>
+                  <span className="text-xs text-text-secondary">{o.begrotingsjaar}</span>
+                  {(o.opdrachtnemer?.afkorting || o.opdrachtnemer?.naam) && (
+                    <span className="text-xs text-text-secondary">· {o.opdrachtnemer.afkorting || o.opdrachtnemer.naam}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-secondary">Budget: <span className="text-text tabular-nums">{formatCurrency(o.budget)}</span></span>
+                  <span className="text-text-secondary">Gerealiseerd: <span className="text-text tabular-nums">{formatCurrency(o.gerealiseerd)}</span></span>
+                </div>
+              </div>
+            ))}
+            <div className="bg-surface rounded-xl border border-border p-4 text-sm font-medium">
+              <div className="flex items-center justify-between">
+                <span className="text-text">Totaal ({filteredOpdrachten.length})</span>
+                <div className="flex gap-4">
+                  <span className="text-text tabular-nums">{formatCurrency(filteredBudget)}</span>
+                  <span className="text-text tabular-nums">{formatCurrency(filteredGerealiseerd)}</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden sm:block bg-surface rounded-xl border border-border overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-gray-50/50">

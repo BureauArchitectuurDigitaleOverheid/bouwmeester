@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fingerprint, Trash2, Plus, Loader2 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import {
   listCredentials,
   deleteCredential,
@@ -17,6 +18,7 @@ export function WebAuthnSettings() {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [deleteCredId, setDeleteCredId] = useState<string | null>(null);
 
   const { data: credentials, isLoading, isError: queryError } = useQuery({
     queryKey: ['webauthn-credentials'],
@@ -126,11 +128,7 @@ export function WebAuthnSettings() {
                     </div>
                   </div>
                   <button
-                    onClick={() => {
-                      if (window.confirm('Weet je zeker dat je deze biometrische inlog wilt verwijderen?')) {
-                        deleteMutation.mutate(cred.id);
-                      }
-                    }}
+                    onClick={() => setDeleteCredId(cred.id)}
                     disabled={deleteMutation.isPending}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
                   >
@@ -156,6 +154,21 @@ export function WebAuthnSettings() {
           </button>
         </>
       )}
+      <ConfirmDialog
+        open={!!deleteCredId}
+        onClose={() => setDeleteCredId(null)}
+        onConfirm={() => {
+          if (deleteCredId) {
+            deleteMutation.mutate(deleteCredId);
+            setDeleteCredId(null);
+          }
+        }}
+        title="Biometrische inlog verwijderen"
+        confirmLabel="Verwijderen"
+        variant="danger"
+      >
+        <p>Weet je zeker dat je deze biometrische inlog wilt verwijderen?</p>
+      </ConfirmDialog>
     </div>
   );
 }

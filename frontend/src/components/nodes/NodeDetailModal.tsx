@@ -4,6 +4,7 @@ import {
   Calendar,
   Link as LinkIcon,
   Pencil,
+  Trash2,
   ExternalLink,
   Users,
   Tag as TagIcon,
@@ -32,9 +33,10 @@ import { DetailSection } from '@/components/common/DetailSection';
 import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
 import { RelatedItemsList } from '@/components/common/RelatedItemsList';
 import { DetailModalFooter } from '@/components/common/DetailModalFooter';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { NodeEditForm } from './NodeEditForm';
 import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
-import { useNode, useNodeStakeholders, useNodeNeighbors, useNodeParlementairItem } from '@/hooks/useNodes';
+import { useNode, useNodeStakeholders, useNodeNeighbors, useNodeParlementairItem, useDeleteNode } from '@/hooks/useNodes';
 import { useNodeTags } from '@/hooks/useTags';
 import { useQuery } from '@tanstack/react-query';
 import { getTasks } from '@/api/tasks';
@@ -87,11 +89,22 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
   );
   const [showEdit, setShowEdit] = useState(false);
   const [showTaskCreate, setShowTaskCreate] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const deleteNode = useDeleteNode();
   const navigate = useNavigate();
   const location = useLocation();
   const { nodeLabel, nodeAltLabel } = useVocabulary();
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail, nodeParentLabel } = useNodeDetail();
+
+  const handleDelete = async () => {
+    if (!nodeId) return;
+    await deleteNode.mutateAsync(nodeId);
+    setShowDeleteConfirm(false);
+    onClose();
+  };
+
+  const hasRelated = (neighbors && neighbors.length > 0) || (tasks && tasks.length > 0);
 
   if (!open) return null;
 
@@ -158,6 +171,16 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
                   disabled={!node}
                 >
                   Openen
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Trash2 className="h-4 w-4" />}
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={!node}
+                  className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                >
+                  Verwijderen
                 </Button>
               </>
             }
@@ -378,6 +401,28 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
           nodeId={nodeId ?? undefined}
         />
       )}
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Node verwijderen"
+        confirmLabel="Verwijderen"
+        variant="danger"
+        loading={deleteNode.isPending}
+      >
+        <p>Weet je zeker dat je <strong>{node?.title}</strong> wilt verwijderen?</p>
+        {hasRelated && (
+          <ul className="mt-2 space-y-1 list-disc list-inside">
+            {neighbors && neighbors.length > 0 && (
+              <li>{neighbors.length} verbinding(en) worden verwijderd</li>
+            )}
+            {tasks && tasks.length > 0 && (
+              <li>{tasks.length} gekoppelde taak/taken worden verwijderd</li>
+            )}
+          </ul>
+        )}
+      </ConfirmDialog>
     </>
   );
 }
