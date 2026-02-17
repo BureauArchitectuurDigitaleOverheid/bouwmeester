@@ -318,7 +318,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
 
   return (
     <div ref={cardRef}>
-    <Card>
+    <Card className="overflow-visible">
       {/* Clickable header */}
       <div
         className="flex items-start justify-between gap-3 cursor-pointer select-none"
