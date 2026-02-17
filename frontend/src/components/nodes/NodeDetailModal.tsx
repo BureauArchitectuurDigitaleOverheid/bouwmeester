@@ -104,10 +104,7 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
     onClose();
   };
 
-  const deleteWarnings: string[] = [];
-  if (neighbors && neighbors.length > 0) deleteWarnings.push(`${neighbors.length} verbinding(en)`);
-  if (tasks && tasks.length > 0) deleteWarnings.push(`${tasks.length} taak/taken`);
-  if (stakeholders && stakeholders.length > 0) deleteWarnings.push(`${stakeholders.length} betrokkene(n)`);
+  const hasRelated = (neighbors && neighbors.length > 0) || (tasks && tasks.length > 0);
 
   if (!open) return null;
 
@@ -415,10 +412,15 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
         loading={deleteNode.isPending}
       >
         <p>Weet je zeker dat je <strong>{node?.title}</strong> wilt verwijderen?</p>
-        {deleteWarnings.length > 0 && (
-          <p className="mt-2">
-            Let op: deze node heeft {deleteWarnings.join(', ')}. Deze worden ook verwijderd.
-          </p>
+        {hasRelated && (
+          <ul className="mt-2 space-y-1 list-disc list-inside">
+            {neighbors && neighbors.length > 0 && (
+              <li>{neighbors.length} verbinding(en) worden verwijderd</li>
+            )}
+            {tasks && tasks.length > 0 && (
+              <li>{tasks.length} gekoppelde taak/taken worden verwijderd</li>
+            )}
+          </ul>
         )}
       </ConfirmDialog>
     </>
