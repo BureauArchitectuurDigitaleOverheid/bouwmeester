@@ -39,12 +39,12 @@ import {
   NODE_TYPE_COLORS,
   NODE_STATUS_LABELS,
   STAKEHOLDER_ROL_LABELS,
-  TASK_PRIORITY_COLORS,
+  TASK_STATUS_LABELS,
+  TASK_STATUS_COLORS,
   TaskStatus,
   type NodeType,
   type NodeStatus,
 } from '@/types';
-import type { Task } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
@@ -115,12 +115,6 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
   const doneTasks = tasks?.filter(
     (t) => t.status === TaskStatus.DONE || t.status === TaskStatus.CANCELLED,
   ) ?? [];
-
-  function taskIcon(task: Task) {
-    if (task.status === TaskStatus.DONE) return <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />;
-    if (task.status === TaskStatus.IN_PROGRESS) return <Clock className="h-3.5 w-3.5 text-blue-500 shrink-0" />;
-    return <Circle className="h-3.5 w-3.5 text-gray-400 shrink-0" />;
-  }
 
   const accentColor = node ? NODE_TYPE_COLORS[node.node_type as NodeType] : undefined;
 
@@ -299,7 +293,7 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
                 maxVisible={5}
                 onShowAll={() => {
                   onClose();
-                  navigate(`/nodes/${nodeId}`, { state: { fromCorpus: location.pathname + location.search } });
+                  navigate(`/nodes/${nodeId}?tab=connections`, { state: { fromCorpus: location.pathname + location.search } });
                 }}
                 showAllLabel={`Bekijk alle ${neighbors.length} verbindingen`}
               />
@@ -312,46 +306,31 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
               title="Taken"
               count={openTasks.length}
             >
-              <div className="space-y-0.5">
-                {openTasks.slice(0, 5).map((task) => (
-                  <button
-                    key={task.id}
-                    onClick={() => openTaskDetail(task.id, node.title)}
-                    className="flex items-center gap-2 w-full p-1.5 rounded-lg hover:bg-gray-50 transition-colors text-left group"
-                  >
-                    {taskIcon(task)}
-                    <span className="text-sm text-text truncate group-hover:text-primary-700 transition-colors">
-                      {task.title}
-                    </span>
-                    {task.priority && task.priority !== 'normaal' && (
-                      <Badge variant={TASK_PRIORITY_COLORS[task.priority] ?? 'gray'}>
-                        {task.priority}
-                      </Badge>
-                    )}
-                    {task.assignee && (
-                      <span className="text-xs text-text-secondary ml-auto shrink-0">
-                        {task.assignee.naam}
-                      </span>
-                    )}
-                  </button>
-                ))}
-                {openTasks.length > 5 && (
-                  <button
-                    onClick={() => {
-                      onClose();
-                      navigate(`/nodes/${nodeId}`, { state: { fromCorpus: location.pathname + location.search } });
-                    }}
-                    className="text-xs text-primary-700 hover:text-primary-900 transition-colors pl-1.5 pt-1"
-                  >
-                    Bekijk alle {openTasks.length} open taken
-                  </button>
-                )}
-                {doneTasks.length > 0 && (
-                  <p className="text-xs text-text-secondary pl-1.5 pt-1">
-                    {doneTasks.length} afgerond
-                  </p>
-                )}
-              </div>
+              <RelatedItemsList
+                items={openTasks.map((task) => ({
+                  id: task.id,
+                  label: task.title,
+                  icon: task.status === TaskStatus.DONE
+                    ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                    : task.status === TaskStatus.IN_PROGRESS
+                      ? <Clock className="h-4 w-4 text-blue-500 shrink-0" />
+                      : <Circle className="h-4 w-4 text-gray-300 shrink-0" />,
+                  secondaryText: task.assignee?.naam,
+                  onClick: () => openTaskDetail(task.id, node.title),
+                }))}
+                maxVisible={5}
+                onShowAll={() => {
+                  onClose();
+                  navigate(`/nodes/${nodeId}?tab=tasks`, { state: { fromCorpus: location.pathname + location.search } });
+                }}
+                showAllLabel={`Bekijk alle ${openTasks.length} open taken`}
+                emptyLabel="Geen taken"
+              />
+              {doneTasks.length > 0 && (
+                <p className="text-xs text-text-secondary pt-1">
+                  {doneTasks.length} afgerond
+                </p>
+              )}
             </DetailSection>
           )}
 

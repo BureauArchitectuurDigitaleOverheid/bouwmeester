@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pencil, Trash2, Link as LinkIcon, CheckSquare, Plus, ClipboardList } from 'lucide-react';
+import { Pencil, Trash2, Link as LinkIcon, CheckSquare, Plus, ClipboardList, CheckCircle2, Circle, Clock } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
@@ -20,8 +20,6 @@ import {
   OPDRACHT_TYPE_COLORS,
   KOSTENSOORT_LABELS,
   NODE_TYPE_COLORS,
-  TASK_STATUS_LABELS,
-  TASK_STATUS_COLORS,
   OpdrachtType,
   OpdrachtStatus,
   Kostensoort,
@@ -329,10 +327,11 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
               items={tasks.map((task) => ({
                 id: task.id,
                 label: task.title,
-                badge: {
-                  text: TASK_STATUS_LABELS[task.status as TaskStatus] ?? task.status,
-                  variant: TASK_STATUS_COLORS[task.status as TaskStatus] ?? 'gray',
-                },
+                icon: task.status === TaskStatus.DONE
+                  ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                  : task.status === TaskStatus.IN_PROGRESS
+                    ? <Clock className="h-4 w-4 text-blue-500 shrink-0" />
+                    : <Circle className="h-4 w-4 text-gray-300 shrink-0" />,
                 secondaryText: task.assignee?.naam,
                 onClick: () => openTaskDetail(task.id, opdracht.titel),
               }))}
