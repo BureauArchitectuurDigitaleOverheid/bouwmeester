@@ -38,13 +38,19 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         return opdracht
 
     async def update(self, id: UUID, data: OpdrachtUpdate) -> Opdracht | None:
-        obj = await self.session.get(Opdracht, id)
+        stmt = (
+            select(Opdracht)
+            .where(Opdracht.id == id)
+            .options(selectinload(Opdracht.node_koppelingen))
+        )
+        result = await self.session.execute(stmt)
+        obj = result.scalar_one_or_none()
         if obj is None:
             return None
         for key, value in data.model_dump(exclude_unset=True).items():
             setattr(obj, key, value)
         await self.session.flush()
-        await self.session.refresh(obj)
+        await self.session.refresh(obj, attribute_names=["node_koppelingen"])
         return obj
 
     async def get(self, id: UUID) -> Opdracht | None:
@@ -156,7 +162,10 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         begrotingsjaar: int | None = None,
         type: str | None = None,
         status: str | None = None,
+        instrument_id: UUID | None = None,
         opdrachtnemer_id: UUID | None = None,
+        opdrachtgever_id: UUID | None = None,
+        verantwoordelijke_id: UUID | None = None,
     ) -> dict:
         """Aggregate count, total budget, total gerealiseerd."""
         stmt = select(
@@ -172,8 +181,14 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
             stmt = stmt.where(Opdracht.type == type)
         if status is not None:
             stmt = stmt.where(Opdracht.status == status)
+        if instrument_id is not None:
+            stmt = stmt.where(Opdracht.instrument_id == instrument_id)
         if opdrachtnemer_id is not None:
             stmt = stmt.where(Opdracht.opdrachtnemer_id == opdrachtnemer_id)
+        if opdrachtgever_id is not None:
+            stmt = stmt.where(Opdracht.opdrachtgever_id == opdrachtgever_id)
+        if verantwoordelijke_id is not None:
+            stmt = stmt.where(Opdracht.verantwoordelijke_id == verantwoordelijke_id)
         result = await self.session.execute(stmt)
         row = result.one()
         return dict(row._mapping)

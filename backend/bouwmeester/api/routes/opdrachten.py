@@ -60,7 +60,10 @@ async def get_opdrachten_summary(
     begrotingsjaar: int | None = None,
     type: str | None = None,
     status_filter: str | None = Query(None, alias="status"),
+    instrument_id: UUID | None = None,
     opdrachtnemer_id: UUID | None = None,
+    opdrachtgever_id: UUID | None = None,
+    verantwoordelijke_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> OpdrachtenSummary:
     """Server-side aggregation of opdrachten totals (respects active filters)."""
@@ -69,7 +72,10 @@ async def get_opdrachten_summary(
         begrotingsjaar=begrotingsjaar,
         type=type,
         status=status_filter,
+        instrument_id=instrument_id,
         opdrachtnemer_id=opdrachtnemer_id,
+        opdrachtgever_id=opdrachtgever_id,
+        verantwoordelijke_id=verantwoordelijke_id,
     )
     totaal_budget = data["totaal_budget"]
     totaal_gerealiseerd = data["totaal_gerealiseerd"]
