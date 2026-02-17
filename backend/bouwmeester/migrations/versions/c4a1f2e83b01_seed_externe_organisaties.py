@@ -92,8 +92,7 @@ EXTERNE_ORGANISATIES = [
         "afkorting": "CIBG",
         "type": "uitvoeringsorganisatie",
         "beschrijving": (
-            "Uitvoeringsorganisatie voor registers in de zorg, onderwijs "
-            "en justitie."
+            "Uitvoeringsorganisatie voor registers in de zorg, onderwijs en justitie."
         ),
     },
     {
@@ -101,8 +100,7 @@ EXTERNE_ORGANISATIES = [
         "afkorting": "Atos",
         "type": "marktpartij",
         "beschrijving": (
-            "IT-dienstverlener, voert opdrachten uit voor diverse "
-            "overheidssystemen."
+            "IT-dienstverlener, voert opdrachten uit voor diverse overheidssystemen."
         ),
     },
 ]
