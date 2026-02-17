@@ -1,3 +1,4 @@
+import { Plus } from 'lucide-react';
 import { useNodeFinancieel, useNodeOpdrachten } from '@/hooks/useOpdrachten';
 import {
   OPDRACHT_STATUS_LABELS,
@@ -5,7 +6,10 @@ import {
   OpdrachtStatus,
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
+import { Button } from '@/components/common/Button';
 import { formatCurrency } from '@/utils/format';
+import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
+import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 
 interface FinancieelOverzichtPanelProps {
   nodeId: string;
@@ -14,6 +18,8 @@ interface FinancieelOverzichtPanelProps {
 export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelProps) {
   const { data: overzicht, isLoading: loadingOverzicht } = useNodeFinancieel(nodeId);
   const { data: opdrachten = [], isLoading: loadingOpdrachten } = useNodeOpdrachten(nodeId);
+  const { openOpdrachtDetail } = useOpdrachtDetail();
+  const { openOpdrachtCreate } = useOpdrachtCreate();
 
   if (loadingOverzicht || loadingOpdrachten) {
     return <div className="text-sm text-text-secondary py-4">Laden...</div>;
@@ -87,12 +93,26 @@ export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelPro
       </div>
 
       {/* Opdrachten list */}
-      {opdrachten.length > 0 && (
-        <div>
-          <h4 className="text-sm font-semibold text-text mb-2">Opdrachten</h4>
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-sm font-semibold text-text">Opdrachten</h4>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Plus className="h-3.5 w-3.5" />}
+            onClick={() => openOpdrachtCreate({ instrument_id: nodeId })}
+          >
+            Nieuwe opdracht
+          </Button>
+        </div>
+        {opdrachten.length > 0 ? (
           <div className="space-y-2">
             {opdrachten.map((o) => (
-              <div key={o.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+              <div
+                key={o.id}
+                onClick={() => openOpdrachtDetail(o.id)}
+                className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+              >
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-text truncate">{o.titel}</p>
                   <p className="text-xs text-text-secondary">
@@ -108,8 +128,10 @@ export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelPro
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-sm text-text-secondary">Nog geen opdrachten voor dit instrument.</p>
+        )}
+      </div>
     </div>
   );
 }

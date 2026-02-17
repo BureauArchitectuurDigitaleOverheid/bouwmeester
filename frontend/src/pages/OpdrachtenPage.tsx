@@ -2,8 +2,8 @@ import { useState, useMemo } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { useOpdrachten, useOpdrachtenSummary } from '@/hooks/useOpdrachten';
 import { useExterneOrganisaties } from '@/hooks/useExterneOrganisaties';
-import { OpdrachtForm } from '@/components/opdrachten/OpdrachtForm';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
+import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { MultiSelect } from '@/components/common/MultiSelect';
@@ -32,8 +32,8 @@ const STATUS_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_STATUS_LABEL
 );
 
 export function OpdrachtenPage() {
-  const [showForm, setShowForm] = useState(false);
   const { openOpdrachtDetail } = useOpdrachtDetail();
+  const { openOpdrachtCreate } = useOpdrachtCreate();
 
   // API-level filters (sent to backend)
   const [apiFilters, setApiFilters] = useState<OpdrachtFilters>({});
@@ -105,15 +105,6 @@ export function OpdrachtenPage() {
     0,
   );
 
-  if (showForm) {
-    return (
-      <OpdrachtForm
-        onClose={() => setShowForm(false)}
-        onSuccess={() => setShowForm(false)}
-      />
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* Summary cards */}
@@ -144,7 +135,7 @@ export function OpdrachtenPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setShowForm(true)}>
+          <Button icon={<Plus className="h-4 w-4" />} onClick={() => openOpdrachtCreate()}>
             <span className="hidden sm:inline">Nieuwe opdracht</span>
           </Button>
         </div>

@@ -29,6 +29,7 @@ class TaskBase(BaseModel):
     organisatie_eenheid_id: UUID | None = None
     parent_id: UUID | None = None
     parlementair_item_id: UUID | None = None
+    opdracht_id: UUID | None = None
     status: TaskStatus = TaskStatus.open
     priority: TaskPriority = TaskPriority.normaal
     deadline: date | None = Field(None, alias="due_date")
@@ -66,6 +67,7 @@ class TaskUpdate(BaseModel):
     organisatie_eenheid_id: UUID | None = None
     parent_id: UUID | None = None
     parlementair_item_id: UUID | None = None
+    opdracht_id: UUID | None = None
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     deadline: date | None = Field(None, alias="due_date")
@@ -98,6 +100,15 @@ class TaskNodeSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TaskOpdrachtSummary(BaseModel):
+    id: UUID
+    titel: str
+    type: str
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TaskSubtaskSummary(BaseModel):
     id: UUID
     title: str
@@ -123,6 +134,8 @@ class TaskResponse(BaseModel):
     organisatie_eenheid: TaskOrgEenheidSummary | None = None
     parent_id: UUID | None = None
     parlementair_item_id: UUID | None = None
+    opdracht_id: UUID | None = None
+    opdracht: TaskOpdrachtSummary | None = None
     subtasks: list[TaskSubtaskSummary] = []
     status: TaskStatus
     priority: TaskPriority

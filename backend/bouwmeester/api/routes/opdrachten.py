@@ -11,11 +11,15 @@ from bouwmeester.core.database import get_db
 from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.schema.opdracht import (
     OpdrachtCreate,
+    OpdrachtenSummary,
     OpdrachtNodeCreate,
     OpdrachtNodeResponse,
     OpdrachtResponse,
     OpdrachtUpdate,
 )
+from bouwmeester.services.activity_service import log_activity
+from bouwmeester.services.notification_service import NotificationService
+from bouwmeester.services.opdracht_task_service import OpdrachtTaskService
 
 router = APIRouter(prefix="/opdrachten", tags=["opdrachten"])
 
@@ -49,6 +53,36 @@ async def list_opdrachten(
     return validate_list(OpdrachtResponse, items)
 
 
+@router.get("/summary", response_model=OpdrachtenSummary)
+async def get_opdrachten_summary(
+    current_user: OptionalUser,
+    begrotingsjaar: int | None = None,
+    type: str | None = None,
+    status_filter: str | None = Query(None, alias="status"),
+    opdrachtnemer_id: UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> OpdrachtenSummary:
+    """Server-side aggregation of opdrachten totals (respects active filters)."""
+    repo = OpdrachtRepository(db)
+    data = await repo.get_summary(
+        begrotingsjaar=begrotingsjaar,
+        type=type,
+        status=status_filter,
+        opdrachtnemer_id=opdrachtnemer_id,
+    )
+    totaal_budget = data["totaal_budget"]
+    totaal_gerealiseerd = data["totaal_gerealiseerd"]
+    uitnutting = None
+    if totaal_budget and totaal_budget > 0:
+        uitnutting = float(totaal_gerealiseerd / totaal_budget * 100)
+    return OpdrachtenSummary(
+        count=data["count"],
+        totaal_budget=totaal_budget,
+        totaal_gerealiseerd=totaal_gerealiseerd,
+        uitnutting_percentage=uitnutting,
+    )
+
+
 @router.post(
     "",
     response_model=OpdrachtResponse,
@@ -57,10 +91,35 @@ async def list_opdrachten(
 async def create_opdracht(
     data: OpdrachtCreate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> OpdrachtResponse:
     repo = OpdrachtRepository(db)
     opdracht = await repo.create(data)
+
+    # Activity logging
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "opdracht.created",
+        node_id=opdracht.instrument_id,
+        details={
+            "opdracht_id": str(opdracht.id),
+            "titel": opdracht.titel,
+            "type": opdracht.type,
+            "status": opdracht.status,
+        },
+    )
+
+    # Notifications
+    actor = current_user.id if current_user else actor_id
+    ns = NotificationService(db)
+    await ns.notify_opdracht_assigned(opdracht, actor_id=actor)
+
+    # Auto-generate tasks
+    await OpdrachtTaskService(db).on_opdracht_created(opdracht)
+
     return OpdrachtResponse.model_validate(opdracht)
 
 
@@ -80,10 +139,45 @@ async def update_opdracht(
     id: UUID,
     data: OpdrachtUpdate,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> OpdrachtResponse:
     repo = OpdrachtRepository(db)
+
+    # Capture old state before update
+    old = await repo.get(id)
+    require_found(old, "Opdracht")
+    old_status = old.status
+    old_verantwoordelijke_id = old.verantwoordelijke_id
+
     opdracht = require_found(await repo.update(id, data), "Opdracht")
+
+    # Determine changed fields for activity details
+    changed = data.model_dump(exclude_unset=True)
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "opdracht.updated",
+        node_id=opdracht.instrument_id,
+        details={
+            "opdracht_id": str(opdracht.id),
+            "titel": opdracht.titel,
+            "changed_fields": list(changed.keys()),
+        },
+    )
+
+    # Notifications
+    actor = current_user.id if current_user else actor_id
+    ns = NotificationService(db)
+
+    if opdracht.verantwoordelijke_id != old_verantwoordelijke_id:
+        await ns.notify_opdracht_assigned(opdracht, actor_id=actor)
+
+    if opdracht.status != old_status:
+        await ns.notify_opdracht_status_changed(opdracht, old_status, actor_id=actor)
+        await OpdrachtTaskService(db).on_status_changed(opdracht, old_status)
+
     return OpdrachtResponse.model_validate(opdracht)
 
 
@@ -91,10 +185,30 @@ async def update_opdracht(
 async def delete_opdracht(
     id: UUID,
     current_user: OptionalUser,
+    actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = OpdrachtRepository(db)
+
+    # Capture info before deletion for activity log
+    opdracht = await repo.get(id)
+    require_found(opdracht, "Opdracht")
+    instrument_id = opdracht.instrument_id
+    titel = opdracht.titel
+
     require_deleted(await repo.delete(id), "Opdracht")
+
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "opdracht.deleted",
+        node_id=instrument_id,
+        details={
+            "opdracht_id": str(id),
+            "titel": titel,
+        },
+    )
 
 
 # --- Node koppelingen ---

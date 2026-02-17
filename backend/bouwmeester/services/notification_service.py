@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.notification import Notification
+from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.org_manager import OrganisatieEenheidManager
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
@@ -548,6 +549,112 @@ class NotificationService:
             notifications.append(notification)
         return notifications
 
+    async def notify_opdracht_assigned(
+        self, opdracht: Opdracht, actor_id: UUID | None = None
+    ) -> list[Notification]:
+        """Notify verantwoordelijke + instrument stakeholders."""
+        notifications: list[Notification] = []
+        notified_ids: set[UUID] = set()
+
+        if actor_id:
+            notified_ids.add(actor_id)
+
+        # Notify verantwoordelijke
+        verant_id = opdracht.verantwoordelijke_id
+        if verant_id and verant_id not in notified_ids:
+            notified_ids.add(verant_id)
+            data = NotificationCreate(
+                person_id=opdracht.verantwoordelijke_id,
+                type="opdracht_created",
+                title=f"Nieuwe opdracht: {opdracht.titel}",
+                message=f"Je bent verantwoordelijke voor opdracht '{opdracht.titel}'.",
+                related_node_id=opdracht.instrument_id,
+            )
+            notification = await self.repo.create(data)
+            self._send_to_mattermost(notification)
+            notifications.append(notification)
+
+        # Notify instrument stakeholders
+        if opdracht.instrument_id:
+            stmt = select(NodeStakeholder).where(
+                NodeStakeholder.node_id == opdracht.instrument_id,
+                NodeStakeholder.person_id.notin_(notified_ids),
+            )
+            result = await self.session.execute(stmt)
+            for sh in result.scalars().all():
+                notified_ids.add(sh.person_id)
+                data = NotificationCreate(
+                    person_id=sh.person_id,
+                    type="opdracht_created",
+                    title=f"Nieuwe opdracht: {opdracht.titel}",
+                    message=(
+                        f"Opdracht '{opdracht.titel}' is aangemaakt "
+                        f"voor een instrument waar je stakeholder bent."
+                    ),
+                    related_node_id=opdracht.instrument_id,
+                )
+                notification = await self.repo.create(data)
+                self._send_to_mattermost(notification)
+                notifications.append(notification)
+
+        return notifications
+
+    async def notify_opdracht_status_changed(
+        self,
+        opdracht: Opdracht,
+        old_status: str,
+        actor_id: UUID | None = None,
+    ) -> list[Notification]:
+        """Notify verantwoordelijke + stakeholders when opdracht status changes."""
+        notifications: list[Notification] = []
+        notified_ids: set[UUID] = set()
+
+        if actor_id:
+            notified_ids.add(actor_id)
+
+        # Notify verantwoordelijke
+        verant_id = opdracht.verantwoordelijke_id
+        if verant_id and verant_id not in notified_ids:
+            notified_ids.add(verant_id)
+            data = NotificationCreate(
+                person_id=verant_id,
+                type="opdracht_status_changed",
+                title=f"Opdracht status gewijzigd: {opdracht.titel}",
+                message=(
+                    f"Status van '{opdracht.titel}' is gewijzigd "
+                    f"van '{old_status}' naar '{opdracht.status}'."
+                ),
+                related_node_id=opdracht.instrument_id,
+            )
+            notification = await self.repo.create(data)
+            self._send_to_mattermost(notification)
+            notifications.append(notification)
+
+        # Notify instrument stakeholders
+        if opdracht.instrument_id:
+            stmt = select(NodeStakeholder).where(
+                NodeStakeholder.node_id == opdracht.instrument_id,
+                NodeStakeholder.person_id.notin_(notified_ids),
+            )
+            result = await self.session.execute(stmt)
+            for sh in result.scalars().all():
+                notified_ids.add(sh.person_id)
+                data = NotificationCreate(
+                    person_id=sh.person_id,
+                    type="opdracht_status_changed",
+                    title=f"Opdracht status gewijzigd: {opdracht.titel}",
+                    message=(
+                        f"Status van '{opdracht.titel}' is gewijzigd "
+                        f"van '{old_status}' naar '{opdracht.status}'."
+                    ),
+                    related_node_id=opdracht.instrument_id,
+                )
+                notification = await self.repo.create(data)
+                self._send_to_mattermost(notification)
+                notifications.append(notification)
+
+        return notifications
+
     async def get_notifications(
         self,
         person_id: UUID,
@@ -594,8 +701,18 @@ class NotificationService:
         )
         overdue_task_count = overdue_result.scalar_one()
 
+        # Active opdracht budget for this person (as verantwoordelijke)
+        opdracht_result = await self.session.execute(
+            select(func.coalesce(func.sum(Opdracht.budget), 0)).where(
+                Opdracht.verantwoordelijke_id == person_id,
+                Opdracht.status == "actief",
+            )
+        )
+        active_opdracht_budget = float(opdracht_result.scalar_one())
+
         return {
             "corpus_node_count": corpus_node_count,
             "open_task_count": open_task_count,
             "overdue_task_count": overdue_task_count,
+            "active_opdracht_budget": active_opdracht_budget,
         }

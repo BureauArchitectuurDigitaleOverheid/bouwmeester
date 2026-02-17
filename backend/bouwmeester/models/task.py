@@ -12,6 +12,7 @@ from bouwmeester.core.database import Base
 
 if TYPE_CHECKING:
     from bouwmeester.models.corpus_node import CorpusNode
+    from bouwmeester.models.opdracht import Opdracht
     from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
     from bouwmeester.models.parlementair_item import ParlementairItem
     from bouwmeester.models.person import Person
@@ -57,6 +58,12 @@ class Task(Base):
         nullable=True,
         index=True,
     )
+    opdracht_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("opdracht.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(
         default="open",
         server_default="open",
@@ -98,4 +105,8 @@ class Task(Base):
     )
     parlementair_item: Mapped[Optional["ParlementairItem"]] = relationship(
         "ParlementairItem",
+    )
+    opdracht: Mapped[Optional["Opdracht"]] = relationship(
+        "Opdracht",
+        back_populates="tasks",
     )

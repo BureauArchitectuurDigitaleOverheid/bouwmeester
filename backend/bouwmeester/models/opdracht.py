@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from bouwmeester.models.externe_organisatie import ExterneOrganisatie
     from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
     from bouwmeester.models.person import Person
+    from bouwmeester.models.task import Task
 
 
 class Opdracht(Base):
@@ -149,6 +150,10 @@ class Opdracht(Base):
         "OpdrachtNode",
         back_populates="opdracht",
         cascade="all, delete-orphan",
+    )
+    tasks: Mapped[list["Task"]] = relationship(
+        "Task",
+        back_populates="opdracht",
     )
 
 

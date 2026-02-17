@@ -264,6 +264,13 @@ export interface TaskSubtask {
   work_type?: string;
 }
 
+export interface TaskOpdrachtSummary {
+  id: string;
+  titel: string;
+  type: string;
+  status: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -277,6 +284,8 @@ export interface Task {
   organisatie_eenheid?: TaskOrgEenheidSummary;
   parent_id?: string;
   parlementair_item_id?: string;
+  opdracht_id?: string;
+  opdracht?: TaskOpdrachtSummary;
   subtasks?: TaskSubtask[];
   node_id?: string;
   node?: CorpusNode;
@@ -296,6 +305,7 @@ export interface TaskCreate {
   organisatie_eenheid_id?: string;
   parent_id?: string;
   parlementair_item_id?: string;
+  opdracht_id?: string;
   node_id: string;
   work_type?: string;
 }
@@ -309,6 +319,7 @@ export interface TaskUpdate {
   assignee_id?: string | null;
   organisatie_eenheid_id?: string | null;
   parent_id?: string | null;
+  opdracht_id?: string | null;
   work_type?: string | null;
 }
 
@@ -1028,6 +1039,7 @@ export interface TaskFilters {
   assignee_id?: string;
   node_id?: string;
   organisatie_eenheid_id?: string;
+  opdracht_id?: string;
   include_children?: boolean;
 }
 
@@ -1352,6 +1364,13 @@ export interface FinancieelJaar {
   volgend_jaar_benodigd: number;
   volgend_jaar_aangevraagd: number;
   opdracht_count: number;
+}
+
+export interface OpdrachtenSummary {
+  count: number;
+  totaal_budget: number;
+  totaal_gerealiseerd: number;
+  uitnutting_percentage?: number | null;
 }
 
 export interface FinancieelOverzicht {

@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bouwmeester.schema.externe_organisatie import ExterneOrganisatieResponse
 
@@ -116,6 +116,14 @@ class OpdrachtUpdate(BaseModel):
     startdatum: date | None = None
     einddatum: date | None = None
 
+    @field_validator("instrument_id")
+    @classmethod
+    def instrument_id_not_null(cls, v: UUID | None) -> UUID | None:
+        """Reject explicit null — instrument_id is required at the DB level."""
+        if v is None:
+            raise ValueError("instrument_id mag niet null zijn")
+        return v
+
 
 class OpdrachtInstrumentSummary(BaseModel):
     id: UUID
@@ -169,6 +177,16 @@ class OpdrachtResponse(BaseModel):
     updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# --- Opdrachten summary schema ---
+
+
+class OpdrachtenSummary(BaseModel):
+    count: int = 0
+    totaal_budget: Decimal = Decimal("0")
+    totaal_gerealiseerd: Decimal = Decimal("0")
+    uitnutting_percentage: float | None = None
 
 
 # --- Financieel overzicht schemas ---

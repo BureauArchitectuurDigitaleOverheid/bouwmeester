@@ -6,6 +6,7 @@ import { VocabularyProvider } from '@/contexts/VocabularyContext';
 import { TaskDetailProvider } from '@/contexts/TaskDetailContext';
 import { NodeDetailProvider } from '@/contexts/NodeDetailContext';
 import { OpdrachtDetailProvider } from '@/contexts/OpdrachtDetailContext';
+import { OpdrachtCreateProvider } from '@/contexts/OpdrachtCreateContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { DetailModals } from '@/components/common/DetailModals';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -105,6 +106,7 @@ export default function App() {
             <BrowserRouter>
               <TaskDetailProvider>
               <NodeDetailProvider>
+              <OpdrachtCreateProvider>
               <OpdrachtDetailProvider>
                 <Routes>
                   <Route element={<AppLayout />}>
@@ -127,6 +129,7 @@ export default function App() {
                 </Routes>
                 <DetailModals />
               </OpdrachtDetailProvider>
+              </OpdrachtCreateProvider>
               </NodeDetailProvider>
               </TaskDetailProvider>
             </BrowserRouter>

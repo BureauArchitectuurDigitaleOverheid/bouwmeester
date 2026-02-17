@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Inbox, CheckSquare, CheckCheck, Network, TrendingUp, Users } from 'lucide-react';
+import { Inbox, CheckSquare, CheckCheck, Network, TrendingUp, Users, Euro } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
@@ -10,6 +10,7 @@ import { useNotifications, useDashboardStats, useMarkAllNotificationsRead, useMa
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { useEenheidOverview } from '@/hooks/useTasks';
+import { formatCurrency } from '@/utils/format';
 import type { InboxItem } from '@/types';
 
 const NOTIFICATION_TYPE_MAP: Record<string, string> = {
@@ -26,6 +27,8 @@ const NOTIFICATION_TYPE_MAP: Record<string, string> = {
   mention: 'notification',
   direct_message: 'message',
   agent_prompt: 'message',
+  opdracht_created: 'notification',
+  opdracht_status_changed: 'notification',
 };
 
 const PERSON_LEVEL_TYPES = new Set(['afdeling', 'dienst', 'bureau', 'cluster', 'team']);
@@ -76,7 +79,7 @@ export function InboxPage() {
       </div>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <Card
           hoverable
           onClick={() => navigate('/corpus')}
@@ -118,6 +121,23 @@ export function InboxPage() {
             <div>
               <p className="text-2xl font-bold text-text">{stats?.overdue_task_count ?? '-'}</p>
               <p className="text-xs text-text-secondary">Achterstallig</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card
+          hoverable
+          onClick={() => navigate('/opdrachten')}
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-green-50 text-green-600">
+              <Euro className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-text">
+                {stats?.active_opdracht_budget != null ? formatCurrency(stats.active_opdracht_budget) : '-'}
+              </p>
+              <p className="text-xs text-text-secondary">Actief budget</p>
             </div>
           </div>
         </Card>

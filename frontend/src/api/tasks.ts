@@ -48,3 +48,7 @@ export async function reorderSubtasks(taskId: string, taskIds: string[]): Promis
 export async function getWorkTypes(): Promise<string[]> {
   return apiGet<string[]>('/api/tasks/work-types');
 }
+
+export async function getTasksByOpdracht(opdrachtId: string): Promise<Task[]> {
+  return apiGet<Task[]>('/api/tasks', { opdracht_id: opdrachtId });
+}

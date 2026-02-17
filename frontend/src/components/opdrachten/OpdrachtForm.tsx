@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, X, Plus } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import { useCreateOpdracht, useUpdateOpdracht, useAddOpdrachtNodeKoppeling, useRemoveOpdrachtNodeKoppeling } from '@/hooks/useOpdrachten';
 import { useExterneOrganisaties, useCreateExterneOrganisatie } from '@/hooks/useExterneOrganisaties';
 import { useNodes } from '@/hooks/useNodes';
@@ -27,10 +27,10 @@ interface OpdrachtFormProps {
   opdracht?: Opdracht;
   onClose: () => void;
   onSuccess: () => void;
-  modal?: boolean;
+  defaults?: { instrument_id?: string };
 }
 
-export function OpdrachtForm({ opdracht, onClose, onSuccess, modal = false }: OpdrachtFormProps) {
+export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: OpdrachtFormProps) {
   const isEdit = !!opdracht;
   const createMutation = useCreateOpdracht();
   const updateMutation = useUpdateOpdracht();
@@ -55,7 +55,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, modal = false }: Op
     kostensoort: opdracht?.kostensoort || '',
     volgend_jaar_benodigd: opdracht?.volgend_jaar_benodigd?.toString() || '',
     volgend_jaar_aangevraagd: opdracht?.volgend_jaar_aangevraagd?.toString() || '',
-    instrument_id: opdracht?.instrument_id || '',
+    instrument_id: opdracht?.instrument_id || defaults?.instrument_id || '',
     opdrachtnemer_id: opdracht?.opdrachtnemer_id || '',
     opdrachtgever_id: opdracht?.opdrachtgever_id || '',
     verantwoordelijke_id: opdracht?.verantwoordelijke_id || '',
@@ -395,21 +395,5 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, modal = false }: Op
     </form>
   );
 
-  if (modal) {
-    return formContent;
-  }
-
-  return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <button onClick={onClose} className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text transition-colors">
-        <ArrowLeft className="h-4 w-4" />
-        Terug naar overzicht
-      </button>
-
-      <div className="bg-surface rounded-xl border border-border p-6">
-        <h2 className="text-lg font-semibold text-text mb-6">{isEdit ? 'Opdracht bewerken' : 'Nieuwe opdracht'}</h2>
-        {formContent}
-      </div>
-    </div>
-  );
+  return formContent;
 }

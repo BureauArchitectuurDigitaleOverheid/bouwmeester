@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { Pencil, Trash2, Link as LinkIcon, ArrowRight } from 'lucide-react';
+import { Pencil, Trash2, Link as LinkIcon, ArrowRight, CheckSquare, Plus } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { OpdrachtForm } from './OpdrachtForm';
+import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
 import { useOpdracht, useDeleteOpdracht } from '@/hooks/useOpdrachten';
+import { useTasksByOpdracht } from '@/hooks/useTasks';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
+import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import {
   OPDRACHT_TYPE_LABELS,
   OPDRACHT_STATUS_LABELS,
@@ -13,9 +16,12 @@ import {
   OPDRACHT_TYPE_COLORS,
   KOSTENSOORT_LABELS,
   NODE_TYPE_COLORS,
+  TASK_STATUS_LABELS,
+  TASK_STATUS_COLORS,
   OpdrachtType,
   OpdrachtStatus,
   Kostensoort,
+  TaskStatus,
   type NodeType,
 } from '@/types';
 import { formatCurrency } from '@/utils/format';
@@ -29,9 +35,12 @@ interface OpdrachtDetailModalProps {
 
 export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: OpdrachtDetailModalProps) {
   const { data: opdracht, isLoading } = useOpdracht(opdrachtId ?? undefined);
+  const { data: tasks = [] } = useTasksByOpdracht(opdrachtId);
   const deleteMutation = useDeleteOpdracht();
   const { openNodeDetail } = useNodeDetail();
+  const { openTaskDetail } = useTaskDetail();
   const [showEdit, setShowEdit] = useState(false);
+  const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!open) return null;
@@ -46,7 +55,6 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
         zIndex={zIndex}
       >
         <OpdrachtForm
-          modal
           opdracht={opdracht}
           onClose={() => setShowEdit(false)}
           onSuccess={() => setShowEdit(false)}
@@ -294,8 +302,54 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
               </div>
             </div>
           )}
+
+          {/* Taken section */}
+          <div className="border-t border-border pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                <CheckSquare className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
+                Taken ({tasks.length})
+              </h4>
+              <button
+                onClick={() => setShowTaskCreate(true)}
+                className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800 transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Taak
+              </button>
+            </div>
+            {tasks.length > 0 ? (
+              <div className="space-y-1">
+                {tasks.map((task) => (
+                  <button
+                    key={task.id}
+                    onClick={() => openTaskDetail(task.id)}
+                    className="flex items-center gap-2 w-full p-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left group"
+                  >
+                    <Badge variant={TASK_STATUS_COLORS[task.status as TaskStatus] ?? 'gray'}>
+                      {TASK_STATUS_LABELS[task.status as TaskStatus] ?? task.status}
+                    </Badge>
+                    <span className="text-sm text-text truncate flex-1 group-hover:text-primary-700 transition-colors">{task.title}</span>
+                    {task.assignee && (
+                      <span className="text-xs text-text-secondary shrink-0">{task.assignee.naam}</span>
+                    )}
+                    <ArrowRight className="h-3.5 w-3.5 text-gray-300 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-text-secondary">Geen taken gekoppeld.</p>
+            )}
+          </div>
         </div>
       )}
+
+      <TaskCreateForm
+        open={showTaskCreate}
+        onClose={() => setShowTaskCreate(false)}
+        nodeId={opdracht?.instrument_id}
+        opdrachtId={opdrachtId ?? undefined}
+      />
     </Modal>
   );
 }

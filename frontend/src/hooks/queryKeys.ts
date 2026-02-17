@@ -35,6 +35,7 @@ export const queryKeys = {
     unassigned: (orgId?: string) => ['tasks', 'list', 'unassigned', orgId] as const,
     eenheidOverview: (orgId: string | null) => ['tasks', 'list', 'eenheid-overview', orgId] as const,
     byPerson: (personId: string | null) => ['tasks', 'list', 'by-person', personId] as const,
+    byOpdracht: (opdrachtId: string | null) => ['tasks', 'list', 'by-opdracht', opdrachtId] as const,
     workTypes: () => ['tasks', 'work-types'] as const,
   },
 
@@ -140,6 +141,7 @@ export const queryKeys = {
     lists: () => ['opdrachten', 'list'] as const,
     list: (filters?: OpdrachtFilters) => ['opdrachten', 'list', filters] as const,
     detail: (id: string | undefined) => ['opdrachten', 'detail', id] as const,
+    summary: (filters?: OpdrachtFilters) => ['opdrachten', 'summary', filters] as const,
   },
 
   // --- Externe Organisaties ---

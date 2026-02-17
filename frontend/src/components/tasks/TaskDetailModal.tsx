@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, User, Bot, Calendar, Link as LinkIcon, Pencil, Building2, ListTree, Plus, CheckCircle2, Circle, FileSearch, ChevronUp, ChevronDown } from 'lucide-react';
+import { Clock, User, Bot, Calendar, Link as LinkIcon, Pencil, Building2, ListTree, Plus, CheckCircle2, Circle, FileSearch, ChevronUp, ChevronDown, ClipboardList } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
@@ -10,6 +10,7 @@ import { TaskEditForm } from './TaskEditForm';
 import { TaskCreateForm } from './TaskCreateForm';
 import { useTask, useReorderSubtasks } from '@/hooks/useTasks';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
+import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { isOverdue as checkOverdue, formatDateLong, formatDateShort } from '@/utils/dates';
 import {
@@ -32,6 +33,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
   const [showEdit, setShowEdit] = useState(false);
   const [showSubtaskCreate, setShowSubtaskCreate] = useState(false);
   const { openNodeDetail } = useNodeDetail();
+  const { openOpdrachtDetail } = useOpdrachtDetail();
   const { openTaskDetail } = useTaskDetail();
   const navigate = useNavigate();
   const reorderSubtasks = useReorderSubtasks();
@@ -189,6 +191,25 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                   <span className="text-text-secondary">Geen</span>
                 )}
               </div>
+
+              {/* Opdracht link */}
+              {task.opdracht && (
+                <div>
+                  <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
+                    Opdracht
+                  </h4>
+                  <button
+                    onClick={() => {
+                      onClose();
+                      openOpdrachtDetail(task.opdracht!.id);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-sm text-left"
+                  >
+                    <ClipboardList className="h-4 w-4 shrink-0" />
+                    {task.opdracht.titel}
+                  </button>
+                </div>
+              )}
 
               {/* Parlementair review link */}
               {task.parlementair_item_id && (

@@ -1,6 +1,6 @@
-"""add check constraints and externe_organisatie updated_at
+"""add check constraints, externe_organisatie updated_at, and task.opdracht_id
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: 8907cbd8af74
 Revises: eeb0d9dac7db
 Create Date: 2026-02-17 12:00:00.000000
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "a1b2c3d4e5f6"
+revision: str = "8907cbd8af74"
 down_revision: str | None = "eeb0d9dac7db"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -33,7 +33,8 @@ def upgrade() -> None:
     op.create_check_constraint(
         "ck_opdracht_kostensoort",
         "opdracht",
-        "kostensoort IS NULL OR kostensoort IN ('investering', 'exploitatie', 'gemengd')",
+        "kostensoort IS NULL OR kostensoort IN "
+        "('investering', 'exploitatie', 'gemengd')",
     )
 
     # Check constraint for opdracht_node
@@ -57,10 +58,34 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
+    # Add opdracht_id FK to task
+    op.add_column(
+        "task",
+        sa.Column(
+            "opdracht_id",
+            sa.dialects.postgresql.UUID(as_uuid=True),
+            nullable=True,
+        ),
+    )
+    op.create_index("ix_task_opdracht_id", "task", ["opdracht_id"])
+    op.create_foreign_key(
+        "fk_task_opdracht_id",
+        "task",
+        "opdracht",
+        ["opdracht_id"],
+        ["id"],
+        ondelete="SET NULL",
+    )
+
 
 def downgrade() -> None:
+    op.drop_constraint("fk_task_opdracht_id", "task", type_="foreignkey")
+    op.drop_index("ix_task_opdracht_id", table_name="task")
+    op.drop_column("task", "opdracht_id")
     op.drop_column("externe_organisatie", "updated_at")
-    op.drop_constraint("ck_externe_organisatie_type", "externe_organisatie", type_="check")
+    op.drop_constraint(
+        "ck_externe_organisatie_type", "externe_organisatie", type_="check"
+    )
     op.drop_constraint("ck_opdracht_node_relatie_type", "opdracht_node", type_="check")
     op.drop_constraint("ck_opdracht_kostensoort", "opdracht", type_="check")
     op.drop_constraint("ck_opdracht_status", "opdracht", type_="check")

@@ -24,6 +24,8 @@ class NotificationType(enum.StrEnum):
     mention = "mention"
     access_request = "access_request"
     emoji_reaction = "emoji_reaction"
+    opdracht_created = "opdracht_created"
+    opdracht_status_changed = "opdracht_status_changed"
 
 
 class NotificationBase(BaseModel):
@@ -112,3 +114,4 @@ class DashboardStatsResponse(BaseModel):
     corpus_node_count: int
     open_task_count: int
     overdue_task_count: int
+    active_opdracht_budget: float = 0

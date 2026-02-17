@@ -1,13 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
-import { getOpdrachten, getOpdracht, createOpdracht, updateOpdracht, deleteOpdracht, addOpdrachtNodeKoppeling, removeOpdrachtNodeKoppeling, getNodeFinancieel, getNodeOpdrachten } from '@/api/opdrachten';
+import { getOpdrachten, getOpdrachtenSummary, getOpdracht, createOpdracht, updateOpdracht, deleteOpdracht, addOpdrachtNodeKoppeling, removeOpdrachtNodeKoppeling, getNodeFinancieel, getNodeOpdrachten } from '@/api/opdrachten';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
-import type { OpdrachtCreate, OpdrachtUpdate, OpdrachtNodeCreate, OpdrachtFilters } from '@/types';
+import type { OpdrachtCreate, OpdrachtUpdate, OpdrachtNodeCreate, OpdrachtFilters, OpdrachtenSummary } from '@/types';
 
 export function useOpdrachten(filters?: OpdrachtFilters) {
   return useQuery({
     queryKey: queryKeys.opdrachten.list(filters),
     queryFn: () => getOpdrachten(filters),
+  });
+}
+
+export function useOpdrachtenSummary(filters?: OpdrachtFilters) {
+  return useQuery<OpdrachtenSummary>({
+    queryKey: queryKeys.opdrachten.summary(filters),
+    queryFn: () => getOpdrachtenSummary(filters),
   });
 }
 
@@ -23,7 +30,7 @@ export function useCreateOpdracht() {
   return useMutationWithError({
     mutationFn: (data: OpdrachtCreate) => createOpdracht(data),
     errorMessage: 'Fout bij aanmaken opdracht',
-    invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.overzicht(undefined)],
+    invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.overzicht(undefined), queryKeys.tasks.lists()],
   });
 }
 
@@ -31,7 +38,7 @@ export function useUpdateOpdracht() {
   return useMutationWithError({
     mutationFn: ({ id, data }: { id: string; data: OpdrachtUpdate }) => updateOpdracht(id, data),
     errorMessage: 'Fout bij bijwerken opdracht',
-    invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.overzicht(undefined)],
+    invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.overzicht(undefined), queryKeys.tasks.lists()],
   });
 }
 

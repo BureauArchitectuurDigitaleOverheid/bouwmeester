@@ -119,6 +119,7 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         stmt = (
             select(Opdracht)
             .where(Opdracht.id.in_(select(combined.c.id)))
+            .options(selectinload(Opdracht.node_koppelingen))
             .order_by(Opdracht.begrotingsjaar.desc(), Opdracht.titel)
         )
         result = await self.session.execute(stmt)
@@ -148,6 +149,34 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         await self.session.delete(obj)
         await self.session.flush()
         return True
+
+    async def get_summary(
+        self,
+        *,
+        begrotingsjaar: int | None = None,
+        type: str | None = None,
+        status: str | None = None,
+        opdrachtnemer_id: UUID | None = None,
+    ) -> dict:
+        """Aggregate count, total budget, total gerealiseerd."""
+        stmt = select(
+            func.count(Opdracht.id).label("count"),
+            func.coalesce(func.sum(Opdracht.budget), 0).label("totaal_budget"),
+            func.coalesce(func.sum(Opdracht.gerealiseerd), 0).label(
+                "totaal_gerealiseerd"
+            ),
+        )
+        if begrotingsjaar is not None:
+            stmt = stmt.where(Opdracht.begrotingsjaar == begrotingsjaar)
+        if type is not None:
+            stmt = stmt.where(Opdracht.type == type)
+        if status is not None:
+            stmt = stmt.where(Opdracht.status == status)
+        if opdrachtnemer_id is not None:
+            stmt = stmt.where(Opdracht.opdrachtnemer_id == opdrachtnemer_id)
+        result = await self.session.execute(stmt)
+        row = result.one()
+        return dict(row._mapping)
 
     async def aggregate_by_instrument(
         self,
@@ -191,6 +220,5 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         )
         result = await self.session.execute(stmt)
         return {
-            row.instrument_id: (row.budget, row.gerealiseerd)
-            for row in result.all()
+            row.instrument_id: (row.budget, row.gerealiseerd) for row in result.all()
         }
