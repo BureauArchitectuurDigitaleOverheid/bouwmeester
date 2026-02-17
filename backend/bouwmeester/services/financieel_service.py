@@ -108,56 +108,46 @@ class FinancieelService:
         """Collect instrument node IDs reachable from the given node.
 
         For instrument nodes, returns [node_id] directly.
-        For other nodes, uses a bounded BFS via recursive CTE to traverse edges
-        and find connected instruments, using UNION to prevent cycles.
+        For other nodes, uses iterative BFS with a visited set to traverse
+        edges and find connected instruments, preventing cycles.
         """
         if node_type == "instrument":
             return [node_id]
 
-        from sqlalchemy import literal_column
+        visited: set[UUID] = set()
+        frontier: set[UUID] = {node_id}
 
-        # Recursive CTE with depth tracking and UNION (not UNION ALL) to break cycles
-        cte = (
-            select(
-                Edge.to_node_id.label("id"),
-                literal_column("1").label("depth"),
+        for _ in range(max_depth):
+            if not frontier:
+                break
+            visited.update(frontier)
+
+            # Forward edges
+            fwd_stmt = (
+                select(Edge.to_node_id)
+                .where(Edge.from_node_id.in_(frontier))
+                .where(Edge.to_node_id.notin_(visited))
             )
-            .where(Edge.from_node_id == node_id)
-            .cte(name="reachable", recursive=True)
-        )
-        cte = cte.union(
-            select(Edge.to_node_id, (cte.c.depth + 1).label("depth"))
-            .join(cte, Edge.from_node_id == cte.c.id)
-            .where(cte.c.depth < max_depth)
-        )
-
-        # Also traverse reverse edges with the same protections
-        cte_rev = (
-            select(
-                Edge.from_node_id.label("id"),
-                literal_column("1").label("depth"),
+            # Reverse edges
+            rev_stmt = (
+                select(Edge.from_node_id)
+                .where(Edge.to_node_id.in_(frontier))
+                .where(Edge.from_node_id.notin_(visited))
             )
-            .where(Edge.to_node_id == node_id)
-            .cte(name="reachable_rev", recursive=True)
-        )
-        cte_rev = cte_rev.union(
-            select(Edge.from_node_id, (cte_rev.c.depth + 1).label("depth"))
-            .join(cte_rev, Edge.to_node_id == cte_rev.c.id)
-            .where(cte_rev.c.depth < max_depth)
-        )
+            combined = fwd_stmt.union(rev_stmt)
+            result = await self.session.execute(combined)
+            frontier = set(result.scalars().all())
 
-        # Combine forward and reverse reachable, filter for instruments
-        forward_instruments = (
+        # From all reachable nodes, pick instruments
+        all_reachable = visited | frontier
+        all_reachable.discard(node_id)
+        if not all_reachable:
+            return []
+
+        stmt = (
             select(CorpusNode.id)
-            .where(CorpusNode.id.in_(select(cte.c.id)))
+            .where(CorpusNode.id.in_(all_reachable))
             .where(CorpusNode.node_type == "instrument")
         )
-        reverse_instruments = (
-            select(CorpusNode.id)
-            .where(CorpusNode.id.in_(select(cte_rev.c.id)))
-            .where(CorpusNode.node_type == "instrument")
-        )
-        combined = forward_instruments.union(reverse_instruments)
-
-        result = await self.session.execute(combined)
+        result = await self.session.execute(stmt)
         return list(result.scalars().all())

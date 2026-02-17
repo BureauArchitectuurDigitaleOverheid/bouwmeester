@@ -1,5 +1,6 @@
 """Repository for Opdracht CRUD and filtering."""
 
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -172,3 +173,24 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         )
         result = await self.session.execute(stmt)
         return [dict(row._mapping) for row in result.all()]
+
+    async def get_budget_summaries(
+        self, instrument_ids: list[UUID]
+    ) -> dict[UUID, tuple[Decimal, Decimal]]:
+        """Return {instrument_id: (total_budget, total_gerealiseerd)} for given IDs."""
+        if not instrument_ids:
+            return {}
+        stmt = (
+            select(
+                Opdracht.instrument_id,
+                func.coalesce(func.sum(Opdracht.budget), 0).label("budget"),
+                func.coalesce(func.sum(Opdracht.gerealiseerd), 0).label("gerealiseerd"),
+            )
+            .where(Opdracht.instrument_id.in_(instrument_ids))
+            .group_by(Opdracht.instrument_id)
+        )
+        result = await self.session.execute(stmt)
+        return {
+            row.instrument_id: (row.budget, row.gerealiseerd)
+            for row in result.all()
+        }

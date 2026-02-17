@@ -9,6 +9,8 @@ interface ModalProps {
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
   closeable?: boolean;
+  /** z-index layer for stacking multiple modals. Higher = on top. Default 50. */
+  zIndex?: number;
 }
 
 const sizeClasses = {
@@ -17,7 +19,7 @@ const sizeClasses = {
   lg: 'max-w-2xl',
 };
 
-export function Modal({ open, onClose, title, children, footer, size = 'md', closeable = true }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, size = 'md', closeable = true, zIndex = 50 }: ModalProps) {
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
@@ -42,7 +44,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md', clo
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex }}>
       {/* Overlay */}
       <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity"

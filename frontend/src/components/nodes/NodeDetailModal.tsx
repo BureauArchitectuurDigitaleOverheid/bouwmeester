@@ -39,9 +39,10 @@ interface NodeDetailModalProps {
   nodeId: string | null;
   open: boolean;
   onClose: () => void;
+  zIndex?: number;
 }
 
-export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps) {
+export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailModalProps) {
   const { data: node, isLoading } = useNode(nodeId ?? undefined);
   const { data: stakeholders } = useNodeStakeholders(nodeId ?? undefined);
   const { data: neighbors } = useNodeNeighbors(nodeId ?? undefined);
@@ -98,6 +99,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
       onClose={onClose}
       title={isLoading ? 'Laden...' : node?.title ?? 'Node niet gevonden'}
       size="lg"
+      zIndex={zIndex}
       footer={
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-2">

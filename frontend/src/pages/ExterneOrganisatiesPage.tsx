@@ -23,6 +23,7 @@ export function ExterneOrganisatiesPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [editingOrg, setEditingOrg] = useState<ExterneOrganisatie | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<ExterneOrganisatieCreate>({
     naam: '',
     type: ExterneOrganisatieType.UITVOERINGSORGANISATIE,
@@ -49,17 +50,26 @@ export function ExterneOrganisatiesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingOrg) {
-      await updateMutation.mutateAsync({ id: editingOrg.id, data: form });
-    } else {
-      await createMutation.mutateAsync(form);
+    setError(null);
+    try {
+      if (editingOrg) {
+        await updateMutation.mutateAsync({ id: editingOrg.id, data: form });
+      } else {
+        await createMutation.mutateAsync(form);
+      }
+      resetForm();
+    } catch {
+      setError(editingOrg ? 'Fout bij opslaan van organisatie.' : 'Fout bij aanmaken van organisatie.');
     }
-    resetForm();
   };
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Weet je zeker dat je deze organisatie wilt verwijderen?')) {
-      await deleteMutation.mutateAsync(id);
+      try {
+        await deleteMutation.mutateAsync(id);
+      } catch {
+        setError('Fout bij verwijderen van organisatie.');
+      }
     }
   };
 
@@ -165,6 +175,13 @@ export function ExterneOrganisatiesPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Error feedback */}
+      {error && (
+        <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
+          {error}
         </div>
       )}
 

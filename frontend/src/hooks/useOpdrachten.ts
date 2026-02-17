@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { getOpdrachten, getOpdracht, createOpdracht, updateOpdracht, deleteOpdracht, getNodeFinancieel, getNodeOpdrachten } from '@/api/opdrachten';
+import { getOpdrachten, getOpdracht, createOpdracht, updateOpdracht, deleteOpdracht, addOpdrachtNodeKoppeling, removeOpdrachtNodeKoppeling, getNodeFinancieel, getNodeOpdrachten } from '@/api/opdrachten';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
-import type { OpdrachtCreate, OpdrachtUpdate, OpdrachtFilters } from '@/types';
+import type { OpdrachtCreate, OpdrachtUpdate, OpdrachtNodeCreate, OpdrachtFilters } from '@/types';
 
 export function useOpdrachten(filters?: OpdrachtFilters) {
   return useQuery({
@@ -40,6 +40,24 @@ export function useDeleteOpdracht() {
     mutationFn: (id: string) => deleteOpdracht(id),
     errorMessage: 'Fout bij verwijderen opdracht',
     invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.overzicht(undefined)],
+  });
+}
+
+export function useAddOpdrachtNodeKoppeling() {
+  return useMutationWithError({
+    mutationFn: ({ opdrachtId, data }: { opdrachtId: string; data: OpdrachtNodeCreate }) =>
+      addOpdrachtNodeKoppeling(opdrachtId, data),
+    errorMessage: 'Fout bij toevoegen koppeling',
+    invalidateKeys: [queryKeys.opdrachten.all],
+  });
+}
+
+export function useRemoveOpdrachtNodeKoppeling() {
+  return useMutationWithError({
+    mutationFn: ({ opdrachtId, koppelingId }: { opdrachtId: string; koppelingId: string }) =>
+      removeOpdrachtNodeKoppeling(opdrachtId, koppelingId),
+    errorMessage: 'Fout bij verwijderen koppeling',
+    invalidateKeys: [queryKeys.opdrachten.all],
   });
 }
 

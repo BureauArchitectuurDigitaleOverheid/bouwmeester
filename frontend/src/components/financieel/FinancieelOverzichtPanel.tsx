@@ -22,7 +22,7 @@ export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelPro
   if (!overzicht || overzicht.per_jaar.length === 0) {
     return (
       <div className="text-sm text-text-secondary py-4">
-        Geen financiële gegevens beschikbaar voor deze node.
+        Geen financiële gegevens beschikbaar.
       </div>
     );
   }
@@ -70,7 +70,8 @@ export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelPro
           </thead>
           <tbody>
             {overzicht.per_jaar.map((j) => {
-              const uitn = j.budget > 0 ? (j.gerealiseerd / j.budget * 100) : null;
+              const bud = Number(j.budget) || 0;
+              const uitn = bud > 0 ? (Number(j.gerealiseerd) || 0) / bud * 100 : null;
               return (
                 <tr key={j.begrotingsjaar} className="border-b border-border last:border-0">
                   <td className="py-2 font-medium text-text">{j.begrotingsjaar}</td>

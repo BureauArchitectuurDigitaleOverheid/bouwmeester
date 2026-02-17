@@ -5,6 +5,7 @@ import { CurrentPersonProvider } from '@/contexts/CurrentPersonContext';
 import { VocabularyProvider } from '@/contexts/VocabularyContext';
 import { TaskDetailProvider } from '@/contexts/TaskDetailContext';
 import { NodeDetailProvider } from '@/contexts/NodeDetailContext';
+import { OpdrachtDetailProvider } from '@/contexts/OpdrachtDetailContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { DetailModals } from '@/components/common/DetailModals';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -104,6 +105,7 @@ export default function App() {
             <BrowserRouter>
               <TaskDetailProvider>
               <NodeDetailProvider>
+              <OpdrachtDetailProvider>
                 <Routes>
                   <Route element={<AppLayout />}>
                     <Route path="/" element={<InboxPage />} />
@@ -124,6 +126,7 @@ export default function App() {
                   </Route>
                 </Routes>
                 <DetailModals />
+              </OpdrachtDetailProvider>
               </NodeDetailProvider>
               </TaskDetailProvider>
             </BrowserRouter>

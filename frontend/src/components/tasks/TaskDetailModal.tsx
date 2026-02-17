@@ -24,9 +24,10 @@ interface TaskDetailModalProps {
   taskId: string | null;
   open: boolean;
   onClose: () => void;
+  zIndex?: number;
 }
 
-export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps) {
+export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailModalProps) {
   const { data: task, isLoading } = useTask(taskId);
   const [showEdit, setShowEdit] = useState(false);
   const [showSubtaskCreate, setShowSubtaskCreate] = useState(false);
@@ -73,6 +74,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
         onClose={onClose}
         title={isLoading ? 'Laden...' : task?.title ?? 'Taak niet gevonden'}
         size="lg"
+        zIndex={zIndex}
         footer={
           <div className="flex items-center justify-between w-full">
             <Button

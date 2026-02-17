@@ -3,7 +3,7 @@ import { Plus, Filter, X } from 'lucide-react';
 import { useOpdrachten } from '@/hooks/useOpdrachten';
 import { useExterneOrganisaties } from '@/hooks/useExterneOrganisaties';
 import { OpdrachtForm } from '@/components/opdrachten/OpdrachtForm';
-import { OpdrachtDetail } from '@/components/opdrachten/OpdrachtDetail';
+import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import {
   OPDRACHT_TYPE_LABELS,
   OPDRACHT_STATUS_LABELS,
@@ -19,8 +19,8 @@ import { formatCurrency } from '@/utils/format';
 export function OpdrachtenPage() {
   const [filters, setFilters] = useState<OpdrachtFilters>({});
   const [showForm, setShowForm] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const { openOpdrachtDetail } = useOpdrachtDetail();
 
   const { data: opdrachten = [], isLoading } = useOpdrachten(filters);
   const { data: externeOrgs = [] } = useExterneOrganisaties();
@@ -28,18 +28,9 @@ export function OpdrachtenPage() {
   const years = [...new Set(opdrachten.map(o => o.begrotingsjaar))].sort((a, b) => b - a);
   const allYears = years.length > 0 ? years : [2024, 2025, 2026];
 
-  const totaalBudget = opdrachten.reduce((sum, o) => sum + (o.budget || 0), 0);
-  const totaalGerealiseerd = opdrachten.reduce((sum, o) => sum + (o.gerealiseerd || 0), 0);
+  const totaalBudget = opdrachten.reduce((sum, o) => sum + (Number(o.budget) || 0), 0);
+  const totaalGerealiseerd = opdrachten.reduce((sum, o) => sum + (Number(o.gerealiseerd) || 0), 0);
   const uitnutting = totaalBudget > 0 ? (totaalGerealiseerd / totaalBudget * 100) : 0;
-
-  if (selectedId) {
-    return (
-      <OpdrachtDetail
-        opdrachtId={selectedId}
-        onBack={() => setSelectedId(null)}
-      />
-    );
-  }
 
   if (showForm) {
     return (
@@ -181,7 +172,7 @@ export function OpdrachtenPage() {
               opdrachten.map((o) => (
                 <tr
                   key={o.id}
-                  onClick={() => setSelectedId(o.id)}
+                  onClick={() => openOpdrachtDetail(o.id)}
                   className="border-b border-border last:border-0 hover:bg-gray-50 cursor-pointer transition-colors"
                 >
                   <td className="px-4 py-3 font-medium text-text max-w-[300px] truncate">{o.titel}</td>

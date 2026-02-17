@@ -121,6 +121,12 @@ export interface BeleidskompasProgress {
   total_steps: number;
 }
 
+// Financial summary (returned for instrument nodes)
+export interface FinancieelSummary {
+  totaal_budget: number;
+  totaal_gerealiseerd: number;
+}
+
 // Corpus Node
 export interface CorpusNode {
   id: string;
@@ -135,6 +141,7 @@ export interface CorpusNode {
   updated_at: string;
   edge_count?: number;
   beleidskompas_progress?: BeleidskompasProgress | null;
+  financieel_summary?: FinancieelSummary | null;
 }
 
 export interface CorpusNodeCreate {

@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_deleted, require_found
+from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.externe_organisatie import ExterneOrganisatieRepository
@@ -29,7 +29,7 @@ async def list_externe_organisaties(
 ) -> list[ExterneOrganisatieResponse]:
     repo = ExterneOrganisatieRepository(db)
     items = await repo.get_all(skip=skip, limit=limit, type=type, search=search)
-    return [ExterneOrganisatieResponse.model_validate(o) for o in items]
+    return validate_list(ExterneOrganisatieResponse, items)
 
 
 @router.post(

@@ -9,7 +9,16 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, Text, UniqueConstraint, func, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,6 +33,21 @@ if TYPE_CHECKING:
 
 class Opdracht(Base):
     __tablename__ = "opdracht"
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('opdracht', 'subsidie')",
+            name="ck_opdracht_type",
+        ),
+        CheckConstraint(
+            "status IN ('concept', 'actief', 'afgerond', 'verantwoord', 'geannuleerd')",
+            name="ck_opdracht_status",
+        ),
+        CheckConstraint(
+            "kostensoort IS NULL OR kostensoort IN "
+            "('investering', 'exploitatie', 'gemengd')",
+            name="ck_opdracht_kostensoort",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -137,6 +161,10 @@ class OpdrachtNode(Base):
             "opdracht_id",
             "node_id",
             name="uq_opdracht_node_opdracht_node",
+        ),
+        CheckConstraint(
+            "relatie_type IN ('bekostigt', 'draagt_bij_aan')",
+            name="ck_opdracht_node_relatie_type",
         ),
     )
 
