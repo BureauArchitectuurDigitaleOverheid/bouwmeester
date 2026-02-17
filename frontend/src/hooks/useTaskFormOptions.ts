@@ -2,15 +2,18 @@ import { useState, useCallback, useMemo } from 'react';
 import { useNodes, useCreateNode } from '@/hooks/useNodes';
 import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { ORGANISATIE_TYPE_LABELS, NodeType, formatFunctie } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
+import { buildPersonOptions } from '@/utils/personOptions';
 
 export function useTaskFormOptions() {
   const [personCreateName, setPersonCreateName] = useState('');
   const [showPersonCreate, setShowPersonCreate] = useState(false);
 
   const { nodeLabel } = useVocabulary();
+  const { currentPerson } = useCurrentPerson();
   const createNode = useCreateNode();
   const { data: allNodes } = useNodes();
   const { data: allPeople } = usePeople();
@@ -26,12 +29,12 @@ export function useTaskFormOptions() {
   );
 
   const personOptions: SelectOption[] = useMemo(
-    () => (allPeople ?? []).map((p) => ({
+    () => buildPersonOptions(allPeople ?? [], currentPerson, (p) => ({
       value: p.id,
       label: p.naam,
       description: formatFunctie(p.functie),
     })),
-    [allPeople],
+    [allPeople, currentPerson],
   );
 
   const eenheidOptions: SelectOption[] = useMemo(() => [

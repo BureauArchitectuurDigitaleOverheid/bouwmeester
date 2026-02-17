@@ -7,6 +7,7 @@ import { usePeople } from '@/hooks/usePeople';
 import { useNodes } from '@/hooks/useNodes';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { MultiSelect } from '@/components/common/MultiSelect';
@@ -27,6 +28,8 @@ import {
 import { Badge } from '@/components/common/Badge';
 import { formatCurrency, formatCurrencyCompact } from '@/utils/format';
 
+const MY_OPDRACHTEN_SENTINEL = '__me__';
+
 const TYPE_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_TYPE_LABELS).map(
   ([value, label]) => ({ value, label }),
 );
@@ -38,6 +41,7 @@ const STATUS_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_STATUS_LABEL
 export function OpdrachtenPage() {
   const { openOpdrachtDetail } = useOpdrachtDetail();
   const { openOpdrachtCreate } = useOpdrachtCreate();
+  const { currentPerson } = useCurrentPerson();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // API-level filters (sent to backend), seeded from URL params
@@ -88,10 +92,15 @@ export function OpdrachtenPage() {
     [externeOrgs],
   );
 
-  // Verantwoordelijke options from people
+  // Verantwoordelijke options from people, with "Mijn opdrachten" at top
   const verantwoordelijkeOptions: SelectOption[] = useMemo(
-    () => people.map((p) => ({ value: p.id, label: p.naam })),
-    [people],
+    () => [
+      ...(currentPerson
+        ? [{ value: MY_OPDRACHTEN_SENTINEL, label: `Mijn opdrachten (${currentPerson.naam})` }]
+        : []),
+      ...people.map((p) => ({ value: p.id, label: p.naam })),
+    ],
+    [people, currentPerson],
   );
 
   // Instrument options from nodes
@@ -238,13 +247,14 @@ export function OpdrachtenPage() {
         </div>
         <div className="w-full sm:w-48">
           <CreatableSelect
-            value={apiFilters.verantwoordelijke_id ?? ''}
-            onChange={(v) =>
+            value={apiFilters.verantwoordelijke_id === currentPerson?.id ? MY_OPDRACHTEN_SENTINEL : (apiFilters.verantwoordelijke_id ?? '')}
+            onChange={(v) => {
+              const resolved = v === MY_OPDRACHTEN_SENTINEL ? currentPerson?.id : v;
               setApiFilters((f) => ({
                 ...f,
-                verantwoordelijke_id: v || undefined,
-              }))
-            }
+                verantwoordelijke_id: resolved || undefined,
+              }));
+            }}
             options={verantwoordelijkeOptions}
             placeholder="Alle verantwoordelijken"
             onClear={() =>

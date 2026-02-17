@@ -4,6 +4,8 @@ import { Badge } from '@/components/common/Badge';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useUpdateTask } from '@/hooks/useTasks';
 import { useOrganisatieFlat, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { buildPersonOptions } from '@/utils/personOptions';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { isOverdue as checkOverdue, formatDateShort } from '@/utils/dates';
 import {
@@ -148,24 +150,24 @@ export function UnassignedTasksSection({
 }: UnassignedTasksSectionProps) {
   const [noUnitOpen, setNoUnitOpen] = useState(true);
   const [noPersonOpen, setNoPersonOpen] = useState(true);
+  const { currentPerson } = useCurrentPerson();
   const { data: personenGroup } = useOrganisatiePersonenRecursive(selectedEenheidId || null);
 
   const personOptions: SelectOption[] = useMemo(() => {
     if (!personenGroup) return [];
     const people = flattenPersonenGroup(personenGroup);
     const seen = new Set<string>();
-    return people
-      .filter((p) => {
-        if (seen.has(p.id)) return false;
-        seen.add(p.id);
-        return true;
-      })
-      .map((p) => ({
-        value: p.id,
-        label: p.naam,
-        description: formatFunctie(p.functie),
-      }));
-  }, [personenGroup]);
+    const unique = people.filter((p) => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+    return buildPersonOptions(unique, currentPerson, (p) => ({
+      value: p.id,
+      label: p.naam,
+      description: formatFunctie(p.functie),
+    }));
+  }, [personenGroup, currentPerson]);
 
   const isPersonLevel = PERSON_LEVEL_TYPES.has(eenheidType);
   const showNoPersonSection = isPersonLevel;

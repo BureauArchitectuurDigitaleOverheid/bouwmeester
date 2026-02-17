@@ -5,7 +5,9 @@ import { useExterneOrganisaties, useCreateExterneOrganisatie } from '@/hooks/use
 import { useNodes } from '@/hooks/useNodes';
 import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
+import { buildPersonOptions } from '@/utils/personOptions';
 import { Badge } from '@/components/common/Badge';
 import {
   OpdrachtType,
@@ -42,6 +44,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
   const { data: allNodes = [] } = useNodes();
   const { data: people = [] } = usePeople();
   const { data: eenheden = [] } = useOrganisatieFlat();
+  const { currentPerson } = useCurrentPerson();
 
   const [error, setError] = useState<string | null>(null);
 
@@ -82,10 +85,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
     description: o.afkorting ? o.naam : undefined,
   }));
 
-  const verantwoordelijkeOptions: SelectOption[] = people.map(p => ({
-    value: p.id,
-    label: p.naam,
-  }));
+  const verantwoordelijkeOptions: SelectOption[] = buildPersonOptions(people, currentPerson);
 
   const opdrachtgeverOptions: SelectOption[] = eenheden.map(e => ({
     value: e.id,

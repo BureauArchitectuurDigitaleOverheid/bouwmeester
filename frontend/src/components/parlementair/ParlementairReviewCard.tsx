@@ -22,6 +22,8 @@ import { getEdges } from '@/api/edges';
 import { getNodeStakeholders } from '@/api/nodes';
 import { useNodes, useCreateNode } from '@/hooks/useNodes';
 import { usePeople } from '@/hooks/usePeople';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { buildPersonOptions } from '@/utils/personOptions';
 import { useTags, useNodeTags, useAddTagToNode, useRemoveTagFromNode } from '@/hooks/useTags';
 import type { ParlementairItem } from '@/types';
 import { NodeType } from '@/types';
@@ -85,6 +87,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   const deleteEdge = useDeleteEdge();
   const createNode = useCreateNode();
   const { data: people } = usePeople();
+  const { currentPerson } = useCurrentPerson();
   const { data: allNodes } = useNodes();
   const { data: allTags } = useTags();
   const { data: nodeTags } = useNodeTags(item.corpus_node_id ?? '');
@@ -122,19 +125,20 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   // Helper for functie display
   const functieLabel = formatFunctie;
 
-  // People options sorted: relevant eigenaren first, then the rest
-  const sortedPeopleOptions: SelectOption[] = (people ?? [])
-    .map((p) => ({
+  // People options sorted: self first, then relevant eigenaren, then the rest
+  const sortedPeople = [...(people ?? [])].sort((a, b) => {
+    const aRel = relevantPersonIds.has(a.id);
+    const bRel = relevantPersonIds.has(b.id);
+    if (aRel !== bRel) return aRel ? -1 : 1;
+    return a.naam.localeCompare(b.naam);
+  });
+  const sortedPeopleOptions: SelectOption[] = buildPersonOptions(
+    sortedPeople, currentPerson, (p) => ({
       value: p.id,
       label: p.naam,
       description: functieLabel(p.functie),
-      _relevant: relevantPersonIds.has(p.id),
-    }))
-    .sort((a, b) => {
-      if (a._relevant !== b._relevant) return a._relevant ? -1 : 1;
-      return a.label.localeCompare(b.label);
-    })
-    .map(({ _relevant, ...rest }) => rest);
+    }),
+  );
 
   // Edge type options
   const edgeTypeOptions: SelectOption[] = Object.keys(EDGE_TYPE_VOCABULARY).map((key) => ({
