@@ -290,7 +290,7 @@ export function ParlementairPage() {
         <p>
           {reprocessConfirm === '__all__'
             ? 'Alle ongekoppelde kamerstukken herverwerken via LLM-matching? Dit kan even duren.'
-            : `Alle ongekoppelde ${(REPROCESS_TYPE_PLURALS[reprocessConfirm!] ?? reprocessConfirm)?.toLowerCase()} herverwerken via LLM-matching? Dit kan even duren.`}
+            : `Alle ongekoppelde ${(REPROCESS_TYPE_PLURALS[reprocessConfirm ?? ''] ?? reprocessConfirm ?? '').toLowerCase()} herverwerken via LLM-matching? Dit kan even duren.`}
         </p>
       </ConfirmDialog>
     </div>
