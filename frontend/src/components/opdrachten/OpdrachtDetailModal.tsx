@@ -164,7 +164,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
 
             {/* Financial hero */}
             {budget > 0 && (
-              <div className="flex items-baseline gap-8">
+              <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
                 <div>
                   <span className="text-xs text-text-secondary uppercase tracking-wider">Budget</span>
                   <p className="text-xl font-semibold tabular-nums">{formatCurrency(opdracht.budget)}</p>
