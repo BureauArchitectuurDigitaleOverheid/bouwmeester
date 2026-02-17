@@ -13,6 +13,7 @@ from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.opdracht import Opdracht, OpdrachtNode
 from bouwmeester.schema.opdracht import FinancieelJaar, FinancieelOverzicht
+from bouwmeester.utils.financieel import calculate_uitnutting
 
 
 class FinancieelService:
@@ -85,9 +86,6 @@ class FinancieelService:
 
         totaal_budget = sum(j.budget for j in per_jaar)
         totaal_gerealiseerd = sum(j.gerealiseerd for j in per_jaar)
-        uitnutting = None
-        if totaal_budget and totaal_budget > 0:
-            uitnutting = float(totaal_gerealiseerd / totaal_budget * 100)
 
         return FinancieelOverzicht(
             node_id=node_id,
@@ -95,7 +93,9 @@ class FinancieelService:
             node_type=node.node_type,
             totaal_budget=totaal_budget,
             totaal_gerealiseerd=totaal_gerealiseerd,
-            uitnutting_percentage=uitnutting,
+            uitnutting_percentage=calculate_uitnutting(
+                totaal_budget, totaal_gerealiseerd
+            ),
             per_jaar=per_jaar,
         )
 

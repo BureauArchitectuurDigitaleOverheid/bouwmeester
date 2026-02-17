@@ -14,6 +14,20 @@ export function formatCurrency(value?: number | string | null): string {
  * Format currency in compact form for dashboard cards and summaries.
  * Examples: € 96,9M, € 1,2M, € 450K, € 12.500
  */
+/**
+ * Calculate utilization percentage from budget and realized values.
+ * Returns null if budget is zero or missing.
+ */
+export function calculateUtilization(
+  budget?: number | string | null,
+  gerealiseerd?: number | string | null,
+): number | null {
+  const b = typeof budget === 'string' ? parseFloat(budget) : (budget ?? 0);
+  const g = typeof gerealiseerd === 'string' ? parseFloat(gerealiseerd) : (gerealiseerd ?? 0);
+  if (!b || b <= 0) return null;
+  return (g / b) * 100;
+}
+
 export function formatCurrencyCompact(value?: number | string | null): string {
   if (value == null) return '-';
   const num = typeof value === 'string' ? parseFloat(value) : value;

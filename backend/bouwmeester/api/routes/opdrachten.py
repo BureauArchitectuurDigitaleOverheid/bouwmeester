@@ -20,6 +20,7 @@ from bouwmeester.schema.opdracht import (
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.notification_service import NotificationService
 from bouwmeester.services.opdracht_task_service import OpdrachtTaskService
+from bouwmeester.utils.financieel import calculate_uitnutting
 
 router = APIRouter(prefix="/opdrachten", tags=["opdrachten"])
 
@@ -72,14 +73,11 @@ async def get_opdrachten_summary(
     )
     totaal_budget = data["totaal_budget"]
     totaal_gerealiseerd = data["totaal_gerealiseerd"]
-    uitnutting = None
-    if totaal_budget and totaal_budget > 0:
-        uitnutting = float(totaal_gerealiseerd / totaal_budget * 100)
     return OpdrachtenSummary(
         count=data["count"],
         totaal_budget=totaal_budget,
         totaal_gerealiseerd=totaal_gerealiseerd,
-        uitnutting_percentage=uitnutting,
+        uitnutting_percentage=calculate_uitnutting(totaal_budget, totaal_gerealiseerd),
     )
 
 

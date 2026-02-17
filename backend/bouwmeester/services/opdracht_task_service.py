@@ -144,6 +144,14 @@ class OpdrachtTaskService:
         if await self._has_open_task(opdracht.id, work_type):
             return False
 
+        if not opdracht.verantwoordelijke_id:
+            logger.info(
+                "Skipping task '%s' for opdracht %s: no verantwoordelijke",
+                work_type,
+                opdracht.id,
+            )
+            return False
+
         task = Task(
             node_id=opdracht.instrument_id,
             opdracht_id=opdracht.id,

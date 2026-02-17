@@ -27,7 +27,7 @@ import {
   TaskStatus,
   type NodeType,
 } from '@/types';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, calculateUtilization } from '@/utils/format';
 
 interface OpdrachtDetailModalProps {
   opdrachtId: string | null;
@@ -68,9 +68,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
     );
   }
 
-  const budget = Number(opdracht?.budget) || 0;
-  const gerealiseerd = Number(opdracht?.gerealiseerd) || 0;
-  const uitnutting = budget > 0 ? (gerealiseerd / budget * 100) : null;
+  const uitnutting = calculateUtilization(opdracht?.budget, opdracht?.gerealiseerd);
 
   const handleDelete = async () => {
     if (!opdrachtId) return;

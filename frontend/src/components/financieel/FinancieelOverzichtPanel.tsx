@@ -7,7 +7,7 @@ import {
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
-import { formatCurrencyCompact } from '@/utils/format';
+import { formatCurrencyCompact, calculateUtilization } from '@/utils/format';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 
@@ -76,8 +76,7 @@ export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelPro
           </thead>
           <tbody>
             {overzicht.per_jaar.map((j) => {
-              const bud = Number(j.budget) || 0;
-              const uitn = bud > 0 ? (Number(j.gerealiseerd) || 0) / bud * 100 : null;
+              const uitn = calculateUtilization(j.budget, j.gerealiseerd);
               return (
                 <tr key={j.begrotingsjaar} className="border-b border-border last:border-0">
                   <td className="py-2 font-medium text-text">{j.begrotingsjaar}</td>
