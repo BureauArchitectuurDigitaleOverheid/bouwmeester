@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Pencil, Trash2, Link as LinkIcon, CheckSquare, Plus, ClipboardList, CheckCircle2, Circle, Clock } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
@@ -39,6 +40,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
   const { data: opdracht, isLoading } = useOpdracht(opdrachtId ?? undefined);
   const { data: tasks = [] } = useTasksByOpdracht(opdrachtId);
   const deleteMutation = useDeleteOpdracht();
+  const navigate = useNavigate();
   const { openNodeDetail } = useNodeDetail();
   const { openTaskDetail } = useTaskDetail();
   const { opdrachtParentLabel } = useOpdrachtDetail();
@@ -154,7 +156,9 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
 
           {/* Description */}
           {opdracht.beschrijving && (
-            <p className="text-sm text-text-secondary">{opdracht.beschrijving}</p>
+            <DetailSection title="Beschrijving">
+              <p className="text-sm text-text-secondary">{opdracht.beschrijving}</p>
+            </DetailSection>
           )}
 
           {/* Financial hero */}
@@ -202,7 +206,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                     {opdracht.instrument ? (
                       <button
                         onClick={() => openNodeDetail(opdracht.instrument!.id, opdracht.titel)}
-                        className="text-primary-700 hover:text-primary-900 transition-colors font-medium"
+                        className="text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium"
                       >
                         {opdracht.instrument.title}
                       </button>
@@ -211,15 +215,42 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-secondary">Opdrachtnemer</dt>
-                  <dd className="text-text">{opdracht.opdrachtnemer?.afkorting || opdracht.opdrachtnemer?.naam || '-'}</dd>
+                  <dd>
+                    {opdracht.opdrachtnemer ? (
+                      <button
+                        onClick={() => { onClose(); navigate(`/externe-organisaties`); }}
+                        className="text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium"
+                      >
+                        {opdracht.opdrachtnemer.afkorting || opdracht.opdrachtnemer.naam}
+                      </button>
+                    ) : '-'}
+                  </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-secondary">Opdrachtgever</dt>
-                  <dd className="text-text">{opdracht.opdrachtgever?.naam || '-'}</dd>
+                  <dd>
+                    {opdracht.opdrachtgever ? (
+                      <button
+                        onClick={() => { onClose(); navigate(`/organisatie`); }}
+                        className="text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium"
+                      >
+                        {opdracht.opdrachtgever.naam}
+                      </button>
+                    ) : '-'}
+                  </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-secondary">Verantwoordelijke</dt>
-                  <dd className="text-text">{opdracht.verantwoordelijke?.naam || '-'}</dd>
+                  <dd>
+                    {opdracht.verantwoordelijke ? (
+                      <button
+                        onClick={() => { onClose(); navigate(`/people`); }}
+                        className="text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium"
+                      >
+                        {opdracht.verantwoordelijke.naam}
+                      </button>
+                    ) : '-'}
+                  </dd>
                 </div>
                 {opdracht.referentie && (
                   <div className="flex justify-between">
@@ -314,13 +345,14 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
             count={tasks.length}
             separated
             action={
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<Plus className="h-3.5 w-3.5" />}
                 onClick={() => setShowTaskCreate(true)}
-                className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800 transition-colors"
               >
-                <Plus className="h-3.5 w-3.5" />
                 Taak
-              </button>
+              </Button>
             }
           >
             <RelatedItemsList

@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Circle,
   Clock,
+  CheckSquare,
+  Plus,
   FolderOpen,
   Target,
   Wrench,
@@ -31,6 +33,7 @@ import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
 import { RelatedItemsList } from '@/components/common/RelatedItemsList';
 import { DetailModalFooter } from '@/components/common/DetailModalFooter';
 import { NodeEditForm } from './NodeEditForm';
+import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
 import { useNode, useNodeStakeholders, useNodeNeighbors, useNodeParlementairItem } from '@/hooks/useNodes';
 import { useNodeTags } from '@/hooks/useTags';
 import { useQuery } from '@tanstack/react-query';
@@ -39,8 +42,6 @@ import {
   NODE_TYPE_COLORS,
   NODE_STATUS_LABELS,
   STAKEHOLDER_ROL_LABELS,
-  TASK_STATUS_LABELS,
-  TASK_STATUS_COLORS,
   TaskStatus,
   type NodeType,
   type NodeStatus,
@@ -85,6 +86,7 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
     node?.node_type,
   );
   const [showEdit, setShowEdit] = useState(false);
+  const [showTaskCreate, setShowTaskCreate] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { nodeLabel, nodeAltLabel } = useVocabulary();
@@ -119,192 +121,205 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
   const accentColor = node ? NODE_TYPE_COLORS[node.node_type as NodeType] : undefined;
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={isLoading ? 'Laden...' : node?.title ?? 'Node niet gevonden'}
-      size="lg"
-      zIndex={zIndex}
-      accentColor={accentColor}
-      headerIcon={node ? NODE_TYPE_ICONS[node.node_type] : undefined}
-      entityLabel={node ? nodeLabel(node.node_type) : undefined}
-      backLabel={nodeParentLabel ?? undefined}
-      onBack={nodeParentLabel ? onClose : undefined}
-      footer={
-        <DetailModalFooter
-          onClose={onClose}
-          actions={
-            <>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<Pencil className="h-4 w-4" />}
-                onClick={() => setShowEdit(true)}
-                disabled={!node}
-              >
-                Bewerken
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<ExternalLink className="h-4 w-4" />}
-                onClick={() => {
-                  onClose();
-                  navigate(`/nodes/${nodeId}`, { state: { fromCorpus: location.pathname + location.search } });
-                }}
-                disabled={!node}
-              >
-                Openen
-              </Button>
-            </>
-          }
-        />
-      }
-    >
-      {isLoading ? (
-        <div className="flex items-center justify-center py-8 text-text-secondary text-sm">
-          Laden...
-        </div>
-      ) : !node ? (
-        <div className="flex items-center justify-center py-8 text-text-secondary text-sm">
-          Node niet gevonden.
-        </div>
-      ) : (
-        <div className="space-y-5">
-          {/* Type, status, edge count badges */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <Badge variant={NODE_TYPE_COLORS[node.node_type] ?? 'gray'} dot title={nodeAltLabel(node.node_type)}>
-              {nodeLabel(node.node_type)}
-            </Badge>
-            {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
-            {node.edge_count != null && (
-              <span className="inline-flex items-center gap-1 text-sm text-text-secondary">
-                <LinkIcon className="h-4 w-4" />
-                {node.edge_count} verbindingen
-              </span>
-            )}
-            {parlementairItem?.document_url && (
-              <a
-                href={parlementairItem.document_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-primary-700 hover:text-primary-900 transition-colors"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                tweedekamer.nl
-              </a>
-            )}
+    <>
+      <Modal
+        open={open}
+        onClose={onClose}
+        title={isLoading ? 'Laden...' : node?.title ?? 'Node niet gevonden'}
+        size="lg"
+        zIndex={zIndex}
+        accentColor={accentColor}
+        headerIcon={node ? NODE_TYPE_ICONS[node.node_type] : undefined}
+        entityLabel={node ? nodeLabel(node.node_type) : undefined}
+        backLabel={nodeParentLabel ?? undefined}
+        onBack={nodeParentLabel ? onClose : undefined}
+        footer={
+          <DetailModalFooter
+            onClose={onClose}
+            actions={
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Pencil className="h-4 w-4" />}
+                  onClick={() => setShowEdit(true)}
+                  disabled={!node}
+                >
+                  Bewerken
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<ExternalLink className="h-4 w-4" />}
+                  onClick={() => {
+                    onClose();
+                    navigate(`/nodes/${nodeId}`, { state: { fromCorpus: location.pathname + location.search } });
+                  }}
+                  disabled={!node}
+                >
+                  Openen
+                </Button>
+              </>
+            }
+          />
+        }
+      >
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8 text-text-secondary text-sm">
+            Laden...
           </div>
-
-          {/* Eigenaar / stakeholders compact row */}
-          {stakeholders && stakeholders.length > 0 && (
-            <div className="flex items-start gap-4">
-              {eigenaren.length > 0 && (
-                <div className="min-w-0">
-                  <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
-                    <Users className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
-                    Eigenaar
-                  </h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {eigenaren.map((s) => (
-                      <span
-                        key={s.id}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 text-primary-800 px-2.5 py-1 text-sm font-medium"
-                      >
-                        {s.person.naam}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+        ) : !node ? (
+          <div className="flex items-center justify-center py-8 text-text-secondary text-sm">
+            Node niet gevonden.
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {/* Type, status, edge count badges */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant={NODE_TYPE_COLORS[node.node_type] ?? 'gray'} dot title={nodeAltLabel(node.node_type)}>
+                {nodeLabel(node.node_type)}
+              </Badge>
+              {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
+              {node.edge_count != null && (
+                <span className="inline-flex items-center gap-1 text-sm text-text-secondary">
+                  <LinkIcon className="h-4 w-4" />
+                  {node.edge_count} verbindingen
+                </span>
               )}
-              {otherStakeholders.length > 0 && (
-                <div className="min-w-0">
-                  <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
-                    Betrokkenen
-                  </h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {otherStakeholders.slice(0, 6).map((s) => (
-                      <span
-                        key={s.id}
-                        className="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-700 px-2.5 py-1 text-xs"
-                      >
-                        {s.person.naam}
-                        <span className="text-gray-400">
-                          ({STAKEHOLDER_ROL_LABELS[s.rol] ?? s.rol})
+              {parlementairItem?.document_url && (
+                <a
+                  href={parlementairItem.document_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-800 hover:underline transition-colors"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  tweedekamer.nl
+                </a>
+              )}
+            </div>
+
+            {/* Eigenaar / stakeholders compact row */}
+            {stakeholders && stakeholders.length > 0 && (
+              <div className="flex items-start gap-4">
+                {eigenaren.length > 0 && (
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
+                      <Users className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
+                      Eigenaar
+                    </h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {eigenaren.map((s) => (
+                        <span
+                          key={s.id}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 text-primary-800 px-2.5 py-1 text-sm font-medium"
+                        >
+                          {s.person.naam}
                         </span>
-                      </span>
-                    ))}
-                    {otherStakeholders.length > 6 && (
-                      <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-500 px-2.5 py-1 text-xs">
-                        +{otherStakeholders.length - 6}
-                      </span>
-                    )}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tags */}
-          {nodeTags && nodeTags.length > 0 && (
-            <div>
-              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
-                <TagIcon className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
-                Tags
-              </h4>
-              <div className="flex flex-wrap gap-1.5">
-                {nodeTags.map((nt) => (
-                  <span
-                    key={nt.id}
-                    className="inline-flex items-center rounded-full bg-slate-100 text-slate-700 px-2.5 py-0.5 text-xs font-medium"
-                  >
-                    {nt.tag.name}
-                  </span>
-                ))}
+                )}
+                {otherStakeholders.length > 0 && (
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
+                      Betrokkenen
+                    </h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {otherStakeholders.slice(0, 6).map((s) => (
+                        <span
+                          key={s.id}
+                          className="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-700 px-2.5 py-1 text-xs"
+                        >
+                          {s.person.naam}
+                          <span className="text-gray-400">
+                            ({STAKEHOLDER_ROL_LABELS[s.rol] ?? s.rol})
+                          </span>
+                        </span>
+                      ))}
+                      {otherStakeholders.length > 6 && (
+                        <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-500 px-2.5 py-1 text-xs">
+                          +{otherStakeholders.length - 6}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Description */}
-          {node.description && (
-            <DetailSection title="Beschrijving">
-              <RichTextDisplay content={node.description} />
-            </DetailSection>
-          )}
+            {/* Tags */}
+            {nodeTags && nodeTags.length > 0 && (
+              <div>
+                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
+                  <TagIcon className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
+                  Tags
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {nodeTags.map((nt) => (
+                    <span
+                      key={nt.id}
+                      className="inline-flex items-center rounded-full bg-slate-100 text-slate-700 px-2.5 py-0.5 text-xs font-medium"
+                    >
+                      {nt.tag.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
-          {/* Connected nodes */}
-          {neighbors && neighbors.length > 0 && (
-            <DetailSection
-              title="Verbonden nodes"
-              icon={<LinkIcon className="h-3.5 w-3.5" />}
-              count={neighbors.length}
-            >
-              <RelatedItemsList
-                items={neighbors.map((neighbor) => ({
-                  id: neighbor.id,
-                  label: neighbor.title,
-                  badge: {
-                    text: nodeLabel(neighbor.node_type),
-                    variant: NODE_TYPE_COLORS[neighbor.node_type] ?? 'gray',
-                    dot: true,
-                  },
-                  onClick: () => openNodeDetail(neighbor.id, node.title),
-                }))}
-                maxVisible={5}
-                onShowAll={() => {
-                  onClose();
-                  navigate(`/nodes/${nodeId}?tab=connections`, { state: { fromCorpus: location.pathname + location.search } });
-                }}
-                showAllLabel={`Bekijk alle ${neighbors.length} verbindingen`}
-              />
-            </DetailSection>
-          )}
+            {/* Description */}
+            {node.description && (
+              <DetailSection title="Beschrijving">
+                <RichTextDisplay content={node.description} />
+              </DetailSection>
+            )}
 
-          {/* Tasks */}
-          {tasks && tasks.length > 0 && (
+            {/* Connected nodes */}
+            {neighbors && neighbors.length > 0 && (
+              <DetailSection
+                title="Verbonden nodes"
+                icon={<LinkIcon className="h-3.5 w-3.5" />}
+                count={neighbors.length}
+                separated
+              >
+                <RelatedItemsList
+                  items={neighbors.map((neighbor) => ({
+                    id: neighbor.id,
+                    label: neighbor.title,
+                    badge: {
+                      text: nodeLabel(neighbor.node_type),
+                      variant: NODE_TYPE_COLORS[neighbor.node_type] ?? 'gray',
+                      dot: true,
+                    },
+                    onClick: () => openNodeDetail(neighbor.id, node.title),
+                  }))}
+                  maxVisible={5}
+                  onShowAll={() => {
+                    onClose();
+                    navigate(`/nodes/${nodeId}?tab=connections`, { state: { fromCorpus: location.pathname + location.search } });
+                  }}
+                  showAllLabel={`Bekijk alle ${neighbors.length} verbindingen`}
+                />
+              </DetailSection>
+            )}
+
+            {/* Tasks */}
             <DetailSection
               title="Taken"
+              icon={<CheckSquare className="h-3.5 w-3.5" />}
               count={openTasks.length}
+              separated
+              action={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Plus className="h-3.5 w-3.5" />}
+                  onClick={() => setShowTaskCreate(true)}
+                >
+                  Taak
+                </Button>
+              }
             >
               <RelatedItemsList
                 items={openTasks.map((task) => ({
@@ -332,29 +347,37 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
                 </p>
               )}
             </DetailSection>
-          )}
 
-          {/* References */}
-          <ReferencesList targetId={node.id} />
+            {/* References */}
+            <ReferencesList targetId={node.id} />
 
-          {/* Metadata footer */}
-          <DetailMetadataGrid
-            separated
-            items={[
-              {
-                label: 'Aangemaakt',
-                value: formatDateLong(node.created_at),
-                icon: <Calendar className="h-4 w-4" />,
-              },
-              {
-                label: 'Laatst bijgewerkt',
-                value: formatDateLong(node.updated_at),
-                icon: <Calendar className="h-4 w-4" />,
-              },
-            ]}
-          />
-        </div>
+            {/* Metadata footer */}
+            <DetailMetadataGrid
+              separated
+              items={[
+                {
+                  label: 'Aangemaakt',
+                  value: formatDateLong(node.created_at),
+                  icon: <Calendar className="h-4 w-4" />,
+                },
+                {
+                  label: 'Laatst bijgewerkt',
+                  value: formatDateLong(node.updated_at),
+                  icon: <Calendar className="h-4 w-4" />,
+                },
+              ]}
+            />
+          </div>
+        )}
+      </Modal>
+
+      {node && (
+        <TaskCreateForm
+          open={showTaskCreate}
+          onClose={() => setShowTaskCreate(false)}
+          nodeId={nodeId ?? undefined}
+        />
       )}
-    </Modal>
+    </>
   );
 }

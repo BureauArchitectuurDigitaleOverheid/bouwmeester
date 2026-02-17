@@ -114,7 +114,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
         ) : (
           <div className="space-y-5">
             {/* Status / Priority / Deadline row */}
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <Badge variant={TASK_STATUS_COLORS[task.status] ?? 'gray'} dot>
                 {TASK_STATUS_LABELS[task.status]}
               </Badge>
@@ -177,7 +177,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                   value: task.node ? (
                     <button
                       onClick={() => openNodeDetail(task.node_id!, task.title)}
-                      className="inline-flex items-start gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-left"
+                      className="inline-flex items-start gap-1.5 text-primary-600 hover:text-primary-800 hover:underline transition-colors text-left"
                     >
                       <LinkIcon className="h-4 w-4 shrink-0 mt-0.5" />
                       {task.node.title}
@@ -193,7 +193,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                         value: (
                           <button
                             onClick={() => openOpdrachtDetail(task.opdracht!.id, task.title)}
-                            className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-sm text-left"
+                            className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 hover:underline transition-colors text-sm text-left"
                           >
                             <ClipboardList className="h-4 w-4 shrink-0" />
                             {task.opdracht!.titel}
@@ -212,7 +212,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                               onClose();
                               navigate(`/parlementair?item=${task.parlementair_item_id}`);
                             }}
-                            className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-sm"
+                            className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 hover:underline transition-colors text-sm"
                           >
                             <FileSearch className="h-4 w-4" />
                             Ga naar beoordeling
