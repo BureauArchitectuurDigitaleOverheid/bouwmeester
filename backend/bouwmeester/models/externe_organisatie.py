@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Text, func, text
+from sqlalchemy import CheckConstraint, DateTime, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,7 @@ class ExterneOrganisatie(Base):
             "'stichting', 'marktpartij', 'overig')",
             name="ck_externe_organisatie_type",
         ),
+        UniqueConstraint("naam", name="uq_externe_organisatie_naam"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

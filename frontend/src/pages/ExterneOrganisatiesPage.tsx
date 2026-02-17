@@ -136,7 +136,7 @@ export function ExterneOrganisatiesPage() {
               <div>
                 <label className="block text-sm font-medium text-text mb-1">Website</label>
                 <input
-                  type="text"
+                  type="url"
                   value={form.website || ''}
                   onChange={e => setForm(f => ({ ...f, website: e.target.value || undefined }))}
                   className="w-full px-3 py-2 text-sm rounded-lg border border-border"

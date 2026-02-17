@@ -7,7 +7,7 @@ import {
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
-import { formatCurrency, formatCurrencyCompact } from '@/utils/format';
+import { formatCurrencyCompact } from '@/utils/format';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 

@@ -48,6 +48,22 @@ class Opdracht(Base):
             "('investering', 'exploitatie', 'gemengd')",
             name="ck_opdracht_kostensoort",
         ),
+        CheckConstraint(
+            "budget IS NULL OR budget >= 0",
+            name="ck_opdracht_budget_nonneg",
+        ),
+        CheckConstraint(
+            "gerealiseerd IS NULL OR gerealiseerd >= 0",
+            name="ck_opdracht_gerealiseerd_nonneg",
+        ),
+        CheckConstraint(
+            "volgend_jaar_benodigd IS NULL OR volgend_jaar_benodigd >= 0",
+            name="ck_opdracht_volgend_jaar_benodigd_nonneg",
+        ),
+        CheckConstraint(
+            "volgend_jaar_aangevraagd IS NULL OR volgend_jaar_aangevraagd >= 0",
+            name="ck_opdracht_volgend_jaar_aangevraagd_nonneg",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

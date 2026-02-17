@@ -104,12 +104,15 @@ class FinancieelService:
         node_id: UUID,
         node_type: str,
         max_depth: int = 5,
+        max_nodes: int = 1000,
     ) -> list[UUID]:
         """Collect instrument node IDs reachable from the given node.
 
         For instrument nodes, returns [node_id] directly.
         For other nodes, uses iterative BFS with a visited set to traverse
         edges and find connected instruments, preventing cycles.
+        Stops early if the visited set exceeds max_nodes to prevent
+        runaway traversal on pathologically wide graphs.
         """
         if node_type == "instrument":
             return [node_id]
@@ -121,6 +124,8 @@ class FinancieelService:
             if not frontier:
                 break
             visited.update(frontier)
+            if len(visited) > max_nodes:
+                break
 
             # Forward edges
             fwd_stmt = (

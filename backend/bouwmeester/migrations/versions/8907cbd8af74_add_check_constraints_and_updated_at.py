@@ -37,6 +37,28 @@ def upgrade() -> None:
         "('investering', 'exploitatie', 'gemengd')",
     )
 
+    # Non-negative check constraints for financial fields
+    op.create_check_constraint(
+        "ck_opdracht_budget_nonneg",
+        "opdracht",
+        "budget IS NULL OR budget >= 0",
+    )
+    op.create_check_constraint(
+        "ck_opdracht_gerealiseerd_nonneg",
+        "opdracht",
+        "gerealiseerd IS NULL OR gerealiseerd >= 0",
+    )
+    op.create_check_constraint(
+        "ck_opdracht_volgend_jaar_benodigd_nonneg",
+        "opdracht",
+        "volgend_jaar_benodigd IS NULL OR volgend_jaar_benodigd >= 0",
+    )
+    op.create_check_constraint(
+        "ck_opdracht_volgend_jaar_aangevraagd_nonneg",
+        "opdracht",
+        "volgend_jaar_aangevraagd IS NULL OR volgend_jaar_aangevraagd >= 0",
+    )
+
     # Check constraint for opdracht_node
     op.create_check_constraint(
         "ck_opdracht_node_relatie_type",
@@ -50,6 +72,13 @@ def upgrade() -> None:
         "externe_organisatie",
         "type IN ('uitvoeringsorganisatie', 'zbo', 'koepelorganisatie', "
         "'stichting', 'marktpartij', 'overig')",
+    )
+
+    # Unique constraint on externe_organisatie.naam
+    op.create_unique_constraint(
+        "uq_externe_organisatie_naam",
+        "externe_organisatie",
+        ["naam"],
     )
 
     # Add updated_at to externe_organisatie
@@ -84,9 +113,20 @@ def downgrade() -> None:
     op.drop_column("task", "opdracht_id")
     op.drop_column("externe_organisatie", "updated_at")
     op.drop_constraint(
+        "uq_externe_organisatie_naam", "externe_organisatie", type_="unique"
+    )
+    op.drop_constraint(
         "ck_externe_organisatie_type", "externe_organisatie", type_="check"
     )
     op.drop_constraint("ck_opdracht_node_relatie_type", "opdracht_node", type_="check")
     op.drop_constraint("ck_opdracht_kostensoort", "opdracht", type_="check")
     op.drop_constraint("ck_opdracht_status", "opdracht", type_="check")
     op.drop_constraint("ck_opdracht_type", "opdracht", type_="check")
+    op.drop_constraint("ck_opdracht_budget_nonneg", "opdracht", type_="check")
+    op.drop_constraint("ck_opdracht_gerealiseerd_nonneg", "opdracht", type_="check")
+    op.drop_constraint(
+        "ck_opdracht_volgend_jaar_benodigd_nonneg", "opdracht", type_="check"
+    )
+    op.drop_constraint(
+        "ck_opdracht_volgend_jaar_aangevraagd_nonneg", "opdracht", type_="check"
+    )

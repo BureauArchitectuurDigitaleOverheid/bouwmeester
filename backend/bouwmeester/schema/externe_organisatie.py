@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ExterneOrganisatieType(enum.StrEnum):
@@ -23,6 +23,13 @@ class ExterneOrganisatieBase(BaseModel):
     kvk_nummer: str | None = Field(None, max_length=20)
     website: str | None = Field(None, max_length=500)
     beschrijving: str | None = Field(None, max_length=5000)
+
+    @field_validator("website")
+    @classmethod
+    def website_must_be_http_url(cls, v: str | None) -> str | None:
+        if v is not None and not v.startswith(("http://", "https://")):
+            raise ValueError("website moet beginnen met http:// of https://")
+        return v
 
 
 class ExterneOrganisatieCreate(ExterneOrganisatieBase):
