@@ -4,6 +4,7 @@ import {
   Calendar,
   Link as LinkIcon,
   Pencil,
+  Trash2,
   ExternalLink,
   Users,
   Tag as TagIcon,
@@ -34,7 +35,7 @@ import { RelatedItemsList } from '@/components/common/RelatedItemsList';
 import { DetailModalFooter } from '@/components/common/DetailModalFooter';
 import { NodeEditForm } from './NodeEditForm';
 import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
-import { useNode, useNodeStakeholders, useNodeNeighbors, useNodeParlementairItem } from '@/hooks/useNodes';
+import { useNode, useNodeStakeholders, useNodeNeighbors, useNodeParlementairItem, useDeleteNode } from '@/hooks/useNodes';
 import { useNodeTags } from '@/hooks/useTags';
 import { useQuery } from '@tanstack/react-query';
 import { getTasks } from '@/api/tasks';
@@ -87,11 +88,33 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
   );
   const [showEdit, setShowEdit] = useState(false);
   const [showTaskCreate, setShowTaskCreate] = useState(false);
+  const deleteNode = useDeleteNode();
   const navigate = useNavigate();
   const location = useLocation();
   const { nodeLabel, nodeAltLabel } = useVocabulary();
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail, nodeParentLabel } = useNodeDetail();
+
+  const handleDelete = async () => {
+    if (!node || !nodeId) return;
+    const warnings: string[] = [];
+    if (neighbors && neighbors.length > 0) {
+      warnings.push(`${neighbors.length} verbinding(en)`);
+    }
+    if (tasks && tasks.length > 0) {
+      warnings.push(`${tasks.length} taak/taken`);
+    }
+    if (stakeholders && stakeholders.length > 0) {
+      warnings.push(`${stakeholders.length} betrokkene(n)`);
+    }
+    const warningText = warnings.length > 0
+      ? `\n\nLet op: deze node heeft ${warnings.join(', ')}. Deze worden ook verwijderd.`
+      : '';
+    if (window.confirm(`Weet je zeker dat je "${node.title}" wilt verwijderen?${warningText}`)) {
+      await deleteNode.mutateAsync(nodeId);
+      onClose();
+    }
+  };
 
   if (!open) return null;
 
@@ -158,6 +181,16 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
                   disabled={!node}
                 >
                   Openen
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Trash2 className="h-4 w-4" />}
+                  onClick={handleDelete}
+                  disabled={!node || deleteNode.isPending}
+                  className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                >
+                  Verwijderen
                 </Button>
               </>
             }
