@@ -2,8 +2,9 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 import { useLocation } from 'react-router-dom';
 
 interface OpdrachtDetailContextValue {
-  openOpdrachtDetail: (id: string) => void;
+  openOpdrachtDetail: (id: string, parentLabel?: string) => void;
   opdrachtDetailId: string | null;
+  opdrachtParentLabel: string | null;
   closeOpdrachtDetail: () => void;
 }
 
@@ -17,23 +18,27 @@ export function useOpdrachtDetail() {
 
 export function OpdrachtDetailProvider({ children }: { children: React.ReactNode }) {
   const [opdrachtId, setOpdrachtId] = useState<string | null>(null);
+  const [parentLabel, setParentLabel] = useState<string | null>(null);
   const location = useLocation();
 
-  const openOpdrachtDetail = useCallback((id: string) => {
+  const openOpdrachtDetail = useCallback((id: string, label?: string) => {
     setOpdrachtId(id);
+    setParentLabel(label ?? null);
   }, []);
 
   const closeOpdrachtDetail = useCallback(() => {
     setOpdrachtId(null);
+    setParentLabel(null);
   }, []);
 
   // Close modal on route change
   useEffect(() => {
     setOpdrachtId(null);
+    setParentLabel(null);
   }, [location.pathname]);
 
   return (
-    <OpdrachtDetailContext.Provider value={{ openOpdrachtDetail, opdrachtDetailId: opdrachtId, closeOpdrachtDetail }}>
+    <OpdrachtDetailContext.Provider value={{ openOpdrachtDetail, opdrachtDetailId: opdrachtId, opdrachtParentLabel: parentLabel, closeOpdrachtDetail }}>
       {children}
     </OpdrachtDetailContext.Provider>
   );

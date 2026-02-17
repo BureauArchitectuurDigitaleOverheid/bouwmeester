@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, User, Bot, Calendar, Link as LinkIcon, Pencil, Building2, ListTree, Plus, CheckCircle2, Circle, FileSearch, ChevronUp, ChevronDown, ClipboardList } from 'lucide-react';
+import { Clock, User, Bot, Calendar, Link as LinkIcon, Pencil, Building2, ListTree, Plus, CheckCircle2, Circle, FileSearch, ChevronUp, ChevronDown, ClipboardList, CheckSquare } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { ReferencesList } from '@/components/common/ReferencesList';
+import { DetailSection } from '@/components/common/DetailSection';
+import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
+import { DetailModalFooter } from '@/components/common/DetailModalFooter';
 import { TaskEditForm } from './TaskEditForm';
 import { TaskCreateForm } from './TaskCreateForm';
 import { useTask, useReorderSubtasks } from '@/hooks/useTasks';
@@ -34,7 +37,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
   const [showSubtaskCreate, setShowSubtaskCreate] = useState(false);
   const { openNodeDetail } = useNodeDetail();
   const { openOpdrachtDetail } = useOpdrachtDetail();
-  const { openTaskDetail } = useTaskDetail();
+  const { openTaskDetail, taskParentLabel } = useTaskDetail();
   const navigate = useNavigate();
   const reorderSubtasks = useReorderSubtasks();
 
@@ -68,6 +71,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
     task.status !== TaskStatus.DONE;
 
   const subtasks = task?.subtasks ?? [];
+  const accentColor = task ? TASK_STATUS_COLORS[task.status] : undefined;
 
   return (
     <>
@@ -77,21 +81,26 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
         title={isLoading ? 'Laden...' : task?.title ?? 'Taak niet gevonden'}
         size="lg"
         zIndex={zIndex}
+        accentColor={accentColor}
+        headerIcon={<CheckSquare className="h-5 w-5" />}
+        entityLabel="Taak"
+        backLabel={taskParentLabel ?? undefined}
+        onBack={taskParentLabel ? onClose : undefined}
         footer={
-          <div className="flex items-center justify-between w-full">
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Pencil className="h-4 w-4" />}
-              onClick={() => setShowEdit(true)}
-              disabled={!task}
-            >
-              Bewerken
-            </Button>
-            <Button variant="secondary" onClick={onClose}>
-              Sluiten
-            </Button>
-          </div>
+          <DetailModalFooter
+            onClose={onClose}
+            actions={
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Pencil className="h-4 w-4" />}
+                onClick={() => setShowEdit(true)}
+                disabled={!task}
+              >
+                Bewerken
+              </Button>
+            }
+          />
         }
       >
         {isLoading ? (
@@ -115,7 +124,9 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
               {task.due_date && (
                 <span
                   className={`inline-flex items-center gap-1 text-sm ${
-                    isOverdue ? 'text-red-600 font-medium' : 'text-text-secondary'
+                    isOverdue
+                      ? 'text-red-600 font-medium bg-red-50 rounded-md px-2 py-0.5'
+                      : 'text-text-secondary'
                   }`}
                 >
                   <Clock className="h-4 w-4" />
@@ -125,130 +136,105 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
             </div>
 
             {/* Description */}
-            <div>
-              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
-                Beschrijving
-              </h4>
+            <DetailSection title="Beschrijving">
               <RichTextDisplay content={task.description} />
-            </div>
+            </DetailSection>
 
             {/* References */}
             <ReferencesList targetId={task.id} />
 
             {/* Metadata grid */}
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              {/* Assignee */}
-              <div>
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
-                  Toegewezen aan
-                </h4>
-                {task.assignee ? (
-                  <span className="inline-flex items-center gap-1.5 text-text">
-                    {task.assignee.is_agent ? (
-                      <Bot className="h-4 w-4 text-violet-500" />
-                    ) : (
-                      <User className="h-4 w-4 text-text-secondary" />
-                    )}
-                    {task.assignee.naam}
-                  </span>
-                ) : (
-                  <span className="text-text-secondary">Niet toegewezen</span>
-                )}
-              </div>
-
-              {/* Org unit */}
-              <div>
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
-                  Verantwoordelijke eenheid
-                </h4>
-                {task.organisatie_eenheid ? (
-                  <span className="inline-flex items-center gap-1.5 text-text">
-                    <Building2 className="h-4 w-4 text-text-secondary" />
-                    {task.organisatie_eenheid.naam}
-                  </span>
-                ) : (
-                  <span className="text-text-secondary">Geen</span>
-                )}
-              </div>
-
-              {/* Node */}
-              <div>
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
-                  Node
-                </h4>
-                {task.node ? (
-                  <button
-                    onClick={() => {
-                      onClose();
-                      openNodeDetail(task.node_id!);
-                    }}
-                    className="inline-flex items-start gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-left"
-                  >
-                    <LinkIcon className="h-4 w-4 shrink-0 mt-0.5" />
-                    {task.node.title}
-                  </button>
-                ) : (
-                  <span className="text-text-secondary">Geen</span>
-                )}
-              </div>
-
-              {/* Opdracht link */}
-              {task.opdracht && (
-                <div>
-                  <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
-                    Opdracht
-                  </h4>
-                  <button
-                    onClick={() => {
-                      onClose();
-                      openOpdrachtDetail(task.opdracht!.id);
-                    }}
-                    className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-sm text-left"
-                  >
-                    <ClipboardList className="h-4 w-4 shrink-0" />
-                    {task.opdracht.titel}
-                  </button>
-                </div>
-              )}
-
-              {/* Parlementair review link */}
-              {task.parlementair_item_id && (
-                <div>
-                  <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
-                    Beoordeling
-                  </h4>
-                  <button
-                    onClick={() => {
-                      onClose();
-                      navigate(`/parlementair?item=${task.parlementair_item_id}`);
-                    }}
-                    className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-sm"
-                  >
-                    <FileSearch className="h-4 w-4" />
-                    Ga naar beoordeling
-                  </button>
-                </div>
-              )}
-
-              {/* Created at */}
-              <div>
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
-                  Aangemaakt
-                </h4>
-                <span className="inline-flex items-center gap-1.5 text-text-secondary">
-                  <Calendar className="h-4 w-4" />
-                  {formatDateLong(task.created_at)}
-                </span>
-              </div>
-            </div>
+            <DetailMetadataGrid
+              items={[
+                {
+                  label: 'Toegewezen aan',
+                  value: task.assignee ? (
+                    <span className="inline-flex items-center gap-1.5 text-text">
+                      {task.assignee.is_agent ? (
+                        <Bot className="h-4 w-4 text-violet-500" />
+                      ) : (
+                        <User className="h-4 w-4 text-text-secondary" />
+                      )}
+                      {task.assignee.naam}
+                    </span>
+                  ) : (
+                    <span className="text-text-secondary">Niet toegewezen</span>
+                  ),
+                },
+                {
+                  label: 'Verantwoordelijke eenheid',
+                  value: task.organisatie_eenheid ? (
+                    <span className="inline-flex items-center gap-1.5 text-text">
+                      <Building2 className="h-4 w-4 text-text-secondary" />
+                      {task.organisatie_eenheid.naam}
+                    </span>
+                  ) : (
+                    <span className="text-text-secondary">Geen</span>
+                  ),
+                },
+                {
+                  label: 'Node',
+                  value: task.node ? (
+                    <button
+                      onClick={() => openNodeDetail(task.node_id!, task.title)}
+                      className="inline-flex items-start gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-left"
+                    >
+                      <LinkIcon className="h-4 w-4 shrink-0 mt-0.5" />
+                      {task.node.title}
+                    </button>
+                  ) : (
+                    <span className="text-text-secondary">Geen</span>
+                  ),
+                },
+                ...(task.opdracht
+                  ? [
+                      {
+                        label: 'Opdracht',
+                        value: (
+                          <button
+                            onClick={() => openOpdrachtDetail(task.opdracht!.id, task.title)}
+                            className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-sm text-left"
+                          >
+                            <ClipboardList className="h-4 w-4 shrink-0" />
+                            {task.opdracht!.titel}
+                          </button>
+                        ),
+                      },
+                    ]
+                  : []),
+                ...(task.parlementair_item_id
+                  ? [
+                      {
+                        label: 'Beoordeling',
+                        value: (
+                          <button
+                            onClick={() => {
+                              onClose();
+                              navigate(`/parlementair?item=${task.parlementair_item_id}`);
+                            }}
+                            className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 transition-colors text-sm"
+                          >
+                            <FileSearch className="h-4 w-4" />
+                            Ga naar beoordeling
+                          </button>
+                        ),
+                      },
+                    ]
+                  : []),
+                {
+                  label: 'Aangemaakt',
+                  value: formatDateLong(task.created_at),
+                  icon: <Calendar className="h-4 w-4" />,
+                },
+              ]}
+            />
 
             {/* Subtasks */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
-                  <ListTree className="h-3.5 w-3.5" />
-                  Subtaken ({subtasks.length})
-                </h4>
+            <DetailSection
+              title="Subtaken"
+              icon={<ListTree className="h-3.5 w-3.5" />}
+              count={subtasks.length}
+              action={
                 <Button
                   variant="ghost"
                   size="sm"
@@ -257,7 +243,8 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                 >
                   Subtaak toevoegen
                 </Button>
-              </div>
+              }
+            >
               {subtasks.length > 0 ? (
                 <div className="space-y-1">
                   {subtasks.map((sub, idx) => {
@@ -286,10 +273,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                           </button>
                         </div>
                         <button
-                          onClick={() => {
-                            onClose();
-                            openTaskDetail(sub.id);
-                          }}
+                          onClick={() => openTaskDetail(sub.id, task.title)}
                           className="flex items-center gap-2 flex-1 min-w-0 px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
                         >
                           {subDone ? (
@@ -319,7 +303,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
               ) : (
                 <p className="text-sm text-text-secondary">Geen subtaken</p>
               )}
-            </div>
+            </DetailSection>
           </div>
         )}
       </Modal>

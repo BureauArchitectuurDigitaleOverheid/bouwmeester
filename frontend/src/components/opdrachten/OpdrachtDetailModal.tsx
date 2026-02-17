@@ -1,14 +1,18 @@
 import { useState } from 'react';
-import { Pencil, Trash2, Link as LinkIcon, ArrowRight, CheckSquare, Plus } from 'lucide-react';
+import { Pencil, Trash2, Link as LinkIcon, CheckSquare, Plus, ClipboardList } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
+import { DetailSection } from '@/components/common/DetailSection';
+import { RelatedItemsList } from '@/components/common/RelatedItemsList';
+import { DetailModalFooter } from '@/components/common/DetailModalFooter';
 import { OpdrachtForm } from './OpdrachtForm';
 import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
 import { useOpdracht, useDeleteOpdracht } from '@/hooks/useOpdrachten';
 import { useTasksByOpdracht } from '@/hooks/useTasks';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import {
   OPDRACHT_TYPE_LABELS,
   OPDRACHT_STATUS_LABELS,
@@ -39,6 +43,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
   const deleteMutation = useDeleteOpdracht();
   const { openNodeDetail } = useNodeDetail();
   const { openTaskDetail } = useTaskDetail();
+  const { opdrachtParentLabel } = useOpdrachtDetail();
   const [showEdit, setShowEdit] = useState(false);
   const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +84,8 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
     }
   };
 
+  const accentColor = opdracht ? OPDRACHT_TYPE_COLORS[opdracht.type as OpdrachtType] : undefined;
+
   return (
     <Modal
       open={open}
@@ -86,33 +93,38 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
       title={isLoading ? 'Laden...' : opdracht?.titel ?? 'Opdracht niet gevonden'}
       size="lg"
       zIndex={zIndex}
+      accentColor={accentColor}
+      headerIcon={<ClipboardList className="h-5 w-5" />}
+      entityLabel={opdracht ? (OPDRACHT_TYPE_LABELS[opdracht.type as OpdrachtType] || opdracht.type) : undefined}
+      backLabel={opdrachtParentLabel ?? undefined}
+      onBack={opdrachtParentLabel ? onClose : undefined}
       footer={
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Pencil className="h-4 w-4" />}
-              onClick={() => setShowEdit(true)}
-              disabled={!opdracht}
-            >
-              Bewerken
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Trash2 className="h-4 w-4" />}
-              onClick={handleDelete}
-              disabled={!opdracht || deleteMutation.isPending}
-              className="text-red-600 hover:text-red-700"
-            >
-              Verwijderen
-            </Button>
-          </div>
-          <Button variant="secondary" onClick={onClose}>
-            Sluiten
-          </Button>
-        </div>
+        <DetailModalFooter
+          onClose={onClose}
+          actions={
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Pencil className="h-4 w-4" />}
+                onClick={() => setShowEdit(true)}
+                disabled={!opdracht}
+              >
+                Bewerken
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Trash2 className="h-4 w-4" />}
+                onClick={handleDelete}
+                disabled={!opdracht || deleteMutation.isPending}
+                className="text-red-600 hover:text-red-700"
+              >
+                Verwijderen
+              </Button>
+            </>
+          }
+        />
       }
     >
       {isLoading ? (
@@ -131,6 +143,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
               {error}
             </div>
           )}
+
           {/* Type + status badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant={OPDRACHT_TYPE_COLORS[opdracht.type as OpdrachtType] || 'gray'}>
@@ -144,6 +157,36 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
           {/* Description */}
           {opdracht.beschrijving && (
             <p className="text-sm text-text-secondary">{opdracht.beschrijving}</p>
+          )}
+
+          {/* Financial hero */}
+          {budget > 0 && (
+            <div className="flex items-baseline gap-8">
+              <div>
+                <span className="text-xs text-text-secondary uppercase tracking-wider">Budget</span>
+                <p className="text-xl font-semibold tabular-nums">{formatCurrency(opdracht.budget)}</p>
+              </div>
+              {uitnutting !== null && (
+                <div>
+                  <span className="text-xs text-text-secondary uppercase tracking-wider">Uitnutting</span>
+                  <p className="text-xl font-semibold tabular-nums">{uitnutting.toFixed(1)}%</p>
+                </div>
+              )}
+              {gerealiseerd > 0 && (
+                <div>
+                  <span className="text-xs text-text-secondary uppercase tracking-wider">Gerealiseerd</span>
+                  <p className="text-xl font-semibold tabular-nums">{formatCurrency(opdracht.gerealiseerd)}</p>
+                </div>
+              )}
+            </div>
+          )}
+          {uitnutting !== null && (
+            <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary-500 transition-all"
+                style={{ width: `${Math.min(uitnutting, 100)}%` }}
+              />
+            </div>
           )}
 
           {/* Details + Financieel grid */}
@@ -160,7 +203,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                   <dd>
                     {opdracht.instrument ? (
                       <button
-                        onClick={() => openNodeDetail(opdracht.instrument!.id)}
+                        onClick={() => openNodeDetail(opdracht.instrument!.id, opdracht.titel)}
                         className="text-primary-700 hover:text-primary-900 transition-colors font-medium"
                       >
                         {opdracht.instrument.title}
@@ -204,20 +247,6 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
             <div className="space-y-3">
               <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Financieel</h4>
               <dl className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <dt className="text-text-secondary">Budget</dt>
-                  <dd className="text-text font-medium tabular-nums">{formatCurrency(opdracht.budget)}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-text-secondary">Gerealiseerd</dt>
-                  <dd className="text-text font-medium tabular-nums">{formatCurrency(opdracht.gerealiseerd)}</dd>
-                </div>
-                {uitnutting !== null && (
-                  <div className="flex justify-between">
-                    <dt className="text-text-secondary">Uitnutting</dt>
-                    <dd className="text-text font-medium">{uitnutting.toFixed(1)}%</dd>
-                  </div>
-                )}
                 {opdracht.volgend_jaar_benodigd != null && (
                   <div className="flex justify-between">
                     <dt className="text-text-secondary">Volgend jaar benodigd</dt>
@@ -231,24 +260,12 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                   </div>
                 )}
               </dl>
-
-              {uitnutting !== null && (
-                <div className="mt-3">
-                  <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-primary-500 transition-all"
-                      style={{ width: `${Math.min(uitnutting, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
           {/* Subsidie section */}
           {opdracht.type === 'subsidie' && (opdracht.subsidieregeling || opdracht.beschikking_nummer) && (
-            <div className="border-t border-border pt-4">
-              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Subsidie-gegevens</h4>
+            <DetailSection title="Subsidie-gegevens" separated>
               <dl className="space-y-2 text-sm">
                 {opdracht.subsidieregeling && (
                   <div className="flex justify-between">
@@ -263,53 +280,42 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                   </div>
                 )}
               </dl>
-            </div>
+            </DetailSection>
           )}
 
           {/* Linked nodes */}
           {opdracht.node_koppelingen && opdracht.node_koppelingen.length > 0 && (
-            <div className="border-t border-border pt-4">
-              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
-                <LinkIcon className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
-                Gekoppelde nodes ({opdracht.node_koppelingen.length})
-              </h4>
-              <div className="space-y-1">
-                {opdracht.node_koppelingen.map((koppeling) => (
-                  <button
-                    key={koppeling.id}
-                    onClick={() => openNodeDetail(koppeling.node_id)}
-                    className="flex items-center gap-2 w-full p-1.5 rounded-lg hover:bg-gray-50 transition-colors text-left group"
-                  >
-                    {koppeling.node_type && (
-                      <Badge
-                        variant={NODE_TYPE_COLORS[koppeling.node_type as NodeType] ?? 'gray'}
-                        dot
-                      >
-                        {koppeling.node_type}
-                      </Badge>
-                    )}
-                    <span className="text-sm text-text truncate group-hover:text-primary-700 transition-colors">
-                      {koppeling.node_title || koppeling.node_id}
-                    </span>
-                    {koppeling.relatie_type && (
-                      <span className="text-xs text-text-secondary ml-auto shrink-0">
-                        {koppeling.relatie_type}
-                      </span>
-                    )}
-                    <ArrowRight className="h-3.5 w-3.5 text-gray-300 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                ))}
-              </div>
-            </div>
+            <DetailSection
+              title="Gekoppelde nodes"
+              icon={<LinkIcon className="h-3.5 w-3.5" />}
+              count={opdracht.node_koppelingen.length}
+              separated
+            >
+              <RelatedItemsList
+                items={opdracht.node_koppelingen.map((koppeling) => ({
+                  id: koppeling.id,
+                  label: koppeling.node_title || koppeling.node_id,
+                  badge: koppeling.node_type ? {
+                    text: koppeling.node_type,
+                    variant: NODE_TYPE_COLORS[koppeling.node_type as NodeType] ?? 'gray',
+                    dot: true,
+                  } : undefined,
+                  secondaryText: koppeling.relatie_type ?? undefined,
+                  onClick: () => openNodeDetail(koppeling.node_id, opdracht.titel),
+                }))}
+                maxVisible={5}
+                emptyLabel="Geen gekoppelde nodes"
+              />
+            </DetailSection>
           )}
 
-          {/* Taken section */}
-          <div className="border-t border-border pt-4">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-                <CheckSquare className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
-                Taken ({tasks.length})
-              </h4>
+          {/* Tasks */}
+          <DetailSection
+            title="Taken"
+            icon={<CheckSquare className="h-3.5 w-3.5" />}
+            count={tasks.length}
+            separated
+            action={
               <button
                 onClick={() => setShowTaskCreate(true)}
                 className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800 transition-colors"
@@ -317,30 +323,23 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                 <Plus className="h-3.5 w-3.5" />
                 Taak
               </button>
-            </div>
-            {tasks.length > 0 ? (
-              <div className="space-y-1">
-                {tasks.map((task) => (
-                  <button
-                    key={task.id}
-                    onClick={() => openTaskDetail(task.id)}
-                    className="flex items-center gap-2 w-full p-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left group"
-                  >
-                    <Badge variant={TASK_STATUS_COLORS[task.status as TaskStatus] ?? 'gray'}>
-                      {TASK_STATUS_LABELS[task.status as TaskStatus] ?? task.status}
-                    </Badge>
-                    <span className="text-sm text-text truncate flex-1 group-hover:text-primary-700 transition-colors">{task.title}</span>
-                    {task.assignee && (
-                      <span className="text-xs text-text-secondary shrink-0">{task.assignee.naam}</span>
-                    )}
-                    <ArrowRight className="h-3.5 w-3.5 text-gray-300 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-text-secondary">Geen taken gekoppeld.</p>
-            )}
-          </div>
+            }
+          >
+            <RelatedItemsList
+              items={tasks.map((task) => ({
+                id: task.id,
+                label: task.title,
+                badge: {
+                  text: TASK_STATUS_LABELS[task.status as TaskStatus] ?? task.status,
+                  variant: TASK_STATUS_COLORS[task.status as TaskStatus] ?? 'gray',
+                },
+                secondaryText: task.assignee?.naam,
+                onClick: () => openTaskDetail(task.id, opdracht.titel),
+              }))}
+              maxVisible={5}
+              emptyLabel="Geen taken gekoppeld"
+            />
+          </DetailSection>
         </div>
       )}
 

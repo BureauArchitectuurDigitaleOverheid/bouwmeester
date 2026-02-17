@@ -2,8 +2,9 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 import { useLocation } from 'react-router-dom';
 
 interface NodeDetailContextValue {
-  openNodeDetail: (nodeId: string) => void;
+  openNodeDetail: (nodeId: string, parentLabel?: string) => void;
   nodeDetailId: string | null;
+  nodeParentLabel: string | null;
   closeNodeDetail: () => void;
 }
 
@@ -17,23 +18,27 @@ export function useNodeDetail() {
 
 export function NodeDetailProvider({ children }: { children: React.ReactNode }) {
   const [nodeId, setNodeId] = useState<string | null>(null);
+  const [parentLabel, setParentLabel] = useState<string | null>(null);
   const location = useLocation();
 
-  const openNodeDetail = useCallback((id: string) => {
+  const openNodeDetail = useCallback((id: string, label?: string) => {
     setNodeId(id);
+    setParentLabel(label ?? null);
   }, []);
 
   const closeNodeDetail = useCallback(() => {
     setNodeId(null);
+    setParentLabel(null);
   }, []);
 
   // Close modal on route change
   useEffect(() => {
     setNodeId(null);
+    setParentLabel(null);
   }, [location.pathname]);
 
   return (
-    <NodeDetailContext.Provider value={{ openNodeDetail, nodeDetailId: nodeId, closeNodeDetail }}>
+    <NodeDetailContext.Provider value={{ openNodeDetail, nodeDetailId: nodeId, nodeParentLabel: parentLabel, closeNodeDetail }}>
       {children}
     </NodeDetailContext.Provider>
   );
