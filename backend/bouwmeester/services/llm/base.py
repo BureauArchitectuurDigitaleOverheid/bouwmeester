@@ -48,6 +48,22 @@ class SummarizeResult(BaseModel):
     summary: str
 
 
+class TaskSuggestionResult(BaseModel):
+    title: str
+    description: str
+
+
+class GapAnalysisResult(BaseModel):
+    narrative: str
+    recommendations: list[str]
+
+
+class SearchInterpretationResult(BaseModel):
+    search_terms: list[str]
+    node_types: list[str]
+    tags: list[str]
+
+
 class BaseLLMService(ABC):
     """Abstract base for all LLM providers."""
 
@@ -180,3 +196,83 @@ class BaseLLMService(ABC):
         except Exception:
             logger.exception("Fout bij LLM samenvatting")
             return SummarizeResult(summary="Samenvatting mislukt")
+
+    async def suggest_task(
+        self,
+        node_title: str,
+        node_description: str | None,
+        node_type: str,
+    ) -> TaskSuggestionResult:
+        """Suggest an actionable task title and description for a node."""
+        from bouwmeester.services.llm.prompts import build_suggest_task_prompt
+
+        prompt = build_suggest_task_prompt(
+            node_title=node_title,
+            node_description=node_description,
+            node_type=node_type,
+        )
+        try:
+            text = await self._complete(prompt)
+            result = self._parse_json(text)
+            return TaskSuggestionResult(
+                title=result.get("title", ""),
+                description=result.get("description", ""),
+            )
+        except Exception:
+            logger.exception("Fout bij LLM taak-suggestie")
+            return TaskSuggestionResult(title="", description="")
+
+    async def generate_gap_analysis(
+        self,
+        dossier_title: str,
+        dossier_description: str | None,
+        gaps: list[dict],
+    ) -> GapAnalysisResult:
+        """Generate a narrative summary and recommendations for policy gaps."""
+        from bouwmeester.services.llm.prompts import build_gap_analysis_prompt
+
+        prompt = build_gap_analysis_prompt(
+            dossier_title=dossier_title,
+            dossier_description=dossier_description,
+            gaps=gaps,
+        )
+        try:
+            text = await self._complete(prompt, max_tokens=1024)
+            result = self._parse_json(text)
+            return GapAnalysisResult(
+                narrative=result.get("narrative", ""),
+                recommendations=result.get("recommendations", []),
+            )
+        except Exception:
+            logger.exception("Fout bij LLM gap-analyse")
+            return GapAnalysisResult(narrative="", recommendations=[])
+
+    async def interpret_search_query(
+        self,
+        query: str,
+        available_node_types: list[str],
+        available_tags: list[str],
+    ) -> SearchInterpretationResult:
+        """Interpret a natural language search query into structured params."""
+        from bouwmeester.services.llm.prompts import (
+            build_search_interpretation_prompt,
+        )
+
+        prompt = build_search_interpretation_prompt(
+            query=query,
+            available_node_types=available_node_types,
+            available_tags=available_tags,
+        )
+        try:
+            text = await self._complete(prompt)
+            result = self._parse_json(text)
+            return SearchInterpretationResult(
+                search_terms=result.get("search_terms", [query]),
+                node_types=result.get("node_types", []),
+                tags=result.get("tags", []),
+            )
+        except Exception:
+            logger.exception("Fout bij LLM zoek-interpretatie")
+            return SearchInterpretationResult(
+                search_terms=[query], node_types=[], tags=[]
+            )

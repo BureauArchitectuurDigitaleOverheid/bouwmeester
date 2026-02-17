@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.edge import Edge
 from bouwmeester.models.edge_type import EdgeType
 from bouwmeester.models.tag import NodeTag
 from bouwmeester.repositories.tag import TagRepository
@@ -151,6 +152,130 @@ class EdgeSuggestionService:
                     target_node_id=str(nid),
                     target_node_title=target.title,
                     target_node_type=target.node_type,
+                    confidence=llm_result.score,
+                    suggested_edge_type=edge_type,
+                    reason=llm_result.reason,
+                )
+            )
+
+        suggestions.sort(key=lambda s: s.confidence, reverse=True)
+        return suggestions
+
+    async def suggest_kompas_links(
+        self,
+        dossier_id: str,
+        step_node_types: list[str],
+        step_description: str = "",
+        max_candidates: int = 10,
+        max_llm_scored: int = 5,
+    ) -> list[EdgeSuggestionItem]:
+        """Find nodes of specific types to link to a dossier."""
+        dossier_uuid = uuid.UUID(dossier_id)
+
+        # Get the dossier
+        stmt = select(CorpusNode).where(CorpusNode.id == dossier_uuid)
+        result = await self.session.execute(stmt)
+        dossier = result.scalar_one_or_none()
+        if not dossier:
+            return []
+
+        # Find nodes already linked to this dossier
+        linked_stmt = select(Edge.from_node_id).where(
+            Edge.to_node_id == dossier_uuid,
+        )
+        linked_result = await self.session.execute(linked_stmt)
+        linked_ids = {row[0] for row in linked_result.all()}
+
+        # Find candidate nodes of the right types, excluding already-linked
+        candidates_stmt = select(CorpusNode).where(
+            CorpusNode.node_type.in_(step_node_types),
+            CorpusNode.id.notin_(linked_ids | {dossier_uuid}),
+        )
+        candidates_result = await self.session.execute(candidates_stmt)
+        candidates = list(candidates_result.scalars().all())
+
+        if not candidates:
+            return []
+
+        # Tag-overlap scoring to rank candidates
+        dossier_tags = await self.tag_repo.get_by_node(dossier_uuid)
+        dossier_tag_ids = {nt.tag_id for nt in dossier_tags}
+
+        if dossier_tag_ids:
+            # Also include parent tags
+            tag_objects = await self.tag_repo.get_all()
+            tag_by_id = {t.id: t for t in tag_objects}
+            all_tag_ids = set(dossier_tag_ids)
+            for tid in dossier_tag_ids:
+                tag = tag_by_id.get(tid)
+                if tag and tag.parent_id:
+                    all_tag_ids.add(tag.parent_id)
+
+            candidate_ids = [c.id for c in candidates]
+            tag_node_stmt = select(NodeTag.tag_id, NodeTag.node_id).where(
+                NodeTag.tag_id.in_(all_tag_ids),
+                NodeTag.node_id.in_(candidate_ids),
+            )
+            tag_node_result = await self.session.execute(tag_node_stmt)
+
+            node_scores: dict[uuid.UUID, float] = {}
+            for row_tag_id, row_node_id in tag_node_result.all():
+                weight = 1.0 if row_tag_id in dossier_tag_ids else 0.7
+                node_scores[row_node_id] = node_scores.get(row_node_id, 0.0) + weight
+
+            # Sort by score, top candidates first
+            scored = sorted(
+                [(c, node_scores.get(c.id, 0.0)) for c in candidates],
+                key=lambda x: x[1],
+                reverse=True,
+            )[:max_candidates]
+        else:
+            # No tags: just take first N candidates
+            scored = [(c, 0.0) for c in candidates[:max_candidates]]
+
+        # LLM scoring
+        to_score = scored[:max_llm_scored]
+        if not to_score:
+            return []
+
+        async def _score_one(
+            candidate: CorpusNode,
+        ) -> tuple[CorpusNode, EdgeRelevanceResult | None]:
+            try:
+                r = await self.llm_service.score_edge_relevance(
+                    source_title=dossier.title,
+                    source_description=dossier.description,
+                    target_title=candidate.title,
+                    target_description=candidate.description,
+                )
+                return candidate, r
+            except Exception:
+                logger.exception("LLM kompas scoring failed for %s", candidate.id)
+                return candidate, None
+
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*[_score_one(c) for c, _ in to_score]),
+                timeout=LLM_SCORING_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            logger.warning("LLM kompas scoring timed out")
+            return []
+
+        valid_edge_types = await self._get_valid_edge_types()
+
+        suggestions: list[EdgeSuggestionItem] = []
+        for candidate, llm_result in results:
+            if llm_result is None or llm_result.score < 0.3:
+                continue
+            edge_type = llm_result.suggested_edge_type
+            if edge_type not in valid_edge_types:
+                edge_type = _DEFAULT_EDGE_TYPE
+            suggestions.append(
+                EdgeSuggestionItem(
+                    target_node_id=str(candidate.id),
+                    target_node_title=candidate.title,
+                    target_node_type=candidate.node_type,
                     confidence=llm_result.score,
                     suggested_edge_type=edge_type,
                     reason=llm_result.reason,

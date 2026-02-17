@@ -17,6 +17,8 @@ import { useNodeGraph } from '@/hooks/useNodes';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useCompletenessAnalysis, type StepStatus } from './useCompletenessAnalysis';
 import { KCBR_MAIN_URL, KCBR_STAKEHOLDERS_URL } from './config';
+import { GapAnalysisPanel } from './GapAnalysisPanel';
+import { KompasStepSuggestions } from './KompasStepSuggestions';
 import { LinkExistingNodeModal } from './LinkExistingNodeModal';
 import { NodeCreateForm } from '../NodeCreateForm';
 import { NODE_TYPE_LABELS, NODE_TYPE_LABELS_PLURAL, NODE_TYPE_COLORS, type NodeType } from '@/types';
@@ -53,6 +55,7 @@ function StepActionButtons({ nodeType, onCreateNew, onLinkExisting }: StepAction
 
 interface BeleidskompasStepRowProps {
   status: StepStatus;
+  dossierId: string;
   onCreateNew: (nodeType: NodeType) => void;
   onLinkExisting: (nodeType: NodeType) => void;
 }
@@ -168,7 +171,7 @@ function StepTypeGroups({
   );
 }
 
-function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: BeleidskompasStepRowProps) {
+function BeleidskompasStepRow({ status, dossierId, onCreateNew, onLinkExisting }: BeleidskompasStepRowProps) {
   const [expanded, setExpanded] = useState(false);
 
   if (status.isComplete) {
@@ -244,6 +247,11 @@ function BeleidskompasStepRow({ status, onCreateNew, onLinkExisting }: Beleidsko
             status={status}
             onCreateNew={onCreateNew}
             onLinkExisting={onLinkExisting}
+          />
+          <KompasStepSuggestions
+            dossierId={dossierId}
+            stepNodeTypes={status.step.nodeTypes}
+            stepDescription={status.step.question}
           />
         </div>
       </div>
@@ -357,14 +365,20 @@ export function BeleidskompasPanel({ nodeId, stakeholderCount, onNavigateToStake
 
         {/* Steps */}
         <div className="rounded-lg border border-border overflow-hidden">
-          {steps.map((status) => (
+          {steps.map((stepStatus) => (
             <BeleidskompasStepRow
-              key={status.step.id}
-              status={status}
+              key={stepStatus.step.id}
+              status={stepStatus}
+              dossierId={nodeId}
               onCreateNew={(nodeType) => setCreateModalType(nodeType)}
               onLinkExisting={(nodeType) => setLinkModalType(nodeType)}
             />
           ))}
+        </div>
+
+        {/* Gap Analysis */}
+        <div className="mt-4 pt-4 border-t border-border">
+          <GapAnalysisPanel dossierId={nodeId} />
         </div>
       </Card>
 

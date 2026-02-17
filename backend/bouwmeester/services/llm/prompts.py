@@ -168,3 +168,139 @@ def build_summarize_prompt(text: str, max_words: int = 100) -> str:
         f"TEKST:\n{text[:MAX_TEXT_IN_PROMPT]}\n\n"
         "SAMENVATTING:"
     )
+
+
+def build_suggest_task_prompt(
+    node_title: str,
+    node_description: str | None,
+    node_type: str,
+) -> str:
+    type_label = _NODE_TYPE_LABELS.get(node_type, node_type)
+    content = f"TITEL: {node_title}"
+    if node_description:
+        content += f"\nBESCHRIJVING: {node_description[:MAX_DESCRIPTION_IN_PROMPT]}"
+
+    return (
+        "Je bent een beleidsanalist van het ministerie van BZK."
+        " Stel een concrete, actiegerichte taak voor die past"
+        f" bij het volgende {type_label}.\n\n"
+        f"{type_label.upper()}:\n{content}\n\n"
+        "Instructies:\n"
+        "- De taaktitel moet een concrete actie beschrijven"
+        " (bijv. 'Inventariseer stakeholders voor ...'"
+        " of 'Stel evaluatiecriteria op voor ...')\n"
+        "- De beschrijving moet in 2-3 zinnen"
+        " het doel en de verwachte uitkomst beschrijven\n"
+        "- Schrijf alles in het Nederlands\n\n"
+        "Geef je suggestie als JSON"
+        " (en ALLEEN JSON, geen andere tekst):\n"
+        "{\n"
+        '  "title": "Concrete taaktitel",\n'
+        '  "description": "Korte beschrijving van wat er moet gebeuren en waarom."\n'
+        "}"
+    )
+
+
+def build_gap_analysis_prompt(
+    dossier_title: str,
+    dossier_description: str | None,
+    gaps: list[dict],
+) -> str:
+    content = f"DOSSIER: {dossier_title}"
+    if dossier_description:
+        content += f"\nBESCHRIJVING: {dossier_description[:MAX_DESCRIPTION_IN_PROMPT]}"
+
+    gaps_text = json.dumps(gaps, ensure_ascii=False, indent=2)
+
+    return (
+        "Je bent een beleidsanalist van het ministerie van BZK."
+        " Analyseer de volledigheid van het volgende beleidsdossier"
+        " op basis van het Beleidskompas-model.\n\n"
+        f"{content}\n\n"
+        f"GEVONDEN LACUNES:\n{gaps_text}\n\n"
+        "Instructies:\n"
+        "- Geef een korte narratieve samenvatting (max 3 zinnen)"
+        " van de huidige stand van het dossier\n"
+        "- Geef concrete aanbevelingen (max 5) voor de"
+        " belangrijkste vervolgstappen\n"
+        "- Schrijf alles in het Nederlands\n\n"
+        "Geef je analyse als JSON"
+        " (en ALLEEN JSON, geen andere tekst):\n"
+        "{\n"
+        '  "narrative": "Samenvatting van de volledigheid...",\n'
+        '  "recommendations": ["Aanbeveling 1", "Aanbeveling 2"]\n'
+        "}"
+    )
+
+
+def build_kompas_relevance_prompt(
+    dossier_title: str,
+    step_description: str,
+    candidate_title: str,
+    candidate_description: str | None,
+) -> str:
+    candidate = f"TITEL: {candidate_title}"
+    if candidate_description:
+        candidate += (
+            f"\nBESCHRIJVING: {candidate_description[:MAX_DESCRIPTION_IN_PROMPT]}"
+        )
+
+    return (
+        "Je bent een beleidsanalist van het ministerie van BZK."
+        " Beoordeel of de volgende node relevant is om te koppelen"
+        " aan een beleidsdossier voor een specifieke"
+        " Beleidskompas-stap.\n\n"
+        f"DOSSIER: {dossier_title}\n"
+        f"BELEIDSKOMPAS-STAP: {step_description}\n\n"
+        f"KANDIDAAT-NODE:\n{candidate}\n\n"
+        "Instructies:\n"
+        "- Geef een score van 0.0 (niet relevant) tot"
+        " 1.0 (zeer relevant)\n"
+        "- Stel een relatietype voor uit:"
+        " implementeert, draagt_bij_aan, vloeit_voort_uit,"
+        " verwijst_naar, onderdeel_van, adresseert, meet\n"
+        "- Geef een korte reden in het Nederlands\n\n"
+        "Geef je analyse als JSON"
+        " (en ALLEEN JSON, geen andere tekst):\n"
+        "{\n"
+        '  "score": 0.8,\n'
+        '  "suggested_edge_type": "onderdeel_van",\n'
+        '  "reason": "Deze node is relevant omdat..."\n'
+        "}"
+    )
+
+
+def build_search_interpretation_prompt(
+    query: str,
+    available_node_types: list[str],
+    available_tags: list[str],
+) -> str:
+    types_json = json.dumps(available_node_types, ensure_ascii=False)
+    tags_json = json.dumps(available_tags[:MAX_TAGS_IN_PROMPT], ensure_ascii=False)
+
+    return (
+        "Je bent een zoekassistent voor een beleidscorpus van het"
+        " ministerie van BZK. Interpreteer de volgende"
+        " natuurlijke-taalzoekvraag en extraheer gestructureerde"
+        " zoekparameters.\n\n"
+        f'ZOEKVRAAG: "{query}"\n\n'
+        f"BESCHIKBARE NODE-TYPES:\n{types_json}\n\n"
+        f"BESCHIKBARE TAGS:\n{tags_json}\n\n"
+        "Instructies:\n"
+        "- Extraheer de belangrijkste zoektermen"
+        " (voor full-text search)\n"
+        "- Bepaal eventuele node-type filters"
+        " (alleen als de vraag specifiek naar een type verwijst)\n"
+        "- Bepaal eventuele tag-filters"
+        " (alleen als de vraag specifiek naar een onderwerp verwijst"
+        " dat overeenkomt met een bestaande tag)\n"
+        "- Wees conservatief: bij twijfel, laat"
+        " node_types en tags leeg\n\n"
+        "Geef je interpretatie als JSON"
+        " (en ALLEEN JSON, geen andere tekst):\n"
+        "{\n"
+        '  "search_terms": ["term1", "term2"],\n'
+        '  "node_types": ["dossier"],\n'
+        '  "tags": ["digitalisering/AI"]\n'
+        "}"
+    )

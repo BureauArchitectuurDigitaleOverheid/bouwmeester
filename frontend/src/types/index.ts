@@ -992,6 +992,78 @@ export interface SummarizeResponse {
   available: boolean;
 }
 
+// Task suggestion (C1)
+export interface TaskSuggestionResponse {
+  title: string;
+  description: string;
+  available: boolean;
+}
+
+// Gap detection (B3)
+export interface GapItem {
+  step_number: number;
+  step_question: string;
+  missing_types: string[];
+  present_types: string[];
+  has_stakeholders: boolean;
+}
+
+export interface GapAnalysisResponse {
+  gaps: GapItem[];
+  completed_count: number;
+  total_steps: number;
+  narrative: string;
+  recommendations: string[];
+  available: boolean;
+}
+
+export interface CorpusGapSummaryItem {
+  dossier_id: string;
+  dossier_title: string;
+  completed_count: number;
+  total_steps: number;
+  has_stakeholders: boolean;
+}
+
+export interface CorpusGapOverviewResponse {
+  items: CorpusGapSummaryItem[];
+  total: number;
+}
+
+// Kompas guidance (A5)
+export interface KompasGuidanceResponse {
+  suggestions: EdgeSuggestionItem[];
+  available: boolean;
+}
+
+// Similar nodes (A3)
+export interface SimilarNodeItem {
+  id: string;
+  title: string;
+  node_type: string;
+  similarity: number;
+}
+
+export interface SimilarNodesResponse {
+  items: SimilarNodeItem[];
+}
+
+// Natural language search (B5)
+export interface SearchInterpretation {
+  search_terms: string[];
+  node_types: string[];
+  tags: string[];
+  original_query: string;
+}
+
+export interface NlSearchResponse {
+  results: SearchResult[];
+  total: number;
+  query: string;
+  interpretation: SearchInterpretation | null;
+  available: boolean;
+}
+
 // Mention types
 export interface MentionSearchResult {
   id: string;

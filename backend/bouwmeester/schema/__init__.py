@@ -57,13 +57,22 @@ from bouwmeester.schema.graph import (
 )
 from bouwmeester.schema.inbox import InboxItem, InboxResponse
 from bouwmeester.schema.llm import (
+    CorpusGapOverviewResponse,
+    CorpusGapSummaryItem,
     EdgeSuggestionItem,
     EdgeSuggestionRequest,
     EdgeSuggestionResponse,
+    GapAnalysisRequest,
+    GapAnalysisResponse,
+    GapItem,
+    KompasGuidanceRequest,
+    KompasGuidanceResponse,
     SummarizeRequest,
     SummarizeResponse,
     TagSuggestionRequest,
     TagSuggestionResponse,
+    TaskSuggestionRequest,
+    TaskSuggestionResponse,
 )
 from bouwmeester.schema.mattermost_user import (
     MattermostLinkCodeResponse,
@@ -118,7 +127,16 @@ from bouwmeester.schema.person import (
     PersonSummaryResponse,
     PersonUpdate,
 )
-from bouwmeester.schema.search import SearchResponse, SearchResult, SearchResultType
+from bouwmeester.schema.search import (
+    NlSearchRequest,
+    NlSearchResponse,
+    SearchInterpretation,
+    SearchResponse,
+    SearchResult,
+    SearchResultType,
+    SimilarNodeItem,
+    SimilarNodesResponse,
+)
 from bouwmeester.schema.tag import (
     NodeTagCreate,
     NodeTagResponse,
@@ -266,9 +284,14 @@ __all__ = [
     "InboxItem",
     "InboxResponse",
     # search
+    "NlSearchRequest",
+    "NlSearchResponse",
+    "SearchInterpretation",
     "SearchResponse",
     "SearchResult",
     "SearchResultType",
+    "SimilarNodeItem",
+    "SimilarNodesResponse",
     # tag
     "NodeTagCreate",
     "NodeTagResponse",
@@ -288,13 +311,22 @@ __all__ = [
     "MentionResponse",
     "MentionSearchResult",
     # llm
+    "CorpusGapOverviewResponse",
+    "CorpusGapSummaryItem",
     "EdgeSuggestionItem",
     "EdgeSuggestionRequest",
     "EdgeSuggestionResponse",
+    "GapAnalysisRequest",
+    "GapAnalysisResponse",
+    "GapItem",
+    "KompasGuidanceRequest",
+    "KompasGuidanceResponse",
     "SummarizeRequest",
     "SummarizeResponse",
     "TagSuggestionRequest",
     "TagSuggestionResponse",
+    "TaskSuggestionRequest",
+    "TaskSuggestionResponse",
     # parlementair_item
     "ParlementairItemResponse",
     "ReviewAction",

@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Sparkles, Loader2 } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
@@ -9,6 +10,7 @@ import { useCreateTask, useWorkTypes } from '@/hooks/useTasks';
 import { useOpdrachten } from '@/hooks/useOpdrachten';
 import { useTaskFormOptions } from '@/hooks/useTaskFormOptions';
 import { useEnumOptions } from '@/hooks/useEnumOptions';
+import { suggestTask } from '@/api/llm';
 import {
   TaskPriority,
   TASK_PRIORITY_LABELS,
@@ -20,9 +22,25 @@ interface TaskCreateFormProps {
   nodeId?: string;
   parentId?: string;
   opdrachtId?: string;
+  /** Pre-fill context from a node (C1: Smart Task Creation) */
+  nodeTitle?: string;
+  nodeDescription?: string;
+  nodeType?: string;
+  /** Stakeholder person IDs in order: eigenaar first, then betrokken */
+  stakeholderPersonIds?: string[];
 }
 
-export function TaskCreateForm({ open, onClose, nodeId, parentId, opdrachtId }: TaskCreateFormProps) {
+export function TaskCreateForm({
+  open,
+  onClose,
+  nodeId,
+  parentId,
+  opdrachtId,
+  nodeTitle,
+  nodeDescription,
+  nodeType,
+  stakeholderPersonIds,
+}: TaskCreateFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<string>(TaskPriority.NORMAAL);
@@ -32,6 +50,8 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId, opdrachtId }: 
   const [organisatieEenheidId, setOrganisatieEenheidId] = useState('');
   const [workType, setWorkType] = useState('');
   const [selectedOpdrachtId, setSelectedOpdrachtId] = useState(opdrachtId ?? '');
+  const [aiLoading, setAiLoading] = useState(false);
+  const userTypedRef = useRef(false);
 
   const priorityOptions = useEnumOptions(TaskPriority, TASK_PRIORITY_LABELS);
   const { data: workTypes = [] } = useWorkTypes();
@@ -39,7 +59,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId, opdrachtId }: 
   const { data: opdrachten = [] } = useOpdrachten();
   const opdrachtOptions = opdrachten.map((o) => ({ value: o.id, label: o.titel, description: o.type }));
 
-  // Reset form state when dialog opens
+  // Reset form state when dialog opens + AI suggestion
   useEffect(() => {
     if (open) {
       setTitle('');
@@ -51,8 +71,34 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId, opdrachtId }: 
       setOrganisatieEenheidId('');
       setWorkType('');
       setSelectedOpdrachtId(opdrachtId ?? '');
+      userTypedRef.current = false;
+      setAiLoading(false);
+
+      // Pre-select assignee from stakeholders
+      if (stakeholderPersonIds && stakeholderPersonIds.length > 0) {
+        setAssigneeId(stakeholderPersonIds[0]);
+      }
+
+      // AI task suggestion
+      if (nodeTitle) {
+        setAiLoading(true);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        suggestTask(nodeTitle, nodeDescription, nodeType)
+          .then((res) => {
+            clearTimeout(timeout);
+            if (!userTypedRef.current && res.available) {
+              if (res.title) setTitle(res.title);
+              if (res.description) setDescription(res.description);
+            }
+          })
+          .catch(() => {
+            clearTimeout(timeout);
+          })
+          .finally(() => setAiLoading(false));
+      }
     }
-  }, [open, nodeId, opdrachtId]);
+  }, [open, nodeId, opdrachtId, nodeTitle, nodeDescription, nodeType, stakeholderPersonIds]);
 
   const createTask = useCreateTask();
   const {
@@ -102,14 +148,27 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId, opdrachtId }: 
         }
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Titel"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Wat moet er gebeuren?"
-            required
-            autoFocus
-          />
+          <div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <label className="block text-sm font-medium text-text">Titel</label>
+              {aiLoading && (
+                <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+                  <Sparkles className="h-3 w-3 text-amber-500" />
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                </span>
+              )}
+            </div>
+            <Input
+              value={title}
+              onChange={(e) => {
+                userTypedRef.current = true;
+                setTitle(e.target.value);
+              }}
+              placeholder="Wat moet er gebeuren?"
+              required
+              autoFocus
+            />
+          </div>
 
           <RichTextFormField label="Beschrijving" value={description} onChange={setDescription} />
 

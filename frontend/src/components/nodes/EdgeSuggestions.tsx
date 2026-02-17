@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, Check, X } from 'lucide-react';
+import { Check, X, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { AiActionButton } from '@/components/common/AiActionButton';
 import { suggestEdges } from '@/api/llm';
 import { Badge } from '@/components/common/Badge';
 import { NODE_TYPE_COLORS, type EdgeSuggestionItem } from '@/types';
@@ -64,18 +65,11 @@ export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-text">Voorgestelde relaties</h3>
-        <button
+        <AiActionButton
+          label="Relaties suggereren"
+          loading={loading}
           onClick={handleSuggest}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-text-secondary hover:text-text hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="h-3.5 w-3.5" />
-          )}
-          Relaties suggereren
-        </button>
+        />
       </div>
 
       {error && <p className="text-xs text-red-500">{error}</p>}

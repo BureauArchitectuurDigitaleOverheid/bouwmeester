@@ -399,6 +399,14 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
           open={showTaskCreate}
           onClose={() => setShowTaskCreate(false)}
           nodeId={nodeId ?? undefined}
+          nodeTitle={node.title}
+          nodeDescription={node.description}
+          nodeType={node.node_type}
+          stakeholderPersonIds={
+            stakeholders
+              ?.sort((a, b) => (a.rol === 'eigenaar' ? -1 : b.rol === 'eigenaar' ? 1 : 0))
+              .map((s) => s.person.id)
+          }
         />
       )}
 

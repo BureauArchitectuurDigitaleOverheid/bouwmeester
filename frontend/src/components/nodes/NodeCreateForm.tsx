@@ -7,11 +7,14 @@ import { Select } from '@/components/common/Select';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
+import { AutoTagDialog } from './AutoTagDialog';
+import { DuplicateWarning } from './DuplicateWarning';
 import { PendingTagsList } from './PendingTagsList';
 import { TagSuggestions } from './TagSuggestions';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCreateNode } from '@/hooks/useNodes';
 import { useCreatableNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
+import { useAutoTagSuggestion } from '@/hooks/useAutoTagSuggestion';
 import { queryKeys } from '@/hooks/queryKeys';
 import { NodeType, NodeStatus, NODE_STATUS_LABELS, BRON_TYPE_LABELS } from '@/types';
 import { updateNodeBronDetail, uploadBijlage } from '@/api/nodes';
@@ -50,6 +53,12 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
   // Tags suggested by LLM, to be applied after node creation
   const [pendingTags, setPendingTags] = useState<{ name: string; isNew: boolean }[]>([]);
 
+  // Auto-tag hook (A4)
+  const {
+    showAutoTagDialog, autoTagMatched, autoTagNew,
+    checkAndSuggest, closeAutoTagDialog,
+  } = useAutoTagSuggestion();
+
   const isBron = nodeType === NodeType.BRON;
 
   const resetForm = () => {
@@ -66,13 +75,10 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-
+  const doSave = async (extraTags: { name: string; isNew: boolean }[] = []) => {
+    const allPendingTags = [...pendingTags, ...extraTags];
     setIsSubmitting(true);
     try {
-      // 1. Create the node
       const node = await createNode.mutateAsync({
         title: title.trim(),
         node_type: nodeType as NodeType,
@@ -80,7 +86,6 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
         status: status.trim() || undefined,
       });
 
-      // 2. If bron, update bron detail fields
       if (isBron && (bronType !== 'rapport' || bronAuteur || bronPublicatieDatum || bronUrl)) {
         await updateNodeBronDetail(node.id, {
           type: bronType,
@@ -90,12 +95,10 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
         });
       }
 
-      // 3. If file was selected, upload it
       if (isBron && bijlageFile) {
         await uploadBijlage(node.id, bijlageFile);
       }
 
-      // 4. If linkToDossierId is set, create an onderdeel_van edge
       if (linkToDossierId) {
         try {
           await createEdge({
@@ -111,12 +114,11 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
         }
       }
 
-      // 5. Apply suggested tags
-      for (const tag of pendingTags) {
+      for (const tag of allPendingTags) {
         try {
           await addTagToNode(node.id, { tag_name: tag.name });
         } catch {
-          // Non-critical: tag may already exist or fail silently
+          // Non-critical
         }
       }
 
@@ -131,6 +133,20 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+
+    const shown = await checkAndSuggest({
+      title,
+      description,
+      nodeType,
+      currentTagCount: pendingTags.length,
+      pendingTagNames: pendingTags.map((t) => t.name),
+    });
+    if (!shown) doSave();
   };
 
   return (
@@ -157,6 +173,8 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
           required
           autoFocus
         />
+
+        <DuplicateWarning title={title} />
 
         <CreatableSelect
           label="Type"
@@ -250,6 +268,15 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
           </>
         )}
       </form>
+
+      <AutoTagDialog
+        open={showAutoTagDialog}
+        onClose={closeAutoTagDialog}
+        matchedTags={autoTagMatched}
+        suggestedNewTags={autoTagNew}
+        onAccept={(tags) => doSave(tags)}
+        onSkip={() => doSave()}
+      />
     </Modal>
   );
 }

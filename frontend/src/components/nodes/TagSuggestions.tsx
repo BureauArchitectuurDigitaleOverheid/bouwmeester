@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, Check, Plus } from 'lucide-react';
+import { Check, Plus } from 'lucide-react';
+import { AiActionButton } from '@/components/common/AiActionButton';
 import { suggestTags } from '@/api/llm';
 import type { TagSuggestionResponse } from '@/types';
 
@@ -62,19 +63,12 @@ export function TagSuggestions({
 
   return (
     <div className="space-y-2">
-      <button
-        type="button"
+      <AiActionButton
+        label="Tags suggereren"
+        loading={loading}
         onClick={handleSuggest}
-        disabled={loading || !title.trim()}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-text-secondary hover:text-text hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {loading ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <Sparkles className="h-3.5 w-3.5" />
-        )}
-        Tags suggereren
-      </button>
+        disabled={!title.trim()}
+      />
 
       {error && (
         <p className="text-xs text-red-500">{error}</p>
