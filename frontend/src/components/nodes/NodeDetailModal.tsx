@@ -33,6 +33,7 @@ import { DetailSection } from '@/components/common/DetailSection';
 import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
 import { RelatedItemsList } from '@/components/common/RelatedItemsList';
 import { DetailModalFooter } from '@/components/common/DetailModalFooter';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { NodeEditForm } from './NodeEditForm';
 import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
 import { useNode, useNodeStakeholders, useNodeNeighbors, useNodeParlementairItem, useDeleteNode } from '@/hooks/useNodes';
@@ -88,6 +89,7 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
   );
   const [showEdit, setShowEdit] = useState(false);
   const [showTaskCreate, setShowTaskCreate] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const deleteNode = useDeleteNode();
   const navigate = useNavigate();
   const location = useLocation();
@@ -96,25 +98,16 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
   const { openNodeDetail, nodeParentLabel } = useNodeDetail();
 
   const handleDelete = async () => {
-    if (!node || !nodeId) return;
-    const warnings: string[] = [];
-    if (neighbors && neighbors.length > 0) {
-      warnings.push(`${neighbors.length} verbinding(en)`);
-    }
-    if (tasks && tasks.length > 0) {
-      warnings.push(`${tasks.length} taak/taken`);
-    }
-    if (stakeholders && stakeholders.length > 0) {
-      warnings.push(`${stakeholders.length} betrokkene(n)`);
-    }
-    const warningText = warnings.length > 0
-      ? `\n\nLet op: deze node heeft ${warnings.join(', ')}. Deze worden ook verwijderd.`
-      : '';
-    if (window.confirm(`Weet je zeker dat je "${node.title}" wilt verwijderen?${warningText}`)) {
-      await deleteNode.mutateAsync(nodeId);
-      onClose();
-    }
+    if (!nodeId) return;
+    await deleteNode.mutateAsync(nodeId);
+    setShowDeleteConfirm(false);
+    onClose();
   };
+
+  const deleteWarnings: string[] = [];
+  if (neighbors && neighbors.length > 0) deleteWarnings.push(`${neighbors.length} verbinding(en)`);
+  if (tasks && tasks.length > 0) deleteWarnings.push(`${tasks.length} taak/taken`);
+  if (stakeholders && stakeholders.length > 0) deleteWarnings.push(`${stakeholders.length} betrokkene(n)`);
 
   if (!open) return null;
 
@@ -186,8 +179,8 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
                   variant="ghost"
                   size="sm"
                   icon={<Trash2 className="h-4 w-4" />}
-                  onClick={handleDelete}
-                  disabled={!node || deleteNode.isPending}
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={!node}
                   className="text-red-500 hover:bg-red-50 hover:text-red-600"
                 >
                   Verwijderen
@@ -411,6 +404,23 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
           nodeId={nodeId ?? undefined}
         />
       )}
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Node verwijderen"
+        confirmLabel="Verwijderen"
+        variant="danger"
+        loading={deleteNode.isPending}
+      >
+        <p>Weet je zeker dat je <strong>{node?.title}</strong> wilt verwijderen?</p>
+        {deleteWarnings.length > 0 && (
+          <p className="mt-2">
+            Let op: deze node heeft {deleteWarnings.join(', ')}. Deze worden ook verwijderd.
+          </p>
+        )}
+      </ConfirmDialog>
     </>
   );
 }
