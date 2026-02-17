@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { AiActionButton } from '@/components/common/AiActionButton';
+import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { summarizeText } from '@/api/llm';
 
 interface ContentSummaryProps {
@@ -35,18 +36,11 @@ export function ContentSummary({ text, minLength = 500 }: ContentSummaryProps) {
   return (
     <div className="mt-3">
       {!summary && (
-        <button
+        <AiActionButton
+          label="Samenvatten"
+          loading={loading}
           onClick={handleSummarize}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-text-secondary hover:text-text hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="h-3.5 w-3.5" />
-          )}
-          Samenvatten
-        </button>
+        />
       )}
 
       {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
@@ -54,7 +48,9 @@ export function ContentSummary({ text, minLength = 500 }: ContentSummaryProps) {
       {summary && (
         <div className="mt-2 p-3 rounded-lg bg-primary-50/50 border border-primary-100">
           <p className="text-xs font-medium text-primary-700 mb-1">Samenvatting</p>
-          <p className="text-sm text-text">{summary}</p>
+          <div className="text-sm text-text">
+            <MarkdownRenderer content={summary} />
+          </div>
           <button
             onClick={() => setSummary(null)}
             className="text-xs text-text-secondary hover:text-text mt-2 transition-colors"

@@ -35,6 +35,7 @@ import {
   NODE_TYPE_COLORS,
   formatFunctie,
 } from '@/types';
+import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { NodeDetailModal } from '@/components/nodes/NodeDetailModal';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
@@ -427,7 +428,9 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           {item.llm_samenvatting && (
             <div>
               <h4 className="text-xs font-medium text-text mb-1">Samenvatting</h4>
-              <p className="text-sm text-text-secondary">{item.llm_samenvatting}</p>
+              <div className="text-sm text-text-secondary">
+                <MarkdownRenderer content={item.llm_samenvatting} />
+              </div>
             </div>
           )}
 
