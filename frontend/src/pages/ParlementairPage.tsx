@@ -9,6 +9,7 @@ import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { ParlementairReviewCard } from '@/components/parlementair/ParlementairReviewCard';
 import {
   useParlementairItems,
@@ -80,6 +81,7 @@ export function ParlementairPage() {
   const { showSuccess, showError } = useToast();
   const triggerImport = useTriggerParlementairImport();
   const [reprocessDropdownOpen, setReprocessDropdownOpen] = useState(false);
+  const [reprocessConfirm, setReprocessConfirm] = useState<string | null>(null);
   const reprocessDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -107,39 +109,46 @@ export function ParlementairPage() {
 
   const handleReprocessType = (itemType: string) => {
     setReprocessDropdownOpen(false);
-    const plural = REPROCESS_TYPE_PLURALS[itemType] ?? itemType;
-    if (!window.confirm(`Alle ongekoppelde ${plural.toLowerCase()} herverwerken via LLM-matching? Dit kan even duren.`)) return;
-    reprocess.mutate(itemType, {
-      onSuccess: (result) => {
-        if (result.error === 'no_llm') {
-          showError('Geen LLM-provider geconfigureerd. Herverwerken is niet mogelijk.');
-          return;
-        }
-        showSuccess(formatReprocessResult(result, plural));
-      },
-    });
+    setReprocessConfirm(itemType);
   };
 
-  const handleReprocessAll = async () => {
+  const handleReprocessAll = () => {
     setReprocessDropdownOpen(false);
-    if (!window.confirm('Alle ongekoppelde kamerstukken herverwerken via LLM-matching? Dit kan even duren.')) return;
+    setReprocessConfirm('__all__');
+  };
 
-    const results: string[] = [];
-    for (const t of REPROCESS_TYPES) {
-      try {
-        const result = await reprocess.mutateAsync(t);
-        if (result.error === 'no_llm') {
-          showError('Geen LLM-provider geconfigureerd. Herverwerken is niet mogelijk.');
+  const executeReprocess = async () => {
+    if (!reprocessConfirm) return;
+    setReprocessConfirm(null);
+
+    if (reprocessConfirm === '__all__') {
+      const results: string[] = [];
+      for (const t of REPROCESS_TYPES) {
+        try {
+          const result = await reprocess.mutateAsync(t);
+          if (result.error === 'no_llm') {
+            showError('Geen LLM-provider geconfigureerd. Herverwerken is niet mogelijk.');
+            return;
+          }
+          const plural = REPROCESS_TYPE_PLURALS[t] ?? t;
+          results.push(formatReprocessResult(result, plural));
+        } catch {
           return;
         }
-        const plural = REPROCESS_TYPE_PLURALS[t] ?? t;
-        results.push(formatReprocessResult(result, plural));
-      } catch {
-        // Error already shown by useMutationWithError
-        return;
       }
+      if (results.length > 0) showSuccess(results.join('\n'));
+    } else {
+      const plural = REPROCESS_TYPE_PLURALS[reprocessConfirm] ?? reprocessConfirm;
+      reprocess.mutate(reprocessConfirm, {
+        onSuccess: (result) => {
+          if (result.error === 'no_llm') {
+            showError('Geen LLM-provider geconfigureerd. Herverwerken is niet mogelijk.');
+            return;
+          }
+          showSuccess(formatReprocessResult(result, plural));
+        },
+      });
     }
-    if (results.length > 0) showSuccess(results.join('\n'));
   };
 
   const eitherPending = triggerImport.isPending || reprocess.isPending;
@@ -269,6 +278,21 @@ export function ParlementairPage() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!reprocessConfirm}
+        onClose={() => setReprocessConfirm(null)}
+        onConfirm={executeReprocess}
+        title="Herverwerken bevestigen"
+        confirmLabel="Herverwerken"
+        loading={reprocess.isPending}
+      >
+        <p>
+          {reprocessConfirm === '__all__'
+            ? 'Alle ongekoppelde kamerstukken herverwerken via LLM-matching? Dit kan even duren.'
+            : `Alle ongekoppelde ${(REPROCESS_TYPE_PLURALS[reprocessConfirm!] ?? reprocessConfirm)?.toLowerCase()} herverwerken via LLM-matching? Dit kan even duren.`}
+        </p>
+      </ConfirmDialog>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { Button } from '@/components/common/Button';
 import { DetailSection } from '@/components/common/DetailSection';
 import { RelatedItemsList } from '@/components/common/RelatedItemsList';
 import { DetailModalFooter } from '@/components/common/DetailModalFooter';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { OpdrachtForm } from './OpdrachtForm';
 import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
 import { useOpdracht, useDeleteOpdracht } from '@/hooks/useOpdrachten';
@@ -46,6 +47,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
   const { opdrachtParentLabel } = useOpdrachtDetail();
   const [showEdit, setShowEdit] = useState(false);
   const [showTaskCreate, setShowTaskCreate] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!open) return null;
@@ -74,13 +76,12 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
 
   const handleDelete = async () => {
     if (!opdrachtId) return;
-    if (window.confirm('Weet je zeker dat je deze opdracht wilt verwijderen?')) {
-      try {
-        await deleteMutation.mutateAsync(opdrachtId);
-        onClose();
-      } catch {
-        setError('Fout bij verwijderen van opdracht.');
-      }
+    try {
+      await deleteMutation.mutateAsync(opdrachtId);
+      setShowDeleteConfirm(false);
+      onClose();
+    } catch {
+      setError('Fout bij verwijderen van opdracht.');
     }
   };
 
@@ -117,8 +118,8 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                   variant="secondary"
                   size="sm"
                   icon={<Trash2 className="h-4 w-4" />}
-                  onClick={handleDelete}
-                  disabled={!opdracht || deleteMutation.isPending}
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={!opdracht}
                   className="text-red-600 hover:text-red-700"
                 >
                   Verwijderen
@@ -373,6 +374,21 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
         nodeId={opdracht?.instrument_id}
         opdrachtId={opdrachtId ?? undefined}
       />
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Opdracht verwijderen"
+        confirmLabel="Verwijderen"
+        variant="danger"
+        loading={deleteMutation.isPending}
+      >
+        <p>Weet je zeker dat je <strong>{opdracht?.titel}</strong> wilt verwijderen?</p>
+        {tasks.length > 0 && (
+          <p className="mt-2">{tasks.length} gekoppelde taak/taken worden ook verwijderd.</p>
+        )}
+      </ConfirmDialog>
     </>
   );
 }

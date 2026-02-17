@@ -23,6 +23,7 @@ import { usePeople } from '@/hooks/usePeople';
 import { useNodeTags, useAddTagToNode, useRemoveTagFromNode, useTags } from '@/hooks/useTags';
 import { useReferences } from '@/hooks/useMentions';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { NODE_TYPE_COLORS, NODE_STATUS_LABELS, STAKEHOLDER_ROL_LABELS, BRON_TYPE_LABELS, NodeType, type NodeStatus, formatFunctie, titleCase } from '@/types';
 import { uploadBijlage, deleteBijlage, getBijlageDownloadUrl, updateNodeBronDetail } from '@/api/nodes';
@@ -86,6 +87,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const [newStakeholderRol, setNewStakeholderRol] = useState('betrokken');
   const [personCreateName, setPersonCreateName] = useState('');
   const [showPersonCreate, setShowPersonCreate] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showBijlageDeleteConfirm, setShowBijlageDeleteConfirm] = useState(false);
+  const [removeStakeholderId, setRemoveStakeholderId] = useState<{ id: string; naam: string } | null>(null);
   const [bronEditing, setBronEditing] = useState(false);
   const [bronType, setBronType] = useState('');
   const [bronAuteur, setBronAuteur] = useState('');
@@ -190,10 +194,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const color = NODE_TYPE_COLORS[node.node_type];
 
   const handleDelete = async () => {
-    if (window.confirm('Weet je zeker dat je deze node wilt verwijderen?')) {
-      await deleteNode.mutateAsync(node.id);
-      navigate('/corpus');
-    }
+    await deleteNode.mutateAsync(node.id);
+    setShowDeleteConfirm(false);
+    navigate('/corpus');
   };
 
   return (
@@ -248,7 +251,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             variant="ghost"
             size="sm"
             icon={<Trash2 className="h-4 w-4" />}
-            onClick={handleDelete}
+            onClick={() => setShowDeleteConfirm(true)}
             className="text-red-500 hover:bg-red-50 hover:text-red-600"
           >
             Verwijder
@@ -464,16 +467,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                         <Download className="h-4 w-4" />
                       </a>
                       <button
-                        onClick={async () => {
-                          if (window.confirm('Bijlage verwijderen?')) {
-                            try {
-                              await deleteBijlage(nodeId);
-                              refetchBijlage();
-                            } catch {
-                              showError('Bijlage verwijderen mislukt.');
-                            }
-                          }
-                        }}
+                        onClick={() => setShowBijlageDeleteConfirm(true)}
                         className="p-1.5 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors"
                         title="Verwijderen"
                       >
@@ -797,11 +791,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       ))}
                     </select>
                     <button
-                      onClick={() => {
-                        if (window.confirm(`${s.person.naam} verwijderen als betrokkene?`)) {
-                          removeStakeholder.mutate({ nodeId, stakeholderId: s.id });
-                        }
-                      }}
+                      onClick={() => setRemoveStakeholderId({ id: s.id, naam: s.person.naam })}
                       className="p-1.5 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors"
                       title="Verwijderen"
                     >
@@ -908,6 +898,63 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
           setNewStakeholderPersonId(personId);
         }}
       />
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Node verwijderen"
+        confirmLabel="Verwijderen"
+        variant="danger"
+        loading={deleteNode.isPending}
+      >
+        <p>Weet je zeker dat je <strong>{node.title}</strong> wilt verwijderen?</p>
+        {((neighbors && neighbors.length > 0) || (nodeTasks && nodeTasks.length > 0)) && (
+          <ul className="mt-2 space-y-1 list-disc list-inside">
+            {neighbors && neighbors.length > 0 && (
+              <li>{neighbors.length} verbinding(en) worden verwijderd</li>
+            )}
+            {nodeTasks && nodeTasks.length > 0 && (
+              <li>{nodeTasks.length} gekoppelde taak/taken worden verwijderd</li>
+            )}
+          </ul>
+        )}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={showBijlageDeleteConfirm}
+        onClose={() => setShowBijlageDeleteConfirm(false)}
+        onConfirm={async () => {
+          try {
+            await deleteBijlage(nodeId);
+            refetchBijlage();
+            setShowBijlageDeleteConfirm(false);
+          } catch {
+            showError('Bijlage verwijderen mislukt.');
+          }
+        }}
+        title="Bijlage verwijderen"
+        confirmLabel="Verwijderen"
+        variant="danger"
+      >
+        <p>Weet je zeker dat je de bijlage <strong>{bijlageInfo?.bestandsnaam}</strong> wilt verwijderen?</p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!removeStakeholderId}
+        onClose={() => setRemoveStakeholderId(null)}
+        onConfirm={() => {
+          if (removeStakeholderId) {
+            removeStakeholder.mutate({ nodeId, stakeholderId: removeStakeholderId.id });
+            setRemoveStakeholderId(null);
+          }
+        }}
+        title="Betrokkene verwijderen"
+        confirmLabel="Verwijderen"
+        variant="danger"
+      >
+        <p>Weet je zeker dat je <strong>{removeStakeholderId?.naam}</strong> wilt verwijderen als betrokkene?</p>
+      </ConfirmDialog>
     </div>
   );
 }

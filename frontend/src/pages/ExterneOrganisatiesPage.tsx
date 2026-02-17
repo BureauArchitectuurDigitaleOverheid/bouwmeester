@@ -14,6 +14,7 @@ import {
   type ExterneOrganisatieCreate,
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 
 export function ExterneOrganisatiesPage() {
   const { data: organisaties = [], isLoading } = useExterneOrganisaties();
@@ -23,6 +24,7 @@ export function ExterneOrganisatiesPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [editingOrg, setEditingOrg] = useState<ExterneOrganisatie | null>(null);
+  const [deleteOrgId, setDeleteOrgId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<ExterneOrganisatieCreate>({
     naam: '',
@@ -63,15 +65,16 @@ export function ExterneOrganisatiesPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Weet je zeker dat je deze organisatie wilt verwijderen?')) {
-      try {
-        await deleteMutation.mutateAsync(id);
-      } catch {
-        setError('Fout bij verwijderen van organisatie.');
-      }
+  const handleDelete = async () => {
+    if (!deleteOrgId) return;
+    try {
+      await deleteMutation.mutateAsync(deleteOrgId);
+      setDeleteOrgId(null);
+    } catch {
+      setError('Fout bij verwijderen van organisatie.');
     }
   };
+  const deleteOrgName = organisaties.find((o) => o.id === deleteOrgId)?.naam;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -222,7 +225,7 @@ export function ExterneOrganisatiesPage() {
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
-                        onClick={() => handleDelete(org.id)}
+                        onClick={() => setDeleteOrgId(org.id)}
                         className="p-1.5 rounded-lg text-text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -235,6 +238,18 @@ export function ExterneOrganisatiesPage() {
           </tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        open={!!deleteOrgId}
+        onClose={() => setDeleteOrgId(null)}
+        onConfirm={handleDelete}
+        title="Organisatie verwijderen"
+        confirmLabel="Verwijderen"
+        variant="danger"
+        loading={deleteMutation.isPending}
+      >
+        <p>Weet je zeker dat je <strong>{deleteOrgName}</strong> wilt verwijderen?</p>
+      </ConfirmDialog>
     </div>
   );
 }
