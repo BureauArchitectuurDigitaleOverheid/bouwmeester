@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import { TaskDetailModal } from '@/components/tasks/TaskDetailModal';
 import { NodeDetailModal } from '@/components/nodes/NodeDetailModal';
 import { OpdrachtDetailModal } from '@/components/opdrachten/OpdrachtDetailModal';
@@ -10,41 +9,34 @@ import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 const BASE_Z = 50;
 
 /**
- * Dynamic stacking: the most recently opened modal gets the highest z-index.
+ * Dynamic stacking: the most recently triggered modal gets the highest z-index.
  *
- * We maintain a stack (ref) of modal keys in order of opening.
- * On every render we reconcile: newly-open modals are pushed to the top,
- * closed modals are removed. This is done synchronously so the z-index
- * values are correct in the same render pass.
+ * Each context exposes a monotonically increasing `openSeq` counter that bumps
+ * on every `open*Detail()` call. We sort open modals by their seq — the modal
+ * with the highest seq was opened most recently and gets the highest z-index.
+ * This correctly handles:
+ *  - Opening a fresh modal (new entry, highest seq → top)
+ *  - Re-opening a modal that was already open underneath (seq bumps → moves to top)
+ *  - Opening the same modal with a different ID (seq bumps → moves to top)
  */
 export function DetailModals() {
-  const { taskDetailId, closeTaskDetail } = useTaskDetail();
-  const { nodeDetailId, closeNodeDetail } = useNodeDetail();
-  const { opdrachtDetailId, closeOpdrachtDetail } = useOpdrachtDetail();
+  const { taskDetailId, closeTaskDetail, taskOpenSeq } = useTaskDetail();
+  const { nodeDetailId, closeNodeDetail, nodeOpenSeq } = useNodeDetail();
+  const { opdrachtDetailId, closeOpdrachtDetail, opdrachtOpenSeq } = useOpdrachtDetail();
 
-  const stackRef = useRef<string[]>([]);
+  const modals = [
+    { key: 'opdracht', open: !!opdrachtDetailId, seq: opdrachtOpenSeq },
+    { key: 'node', open: !!nodeDetailId, seq: nodeOpenSeq },
+    { key: 'task', open: !!taskDetailId, seq: taskOpenSeq },
+  ];
 
-  // Reconcile stack synchronously during render
-  const openSet: Record<string, boolean> = {
-    opdracht: !!opdrachtDetailId,
-    node: !!nodeDetailId,
-    task: !!taskDetailId,
-  };
-
-  // Remove closed modals
-  let stack = stackRef.current.filter((key) => openSet[key]);
-
-  // Push newly opened modals to the top
-  for (const key of ['opdracht', 'node', 'task']) {
-    if (openSet[key] && !stack.includes(key)) {
-      stack = [...stack, key];
-    }
-  }
-
-  stackRef.current = stack;
+  // Sort open modals by seq (ascending) — last element gets highest z-index
+  const openModals = modals
+    .filter((m) => m.open)
+    .sort((a, b) => a.seq - b.seq);
 
   function zIndexFor(key: string): number {
-    const idx = stack.indexOf(key);
+    const idx = openModals.findIndex((m) => m.key === key);
     return idx === -1 ? BASE_Z : BASE_Z + (idx + 1) * 10;
   }
 

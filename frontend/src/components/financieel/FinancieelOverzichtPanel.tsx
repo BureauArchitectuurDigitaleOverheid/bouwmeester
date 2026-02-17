@@ -7,7 +7,7 @@ import {
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatCurrencyCompact } from '@/utils/format';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 
@@ -39,11 +39,11 @@ export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelPro
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-xs text-text-secondary">Totaal budget</p>
-          <p className="text-lg font-semibold text-text tabular-nums">{formatCurrency(overzicht.totaal_budget)}</p>
+          <p className="text-lg font-semibold text-text tabular-nums">{formatCurrencyCompact(overzicht.totaal_budget)}</p>
         </div>
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-xs text-text-secondary">Totaal gerealiseerd</p>
-          <p className="text-lg font-semibold text-text tabular-nums">{formatCurrency(overzicht.totaal_gerealiseerd)}</p>
+          <p className="text-lg font-semibold text-text tabular-nums">{formatCurrencyCompact(overzicht.totaal_gerealiseerd)}</p>
         </div>
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-xs text-text-secondary">Uitnutting</p>
@@ -81,8 +81,8 @@ export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelPro
               return (
                 <tr key={j.begrotingsjaar} className="border-b border-border last:border-0">
                   <td className="py-2 font-medium text-text">{j.begrotingsjaar}</td>
-                  <td className="py-2 text-right text-text tabular-nums">{formatCurrency(j.budget)}</td>
-                  <td className="py-2 text-right text-text tabular-nums">{formatCurrency(j.gerealiseerd)}</td>
+                  <td className="py-2 text-right text-text tabular-nums">{formatCurrencyCompact(j.budget)}</td>
+                  <td className="py-2 text-right text-text tabular-nums">{formatCurrencyCompact(j.gerealiseerd)}</td>
                   <td className="py-2 text-right text-text">{uitn != null ? `${uitn.toFixed(1)}%` : '-'}</td>
                   <td className="py-2 text-right text-text-secondary">{j.opdracht_count}</td>
                 </tr>
@@ -120,7 +120,7 @@ export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelPro
                   </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-sm text-text tabular-nums">{formatCurrency(o.budget)}</span>
+                  <span className="text-sm text-text tabular-nums">{formatCurrencyCompact(o.budget)}</span>
                   <Badge variant={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'gray'}>
                     {OPDRACHT_STATUS_LABELS[o.status as OpdrachtStatus] || o.status}
                   </Badge>

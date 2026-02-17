@@ -131,7 +131,10 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.instrument_id) return;
+    if (!form.instrument_id) {
+      setError('Selecteer een instrument.');
+      return;
+    }
     setError(null);
     const data = {
       type: form.type as OpdrachtType,

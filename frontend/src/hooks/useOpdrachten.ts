@@ -30,7 +30,7 @@ export function useCreateOpdracht() {
   return useMutationWithError({
     mutationFn: (data: OpdrachtCreate) => createOpdracht(data),
     errorMessage: 'Fout bij aanmaken opdracht',
-    invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.overzicht(undefined), queryKeys.tasks.lists()],
+    invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.all, queryKeys.tasks.lists()],
   });
 }
 
@@ -38,7 +38,7 @@ export function useUpdateOpdracht() {
   return useMutationWithError({
     mutationFn: ({ id, data }: { id: string; data: OpdrachtUpdate }) => updateOpdracht(id, data),
     errorMessage: 'Fout bij bijwerken opdracht',
-    invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.overzicht(undefined), queryKeys.tasks.lists()],
+    invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.all, queryKeys.tasks.lists()],
   });
 }
 
@@ -46,7 +46,7 @@ export function useDeleteOpdracht() {
   return useMutationWithError({
     mutationFn: (id: string) => deleteOpdracht(id),
     errorMessage: 'Fout bij verwijderen opdracht',
-    invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.overzicht(undefined)],
+    invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.all],
   });
 }
 

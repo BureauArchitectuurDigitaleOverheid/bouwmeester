@@ -1,7 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, Search } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { useOpdrachten, useOpdrachtenSummary } from '@/hooks/useOpdrachten';
 import { useExterneOrganisaties } from '@/hooks/useExterneOrganisaties';
+import { usePeople } from '@/hooks/usePeople';
+import { useNodes } from '@/hooks/useNodes';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 import { Button } from '@/components/common/Button';
@@ -16,12 +19,13 @@ import {
   OPDRACHT_STATUS_LABELS,
   OPDRACHT_STATUS_COLORS,
   OPDRACHT_TYPE_COLORS,
+  NodeType,
   type OpdrachtFilters,
   OpdrachtType,
   OpdrachtStatus,
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatCurrencyCompact } from '@/utils/format';
 
 const TYPE_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_TYPE_LABELS).map(
   ([value, label]) => ({ value, label }),
@@ -34,9 +38,25 @@ const STATUS_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_STATUS_LABEL
 export function OpdrachtenPage() {
   const { openOpdrachtDetail } = useOpdrachtDetail();
   const { openOpdrachtCreate } = useOpdrachtCreate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // API-level filters (sent to backend)
-  const [apiFilters, setApiFilters] = useState<OpdrachtFilters>({});
+  // API-level filters (sent to backend), seeded from URL params
+  const [apiFilters, setApiFilters] = useState<OpdrachtFilters>(() => {
+    const initial: OpdrachtFilters = {};
+    const v = searchParams.get('verantwoordelijke_id');
+    if (v) initial.verantwoordelijke_id = v;
+    const i = searchParams.get('instrument_id');
+    if (i) initial.instrument_id = i;
+    return initial;
+  });
+
+  // Keep URL params in sync with apiFilters
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (apiFilters.verantwoordelijke_id) params.set('verantwoordelijke_id', apiFilters.verantwoordelijke_id);
+    if (apiFilters.instrument_id) params.set('instrument_id', apiFilters.instrument_id);
+    setSearchParams(params, { replace: true });
+  }, [apiFilters.verantwoordelijke_id, apiFilters.instrument_id, setSearchParams]);
 
   // Client-side filters
   const [searchInput, setSearchInput] = useState('');
@@ -47,11 +67,14 @@ export function OpdrachtenPage() {
   const { data: opdrachten = [], isLoading } = useOpdrachten(apiFilters);
   const { data: summary } = useOpdrachtenSummary(apiFilters);
   const { data: externeOrgs = [] } = useExterneOrganisaties();
+  const { data: people = [] } = usePeople();
+  const { data: instrumenten = [] } = useNodes(NodeType.INSTRUMENT);
 
   // Derive year options from data
   const yearOptions: SelectOption[] = useMemo(() => {
     const years = [...new Set(opdrachten.map((o) => o.begrotingsjaar))].sort((a, b) => b - a);
-    const allYears = years.length > 0 ? years : [2024, 2025, 2026];
+    const currentYear = new Date().getFullYear();
+    const allYears = years.length > 0 ? years : [currentYear - 1, currentYear, currentYear + 1];
     return allYears.map((y) => ({ value: String(y), label: String(y) }));
   }, [opdrachten]);
 
@@ -63,6 +86,18 @@ export function OpdrachtenPage() {
         label: o.afkorting || o.naam,
       })),
     [externeOrgs],
+  );
+
+  // Verantwoordelijke options from people
+  const verantwoordelijkeOptions: SelectOption[] = useMemo(
+    () => people.map((p) => ({ value: p.id, label: p.naam })),
+    [people],
+  );
+
+  // Instrument options from nodes
+  const instrumentOptions: SelectOption[] = useMemo(
+    () => instrumenten.map((n) => ({ value: n.id, label: n.title })),
+    [instrumenten],
   );
 
   // Client-side filtering
@@ -115,11 +150,11 @@ export function OpdrachtenPage() {
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-sm text-text-secondary">Totaal budget</p>
-          <p className="text-2xl font-semibold text-text">{formatCurrency(totaalBudget)}</p>
+          <p className="text-2xl font-semibold text-text">{formatCurrencyCompact(totaalBudget)}</p>
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-sm text-text-secondary">Totaal gerealiseerd</p>
-          <p className="text-2xl font-semibold text-text">{formatCurrency(totaalGerealiseerd)}</p>
+          <p className="text-2xl font-semibold text-text">{formatCurrencyCompact(totaalGerealiseerd)}</p>
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
           <p className="text-sm text-text-secondary">Uitnutting</p>
@@ -198,6 +233,38 @@ export function OpdrachtenPage() {
             placeholder="Alle opdrachtnemers"
             onClear={() =>
               setApiFilters((f) => ({ ...f, opdrachtnemer_id: undefined }))
+            }
+          />
+        </div>
+        <div className="w-full sm:w-48">
+          <CreatableSelect
+            value={apiFilters.verantwoordelijke_id ?? ''}
+            onChange={(v) =>
+              setApiFilters((f) => ({
+                ...f,
+                verantwoordelijke_id: v || undefined,
+              }))
+            }
+            options={verantwoordelijkeOptions}
+            placeholder="Alle verantwoordelijken"
+            onClear={() =>
+              setApiFilters((f) => ({ ...f, verantwoordelijke_id: undefined }))
+            }
+          />
+        </div>
+        <div className="w-full sm:w-48">
+          <CreatableSelect
+            value={apiFilters.instrument_id ?? ''}
+            onChange={(v) =>
+              setApiFilters((f) => ({
+                ...f,
+                instrument_id: v || undefined,
+              }))
+            }
+            options={instrumentOptions}
+            placeholder="Alle instrumenten"
+            onClear={() =>
+              setApiFilters((f) => ({ ...f, instrument_id: undefined }))
             }
           />
         </div>

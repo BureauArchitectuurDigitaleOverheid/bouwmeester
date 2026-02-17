@@ -1108,6 +1108,7 @@ export interface DashboardStats {
   corpus_node_count: number;
   open_task_count: number;
   overdue_task_count: number;
+  active_opdracht_budget: number;
 }
 
 // Import/Export types

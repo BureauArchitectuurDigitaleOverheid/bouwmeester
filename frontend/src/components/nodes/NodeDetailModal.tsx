@@ -75,7 +75,7 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
   const { data: node, isLoading } = useNode(nodeId ?? undefined);
   const { data: stakeholders } = useNodeStakeholders(nodeId ?? undefined);
   const { data: neighbors } = useNodeNeighbors(nodeId ?? undefined);
-  const { data: nodeTags } = useNodeTags(nodeId ?? '');
+  const { data: nodeTags } = useNodeTags(nodeId ?? undefined);
   const { data: tasks } = useQuery({
     queryKey: ['tasks', 'list', { node_id: nodeId }],
     queryFn: () => getTasks({ node_id: nodeId! }),

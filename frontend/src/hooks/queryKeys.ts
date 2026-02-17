@@ -154,6 +154,7 @@ export const queryKeys = {
 
   // --- Financieel ---
   financieel: {
+    all: ['financieel'] as const,
     overzicht: (nodeId: string | undefined) => ['financieel', 'overzicht', nodeId] as const,
     opdrachten: (nodeId: string | undefined) => ['financieel', 'opdrachten', nodeId] as const,
   },

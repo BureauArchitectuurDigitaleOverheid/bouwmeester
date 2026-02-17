@@ -124,6 +124,14 @@ class OpdrachtUpdate(BaseModel):
             raise ValueError("instrument_id mag niet null zijn")
         return v
 
+    @field_validator("begrotingsjaar")
+    @classmethod
+    def begrotingsjaar_not_null(cls, v: int | None) -> int | None:
+        """Reject explicit null — begrotingsjaar is required at the DB level."""
+        if v is None:
+            raise ValueError("begrotingsjaar mag niet null zijn")
+        return v
+
 
 class OpdrachtInstrumentSummary(BaseModel):
     id: UUID

@@ -1,6 +1,10 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { X, ArrowLeft } from 'lucide-react';
 import type { BadgeVariant } from '@/types';
+
+// Shared counter: tracks how many modals are currently open.
+// Only restore body overflow when the last modal closes.
+let openModalCount = 0;
 
 const ACCENT_BORDER: Record<BadgeVariant, string> = {
   blue: 'border-t-blue-400',
@@ -56,14 +60,27 @@ export function Modal({
   backLabel,
   onBack,
 }: ModalProps) {
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpen.current) {
+      openModalCount++;
       document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
+      wasOpen.current = true;
+    } else if (!open && wasOpen.current) {
+      openModalCount = Math.max(0, openModalCount - 1);
+      if (openModalCount === 0) {
+        document.body.style.overflow = '';
+      }
+      wasOpen.current = false;
     }
     return () => {
-      document.body.style.overflow = '';
+      if (wasOpen.current) {
+        openModalCount = Math.max(0, openModalCount - 1);
+        if (openModalCount === 0) {
+          document.body.style.overflow = '';
+        }
+        wasOpen.current = false;
+      }
     };
   }, [open]);
 

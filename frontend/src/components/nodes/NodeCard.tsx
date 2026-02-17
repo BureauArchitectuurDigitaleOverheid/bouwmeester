@@ -7,7 +7,7 @@ import { NODE_TYPE_COLORS, NODE_STATUS_LABELS, NodeType } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { richTextToPlain } from '@/utils/richtext';
 import { formatDateShort } from '@/utils/dates';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatCurrencyCompact } from '@/utils/format';
 
 interface NodeCardProps {
   node: CorpusNode;
@@ -60,7 +60,7 @@ export function NodeCard({ node }: NodeCardProps) {
         {node.financieel_summary && node.financieel_summary.totaal_budget > 0 && (
           <span className="inline-flex items-center gap-1 text-xs text-text-secondary" title={`Budget: ${formatCurrency(node.financieel_summary.totaal_budget)} — Gerealiseerd: ${formatCurrency(node.financieel_summary.totaal_gerealiseerd)}`}>
             <Wallet className="h-3 w-3" />
-            {formatCurrency(node.financieel_summary.totaal_budget)}
+            {formatCurrencyCompact(node.financieel_summary.totaal_budget)}
           </span>
         )}
         {node.node_type === NodeType.DOSSIER && node.beleidskompas_progress && (

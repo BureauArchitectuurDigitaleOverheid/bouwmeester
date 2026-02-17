@@ -1,6 +1,7 @@
 """Service for automatic task generation on opdracht lifecycle events."""
 
 import logging
+import uuid
 from datetime import date, timedelta
 
 from sqlalchemy import select
@@ -79,15 +80,17 @@ class OpdrachtTaskService:
         return count
 
     async def check_budget_preparation(self) -> int:
-        """Create budget preparation tasks in months 8-10 for active opdrachten."""
+        """Create budget preparation tasks in months 8-10 for active opdrachten.
+
+        Targets current-year active opdrachten that need budget prep for next year.
+        """
         today = date.today()
         if today.month not in (8, 9, 10):
             return 0
 
-        next_year = today.year + 1
         stmt = select(Opdracht).where(
             Opdracht.status == "actief",
-            Opdracht.begrotingsjaar == next_year,
+            Opdracht.begrotingsjaar == today.year,
         )
         result = await self.session.execute(stmt)
         opdrachten = list(result.scalars().all())
@@ -111,7 +114,7 @@ class OpdrachtTaskService:
     # Helpers
     # ------------------------------------------------------------------
 
-    async def _has_open_task(self, opdracht_id, work_type: str) -> bool:
+    async def _has_open_task(self, opdracht_id: uuid.UUID, work_type: str) -> bool:
         """Check if an open task with this work_type already exists for the opdracht."""
         stmt = (
             select(Task.id)

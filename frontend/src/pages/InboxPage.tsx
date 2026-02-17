@@ -10,7 +10,7 @@ import { useNotifications, useDashboardStats, useMarkAllNotificationsRead, useMa
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { useEenheidOverview } from '@/hooks/useTasks';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrencyCompact } from '@/utils/format';
 import type { InboxItem } from '@/types';
 
 const NOTIFICATION_TYPE_MAP: Record<string, string> = {
@@ -127,15 +127,18 @@ export function InboxPage() {
 
         <Card
           hoverable
-          onClick={() => navigate('/opdrachten')}
+          onClick={() => {
+            const params = currentPerson?.id ? `?verantwoordelijke_id=${currentPerson.id}` : '';
+            navigate(`/opdrachten${params}`);
+          }}
         >
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-green-50 text-green-600">
               <Euro className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-text">
-                {stats?.active_opdracht_budget != null ? formatCurrency(stats.active_opdracht_budget) : '-'}
+              <p className="text-2xl font-bold text-text whitespace-nowrap">
+                {stats?.active_opdracht_budget != null ? formatCurrencyCompact(stats.active_opdracht_budget) : '-'}
               </p>
               <p className="text-xs text-text-secondary">Actief budget</p>
             </div>

@@ -59,13 +59,19 @@ export function RelatedItemsList({
           <ArrowRight className="h-3.5 w-3.5 text-gray-300 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
         </button>
       ))}
-      {hasMore && onShowAll && (
-        <button
-          onClick={onShowAll}
-          className="text-xs text-primary-700 hover:text-primary-900 transition-colors pl-1.5 pt-1"
-        >
-          {showAllLabel ?? `Bekijk alle ${items.length} items`}
-        </button>
+      {hasMore && (
+        onShowAll ? (
+          <button
+            onClick={onShowAll}
+            className="text-xs text-primary-700 hover:text-primary-900 transition-colors pl-1.5 pt-1"
+          >
+            {showAllLabel ?? `Bekijk alle ${items.length} items`}
+          </button>
+        ) : (
+          <p className="text-xs text-text-secondary pl-1.5 pt-1">
+            +{items.length - maxVisible} meer
+          </p>
+        )
       )}
     </div>
   );

@@ -20,7 +20,8 @@ class ExterneOrganisatieRepository(BaseRepository[ExterneOrganisatie]):
         if type is not None:
             stmt = stmt.where(ExterneOrganisatie.type == type)
         if search:
-            pattern = f"%{search}%"
+            escaped = search.replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
             stmt = stmt.where(
                 ExterneOrganisatie.naam.ilike(pattern)
                 | ExterneOrganisatie.afkorting.ilike(pattern)
