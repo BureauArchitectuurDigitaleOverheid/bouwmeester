@@ -300,7 +300,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             {(node.node_type === NodeType.INSTRUMENT || node.node_type === NodeType.MAATREGEL || node.node_type === NodeType.DOEL) && (
               <Card>
                 <h3 className="text-sm font-medium text-text mb-3">Financieel overzicht</h3>
-                <FinancieelOverzichtPanel nodeId={nodeId} />
+                <FinancieelOverzichtPanel nodeId={nodeId} nodeType={node.node_type} />
               </Card>
             )}
 

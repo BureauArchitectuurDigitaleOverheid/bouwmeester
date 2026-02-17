@@ -44,6 +44,13 @@ class ExterneOrganisatieUpdate(BaseModel):
     website: str | None = Field(None, max_length=500)
     beschrijving: str | None = Field(None, max_length=5000)
 
+    @field_validator("website")
+    @classmethod
+    def website_must_be_http_url(cls, v: str | None) -> str | None:
+        if v is not None and not v.startswith(("http://", "https://")):
+            raise ValueError("website moet beginnen met http:// of https://")
+        return v
+
 
 class ExterneOrganisatieResponse(BaseModel):
     id: UUID

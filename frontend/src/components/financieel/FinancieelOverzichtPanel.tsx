@@ -13,9 +13,10 @@ import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 
 interface FinancieelOverzichtPanelProps {
   nodeId: string;
+  nodeType: string;
 }
 
-export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelProps) {
+export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzichtPanelProps) {
   const { data: overzicht, isLoading: loadingOverzicht } = useNodeFinancieel(nodeId);
   const { data: opdrachten = [], isLoading: loadingOpdrachten } = useNodeOpdrachten(nodeId);
   const { openOpdrachtDetail } = useOpdrachtDetail();
@@ -95,14 +96,16 @@ export function FinancieelOverzichtPanel({ nodeId }: FinancieelOverzichtPanelPro
       <div>
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-sm font-semibold text-text">Opdrachten</h4>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Plus className="h-3.5 w-3.5" />}
-            onClick={() => openOpdrachtCreate({ instrument_id: nodeId })}
-          >
-            Nieuwe opdracht
-          </Button>
+          {nodeType === 'instrument' && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Plus className="h-3.5 w-3.5" />}
+              onClick={() => openOpdrachtCreate({ instrument_id: nodeId })}
+            >
+              Nieuwe opdracht
+            </Button>
+          )}
         </div>
         {opdrachten.length > 0 ? (
           <div className="space-y-2">

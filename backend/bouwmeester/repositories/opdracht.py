@@ -34,8 +34,15 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
             self.session.add(link)
 
         await self.session.flush()
-        await self.session.refresh(opdracht)
-        return opdracht
+
+        # Re-fetch with eager loading to avoid MissingGreenlet on node_koppelingen
+        stmt = (
+            select(Opdracht)
+            .where(Opdracht.id == opdracht.id)
+            .options(selectinload(Opdracht.node_koppelingen))
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one()
 
     async def update(self, id: UUID, data: OpdrachtUpdate) -> Opdracht | None:
         stmt = (
@@ -50,8 +57,15 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         for key, value in data.model_dump(exclude_unset=True).items():
             setattr(obj, key, value)
         await self.session.flush()
-        await self.session.refresh(obj, attribute_names=["node_koppelingen"])
-        return obj
+
+        # Re-fetch to pick up server-side defaults (updated_at) and relationships
+        stmt2 = (
+            select(Opdracht)
+            .where(Opdracht.id == id)
+            .options(selectinload(Opdracht.node_koppelingen))
+        )
+        result2 = await self.session.execute(stmt2)
+        return result2.scalar_one()
 
     async def get(self, id: UUID) -> Opdracht | None:
         stmt = (

@@ -54,9 +54,11 @@ class OpdrachtTaskService:
 
     async def check_deadlines(self) -> int:
         """Create deadline-approaching tasks for opdrachten due within 30 days."""
-        threshold = date.today() + timedelta(days=30)
+        today = date.today()
+        threshold = today + timedelta(days=30)
         stmt = select(Opdracht).where(
             Opdracht.einddatum.isnot(None),
+            Opdracht.einddatum >= today,
             Opdracht.einddatum <= threshold,
             Opdracht.status.in_(["concept", "actief"]),
         )
