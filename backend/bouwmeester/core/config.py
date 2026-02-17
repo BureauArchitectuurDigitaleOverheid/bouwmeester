@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     VLAM_BASE_URL: str = ""
     VLAM_MODEL_ID: str = ""
     ENABLED_IMPORT_TYPES: list[str] = ["motie", "kamervraag", "toezegging"]
+    OPDRACHT_TASK_INTERVAL_SECONDS: int = 86400
 
     # Mattermost integration
     MATTERMOST_ENABLED: bool = False

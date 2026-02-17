@@ -5,6 +5,8 @@ import { CurrentPersonProvider } from '@/contexts/CurrentPersonContext';
 import { VocabularyProvider } from '@/contexts/VocabularyContext';
 import { TaskDetailProvider } from '@/contexts/TaskDetailContext';
 import { NodeDetailProvider } from '@/contexts/NodeDetailContext';
+import { OpdrachtDetailProvider } from '@/contexts/OpdrachtDetailContext';
+import { OpdrachtCreateProvider } from '@/contexts/OpdrachtCreateContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { DetailModals } from '@/components/common/DetailModals';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -17,6 +19,8 @@ import { OrganisatiePage } from '@/pages/OrganisatiePage';
 import { SearchPage } from '@/pages/SearchPage';
 import { ParlementairPage } from '@/pages/ParlementairPage';
 import { EenheidOverzichtPage } from '@/pages/EenheidOverzichtPage';
+import { OpdrachtenPage } from '@/pages/OpdrachtenPage';
+import { ExterneOrganisatiesPage } from '@/pages/ExterneOrganisatiesPage';
 import { AdminPage } from '@/pages/AdminPage';
 import { AuditLogPage } from '@/pages/AuditLogPage';
 import { DocsPage } from '@/pages/DocsPage';
@@ -102,6 +106,8 @@ export default function App() {
             <BrowserRouter>
               <TaskDetailProvider>
               <NodeDetailProvider>
+              <OpdrachtCreateProvider>
+              <OpdrachtDetailProvider>
                 <Routes>
                   <Route element={<AppLayout />}>
                     <Route path="/" element={<InboxPage />} />
@@ -113,6 +119,8 @@ export default function App() {
                     <Route path="/eenheid-overzicht" element={<EenheidOverzichtPage />} />
                     <Route path="/search" element={<SearchPage />} />
                     <Route path="/parlementair" element={<ParlementairPage />} />
+                    <Route path="/opdrachten" element={<OpdrachtenPage />} />
+                    <Route path="/externe-organisaties" element={<ExterneOrganisatiesPage />} />
                     <Route path="/admin" element={<AdminPage />} />
                     <Route path="/auditlog" element={<AuditLogPage />} />
                     <Route path="/docs" element={<DocsPage />} />
@@ -120,6 +128,8 @@ export default function App() {
                   </Route>
                 </Routes>
                 <DetailModals />
+              </OpdrachtDetailProvider>
+              </OpdrachtCreateProvider>
               </NodeDetailProvider>
               </TaskDetailProvider>
             </BrowserRouter>

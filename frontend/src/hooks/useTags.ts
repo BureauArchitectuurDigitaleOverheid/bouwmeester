@@ -11,10 +11,10 @@ export function useTags(params?: { tree?: boolean; search?: string }) {
   });
 }
 
-export function useNodeTags(nodeId: string) {
+export function useNodeTags(nodeId: string | undefined) {
   return useQuery({
-    queryKey: queryKeys.tags.forNode(nodeId),
-    queryFn: () => getNodeTags(nodeId),
+    queryKey: queryKeys.tags.forNode(nodeId ?? ''),
+    queryFn: () => getNodeTags(nodeId!),
     enabled: !!nodeId,
   });
 }

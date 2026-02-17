@@ -6,6 +6,7 @@ import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { useCreateTask, useWorkTypes } from '@/hooks/useTasks';
+import { useOpdrachten } from '@/hooks/useOpdrachten';
 import { useTaskFormOptions } from '@/hooks/useTaskFormOptions';
 import { useEnumOptions } from '@/hooks/useEnumOptions';
 import {
@@ -18,9 +19,10 @@ interface TaskCreateFormProps {
   onClose: () => void;
   nodeId?: string;
   parentId?: string;
+  opdrachtId?: string;
 }
 
-export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFormProps) {
+export function TaskCreateForm({ open, onClose, nodeId, parentId, opdrachtId }: TaskCreateFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<string>(TaskPriority.NORMAAL);
@@ -29,10 +31,13 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
   const [assigneeId, setAssigneeId] = useState('');
   const [organisatieEenheidId, setOrganisatieEenheidId] = useState('');
   const [workType, setWorkType] = useState('');
+  const [selectedOpdrachtId, setSelectedOpdrachtId] = useState(opdrachtId ?? '');
 
   const priorityOptions = useEnumOptions(TaskPriority, TASK_PRIORITY_LABELS);
   const { data: workTypes = [] } = useWorkTypes();
   const workTypeOptions = workTypes.map((wt) => ({ value: wt, label: wt }));
+  const { data: opdrachten = [] } = useOpdrachten();
+  const opdrachtOptions = opdrachten.map((o) => ({ value: o.id, label: o.titel, description: o.type }));
 
   // Reset form state when dialog opens
   useEffect(() => {
@@ -45,8 +50,9 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
       setAssigneeId('');
       setOrganisatieEenheidId('');
       setWorkType('');
+      setSelectedOpdrachtId(opdrachtId ?? '');
     }
-  }, [open, nodeId]);
+  }, [open, nodeId, opdrachtId]);
 
   const createTask = useCreateTask();
   const {
@@ -72,6 +78,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
       assignee_id: assigneeId || undefined,
       organisatie_eenheid_id: organisatieEenheidId || undefined,
       parent_id: parentId || undefined,
+      opdracht_id: selectedOpdrachtId || undefined,
       work_type: workType.trim() || undefined,
     });
 
@@ -153,6 +160,15 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId }: TaskCreateFo
             onCreate={async (text) => { setWorkType(text); return text; }}
             createLabel="Nieuw werktype"
             onClear={() => setWorkType('')}
+          />
+
+          <CreatableSelect
+            label="Opdracht"
+            value={selectedOpdrachtId}
+            onChange={setSelectedOpdrachtId}
+            options={opdrachtOptions}
+            placeholder="Koppel aan een opdracht..."
+            onClear={() => setSelectedOpdrachtId('')}
           />
 
           <Input

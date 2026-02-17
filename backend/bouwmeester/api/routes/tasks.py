@@ -39,14 +39,17 @@ async def list_tasks(
     node_id: UUID | None = Query(None),
     assignee_id: UUID | None = Query(None),
     organisatie_eenheid_id: UUID | None = Query(None),
+    opdracht_id: UUID | None = Query(None),
     include_children: bool = Query(False),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
-    """List tasks. Filter by status, node_id, assignee_id, or organisatie_eenheid_id."""
+    """List tasks with optional filters."""
     repo = TaskRepository(db)
-    if node_id is not None:
+    if opdracht_id is not None:
+        tasks = await repo.get_by_opdracht(opdracht_id, skip=skip, limit=limit)
+    elif node_id is not None:
         tasks = await repo.get_by_node(node_id, skip=skip, limit=limit)
     elif assignee_id is not None:
         tasks = await repo.get_by_assignee(assignee_id, skip=skip, limit=limit)

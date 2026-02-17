@@ -2,6 +2,7 @@
 
 import enum
 from datetime import date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -85,6 +86,11 @@ class BeleidskompasProgress(BaseModel):
     total_steps: int
 
 
+class FinancieelSummary(BaseModel):
+    totaal_budget: Decimal
+    totaal_gerealiseerd: Decimal
+
+
 class CorpusNodeResponse(CorpusNodeBase):
     # Override fields without length constraints — response schemas must be
     # able to return data that already exists in the database (e.g. long
@@ -100,6 +106,7 @@ class CorpusNodeResponse(CorpusNodeBase):
     updated_at: datetime | None = None
     edge_count: int | None = None
     beleidskompas_progress: BeleidskompasProgress | None = None
+    financieel_summary: FinancieelSummary | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

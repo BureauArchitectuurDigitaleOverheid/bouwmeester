@@ -100,6 +100,29 @@ async def _mattermost_link_loop(settings) -> None:  # type: ignore[no-untyped-de
         await asyncio.sleep(settings.MATTERMOST_POLL_INTERVAL_SECONDS)
 
 
+async def _opdracht_task_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Daily check for deadline-approaching and budget-preparation tasks."""
+    while True:
+        try:
+            async with async_session() as session:
+                from bouwmeester.services.opdracht_task_service import (
+                    OpdrachtTaskService,
+                )
+
+                service = OpdrachtTaskService(session)
+                deadline_count = await service.check_deadlines()
+                budget_count = await service.check_budget_preparation()
+                await session.commit()
+                logger.info(
+                    f"Opdracht task cycle complete: "
+                    f"{deadline_count} deadline, {budget_count} budget tasks"
+                )
+        except Exception:
+            logger.exception("Error in opdracht task cycle")
+
+        await asyncio.sleep(settings.OPDRACHT_TASK_INTERVAL_SECONDS)
+
+
 async def main() -> None:
     settings = get_settings()
     logger.info(
@@ -110,6 +133,7 @@ async def main() -> None:
     tasks = [
         asyncio.create_task(_parlementair_loop(settings)),
         asyncio.create_task(_mattermost_link_loop(settings)),
+        asyncio.create_task(_opdracht_task_loop(settings)),
     ]
     await asyncio.gather(*tasks)
 

@@ -5,7 +5,7 @@
  * Prefix keys are useful for broad invalidation (e.g. invalidate all nodes).
  */
 
-import type { ActivityFeedParams, EdgeFilters, ParlementairItemFilters, SearchResultType, TaskFilters } from '@/types';
+import type { ActivityFeedParams, EdgeFilters, OpdrachtFilters, ParlementairItemFilters, SearchResultType, TaskFilters } from '@/types';
 
 export const queryKeys = {
   // --- Nodes ---
@@ -35,6 +35,7 @@ export const queryKeys = {
     unassigned: (orgId?: string) => ['tasks', 'list', 'unassigned', orgId] as const,
     eenheidOverview: (orgId: string | null) => ['tasks', 'list', 'eenheid-overview', orgId] as const,
     byPerson: (personId: string | null) => ['tasks', 'list', 'by-person', personId] as const,
+    byOpdracht: (opdrachtId: string | null) => ['tasks', 'list', 'by-opdracht', opdrachtId] as const,
     workTypes: () => ['tasks', 'work-types'] as const,
   },
 
@@ -132,5 +133,29 @@ export const queryKeys = {
   mattermost: {
     all: ['mattermost'] as const,
     linkStatus: (personId?: string) => ['mattermost', 'link-status', personId] as const,
+  },
+
+  // --- Opdrachten ---
+  opdrachten: {
+    all: ['opdrachten'] as const,
+    lists: () => ['opdrachten', 'list'] as const,
+    list: (filters?: OpdrachtFilters) => ['opdrachten', 'list', filters] as const,
+    detail: (id: string | undefined) => ['opdrachten', 'detail', id] as const,
+    summary: (filters?: OpdrachtFilters) => ['opdrachten', 'summary', filters] as const,
+  },
+
+  // --- Externe Organisaties ---
+  externeOrganisaties: {
+    all: ['externe-organisaties'] as const,
+    lists: () => ['externe-organisaties', 'list'] as const,
+    list: (params?: { type?: string; search?: string }) => ['externe-organisaties', 'list', params] as const,
+    detail: (id: string | undefined) => ['externe-organisaties', 'detail', id] as const,
+  },
+
+  // --- Financieel ---
+  financieel: {
+    all: ['financieel'] as const,
+    overzicht: (nodeId: string | undefined) => ['financieel', 'overzicht', nodeId] as const,
+    opdrachten: (nodeId: string | undefined) => ['financieel', 'opdrachten', nodeId] as const,
   },
 } as const;

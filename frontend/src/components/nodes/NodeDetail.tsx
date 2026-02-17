@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { clsx } from 'clsx';
 import { ArrowLeft, Pencil, Trash2, Calendar, Link as LinkIcon, Users, X, ExternalLink, Plus, Download, Upload, FileText } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
@@ -15,6 +15,7 @@ import { EdgeList } from './EdgeList';
 import { EdgeSuggestions } from './EdgeSuggestions';
 import { ContentSummary } from './ContentSummary';
 import { BeleidskompasPanel } from './beleidskompas/BeleidskompasPanel';
+import { FinancieelOverzichtPanel } from '@/components/financieel/FinancieelOverzichtPanel';
 import { TaskView } from '@/components/tasks/TaskView';
 import { useNode, useNodeNeighbors, useNodeStakeholders, useDeleteNode, useNodeParlementairItem, useAddNodeStakeholder, useUpdateNodeStakeholder, useRemoveNodeStakeholder, useNodeTitleHistory, useNodeStatusHistory, useNodeBronDetail, useNodeBijlage } from '@/hooks/useNodes';
 import { useTasks } from '@/hooks/useTasks';
@@ -47,7 +48,12 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const corpusUrl = (location.state as { fromCorpus?: string } | null)?.fromCorpus ?? '/corpus';
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') as TabId | null;
+  const activeTab: TabId = tabParam && tabs.some((t) => t.id === tabParam) ? tabParam : 'overview';
+  const setActiveTab = useCallback((tab: TabId) => {
+    setSearchParams(tab === 'overview' ? {} : { tab }, { replace: true });
+  }, [setSearchParams]);
   const [showEditForm, setShowEditForm] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
@@ -289,6 +295,14 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
               <RichTextDisplay content={node.description} />
               <ContentSummary text={node.description ?? ''} />
             </Card>
+
+            {/* Financieel overzicht for instrument/maatregel/doel nodes */}
+            {(node.node_type === NodeType.INSTRUMENT || node.node_type === NodeType.MAATREGEL || node.node_type === NodeType.DOEL) && (
+              <Card>
+                <h3 className="text-sm font-medium text-text mb-3">Financieel overzicht</h3>
+                <FinancieelOverzichtPanel nodeId={nodeId} nodeType={node.node_type} />
+              </Card>
+            )}
 
             {/* Bron detail */}
             {node.node_type === NodeType.BRON && bronDetail && (

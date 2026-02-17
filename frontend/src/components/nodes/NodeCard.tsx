@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowRight, Compass, Link as LinkIcon } from 'lucide-react';
+import { ArrowRight, Compass, Link as LinkIcon, Wallet } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import type { CorpusNode, NodeStatus } from '@/types';
@@ -7,6 +7,7 @@ import { NODE_TYPE_COLORS, NODE_STATUS_LABELS, NodeType } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { richTextToPlain } from '@/utils/richtext';
 import { formatDateShort } from '@/utils/dates';
+import { formatCurrency, formatCurrencyCompact } from '@/utils/format';
 
 interface NodeCardProps {
   node: CorpusNode;
@@ -54,6 +55,12 @@ export function NodeCard({ node }: NodeCardProps) {
           <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
             <LinkIcon className="h-3 w-3" />
             {node.edge_count} verbindingen
+          </span>
+        )}
+        {node.financieel_summary && node.financieel_summary.totaal_budget > 0 && (
+          <span className="inline-flex items-center gap-1 text-xs text-text-secondary" title={`Budget: ${formatCurrency(node.financieel_summary.totaal_budget)} — Gerealiseerd: ${formatCurrency(node.financieel_summary.totaal_gerealiseerd)}`}>
+            <Wallet className="h-3 w-3" />
+            {formatCurrencyCompact(node.financieel_summary.totaal_budget)}
           </span>
         )}
         {node.node_type === NodeType.DOSSIER && node.beleidskompas_progress && (

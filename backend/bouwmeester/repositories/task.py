@@ -17,6 +17,7 @@ def _task_options():
         selectinload(Task.assignee),
         selectinload(Task.organisatie_eenheid),
         selectinload(Task.node),
+        selectinload(Task.opdracht),
         selectinload(Task.subtasks).selectinload(Task.assignee),
     ]
 
@@ -36,6 +37,7 @@ class TaskRepository(BaseRepository[Task]):
         status: str | None = None,
         organisatie_eenheid_id: UUID | None = None,
         include_children: bool = False,
+        opdracht_id: UUID | None = None,
     ) -> list[Task]:
         stmt = select(Task).options(*_task_options()).offset(skip).limit(limit)
         if status is not None:
@@ -46,6 +48,8 @@ class TaskRepository(BaseRepository[Task]):
                 stmt = stmt.where(Task.organisatie_eenheid_id.in_(unit_ids))
             else:
                 stmt = stmt.where(Task.organisatie_eenheid_id == organisatie_eenheid_id)
+        if opdracht_id is not None:
+            stmt = stmt.where(Task.opdracht_id == opdracht_id)
         stmt = stmt.order_by(Task.created_at.desc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -60,6 +64,7 @@ class TaskRepository(BaseRepository[Task]):
                 "assignee",
                 "organisatie_eenheid",
                 "node",
+                "opdracht",
                 "subtasks",
             ],
         )
@@ -80,10 +85,28 @@ class TaskRepository(BaseRepository[Task]):
                 "assignee",
                 "organisatie_eenheid",
                 "node",
+                "opdracht",
                 "subtasks",
             ],
         )
         return task
+
+    async def get_by_opdracht(
+        self,
+        opdracht_id: UUID,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> list[Task]:
+        stmt = (
+            select(Task)
+            .where(Task.opdracht_id == opdracht_id)
+            .options(*_task_options())
+            .offset(skip)
+            .limit(limit)
+            .order_by(Task.created_at.desc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
     async def get_by_assignee(
         self,

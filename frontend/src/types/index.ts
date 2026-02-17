@@ -121,6 +121,12 @@ export interface BeleidskompasProgress {
   total_steps: number;
 }
 
+// Financial summary (returned for instrument nodes)
+export interface FinancieelSummary {
+  totaal_budget: number;
+  totaal_gerealiseerd: number;
+}
+
 // Corpus Node
 export interface CorpusNode {
   id: string;
@@ -135,6 +141,7 @@ export interface CorpusNode {
   updated_at: string;
   edge_count?: number;
   beleidskompas_progress?: BeleidskompasProgress | null;
+  financieel_summary?: FinancieelSummary | null;
 }
 
 export interface CorpusNodeCreate {
@@ -257,6 +264,13 @@ export interface TaskSubtask {
   work_type?: string;
 }
 
+export interface TaskOpdrachtSummary {
+  id: string;
+  titel: string;
+  type: string;
+  status: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -270,6 +284,8 @@ export interface Task {
   organisatie_eenheid?: TaskOrgEenheidSummary;
   parent_id?: string;
   parlementair_item_id?: string;
+  opdracht_id?: string;
+  opdracht?: TaskOpdrachtSummary;
   subtasks?: TaskSubtask[];
   node_id?: string;
   node?: CorpusNode;
@@ -289,6 +305,7 @@ export interface TaskCreate {
   organisatie_eenheid_id?: string;
   parent_id?: string;
   parlementair_item_id?: string;
+  opdracht_id?: string;
   node_id: string;
   work_type?: string;
 }
@@ -302,6 +319,7 @@ export interface TaskUpdate {
   assignee_id?: string | null;
   organisatie_eenheid_id?: string | null;
   parent_id?: string | null;
+  opdracht_id?: string | null;
   work_type?: string | null;
 }
 
@@ -1021,6 +1039,7 @@ export interface TaskFilters {
   assignee_id?: string;
   node_id?: string;
   organisatie_eenheid_id?: string;
+  opdracht_id?: string;
   include_children?: boolean;
 }
 
@@ -1089,6 +1108,7 @@ export interface DashboardStats {
   corpus_node_count: number;
   open_task_count: number;
   overdue_task_count: number;
+  active_opdracht_budget: number;
 }
 
 // Import/Export types
@@ -1127,4 +1147,239 @@ export interface WebAuthnCredential {
   label: string;
   created_at: string;
   last_used_at: string | null;
+}
+
+// Externe Organisatie
+export enum ExterneOrganisatieType {
+  UITVOERINGSORGANISATIE = 'uitvoeringsorganisatie',
+  ZBO = 'zbo',
+  KOEPELORGANISATIE = 'koepelorganisatie',
+  STICHTING = 'stichting',
+  MARKTPARTIJ = 'marktpartij',
+  OVERIG = 'overig',
+}
+
+export const EXTERNE_ORG_TYPE_LABELS: Record<ExterneOrganisatieType, string> = {
+  [ExterneOrganisatieType.UITVOERINGSORGANISATIE]: 'Uitvoeringsorganisatie',
+  [ExterneOrganisatieType.ZBO]: 'ZBO',
+  [ExterneOrganisatieType.KOEPELORGANISATIE]: 'Koepelorganisatie',
+  [ExterneOrganisatieType.STICHTING]: 'Stichting',
+  [ExterneOrganisatieType.MARKTPARTIJ]: 'Marktpartij',
+  [ExterneOrganisatieType.OVERIG]: 'Overig',
+};
+
+export const EXTERNE_ORG_TYPE_COLORS: Record<ExterneOrganisatieType, BadgeVariant> = {
+  [ExterneOrganisatieType.UITVOERINGSORGANISATIE]: 'blue',
+  [ExterneOrganisatieType.ZBO]: 'purple',
+  [ExterneOrganisatieType.KOEPELORGANISATIE]: 'green',
+  [ExterneOrganisatieType.STICHTING]: 'amber',
+  [ExterneOrganisatieType.MARKTPARTIJ]: 'cyan',
+  [ExterneOrganisatieType.OVERIG]: 'gray',
+};
+
+export interface ExterneOrganisatie {
+  id: string;
+  naam: string;
+  afkorting?: string | null;
+  type: string;
+  kvk_nummer?: string | null;
+  website?: string | null;
+  beschrijving?: string | null;
+  created_at: string;
+}
+
+export interface ExterneOrganisatieCreate {
+  naam: string;
+  afkorting?: string | null;
+  type: ExterneOrganisatieType;
+  kvk_nummer?: string | null;
+  website?: string | null;
+  beschrijving?: string | null;
+}
+
+export interface ExterneOrganisatieUpdate {
+  naam?: string;
+  afkorting?: string | null;
+  type?: ExterneOrganisatieType;
+  kvk_nummer?: string | null;
+  website?: string | null;
+  beschrijving?: string | null;
+}
+
+// Opdracht
+export enum OpdrachtType {
+  OPDRACHT = 'opdracht',
+  SUBSIDIE = 'subsidie',
+}
+
+export const OPDRACHT_TYPE_LABELS: Record<OpdrachtType, string> = {
+  [OpdrachtType.OPDRACHT]: 'Opdracht',
+  [OpdrachtType.SUBSIDIE]: 'Subsidie',
+};
+
+export const OPDRACHT_TYPE_COLORS: Record<OpdrachtType, BadgeVariant> = {
+  [OpdrachtType.OPDRACHT]: 'blue',
+  [OpdrachtType.SUBSIDIE]: 'green',
+};
+
+export enum OpdrachtStatus {
+  CONCEPT = 'concept',
+  ACTIEF = 'actief',
+  AFGEROND = 'afgerond',
+  VERANTWOORD = 'verantwoord',
+  GEANNULEERD = 'geannuleerd',
+}
+
+export const OPDRACHT_STATUS_LABELS: Record<OpdrachtStatus, string> = {
+  [OpdrachtStatus.CONCEPT]: 'Concept',
+  [OpdrachtStatus.ACTIEF]: 'Actief',
+  [OpdrachtStatus.AFGEROND]: 'Afgerond',
+  [OpdrachtStatus.VERANTWOORD]: 'Verantwoord',
+  [OpdrachtStatus.GEANNULEERD]: 'Geannuleerd',
+};
+
+export const OPDRACHT_STATUS_COLORS: Record<OpdrachtStatus, BadgeVariant> = {
+  [OpdrachtStatus.CONCEPT]: 'slate',
+  [OpdrachtStatus.ACTIEF]: 'blue',
+  [OpdrachtStatus.AFGEROND]: 'green',
+  [OpdrachtStatus.VERANTWOORD]: 'emerald',
+  [OpdrachtStatus.GEANNULEERD]: 'gray',
+};
+
+export enum Kostensoort {
+  INVESTERING = 'investering',
+  EXPLOITATIE = 'exploitatie',
+  GEMENGD = 'gemengd',
+}
+
+export const KOSTENSOORT_LABELS: Record<Kostensoort, string> = {
+  [Kostensoort.INVESTERING]: 'Investering',
+  [Kostensoort.EXPLOITATIE]: 'Exploitatie',
+  [Kostensoort.GEMENGD]: 'Gemengd',
+};
+
+export interface OpdrachtNodeResponse {
+  id: string;
+  opdracht_id: string;
+  node_id: string;
+  relatie_type: string;
+  node_title?: string | null;
+  node_type?: string | null;
+}
+
+export interface OpdrachtNodeCreate {
+  node_id: string;
+  relatie_type?: string;
+}
+
+export interface Opdracht {
+  id: string;
+  type: string;
+  titel: string;
+  beschrijving?: string | null;
+  begrotingsjaar: number;
+  budget?: number | null;
+  gerealiseerd?: number | null;
+  kostensoort?: string | null;
+  volgend_jaar_benodigd?: number | null;
+  volgend_jaar_aangevraagd?: number | null;
+  instrument_id: string;
+  instrument?: { id: string; title: string; node_type: string } | null;
+  opdrachtnemer_id?: string | null;
+  opdrachtnemer?: ExterneOrganisatie | null;
+  opdrachtgever_id?: string | null;
+  opdrachtgever?: { id: string; naam: string } | null;
+  verantwoordelijke_id?: string | null;
+  verantwoordelijke?: { id: string; naam: string } | null;
+  subsidieregeling?: string | null;
+  beschikking_nummer?: string | null;
+  status: string;
+  referentie?: string | null;
+  startdatum?: string | null;
+  einddatum?: string | null;
+  node_koppelingen?: OpdrachtNodeResponse[];
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface OpdrachtCreate {
+  type: OpdrachtType;
+  titel: string;
+  beschrijving?: string | null;
+  begrotingsjaar: number;
+  budget?: number | null;
+  gerealiseerd?: number | null;
+  kostensoort?: Kostensoort | null;
+  volgend_jaar_benodigd?: number | null;
+  volgend_jaar_aangevraagd?: number | null;
+  instrument_id: string;
+  opdrachtnemer_id?: string | null;
+  opdrachtgever_id?: string | null;
+  verantwoordelijke_id?: string | null;
+  subsidieregeling?: string | null;
+  beschikking_nummer?: string | null;
+  status?: OpdrachtStatus;
+  referentie?: string | null;
+  startdatum?: string | null;
+  einddatum?: string | null;
+  node_koppelingen?: OpdrachtNodeCreate[];
+}
+
+export interface OpdrachtUpdate {
+  type?: OpdrachtType;
+  titel?: string;
+  beschrijving?: string | null;
+  begrotingsjaar?: number;
+  budget?: number | null;
+  gerealiseerd?: number | null;
+  kostensoort?: Kostensoort | null;
+  volgend_jaar_benodigd?: number | null;
+  volgend_jaar_aangevraagd?: number | null;
+  instrument_id?: string;
+  opdrachtnemer_id?: string | null;
+  opdrachtgever_id?: string | null;
+  verantwoordelijke_id?: string | null;
+  subsidieregeling?: string | null;
+  beschikking_nummer?: string | null;
+  status?: OpdrachtStatus;
+  referentie?: string | null;
+  startdatum?: string | null;
+  einddatum?: string | null;
+}
+
+export interface OpdrachtFilters {
+  begrotingsjaar?: number;
+  type?: string;
+  status?: string;
+  instrument_id?: string;
+  opdrachtnemer_id?: string;
+  opdrachtgever_id?: string;
+  verantwoordelijke_id?: string;
+}
+
+// Financieel Overzicht
+export interface FinancieelJaar {
+  begrotingsjaar: number;
+  budget: number;
+  gerealiseerd: number;
+  volgend_jaar_benodigd: number;
+  volgend_jaar_aangevraagd: number;
+  opdracht_count: number;
+}
+
+export interface OpdrachtenSummary {
+  count: number;
+  totaal_budget: number;
+  totaal_gerealiseerd: number;
+  uitnutting_percentage?: number | null;
+}
+
+export interface FinancieelOverzicht {
+  node_id: string;
+  node_title: string;
+  node_type: string;
+  totaal_budget: number;
+  totaal_gerealiseerd: number;
+  uitnutting_percentage?: number | null;
+  per_jaar: FinancieelJaar[];
 }

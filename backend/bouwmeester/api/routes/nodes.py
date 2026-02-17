@@ -11,6 +11,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.repositories.node_stakeholder import NodeStakeholderRepository
+from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.bron import BronResponse, BronUpdate
 from bouwmeester.schema.corpus_node import (
@@ -19,6 +20,7 @@ from bouwmeester.schema.corpus_node import (
     CorpusNodeResponse,
     CorpusNodeUpdate,
     CorpusNodeWithEdges,
+    FinancieelSummary,
     NodeStatusRecord,
     NodeTitleRecord,
     NodeType,
@@ -28,6 +30,10 @@ from bouwmeester.schema.graph import (
     GraphNeighborsResponse,
     GraphViewResponse,
     NeighborEntry,
+)
+from bouwmeester.schema.opdracht import (
+    FinancieelOverzicht,
+    OpdrachtResponse,
 )
 from bouwmeester.schema.person import (
     NodeStakeholderCreate,
@@ -41,6 +47,7 @@ from bouwmeester.services.activity_service import (
     log_activity,
     resolve_actor,
 )
+from bouwmeester.services.financieel_service import FinancieelService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.node_service import NodeService
 from bouwmeester.services.notification_service import NotificationService
@@ -88,6 +95,19 @@ async def list_nodes(
                 r.beleidskompas_progress = BeleidskompasProgress(
                     completed_steps=completed,
                     total_steps=total,
+                )
+
+    # Enrich instrument nodes with financial summary
+    instrument_ids = [r.id for r in responses if r.node_type == "instrument"]
+    if instrument_ids:
+        opdracht_repo = OpdrachtRepository(db)
+        budget_map = await opdracht_repo.get_budget_summaries(instrument_ids)
+        for r in responses:
+            if r.node_type == "instrument" and r.id in budget_map:
+                budget, gerealiseerd = budget_map[r.id]
+                r.financieel_summary = FinancieelSummary(
+                    totaal_budget=budget,
+                    totaal_gerealiseerd=gerealiseerd,
                 )
 
     return responses
@@ -618,6 +638,33 @@ async def update_node_bron_detail(
     await db.flush()
 
     return BronResponse.model_validate(bron)
+
+
+@router.get("/{id}/financieel", response_model=FinancieelOverzicht)
+async def get_node_financieel(
+    id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> FinancieelOverzicht:
+    """Get financial overview for a node (aggregated from opdrachten)."""
+    service = NodeService(db)
+    require_found(await service.get(id), "Node")
+    fin_service = FinancieelService(db)
+    return await fin_service.get_financieel_overzicht(id)
+
+
+@router.get("/{id}/opdrachten", response_model=list[OpdrachtResponse])
+async def get_node_opdrachten(
+    id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[OpdrachtResponse]:
+    """Get opdrachten linked to a node (via instrument_id or OpdrachtNode)."""
+    service = NodeService(db)
+    require_found(await service.get(id), "Node")
+    repo = OpdrachtRepository(db)
+    opdrachten = await repo.get_by_node(id)
+    return validate_list(OpdrachtResponse, opdrachten)
 
 
 @router.get("/{id}/parlementair-item")

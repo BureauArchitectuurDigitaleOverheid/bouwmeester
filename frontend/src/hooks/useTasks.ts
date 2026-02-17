@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks, getTasksByPerson, reorderSubtasks, getWorkTypes } from '@/api/tasks';
+import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks, getTasksByPerson, reorderSubtasks, getWorkTypes, getTasksByOpdracht } from '@/api/tasks';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import { useToast } from '@/contexts/ToastContext';
@@ -72,6 +72,14 @@ export function useTasksByPerson(personId: string | null) {
     queryKey: queryKeys.tasks.byPerson(personId),
     queryFn: () => getTasksByPerson(personId!),
     enabled: !!personId,
+  });
+}
+
+export function useTasksByOpdracht(opdrachtId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.tasks.byOpdracht(opdrachtId),
+    queryFn: () => getTasksByOpdracht(opdrachtId!),
+    enabled: !!opdrachtId,
   });
 }
 
