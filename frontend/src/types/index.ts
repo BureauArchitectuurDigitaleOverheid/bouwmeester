@@ -982,14 +982,53 @@ export interface EdgeSuggestionItem {
   reason: string;
 }
 
-export interface EdgeSuggestionResponse {
+// Gap detection (B3)
+export interface GapItem {
+  step_number: number;
+  step_question: string;
+  missing_types: string[];
+  present_types: string[];
+  has_stakeholders: boolean;
+}
+
+export interface GapAnalysisResponse {
+  gaps: GapItem[];
+  completed_count: number;
+  total_steps: number;
+  narrative: string;
+  recommendations: string[];
+  available: boolean;
+}
+
+export interface CorpusGapSummaryItem {
+  dossier_id: string;
+  dossier_title: string;
+  completed_count: number;
+  total_steps: number;
+  has_stakeholders: boolean;
+}
+
+export interface CorpusGapOverviewResponse {
+  items: CorpusGapSummaryItem[];
+  total: number;
+}
+
+// Kompas guidance (A5)
+export interface KompasGuidanceResponse {
   suggestions: EdgeSuggestionItem[];
   available: boolean;
 }
 
-export interface SummarizeResponse {
-  summary: string;
-  available: boolean;
+// Similar nodes (A3)
+export interface SimilarNodeItem {
+  id: string;
+  title: string;
+  node_type: string;
+  similarity: number;
+}
+
+export interface SimilarNodesResponse {
+  items: SimilarNodeItem[];
 }
 
 // Mention types

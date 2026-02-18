@@ -5,12 +5,15 @@ import { Select } from '@/components/common/Select';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
+import { AutoTagDialog } from './AutoTagDialog';
+import { DuplicateWarning } from './DuplicateWarning';
 import { PendingTagsList } from './PendingTagsList';
 import { TagSuggestions } from './TagSuggestions';
 import { useUpdateNode } from '@/hooks/useNodes';
 import { useNodeTypeOptions } from '@/hooks/useNodeTypeOptions';
 import { useNodeTags, useAddTagToNode } from '@/hooks/useTags';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useAutoTagSuggestion } from '@/hooks/useAutoTagSuggestion';
 import { NODE_STATUS_LABELS } from '@/types';
 import type { CorpusNode } from '@/types';
 
@@ -33,6 +36,11 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
   const { data: nodeTags } = useNodeTags(node.id);
   const addTag = useAddTagToNode();
 
+  const {
+    showAutoTagDialog, autoTagMatched, autoTagNew,
+    checkAndSuggest, closeAutoTagDialog,
+  } = useAutoTagSuggestion();
+
   useEffect(() => {
     setTitle(node.title);
     setNodeType(node.node_type);
@@ -40,9 +48,8 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
     setStatus(node.status ?? '');
   }, [node]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) return;
+  const doSave = async (extraTags: { name: string; isNew: boolean }[] = []) => {
+    const allTags = [...pendingTags, ...extraTags];
 
     await updateNode.mutateAsync({
       id: node.id,
@@ -54,8 +61,7 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
       actorId: currentPerson?.id,
     });
 
-    // Apply suggested tags
-    for (const tag of pendingTags) {
+    for (const tag of allTags) {
       try {
         await addTag.mutateAsync({ nodeId: node.id, data: { tag_name: tag.name } });
       } catch {
@@ -64,6 +70,22 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
     }
 
     onClose();
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+
+    const existingTagNames = nodeTags?.map((nt) => nt.tag.name) ?? [];
+    const shown = await checkAndSuggest({
+      title,
+      description,
+      nodeType,
+      currentTagCount: (nodeTags?.length ?? 0) + pendingTags.length,
+      existingTagNames,
+      pendingTagNames: pendingTags.map((t) => t.name),
+    });
+    if (!shown) doSave();
   };
 
   return (
@@ -90,6 +112,8 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
           required
           autoFocus
         />
+
+        <DuplicateWarning title={title} excludeNodeId={node.id} />
 
         <CreatableSelect
           label="Type"
@@ -126,6 +150,15 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
           options={Object.entries(NODE_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
         />
       </form>
+
+      <AutoTagDialog
+        open={showAutoTagDialog}
+        onClose={closeAutoTagDialog}
+        matchedTags={autoTagMatched}
+        suggestedNewTags={autoTagNew}
+        onAccept={(tags) => doSave(tags)}
+        onSkip={() => doSave()}
+      />
     </Modal>
   );
 }

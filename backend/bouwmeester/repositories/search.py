@@ -196,6 +196,65 @@ class SearchRepository:
 
         return results
 
+    async def find_similar_nodes(
+        self,
+        title: str,
+        description: str | None = None,
+        exclude_node_id: str | None = None,
+        limit: int = 5,
+    ) -> list[dict]:
+        """Find nodes with similar titles using trigram similarity + FTS.
+
+        Returns a list of dicts with id, title, node_type, similarity score.
+        Requires the pg_trgm extension.
+        """
+        params: dict = {"title": title, "limit": limit}
+
+        exclude_clause = ""
+        if exclude_node_id:
+            exclude_clause = "AND id != :exclude_id"
+            params["exclude_id"] = exclude_node_id
+
+        # Composite score: trigram similarity on title + optional FTS on description
+        sql = f"""
+            SELECT
+                id,
+                title,
+                node_type,
+                similarity(title, :title) AS trgm_score,
+                CASE
+                    WHEN search_vector @@ plainto_tsquery('dutch', :title)
+                    THEN ts_rank(search_vector, plainto_tsquery('dutch', :title))
+                    ELSE 0.0
+                END AS fts_score,
+                (similarity(title, :title) * 0.7
+                 + CASE
+                     WHEN search_vector @@ plainto_tsquery('dutch', :title)
+                     THEN ts_rank(search_vector, plainto_tsquery('dutch', :title)) * 0.3
+                     ELSE 0.0
+                   END
+                ) AS combined_score
+            FROM corpus_node
+            WHERE similarity(title, :title) > 0.15
+            {exclude_clause}
+            ORDER BY combined_score DESC
+            LIMIT :limit
+        """
+
+        result = await self.session.execute(text(sql), params)
+        rows = result.all()
+
+        return [
+            {
+                "id": row.id,
+                "title": row.title,
+                "node_type": row.node_type,
+                "similarity": round(float(row.combined_score), 3),
+            }
+            for row in rows
+            if row.combined_score > 0.15
+        ]
+
     async def _add_highlights(
         self, indexed_results: list[tuple[int, dict]], query: str
     ) -> None:

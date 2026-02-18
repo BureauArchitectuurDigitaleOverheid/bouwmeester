@@ -14,6 +14,16 @@ from bouwmeester.schema.bron import (
     BronResponse,
     BronUpdate,
 )
+from bouwmeester.schema.chat import (
+    ChatAction,
+    ChatConfirmRequest,
+    ChatConfirmResponse,
+    ChatContext,
+    ChatMessage,
+    ChatRequest,
+    ChatResponse,
+    PendingAction,
+)
 from bouwmeester.schema.corpus_node import (
     BeleidskompasProgress,
     CorpusNodeBase,
@@ -57,11 +67,14 @@ from bouwmeester.schema.graph import (
 )
 from bouwmeester.schema.inbox import InboxItem, InboxResponse
 from bouwmeester.schema.llm import (
+    CorpusGapOverviewResponse,
+    CorpusGapSummaryItem,
     EdgeSuggestionItem,
-    EdgeSuggestionRequest,
-    EdgeSuggestionResponse,
-    SummarizeRequest,
-    SummarizeResponse,
+    GapAnalysisRequest,
+    GapAnalysisResponse,
+    GapItem,
+    KompasGuidanceRequest,
+    KompasGuidanceResponse,
     TagSuggestionRequest,
     TagSuggestionResponse,
 )
@@ -118,7 +131,13 @@ from bouwmeester.schema.person import (
     PersonSummaryResponse,
     PersonUpdate,
 )
-from bouwmeester.schema.search import SearchResponse, SearchResult, SearchResultType
+from bouwmeester.schema.search import (
+    SearchResponse,
+    SearchResult,
+    SearchResultType,
+    SimilarNodeItem,
+    SimilarNodesResponse,
+)
 from bouwmeester.schema.tag import (
     NodeTagCreate,
     NodeTagResponse,
@@ -167,6 +186,15 @@ __all__ = [
     "AccessRequestResponse",
     "AccessRequestReviewRequest",
     "AccessRequestStatusResponse",
+    # chat
+    "ChatAction",
+    "ChatConfirmRequest",
+    "ChatConfirmResponse",
+    "ChatContext",
+    "ChatMessage",
+    "ChatRequest",
+    "ChatResponse",
+    "PendingAction",
     # bron
     "BronBijlageResponse",
     "BronCreate",
@@ -269,6 +297,8 @@ __all__ = [
     "SearchResponse",
     "SearchResult",
     "SearchResultType",
+    "SimilarNodeItem",
+    "SimilarNodesResponse",
     # tag
     "NodeTagCreate",
     "NodeTagResponse",
@@ -288,11 +318,14 @@ __all__ = [
     "MentionResponse",
     "MentionSearchResult",
     # llm
+    "CorpusGapOverviewResponse",
+    "CorpusGapSummaryItem",
     "EdgeSuggestionItem",
-    "EdgeSuggestionRequest",
-    "EdgeSuggestionResponse",
-    "SummarizeRequest",
-    "SummarizeResponse",
+    "GapAnalysisRequest",
+    "GapAnalysisResponse",
+    "GapItem",
+    "KompasGuidanceRequest",
+    "KompasGuidanceResponse",
     "TagSuggestionRequest",
     "TagSuggestionResponse",
     # parlementair_item

@@ -3,6 +3,8 @@
 Capabilities: PUBLIC + INTERNAL + CONFIDENTIAL (sovereign, government-operated).
 """
 
+from typing import Any
+
 from openai import AsyncOpenAI
 
 from bouwmeester.services.llm.base import (
@@ -37,3 +39,20 @@ class VlamLLMService(BaseLLMService):
             messages=[{"role": "user", "content": prompt}],
         )
         return response.choices[0].message.content or ""
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        max_tokens: int = 2048,
+    ) -> Any:
+        """Multi-turn chat with OpenAI-compatible function calling."""
+        kwargs: dict = {
+            "model": self._model,
+            "max_tokens": max_tokens,
+            "messages": messages,
+        }
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+        return await self._client.chat.completions.create(**kwargs)

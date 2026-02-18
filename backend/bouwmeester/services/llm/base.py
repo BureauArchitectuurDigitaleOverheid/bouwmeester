@@ -4,6 +4,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -44,8 +45,9 @@ class EdgeRelevanceResult(BaseModel):
     reason: str
 
 
-class SummarizeResult(BaseModel):
-    summary: str
+class GapAnalysisResult(BaseModel):
+    narrative: str
+    recommendations: list[str]
 
 
 class BaseLLMService(ABC):
@@ -65,6 +67,19 @@ class BaseLLMService(ABC):
     async def _complete(self, prompt: str, max_tokens: int = 1024) -> str:
         """Send a prompt to the LLM and return the text response."""
         ...
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        max_tokens: int = 2048,
+    ) -> Any:
+        """Multi-turn chat with function-calling tools.
+
+        Returns the raw ChatCompletion from the OpenAI-compatible API.
+        Subclasses that support tool calling should override this.
+        """
+        raise NotImplementedError("This provider does not support tool calling")
 
     async def extract_tags(
         self,
@@ -165,18 +180,27 @@ class BaseLLMService(ABC):
                 reason="Scoring mislukt",
             )
 
-    async def summarize(
+    async def generate_gap_analysis(
         self,
-        text: str,
-        max_words: int = 100,
-    ) -> SummarizeResult:
-        """Produce a concise Dutch summary of the given text."""
-        from bouwmeester.services.llm.prompts import build_summarize_prompt
+        dossier_title: str,
+        dossier_description: str | None,
+        gaps: list[dict],
+    ) -> GapAnalysisResult:
+        """Generate a narrative summary and recommendations for policy gaps."""
+        from bouwmeester.services.llm.prompts import build_gap_analysis_prompt
 
-        prompt = build_summarize_prompt(text=text, max_words=max_words)
+        prompt = build_gap_analysis_prompt(
+            dossier_title=dossier_title,
+            dossier_description=dossier_description,
+            gaps=gaps,
+        )
         try:
-            response = await self._complete(prompt, max_tokens=512)
-            return SummarizeResult(summary=response.strip())
+            text = await self._complete(prompt, max_tokens=1024)
+            result = self._parse_json(text)
+            return GapAnalysisResult(
+                narrative=result.get("narrative", ""),
+                recommendations=result.get("recommendations", []),
+            )
         except Exception:
-            logger.exception("Fout bij LLM samenvatting")
-            return SummarizeResult(summary="Samenvatting mislukt")
+            logger.exception("Fout bij LLM gap-analyse")
+            return GapAnalysisResult(narrative="", recommendations=[])

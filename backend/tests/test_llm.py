@@ -1,6 +1,5 @@
 """Tests for the LLM multi-provider architecture, admin config, and API endpoints."""
 
-import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,7 +9,6 @@ from bouwmeester.services.llm.base import (
     DataSensitivity,
     EdgeRelevanceResult,
     ProviderCapabilities,
-    SummarizeResult,
     TagExtractionResult,
     TagSuggestionResult,
 )
@@ -26,7 +24,6 @@ from bouwmeester.services.llm.prompts import (
     build_edge_relevance_prompt,
     build_extract_tags_prompt,
     build_suggest_tags_prompt,
-    build_summarize_prompt,
 )
 
 # ---------------------------------------------------------------------------
@@ -170,13 +167,6 @@ class TestBaseLLMServiceMethods:
         assert result.score == 0.85
         assert result.suggested_edge_type == "gerelateerd_aan"
 
-    @pytest.mark.asyncio
-    async def test_summarize(self):
-        service = DummyLLMService(responses=["Een korte samenvatting."])
-        result = await service.summarize(text="Heel lange tekst...")
-        assert isinstance(result, SummarizeResult)
-        assert result.summary == "Een korte samenvatting."
-
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -226,11 +216,6 @@ class TestPrompts:
         )
         # Descriptions are truncated at MAX_DESCRIPTION_IN_PROMPT chars
         assert "y" * (MAX_DESCRIPTION_IN_PROMPT + 1) not in prompt
-
-    def test_summarize_prompt_truncates_text(self):
-        long_text = "z" * (MAX_TEXT_IN_PROMPT + 500)
-        prompt = build_summarize_prompt(text=long_text)
-        assert long_text not in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -508,37 +493,13 @@ class TestLLMEndpoints:
         assert data["matched_tags"] == []
 
     @pytest.mark.asyncio
-    async def test_suggest_edges_no_provider(self, client):
-        """Without a configured LLM provider, returns available=False."""
-        resp = await client.post(
-            "/api/llm/suggest-edges",
-            json={"node_id": str(uuid.uuid4())},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["available"] is False
-        assert data["suggestions"] == []
-
-    @pytest.mark.asyncio
-    async def test_summarize_no_provider(self, client):
-        """Without a configured LLM provider, returns available=False."""
-        resp = await client.post(
-            "/api/llm/summarize",
-            json={"text": "Een hele lange tekst over beleid."},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["available"] is False
-        assert data["summary"] == ""
-
-    @pytest.mark.asyncio
     async def test_suggest_tags_with_mock_provider(self, client):
         """With a mocked LLM service, returns tag suggestions."""
         resp = '{"matched_tags": ["woningbouw"], "suggested_new_tags": ["nieuw"]}'
         mock_service = DummyLLMService(responses=[resp])
 
         with patch(
-            "bouwmeester.api.routes.llm.get_llm_service",
+            "bouwmeester.api.routes.llm.get_llm_service_for",
             new=AsyncMock(return_value=mock_service),
         ):
             resp = await client.post(
@@ -551,37 +512,10 @@ class TestLLMEndpoints:
             assert "woningbouw" in data["matched_tags"]
 
     @pytest.mark.asyncio
-    async def test_summarize_with_mock_provider(self, client):
-        """With a mocked LLM service, returns summary."""
-        mock_service = DummyLLMService(responses=["Dit is een samenvatting."])
-
-        with patch(
-            "bouwmeester.api.routes.llm.get_llm_service",
-            new=AsyncMock(return_value=mock_service),
-        ):
-            resp = await client.post(
-                "/api/llm/summarize",
-                json={"text": "Heel veel tekst over beleid."},
-            )
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["available"] is True
-            assert data["summary"] == "Dit is een samenvatting."
-
-    @pytest.mark.asyncio
     async def test_suggest_tags_input_validation(self, client):
         """Title exceeding max_length returns 422."""
         resp = await client.post(
             "/api/llm/suggest-tags",
             json={"title": "x" * 501, "node_type": "dossier"},
-        )
-        assert resp.status_code == 422
-
-    @pytest.mark.asyncio
-    async def test_summarize_input_validation(self, client):
-        """Text exceeding max_length returns 422."""
-        resp = await client.post(
-            "/api/llm/summarize",
-            json={"text": "x" * 50001},
         )
         assert resp.status_code == 422

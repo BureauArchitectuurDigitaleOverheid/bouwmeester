@@ -1,6 +1,10 @@
 x-backend-env: &backend-env
   DATABASE_URL: postgresql+asyncpg://bouwmeester:bouwmeester@db:5432/bouwmeester
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  LLM_PROVIDER: ${LLM_PROVIDER:-claude}
+  VLAM_API_KEY: ${VLAM_API_KEY:-}
+  VLAM_BASE_URL: ${VLAM_BASE_URL:-}
+  VLAM_MODEL_ID: ${VLAM_MODEL_ID:-}
   DATA_PATH: /data
 
 x-backend-volumes: &backend-volumes

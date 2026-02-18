@@ -20,9 +20,18 @@ interface TaskCreateFormProps {
   nodeId?: string;
   parentId?: string;
   opdrachtId?: string;
+  /** Stakeholder person IDs in order: eigenaar first, then betrokken */
+  stakeholderPersonIds?: string[];
 }
 
-export function TaskCreateForm({ open, onClose, nodeId, parentId, opdrachtId }: TaskCreateFormProps) {
+export function TaskCreateForm({
+  open,
+  onClose,
+  nodeId,
+  parentId,
+  opdrachtId,
+  stakeholderPersonIds,
+}: TaskCreateFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<string>(TaskPriority.NORMAAL);
@@ -39,7 +48,7 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId, opdrachtId }: 
   const { data: opdrachten = [] } = useOpdrachten();
   const opdrachtOptions = opdrachten.map((o) => ({ value: o.id, label: o.titel, description: o.type }));
 
-  // Reset form state when dialog opens
+  // Reset form state when dialog opens + AI suggestion
   useEffect(() => {
     if (open) {
       setTitle('');
@@ -51,8 +60,13 @@ export function TaskCreateForm({ open, onClose, nodeId, parentId, opdrachtId }: 
       setOrganisatieEenheidId('');
       setWorkType('');
       setSelectedOpdrachtId(opdrachtId ?? '');
+
+      // Pre-select assignee from stakeholders
+      if (stakeholderPersonIds && stakeholderPersonIds.length > 0) {
+        setAssigneeId(stakeholderPersonIds[0]);
+      }
     }
-  }, [open, nodeId, opdrachtId]);
+  }, [open, nodeId, opdrachtId, stakeholderPersonIds]);
 
   const createTask = useCreateTask();
   const {

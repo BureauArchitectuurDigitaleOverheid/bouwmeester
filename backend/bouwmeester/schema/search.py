@@ -30,3 +30,17 @@ class SearchResponse(BaseModel):
     results: list[SearchResult]
     total: int
     query: str
+
+
+# --- Similar Nodes (A3: Duplicate Detection) ---
+
+
+class SimilarNodeItem(BaseModel):
+    id: UUID
+    title: str
+    node_type: str
+    similarity: float
+
+
+class SimilarNodesResponse(BaseModel):
+    items: list[SimilarNodeItem]

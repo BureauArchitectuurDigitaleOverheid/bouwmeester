@@ -1,12 +1,22 @@
 """API routes for omni full-text search."""
 
+import logging
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.search import SearchRepository
-from bouwmeester.schema.search import SearchResponse, SearchResult, SearchResultType
+from bouwmeester.schema.search import (
+    SearchResponse,
+    SearchResult,
+    SearchResultType,
+    SimilarNodeItem,
+    SimilarNodesResponse,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -32,3 +42,21 @@ async def search(
         total=len(results),
         query=q,
     )
+
+
+@router.get("/similar-nodes", response_model=SimilarNodesResponse)
+async def find_similar_nodes(
+    current_user: OptionalUser,
+    title: str = Query(..., min_length=3, max_length=500),
+    exclude_id: str | None = Query(None),
+    limit: int = Query(5, ge=1, le=20),
+    db: AsyncSession = Depends(get_db),
+) -> SimilarNodesResponse:
+    """Find corpus nodes with similar titles (trigram + FTS)."""
+    repo = SearchRepository(db)
+    items = await repo.find_similar_nodes(
+        title=title,
+        exclude_node_id=exclude_id,
+        limit=limit,
+    )
+    return SimilarNodesResponse(items=[SimilarNodeItem(**i) for i in items])

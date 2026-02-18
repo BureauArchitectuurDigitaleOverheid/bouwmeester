@@ -2,12 +2,14 @@ import { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { ChatPanel } from '@/components/chat/ChatPanel';
+import { ChatToggleButton } from '@/components/chat/ChatToggleButton';
 import { useUIStore } from '@/store/ui';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 
 export function AppLayout() {
   const isMobile = useIsMobile();
-  const { mobileSidebarOpen, setMobileSidebarOpen } = useUIStore();
+  const { mobileSidebarOpen, setMobileSidebarOpen, chatOpen, chatWidth } = useUIStore();
 
   // Close mobile sidebar on Escape
   useEffect(() => {
@@ -37,12 +39,17 @@ export function AppLayout() {
         </>
       )}
 
-      <div className="flex flex-col flex-1 min-w-0">
+      <div
+        className="flex flex-col flex-1 min-w-0 transition-all duration-300"
+        style={{ marginRight: chatOpen && !isMobile ? chatWidth : 0 }}
+      >
         <Header />
         <main className="flex-1 p-4 md:p-6 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
           <Outlet />
         </main>
       </div>
+      <ChatPanel />
+      <ChatToggleButton />
     </div>
   );
 }
