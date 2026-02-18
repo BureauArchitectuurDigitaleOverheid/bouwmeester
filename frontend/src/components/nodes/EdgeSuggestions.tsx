@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { AiActionButton } from '@/components/common/AiActionButton';
 import { suggestEdges } from '@/api/llm';
 import { Badge } from '@/components/common/Badge';
-import { NODE_TYPE_COLORS, type EdgeSuggestionItem } from '@/types';
+import { NODE_TYPE_COLORS, type EdgeSuggestionItem, type NodeType } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 import { apiPost } from '@/api/client';
 
 interface EdgeSuggestionsProps {
@@ -13,6 +14,7 @@ interface EdgeSuggestionsProps {
 
 export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
   const navigate = useNavigate();
+  const { nodeLabel, edgeLabel } = useVocabulary();
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<EdgeSuggestionItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -93,9 +95,9 @@ export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
                   'border-border bg-white'
                 }`}
               >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <Badge variant={NODE_TYPE_COLORS[s.target_node_type as keyof typeof NODE_TYPE_COLORS]} dot>
-                    {s.target_node_type}
+                <div className="flex items-center gap-2 min-w-0 flex-1" title={s.reason?.replace(/\*+/g, '')}>
+                  <Badge variant={NODE_TYPE_COLORS[s.target_node_type as NodeType]} dot>
+                    {nodeLabel(s.target_node_type)}
                   </Badge>
                   <button
                     onClick={() => navigate(`/nodes/${s.target_node_id}`)}
@@ -103,6 +105,9 @@ export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
                   >
                     {s.target_node_title}
                   </button>
+                  <span className="text-xs text-text-secondary italic shrink-0">
+                    {edgeLabel(s.suggested_edge_type)}
+                  </span>
                   <span className="text-xs text-text-secondary shrink-0">
                     {Math.round(s.confidence * 100)}%
                   </span>
@@ -142,11 +147,6 @@ export function EdgeSuggestions({ nodeId }: EdgeSuggestionsProps) {
               </div>
             );
           })}
-          {suggestions.length > 0 && (
-            <p className="text-xs text-text-secondary mt-1">
-              {suggestions[0].reason && `Reden: ${suggestions[0].reason}`}
-            </p>
-          )}
         </div>
       )}
     </div>

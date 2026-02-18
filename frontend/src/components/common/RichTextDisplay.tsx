@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
+import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 
 // Regex to detect URLs in plain text.
 // Matches http(s) URLs, then trims common trailing sentence punctuation that
@@ -38,6 +39,12 @@ interface TipTapMark {
   attrs?: Record<string, unknown>;
 }
 
+/** Simple heuristic: does the text contain markdown-like formatting? */
+function looksLikeMarkdown(text: string): boolean {
+  // Bold (**text** or __text__), italic (*text* or _text_), headers (#), lists (- or *)
+  return /\*\*[^*]+\*\*|\*[^*]+\*|^#{1,3}\s|^[-*]\s/m.test(text);
+}
+
 function isTipTapJson(value: string): TipTapNode | null {
   try {
     const parsed = JSON.parse(value);
@@ -59,6 +66,10 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
 
   const doc = isTipTapJson(content);
   if (!doc) {
+    // Detect markdown syntax and render accordingly
+    if (looksLikeMarkdown(content)) {
+      return <div className="text-sm text-text-secondary"><MarkdownRenderer content={content} /></div>;
+    }
     // Plain text fallback — auto-linkify URLs
     return <p className="text-sm text-text-secondary whitespace-pre-wrap">{linkifyText(content)}</p>;
   }

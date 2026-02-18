@@ -7,6 +7,7 @@ import { apiPost } from '@/api/client';
 import { Badge } from '@/components/common/Badge';
 import { queryKeys } from '@/hooks/queryKeys';
 import { NODE_TYPE_COLORS, type EdgeSuggestionItem, type NodeType } from '@/types';
+import { useVocabulary } from '@/contexts/VocabularyContext';
 
 interface KompasStepSuggestionsProps {
   dossierId: string;
@@ -20,6 +21,7 @@ export function KompasStepSuggestions({
   stepDescription,
 }: KompasStepSuggestionsProps) {
   const queryClient = useQueryClient();
+  const { nodeLabel } = useVocabulary();
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<EdgeSuggestionItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +111,7 @@ export function KompasStepSuggestions({
                     variant={NODE_TYPE_COLORS[s.target_node_type as NodeType]}
                     dot
                   >
-                    {s.target_node_type}
+                    {nodeLabel(s.target_node_type)}
                   </Badge>
                   <span className="text-text truncate">{s.target_node_title}</span>
                   <span className="text-text-secondary shrink-0">
