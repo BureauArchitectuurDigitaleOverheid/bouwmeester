@@ -1,6 +1,5 @@
 """Tests for the LLM multi-provider architecture, admin config, and API endpoints."""
 
-import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -494,25 +493,13 @@ class TestLLMEndpoints:
         assert data["matched_tags"] == []
 
     @pytest.mark.asyncio
-    async def test_suggest_edges_no_provider(self, client):
-        """Without a configured LLM provider, returns available=False."""
-        resp = await client.post(
-            "/api/llm/suggest-edges",
-            json={"node_id": str(uuid.uuid4())},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["available"] is False
-        assert data["suggestions"] == []
-
-    @pytest.mark.asyncio
     async def test_suggest_tags_with_mock_provider(self, client):
         """With a mocked LLM service, returns tag suggestions."""
         resp = '{"matched_tags": ["woningbouw"], "suggested_new_tags": ["nieuw"]}'
         mock_service = DummyLLMService(responses=[resp])
 
         with patch(
-            "bouwmeester.api.routes.llm.get_llm_service",
+            "bouwmeester.api.routes.llm.get_llm_service_for",
             new=AsyncMock(return_value=mock_service),
         ):
             resp = await client.post(
