@@ -642,12 +642,15 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 query, result_types=["corpus_node"], limit=10
             )
             if node_type:
-                results = [r for r in results if r.get("entity_subtype") == node_type]
+                results = [
+                    r for r in results
+                    if r.get("subtitle") == node_type
+                ]
             items = [
                 {
-                    "id": r.get("entity_id"),
+                    "id": r.get("id"),
                     "title": r.get("title"),
-                    "type": r.get("entity_subtype", r.get("entity_type")),
+                    "type": r.get("subtitle"),
                     "score": round(r.get("score", 0), 2),
                 }
                 for r in results[:10]
@@ -803,6 +806,14 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             )
 
         elif tool_name == "get_person_summary":
+            from sqlalchemy import select as sa_select
+
+            from bouwmeester.models.organisatie_eenheid import (
+                OrganisatieEenheid,
+            )
+            from bouwmeester.models.person_organisatie import (
+                PersonOrganisatieEenheid,
+            )
             from bouwmeester.repositories.person import PersonRepository
             from bouwmeester.repositories.task import TaskRepository
 
@@ -812,23 +823,43 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 return json.dumps({"error": "Persoon niet gevonden"})
 
             task_repo = TaskRepository(db)
-            tasks = await task_repo.get_by_assignee(person.id, limit=10)
-            open_tasks = [t for t in tasks if t.status not in ("done", "cancelled")]
+            tasks = await task_repo.get_by_assignee(
+                person.id, limit=10
+            )
+            open_tasks = [
+                t for t in tasks
+                if t.status not in ("done", "cancelled")
+            ]
+
+            # Find current org unit via active placement
+            org_name = None
+            org_id = None
+            stmt = (
+                sa_select(OrganisatieEenheid)
+                .join(PersonOrganisatieEenheid)
+                .where(
+                    PersonOrganisatieEenheid.person_id
+                    == person.id,
+                    PersonOrganisatieEenheid.eind_datum.is_(
+                        None
+                    ),
+                )
+                .limit(1)
+            )
+            org_result = await db.execute(stmt)
+            org_unit = org_result.scalar_one_or_none()
+            if org_unit:
+                org_name = org_unit.naam
+                org_id = str(org_unit.id)
 
             result = {
                 "id": str(person.id),
                 "naam": person.naam,
-                "organisatie_eenheid": (
-                    person.organisatie_eenheid.naam
-                    if getattr(person, "organisatie_eenheid", None)
-                    else None
-                ),
-                "organisatie_eenheid_id": (
-                    str(person.organisatie_eenheid_id)
-                    if person.organisatie_eenheid_id
-                    else None
-                ),
-                "open_taken": [_task_to_dict(t) for t in open_tasks[:5]],
+                "organisatie_eenheid": org_name,
+                "organisatie_eenheid_id": org_id,
+                "open_taken": [
+                    _task_to_dict(t) for t in open_tasks[:5]
+                ],
                 "aantal_open_taken": len(open_tasks),
             }
             return json.dumps(result, ensure_ascii=False)
@@ -983,9 +1014,15 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             )
 
         return json.dumps({"error": f"Onbekende tool: {tool_name}"})
-    except Exception as e:
+    except ValueError:
+        return json.dumps(
+            {"error": "Ongeldig ID-formaat. Gebruik een geldig UUID."}
+        )
+    except Exception:
         logger.exception("Error executing read tool %s", tool_name)
-        return json.dumps({"error": str(e)})
+        return json.dumps(
+            {"error": "Er is een fout opgetreden bij het ophalen van data."}
+        )
 
 
 async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> dict:
@@ -1230,6 +1267,11 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
             }
 
         return {"success": False, "summary": f"Onbekende tool: {tool_name}"}
+    except ValueError:
+        return {
+            "success": False,
+            "summary": "Ongeldig ID-formaat. Gebruik een geldig UUID.",
+        }
     except Exception:
         logger.exception("Error executing write tool %s", tool_name)
         await db.rollback()
