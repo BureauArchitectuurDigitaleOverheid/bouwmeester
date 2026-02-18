@@ -129,6 +129,25 @@ SuggestionList.displayName = 'SuggestionList';
 
 // ─── Suggestion utilities ───────────────────────────────────────────────────
 
+/** Position popup below cursor, or above if there isn't enough space below. */
+function positionPopup(popup: HTMLDivElement, rect: DOMRect) {
+  const POPUP_HEIGHT_ESTIMATE = 260; // max height of suggestion dropdown
+  const GAP = 4;
+  const spaceBelow = window.innerHeight - rect.bottom;
+
+  popup.style.left = `${rect.left + window.scrollX}px`;
+
+  if (spaceBelow < POPUP_HEIGHT_ESTIMATE) {
+    // Position above
+    popup.style.top = '';
+    popup.style.bottom = `${window.innerHeight - rect.top - window.scrollY + GAP}px`;
+  } else {
+    // Position below
+    popup.style.bottom = '';
+    popup.style.top = `${rect.bottom + window.scrollY + GAP}px`;
+  }
+}
+
 function createSuggestionConfig(
   fetchItems: (query: string) => Promise<SuggestionItem[]>,
 ) {
@@ -164,10 +183,7 @@ function createSuggestionConfig(
 
           if (props.clientRect) {
             const rect = props.clientRect();
-            if (rect) {
-              popup.style.left = `${rect.left + window.scrollX}px`;
-              popup.style.top = `${rect.bottom + window.scrollY + 4}px`;
-            }
+            if (rect) positionPopup(popup, rect);
           }
         },
 
@@ -176,10 +192,7 @@ function createSuggestionConfig(
 
           if (popup && props.clientRect) {
             const rect = props.clientRect();
-            if (rect) {
-              popup.style.left = `${rect.left + window.scrollX}px`;
-              popup.style.top = `${rect.bottom + window.scrollY + 4}px`;
-            }
+            if (rect) positionPopup(popup, rect);
           }
         },
 
