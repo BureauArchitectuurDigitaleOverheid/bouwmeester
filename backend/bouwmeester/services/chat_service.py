@@ -1297,7 +1297,7 @@ def _truncate_messages(messages: list[dict], max_messages: int) -> list[dict]:
     if len(messages) <= max_messages:
         return messages
     # Always keep the system message, then take the tail
-    return [messages[0]] + messages[-(max_messages - 1):]
+    return [messages[0]] + messages[-(max_messages - 1) :]
 
 
 class ChatService:
@@ -1319,9 +1319,7 @@ class ChatService:
 
     # -- DB helpers ----------------------------------------------------------
 
-    async def _load_conversation(
-        self, conversation_id: str
-    ) -> ChatConversation | None:
+    async def _load_conversation(self, conversation_id: str) -> ChatConversation | None:
         """Load a conversation owned by the current user."""
         stmt = select(ChatConversation).where(
             ChatConversation.id == UUID(conversation_id),
