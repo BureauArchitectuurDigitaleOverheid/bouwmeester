@@ -6,6 +6,7 @@ from bouwmeester.api.routes.activity import router as activity_router
 from bouwmeester.api.routes.admin import router as admin_router
 from bouwmeester.api.routes.auth import router as auth_router
 from bouwmeester.api.routes.bijlage import router as bijlage_router
+from bouwmeester.api.routes.chat import router as chat_router
 from bouwmeester.api.routes.edge_schema import router as edge_schema_router
 from bouwmeester.api.routes.edge_types import router as edge_types_router
 from bouwmeester.api.routes.edges import router as edges_router
@@ -34,6 +35,7 @@ api_router = APIRouter()
 api_router.include_router(activity_router)
 api_router.include_router(admin_router)
 api_router.include_router(auth_router)
+api_router.include_router(chat_router)
 api_router.include_router(bijlage_router)
 api_router.include_router(edge_schema_router)
 api_router.include_router(edge_types_router)

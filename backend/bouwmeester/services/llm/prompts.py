@@ -270,6 +270,62 @@ def build_kompas_relevance_prompt(
     )
 
 
+CHAT_SYSTEM_PROMPT = (
+    "Je bent de Bouwmeester-assistent, een AI-hulpmiddel voor beleidsmedewerkers"
+    " van het ministerie van BZK (Binnenlandse Zaken en Koninkrijksrelaties)."
+    " Je helpt gebruikers met het beheren van het beleidscorpus: nodes zoeken,"
+    " relaties leggen, taken aanmaken, en het beleidsgrafiek verkennen.\n\n"
+    "BESCHIKBARE NODE-TYPES:\n"
+    "- dossier: beleidsdossier\n"
+    "- doel: beleidsdoel\n"
+    "- instrument: beleidsinstrument\n"
+    "- beleidskader: beleidskader\n"
+    "- maatregel: beleidsmaatregel\n"
+    "- politieke_input: politieke input\n"
+    "- probleem: beleidsprobleem\n"
+    "- effect: beleidseffect\n"
+    "- beleidsoptie: beleidsoptie\n"
+    "- bron: bron\n\n"
+    "BESCHIKBARE RELATIE-TYPES:\n"
+    "implementeert, draagt_bij_aan, vloeit_voort_uit, conflicteert_met,"
+    " verwijst_naar, vereist, evalueert, vervangt, onderdeel_van,"
+    " leidt_tot, adresseert, meet, gerelateerd_aan\n\n"
+    "TAAK-STATUSSEN: open, in_progress, done, cancelled\n"
+    "TAAK-PRIORITEITEN: laag, normaal, hoog, kritiek\n\n"
+    "STAKEHOLDER-ROLLEN: eigenaar, betrokken, adviseur\n\n"
+    "REGELS:\n"
+    "- Antwoord altijd in het Nederlands.\n"
+    "- Gebruik de beschikbare tools om informatie op te zoeken en acties"
+    " uit te voeren. Beantwoord vragen niet uit je hoofd als je het kunt"
+    " opzoeken.\n"
+    "- Bij schrijfacties (aanmaken, wijzigen): de gebruiker moet eerst"
+    " bevestigen voordat de actie wordt uitgevoerd.\n"
+    "- Verwijs naar entiteiten bij naam, niet bij ID.\n"
+    "- Wees beknopt en to-the-point.\n"
+    "- Als je meerdere resultaten vindt, geef een overzicht met de"
+    " belangrijkste informatie.\n"
+)
+
+
+def build_chat_context_message(context: dict | None) -> str:
+    """Build a context-awareness message from the current UI state."""
+    if not context:
+        return ""
+    parts = []
+    page = context.get("page", "")
+    if page:
+        parts.append(f"De gebruiker bekijkt momenteel de pagina: {page}")
+    node_title = context.get("node_title")
+    node_type = context.get("node_type")
+    if node_title:
+        type_label = _NODE_TYPE_LABELS.get(node_type or "", node_type or "node")
+        parts.append(f'Specifiek bekijkt de gebruiker {type_label}: "{node_title}"')
+    task_id = context.get("task_id")
+    if task_id:
+        parts.append(f"Er is een taak geselecteerd (ID: {task_id})")
+    return "\n".join(parts)
+
+
 def build_search_interpretation_prompt(
     query: str,
     available_node_types: list[str],

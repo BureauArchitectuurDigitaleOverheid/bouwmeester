@@ -14,6 +14,16 @@ from bouwmeester.schema.bron import (
     BronResponse,
     BronUpdate,
 )
+from bouwmeester.schema.chat import (
+    ChatAction,
+    ChatConfirmRequest,
+    ChatConfirmResponse,
+    ChatContext,
+    ChatMessage,
+    ChatRequest,
+    ChatResponse,
+    PendingAction,
+)
 from bouwmeester.schema.corpus_node import (
     BeleidskompasProgress,
     CorpusNodeBase,
@@ -185,6 +195,15 @@ __all__ = [
     "AccessRequestResponse",
     "AccessRequestReviewRequest",
     "AccessRequestStatusResponse",
+    # chat
+    "ChatAction",
+    "ChatConfirmRequest",
+    "ChatConfirmResponse",
+    "ChatContext",
+    "ChatMessage",
+    "ChatRequest",
+    "ChatResponse",
+    "PendingAction",
     # bron
     "BronBijlageResponse",
     "BronCreate",

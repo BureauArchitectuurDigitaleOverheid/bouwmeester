@@ -18,6 +18,10 @@ interface UIState {
     depth: number;
   };
   setGraphFilters: (filters: Partial<UIState['graphFilters']>) => void;
+
+  chatOpen: boolean;
+  toggleChat: () => void;
+  setChatOpen: (open: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -40,4 +44,8 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({
       graphFilters: { ...state.graphFilters, ...filters },
     })),
+
+  chatOpen: false,
+  toggleChat: () => set((state) => ({ chatOpen: !state.chatOpen })),
+  setChatOpen: (open) => set({ chatOpen: open }),
 }));

@@ -82,6 +82,19 @@ class BaseLLMService(ABC):
         """Send a prompt to the LLM and return the text response."""
         ...
 
+    async def chat_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        max_tokens: int = 2048,
+    ) -> object:
+        """Multi-turn chat with function-calling tools.
+
+        Returns the raw ChatCompletion from the OpenAI-compatible API.
+        Subclasses that support tool calling should override this.
+        """
+        raise NotImplementedError("This provider does not support tool calling")
+
     async def extract_tags(
         self,
         titel: str,
