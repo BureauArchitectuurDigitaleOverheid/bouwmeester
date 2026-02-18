@@ -22,6 +22,9 @@ interface UIState {
   chatOpen: boolean;
   toggleChat: () => void;
   setChatOpen: (open: boolean) => void;
+
+  chatWidth: number;
+  setChatWidth: (width: number) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -48,4 +51,7 @@ export const useUIStore = create<UIState>((set) => ({
   chatOpen: false,
   toggleChat: () => set((state) => ({ chatOpen: !state.chatOpen })),
   setChatOpen: (open) => set({ chatOpen: open }),
+
+  chatWidth: 384,
+  setChatWidth: (width) => set({ chatWidth: Math.min(Math.max(width, 320), 800) }),
 }));
