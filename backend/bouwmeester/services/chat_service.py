@@ -3,12 +3,13 @@
 import json
 import logging
 import re
-import time
 import uuid
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.models.chat_conversation import ChatConversation
 from bouwmeester.schema.chat import (
     ChatAction,
     ChatMessage,
@@ -22,22 +23,12 @@ from bouwmeester.services.llm.prompts import (
 
 logger = logging.getLogger(__name__)
 
-# In-memory conversation store. Each entry: { messages, pending_actions, ts }
-_conversations: dict[str, dict] = {}
-_CONVERSATION_TTL = 30 * 60  # 30 minutes
-
 # Maximum tool-calling loop iterations to prevent runaway loops.
 _MAX_TOOL_ROUNDS = 5
 
-
-def _cleanup_expired() -> None:
-    """Remove conversations older than the TTL."""
-    now = time.time()
-    expired = [
-        k for k, v in _conversations.items() if now - v["ts"] > _CONVERSATION_TTL
-    ]
-    for k in expired:
-        del _conversations[k]
+# Maximum number of messages to send to the LLM to stay within token limits.
+# The system prompt is always included; we keep the most recent messages.
+_MAX_MESSAGES_FOR_LLM = 40
 
 
 # Regex to strip raw tool-call artefacts from LLM output
@@ -1296,12 +1287,70 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
 # ---------------------------------------------------------------------------
 
 
-class ChatService:
-    """Orchestrates multi-turn chat with tool calling."""
+def _truncate_messages(messages: list[dict], max_messages: int) -> list[dict]:
+    """Keep the system message + the most recent messages within the limit.
 
-    def __init__(self, llm: BaseLLMService, db: AsyncSession) -> None:
+    This prevents the LLM context window from being exceeded in long
+    conversations.  The system prompt (index 0) is always preserved.
+    """
+    if len(messages) <= max_messages:
+        return messages
+    # Always keep the system message, then take the tail
+    return [messages[0]] + messages[-(max_messages - 1):]
+
+
+class ChatService:
+    """Orchestrates multi-turn chat with tool calling.
+
+    Conversations are persisted in the ``chat_conversation`` table and
+    scoped to the authenticated user (``person_id``).
+    """
+
+    def __init__(
+        self,
+        llm: BaseLLMService,
+        db: AsyncSession,
+        person_id: UUID | None = None,
+    ) -> None:
         self._llm = llm
         self._db = db
+        self._person_id = person_id
+
+    # -- DB helpers ----------------------------------------------------------
+
+    async def _load_conversation(
+        self, conversation_id: str
+    ) -> ChatConversation | None:
+        """Load a conversation owned by the current user."""
+        stmt = select(ChatConversation).where(
+            ChatConversation.id == UUID(conversation_id),
+        )
+        if self._person_id:
+            stmt = stmt.where(ChatConversation.person_id == self._person_id)
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def _create_conversation(self) -> ChatConversation:
+        """Create a new conversation for the current user."""
+        conv = ChatConversation(
+            messages=[{"role": "system", "content": CHAT_SYSTEM_PROMPT}],
+            pending_actions={},
+            person_id=self._person_id,
+        )
+        self._db.add(conv)
+        await self._db.flush()
+        return conv
+
+    async def _save_conversation(self, conv: ChatConversation) -> None:
+        """Persist conversation state to DB."""
+        # Mark JSONB columns as modified so SQLAlchemy picks up in-place changes
+        from sqlalchemy.orm.attributes import flag_modified
+
+        flag_modified(conv, "messages")
+        flag_modified(conv, "pending_actions")
+        await self._db.commit()
+
+    # -- Public API ----------------------------------------------------------
 
     async def send_message(
         self,
@@ -1310,38 +1359,40 @@ class ChatService:
         context: dict | None = None,
     ) -> tuple[str, ChatMessage]:
         """Process a user message and return (conversation_id, response_message)."""
-        _cleanup_expired()
 
-        # Get or create conversation
-        if conversation_id and conversation_id in _conversations:
-            conv = _conversations[conversation_id]
-        else:
-            conversation_id = str(uuid.uuid4())
-            conv = {
-                "messages": [{"role": "system", "content": CHAT_SYSTEM_PROMPT}],
-                "pending_actions": {},
-                "ts": time.time(),
-            }
-            _conversations[conversation_id] = conv
+        # Load or create conversation
+        conv: ChatConversation | None = None
+        if conversation_id:
+            try:
+                conv = await self._load_conversation(conversation_id)
+            except ValueError:
+                conv = None
+
+        if conv is None:
+            conv = await self._create_conversation()
+
+        messages: list[dict] = conv.messages
+        pending_map: dict = conv.pending_actions
 
         # Add context awareness
         context_msg = build_chat_context_message(context)
         if context_msg:
-            # Update system message with context
             system_content = CHAT_SYSTEM_PROMPT + "\n\nHUIDIGE CONTEXT:\n" + context_msg
-            conv["messages"][0] = {"role": "system", "content": system_content}
+            messages[0] = {"role": "system", "content": system_content}
 
         # Add user message
-        conv["messages"].append({"role": "user", "content": message})
-        conv["ts"] = time.time()
+        messages.append({"role": "user", "content": message})
 
         # Tool-calling loop
         actions: list[ChatAction] = []
         pending_actions: list[PendingAction] = []
 
         for _ in range(_MAX_TOOL_ROUNDS):
+            # Truncate to stay within LLM token window
+            llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
+
             response = await self._llm.chat_with_tools(
-                messages=conv["messages"],
+                messages=llm_messages,
                 tools=ALL_TOOLS,
             )
             choice = response.choices[0]
@@ -1350,12 +1401,11 @@ class ChatService:
             # If no tool calls, we have the final text response
             if not assistant_msg.tool_calls:
                 content = _clean_content(assistant_msg.content or "")
-                conv["messages"].append({"role": "assistant", "content": content})
+                messages.append({"role": "assistant", "content": content})
                 break
 
             # Process tool calls
-            # Add assistant message with tool calls to history
-            conv["messages"].append(
+            messages.append(
                 {
                     "role": "assistant",
                     "content": assistant_msg.content or "",
@@ -1391,13 +1441,12 @@ class ChatService:
                         description=_describe_action(tool_name, args),
                     )
                     pending_actions.append(pending)
-                    conv["pending_actions"][action_id] = {
+                    pending_map[action_id] = {
                         "tool_name": tool_name,
                         "arguments": args,
                         "tool_call_id": tc.id,
                     }
-                    # Add a placeholder tool result
-                    conv["messages"].append(
+                    messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tc.id,
@@ -1418,24 +1467,23 @@ class ChatService:
                 else:
                     # Execute read tool immediately
                     result = await _execute_read_tool(tool_name, args, self._db)
-                    conv["messages"].append(
+                    messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tc.id,
                             "content": result,
                         }
                     )
-                    # Read actions are internal — don't surface to user
 
             # If we have pending writes, stop the loop and return to user
             if has_pending:
-                # Get a text response that explains the pending actions
+                llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
                 response2 = await self._llm.chat_with_tools(
-                    messages=conv["messages"],
-                    tools=[],  # No tools — just generate text
+                    messages=llm_messages,
+                    tools=[],
                 )
                 content = _clean_content(response2.choices[0].message.content or "")
-                conv["messages"].append({"role": "assistant", "content": content})
+                messages.append({"role": "assistant", "content": content})
                 break
         else:
             # If we exhausted the loop
@@ -1444,9 +1492,14 @@ class ChatService:
                 " verwerken. Probeer het opnieuw"
                 " met een specifiekere vraag."
             )
-            conv["messages"].append({"role": "assistant", "content": content})
+            messages.append({"role": "assistant", "content": content})
 
-        return conversation_id, ChatMessage(
+        # Persist to DB
+        conv.messages = messages
+        conv.pending_actions = pending_map
+        await self._save_conversation(conv)
+
+        return str(conv.id), ChatMessage(
             role="assistant",
             content=content,
             actions=actions,
@@ -1460,21 +1513,26 @@ class ChatService:
         approved: bool,
     ) -> ChatMessage:
         """Confirm or reject a pending write action."""
-        conv = _conversations.get(conversation_id)
+        try:
+            conv = await self._load_conversation(conversation_id)
+        except ValueError:
+            conv = None
+
         if not conv:
             return ChatMessage(
                 role="assistant",
                 content="Conversatie niet gevonden of verlopen.",
             )
 
-        pending = conv["pending_actions"].pop(action_id, None)
+        pending_map: dict = conv.pending_actions
+        pending = pending_map.pop(action_id, None)
         if not pending:
             return ChatMessage(
                 role="assistant",
                 content="Actie niet gevonden of al verwerkt.",
             )
 
-        conv["ts"] = time.time()
+        messages: list[dict] = conv.messages
         actions: list[ChatAction] = []
 
         if approved:
@@ -1501,8 +1559,7 @@ class ChatService:
             desc = _describe_action(pending["tool_name"], pending["arguments"])
             status_msg = f"{desc} — geannuleerd door gebruiker"
 
-        # Add result to conversation and get final response
-        conv["messages"].append(
+        messages.append(
             {
                 "role": "user",
                 "content": (
@@ -1512,15 +1569,21 @@ class ChatService:
         )
 
         try:
+            llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
             response = await self._llm.chat_with_tools(
-                messages=conv["messages"],
+                messages=llm_messages,
                 tools=[],
             )
             content = _clean_content(response.choices[0].message.content or status_msg)
         except Exception:
             content = status_msg
 
-        conv["messages"].append({"role": "assistant", "content": content})
+        messages.append({"role": "assistant", "content": content})
+
+        # Persist to DB
+        conv.messages = messages
+        conv.pending_actions = pending_map
+        await self._save_conversation(conv)
 
         return ChatMessage(
             role="assistant",

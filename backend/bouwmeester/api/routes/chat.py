@@ -45,7 +45,8 @@ async def send_chat_message(
             available=False,
         )
 
-    chat = ChatService(service, db)
+    person_id = current_user.id if current_user else None
+    chat = ChatService(service, db, person_id=person_id)
     context = request.context.model_dump() if request.context else None
     conversation_id, message = await chat.send_message(
         message=request.message,
@@ -72,7 +73,8 @@ async def confirm_chat_action(
             success=False,
         )
 
-    chat = ChatService(service, db)
+    person_id = current_user.id if current_user else None
+    chat = ChatService(service, db, person_id=person_id)
     message = await chat.confirm_action(
         conversation_id=request.conversation_id,
         action_id=request.action_id,

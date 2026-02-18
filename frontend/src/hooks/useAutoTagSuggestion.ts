@@ -31,13 +31,11 @@ export function useAutoTagSuggestion() {
       if (params.currentTagCount >= 2) return false;
 
       try {
-        const timeout = setTimeout(() => {}, 3000);
         const res = await suggestTags({
           title: params.title.trim(),
           description: params.description?.trim() || undefined,
           node_type: params.nodeType,
         });
-        clearTimeout(timeout);
 
         if (!res.available) return false;
         if (res.matched_tags.length === 0 && res.suggested_new_tags.length === 0) return false;

@@ -4,6 +4,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -72,7 +73,7 @@ class BaseLLMService(ABC):
         messages: list[dict],
         tools: list[dict],
         max_tokens: int = 2048,
-    ) -> object:
+    ) -> Any:
         """Multi-turn chat with function-calling tools.
 
         Returns the raw ChatCompletion from the OpenAI-compatible API.

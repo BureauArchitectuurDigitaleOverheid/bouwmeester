@@ -89,8 +89,7 @@ export function ChatInput() {
 
   return (
     <div className="border-t border-border p-3 bg-white">
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-      <div className="flex items-end gap-2" onKeyDown={handleKeyDown}>
+      <div className="flex items-end gap-2" onKeyDown={handleKeyDown} role="group">
         <div className="flex-1 min-w-0 chat-editor">
           <RichTextEditor
             key={editorKey}
