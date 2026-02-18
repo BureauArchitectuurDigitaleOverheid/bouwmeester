@@ -61,12 +61,14 @@ const EMPTY_DOC = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }]
 export function ChatInput() {
   const { sendMessage, isLoading } = useChat();
   const [value, setValue] = useState(EMPTY_DOC);
+  const [editorKey, setEditorKey] = useState(0);
 
   const handleSend = useCallback(() => {
     const { text, mentions } = parseTiptapContent(value);
     if (!text || isLoading) return;
     sendMessage(text, mentions);
     setValue(EMPTY_DOC);
+    setEditorKey((k) => k + 1);
   }, [value, isLoading, sendMessage]);
 
   const handleKeyDown = useCallback(
@@ -91,11 +93,13 @@ export function ChatInput() {
       <div className="flex items-end gap-2" onKeyDown={handleKeyDown}>
         <div className="flex-1 min-w-0 chat-editor">
           <RichTextEditor
+            key={editorKey}
             value={value}
             onChange={setValue}
             placeholder="Stel een vraag... @ personen, # nodes/taken"
             rows={1}
             readOnly={isLoading}
+            autoFocus
           />
         </div>
         <button
