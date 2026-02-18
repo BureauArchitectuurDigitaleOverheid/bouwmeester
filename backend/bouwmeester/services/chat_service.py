@@ -504,7 +504,10 @@ _WRITE_TOOLS: dict[str, dict] = {
         "type": "function",
         "function": {
             "name": "create_task",
-            "description": "Maak een nieuwe taak aan, gekoppeld aan een node.",
+            "description": (
+                "Maak een nieuwe taak aan, gekoppeld aan een node."
+                " Gebruik parent_task_id om een subtaak te maken."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -523,7 +526,16 @@ _WRITE_TOOLS: dict[str, dict] = {
                     },
                     "assignee_id": {
                         "type": "string",
-                        "description": "UUID van de toegewezen persoon (optioneel)",
+                        "description": (
+                            "UUID van de toegewezen persoon (optioneel)"
+                        ),
+                    },
+                    "parent_task_id": {
+                        "type": "string",
+                        "description": (
+                            "UUID van de bovenliggende taak"
+                            " om een subtaak te maken (optioneel)"
+                        ),
                     },
                 },
                 "required": ["title", "node_id"],
@@ -613,7 +625,10 @@ def _describe_action(tool_name: str, args: dict) -> str:
         ),
         "update_node": lambda a: f"Node {a.get('node_id', '')[:8]}... bijwerken",
         "create_edge": lambda a: f"Relatie '{a.get('edge_type_id', '')}' aanmaken",
-        "create_task": lambda a: f'Taak "{a.get("title", "")}" aanmaken',
+        "create_task": lambda a: (
+            f'{"Subtaak" if a.get("parent_task_id") else "Taak"}'
+            f' "{a.get("title", "")}" aanmaken'
+        ),
         "update_task": lambda a: f"Taak {a.get('task_id', '')[:8]}... bijwerken",
         "add_tag_to_node": lambda a: f"Tag '{a.get('tag_name', '')}' koppelen aan node",
         "add_stakeholder": lambda a: (
@@ -1156,8 +1171,25 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
                         ),
                     }
 
+            # Validate parent task exists if provided
+            if args.get("parent_task_id"):
+                parent_repo = TaskRepository(db)
+                parent_task = await parent_repo.get(
+                    UUID(args["parent_task_id"])
+                )
+                if not parent_task:
+                    return {
+                        "success": False,
+                        "summary": (
+                            "Bovenliggende taak niet"
+                            " gevonden. Gebruik"
+                            " get_tasks_for_node om de"
+                            " juiste taak te vinden."
+                        ),
+                    }
+
             repo = TaskRepository(db)
-            task_data = {
+            task_data: dict = {
                 "title": args["title"],
                 "node_id": UUID(args["node_id"]),
                 "description": args.get("description"),
@@ -1166,12 +1198,18 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
             }
             if args.get("assignee_id"):
                 task_data["assignee_id"] = UUID(args["assignee_id"])
+            if args.get("parent_task_id"):
+                task_data["parent_id"] = UUID(
+                    args["parent_task_id"]
+                )
             data = TaskCreate(**task_data)
             task = await repo.create(data)
             await db.commit()
+            is_subtask = bool(args.get("parent_task_id"))
+            label = "Subtaak" if is_subtask else "Taak"
             return {
                 "success": True,
-                "summary": f'Taak "{task.title}" aangemaakt',
+                "summary": f'{label} "{task.title}" aangemaakt',
                 "entity_id": str(task.id),
                 "entity_type": "task",
             }
