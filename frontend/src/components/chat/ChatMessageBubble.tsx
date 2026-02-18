@@ -47,7 +47,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
         {message.actions.length > 0 && (
           <div className="mt-2 space-y-1.5">
             {message.actions.map((action, i) => (
-              <ChatActionCard key={i} action={action} />
+              <ChatActionCard key={action.entity_id ?? `action-${i}`} action={action} />
             ))}
           </div>
         )}

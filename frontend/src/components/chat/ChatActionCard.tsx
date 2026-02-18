@@ -30,8 +30,9 @@ export function ChatActionCard({ action }: ChatActionCardProps) {
         canNavigate ? 'cursor-pointer hover:bg-green-100 transition-colors' : ''
       }`}
       onClick={canNavigate ? handleClick : undefined}
-      role={canNavigate ? 'button' : undefined}
+      role={canNavigate ? 'button' : 'status'}
       tabIndex={canNavigate ? 0 : undefined}
+      onKeyDown={canNavigate ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleClick(); } : undefined}
     >
       <Check className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0" />
       <div className="min-w-0 flex-1">

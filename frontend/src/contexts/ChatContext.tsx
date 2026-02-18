@@ -24,9 +24,12 @@ const ChatCtx = createContext<ChatContextValue | null>(null);
 
 const STORAGE_KEY = 'bm_chat_conversation_id';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function getStoredConversationId(): string | null {
   try {
-    return sessionStorage.getItem(STORAGE_KEY);
+    const id = sessionStorage.getItem(STORAGE_KEY);
+    return id && UUID_RE.test(id) ? id : null;
   } catch {
     return null;
   }
@@ -143,13 +146,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         return [...updated, response.message];
       });
 
-      // Invalidate relevant queries
+      // Invalidate relevant queries (outside state updater)
       if (approved && response.message.actions) {
-        for (const action of response.message.actions) {
-          const keys = getInvalidationKeys(action.entity_type);
-          for (const key of keys) {
-            await queryClient.invalidateQueries({ queryKey: key });
-          }
+        const keySets = response.message.actions.flatMap((a) => getInvalidationKeys(a.entity_type));
+        for (const key of keySets) {
+          queryClient.invalidateQueries({ queryKey: key });
         }
       }
     } catch {
