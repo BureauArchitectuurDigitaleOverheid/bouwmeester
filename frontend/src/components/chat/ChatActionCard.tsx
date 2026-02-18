@@ -13,7 +13,7 @@ export function ChatActionCard({ action }: ChatActionCardProps) {
 
   const canNavigate =
     action.entity_id &&
-    (action.entity_type === 'node' || action.entity_type === 'task');
+    (action.entity_type === 'node' || action.entity_type === 'task' || action.entity_type === 'tag');
 
   const handleClick = () => {
     if (!action.entity_id) return;
@@ -41,7 +41,10 @@ export function ChatActionCard({ action }: ChatActionCardProps) {
         )}
       </div>
       {canNavigate && (
-        <ExternalLink className="w-3 h-3 text-green-500 mt-0.5 shrink-0" />
+        <span className="flex items-center gap-0.5 text-green-600 shrink-0 mt-0.5">
+          <span className="text-[10px]">Bekijken</span>
+          <ExternalLink className="w-3 h-3" />
+        </span>
       )}
     </div>
   );

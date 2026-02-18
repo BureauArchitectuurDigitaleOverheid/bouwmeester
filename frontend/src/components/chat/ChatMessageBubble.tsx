@@ -37,11 +37,11 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
       >
         {isUser ? (
           <p className="whitespace-pre-wrap">{message.content}</p>
-        ) : (
+        ) : message.content ? (
           <div className="prose-sm">
             <MarkdownRenderer content={message.content} onBmLink={handleBmLink} />
           </div>
-        )}
+        ) : null}
 
         {/* Completed actions */}
         {message.actions.length > 0 && (

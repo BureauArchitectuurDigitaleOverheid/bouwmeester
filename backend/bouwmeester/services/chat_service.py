@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 import uuid
 from uuid import UUID
@@ -37,6 +38,19 @@ def _cleanup_expired() -> None:
     ]
     for k in expired:
         del _conversations[k]
+
+
+# Regex to strip raw tool-call artefacts from LLM output
+_TOOL_CALL_RE = re.compile(
+    r"\[TOOL_CALLS?\].*", re.DOTALL
+)
+
+
+def _clean_content(text: str) -> str:
+    """Strip raw tool-call artefacts and internal noise from LLM output."""
+    # Remove [TOOL_CALLS] blocks that some models emit
+    text = _TOOL_CALL_RE.sub("", text)
+    return text.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -1343,7 +1357,7 @@ class ChatService:
 
             # If no tool calls, we have the final text response
             if not assistant_msg.tool_calls:
-                content = assistant_msg.content or ""
+                content = _clean_content(assistant_msg.content or "")
                 conv["messages"].append({"role": "assistant", "content": content})
                 break
 
@@ -1414,13 +1428,7 @@ class ChatService:
                             "content": result,
                         }
                     )
-                    actions.append(
-                        ChatAction(
-                            tool_name=tool_name,
-                            description=f"{tool_name} uitgevoerd",
-                            result_summary=result[:200],
-                        )
-                    )
+                    # Read actions are internal — don't surface to user
 
             # If we have pending writes, stop the loop and return to user
             if has_pending:
@@ -1429,7 +1437,9 @@ class ChatService:
                     messages=conv["messages"],
                     tools=[],  # No tools — just generate text
                 )
-                content = response2.choices[0].message.content or ""
+                content = _clean_content(
+                    response2.choices[0].message.content or ""
+                )
                 conv["messages"].append({"role": "assistant", "content": content})
                 break
         else:
@@ -1511,7 +1521,9 @@ class ChatService:
                 messages=conv["messages"],
                 tools=[],
             )
-            content = response.choices[0].message.content or status_msg
+            content = _clean_content(
+                response.choices[0].message.content or status_msg
+            )
         except Exception:
             content = status_msg
 
