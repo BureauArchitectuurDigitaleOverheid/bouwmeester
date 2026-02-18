@@ -5,6 +5,7 @@ import {
   sendChatMessage,
   confirmChatAction,
   type ChatMessage,
+  type ChatMention,
   type ChatContext as ChatContextType,
 } from '@/api/chat';
 import { queryKeys } from '@/hooks/queryKeys';
@@ -14,7 +15,7 @@ interface ChatContextValue {
   messages: ChatMessage[];
   isLoading: boolean;
   available: boolean;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, mentions?: ChatMention[]) => Promise<void>;
   confirmAction: (actionId: string, approved: boolean) => Promise<void>;
   clearConversation: () => void;
 }
@@ -82,7 +83,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return ctx;
   }, [location.pathname]);
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, mentions?: ChatMention[]) => {
     const userMsg: ChatMessage = {
       role: 'user',
       content: text,
@@ -93,10 +94,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
 
     try {
+      const ctx = getContext();
+      if (mentions?.length) {
+        ctx.mentions = mentions;
+      }
       const response = await sendChatMessage({
         message: text,
         conversation_id: conversationId ?? undefined,
-        context: getContext(),
+        context: ctx,
       });
 
       setConversationId(response.conversation_id);

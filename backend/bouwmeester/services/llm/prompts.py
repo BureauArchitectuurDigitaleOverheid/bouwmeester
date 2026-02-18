@@ -309,8 +309,9 @@ CHAT_SYSTEM_PROMPT = (
     "- Gebruik de beschikbare tools om informatie op te zoeken en acties"
     " uit te voeren. Beantwoord vragen niet uit je hoofd als je het kunt"
     " opzoeken.\n"
-    "- Bij schrijfacties (aanmaken, wijzigen): de gebruiker moet eerst"
-    " bevestigen voordat de actie wordt uitgevoerd.\n"
+    "- Bij schrijfacties (aanmaken, wijzigen): het systeem toont automatisch"
+    " een bevestigingsknop. Vraag de gebruiker NIET zelf om bevestiging"
+    " in je tekst — geen 'wil je bevestigen?', 'zal ik doorgaan?', etc.\n"
     "- Verwijs naar entiteiten bij naam en maak ze klikbaar met het"
     " bm://-linkformaat.\n"
     "- Wees beknopt en to-the-point.\n"
@@ -375,6 +376,20 @@ def build_chat_context_message(context: dict | None) -> str:
         parts.append(f'Er is een taak geselecteerd: "{task_title}" (ID: {task_id})')
     elif task_id:
         parts.append(f"Er is een taak geselecteerd (ID: {task_id})")
+
+    # Include inline @ and # mentions from the user's message
+    mentions = context.get("mentions", [])
+    if mentions:
+        mention_parts = []
+        for m in mentions:
+            mention_parts.append(
+                f'- {m["label"]} (type: {m["type"]}, ID: {m["id"]})'
+            )
+        parts.append(
+            "De gebruiker verwijst naar de volgende entiteiten:\n"
+            + "\n".join(mention_parts)
+        )
+
     return "\n".join(parts)
 
 

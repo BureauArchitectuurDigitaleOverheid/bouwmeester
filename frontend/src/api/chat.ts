@@ -1,5 +1,11 @@
 import { apiPost } from './client';
 
+export interface ChatMention {
+  id: string;
+  label: string;
+  type: string;
+}
+
 export interface ChatContext {
   page: string;
   node_id?: string;
@@ -8,6 +14,7 @@ export interface ChatContext {
   node_description?: string;
   task_id?: string;
   task_title?: string;
+  mentions?: ChatMention[];
 }
 
 export interface ChatAction {

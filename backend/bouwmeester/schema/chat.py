@@ -3,6 +3,14 @@
 from pydantic import BaseModel, Field
 
 
+class ChatMention(BaseModel):
+    """An entity referenced via @ or # in the chat message."""
+
+    id: str
+    label: str
+    type: str  # "person" | "organisatie" | "node" | "task" | "tag"
+
+
 class ChatContext(BaseModel):
     """Current UI context sent with each chat message."""
 
@@ -13,6 +21,7 @@ class ChatContext(BaseModel):
     node_description: str | None = None
     task_id: str | None = None
     task_title: str | None = None
+    mentions: list[ChatMention] = []
 
 
 class ChatRequest(BaseModel):

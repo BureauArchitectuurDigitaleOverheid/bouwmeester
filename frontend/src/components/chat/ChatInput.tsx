@@ -1,60 +1,126 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Send } from 'lucide-react';
+import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useChat } from '@/contexts/ChatContext';
+import type { ChatMention } from '@/api/chat';
+
+/** Walk TipTap JSON and extract plain text + mention entities. */
+function parseTiptapContent(jsonStr: string): {
+  text: string;
+  mentions: ChatMention[];
+} {
+  const mentions: ChatMention[] = [];
+  const seenIds = new Set<string>();
+
+  try {
+    const doc = JSON.parse(jsonStr);
+    const textParts: string[] = [];
+
+    function walk(node: Record<string, unknown>) {
+      if (node.type === 'mention' || node.type === 'hashtagMention') {
+        const attrs = node.attrs as Record<string, string> | undefined;
+        if (attrs?.id && attrs?.label) {
+          const prefix = node.type === 'mention' ? '@' : '#';
+          textParts.push(`${prefix}${attrs.label}`);
+          if (!seenIds.has(attrs.id)) {
+            seenIds.add(attrs.id);
+            mentions.push({
+              id: attrs.id,
+              label: attrs.label,
+              type: attrs.mentionType ?? (node.type === 'mention' ? 'person' : 'node'),
+            });
+          }
+        }
+        return;
+      }
+      if (node.type === 'text') {
+        textParts.push(node.text as string);
+        return;
+      }
+      if (node.type === 'paragraph' && textParts.length > 0) {
+        textParts.push('\n');
+      }
+      if (Array.isArray(node.content)) {
+        for (const child of node.content) {
+          walk(child as Record<string, unknown>);
+        }
+      }
+    }
+
+    walk(doc);
+    return { text: textParts.join('').trim(), mentions };
+  } catch {
+    // Fallback for plain text
+    return { text: jsonStr.trim(), mentions: [] };
+  }
+}
+
+// Minimal empty TipTap doc
+const EMPTY_DOC = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] });
 
 export function ChatInput() {
   const { sendMessage, isLoading } = useChat();
-  const [text, setText] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [value, setValue] = useState(EMPTY_DOC);
 
   const handleSend = useCallback(() => {
-    const trimmed = text.trim();
-    if (!trimmed || isLoading) return;
-    sendMessage(trimmed);
-    setText('');
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
-  }, [text, isLoading, sendMessage]);
+    const { text, mentions } = parseTiptapContent(value);
+    if (!text || isLoading) return;
+    sendMessage(text, mentions);
+    setValue(EMPTY_DOC);
+  }, [value, isLoading, sendMessage]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        // Only intercept if the suggestion popup is NOT open.
+        // TipTap's mention suggestion handles Enter itself when open,
+        // so we check if there's a tippy popup visible.
+        const popup = document.querySelector('.tippy-box');
+        if (popup) return;
 
-  const handleInput = () => {
-    const el = textareaRef.current;
-    if (el) {
-      el.style.height = 'auto';
-      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-    }
-  };
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend],
+  );
 
   return (
     <div className="border-t border-border p-3 bg-white">
-      <div className="flex items-end gap-2">
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onInput={handleInput}
-          placeholder="Stel een vraag..."
-          disabled={isLoading}
-          rows={1}
-          className="flex-1 resize-none rounded-lg border border-border px-3 py-2 text-sm text-text placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50"
-        />
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+      <div className="flex items-end gap-2" onKeyDown={handleKeyDown}>
+        <div className="flex-1 min-w-0 chat-editor">
+          <RichTextEditor
+            value={value}
+            onChange={setValue}
+            placeholder="Stel een vraag... @ personen, # nodes/taken"
+            rows={1}
+            readOnly={isLoading}
+          />
+        </div>
         <button
           onClick={handleSend}
-          disabled={!text.trim() || isLoading}
+          disabled={isLoading}
           className="p-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
           title="Versturen"
         >
           <Send className="w-4 h-4" />
         </button>
       </div>
+      <style>{`
+        .chat-editor .rich-text-editor {
+          border-radius: 0.5rem;
+        }
+        .chat-editor .rich-text-editor .ProseMirror {
+          min-height: 1.5rem !important;
+          max-height: 7.5rem;
+          overflow-y: auto;
+        }
+        .chat-editor .EditorContent,
+        .chat-editor [class*="prose"] {
+          padding: 0.375rem 0.75rem;
+        }
+      `}</style>
     </div>
   );
 }
