@@ -146,11 +146,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         return [...updated, response.message];
       });
 
-      // Invalidate relevant queries (outside state updater)
+      // Invalidate relevant queries (fire-and-forget, outside state updater)
       if (approved && response.message.actions) {
-        const keySets = response.message.actions.flatMap((a) => getInvalidationKeys(a.entity_type));
-        for (const key of keySets) {
-          queryClient.invalidateQueries({ queryKey: key });
+        for (const action of response.message.actions) {
+          for (const key of getInvalidationKeys(action.entity_type)) {
+            void queryClient.invalidateQueries({ queryKey: key });
+          }
         }
       }
     } catch {
