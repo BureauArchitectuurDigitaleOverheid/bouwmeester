@@ -1,6 +1,9 @@
+import { useCallback } from 'react';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { ChatActionCard } from './ChatActionCard';
 import { ChatPendingActionCard } from './ChatPendingActionCard';
+import { useNodeDetail } from '@/contexts/NodeDetailContext';
+import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import type { ChatMessage } from '@/api/chat';
 
 interface ChatMessageBubbleProps {
@@ -9,6 +12,19 @@ interface ChatMessageBubbleProps {
 
 export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
   const isUser = message.role === 'user';
+  const { openNodeDetail } = useNodeDetail();
+  const { openTaskDetail } = useTaskDetail();
+
+  const handleBmLink = useCallback(
+    (type: 'node' | 'task', id: string) => {
+      if (type === 'node') {
+        openNodeDetail(id);
+      } else if (type === 'task') {
+        openTaskDetail(id);
+      }
+    },
+    [openNodeDetail, openTaskDetail],
+  );
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -23,7 +39,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
           <p className="whitespace-pre-wrap">{message.content}</p>
         ) : (
           <div className="prose-sm">
-            <MarkdownRenderer content={message.content} />
+            <MarkdownRenderer content={message.content} onBmLink={handleBmLink} />
           </div>
         )}
 

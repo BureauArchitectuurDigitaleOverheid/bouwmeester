@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import mermaid from 'mermaid';
@@ -50,6 +50,14 @@ function MermaidBlock({ chart }: { chart: string }) {
   );
 }
 
+/** Parse bm:// links and return { type, id } or null for regular links. */
+function parseBmLink(href: string | undefined): { type: 'node' | 'task'; id: string } | null {
+  if (!href) return null;
+  const match = href.match(/^bm:\/\/(node|task)\/([a-f0-9-]+)$/i);
+  if (!match) return null;
+  return { type: match[1] as 'node' | 'task', id: match[2] };
+}
+
 const components: Components = {
   h1: ({ children }) => (
     <h1 className="text-2xl font-bold text-text mt-8 mb-4 first:mt-0">{children}</h1>
@@ -66,16 +74,31 @@ const components: Components = {
     <h4 className="text-base font-semibold text-text mt-4 mb-2">{children}</h4>
   ),
   p: ({ children }) => <p className="text-sm text-text-secondary leading-relaxed mb-4">{children}</p>,
-  a: ({ href, children }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-primary-600 hover:text-primary-700 underline"
-    >
-      {children}
-    </a>
-  ),
+  a: ({ href, children }) => {
+    const bm = parseBmLink(href);
+    if (bm) {
+      return (
+        <button
+          type="button"
+          data-bm-type={bm.type}
+          data-bm-id={bm.id}
+          className="text-primary-600 hover:text-primary-700 underline cursor-pointer inline font-medium"
+        >
+          {children}
+        </button>
+      );
+    }
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary-600 hover:text-primary-700 underline"
+      >
+        {children}
+      </a>
+    );
+  },
   ul: ({ children }) => <ul className="list-disc list-inside mb-4 space-y-1 text-sm text-text-secondary">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal list-inside mb-4 space-y-1 text-sm text-text-secondary">{children}</ol>,
   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
@@ -145,12 +168,32 @@ const components: Components = {
 
 interface MarkdownRendererProps {
   content: string;
+  onBmLink?: (type: 'node' | 'task', id: string) => void;
 }
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, onBmLink }: MarkdownRendererProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!onBmLink) return;
+      const target = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-bm-type]');
+      if (!target) return;
+      const type = target.dataset.bmType as 'node' | 'task';
+      const id = target.dataset.bmId;
+      if (type && id) {
+        e.preventDefault();
+        onBmLink(type, id);
+      }
+    },
+    [onBmLink],
+  );
+
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-      {content}
-    </ReactMarkdown>
+    <div ref={containerRef} onClick={handleClick}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 }

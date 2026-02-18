@@ -10,7 +10,9 @@ class ChatContext(BaseModel):
     node_id: str | None = None
     node_title: str | None = None
     node_type: str | None = None
+    node_description: str | None = None
     task_id: str | None = None
+    task_title: str | None = None
 
 
 class ChatRequest(BaseModel):

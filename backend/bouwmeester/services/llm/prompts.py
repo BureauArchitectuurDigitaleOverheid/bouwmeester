@@ -274,7 +274,8 @@ CHAT_SYSTEM_PROMPT = (
     "Je bent de Bouwmeester-assistent, een AI-hulpmiddel voor beleidsmedewerkers"
     " van het ministerie van BZK (Binnenlandse Zaken en Koninkrijksrelaties)."
     " Je helpt gebruikers met het beheren van het beleidscorpus: nodes zoeken,"
-    " relaties leggen, taken aanmaken, en het beleidsgrafiek verkennen.\n\n"
+    " relaties leggen, taken aanmaken, organisatie verkennen, opdrachten"
+    " bekijken, en het beleidsgrafiek navigeren.\n\n"
     "BESCHIKBARE NODE-TYPES:\n"
     "- dossier: beleidsdossier\n"
     "- doel: beleidsdoel\n"
@@ -293,6 +294,16 @@ CHAT_SYSTEM_PROMPT = (
     "TAAK-STATUSSEN: open, in_progress, done, cancelled\n"
     "TAAK-PRIORITEITEN: laag, normaal, hoog, kritiek\n\n"
     "STAKEHOLDER-ROLLEN: eigenaar, betrokken, adviseur\n\n"
+    "OPDRACHT-STATUSSEN: concept, actief, afgerond, verantwoord, geannuleerd\n"
+    "OPDRACHT-TYPES: opdracht, subsidie\n\n"
+    "ORGANISATIE-TYPES: Ministerie, Directoraat-Generaal, Directie, Afdeling, Team\n\n"
+    "KLIKBARE LINKS:\n"
+    "Wanneer je verwijst naar een entiteit, maak er een klikbare link"
+    " van zodat de gebruiker er direct naartoe kan navigeren. Gebruik"
+    " deze markdown link-formaten:\n"
+    '- Nodes: [Titel van node](bm://node/<UUID>)\n'
+    '- Taken: [Titel van taak](bm://task/<UUID>)\n'
+    "Gebruik altijd de naam/titel als linktekst, niet het UUID.\n\n"
     "REGELS:\n"
     "- Antwoord altijd in het Nederlands.\n"
     "- Gebruik de beschikbare tools om informatie op te zoeken en acties"
@@ -300,10 +311,18 @@ CHAT_SYSTEM_PROMPT = (
     " opzoeken.\n"
     "- Bij schrijfacties (aanmaken, wijzigen): de gebruiker moet eerst"
     " bevestigen voordat de actie wordt uitgevoerd.\n"
-    "- Verwijs naar entiteiten bij naam, niet bij ID.\n"
+    "- Verwijs naar entiteiten bij naam en maak ze klikbaar met het"
+    " bm://-linkformaat.\n"
     "- Wees beknopt en to-the-point.\n"
     "- Als je meerdere resultaten vindt, geef een overzicht met de"
     " belangrijkste informatie.\n"
+    "- Als je taken voor een node zoekt, gebruik get_tasks_for_node.\n"
+    "- Als je taken voor een persoon zoekt, gebruik get_tasks_for_person.\n"
+    "- Als je verlopen taken wilt, gebruik get_overdue_tasks.\n"
+    "- Als je opdrachten/subsidies zoekt, gebruik list_opdrachten.\n"
+    "- Als je organisatie-eenheden zoekt, gebruik search_organisatie.\n"
+    "- Als je vergelijkbare nodes zoekt, gebruik find_similar_nodes.\n"
+    "- Als je het pad tussen twee nodes wilt, gebruik find_path.\n"
 )
 
 
@@ -314,14 +333,38 @@ def build_chat_context_message(context: dict | None) -> str:
     parts = []
     page = context.get("page", "")
     if page:
-        parts.append(f"De gebruiker bekijkt momenteel de pagina: {page}")
+        page_labels = {
+            "/": "Inbox",
+            "/corpus": "Corpus (node-overzicht)",
+            "/tasks": "Taken",
+            "/people": "Personen",
+            "/organisatie": "Organisatie",
+            "/search": "Zoeken",
+            "/parlementair": "Parlementair",
+            "/opdrachten": "Opdrachten",
+            "/admin": "Beheer",
+        }
+        label = page_labels.get(page, page)
+        parts.append(f"De gebruiker bekijkt momenteel de pagina: {label}")
+    node_id = context.get("node_id")
     node_title = context.get("node_title")
     node_type = context.get("node_type")
-    if node_title:
+    if node_title and node_id:
         type_label = _NODE_TYPE_LABELS.get(node_type or "", node_type or "node")
-        parts.append(f'Specifiek bekijkt de gebruiker {type_label}: "{node_title}"')
+        parts.append(
+            f"Specifiek bekijkt de gebruiker {type_label}:"
+            f' "{node_title}" (ID: {node_id})'
+        )
+    elif node_id:
+        parts.append(f"De gebruiker bekijkt een node (ID: {node_id})")
+    node_description = context.get("node_description")
+    if node_description:
+        parts.append(f"Beschrijving van de node: {node_description[:300]}")
     task_id = context.get("task_id")
-    if task_id:
+    task_title = context.get("task_title")
+    if task_title and task_id:
+        parts.append(f'Er is een taak geselecteerd: "{task_title}" (ID: {task_id})')
+    elif task_id:
         parts.append(f"Er is een taak geselecteerd (ID: {task_id})")
     return "\n".join(parts)
 

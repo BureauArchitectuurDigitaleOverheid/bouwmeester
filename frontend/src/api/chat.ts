@@ -5,7 +5,9 @@ export interface ChatContext {
   node_id?: string;
   node_title?: string;
   node_type?: string;
+  node_description?: string;
   task_id?: string;
+  task_title?: string;
 }
 
 export interface ChatAction {

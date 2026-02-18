@@ -104,6 +104,62 @@ _READ_TOOLS: dict[str, dict] = {
             },
         },
     },
+    "get_tasks_for_node": {
+        "type": "function",
+        "function": {
+            "name": "get_tasks_for_node",
+            "description": "Haal alle taken op die gekoppeld zijn aan een node.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "node_id": {"type": "string", "description": "UUID van de node"},
+                },
+                "required": ["node_id"],
+            },
+        },
+    },
+    "get_tasks_for_person": {
+        "type": "function",
+        "function": {
+            "name": "get_tasks_for_person",
+            "description": (
+                "Haal alle taken op die toegewezen zijn aan een persoon."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "person_id": {
+                        "type": "string",
+                        "description": "UUID van de persoon",
+                    },
+                },
+                "required": ["person_id"],
+            },
+        },
+    },
+    "get_overdue_tasks": {
+        "type": "function",
+        "function": {
+            "name": "get_overdue_tasks",
+            "description": (
+                "Haal alle verlopen taken op"
+                " (deadline verstreken, nog niet afgerond)."
+                " Optioneel gefilterd op persoon."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "assignee_id": {
+                        "type": "string",
+                        "description": (
+                            "UUID van de persoon (optioneel,"
+                            " laat leeg voor alle verlopen taken)"
+                        ),
+                    },
+                },
+            },
+        },
+    },
     "list_tags": {
         "type": "function",
         "function": {
@@ -131,6 +187,215 @@ _READ_TOOLS: dict[str, dict] = {
                     "query": {"type": "string", "description": "Naam of deel van naam"},
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    "search_organisatie": {
+        "type": "function",
+        "function": {
+            "name": "search_organisatie",
+            "description": (
+                "Zoek organisatie-eenheden op naam"
+                " (ministerie, DG, directie, afdeling, team)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Naam of deel van naam",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    "get_organisatie": {
+        "type": "function",
+        "function": {
+            "name": "get_organisatie",
+            "description": (
+                "Haal details op van een organisatie-eenheid"
+                " (naam, type, manager, medewerkers)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "organisatie_id": {
+                        "type": "string",
+                        "description": "UUID van de organisatie-eenheid",
+                    },
+                },
+                "required": ["organisatie_id"],
+            },
+        },
+    },
+    "get_person_summary": {
+        "type": "function",
+        "function": {
+            "name": "get_person_summary",
+            "description": (
+                "Haal een samenvatting op van een persoon:"
+                " naam, organisatie, taken, en betrokken nodes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "person_id": {
+                        "type": "string",
+                        "description": "UUID van de persoon",
+                    },
+                },
+                "required": ["person_id"],
+            },
+        },
+    },
+    "find_path": {
+        "type": "function",
+        "function": {
+            "name": "find_path",
+            "description": (
+                "Vind het kortste pad via relaties tussen twee nodes"
+                " in het beleidsgrafiek."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "from_node_id": {
+                        "type": "string",
+                        "description": "UUID van de start-node",
+                    },
+                    "to_node_id": {
+                        "type": "string",
+                        "description": "UUID van de eind-node",
+                    },
+                },
+                "required": ["from_node_id", "to_node_id"],
+            },
+        },
+    },
+    "find_similar_nodes": {
+        "type": "function",
+        "function": {
+            "name": "find_similar_nodes",
+            "description": (
+                "Vind nodes met vergelijkbare titels"
+                " (handig om duplicaten te ontdekken)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Titel om op te zoeken",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optionele beschrijving voor betere matching",
+                    },
+                },
+                "required": ["title"],
+            },
+        },
+    },
+    "list_opdrachten": {
+        "type": "function",
+        "function": {
+            "name": "list_opdrachten",
+            "description": (
+                "Zoek opdrachten/subsidies. Optioneel"
+                " gefilterd op begrotingsjaar, status, of type."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "begrotingsjaar": {
+                        "type": "integer",
+                        "description": "Begrotingsjaar (bijv. 2025)",
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": (
+                            "Status: concept, actief,"
+                            " afgerond, verantwoord,"
+                            " geannuleerd"
+                        ),
+                    },
+                    "type": {
+                        "type": "string",
+                        "description": "Type: opdracht of subsidie",
+                    },
+                },
+            },
+        },
+    },
+    "get_opdracht": {
+        "type": "function",
+        "function": {
+            "name": "get_opdracht",
+            "description": (
+                "Haal details op van een opdracht/subsidie"
+                " (titel, budget, status, verantwoordelijke)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "opdracht_id": {
+                        "type": "string",
+                        "description": "UUID van de opdracht",
+                    },
+                },
+                "required": ["opdracht_id"],
+            },
+        },
+    },
+    "get_recent_activity": {
+        "type": "function",
+        "function": {
+            "name": "get_recent_activity",
+            "description": (
+                "Bekijk recente activiteiten/wijzigingen"
+                " in het systeem (audit log)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Aantal resultaten (standaard 10, max 20)",
+                    },
+                },
+            },
+        },
+    },
+    "list_parlementair": {
+        "type": "function",
+        "function": {
+            "name": "list_parlementair",
+            "description": (
+                "Zoek parlementaire items: moties,"
+                " kamervragen, toezeggingen, amendementen."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "search": {
+                        "type": "string",
+                        "description": "Zoekterm in titel/onderwerp",
+                    },
+                    "item_type": {
+                        "type": "string",
+                        "description": (
+                            "Type: motie, kamervraag,"
+                            " toezegging, amendement,"
+                            " commissiedebat"
+                        ),
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Status: pending, imported, rejected",
+                    },
+                },
             },
         },
     },
@@ -350,6 +615,20 @@ def _describe_action(tool_name: str, args: dict) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _task_to_dict(task: object) -> dict:
+    """Convert a Task ORM object to a serializable dict."""
+    return {
+        "id": str(task.id),
+        "title": task.title,
+        "status": task.status,
+        "priority": getattr(task, "priority", None),
+        "deadline": str(task.deadline) if task.deadline else None,
+        "assignee": task.assignee.naam if getattr(task, "assignee", None) else None,
+        "assignee_id": str(task.assignee_id) if task.assignee_id else None,
+        "node_id": str(task.node_id) if task.node_id else None,
+    }
+
+
 async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> str:
     """Execute a read-only tool and return a JSON string result."""
     try:
@@ -359,11 +638,9 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = SearchRepository(db)
             query = args.get("query", "")
             node_type = args.get("node_type")
-            result_types = ["corpus_node"] if not node_type else ["corpus_node"]
             results = await repo.full_text_search(
-                query, result_types=result_types, limit=10
+                query, result_types=["corpus_node"], limit=10
             )
-            # Filter by node_type if specified
             if node_type:
                 results = [r for r in results if r.get("entity_subtype") == node_type]
             items = [
@@ -417,6 +694,37 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 {"neighbors": neighbors, "count": len(neighbors)}, ensure_ascii=False
             )
 
+        elif tool_name == "get_tasks_for_node":
+            from bouwmeester.repositories.task import TaskRepository
+
+            repo = TaskRepository(db)
+            tasks = await repo.get_by_node(UUID(args["node_id"]), limit=20)
+            items = [_task_to_dict(t) for t in tasks]
+            return json.dumps(
+                {"tasks": items, "count": len(items)}, ensure_ascii=False
+            )
+
+        elif tool_name == "get_tasks_for_person":
+            from bouwmeester.repositories.task import TaskRepository
+
+            repo = TaskRepository(db)
+            tasks = await repo.get_by_assignee(UUID(args["person_id"]), limit=20)
+            items = [_task_to_dict(t) for t in tasks]
+            return json.dumps(
+                {"tasks": items, "count": len(items)}, ensure_ascii=False
+            )
+
+        elif tool_name == "get_overdue_tasks":
+            from bouwmeester.repositories.task import TaskRepository
+
+            repo = TaskRepository(db)
+            assignee_id = UUID(args["assignee_id"]) if args.get("assignee_id") else None
+            tasks = await repo.get_overdue(assignee_id=assignee_id)
+            items = [_task_to_dict(t) for t in tasks[:20]]
+            return json.dumps(
+                {"tasks": items, "count": len(items)}, ensure_ascii=False
+            )
+
         elif tool_name == "list_tags":
             from bouwmeester.repositories.tag import TagRepository
 
@@ -443,6 +751,235 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             items = [{"id": str(p.id), "naam": p.naam} for p in people]
             return json.dumps(
                 {"results": items, "count": len(items)}, ensure_ascii=False
+            )
+
+        elif tool_name == "search_organisatie":
+            from bouwmeester.repositories.organisatie_eenheid import (
+                OrganisatieEenheidRepository,
+            )
+
+            repo = OrganisatieEenheidRepository(db)
+            units = await repo.search(args.get("query", ""), limit=10)
+            items = [
+                {
+                    "id": str(u.id),
+                    "naam": u.naam,
+                    "type": u.type,
+                }
+                for u in units
+            ]
+            return json.dumps(
+                {"results": items, "count": len(items)}, ensure_ascii=False
+            )
+
+        elif tool_name == "get_organisatie":
+            from bouwmeester.repositories.organisatie_eenheid import (
+                OrganisatieEenheidRepository,
+            )
+
+            repo = OrganisatieEenheidRepository(db)
+            unit = await repo.get(UUID(args["organisatie_id"]))
+            if not unit:
+                return json.dumps({"error": "Organisatie-eenheid niet gevonden"})
+            personen = await repo.get_personen(unit.id)
+            return json.dumps(
+                {
+                    "id": str(unit.id),
+                    "naam": unit.naam,
+                    "type": unit.type,
+                    "manager": (
+                        unit.manager.naam
+                        if getattr(unit, "manager", None)
+                        else None
+                    ),
+                    "manager_id": str(unit.manager_id) if unit.manager_id else None,
+                    "parent_id": str(unit.parent_id) if unit.parent_id else None,
+                    "medewerkers": [
+                        {"id": str(p.id), "naam": p.naam} for p in personen[:20]
+                    ],
+                    "aantal_medewerkers": len(personen),
+                },
+                ensure_ascii=False,
+            )
+
+        elif tool_name == "get_person_summary":
+            from bouwmeester.repositories.person import PersonRepository
+            from bouwmeester.repositories.task import TaskRepository
+
+            person_repo = PersonRepository(db)
+            person = await person_repo.get(UUID(args["person_id"]))
+            if not person:
+                return json.dumps({"error": "Persoon niet gevonden"})
+
+            task_repo = TaskRepository(db)
+            tasks = await task_repo.get_by_assignee(person.id, limit=10)
+            open_tasks = [t for t in tasks if t.status not in ("done", "cancelled")]
+
+            result = {
+                "id": str(person.id),
+                "naam": person.naam,
+                "organisatie_eenheid": (
+                    person.organisatie_eenheid.naam
+                    if getattr(person, "organisatie_eenheid", None)
+                    else None
+                ),
+                "organisatie_eenheid_id": (
+                    str(person.organisatie_eenheid_id)
+                    if person.organisatie_eenheid_id
+                    else None
+                ),
+                "open_taken": [_task_to_dict(t) for t in open_tasks[:5]],
+                "aantal_open_taken": len(open_tasks),
+            }
+            return json.dumps(result, ensure_ascii=False)
+
+        elif tool_name == "find_path":
+            from bouwmeester.repositories.graph import GraphRepository
+
+            repo = GraphRepository(db)
+            path = await repo.find_path(
+                UUID(args["from_node_id"]), UUID(args["to_node_id"])
+            )
+            if not path:
+                return json.dumps(
+                    {"path": [], "message": "Geen pad gevonden tussen deze nodes"}
+                )
+            steps = [
+                {
+                    "node_id": str(step.get("node_id", "")),
+                    "title": step.get("node_title", ""),
+                    "node_type": step.get("node_type", ""),
+                    "edge_type": step.get("edge_type_id"),
+                }
+                for step in path
+            ]
+            return json.dumps(
+                {"path": steps, "length": len(steps)}, ensure_ascii=False
+            )
+
+        elif tool_name == "find_similar_nodes":
+            from bouwmeester.repositories.search import SearchRepository
+
+            repo = SearchRepository(db)
+            results = await repo.find_similar_nodes(
+                title=args["title"],
+                description=args.get("description"),
+                limit=5,
+            )
+            items = [
+                {
+                    "id": str(r["id"]),
+                    "title": r["title"],
+                    "node_type": r["node_type"],
+                    "similarity": r.get("similarity", 0),
+                }
+                for r in results
+            ]
+            return json.dumps(
+                {"results": items, "count": len(items)}, ensure_ascii=False
+            )
+
+        elif tool_name == "list_opdrachten":
+            from bouwmeester.repositories.opdracht import OpdrachtRepository
+
+            repo = OpdrachtRepository(db)
+            opdrachten = await repo.get_all(
+                limit=15,
+                begrotingsjaar=args.get("begrotingsjaar"),
+                status=args.get("status"),
+                type=args.get("type"),
+            )
+            items = [
+                {
+                    "id": str(o.id),
+                    "titel": o.titel,
+                    "type": o.type,
+                    "status": o.status,
+                    "begrotingsjaar": o.begrotingsjaar,
+                    "budget": str(o.budget) if o.budget else None,
+                    "gerealiseerd": str(o.gerealiseerd) if o.gerealiseerd else None,
+                }
+                for o in opdrachten
+            ]
+            return json.dumps(
+                {"opdrachten": items, "count": len(items)}, ensure_ascii=False
+            )
+
+        elif tool_name == "get_opdracht":
+            from bouwmeester.repositories.opdracht import OpdrachtRepository
+
+            repo = OpdrachtRepository(db)
+            o = await repo.get(UUID(args["opdracht_id"]))
+            if not o:
+                return json.dumps({"error": "Opdracht niet gevonden"})
+            return json.dumps(
+                {
+                    "id": str(o.id),
+                    "titel": o.titel,
+                    "type": o.type,
+                    "status": o.status,
+                    "begrotingsjaar": o.begrotingsjaar,
+                    "budget": str(o.budget) if o.budget else None,
+                    "gerealiseerd": str(o.gerealiseerd) if o.gerealiseerd else None,
+                    "beschrijving": (o.beschrijving or "")[:300],
+                    "verantwoordelijke": (
+                        o.verantwoordelijke.naam
+                        if getattr(o, "verantwoordelijke", None)
+                        else None
+                    ),
+                    "verantwoordelijke_id": (
+                        str(o.verantwoordelijke_id) if o.verantwoordelijke_id else None
+                    ),
+                    "instrument_id": str(o.instrument_id) if o.instrument_id else None,
+                },
+                ensure_ascii=False,
+            )
+
+        elif tool_name == "get_recent_activity":
+            from bouwmeester.repositories.activity import ActivityRepository
+
+            repo = ActivityRepository(db)
+            limit = min(int(args.get("limit", 10)), 20)
+            activities = await repo.get_recent(limit=limit)
+            items = [
+                {
+                    "event_type": a.event_type,
+                    "actor": a.actor.naam if getattr(a, "actor", None) else None,
+                    "node_id": str(a.node_id) if a.node_id else None,
+                    "task_id": str(a.task_id) if a.task_id else None,
+                    "details": a.details if a.details else None,
+                    "timestamp": a.created_at.isoformat() if a.created_at else None,
+                }
+                for a in activities
+            ]
+            return json.dumps(
+                {"activities": items, "count": len(items)}, ensure_ascii=False
+            )
+
+        elif tool_name == "list_parlementair":
+            from bouwmeester.repositories.parlementair_item import (
+                ParlementairItemRepository,
+            )
+
+            repo = ParlementairItemRepository(db)
+            items_raw = await repo.get_all(
+                search=args.get("search"),
+                item_type=args.get("item_type"),
+                status=args.get("status"),
+                limit=10,
+            )
+            items = [
+                {
+                    "id": str(pi.id),
+                    "titel": pi.titel,
+                    "type": pi.type,
+                    "status": pi.status,
+                    "onderwerp": (pi.onderwerp or "")[:200],
+                }
+                for pi in items_raw
+            ]
+            return json.dumps(
+                {"items": items, "count": len(items)}, ensure_ascii=False
             )
 
         return json.dumps({"error": f"Onbekende tool: {tool_name}"})
@@ -497,9 +1034,7 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
 
         elif tool_name == "create_edge":
             from bouwmeester.models.edge import Edge
-            from bouwmeester.repositories.edge import EdgeRepository
 
-            repo = EdgeRepository(db)
             edge = Edge(
                 from_node_id=UUID(args["from_node_id"]),
                 to_node_id=UUID(args["to_node_id"]),

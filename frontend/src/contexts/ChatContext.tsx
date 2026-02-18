@@ -51,9 +51,11 @@ function getInvalidationKeys(entityType: string | undefined) {
     case 'task':
       return [queryKeys.tasks.all];
     case 'edge':
-      return [queryKeys.edges.all, queryKeys.nodes.all];
+      return [queryKeys.edges.all, queryKeys.nodes.all, queryKeys.graph.all];
     case 'tag':
-      return [queryKeys.tags.all];
+      return [queryKeys.tags.all, queryKeys.nodes.all];
+    case 'opdracht':
+      return [queryKeys.opdrachten.all];
     default:
       return [];
   }
