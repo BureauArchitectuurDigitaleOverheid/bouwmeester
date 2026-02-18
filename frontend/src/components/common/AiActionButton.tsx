@@ -11,7 +11,7 @@ interface AiActionButtonProps {
 
 /**
  * Reusable AI-action button with sparkle icon and loading spinner.
- * Used by TagSuggestions, EdgeSuggestions, GapAnalysisPanel, KompasStepSuggestions.
+ * Used by TagSuggestions, GapAnalysisPanel, KompasStepSuggestions.
  */
 export function AiActionButton({
   label,

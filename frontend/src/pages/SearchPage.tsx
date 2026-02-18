@@ -1,17 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import DOMPurify from 'dompurify';
-import { Search as SearchIcon, FileQuestion, Sparkles, Loader2 } from 'lucide-react';
+import { Search as SearchIcon, FileQuestion } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { SearchInterpretation } from '@/components/search/SearchInterpretation';
 import { useSearch } from '@/hooks/useSearch';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { richTextToPlain } from '@/utils/richtext';
-import { nlSearch } from '@/api/search';
 import {
   SEARCH_RESULT_TYPE_LABELS,
   SEARCH_RESULT_TYPE_COLORS,
@@ -23,8 +21,6 @@ import {
   formatFunctie,
   type SearchResultType,
   type SearchResult,
-  type SearchInterpretation as SearchInterpretationType,
-  type NlSearchResponse,
 } from '@/types';
 
 const SUBTITLE_LABEL_MAPS: Partial<
@@ -57,11 +53,6 @@ const ALL_RESULT_TYPES: SearchResultType[] = [
 export function SearchPage() {
   const [query, setQuery] = useState('');
   const [activeTypes, setActiveTypes] = useState<SearchResultType[]>([]);
-  const [aiEnabled, setAiEnabled] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiResult, setAiResult] = useState<NlSearchResponse | null>(null);
-  const [interpretation, setInterpretation] = useState<SearchInterpretationType | null>(null);
-  const aiTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const navigate = useNavigate();
   const { openNodeDetail } = useNodeDetail();
   const { openTaskDetail } = useTaskDetail();
@@ -69,35 +60,7 @@ export function SearchPage() {
   const filterTypes = activeTypes.length > 0 ? activeTypes : undefined;
   const { data, isLoading, isFetched } = useSearch(query, filterTypes);
 
-  // AI search with longer debounce
-  useEffect(() => {
-    if (!aiEnabled || query.length < 3) {
-      setAiResult(null);
-      setInterpretation(null);
-      return;
-    }
-    if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
-    aiTimerRef.current = setTimeout(async () => {
-      setAiLoading(true);
-      try {
-        const res = await nlSearch(query);
-        setAiResult(res);
-        setInterpretation(res.interpretation);
-      } catch {
-        setAiResult(null);
-        setInterpretation(null);
-      } finally {
-        setAiLoading(false);
-      }
-    }, 500);
-    return () => {
-      if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
-    };
-  }, [query, aiEnabled]);
-
-  // Use AI results if available, otherwise fall back to standard FTS
-  const effectiveResults = (aiEnabled && aiResult?.results) ? aiResult.results : (data?.results ?? []);
-  const results = effectiveResults;
+  const results = data?.results ?? [];
 
   const toggleType = (type: SearchResultType) => {
     setActiveTypes((prev) =>
@@ -142,50 +105,11 @@ export function SearchPage() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={aiEnabled ? 'Stel een vraag over het beleidscorpus...' : 'Zoek op titel, naam, beschrijving, trefwoord...'}
+          placeholder="Zoek op titel, naam, beschrijving, trefwoord..."
           autoFocus
-          className="block w-full rounded-2xl border border-border bg-white pl-12 pr-14 py-3.5 text-sm text-text placeholder:text-text-secondary/50 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 hover:border-border-hover shadow-sm"
+          className="block w-full rounded-2xl border border-border bg-white pl-12 pr-4 py-3.5 text-sm text-text placeholder:text-text-secondary/50 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 hover:border-border-hover shadow-sm"
         />
-        <button
-          type="button"
-          onClick={() => setAiEnabled((prev) => !prev)}
-          className={`absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${
-            aiEnabled
-              ? 'bg-primary-100 text-primary-700'
-              : 'text-text-secondary hover:text-text hover:bg-gray-100'
-          }`}
-          title={aiEnabled ? 'AI zoeken uitschakelen' : 'AI zoeken inschakelen'}
-        >
-          {aiLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Sparkles className="h-4 w-4" />
-          )}
-        </button>
       </div>
-
-      {/* AI interpretation */}
-      {aiEnabled && interpretation && (
-        <SearchInterpretation
-          interpretation={interpretation}
-          onRemoveNodeType={(type) => {
-            setInterpretation((prev) =>
-              prev ? { ...prev, node_types: prev.node_types.filter((t) => t !== type) } : null,
-            );
-          }}
-          onRemoveTag={(tag) => {
-            setInterpretation((prev) =>
-              prev ? { ...prev, tags: prev.tags.filter((t) => t !== tag) } : null,
-            );
-          }}
-        />
-      )}
-
-      {aiEnabled && !aiResult?.available && query.length >= 3 && !aiLoading && (
-        <p className="text-xs text-text-secondary">
-          AI zoeken niet beschikbaar — standaard zoekresultaten worden getoond.
-        </p>
-      )}
 
       {/* Filter chips */}
       <div className="flex flex-wrap gap-2">
@@ -218,10 +142,10 @@ export function SearchPage() {
         />
       )}
 
-      {!(isLoading || aiLoading) && results.length > 0 && (
+      {!isLoading && results.length > 0 && (
         <div className="space-y-6">
           <p className="text-sm text-text-secondary">
-            {aiEnabled && aiResult ? aiResult.total : (data?.total ?? results.length)} resultaten voor &ldquo;{aiEnabled && aiResult ? aiResult.query : (data?.query ?? query)}&rdquo;
+            {data?.total ?? results.length} resultaten voor &ldquo;{data?.query ?? query}&rdquo;
           </p>
 
           {Object.entries(grouped).map(([resultType, groupResults]) => (

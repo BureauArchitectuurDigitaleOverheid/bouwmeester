@@ -12,8 +12,6 @@ import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
-import { EdgeSuggestions } from './EdgeSuggestions';
-import { ContentSummary } from './ContentSummary';
 import { BeleidskompasPanel } from './beleidskompas/BeleidskompasPanel';
 import { FinancieelOverzichtPanel } from '@/components/financieel/FinancieelOverzichtPanel';
 import { TaskView } from '@/components/tasks/TaskView';
@@ -296,7 +294,6 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             <Card>
               <h3 className="text-sm font-medium text-text mb-2">Beschrijving</h3>
               <RichTextDisplay content={node.description} />
-              <ContentSummary text={node.description ?? ''} />
             </Card>
 
             {/* Financieel overzicht for instrument/maatregel/doel nodes */}
@@ -693,10 +690,6 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
               </Card>
             )}
 
-            {/* Edge suggestions (LLM) */}
-            <Card>
-              <EdgeSuggestions nodeId={nodeId} />
-            </Card>
           </div>
         )}
 

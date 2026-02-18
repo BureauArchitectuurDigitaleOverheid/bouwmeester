@@ -41,9 +41,7 @@ def _cleanup_expired() -> None:
 
 
 # Regex to strip raw tool-call artefacts from LLM output
-_TOOL_CALL_RE = re.compile(
-    r"\[TOOL_CALLS?\].*", re.DOTALL
-)
+_TOOL_CALL_RE = re.compile(r"\[TOOL_CALLS?\].*", re.DOTALL)
 
 
 def _clean_content(text: str) -> str:
@@ -136,9 +134,7 @@ _READ_TOOLS: dict[str, dict] = {
         "type": "function",
         "function": {
             "name": "get_tasks_for_person",
-            "description": (
-                "Haal alle taken op die toegewezen zijn aan een persoon."
-            ),
+            "description": ("Haal alle taken op die toegewezen zijn aan een persoon."),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -368,8 +364,7 @@ _READ_TOOLS: dict[str, dict] = {
         "function": {
             "name": "get_recent_activity",
             "description": (
-                "Bekijk recente activiteiten/wijzigingen"
-                " in het systeem (audit log)."
+                "Bekijk recente activiteiten/wijzigingen in het systeem (audit log)."
             ),
             "parameters": {
                 "type": "object",
@@ -526,9 +521,7 @@ _WRITE_TOOLS: dict[str, dict] = {
                     },
                     "assignee_id": {
                         "type": "string",
-                        "description": (
-                            "UUID van de toegewezen persoon (optioneel)"
-                        ),
+                        "description": ("UUID van de toegewezen persoon (optioneel)"),
                     },
                     "parent_task_id": {
                         "type": "string",
@@ -626,7 +619,7 @@ def _describe_action(tool_name: str, args: dict) -> str:
         "update_node": lambda a: f"Node {a.get('node_id', '')[:8]}... bijwerken",
         "create_edge": lambda a: f"Relatie '{a.get('edge_type_id', '')}' aanmaken",
         "create_task": lambda a: (
-            f'{"Subtaak" if a.get("parent_task_id") else "Taak"}'
+            f"{'Subtaak' if a.get('parent_task_id') else 'Taak'}"
             f' "{a.get("title", "")}" aanmaken'
         ),
         "update_task": lambda a: f"Taak {a.get('task_id', '')[:8]}... bijwerken",
@@ -671,10 +664,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 query, result_types=["corpus_node"], limit=10
             )
             if node_type:
-                results = [
-                    r for r in results
-                    if r.get("subtitle") == node_type
-                ]
+                results = [r for r in results if r.get("subtitle") == node_type]
             items = [
                 {
                     "id": r.get("id"),
@@ -732,9 +722,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = TaskRepository(db)
             tasks = await repo.get_by_node(UUID(args["node_id"]), limit=20)
             items = [_task_to_dict(t) for t in tasks]
-            return json.dumps(
-                {"tasks": items, "count": len(items)}, ensure_ascii=False
-            )
+            return json.dumps({"tasks": items, "count": len(items)}, ensure_ascii=False)
 
         elif tool_name == "get_tasks_for_person":
             from bouwmeester.repositories.task import TaskRepository
@@ -742,9 +730,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = TaskRepository(db)
             tasks = await repo.get_by_assignee(UUID(args["person_id"]), limit=20)
             items = [_task_to_dict(t) for t in tasks]
-            return json.dumps(
-                {"tasks": items, "count": len(items)}, ensure_ascii=False
-            )
+            return json.dumps({"tasks": items, "count": len(items)}, ensure_ascii=False)
 
         elif tool_name == "get_overdue_tasks":
             from bouwmeester.repositories.task import TaskRepository
@@ -753,9 +739,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             assignee_id = UUID(args["assignee_id"]) if args.get("assignee_id") else None
             tasks = await repo.get_overdue(assignee_id=assignee_id)
             items = [_task_to_dict(t) for t in tasks[:20]]
-            return json.dumps(
-                {"tasks": items, "count": len(items)}, ensure_ascii=False
-            )
+            return json.dumps({"tasks": items, "count": len(items)}, ensure_ascii=False)
 
         elif tool_name == "list_tags":
             from bouwmeester.repositories.tag import TagRepository
@@ -820,9 +804,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                     "naam": unit.naam,
                     "type": unit.type,
                     "manager": (
-                        unit.manager.naam
-                        if getattr(unit, "manager", None)
-                        else None
+                        unit.manager.naam if getattr(unit, "manager", None) else None
                     ),
                     "manager_id": str(unit.manager_id) if unit.manager_id else None,
                     "parent_id": str(unit.parent_id) if unit.parent_id else None,
@@ -852,13 +834,8 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 return json.dumps({"error": "Persoon niet gevonden"})
 
             task_repo = TaskRepository(db)
-            tasks = await task_repo.get_by_assignee(
-                person.id, limit=10
-            )
-            open_tasks = [
-                t for t in tasks
-                if t.status not in ("done", "cancelled")
-            ]
+            tasks = await task_repo.get_by_assignee(person.id, limit=10)
+            open_tasks = [t for t in tasks if t.status not in ("done", "cancelled")]
 
             # Find current org unit via active placement
             org_name = None
@@ -867,11 +844,8 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 sa_select(OrganisatieEenheid)
                 .join(PersonOrganisatieEenheid)
                 .where(
-                    PersonOrganisatieEenheid.person_id
-                    == person.id,
-                    PersonOrganisatieEenheid.eind_datum.is_(
-                        None
-                    ),
+                    PersonOrganisatieEenheid.person_id == person.id,
+                    PersonOrganisatieEenheid.eind_datum.is_(None),
                 )
                 .limit(1)
             )
@@ -886,9 +860,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 "naam": person.naam,
                 "organisatie_eenheid": org_name,
                 "organisatie_eenheid_id": org_id,
-                "open_taken": [
-                    _task_to_dict(t) for t in open_tasks[:5]
-                ],
+                "open_taken": [_task_to_dict(t) for t in open_tasks[:5]],
                 "aantal_open_taken": len(open_tasks),
             }
             return json.dumps(result, ensure_ascii=False)
@@ -913,9 +885,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 }
                 for step in path
             ]
-            return json.dumps(
-                {"path": steps, "length": len(steps)}, ensure_ascii=False
-            )
+            return json.dumps({"path": steps, "length": len(steps)}, ensure_ascii=False)
 
         elif tool_name == "find_similar_nodes":
             from bouwmeester.repositories.search import SearchRepository
@@ -1038,15 +1008,11 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 }
                 for pi in items_raw
             ]
-            return json.dumps(
-                {"items": items, "count": len(items)}, ensure_ascii=False
-            )
+            return json.dumps({"items": items, "count": len(items)}, ensure_ascii=False)
 
         return json.dumps({"error": f"Onbekende tool: {tool_name}"})
     except ValueError:
-        return json.dumps(
-            {"error": "Ongeldig ID-formaat. Gebruik een geldig UUID."}
-        )
+        return json.dumps({"error": "Ongeldig ID-formaat. Gebruik een geldig UUID."})
     except Exception:
         logger.exception("Error executing read tool %s", tool_name)
         return json.dumps(
@@ -1106,18 +1072,14 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
 
             node_repo = CorpusNodeRepository(db)
 
-            from_node = await node_repo.get(
-                UUID(args["from_node_id"])
-            )
+            from_node = await node_repo.get(UUID(args["from_node_id"]))
             if not from_node:
                 return {
                     "success": False,
                     "summary": "Bron-node niet gevonden.",
                 }
 
-            to_node = await node_repo.get(
-                UUID(args["to_node_id"])
-            )
+            to_node = await node_repo.get(UUID(args["to_node_id"]))
             if not to_node:
                 return {
                     "success": False,
@@ -1158,9 +1120,7 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
             # Validate assignee exists if provided
             if args.get("assignee_id"):
                 person_repo = PersonRepository(db)
-                person = await person_repo.get(
-                    UUID(args["assignee_id"])
-                )
+                person = await person_repo.get(UUID(args["assignee_id"]))
                 if not person:
                     return {
                         "success": False,
@@ -1174,9 +1134,7 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
             # Validate parent task exists if provided
             if args.get("parent_task_id"):
                 parent_repo = TaskRepository(db)
-                parent_task = await parent_repo.get(
-                    UUID(args["parent_task_id"])
-                )
+                parent_task = await parent_repo.get(UUID(args["parent_task_id"]))
                 if not parent_task:
                     return {
                         "success": False,
@@ -1199,9 +1157,7 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
             if args.get("assignee_id"):
                 task_data["assignee_id"] = UUID(args["assignee_id"])
             if args.get("parent_task_id"):
-                task_data["parent_id"] = UUID(
-                    args["parent_task_id"]
-                )
+                task_data["parent_id"] = UUID(args["parent_task_id"])
             data = TaskCreate(**task_data)
             task = await repo.create(data)
             await db.commit()
@@ -1291,9 +1247,7 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
                 }
 
             person_repo = PersonRepository(db)
-            person = await person_repo.get(
-                UUID(args["person_id"])
-            )
+            person = await person_repo.get(UUID(args["person_id"]))
             if not person:
                 return {
                     "success": False,
@@ -1480,9 +1434,7 @@ class ChatService:
                     messages=conv["messages"],
                     tools=[],  # No tools — just generate text
                 )
-                content = _clean_content(
-                    response2.choices[0].message.content or ""
-                )
+                content = _clean_content(response2.choices[0].message.content or "")
                 conv["messages"].append({"role": "assistant", "content": content})
                 break
         else:
@@ -1564,9 +1516,7 @@ class ChatService:
                 messages=conv["messages"],
                 tools=[],
             )
-            content = _clean_content(
-                response.choices[0].message.content or status_msg
-            )
+            content = _clean_content(response.choices[0].message.content or status_msg)
         except Exception:
             content = status_msg
 

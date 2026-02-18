@@ -1,5 +1,5 @@
-import { apiGet, apiPost } from './client';
-import type { SearchResponse, SearchResultType, SimilarNodesResponse, NlSearchResponse } from '@/types';
+import { apiGet } from './client';
+import type { SearchResponse, SearchResultType, SimilarNodesResponse } from '@/types';
 
 export async function search(
   query: string,
@@ -19,8 +19,4 @@ export async function findSimilarNodes(
   const params: Record<string, string> = { title };
   if (excludeId) params.exclude_id = excludeId;
   return apiGet<SimilarNodesResponse>('/api/search/similar-nodes', params);
-}
-
-export async function nlSearch(query: string): Promise<NlSearchResponse> {
-  return apiPost<NlSearchResponse>('/api/search/nl', { query });
 }

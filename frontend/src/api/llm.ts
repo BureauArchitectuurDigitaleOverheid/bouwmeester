@@ -2,9 +2,6 @@ import { apiPost, apiGet } from './client';
 import type {
   TagSuggestionRequest,
   TagSuggestionResponse,
-  EdgeSuggestionResponse,
-  SummarizeResponse,
-  TaskSuggestionResponse,
   GapAnalysisResponse,
   CorpusGapOverviewResponse,
   KompasGuidanceResponse,
@@ -12,26 +9,6 @@ import type {
 
 export function suggestTags(data: TagSuggestionRequest): Promise<TagSuggestionResponse> {
   return apiPost<TagSuggestionResponse>('/api/llm/suggest-tags', data);
-}
-
-export function suggestEdges(nodeId: string): Promise<EdgeSuggestionResponse> {
-  return apiPost<EdgeSuggestionResponse>('/api/llm/suggest-edges', { node_id: nodeId });
-}
-
-export function summarizeText(text: string, maxWords = 100): Promise<SummarizeResponse> {
-  return apiPost<SummarizeResponse>('/api/llm/summarize', { text, max_words: maxWords });
-}
-
-export function suggestTask(
-  nodeTitle: string,
-  nodeDescription?: string,
-  nodeType = 'dossier',
-): Promise<TaskSuggestionResponse> {
-  return apiPost<TaskSuggestionResponse>('/api/llm/suggest-task', {
-    node_title: nodeTitle,
-    node_description: nodeDescription,
-    node_type: nodeType,
-  });
 }
 
 export function analyzeGaps(dossierId: string): Promise<GapAnalysisResponse> {

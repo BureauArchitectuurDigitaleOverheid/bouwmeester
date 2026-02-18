@@ -982,23 +982,6 @@ export interface EdgeSuggestionItem {
   reason: string;
 }
 
-export interface EdgeSuggestionResponse {
-  suggestions: EdgeSuggestionItem[];
-  available: boolean;
-}
-
-export interface SummarizeResponse {
-  summary: string;
-  available: boolean;
-}
-
-// Task suggestion (C1)
-export interface TaskSuggestionResponse {
-  title: string;
-  description: string;
-  available: boolean;
-}
-
 // Gap detection (B3)
 export interface GapItem {
   step_number: number;
@@ -1046,22 +1029,6 @@ export interface SimilarNodeItem {
 
 export interface SimilarNodesResponse {
   items: SimilarNodeItem[];
-}
-
-// Natural language search (B5)
-export interface SearchInterpretation {
-  search_terms: string[];
-  node_types: string[];
-  tags: string[];
-  original_query: string;
-}
-
-export interface NlSearchResponse {
-  results: SearchResult[];
-  total: number;
-  query: string;
-  interpretation: SearchInterpretation | null;
-  available: boolean;
 }
 
 // Mention types

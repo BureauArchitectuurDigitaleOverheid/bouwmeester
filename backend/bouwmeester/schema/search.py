@@ -3,7 +3,7 @@
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class SearchResultType(StrEnum):
@@ -44,25 +44,3 @@ class SimilarNodeItem(BaseModel):
 
 class SimilarNodesResponse(BaseModel):
     items: list[SimilarNodeItem]
-
-
-# --- Natural Language Search (B5) ---
-
-
-class NlSearchRequest(BaseModel):
-    query: str = Field(min_length=3, max_length=500)
-
-
-class SearchInterpretation(BaseModel):
-    search_terms: list[str]
-    node_types: list[str] = []
-    tags: list[str] = []
-    original_query: str
-
-
-class NlSearchResponse(BaseModel):
-    results: list[SearchResult]
-    total: int
-    query: str
-    interpretation: SearchInterpretation | None = None
-    available: bool = True
