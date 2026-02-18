@@ -1450,7 +1450,12 @@ class ChatService:
                             "content": json.dumps(
                                 {
                                     "status": "pending_confirmation",
-                                    "message": "Wacht op bevestiging van de gebruiker.",
+                                    "message": (
+                                        "Deze actie is NOG NIET"
+                                        " uitgevoerd. De gebruiker"
+                                        " moet eerst bevestigen via"
+                                        " een knop in de interface."
+                                    ),
                                 }
                             ),
                         }
