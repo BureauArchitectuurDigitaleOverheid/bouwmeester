@@ -1034,10 +1034,33 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
 
         elif tool_name == "create_edge":
             from bouwmeester.models.edge import Edge
+            from bouwmeester.repositories.corpus_node import (
+                CorpusNodeRepository,
+            )
+
+            node_repo = CorpusNodeRepository(db)
+
+            from_node = await node_repo.get(
+                UUID(args["from_node_id"])
+            )
+            if not from_node:
+                return {
+                    "success": False,
+                    "summary": "Bron-node niet gevonden.",
+                }
+
+            to_node = await node_repo.get(
+                UUID(args["to_node_id"])
+            )
+            if not to_node:
+                return {
+                    "success": False,
+                    "summary": "Doel-node niet gevonden.",
+                }
 
             edge = Edge(
-                from_node_id=UUID(args["from_node_id"]),
-                to_node_id=UUID(args["to_node_id"]),
+                from_node_id=from_node.id,
+                to_node_id=to_node.id,
                 edge_type_id=args["edge_type_id"],
                 description=args.get("description"),
             )
@@ -1052,8 +1075,35 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
             }
 
         elif tool_name == "create_task":
+            from bouwmeester.repositories.corpus_node import CorpusNodeRepository
+            from bouwmeester.repositories.person import PersonRepository
             from bouwmeester.repositories.task import TaskRepository
             from bouwmeester.schema.task import TaskCreate
+
+            # Validate node exists
+            node_repo = CorpusNodeRepository(db)
+            node = await node_repo.get(UUID(args["node_id"]))
+            if not node:
+                return {
+                    "success": False,
+                    "summary": "Node niet gevonden",
+                }
+
+            # Validate assignee exists if provided
+            if args.get("assignee_id"):
+                person_repo = PersonRepository(db)
+                person = await person_repo.get(
+                    UUID(args["assignee_id"])
+                )
+                if not person:
+                    return {
+                        "success": False,
+                        "summary": (
+                            "Persoon niet gevonden."
+                            " Gebruik search_people om"
+                            " de juiste persoon te vinden."
+                        ),
+                    }
 
             repo = TaskRepository(db)
             task_data = {
@@ -1098,16 +1148,32 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
 
         elif tool_name == "add_tag_to_node":
             from bouwmeester.models.tag import NodeTag
+            from bouwmeester.repositories.corpus_node import (
+                CorpusNodeRepository,
+            )
             from bouwmeester.repositories.tag import TagRepository
+
+            node_repo = CorpusNodeRepository(db)
+            node = await node_repo.get(UUID(args["node_id"]))
+            if not node:
+                return {
+                    "success": False,
+                    "summary": "Node niet gevonden.",
+                }
 
             tag_repo = TagRepository(db)
             tag = await tag_repo.get_by_name(args["tag_name"])
             if not tag:
                 return {
                     "success": False,
-                    "summary": f"Tag '{args['tag_name']}' niet gevonden",
+                    "summary": (
+                        f"Tag '{args['tag_name']}'"
+                        " niet gevonden."
+                        " Gebruik list_tags om"
+                        " beschikbare tags te zien."
+                    ),
                 }
-            node_tag = NodeTag(node_id=UUID(args["node_id"]), tag_id=tag.id)
+            node_tag = NodeTag(node_id=node.id, tag_id=tag.id)
             db.add(node_tag)
             await db.flush()
             await db.commit()
@@ -1119,14 +1185,40 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
             }
 
         elif tool_name == "add_stakeholder":
+            from bouwmeester.repositories.corpus_node import (
+                CorpusNodeRepository,
+            )
             from bouwmeester.repositories.node_stakeholder import (
                 NodeStakeholderRepository,
             )
+            from bouwmeester.repositories.person import PersonRepository
+
+            node_repo = CorpusNodeRepository(db)
+            node = await node_repo.get(UUID(args["node_id"]))
+            if not node:
+                return {
+                    "success": False,
+                    "summary": "Node niet gevonden.",
+                }
+
+            person_repo = PersonRepository(db)
+            person = await person_repo.get(
+                UUID(args["person_id"])
+            )
+            if not person:
+                return {
+                    "success": False,
+                    "summary": (
+                        "Persoon niet gevonden."
+                        " Gebruik search_people om"
+                        " de juiste persoon te vinden."
+                    ),
+                }
 
             repo = NodeStakeholderRepository(db)
             await repo.create_stakeholder(
-                node_id=UUID(args["node_id"]),
-                person_id=UUID(args["person_id"]),
+                node_id=node.id,
+                person_id=person.id,
                 rol=args["rol"],
             )
             await db.commit()
@@ -1138,10 +1230,17 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
             }
 
         return {"success": False, "summary": f"Onbekende tool: {tool_name}"}
-    except Exception as e:
+    except Exception:
         logger.exception("Error executing write tool %s", tool_name)
         await db.rollback()
-        return {"success": False, "summary": f"Fout: {e}"}
+        return {
+            "success": False,
+            "summary": (
+                "Er is een fout opgetreden bij het"
+                " uitvoeren van deze actie."
+                " Probeer het opnieuw."
+            ),
+        }
 
 
 # ---------------------------------------------------------------------------
