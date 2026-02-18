@@ -27,4 +27,3 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS ix_corpus_node_title_trgm")
-    op.execute("DROP EXTENSION IF EXISTS pg_trgm")

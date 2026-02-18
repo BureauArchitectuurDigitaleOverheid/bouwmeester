@@ -8,6 +8,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from bouwmeester.models.chat_conversation import ChatConversation
 from bouwmeester.schema.chat import (
@@ -1324,9 +1325,8 @@ class ChatService:
         """Load a conversation owned by the current user."""
         stmt = select(ChatConversation).where(
             ChatConversation.id == UUID(conversation_id),
+            ChatConversation.person_id == self._person_id,
         )
-        if self._person_id:
-            stmt = stmt.where(ChatConversation.person_id == self._person_id)
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -1344,8 +1344,6 @@ class ChatService:
     async def _save_conversation(self, conv: ChatConversation) -> None:
         """Persist conversation state to DB."""
         # Mark JSONB columns as modified so SQLAlchemy picks up in-place changes
-        from sqlalchemy.orm.attributes import flag_modified
-
         flag_modified(conv, "messages")
         flag_modified(conv, "pending_actions")
         await self._db.commit()
@@ -1429,6 +1427,11 @@ class ChatService:
                 try:
                     args = json.loads(tc.function.arguments)
                 except json.JSONDecodeError:
+                    logger.warning(
+                        "Failed to parse tool arguments for %s: %s",
+                        tool_name,
+                        tc.function.arguments[:200],
+                    )
                     args = {}
 
                 if tool_name in _WRITE_TOOL_NAMES:
