@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BASE_URL, getCsrfToken } from '@/api/client';
+import logoImg from '/logo.png?url';
 
 interface AccessDeniedPageProps {
   email: string | null;
@@ -121,6 +122,7 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="max-w-md w-full space-y-6 text-center">
         <div>
+          <img src={logoImg} alt="Bouwmeester" className="h-20 w-20 rounded-full mx-auto mb-3" />
           <h1 className="text-2xl font-semibold text-text">Bouwmeester</h1>
           <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-6">
             <h2 className="text-lg font-medium text-amber-800">Geen toegang</h2>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Fingerprint, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { authenticateWithBiometric, getStoredPersonId, isWebAuthnCancellation } from '@/api/webauthn';
+import logoImg from '/logo.png?url';
 
 export function LoginPage() {
   const { login, refreshAuthStatus, authError, canBiometricReauth } = useAuth();
@@ -37,6 +38,7 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="max-w-sm w-full space-y-6 text-center">
         <div>
+          <img src={logoImg} alt="Bouwmeester" className="h-20 w-20 rounded-full mx-auto mb-3" />
           <h1 className="text-2xl font-semibold text-text">Bouwmeester</h1>
           <p className="mt-2 text-sm text-text-secondary">
             Log in om door te gaan
