@@ -4,6 +4,8 @@ import json
 import logging
 import re
 import uuid
+from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select
@@ -23,6 +25,28 @@ from bouwmeester.services.llm.prompts import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _SafeEncoder(json.JSONEncoder):
+    """JSON encoder that handles UUID, date/datetime, and Decimal objects."""
+
+    def default(self, o: object) -> object:
+        if isinstance(o, UUID):
+            return str(o)
+        if isinstance(o, datetime):
+            return o.isoformat()
+        if isinstance(o, date):
+            return o.isoformat()
+        if isinstance(o, Decimal):
+            return str(o)
+        return super().default(o)
+
+
+def _safe_dumps(obj: object, **kwargs: object) -> str:
+    """json.dumps with safe UUID/date/Decimal serialization."""
+    kwargs.setdefault("ensure_ascii", False)
+    return json.dumps(obj, cls=_SafeEncoder, **kwargs)
+
 
 # Maximum tool-calling loop iterations to prevent runaway loops.
 _MAX_TOOL_ROUNDS = 5
@@ -666,9 +690,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 }
                 for r in results[:10]
             ]
-            return json.dumps(
-                {"results": items, "count": len(items)}, ensure_ascii=False
-            )
+            return _safe_dumps({"results": items, "count": len(items)})
 
         elif tool_name == "get_node":
             from bouwmeester.repositories.corpus_node import CorpusNodeRepository
@@ -676,8 +698,8 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = CorpusNodeRepository(db)
             node = await repo.get(UUID(args["node_id"]))
             if not node:
-                return json.dumps({"error": "Node niet gevonden"})
-            return json.dumps(
+                return _safe_dumps({"error": "Node niet gevonden"})
+            return _safe_dumps(
                 {
                     "id": str(node.id),
                     "title": node.title,
@@ -685,7 +707,6 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                     "description": (node.description or "")[:500],
                     "status": node.status,
                 },
-                ensure_ascii=False,
             )
 
         elif tool_name == "get_node_neighbors":
@@ -694,7 +715,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = CorpusNodeRepository(db)
             data = await repo.get_neighbors(UUID(args["node_id"]))
             if not data.get("node"):
-                return json.dumps({"error": "Node niet gevonden"})
+                return _safe_dumps({"error": "Node niet gevonden"})
             neighbors = [
                 {
                     "node_id": str(n["node"].id),
@@ -704,9 +725,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 }
                 for n in data.get("neighbors", [])
             ]
-            return json.dumps(
-                {"neighbors": neighbors, "count": len(neighbors)}, ensure_ascii=False
-            )
+            return _safe_dumps({"neighbors": neighbors, "count": len(neighbors)})
 
         elif tool_name == "get_tasks_for_node":
             from bouwmeester.repositories.task import TaskRepository
@@ -714,7 +733,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = TaskRepository(db)
             tasks = await repo.get_by_node(UUID(args["node_id"]), limit=20)
             items = [_task_to_dict(t) for t in tasks]
-            return json.dumps({"tasks": items, "count": len(items)}, ensure_ascii=False)
+            return _safe_dumps({"tasks": items, "count": len(items)})
 
         elif tool_name == "get_tasks_for_person":
             from bouwmeester.repositories.task import TaskRepository
@@ -722,7 +741,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = TaskRepository(db)
             tasks = await repo.get_by_assignee(UUID(args["person_id"]), limit=20)
             items = [_task_to_dict(t) for t in tasks]
-            return json.dumps({"tasks": items, "count": len(items)}, ensure_ascii=False)
+            return _safe_dumps({"tasks": items, "count": len(items)})
 
         elif tool_name == "get_overdue_tasks":
             from bouwmeester.repositories.task import TaskRepository
@@ -731,7 +750,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             assignee_id = UUID(args["assignee_id"]) if args.get("assignee_id") else None
             tasks = await repo.get_overdue(assignee_id=assignee_id)
             items = [_task_to_dict(t) for t in tasks[:20]]
-            return json.dumps({"tasks": items, "count": len(items)}, ensure_ascii=False)
+            return _safe_dumps({"tasks": items, "count": len(items)})
 
         elif tool_name == "list_tags":
             from bouwmeester.repositories.tag import TagRepository
@@ -739,9 +758,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = TagRepository(db)
             tags = await repo.get_all()
             tag_names = [t.name for t in tags[:100]]
-            return json.dumps(
-                {"tags": tag_names, "count": len(tag_names)}, ensure_ascii=False
-            )
+            return _safe_dumps({"tags": tag_names, "count": len(tag_names)})
 
         elif tool_name == "list_edge_types":
             from bouwmeester.repositories.edge_type import EdgeTypeRepository
@@ -749,7 +766,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = EdgeTypeRepository(db)
             types = await repo.get_all()
             type_ids = [t.id for t in types]
-            return json.dumps({"edge_types": type_ids}, ensure_ascii=False)
+            return _safe_dumps({"edge_types": type_ids})
 
         elif tool_name == "search_people":
             from bouwmeester.repositories.person import PersonRepository
@@ -757,9 +774,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = PersonRepository(db)
             people = await repo.search(args.get("query", ""), limit=10)
             items = [{"id": str(p.id), "naam": p.naam} for p in people]
-            return json.dumps(
-                {"results": items, "count": len(items)}, ensure_ascii=False
-            )
+            return _safe_dumps({"results": items, "count": len(items)})
 
         elif tool_name == "search_organisatie":
             from bouwmeester.repositories.organisatie_eenheid import (
@@ -776,9 +791,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 }
                 for u in units
             ]
-            return json.dumps(
-                {"results": items, "count": len(items)}, ensure_ascii=False
-            )
+            return _safe_dumps({"results": items, "count": len(items)})
 
         elif tool_name == "get_organisatie":
             from bouwmeester.repositories.organisatie_eenheid import (
@@ -788,9 +801,9 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = OrganisatieEenheidRepository(db)
             unit = await repo.get(UUID(args["organisatie_id"]))
             if not unit:
-                return json.dumps({"error": "Organisatie-eenheid niet gevonden"})
+                return _safe_dumps({"error": "Organisatie-eenheid niet gevonden"})
             personen = await repo.get_personen(unit.id)
-            return json.dumps(
+            return _safe_dumps(
                 {
                     "id": str(unit.id),
                     "naam": unit.naam,
@@ -805,7 +818,6 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                     ],
                     "aantal_medewerkers": len(personen),
                 },
-                ensure_ascii=False,
             )
 
         elif tool_name == "get_person_summary":
@@ -823,7 +835,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             person_repo = PersonRepository(db)
             person = await person_repo.get(UUID(args["person_id"]))
             if not person:
-                return json.dumps({"error": "Persoon niet gevonden"})
+                return _safe_dumps({"error": "Persoon niet gevonden"})
 
             task_repo = TaskRepository(db)
             tasks = await task_repo.get_by_assignee(person.id, limit=10)
@@ -855,7 +867,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 "open_taken": [_task_to_dict(t) for t in open_tasks[:5]],
                 "aantal_open_taken": len(open_tasks),
             }
-            return json.dumps(result, ensure_ascii=False)
+            return _safe_dumps(result)
 
         elif tool_name == "find_path":
             from bouwmeester.repositories.graph import GraphRepository
@@ -865,7 +877,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 UUID(args["from_node_id"]), UUID(args["to_node_id"])
             )
             if not path:
-                return json.dumps(
+                return _safe_dumps(
                     {"path": [], "message": "Geen pad gevonden tussen deze nodes"}
                 )
             steps = [
@@ -877,7 +889,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 }
                 for step in path
             ]
-            return json.dumps({"path": steps, "length": len(steps)}, ensure_ascii=False)
+            return _safe_dumps({"path": steps, "length": len(steps)})
 
         elif tool_name == "find_similar_nodes":
             from bouwmeester.repositories.search import SearchRepository
@@ -897,9 +909,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 }
                 for r in results
             ]
-            return json.dumps(
-                {"results": items, "count": len(items)}, ensure_ascii=False
-            )
+            return _safe_dumps({"results": items, "count": len(items)})
 
         elif tool_name == "list_opdrachten":
             from bouwmeester.repositories.opdracht import OpdrachtRepository
@@ -923,9 +933,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 }
                 for o in opdrachten
             ]
-            return json.dumps(
-                {"opdrachten": items, "count": len(items)}, ensure_ascii=False
-            )
+            return _safe_dumps({"opdrachten": items, "count": len(items)})
 
         elif tool_name == "get_opdracht":
             from bouwmeester.repositories.opdracht import OpdrachtRepository
@@ -933,8 +941,8 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             repo = OpdrachtRepository(db)
             o = await repo.get(UUID(args["opdracht_id"]))
             if not o:
-                return json.dumps({"error": "Opdracht niet gevonden"})
-            return json.dumps(
+                return _safe_dumps({"error": "Opdracht niet gevonden"})
+            return _safe_dumps(
                 {
                     "id": str(o.id),
                     "titel": o.titel,
@@ -954,7 +962,6 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                     ),
                     "instrument_id": str(o.instrument_id) if o.instrument_id else None,
                 },
-                ensure_ascii=False,
             )
 
         elif tool_name == "get_recent_activity":
@@ -974,9 +981,7 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 }
                 for a in activities
             ]
-            return json.dumps(
-                {"activities": items, "count": len(items)}, ensure_ascii=False
-            )
+            return _safe_dumps({"activities": items, "count": len(items)})
 
         elif tool_name == "list_parlementair":
             from bouwmeester.repositories.parlementair_item import (
@@ -1000,14 +1005,14 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
                 }
                 for pi in items_raw
             ]
-            return json.dumps({"items": items, "count": len(items)}, ensure_ascii=False)
+            return _safe_dumps({"items": items, "count": len(items)})
 
-        return json.dumps({"error": f"Onbekende tool: {tool_name}"})
+        return _safe_dumps({"error": f"Onbekende tool: {tool_name}"})
     except ValueError:
-        return json.dumps({"error": "Ongeldig ID-formaat. Gebruik een geldig UUID."})
+        return _safe_dumps({"error": "Ongeldig ID-formaat. Gebruik een geldig UUID."})
     except Exception:
         logger.exception("Error executing read tool %s", tool_name)
-        return json.dumps(
+        return _safe_dumps(
             {"error": "Er is een fout opgetreden bij het ophalen van data."}
         )
 
@@ -1451,7 +1456,7 @@ class ChatService:
                         {
                             "role": "tool",
                             "tool_call_id": tc.id,
-                            "content": json.dumps(
+                            "content": _safe_dumps(
                                 {
                                     "status": "pending_confirmation",
                                     "message": (
