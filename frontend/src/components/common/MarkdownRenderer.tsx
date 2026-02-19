@@ -191,7 +191,17 @@ export function MarkdownRenderer({ content, onBmLink }: MarkdownRendererProps) {
 
   return (
     <div ref={containerRef} onClick={handleClick}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={components}
+        urlTransform={(url) => {
+          // Allow bm:// protocol links for in-app navigation
+          if (url.startsWith('bm://')) return url;
+          // Default: only allow http, https, mailto
+          if (/^https?:\/\/|^mailto:/i.test(url)) return url;
+          return '';
+        }}
+      >
         {content}
       </ReactMarkdown>
     </div>
