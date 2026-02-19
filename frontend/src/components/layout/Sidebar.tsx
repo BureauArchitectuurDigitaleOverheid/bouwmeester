@@ -17,6 +17,7 @@ import {
   BookOpen,
   Banknote,
 } from 'lucide-react';
+import logoImg from '/logo.png?url';
 import { useUIStore } from '@/store/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -86,9 +87,7 @@ export function Sidebar({ mobile }: SidebarProps) {
         'flex items-center border-b border-white/10 shrink-0',
         expanded ? 'gap-3 px-4 h-16' : 'flex-col gap-1 px-2 py-3',
       )}>
-        <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-accent-500 shrink-0">
-          <Building2 className="h-4.5 w-4.5 text-white" />
-        </div>
+        <img src={logoImg} alt="Bouwmeester" className="h-8 w-8 rounded-lg shrink-0" />
         {expanded && (
           <span className="text-base font-semibold tracking-tight whitespace-nowrap flex-1">
             Bouwmeester
