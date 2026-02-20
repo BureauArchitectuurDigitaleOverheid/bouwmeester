@@ -1,6 +1,6 @@
 """Pydantic schemas for AI chat feature."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatMention(BaseModel):
@@ -24,12 +24,24 @@ class ChatContext(BaseModel):
     mentions: list[ChatMention] = []
 
 
+class ChatAttachmentResponse(BaseModel):
+    """Metadata for an uploaded chat attachment."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    bestandsnaam: str
+    content_type: str
+    bestandsgrootte: int
+
+
 class ChatRequest(BaseModel):
     """Incoming chat message from the frontend."""
 
     message: str = Field(max_length=2000)
     conversation_id: str | None = None
     context: ChatContext | None = None
+    attachment_ids: list[str] = []
 
 
 class ChatAction(BaseModel):
@@ -58,6 +70,7 @@ class ChatMessage(BaseModel):
     content: str
     actions: list[ChatAction] = []
     pending_actions: list[PendingAction] = []
+    attachments: list[ChatAttachmentResponse] = []
 
 
 class ChatResponse(BaseModel):

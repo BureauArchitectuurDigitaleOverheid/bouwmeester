@@ -5,9 +5,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.bron import Bron
+from bouwmeester.models.bron_bijlage import BronBijlage
+from bouwmeester.models.chat_attachment import ChatAttachment
 from bouwmeester.models.corpus_node import CorpusNode
 
 
@@ -162,7 +165,10 @@ async def test_update_bron_detail_valid_url(client, bron_node):
 @pytest.fixture
 def bijlagen_tmp(tmp_path: Path):
     """Patch BIJLAGEN_ROOT to a temp directory for file-related tests."""
-    with patch("bouwmeester.api.routes.bijlage.BIJLAGEN_ROOT", tmp_path):
+    with (
+        patch("bouwmeester.api.routes.bijlage.BIJLAGEN_ROOT", tmp_path),
+        patch("bouwmeester.core.storage.bijlagen_root", return_value=tmp_path),
+    ):
         yield tmp_path
 
 
@@ -313,3 +319,172 @@ async def test_delete_bron_node_cleans_up_files(client, bron_node, bijlagen_tmp)
 
     # File should be gone
     assert list(node_dir.iterdir()) == []
+
+
+# ---------------------------------------------------------------------------
+# attach_to_bron chat tool
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def chat_attachment(db_session: AsyncSession, bijlagen_tmp):
+    """Create a chat attachment with a file on disk."""
+    att_id = uuid.uuid4()
+    filename = "test_doc.pdf"
+    safe_name = f"{att_id.hex}_{filename}"
+    relative_path = f"{att_id}/{safe_name}"
+
+    # Write the file to the chat subdirectory
+    chat_dir = bijlagen_tmp / "chat" / str(att_id)
+    chat_dir.mkdir(parents=True)
+    file_path = chat_dir / safe_name
+    file_path.write_bytes(b"%PDF-1.4 fake chat attachment")
+
+    att = ChatAttachment(
+        id=att_id,
+        bestandsnaam=filename,
+        content_type="application/pdf",
+        bestandsgrootte=29,
+        pad=relative_path,
+    )
+    db_session.add(att)
+    await db_session.flush()
+    return att
+
+
+async def test_attach_to_bron_happy_path(
+    db_session: AsyncSession, bron_node, chat_attachment, bijlagen_tmp
+):
+    """attach_to_bron copies the file and creates a BronBijlage record."""
+    from bouwmeester.services.chat_service import _execute_write_tool
+
+    result = await _execute_write_tool(
+        "attach_to_bron",
+        {
+            "attachment_id": str(chat_attachment.id),
+            "node_id": str(bron_node.id),
+        },
+        db_session,
+    )
+    assert result["success"] is True
+    assert "gekoppeld" in result["summary"]
+    assert result["entity_id"] == str(bron_node.id)
+    assert result["entity_type"] == "node"
+
+    # BronBijlage record should exist
+    stmt = select(BronBijlage).where(BronBijlage.bron_id == bron_node.id)
+    row = (await db_session.execute(stmt)).scalar_one()
+    assert row.bestandsnaam == "test_doc.pdf"
+    assert row.content_type == "application/pdf"
+
+    # File should exist in the bron directory
+    bron_dir = bijlagen_tmp / str(bron_node.id)
+    files = list(bron_dir.iterdir())
+    assert len(files) == 1
+    assert files[0].name.endswith("_test_doc.pdf")
+
+    # Original chat file should still exist (copy, not move)
+    chat_file = bijlagen_tmp / "chat" / chat_attachment.pad
+    assert chat_file.exists()
+
+
+async def test_attach_to_bron_attachment_not_found(
+    db_session: AsyncSession, bron_node, bijlagen_tmp
+):
+    """attach_to_bron fails gracefully when attachment doesn't exist."""
+    from bouwmeester.services.chat_service import _execute_write_tool
+
+    result = await _execute_write_tool(
+        "attach_to_bron",
+        {
+            "attachment_id": str(uuid.uuid4()),
+            "node_id": str(bron_node.id),
+        },
+        db_session,
+    )
+    assert result["success"] is False
+    assert "niet gevonden" in result["summary"]
+
+
+async def test_attach_to_bron_non_bron_node(
+    db_session: AsyncSession, sample_node, chat_attachment, bijlagen_tmp
+):
+    """attach_to_bron fails when node is not a bron type."""
+    from bouwmeester.services.chat_service import _execute_write_tool
+
+    result = await _execute_write_tool(
+        "attach_to_bron",
+        {
+            "attachment_id": str(chat_attachment.id),
+            "node_id": str(sample_node.id),
+        },
+        db_session,
+    )
+    assert result["success"] is False
+    assert "Bron-node niet gevonden" in result["summary"]
+
+
+async def test_attach_to_bron_existing_bijlage(
+    db_session: AsyncSession, bron_node, chat_attachment, bijlagen_tmp
+):
+    """attach_to_bron rejects when bron already has a bijlage."""
+    # Create an existing bijlage
+    existing = BronBijlage(
+        bron_id=bron_node.id,
+        bestandsnaam="existing.pdf",
+        content_type="application/pdf",
+        bestandsgrootte=100,
+        pad=f"{bron_node.id}/existing.pdf",
+    )
+    db_session.add(existing)
+    await db_session.flush()
+
+    from bouwmeester.services.chat_service import _execute_write_tool
+
+    result = await _execute_write_tool(
+        "attach_to_bron",
+        {
+            "attachment_id": str(chat_attachment.id),
+            "node_id": str(bron_node.id),
+        },
+        db_session,
+    )
+    assert result["success"] is False
+    assert "al een bijlage" in result["summary"]
+
+
+async def test_attach_to_bron_disallowed_content_type(
+    db_session: AsyncSession, bron_node, bijlagen_tmp
+):
+    """attach_to_bron rejects content types not in the bron allowlist."""
+    # Create a chat attachment with image/gif (allowed in chat, not in bron)
+    att_id = uuid.uuid4()
+    safe_name = f"{att_id.hex}_animation.gif"
+    relative_path = f"{att_id}/{safe_name}"
+
+    chat_dir = bijlagen_tmp / "chat" / str(att_id)
+    chat_dir.mkdir(parents=True)
+    (chat_dir / safe_name).write_bytes(b"GIF89a fake gif")
+
+    att = ChatAttachment(
+        id=att_id,
+        bestandsnaam="animation.gif",
+        content_type="image/gif",
+        bestandsgrootte=15,
+        pad=relative_path,
+    )
+    db_session.add(att)
+    await db_session.flush()
+
+    from bouwmeester.services.chat_service import _execute_write_tool
+
+    result = await _execute_write_tool(
+        "attach_to_bron",
+        {
+            "attachment_id": str(att.id),
+            "node_id": str(bron_node.id),
+        },
+        db_session,
+    )
+    assert result["success"] is False
+    assert "niet toegestaan" in result["summary"]

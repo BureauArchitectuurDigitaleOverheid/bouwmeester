@@ -16,6 +16,7 @@ from bouwmeester.schema.bron import (
 )
 from bouwmeester.schema.chat import (
     ChatAction,
+    ChatAttachmentResponse,
     ChatConfirmRequest,
     ChatConfirmResponse,
     ChatContext,
@@ -188,6 +189,7 @@ __all__ = [
     "AccessRequestStatusResponse",
     # chat
     "ChatAction",
+    "ChatAttachmentResponse",
     "ChatConfirmRequest",
     "ChatConfirmResponse",
     "ChatContext",

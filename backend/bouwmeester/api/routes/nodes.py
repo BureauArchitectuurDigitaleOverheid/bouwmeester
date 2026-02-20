@@ -231,7 +231,7 @@ async def delete_node(
     if node and node.node_type == "bron":
         from sqlalchemy import select
 
-        from bouwmeester.api.routes.bijlage import BIJLAGEN_ROOT
+        from bouwmeester.core.storage import bijlagen_root, safe_resolve
         from bouwmeester.models.bron_bijlage import BronBijlage
 
         result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == id))
@@ -243,11 +243,12 @@ async def delete_node(
 
     # Delete the file after DB deletion succeeds.
     if bijlage_path_to_delete:
-        file_path = (BIJLAGEN_ROOT / bijlage_path_to_delete).resolve()
-        if (
-            str(file_path).startswith(str(BIJLAGEN_ROOT.resolve()))
-            and file_path.exists()
-        ):
+        root = bijlagen_root()
+        try:
+            file_path = safe_resolve(root, bijlage_path_to_delete)
+        except ValueError:
+            file_path = None
+        if file_path and file_path.exists():
             file_path.unlink()
 
     await log_activity(

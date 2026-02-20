@@ -17,7 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --create-home --uid 1001 appuser
+RUN useradd --create-home --uid 1001 appuser && \
+    mkdir -p /data/bijlagen && \
+    chown -R appuser:appuser /data
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 

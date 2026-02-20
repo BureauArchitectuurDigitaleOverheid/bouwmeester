@@ -1,22 +1,32 @@
 """Chat orchestration service — manages tool-calling conversations with VLAM."""
 
+import asyncio
+import base64
 import json
 import logging
 import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 from uuid import UUID
 
+from openai import APIError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from bouwmeester.models.chat_attachment import ChatAttachment
 from bouwmeester.models.chat_conversation import ChatConversation
 from bouwmeester.schema.chat import (
     ChatAction,
+    ChatAttachmentResponse,
     ChatMessage,
     PendingAction,
+)
+from bouwmeester.services.document_extract import (
+    IMAGE_CONTENT_TYPES,
+    extract_text,
 )
 from bouwmeester.services.llm.base import BaseLLMService
 from bouwmeester.services.llm.prompts import (
@@ -65,6 +75,121 @@ def _clean_content(text: str) -> str:
     # Remove [TOOL_CALLS] blocks that some models emit
     text = _TOOL_CALL_RE.sub("", text)
     return text.strip()
+
+
+def _chat_bijlagen_root() -> Path:
+    """Resolve the root directory for chat attachments."""
+    from bouwmeester.core.storage import bijlagen_root
+
+    return bijlagen_root() / "chat"
+
+
+def _build_attachment_refs(
+    attachments: list[ChatAttachment],
+) -> list[dict]:
+    """Build lightweight refs for storing in conversation history (no base64).
+
+    This function performs blocking I/O (text extraction) — callers should
+    wrap it with ``asyncio.to_thread``.
+    """
+    refs = []
+    for att in attachments:
+        if att.content_type in IMAGE_CONTENT_TYPES:
+            refs.append(
+                {
+                    "type": "image_ref",
+                    "attachment_id": str(att.id),
+                    "content_type": att.content_type,
+                    "pad": att.pad,
+                    "bestandsnaam": att.bestandsnaam,
+                }
+            )
+        else:
+            # Store extracted text inline so we don't need to re-extract
+            root = _chat_bijlagen_root()
+            file_path = root / att.pad
+            extracted = extract_text(file_path, att.content_type)
+            refs.append(
+                {
+                    "type": "document_ref",
+                    "attachment_id": str(att.id),
+                    "bestandsnaam": att.bestandsnaam,
+                    "extracted_text": extracted or "",
+                }
+            )
+    return refs
+
+
+def _reconstruct_content_from_refs(
+    text: str | None,
+    refs: list[dict],
+) -> str | list[dict]:
+    """Reconstruct LLM content array from stored refs.
+
+    Uses the ``pad`` field stored in image refs to locate files on disk
+    instead of iterating directory contents.
+    """
+    if not refs:
+        return text or ""
+
+    root = _chat_bijlagen_root()
+    parts: list[dict] = [{"type": "text", "text": text or ""}]
+    has_image = False
+
+    for ref in refs:
+        if ref.get("type") == "image_ref":
+            content_type = ref.get("content_type", "image/png")
+            pad = ref.get("pad")
+            if pad:
+                file_path = root / pad
+                try:
+                    data = file_path.read_bytes()
+                    b64 = base64.b64encode(data).decode("ascii")
+                    parts.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{content_type};base64,{b64}",
+                            },
+                        }
+                    )
+                    has_image = True
+                except OSError:
+                    logger.warning("Could not read image file: %s", file_path)
+        elif ref.get("type") == "document_ref":
+            extracted = ref.get("extracted_text", "")
+            if extracted:
+                name = ref.get("bestandsnaam", "document")
+                parts.append(
+                    {
+                        "type": "text",
+                        "text": f"\n\n--- Inhoud van {name} ---\n{extracted}",
+                    }
+                )
+
+    if not has_image:
+        return "".join(p["text"] for p in parts if p["type"] == "text")
+
+    return parts
+
+
+def _prepare_llm_messages(messages: list[dict]) -> list[dict]:
+    """Prepare messages for the LLM by reconstructing attachment refs.
+
+    Replaces ``attachment_refs`` in *all* user messages with actual content
+    (base64 images / extracted text).  Strips the ``attachment_refs`` key so
+    the LLM never sees it.
+    """
+    out: list[dict] = []
+    for msg in messages:
+        refs = msg.get("attachment_refs")
+        if refs:
+            copy = {k: v for k, v in msg.items() if k != "attachment_refs"}
+            copy["content"] = _reconstruct_content_from_refs(msg.get("content"), refs)
+            out.append(copy)
+        else:
+            out.append(msg)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -620,6 +745,29 @@ _WRITE_TOOLS: dict[str, dict] = {
             },
         },
     },
+    "attach_to_bron": {
+        "type": "function",
+        "function": {
+            "name": "attach_to_bron",
+            "description": (
+                "Koppel een geüpload chatbestand als bijlage aan een bron-node."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "attachment_id": {
+                        "type": "string",
+                        "description": "UUID van de chat-bijlage",
+                    },
+                    "node_id": {
+                        "type": "string",
+                        "description": "UUID van de bron-node",
+                    },
+                },
+                "required": ["attachment_id", "node_id"],
+            },
+        },
+    },
 }
 
 ALL_TOOLS = list(_READ_TOOLS.values()) + list(_WRITE_TOOLS.values())
@@ -642,6 +790,9 @@ def _describe_action(tool_name: str, args: dict) -> str:
         "add_tag_to_node": lambda a: f"Tag '{a.get('tag_name', '')}' koppelen aan node",
         "add_stakeholder": lambda a: (
             f"Stakeholder ({a.get('rol', '')}) koppelen aan node"
+        ),
+        "attach_to_bron": lambda a: (
+            f"Chatbijlage koppelen aan bron {a.get('node_id', '')[:8]}..."
         ),
     }
     fn = descriptions.get(tool_name)
@@ -1017,7 +1168,13 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
         )
 
 
-async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> dict:
+async def _execute_write_tool(
+    tool_name: str,
+    args: dict,
+    db: AsyncSession,
+    *,
+    person_id: UUID | None = None,
+) -> dict:
     """Execute a write tool. Returns { success, summary, entity_id, entity_type }."""
     try:
         if tool_name == "create_node":
@@ -1269,6 +1426,111 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
                 "entity_type": "node",
             }
 
+        elif tool_name == "attach_to_bron":
+            import shutil
+
+            from bouwmeester.api.routes.bijlage import ALLOWED_CONTENT_TYPES
+            from bouwmeester.core.storage import bijlagen_root, safe_resolve
+            from bouwmeester.models.bron import Bron
+            from bouwmeester.models.bron_bijlage import BronBijlage
+
+            # Load chat attachment (scoped to current user)
+            att_id = UUID(args["attachment_id"])
+            stmt = select(ChatAttachment).where(ChatAttachment.id == att_id)
+            if person_id:
+                stmt = stmt.where(
+                    ChatAttachment.person_id.in_([person_id])
+                    | ChatAttachment.person_id.is_(None)
+                )
+            else:
+                stmt = stmt.where(ChatAttachment.person_id.is_(None))
+            result = await db.execute(stmt)
+            att = result.scalar_one_or_none()
+            if not att:
+                return {
+                    "success": False,
+                    "summary": "Chat-bijlage niet gevonden.",
+                }
+
+            # Validate content type against bron allowlist
+            if att.content_type not in ALLOWED_CONTENT_TYPES:
+                return {
+                    "success": False,
+                    "summary": (
+                        f"Bestandstype '{att.content_type}' is niet"
+                        " toegestaan als bron-bijlage."
+                        " Toegestaan: PDF, Word, ODT, TXT, PNG, JPEG."
+                    ),
+                }
+
+            # Load bron node
+            node_id = UUID(args["node_id"])
+            bron_stmt = select(Bron).where(Bron.id == node_id)
+            bron_result = await db.execute(bron_stmt)
+            bron = bron_result.scalar_one_or_none()
+            if not bron:
+                return {
+                    "success": False,
+                    "summary": (
+                        "Bron-node niet gevonden."
+                        " Controleer of de node van type 'bron' is."
+                    ),
+                }
+
+            # Check if bron already has an attachment
+            existing_stmt = select(BronBijlage).where(BronBijlage.bron_id == node_id)
+            existing_result = await db.execute(existing_stmt)
+            if existing_result.scalar_one_or_none():
+                return {
+                    "success": False,
+                    "summary": (
+                        "Deze bron heeft al een bijlage."
+                        " Verwijder eerst de bestaande bijlage."
+                    ),
+                }
+
+            # Resolve source path with traversal guard
+            root = bijlagen_root()
+            chat_root = root / "chat"
+            try:
+                src_path = safe_resolve(chat_root, att.pad)
+            except ValueError:
+                return {
+                    "success": False,
+                    "summary": "Ongeldig pad voor chat-bijlage.",
+                }
+            if not src_path.exists():
+                return {
+                    "success": False,
+                    "summary": "Bronbestand niet gevonden op disk.",
+                }
+
+            # Copy file from chat dir to bron dir (non-blocking)
+            dest_dir = root / str(node_id)
+            await asyncio.to_thread(dest_dir.mkdir, parents=True, exist_ok=True)
+            dest_name = f"{uuid.uuid4().hex}_{att.bestandsnaam}"
+            dest_path = dest_dir / dest_name
+            await asyncio.to_thread(shutil.copy2, str(src_path), str(dest_path))
+
+            relative_path = f"{node_id}/{dest_name}"
+            bijlage = BronBijlage(
+                bron_id=node_id,
+                bestandsnaam=att.bestandsnaam,
+                content_type=att.content_type,
+                bestandsgrootte=att.bestandsgrootte,
+                pad=relative_path,
+            )
+            db.add(bijlage)
+            await db.commit()
+            return {
+                "success": True,
+                "summary": (
+                    f'Bestand "{att.bestandsnaam}" gekoppeld als bijlage aan bron'
+                ),
+                "entity_id": str(node_id),
+                "entity_type": "node",
+            }
+
         return {"success": False, "summary": f"Onbekende tool: {tool_name}"}
     except ValueError:
         return {
@@ -1358,6 +1620,7 @@ class ChatService:
         message: str,
         conversation_id: str | None = None,
         context: dict | None = None,
+        attachment_ids: list[str] | None = None,
     ) -> tuple[str, ChatMessage]:
         """Process a user message and return (conversation_id, response_message)."""
 
@@ -1381,21 +1644,98 @@ class ChatService:
             system_content = CHAT_SYSTEM_PROMPT + "\n\nHUIDIGE CONTEXT:\n" + context_msg
             messages[0] = {"role": "system", "content": system_content}
 
-        # Add user message
-        messages.append({"role": "user", "content": message})
+        # Load attachments if provided (scoped to current user)
+        attachments: list[ChatAttachment] = []
+        attachment_responses: list[ChatAttachmentResponse] = []
+        if attachment_ids:
+            for aid in attachment_ids:
+                try:
+                    att_uuid = UUID(aid)
+                except ValueError:
+                    logger.warning("Invalid attachment UUID: %s", aid)
+                    continue
+                stmt = select(ChatAttachment).where(ChatAttachment.id == att_uuid)
+                if self._person_id:
+                    stmt = stmt.where(
+                        ChatAttachment.person_id.in_([self._person_id])
+                        | ChatAttachment.person_id.is_(None)
+                    )
+                else:
+                    stmt = stmt.where(ChatAttachment.person_id.is_(None))
+                result = await self._db.execute(stmt)
+                att = result.scalar_one_or_none()
+                if att:
+                    # Associate with conversation
+                    if att.conversation_id is None:
+                        att.conversation_id = conv.id
+                    attachments.append(att)
+                    attachment_responses.append(
+                        ChatAttachmentResponse(
+                            id=str(att.id),
+                            bestandsnaam=att.bestandsnaam,
+                            content_type=att.content_type,
+                            bestandsgrootte=att.bestandsgrootte,
+                        )
+                    )
+
+        # Store in history with lightweight refs (no base64)
+        # Use asyncio.to_thread for blocking text extraction (#8)
+        attachment_refs = (
+            await asyncio.to_thread(_build_attachment_refs, attachments)
+            if attachments
+            else []
+        )
+        history_entry: dict = {"role": "user", "content": message}
+        if attachment_refs:
+            history_entry["attachment_refs"] = attachment_refs
+        messages.append(history_entry)
 
         # Tool-calling loop
         actions: list[ChatAction] = []
         pending_actions: list[PendingAction] = []
 
+        # Track whether any message in history has attachment refs so we
+        # know whether to attempt the vision fallback on failure.
+        has_any_attachments = attachments or any(
+            m.get("attachment_refs") for m in messages if isinstance(m, dict)
+        )
+
         for _ in range(_MAX_TOOL_ROUNDS):
             # Truncate to stay within LLM token window
             llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
 
-            response = await self._llm.chat_with_tools(
-                messages=llm_messages,
-                tools=ALL_TOOLS,
-            )
+            # Reconstruct ALL user messages that have attachment_refs (#1, #2)
+            # Done once before the LLM call, outside per-message iteration.
+            llm_messages = await asyncio.to_thread(_prepare_llm_messages, llm_messages)
+
+            try:
+                response = await self._llm.chat_with_tools(
+                    messages=llm_messages,
+                    tools=ALL_TOOLS,
+                )
+            except APIError:
+                # Fallback: strip image content parts and retry with text only
+                if has_any_attachments:
+                    logger.warning(
+                        "LLM call failed with attachments, retrying text-only"
+                    )
+                    for i, msg in enumerate(llm_messages):
+                        if isinstance(msg.get("content"), list):
+                            text_parts = [
+                                p["text"]
+                                for p in msg["content"]
+                                if p.get("type") == "text"
+                            ]
+                            llm_messages[i] = {
+                                **msg,
+                                "content": "".join(text_parts),
+                            }
+                    response = await self._llm.chat_with_tools(
+                        messages=llm_messages,
+                        tools=ALL_TOOLS,
+                    )
+                else:
+                    raise
             choice = response.choices[0]
             assistant_msg = choice.message
 
@@ -1484,11 +1824,22 @@ class ChatService:
             # If we have pending writes, stop the loop and return to user
             if has_pending:
                 llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
-                response2 = await self._llm.chat_with_tools(
-                    messages=llm_messages,
-                    tools=[],
-                )
-                content = _clean_content(response2.choices[0].message.content or "")
+                try:
+                    response2 = await self._llm.chat_with_tools(
+                        messages=llm_messages,
+                        tools=[],
+                    )
+                    content = _clean_content(response2.choices[0].message.content or "")
+                except Exception:
+                    logger.warning(
+                        "LLM summary call failed after pending actions, using fallback"
+                    )
+                    descriptions = [pa.description for pa in pending_actions]
+                    content = (
+                        "Ik wil de volgende acties uitvoeren:\n\n"
+                        + "\n".join(f"- {d}" for d in descriptions)
+                        + "\n\nBevestig of annuleer de acties hierboven."
+                    )
                 messages.append({"role": "assistant", "content": content})
                 break
         else:
@@ -1510,6 +1861,7 @@ class ChatService:
             content=content,
             actions=actions,
             pending_actions=pending_actions,
+            attachments=attachment_responses,
         )
 
     async def confirm_action(
@@ -1546,6 +1898,7 @@ class ChatService:
                 pending["tool_name"],
                 pending["arguments"],
                 self._db,
+                person_id=self._person_id,
             )
             actions.append(
                 ChatAction(
