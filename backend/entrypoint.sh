@@ -6,7 +6,16 @@ set -e
 export PATH="/app/.venv/bin:$PATH"
 
 # Ensure bijlagen directories exist (volume mounts may override image dirs)
-mkdir -p /data/bijlagen/chat
+mkdir -p /data/bijlagen/chat 2>/dev/null || true
+
+# Verify write access — fail fast with actionable error
+if ! touch /data/bijlagen/chat/.write_test_$$ 2>/dev/null; then
+    echo "ERROR: /data/bijlagen/chat is not writable"
+    echo "Current user: $(id)"
+    ls -la /data/bijlagen/ 2>/dev/null || ls -la /data/ 2>/dev/null || true
+    exit 1
+fi
+rm -f /data/bijlagen/chat/.write_test_$$ 2>/dev/null || true
 
 echo "Running database migrations..."
 alembic upgrade head

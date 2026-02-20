@@ -19,7 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN useradd --create-home --uid 1001 appuser && \
     mkdir -p /data/bijlagen/chat && \
-    chown -R appuser:appuser /data
+    chgrp -R 0 /data && \
+    chmod -R g=u /data
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
