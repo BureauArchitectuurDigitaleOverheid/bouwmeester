@@ -4,7 +4,6 @@ import asyncio
 import base64
 import json
 import logging
-import os
 import re
 import uuid
 from datetime import date, datetime
@@ -79,14 +78,7 @@ def _clean_content(text: str) -> str:
 
 
 def _chat_bijlagen_root() -> Path:
-    """Resolve the root directory for chat attachments.
-
-    Checks ``CHAT_BIJLAGEN_ROOT`` env var first (explicit override),
-    then falls back to ``bijlagen_root() / "chat"``.
-    """
-    custom = os.environ.get("CHAT_BIJLAGEN_ROOT")
-    if custom:
-        return Path(custom)
+    """Resolve the root directory for chat attachments."""
     from bouwmeester.core.storage import bijlagen_root
 
     return bijlagen_root() / "chat"
@@ -97,8 +89,8 @@ def _build_attachment_refs(
 ) -> list[dict]:
     """Build lightweight refs for storing in conversation history (no base64).
 
-    Uses ``asyncio.to_thread`` for blocking text extraction — call from
-    async code via ``await asyncio.to_thread(_build_attachment_refs, ...)``.
+    This function performs blocking I/O (text extraction) — callers should
+    wrap it with ``asyncio.to_thread``.
     """
     refs = []
     for att in attachments:
@@ -1176,7 +1168,13 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
         )
 
 
-async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> dict:
+async def _execute_write_tool(
+    tool_name: str,
+    args: dict,
+    db: AsyncSession,
+    *,
+    person_id: UUID | None = None,
+) -> dict:
     """Execute a write tool. Returns { success, summary, entity_id, entity_type }."""
     try:
         if tool_name == "create_node":
@@ -1436,9 +1434,16 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
             from bouwmeester.models.bron import Bron
             from bouwmeester.models.bron_bijlage import BronBijlage
 
-            # Load chat attachment
+            # Load chat attachment (scoped to current user)
             att_id = UUID(args["attachment_id"])
             stmt = select(ChatAttachment).where(ChatAttachment.id == att_id)
+            if person_id:
+                stmt = stmt.where(
+                    ChatAttachment.person_id.in_([person_id])
+                    | ChatAttachment.person_id.is_(None)
+                )
+            else:
+                stmt = stmt.where(ChatAttachment.person_id.is_(None))
             result = await db.execute(stmt)
             att = result.scalar_one_or_none()
             if not att:
@@ -1639,7 +1644,7 @@ class ChatService:
             system_content = CHAT_SYSTEM_PROMPT + "\n\nHUIDIGE CONTEXT:\n" + context_msg
             messages[0] = {"role": "system", "content": system_content}
 
-        # Load attachments if provided
+        # Load attachments if provided (scoped to current user)
         attachments: list[ChatAttachment] = []
         attachment_responses: list[ChatAttachmentResponse] = []
         if attachment_ids:
@@ -1650,6 +1655,13 @@ class ChatService:
                     logger.warning("Invalid attachment UUID: %s", aid)
                     continue
                 stmt = select(ChatAttachment).where(ChatAttachment.id == att_uuid)
+                if self._person_id:
+                    stmt = stmt.where(
+                        ChatAttachment.person_id.in_([self._person_id])
+                        | ChatAttachment.person_id.is_(None)
+                    )
+                else:
+                    stmt = stmt.where(ChatAttachment.person_id.is_(None))
                 result = await self._db.execute(stmt)
                 att = result.scalar_one_or_none()
                 if att:
@@ -1886,6 +1898,7 @@ class ChatService:
                 pending["tool_name"],
                 pending["arguments"],
                 self._db,
+                person_id=self._person_id,
             )
             actions.append(
                 ChatAction(

@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.storage import bijlagen_root, safe_resolve
+from bouwmeester.core.storage import (
+    bijlagen_root,
+    safe_resolve_or_400,
+    verify_content_type,
+)
 from bouwmeester.models.chat_attachment import ChatAttachment
 from bouwmeester.schema.chat import (
     ChatAttachmentResponse,
@@ -53,10 +57,7 @@ ALLOWED_CONTENT_TYPES = {
 
 def _safe_path(relative: str) -> Path:
     """Resolve a relative path under CHAT_BIJLAGEN_ROOT, guarding against traversal."""
-    try:
-        return safe_resolve(CHAT_BIJLAGEN_ROOT, relative)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Ongeldig pad")
+    return safe_resolve_or_400(CHAT_BIJLAGEN_ROOT, relative)
 
 
 @router.post(
@@ -94,6 +95,13 @@ async def upload_chat_attachment(
         chunks.append(chunk)
     content = b"".join(chunks)
 
+    # Verify that file magic bytes match the claimed content type
+    if not verify_content_type(content, content_type):
+        raise HTTPException(
+            status_code=400,
+            detail="Bestandsinhoud komt niet overeen met het opgegeven bestandstype.",
+        )
+
     # Sanitize filename
     raw_name = file.filename or "bijlage"
     filename = Path(raw_name).name or "bijlage"
@@ -107,12 +115,12 @@ async def upload_chat_attachment(
         dir_path.mkdir(parents=True, exist_ok=True)
         file_path = dir_path / safe_name
         file_path.write_bytes(content)
-    except OSError as exc:
+    except OSError:
         logger.exception("Failed to write chat attachment to %s", dir_path)
         raise HTTPException(
             status_code=500,
-            detail=f"Kan bestand niet opslaan: {exc}",
-        ) from exc
+            detail="Kan bestand niet opslaan.",
+        )
 
     relative_path = f"{attachment_id}/{safe_name}"
     person_id = current_user.id if current_user else None

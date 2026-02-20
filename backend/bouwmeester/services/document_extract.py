@@ -20,11 +20,15 @@ def extract_text(path: Path, content_type: str) -> str | None:
     try:
         if content_type == "application/pdf":
             return _extract_pdf(path)
-        if content_type in (
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ):
+        docx_type = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        if content_type == docx_type:
             return _extract_docx(path)
+        if content_type == "application/msword":
+            # Old binary .doc format — python-docx only handles .docx
+            logger.info("Skipping text extraction for legacy .doc file: %s", path)
+            return None
         if content_type == "application/vnd.oasis.opendocument.text":
             return _extract_odt(path)
         if content_type == "text/plain":

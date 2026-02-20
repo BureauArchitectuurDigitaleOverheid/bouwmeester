@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.storage import bijlagen_root, safe_resolve
+from bouwmeester.core.storage import bijlagen_root, safe_resolve_or_400
 from bouwmeester.models.bron import Bron
 from bouwmeester.models.bron_bijlage import BronBijlage
 from bouwmeester.schema.bron import BronBijlageResponse
@@ -41,10 +41,7 @@ ALLOWED_CONTENT_TYPES = {
 
 def _safe_path(relative: str) -> Path:
     """Resolve a relative path under BIJLAGEN_ROOT, guarding against traversal."""
-    try:
-        return safe_resolve(BIJLAGEN_ROOT, relative)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Ongeldig pad")
+    return safe_resolve_or_400(BIJLAGEN_ROOT, relative)
 
 
 async def _get_bron(
