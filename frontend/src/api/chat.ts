@@ -1,9 +1,16 @@
-import { apiPost } from './client';
+import { apiPost, BASE_URL, getCsrfToken } from './client';
 
 export interface ChatMention {
   id: string;
   label: string;
   type: string;
+}
+
+export interface ChatAttachment {
+  id: string;
+  bestandsnaam: string;
+  content_type: string;
+  bestandsgrootte: number;
 }
 
 export interface ChatContext {
@@ -37,12 +44,14 @@ export interface ChatMessage {
   content: string;
   actions: ChatAction[];
   pending_actions: PendingAction[];
+  attachments?: ChatAttachment[];
 }
 
 export interface ChatRequest {
   message: string;
   conversation_id?: string;
   context?: ChatContext;
+  attachment_ids?: string[];
 }
 
 export interface ChatResponse {
@@ -68,4 +77,33 @@ export function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
 
 export function confirmChatAction(request: ChatConfirmRequest): Promise<ChatConfirmResponse> {
   return apiPost<ChatConfirmResponse>('/api/chat/confirm', request);
+}
+
+export async function uploadChatAttachment(file: File): Promise<ChatAttachment> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const url = `${BASE_URL}/api/chat/upload`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'X-CSRF-Token': getCsrfToken() },
+    body: formData,
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    let detail = 'Upload mislukt';
+    try {
+      const body = JSON.parse(text);
+      detail = body.detail || detail;
+    } catch { /* ignore */ }
+    throw new Error(detail);
+  }
+
+  return response.json();
+}
+
+export function chatAttachmentPreviewUrl(attachmentId: string): string {
+  return `${BASE_URL}/api/chat/attachments/${attachmentId}/preview`;
 }

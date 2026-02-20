@@ -4,6 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   sendChatMessage,
   confirmChatAction,
+  uploadChatAttachment,
+  type ChatAttachment,
   type ChatMessage,
   type ChatMention,
   type ChatContext as ChatContextType,
@@ -15,9 +17,13 @@ interface ChatContextValue {
   messages: ChatMessage[];
   isLoading: boolean;
   available: boolean;
+  pendingAttachments: ChatAttachment[];
+  uploadingCount: number;
   sendMessage: (text: string, mentions?: ChatMention[]) => Promise<void>;
   confirmAction: (actionId: string, approved: boolean) => Promise<void>;
   clearConversation: () => void;
+  addAttachment: (file: File) => Promise<void>;
+  removeAttachment: (id: string) => void;
 }
 
 const ChatCtx = createContext<ChatContextValue | null>(null);
@@ -72,6 +78,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [available, setAvailable] = useState(true);
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [uploadingCount, setUploadingCount] = useState(0);
 
   const getContext = useCallback((): ChatContextType => {
     const path = location.pathname;
@@ -86,14 +94,34 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return ctx;
   }, [location.pathname]);
 
+  const addAttachment = useCallback(async (file: File) => {
+    setUploadingCount((c) => c + 1);
+    try {
+      const attachment = await uploadChatAttachment(file);
+      setPendingAttachments((prev) => [...prev, attachment]);
+    } catch (err) {
+      console.error('Upload failed:', err);
+      throw err;
+    } finally {
+      setUploadingCount((c) => c - 1);
+    }
+  }, []);
+
+  const removeAttachment = useCallback((id: string) => {
+    setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
   const sendMessage = useCallback(async (text: string, mentions?: ChatMention[]) => {
+    const attachmentIds = pendingAttachments.map((a) => a.id);
     const userMsg: ChatMessage = {
       role: 'user',
       content: text,
       actions: [],
       pending_actions: [],
+      attachments: pendingAttachments.length > 0 ? [...pendingAttachments] : undefined,
     };
     setMessages((prev) => [...prev, userMsg]);
+    setPendingAttachments([]);
     setIsLoading(true);
 
     try {
@@ -105,6 +133,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         message: text,
         conversation_id: conversationId ?? undefined,
         context: ctx,
+        attachment_ids: attachmentIds.length > 0 ? attachmentIds : undefined,
       });
 
       setConversationId(response.conversation_id);
@@ -124,7 +153,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [conversationId, getContext]);
+  }, [conversationId, getContext, pendingAttachments]);
 
   const confirmAction = useCallback(async (actionId: string, approved: boolean) => {
     if (!conversationId) return;
@@ -174,11 +203,36 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setMessages([]);
     setStoredConversationId(null);
     setAvailable(true);
+    setPendingAttachments([]);
   }, []);
 
   const value = useMemo(
-    () => ({ conversationId, messages, isLoading, available, sendMessage, confirmAction, clearConversation }),
-    [conversationId, messages, isLoading, available, sendMessage, confirmAction, clearConversation],
+    () => ({
+      conversationId,
+      messages,
+      isLoading,
+      available,
+      pendingAttachments,
+      uploadingCount,
+      sendMessage,
+      confirmAction,
+      clearConversation,
+      addAttachment,
+      removeAttachment,
+    }),
+    [
+      conversationId,
+      messages,
+      isLoading,
+      available,
+      pendingAttachments,
+      uploadingCount,
+      sendMessage,
+      confirmAction,
+      clearConversation,
+      addAttachment,
+      removeAttachment,
+    ],
   );
 
   return <ChatCtx.Provider value={value}>{children}</ChatCtx.Provider>;

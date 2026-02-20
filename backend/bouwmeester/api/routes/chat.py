@@ -1,13 +1,20 @@
 """API routes for AI chat feature."""
 
 import logging
+import os
+import uuid
+from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.models.chat_attachment import ChatAttachment
 from bouwmeester.schema.chat import (
+    ChatAttachmentResponse,
     ChatConfirmRequest,
     ChatConfirmResponse,
     ChatMessage,
@@ -21,6 +28,151 @@ from bouwmeester.services.llm.base import DataSensitivity
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+def _default_chat_bijlagen_root() -> str:
+    data_path = os.environ.get("DATA_PATH")
+    if data_path:
+        return os.path.join(data_path, "bijlagen", "chat")
+    return "/data/bijlagen/chat"
+
+
+CHAT_BIJLAGEN_ROOT = Path(
+    os.environ.get("CHAT_BIJLAGEN_ROOT", _default_chat_bijlagen_root())
+)
+try:
+    CHAT_BIJLAGEN_ROOT.mkdir(parents=True, exist_ok=True)
+except OSError:
+    pass  # May fail in CI/test
+
+MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
+
+ALLOWED_CONTENT_TYPES = {
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.oasis.opendocument.text",
+    "text/plain",
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+}
+
+
+def _safe_path(relative: str) -> Path:
+    """Resolve a relative path under CHAT_BIJLAGEN_ROOT, guarding against traversal."""
+    resolved = (CHAT_BIJLAGEN_ROOT / relative).resolve()
+    if not str(resolved).startswith(str(CHAT_BIJLAGEN_ROOT.resolve())):
+        raise HTTPException(status_code=400, detail="Ongeldig pad")
+    return resolved
+
+
+@router.post(
+    "/upload",
+    response_model=ChatAttachmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_chat_attachment(
+    file: UploadFile,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> ChatAttachmentResponse:
+    """Upload a file for use in chat messages."""
+    content_type = file.content_type or ""
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Ongeldig bestandstype: {content_type}. "
+                "Toegestaan: PDF, Word, ODT, TXT, PNG, JPEG, GIF, WebP."
+            ),
+        )
+
+    # Read in chunks to enforce size limit
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(8192):
+        total += len(chunk)
+        if total > MAX_UPLOAD_SIZE:
+            max_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Bestand te groot. Maximum is {max_mb} MB.",
+            )
+        chunks.append(chunk)
+    content = b"".join(chunks)
+
+    # Sanitize filename
+    raw_name = file.filename or "bijlage"
+    filename = Path(raw_name).name or "bijlage"
+
+    attachment_id = uuid.uuid4()
+    safe_name = f"{attachment_id.hex}_{filename}"
+
+    # Write to disk
+    dir_path = CHAT_BIJLAGEN_ROOT / str(attachment_id)
+    try:
+        dir_path.mkdir(parents=True, exist_ok=True)
+        file_path = dir_path / safe_name
+        file_path.write_bytes(content)
+    except OSError as exc:
+        logger.exception("Failed to write chat attachment to %s", dir_path)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Kan bestand niet opslaan: {exc}",
+        ) from exc
+
+    relative_path = f"{attachment_id}/{safe_name}"
+    person_id = current_user.id if current_user else None
+
+    attachment = ChatAttachment(
+        id=attachment_id,
+        person_id=person_id,
+        bestandsnaam=filename,
+        content_type=content_type,
+        bestandsgrootte=len(content),
+        pad=relative_path,
+    )
+    db.add(attachment)
+    await db.flush()
+    await db.refresh(attachment)
+
+    return ChatAttachmentResponse(
+        id=str(attachment.id),
+        bestandsnaam=attachment.bestandsnaam,
+        content_type=attachment.content_type,
+        bestandsgrootte=attachment.bestandsgrootte,
+    )
+
+
+@router.get("/attachments/{attachment_id}/preview")
+async def preview_chat_attachment(
+    attachment_id: uuid.UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    """Serve a chat attachment for preview/thumbnail."""
+    person_id = current_user.id if current_user else None
+
+    stmt = select(ChatAttachment).where(ChatAttachment.id == attachment_id)
+    if person_id:
+        stmt = stmt.where(ChatAttachment.person_id == person_id)
+    result = await db.execute(stmt)
+    attachment = result.scalar_one_or_none()
+
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Bijlage niet gevonden")
+
+    file_path = _safe_path(attachment.pad)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Bestand niet gevonden op disk")
+
+    return FileResponse(
+        path=str(file_path),
+        media_type=attachment.content_type,
+        filename=attachment.bestandsnaam,
+    )
 
 
 @router.post("", response_model=ChatResponse)
@@ -52,6 +204,7 @@ async def send_chat_message(
         message=request.message,
         conversation_id=request.conversation_id,
         context=context,
+        attachment_ids=request.attachment_ids,
     )
     return ChatResponse(conversation_id=conversation_id, message=message)
 

@@ -1,22 +1,31 @@
 """Chat orchestration service — manages tool-calling conversations with VLAM."""
 
+import base64
 import json
 import logging
+import os
 import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from bouwmeester.models.chat_attachment import ChatAttachment
 from bouwmeester.models.chat_conversation import ChatConversation
 from bouwmeester.schema.chat import (
     ChatAction,
+    ChatAttachmentResponse,
     ChatMessage,
     PendingAction,
+)
+from bouwmeester.services.document_extract import (
+    IMAGE_CONTENT_TYPES,
+    extract_text,
 )
 from bouwmeester.services.llm.base import BaseLLMService
 from bouwmeester.services.llm.prompts import (
@@ -65,6 +74,100 @@ def _clean_content(text: str) -> str:
     # Remove [TOOL_CALLS] blocks that some models emit
     text = _TOOL_CALL_RE.sub("", text)
     return text.strip()
+
+
+def _chat_bijlagen_root() -> Path:
+    """Resolve the root directory for chat attachments."""
+    data_path = os.environ.get("DATA_PATH")
+    if data_path:
+        return Path(data_path) / "bijlagen" / "chat"
+    custom = os.environ.get("CHAT_BIJLAGEN_ROOT")
+    if custom:
+        return Path(custom)
+    return Path("/data/bijlagen/chat")
+
+
+def _build_attachment_refs(
+    attachments: list[ChatAttachment],
+) -> list[dict]:
+    """Build lightweight refs for storing in conversation history (no base64)."""
+    refs = []
+    for att in attachments:
+        if att.content_type in IMAGE_CONTENT_TYPES:
+            refs.append(
+                {
+                    "type": "image_ref",
+                    "attachment_id": str(att.id),
+                    "content_type": att.content_type,
+                    "bestandsnaam": att.bestandsnaam,
+                }
+            )
+        else:
+            # Store extracted text inline so we don't need to re-extract
+            root = _chat_bijlagen_root()
+            file_path = root / att.pad
+            extracted = extract_text(file_path, att.content_type)
+            refs.append(
+                {
+                    "type": "document_ref",
+                    "attachment_id": str(att.id),
+                    "bestandsnaam": att.bestandsnaam,
+                    "extracted_text": extracted or "",
+                }
+            )
+    return refs
+
+
+def _reconstruct_content_from_refs(
+    text: str | None,
+    refs: list[dict],
+) -> str | list[dict]:
+    """Reconstruct LLM content array from stored refs (for history replay)."""
+    if not refs:
+        return text or ""
+
+    root = _chat_bijlagen_root()
+    parts: list[dict] = [{"type": "text", "text": text or ""}]
+    has_image = False
+
+    for ref in refs:
+        if ref.get("type") == "image_ref":
+            att_id = ref["attachment_id"]
+            content_type = ref.get("content_type", "image/png")
+            # Find attachment file — look for directory named by attachment_id
+            att_dir = root / att_id
+            if att_dir.exists():
+                for f in att_dir.iterdir():
+                    try:
+                        data = f.read_bytes()
+                        b64 = base64.b64encode(data).decode("ascii")
+                        parts.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{content_type};base64,{b64}",
+                                },
+                            }
+                        )
+                        has_image = True
+                        break
+                    except OSError:
+                        pass
+        elif ref.get("type") == "document_ref":
+            extracted = ref.get("extracted_text", "")
+            if extracted:
+                name = ref.get("bestandsnaam", "document")
+                parts.append(
+                    {
+                        "type": "text",
+                        "text": f"\n\n--- Inhoud van {name} ---\n{extracted}",
+                    }
+                )
+
+    if not has_image:
+        return "".join(p["text"] for p in parts if p["type"] == "text")
+
+    return parts
 
 
 # ---------------------------------------------------------------------------
@@ -1358,6 +1461,7 @@ class ChatService:
         message: str,
         conversation_id: str | None = None,
         context: dict | None = None,
+        attachment_ids: list[str] | None = None,
     ) -> tuple[str, ChatMessage]:
         """Process a user message and return (conversation_id, response_message)."""
 
@@ -1381,8 +1485,39 @@ class ChatService:
             system_content = CHAT_SYSTEM_PROMPT + "\n\nHUIDIGE CONTEXT:\n" + context_msg
             messages[0] = {"role": "system", "content": system_content}
 
-        # Add user message
-        messages.append({"role": "user", "content": message})
+        # Load attachments if provided
+        attachments: list[ChatAttachment] = []
+        attachment_responses: list[ChatAttachmentResponse] = []
+        if attachment_ids:
+            for aid in attachment_ids:
+                try:
+                    stmt = select(ChatAttachment).where(
+                        ChatAttachment.id == UUID(aid)
+                    )
+                    result = await self._db.execute(stmt)
+                    att = result.scalar_one_or_none()
+                    if att:
+                        # Associate with conversation
+                        if att.conversation_id is None:
+                            att.conversation_id = conv.id
+                        attachments.append(att)
+                        attachment_responses.append(
+                            ChatAttachmentResponse(
+                                id=str(att.id),
+                                bestandsnaam=att.bestandsnaam,
+                                content_type=att.content_type,
+                                bestandsgrootte=att.bestandsgrootte,
+                            )
+                        )
+                except (ValueError, Exception):
+                    logger.warning("Invalid attachment ID: %s", aid)
+
+        # Store in history with lightweight refs (no base64)
+        attachment_refs = _build_attachment_refs(attachments) if attachments else []
+        history_entry: dict = {"role": "user", "content": message}
+        if attachment_refs:
+            history_entry["attachment_refs"] = attachment_refs
+        messages.append(history_entry)
 
         # Tool-calling loop
         actions: list[ChatAction] = []
@@ -1392,10 +1527,55 @@ class ChatService:
             # Truncate to stay within LLM token window
             llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
 
-            response = await self._llm.chat_with_tools(
-                messages=llm_messages,
-                tools=ALL_TOOLS,
-            )
+            # Replace the last user message content with the full LLM content
+            # (includes base64 images / extracted text instead of just refs)
+            if attachments and llm_messages:
+                for i in range(len(llm_messages) - 1, -1, -1):
+                    if llm_messages[i].get("role") == "user" and llm_messages[
+                        i
+                    ].get("attachment_refs"):
+                        msg_copy = {
+                            k: v
+                            for k, v in llm_messages[i].items()
+                            if k != "attachment_refs"
+                        }
+                        msg_copy["content"] = _reconstruct_content_from_refs(
+                            llm_messages[i].get("content"),
+                            llm_messages[i].get("attachment_refs", []),
+                        )
+                        llm_messages = (
+                            llm_messages[:i] + [msg_copy] + llm_messages[i + 1 :]
+                        )
+                        break
+
+            try:
+                response = await self._llm.chat_with_tools(
+                    messages=llm_messages,
+                    tools=ALL_TOOLS,
+                )
+            except Exception:
+                # Fallback: strip image content parts and retry with text only
+                if attachments:
+                    logger.warning(
+                        "LLM call failed with attachments, retrying text-only"
+                    )
+                    for i, msg in enumerate(llm_messages):
+                        if isinstance(msg.get("content"), list):
+                            text_parts = [
+                                p["text"]
+                                for p in msg["content"]
+                                if p.get("type") == "text"
+                            ]
+                            llm_messages[i] = {
+                                **msg,
+                                "content": "".join(text_parts),
+                            }
+                    response = await self._llm.chat_with_tools(
+                        messages=llm_messages,
+                        tools=ALL_TOOLS,
+                    )
+                else:
+                    raise
             choice = response.choices[0]
             assistant_msg = choice.message
 
@@ -1510,6 +1690,7 @@ class ChatService:
             content=content,
             actions=actions,
             pending_actions=pending_actions,
+            attachments=attachment_responses,
         )
 
     async def confirm_action(
