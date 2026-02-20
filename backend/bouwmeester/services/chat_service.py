@@ -1713,7 +1713,7 @@ class ChatService:
         """
         try:
             conv = await self._load_conversation(conversation_id)
-        except (ValueError, Exception):
+        except ValueError:
             conv = None
 
         if conv is None:
@@ -1736,12 +1736,10 @@ class ChatService:
         # Batch load attachment metadata
         att_map: dict[str, ChatAttachmentResponse] = {}
         if all_att_ids:
-            from uuid import UUID as _UUID
-
             att_uuids = []
             for aid in all_att_ids:
                 try:
-                    att_uuids.append(_UUID(aid))
+                    att_uuids.append(UUID(aid))
                 except ValueError:
                     continue
             if att_uuids:
