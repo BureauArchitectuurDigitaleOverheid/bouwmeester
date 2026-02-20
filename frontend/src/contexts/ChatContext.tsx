@@ -1,10 +1,11 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   sendChatMessage,
   confirmChatAction,
   uploadChatAttachment,
+  getChatHistory,
   type ChatAttachment,
   type ChatMessage,
   type ChatMention,
@@ -80,6 +81,36 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [available, setAvailable] = useState(true);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [uploadingCount, setUploadingCount] = useState(0);
+
+  // Load chat history from server when conversationId exists but messages
+  // are empty (e.g. after a page refresh).
+  const historyLoadedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!conversationId || messages.length > 0) return;
+    if (historyLoadedRef.current === conversationId) return;
+    historyLoadedRef.current = conversationId;
+
+    let cancelled = false;
+    setIsLoading(true);
+    getChatHistory(conversationId)
+      .then((resp) => {
+        if (cancelled) return;
+        setMessages(resp.messages);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Stale conversation — clear it
+        setConversationId(null);
+        setStoredConversationId(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, messages.length]);
 
   const getContext = useCallback((): ChatContextType => {
     const path = location.pathname;

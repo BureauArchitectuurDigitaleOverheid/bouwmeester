@@ -81,6 +81,13 @@ class ChatResponse(BaseModel):
     available: bool = True
 
 
+class ChatConversationHistoryResponse(BaseModel):
+    """Full conversation history returned to the frontend."""
+
+    conversation_id: str
+    messages: list[ChatMessage]
+
+
 class ChatConfirmRequest(BaseModel):
     """Confirm or reject a pending write action."""
 
