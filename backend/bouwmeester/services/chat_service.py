@@ -1824,6 +1824,9 @@ class ChatService:
             # If we have pending writes, stop the loop and return to user
             if has_pending:
                 llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
+                llm_messages = await asyncio.to_thread(
+                    _prepare_llm_messages, llm_messages
+                )
                 try:
                     response2 = await self._llm.chat_with_tools(
                         messages=llm_messages,
@@ -1929,12 +1932,14 @@ class ChatService:
 
         try:
             llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
+            llm_messages = await asyncio.to_thread(_prepare_llm_messages, llm_messages)
             response = await self._llm.chat_with_tools(
                 messages=llm_messages,
                 tools=[],
             )
             content = _clean_content(response.choices[0].message.content or status_msg)
         except Exception:
+            logger.warning("LLM summary call failed after confirm, using fallback")
             content = status_msg
 
         messages.append({"role": "assistant", "content": content})
