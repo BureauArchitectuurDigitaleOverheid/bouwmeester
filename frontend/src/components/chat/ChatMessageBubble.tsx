@@ -12,6 +12,17 @@ interface ChatMessageBubbleProps {
   message: ChatMessage;
 }
 
+/**
+ * Fix LLM output that uses "N.\n**Title**:" instead of proper markdown headings.
+ * Converts patterns like "1.\n**Bestaanszekerheid**:" into "### 1. Bestaanszekerheid"
+ */
+function fixNumberedBoldHeadings(text: string): string {
+  return text.replace(
+    /^(\d+)\.\n\*\*(.+?)\*\*:?$/gm,
+    (_match, num, title) => `### ${num}. ${title}`,
+  );
+}
+
 function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -105,7 +116,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : message.content ? (
             <div className="prose-sm">
-              <MarkdownRenderer content={message.content} compact onBmLink={handleBmLink} />
+              <MarkdownRenderer content={fixNumberedBoldHeadings(message.content)} compact onBmLink={handleBmLink} />
             </div>
           ) : null}
 
