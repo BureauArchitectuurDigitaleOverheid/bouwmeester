@@ -5,15 +5,11 @@ import { ChatActionCard } from './ChatActionCard';
 import { ChatPendingActionCard } from './ChatPendingActionCard';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
-import { chatAttachmentPreviewUrl } from '@/api/chat';
+import { chatAttachmentPreviewUrl, isImageContentType } from '@/api/chat';
 import type { ChatMessage } from '@/api/chat';
 
 interface ChatMessageBubbleProps {
   message: ChatMessage;
-}
-
-function isImageType(contentType: string) {
-  return contentType.startsWith('image/');
 }
 
 function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
@@ -65,7 +61,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-1.5">
               {attachments.map((att) =>
-                isImageType(att.content_type) ? (
+                isImageContentType(att.content_type) ? (
                   <button
                     key={att.id}
                     onClick={() =>

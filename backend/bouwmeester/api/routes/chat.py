@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
@@ -31,15 +31,16 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 def _default_chat_bijlagen_root() -> str:
+    custom = os.environ.get("CHAT_BIJLAGEN_ROOT")
+    if custom:
+        return custom
     data_path = os.environ.get("DATA_PATH")
     if data_path:
         return os.path.join(data_path, "bijlagen", "chat")
     return "/data/bijlagen/chat"
 
 
-CHAT_BIJLAGEN_ROOT = Path(
-    os.environ.get("CHAT_BIJLAGEN_ROOT", _default_chat_bijlagen_root())
-)
+CHAT_BIJLAGEN_ROOT = Path(_default_chat_bijlagen_root())
 try:
     CHAT_BIJLAGEN_ROOT.mkdir(parents=True, exist_ok=True)
 except OSError:
@@ -153,11 +154,16 @@ async def preview_chat_attachment(
     db: AsyncSession = Depends(get_db),
 ) -> FileResponse:
     """Serve a chat attachment for preview/thumbnail."""
-    person_id = current_user.id if current_user else None
-
     stmt = select(ChatAttachment).where(ChatAttachment.id == attachment_id)
-    if person_id:
-        stmt = stmt.where(ChatAttachment.person_id == person_id)
+    # When authenticated, only allow access to own attachments (or those
+    # uploaded without auth, i.e. person_id IS NULL).
+    if current_user:
+        stmt = stmt.where(
+            or_(
+                ChatAttachment.person_id == current_user.id,
+                ChatAttachment.person_id.is_(None),
+            )
+        )
     result = await db.execute(stmt)
     attachment = result.scalar_one_or_none()
 

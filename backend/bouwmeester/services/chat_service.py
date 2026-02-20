@@ -1,5 +1,6 @@
 """Chat orchestration service — manages tool-calling conversations with VLAM."""
 
+import asyncio
 import base64
 import json
 import logging
@@ -78,19 +79,23 @@ def _clean_content(text: str) -> str:
 
 def _chat_bijlagen_root() -> Path:
     """Resolve the root directory for chat attachments."""
-    data_path = os.environ.get("DATA_PATH")
-    if data_path:
-        return Path(data_path) / "bijlagen" / "chat"
     custom = os.environ.get("CHAT_BIJLAGEN_ROOT")
     if custom:
         return Path(custom)
+    data_path = os.environ.get("DATA_PATH")
+    if data_path:
+        return Path(data_path) / "bijlagen" / "chat"
     return Path("/data/bijlagen/chat")
 
 
 def _build_attachment_refs(
     attachments: list[ChatAttachment],
 ) -> list[dict]:
-    """Build lightweight refs for storing in conversation history (no base64)."""
+    """Build lightweight refs for storing in conversation history (no base64).
+
+    Uses ``asyncio.to_thread`` for blocking text extraction — call from
+    async code via ``await asyncio.to_thread(_build_attachment_refs, ...)``.
+    """
     refs = []
     for att in attachments:
         if att.content_type in IMAGE_CONTENT_TYPES:
@@ -99,6 +104,7 @@ def _build_attachment_refs(
                     "type": "image_ref",
                     "attachment_id": str(att.id),
                     "content_type": att.content_type,
+                    "pad": att.pad,
                     "bestandsnaam": att.bestandsnaam,
                 }
             )
@@ -122,7 +128,11 @@ def _reconstruct_content_from_refs(
     text: str | None,
     refs: list[dict],
 ) -> str | list[dict]:
-    """Reconstruct LLM content array from stored refs (for history replay)."""
+    """Reconstruct LLM content array from stored refs.
+
+    Uses the ``pad`` field stored in image refs to locate files on disk
+    instead of iterating directory contents.
+    """
     if not refs:
         return text or ""
 
@@ -132,27 +142,24 @@ def _reconstruct_content_from_refs(
 
     for ref in refs:
         if ref.get("type") == "image_ref":
-            att_id = ref["attachment_id"]
             content_type = ref.get("content_type", "image/png")
-            # Find attachment file — look for directory named by attachment_id
-            att_dir = root / att_id
-            if att_dir.exists():
-                for f in att_dir.iterdir():
-                    try:
-                        data = f.read_bytes()
-                        b64 = base64.b64encode(data).decode("ascii")
-                        parts.append(
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{content_type};base64,{b64}",
-                                },
-                            }
-                        )
-                        has_image = True
-                        break
-                    except OSError:
-                        pass
+            pad = ref.get("pad")
+            if pad:
+                file_path = root / pad
+                try:
+                    data = file_path.read_bytes()
+                    b64 = base64.b64encode(data).decode("ascii")
+                    parts.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{content_type};base64,{b64}",
+                            },
+                        }
+                    )
+                    has_image = True
+                except OSError:
+                    logger.warning("Could not read image file: %s", file_path)
         elif ref.get("type") == "document_ref":
             extracted = ref.get("extracted_text", "")
             if extracted:
@@ -168,6 +175,27 @@ def _reconstruct_content_from_refs(
         return "".join(p["text"] for p in parts if p["type"] == "text")
 
     return parts
+
+
+def _prepare_llm_messages(messages: list[dict]) -> list[dict]:
+    """Prepare messages for the LLM by reconstructing attachment refs.
+
+    Replaces ``attachment_refs`` in *all* user messages with actual content
+    (base64 images / extracted text).  Strips the ``attachment_refs`` key so
+    the LLM never sees it.
+    """
+    out: list[dict] = []
+    for msg in messages:
+        refs = msg.get("attachment_refs")
+        if refs:
+            copy = {k: v for k, v in msg.items() if k != "attachment_refs"}
+            copy["content"] = _reconstruct_content_from_refs(
+                msg.get("content"), refs
+            )
+            out.append(copy)
+        else:
+            out.append(msg)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1491,29 +1519,36 @@ class ChatService:
         if attachment_ids:
             for aid in attachment_ids:
                 try:
-                    stmt = select(ChatAttachment).where(
-                        ChatAttachment.id == UUID(aid)
-                    )
-                    result = await self._db.execute(stmt)
-                    att = result.scalar_one_or_none()
-                    if att:
-                        # Associate with conversation
-                        if att.conversation_id is None:
-                            att.conversation_id = conv.id
-                        attachments.append(att)
-                        attachment_responses.append(
-                            ChatAttachmentResponse(
-                                id=str(att.id),
-                                bestandsnaam=att.bestandsnaam,
-                                content_type=att.content_type,
-                                bestandsgrootte=att.bestandsgrootte,
-                            )
+                    att_uuid = UUID(aid)
+                except ValueError:
+                    logger.warning("Invalid attachment UUID: %s", aid)
+                    continue
+                stmt = select(ChatAttachment).where(
+                    ChatAttachment.id == att_uuid
+                )
+                result = await self._db.execute(stmt)
+                att = result.scalar_one_or_none()
+                if att:
+                    # Associate with conversation
+                    if att.conversation_id is None:
+                        att.conversation_id = conv.id
+                    attachments.append(att)
+                    attachment_responses.append(
+                        ChatAttachmentResponse(
+                            id=str(att.id),
+                            bestandsnaam=att.bestandsnaam,
+                            content_type=att.content_type,
+                            bestandsgrootte=att.bestandsgrootte,
                         )
-                except (ValueError, Exception):
-                    logger.warning("Invalid attachment ID: %s", aid)
+                    )
 
         # Store in history with lightweight refs (no base64)
-        attachment_refs = _build_attachment_refs(attachments) if attachments else []
+        # Use asyncio.to_thread for blocking text extraction (#8)
+        attachment_refs = (
+            await asyncio.to_thread(_build_attachment_refs, attachments)
+            if attachments
+            else []
+        )
         history_entry: dict = {"role": "user", "content": message}
         if attachment_refs:
             history_entry["attachment_refs"] = attachment_refs
@@ -1523,30 +1558,21 @@ class ChatService:
         actions: list[ChatAction] = []
         pending_actions: list[PendingAction] = []
 
+        # Track whether any message in history has attachment refs so we
+        # know whether to attempt the vision fallback on failure.
+        has_any_attachments = attachments or any(
+            m.get("attachment_refs") for m in messages if isinstance(m, dict)
+        )
+
         for _ in range(_MAX_TOOL_ROUNDS):
             # Truncate to stay within LLM token window
             llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
 
-            # Replace the last user message content with the full LLM content
-            # (includes base64 images / extracted text instead of just refs)
-            if attachments and llm_messages:
-                for i in range(len(llm_messages) - 1, -1, -1):
-                    if llm_messages[i].get("role") == "user" and llm_messages[
-                        i
-                    ].get("attachment_refs"):
-                        msg_copy = {
-                            k: v
-                            for k, v in llm_messages[i].items()
-                            if k != "attachment_refs"
-                        }
-                        msg_copy["content"] = _reconstruct_content_from_refs(
-                            llm_messages[i].get("content"),
-                            llm_messages[i].get("attachment_refs", []),
-                        )
-                        llm_messages = (
-                            llm_messages[:i] + [msg_copy] + llm_messages[i + 1 :]
-                        )
-                        break
+            # Reconstruct ALL user messages that have attachment_refs (#1, #2)
+            # Done once before the LLM call, outside per-message iteration.
+            llm_messages = await asyncio.to_thread(
+                _prepare_llm_messages, llm_messages
+            )
 
             try:
                 response = await self._llm.chat_with_tools(
@@ -1555,7 +1581,7 @@ class ChatService:
                 )
             except Exception:
                 # Fallback: strip image content parts and retry with text only
-                if attachments:
+                if has_any_attachments:
                     logger.warning(
                         "LLM call failed with attachments, retrying text-only"
                     )

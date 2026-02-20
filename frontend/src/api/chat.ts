@@ -107,3 +107,7 @@ export async function uploadChatAttachment(file: File): Promise<ChatAttachment> 
 export function chatAttachmentPreviewUrl(attachmentId: string): string {
   return `${BASE_URL}/api/chat/attachments/${attachmentId}/preview`;
 }
+
+export function isImageContentType(contentType: string): boolean {
+  return contentType.startsWith('image/');
+}

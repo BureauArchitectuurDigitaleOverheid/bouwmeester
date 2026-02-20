@@ -2,7 +2,8 @@ import { useState, useCallback, useRef } from 'react';
 import { Send, Paperclip, X, FileText, Loader2 } from 'lucide-react';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useChat } from '@/contexts/ChatContext';
-import { chatAttachmentPreviewUrl } from '@/api/chat';
+import { useToast } from '@/contexts/ToastContext';
+import { chatAttachmentPreviewUrl, isImageContentType } from '@/api/chat';
 import type { ChatMention } from '@/api/chat';
 
 const ACCEPTED_TYPES = 'image/*,.pdf,.doc,.docx,.odt,.txt';
@@ -61,10 +62,6 @@ function parseTiptapContent(jsonStr: string): {
 // Minimal empty TipTap doc
 const EMPTY_DOC = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] });
 
-function isImageType(contentType: string) {
-  return contentType.startsWith('image/');
-}
-
 export function ChatInput() {
   const {
     sendMessage,
@@ -78,6 +75,7 @@ export function ChatInput() {
   const [editorKey, setEditorKey] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { showError } = useToast();
 
   const handleSend = useCallback(() => {
     const { text, mentions } = parseTiptapContent(value);
@@ -102,12 +100,12 @@ export function ChatInput() {
   const handleFiles = useCallback(
     (files: FileList | File[]) => {
       for (const file of Array.from(files)) {
-        addAttachment(file).catch(() => {
-          // Error already logged in context
+        addAttachment(file).catch((err: Error) => {
+          showError(err.message || 'Upload mislukt');
         });
       }
     },
-    [addAttachment],
+    [addAttachment, showError],
   );
 
   const handleFileInputChange = useCallback(
@@ -177,7 +175,7 @@ export function ChatInput() {
               key={att.id}
               className="relative group flex items-center gap-1.5 bg-gray-100 rounded-lg px-2 py-1.5 text-xs"
             >
-              {isImageType(att.content_type) ? (
+              {isImageContentType(att.content_type) ? (
                 <img
                   src={chatAttachmentPreviewUrl(att.id)}
                   alt={att.bestandsnaam}
