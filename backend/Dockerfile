@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 1001 appuser && \
-    mkdir -p /data/bijlagen && \
+    mkdir -p /data/bijlagen/chat && \
     chown -R appuser:appuser /data
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/

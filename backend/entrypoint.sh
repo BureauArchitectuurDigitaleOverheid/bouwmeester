@@ -5,6 +5,9 @@ set -e
 # re-install the project and fails on read-only .pth files.
 export PATH="/app/.venv/bin:$PATH"
 
+# Ensure bijlagen directories exist (volume mounts may override image dirs)
+mkdir -p /data/bijlagen/chat
+
 echo "Running database migrations..."
 alembic upgrade head
 
