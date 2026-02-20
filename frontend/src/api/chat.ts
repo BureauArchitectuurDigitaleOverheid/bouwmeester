@@ -1,4 +1,4 @@
-import { apiPost, BASE_URL, getCsrfToken } from './client';
+import { apiGet, apiPost, BASE_URL, getCsrfToken } from './client';
 
 export interface ChatMention {
   id: string;
@@ -69,6 +69,15 @@ export interface ChatConfirmRequest {
 export interface ChatConfirmResponse {
   message: ChatMessage;
   success: boolean;
+}
+
+export interface ChatHistoryResponse {
+  conversation_id: string;
+  messages: ChatMessage[];
+}
+
+export function getChatHistory(id: string): Promise<ChatHistoryResponse> {
+  return apiGet<ChatHistoryResponse>(`/api/chat/${id}`);
 }
 
 export function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {

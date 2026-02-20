@@ -21,6 +21,7 @@ from bouwmeester.schema.chat import (
     ChatAttachmentResponse,
     ChatConfirmRequest,
     ChatConfirmResponse,
+    ChatConversationHistoryResponse,
     ChatMessage,
     ChatRequest,
     ChatResponse,
@@ -176,6 +177,25 @@ async def preview_chat_attachment(
         path=str(file_path),
         media_type=attachment.content_type,
         filename=attachment.bestandsnaam,
+    )
+
+
+@router.get("/{conversation_id}", response_model=ChatConversationHistoryResponse)
+async def get_chat_history(
+    conversation_id: str,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> ChatConversationHistoryResponse:
+    """Return the full message history for a conversation."""
+    person_id = current_user.id if current_user else None
+    chat = ChatService(llm=None, db=db, person_id=person_id)  # type: ignore[arg-type]
+    try:
+        cid, messages = await chat.get_history(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Conversatie niet gevonden")
+    return ChatConversationHistoryResponse(
+        conversation_id=cid,
+        messages=messages,
     )
 
 

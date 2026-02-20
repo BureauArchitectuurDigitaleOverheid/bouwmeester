@@ -1704,6 +1704,114 @@ class ChatService:
 
     # -- Public API ----------------------------------------------------------
 
+    async def get_history(self, conversation_id: str) -> tuple[str, list[ChatMessage]]:
+        """Load conversation history and return frontend-friendly messages.
+
+        Filters out ``system`` and ``tool`` role messages and resolves
+        attachment refs on user messages.  Returns ``(conversation_id, messages)``.
+        Raises ``ValueError`` if the conversation is not found.
+        """
+        try:
+            conv = await self._load_conversation(conversation_id)
+        except ValueError:
+            conv = None
+
+        if conv is None:
+            raise ValueError("Conversation not found")
+
+        raw_messages: list[dict] = conv.messages
+        pending_map: dict = conv.pending_actions or {}
+
+        # Collect all attachment_ids referenced in user messages so we can
+        # batch-query ChatAttachment metadata.
+        all_att_ids: set[str] = set()
+        for msg in raw_messages:
+            if msg.get("role") != "user":
+                continue
+            for ref in msg.get("attachment_refs", []):
+                att_id = ref.get("attachment_id")
+                if att_id:
+                    all_att_ids.add(att_id)
+
+        # Batch load attachment metadata
+        att_map: dict[str, ChatAttachmentResponse] = {}
+        if all_att_ids:
+            att_uuids = []
+            for aid in all_att_ids:
+                try:
+                    att_uuids.append(UUID(aid))
+                except ValueError:
+                    continue
+            if att_uuids:
+                stmt = select(ChatAttachment).where(ChatAttachment.id.in_(att_uuids))
+                result = await self._db.execute(stmt)
+                for att in result.scalars():
+                    att_map[str(att.id)] = ChatAttachmentResponse(
+                        id=str(att.id),
+                        bestandsnaam=att.bestandsnaam,
+                        content_type=att.content_type,
+                        bestandsgrootte=att.bestandsgrootte,
+                    )
+
+        out: list[ChatMessage] = []
+        last_assistant_idx: int | None = None
+
+        for msg in raw_messages:
+            role = msg.get("role")
+            if role == "user":
+                # Resolve attachment refs to ChatAttachmentResponse objects
+                attachments: list[ChatAttachmentResponse] = []
+                for ref in msg.get("attachment_refs", []):
+                    att_id = ref.get("attachment_id")
+                    if att_id and att_id in att_map:
+                        attachments.append(att_map[att_id])
+                out.append(
+                    ChatMessage(
+                        role="user",
+                        content=msg.get("content", ""),
+                        attachments=attachments if attachments else [],
+                    )
+                )
+            elif role == "assistant":
+                content = msg.get("content", "")
+                # Skip assistant messages that are just empty tool-call holders
+                if not content and msg.get("tool_calls"):
+                    continue
+                out.append(
+                    ChatMessage(
+                        role="assistant",
+                        content=content,
+                    )
+                )
+                last_assistant_idx = len(out) - 1
+            # Skip system, tool messages
+
+        # Attach pending actions to the last assistant message
+        if pending_map and last_assistant_idx is not None:
+            pending_list: list[PendingAction] = []
+            for action_id, info in pending_map.items():
+                pending_list.append(
+                    PendingAction(
+                        action_id=action_id,
+                        tool_name=info["tool_name"],
+                        arguments=info.get("arguments", {}),
+                        description=_describe_action(
+                            info["tool_name"], info.get("arguments", {})
+                        ),
+                    )
+                )
+            if pending_list:
+                last_msg = out[last_assistant_idx]
+                out[last_assistant_idx] = ChatMessage(
+                    role=last_msg.role,
+                    content=last_msg.content,
+                    actions=last_msg.actions,
+                    pending_actions=pending_list,
+                    attachments=last_msg.attachments,
+                )
+
+        return str(conv.id), out
+
     async def send_message(
         self,
         message: str,
