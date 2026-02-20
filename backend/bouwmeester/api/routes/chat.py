@@ -1,13 +1,12 @@
 """API routes for AI chat feature."""
 
 import logging
-import os
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
@@ -21,7 +20,7 @@ from bouwmeester.schema.chat import (
     ChatRequest,
     ChatResponse,
 )
-from bouwmeester.services.chat_service import ChatService
+from bouwmeester.services.chat_service import ChatService, chat_bijlagen_root
 from bouwmeester.services.llm import get_llm_service_for
 from bouwmeester.services.llm.base import DataSensitivity
 
@@ -30,17 +29,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-def _default_chat_bijlagen_root() -> str:
-    custom = os.environ.get("CHAT_BIJLAGEN_ROOT")
-    if custom:
-        return custom
-    data_path = os.environ.get("DATA_PATH")
-    if data_path:
-        return os.path.join(data_path, "bijlagen", "chat")
-    return "/data/bijlagen/chat"
-
-
-CHAT_BIJLAGEN_ROOT = Path(_default_chat_bijlagen_root())
+CHAT_BIJLAGEN_ROOT = chat_bijlagen_root()
 try:
     CHAT_BIJLAGEN_ROOT.mkdir(parents=True, exist_ok=True)
 except OSError:
@@ -64,7 +53,7 @@ ALLOWED_CONTENT_TYPES = {
 def _safe_path(relative: str) -> Path:
     """Resolve a relative path under CHAT_BIJLAGEN_ROOT, guarding against traversal."""
     resolved = (CHAT_BIJLAGEN_ROOT / relative).resolve()
-    if not str(resolved).startswith(str(CHAT_BIJLAGEN_ROOT.resolve())):
+    if not resolved.is_relative_to(CHAT_BIJLAGEN_ROOT.resolve()):
         raise HTTPException(status_code=400, detail="Ongeldig pad")
     return resolved
 
@@ -155,15 +144,15 @@ async def preview_chat_attachment(
 ) -> FileResponse:
     """Serve a chat attachment for preview/thumbnail."""
     stmt = select(ChatAttachment).where(ChatAttachment.id == attachment_id)
-    # When authenticated, only allow access to own attachments (or those
-    # uploaded without auth, i.e. person_id IS NULL).
+    # Scope access: authenticated users see own + unowned attachments;
+    # unauthenticated users see only unowned attachments.
     if current_user:
         stmt = stmt.where(
-            or_(
-                ChatAttachment.person_id == current_user.id,
-                ChatAttachment.person_id.is_(None),
-            )
+            ChatAttachment.person_id.in_([current_user.id])
+            | ChatAttachment.person_id.is_(None)
         )
+    else:
+        stmt = stmt.where(ChatAttachment.person_id.is_(None))
     result = await db.execute(stmt)
     attachment = result.scalar_one_or_none()
 

@@ -12,6 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
+from openai import APIError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -77,7 +78,7 @@ def _clean_content(text: str) -> str:
     return text.strip()
 
 
-def _chat_bijlagen_root() -> Path:
+def chat_bijlagen_root() -> Path:
     """Resolve the root directory for chat attachments."""
     custom = os.environ.get("CHAT_BIJLAGEN_ROOT")
     if custom:
@@ -110,7 +111,7 @@ def _build_attachment_refs(
             )
         else:
             # Store extracted text inline so we don't need to re-extract
-            root = _chat_bijlagen_root()
+            root = chat_bijlagen_root()
             file_path = root / att.pad
             extracted = extract_text(file_path, att.content_type)
             refs.append(
@@ -136,7 +137,7 @@ def _reconstruct_content_from_refs(
     if not refs:
         return text or ""
 
-    root = _chat_bijlagen_root()
+    root = chat_bijlagen_root()
     parts: list[dict] = [{"type": "text", "text": text or ""}]
     has_image = False
 
@@ -189,9 +190,7 @@ def _prepare_llm_messages(messages: list[dict]) -> list[dict]:
         refs = msg.get("attachment_refs")
         if refs:
             copy = {k: v for k, v in msg.items() if k != "attachment_refs"}
-            copy["content"] = _reconstruct_content_from_refs(
-                msg.get("content"), refs
-            )
+            copy["content"] = _reconstruct_content_from_refs(msg.get("content"), refs)
             out.append(copy)
         else:
             out.append(msg)
@@ -1523,9 +1522,7 @@ class ChatService:
                 except ValueError:
                     logger.warning("Invalid attachment UUID: %s", aid)
                     continue
-                stmt = select(ChatAttachment).where(
-                    ChatAttachment.id == att_uuid
-                )
+                stmt = select(ChatAttachment).where(ChatAttachment.id == att_uuid)
                 result = await self._db.execute(stmt)
                 att = result.scalar_one_or_none()
                 if att:
@@ -1570,16 +1567,14 @@ class ChatService:
 
             # Reconstruct ALL user messages that have attachment_refs (#1, #2)
             # Done once before the LLM call, outside per-message iteration.
-            llm_messages = await asyncio.to_thread(
-                _prepare_llm_messages, llm_messages
-            )
+            llm_messages = await asyncio.to_thread(_prepare_llm_messages, llm_messages)
 
             try:
                 response = await self._llm.chat_with_tools(
                     messages=llm_messages,
                     tools=ALL_TOOLS,
                 )
-            except Exception:
+            except APIError:
                 # Fallback: strip image content parts and retry with text only
                 if has_any_attachments:
                     logger.warning(
