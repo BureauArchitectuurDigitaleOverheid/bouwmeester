@@ -1613,6 +1613,95 @@ class ChatService:
         flag_modified(conv, "pending_actions")
         await self._db.commit()
 
+    async def _get_user_context(self) -> str | None:
+        """Build context string about the current user (name, org, function)."""
+        if not self._person_id:
+            return None
+        from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+        from bouwmeester.models.person import Person
+        from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+
+        result = await self._db.execute(
+            select(Person).where(Person.id == self._person_id)
+        )
+        person = result.scalar_one_or_none()
+        if not person:
+            return None
+
+        parts = [f"Ingelogde gebruiker: {person.naam} (ID: {self._person_id})"]
+        if person.functie:
+            parts.append(f"Functie: {person.functie}")
+
+        # Current org unit + full hierarchy (walk up the tree)
+        org_stmt = (
+            select(OrganisatieEenheid)
+            .join(PersonOrganisatieEenheid)
+            .where(
+                PersonOrganisatieEenheid.person_id == self._person_id,
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
+            .limit(1)
+        )
+        org_result = await self._db.execute(org_stmt)
+        org_unit = org_result.scalar_one_or_none()
+        if org_unit:
+            # Walk up to build full hierarchy
+            chain: list[tuple[str, str, str]] = []  # (naam, type, id)
+            current = org_unit
+            seen: set[str] = set()
+            while current and str(current.id) not in seen:
+                seen.add(str(current.id))
+                chain.append((current.naam, current.type, str(current.id)))
+                if current.parent_id:
+                    parent_result = await self._db.execute(
+                        select(OrganisatieEenheid).where(
+                            OrganisatieEenheid.id == current.parent_id
+                        )
+                    )
+                    current = parent_result.scalar_one_or_none()
+                else:
+                    break
+            chain.reverse()  # top-down: ministerie → DG → directie → ...
+            hierarchy = " > ".join(
+                f"{naam} ({typ}, ID: {oid})" for naam, typ, oid in chain
+            )
+            parts.append(f"Organisatie: {hierarchy}")
+
+        # Current date/time (Dutch day/month names)
+        now = datetime.now()
+        dagen = [
+            "maandag",
+            "dinsdag",
+            "woensdag",
+            "donderdag",
+            "vrijdag",
+            "zaterdag",
+            "zondag",
+        ]
+        maanden = [
+            "",
+            "januari",
+            "februari",
+            "maart",
+            "april",
+            "mei",
+            "juni",
+            "juli",
+            "augustus",
+            "september",
+            "oktober",
+            "november",
+            "december",
+        ]
+        dag = dagen[now.weekday()]
+        maand = maanden[now.month]
+        parts.append(
+            f"Huidige datum en tijd: {dag} {now.day} {maand} {now.year},"
+            f" {now.strftime('%H:%M')}"
+        )
+
+        return "\n".join(parts)
+
     # -- Public API ----------------------------------------------------------
 
     async def send_message(
@@ -1640,6 +1729,9 @@ class ChatService:
 
         # Add context awareness
         context_msg = build_chat_context_message(context)
+        user_ctx = await self._get_user_context()
+        if user_ctx:
+            context_msg = user_ctx + ("\n" + context_msg if context_msg else "")
         if context_msg:
             system_content = CHAT_SYSTEM_PROMPT + "\n\nHUIDIGE CONTEXT:\n" + context_msg
             messages[0] = {"role": "system", "content": system_content}
