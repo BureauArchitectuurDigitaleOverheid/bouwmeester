@@ -1685,11 +1685,22 @@ class ChatService:
             # If we have pending writes, stop the loop and return to user
             if has_pending:
                 llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
-                response2 = await self._llm.chat_with_tools(
-                    messages=llm_messages,
-                    tools=[],
-                )
-                content = _clean_content(response2.choices[0].message.content or "")
+                try:
+                    response2 = await self._llm.chat_with_tools(
+                        messages=llm_messages,
+                        tools=[],
+                    )
+                    content = _clean_content(response2.choices[0].message.content or "")
+                except Exception:
+                    logger.warning(
+                        "LLM summary call failed after pending actions, using fallback"
+                    )
+                    descriptions = [pa.description for pa in pending_actions]
+                    content = (
+                        "Ik wil de volgende acties uitvoeren:\n\n"
+                        + "\n".join(f"- {d}" for d in descriptions)
+                        + "\n\nBevestig of annuleer de acties hierboven."
+                    )
                 messages.append({"role": "assistant", "content": content})
                 break
         else:
