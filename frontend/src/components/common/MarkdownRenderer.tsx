@@ -58,7 +58,7 @@ function parseBmLink(href: string | undefined): { type: 'node' | 'task'; id: str
   return { type: match[1] as 'node' | 'task', id: match[2] };
 }
 
-const components: Components = {
+const defaultComponents: Components = {
   h1: ({ children }) => (
     <h1 className="text-2xl font-bold text-text mt-8 mb-4 first:mt-0">{children}</h1>
   ),
@@ -166,12 +166,38 @@ const components: Components = {
   strong: ({ children }) => <strong className="font-semibold text-text">{children}</strong>,
 };
 
+const compactComponents: Components = {
+  ...defaultComponents,
+  h1: ({ children }) => (
+    <h3 className="text-sm font-bold text-text mt-3 mb-1 first:mt-0">{children}</h3>
+  ),
+  h2: ({ children }) => (
+    <h4 className="text-sm font-bold text-text mt-3 mb-1 first:mt-0">{children}</h4>
+  ),
+  h3: ({ children }) => (
+    <h5 className="text-sm font-semibold text-text mt-2 mb-1 first:mt-0">{children}</h5>
+  ),
+  h4: ({ children }) => (
+    <h6 className="text-sm font-semibold text-text mt-2 mb-0.5 first:mt-0">{children}</h6>
+  ),
+  p: ({ children }) => <p className="text-sm text-text-secondary leading-relaxed mb-2">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5 text-sm text-text-secondary">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5 text-sm text-text-secondary">{children}</ol>,
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-4 border-primary-300 pl-3 my-2 text-sm text-text-secondary italic">
+      {children}
+    </blockquote>
+  ),
+  hr: () => <hr className="my-3 border-border" />,
+};
+
 interface MarkdownRendererProps {
   content: string;
+  compact?: boolean;
   onBmLink?: (type: 'node' | 'task', id: string) => void;
 }
 
-export function MarkdownRenderer({ content, onBmLink }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, compact, onBmLink }: MarkdownRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleClick = useCallback(
@@ -193,7 +219,7 @@ export function MarkdownRenderer({ content, onBmLink }: MarkdownRendererProps) {
     <div ref={containerRef} onClick={handleClick}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        components={components}
+        components={compact ? compactComponents : defaultComponents}
         urlTransform={(url) => {
           // Allow bm:// protocol links for in-app navigation
           if (url.startsWith('bm://')) return url;

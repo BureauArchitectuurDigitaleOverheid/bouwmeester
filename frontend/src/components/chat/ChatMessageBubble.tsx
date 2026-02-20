@@ -105,7 +105,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : message.content ? (
             <div className="prose-sm">
-              <MarkdownRenderer content={message.content} onBmLink={handleBmLink} />
+              <MarkdownRenderer content={message.content} compact onBmLink={handleBmLink} />
             </div>
           ) : null}
 
