@@ -78,15 +78,18 @@ def _clean_content(text: str) -> str:
     return text.strip()
 
 
-def chat_bijlagen_root() -> Path:
-    """Resolve the root directory for chat attachments."""
+def _chat_bijlagen_root() -> Path:
+    """Resolve the root directory for chat attachments.
+
+    Checks ``CHAT_BIJLAGEN_ROOT`` env var first (explicit override),
+    then falls back to ``bijlagen_root() / "chat"``.
+    """
     custom = os.environ.get("CHAT_BIJLAGEN_ROOT")
     if custom:
         return Path(custom)
-    data_path = os.environ.get("DATA_PATH")
-    if data_path:
-        return Path(data_path) / "bijlagen" / "chat"
-    return Path("/data/bijlagen/chat")
+    from bouwmeester.core.storage import bijlagen_root
+
+    return bijlagen_root() / "chat"
 
 
 def _build_attachment_refs(
@@ -111,7 +114,7 @@ def _build_attachment_refs(
             )
         else:
             # Store extracted text inline so we don't need to re-extract
-            root = chat_bijlagen_root()
+            root = _chat_bijlagen_root()
             file_path = root / att.pad
             extracted = extract_text(file_path, att.content_type)
             refs.append(
@@ -137,7 +140,7 @@ def _reconstruct_content_from_refs(
     if not refs:
         return text or ""
 
-    root = chat_bijlagen_root()
+    root = _chat_bijlagen_root()
     parts: list[dict] = [{"type": "text", "text": text or ""}]
     has_image = False
 
@@ -750,6 +753,29 @@ _WRITE_TOOLS: dict[str, dict] = {
             },
         },
     },
+    "attach_to_bron": {
+        "type": "function",
+        "function": {
+            "name": "attach_to_bron",
+            "description": (
+                "Koppel een geüpload chatbestand als bijlage aan een bron-node."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "attachment_id": {
+                        "type": "string",
+                        "description": "UUID van de chat-bijlage",
+                    },
+                    "node_id": {
+                        "type": "string",
+                        "description": "UUID van de bron-node",
+                    },
+                },
+                "required": ["attachment_id", "node_id"],
+            },
+        },
+    },
 }
 
 ALL_TOOLS = list(_READ_TOOLS.values()) + list(_WRITE_TOOLS.values())
@@ -772,6 +798,9 @@ def _describe_action(tool_name: str, args: dict) -> str:
         "add_tag_to_node": lambda a: f"Tag '{a.get('tag_name', '')}' koppelen aan node",
         "add_stakeholder": lambda a: (
             f"Stakeholder ({a.get('rol', '')}) koppelen aan node"
+        ),
+        "attach_to_bron": lambda a: (
+            f"Chatbijlage koppelen aan bron {a.get('node_id', '')[:8]}..."
         ),
     }
     fn = descriptions.get(tool_name)
@@ -1396,6 +1425,104 @@ async def _execute_write_tool(tool_name: str, args: dict, db: AsyncSession) -> d
                 "success": True,
                 "summary": f"Stakeholder ({args['rol']}) gekoppeld aan node",
                 "entity_id": args["node_id"],
+                "entity_type": "node",
+            }
+
+        elif tool_name == "attach_to_bron":
+            import shutil
+
+            from bouwmeester.api.routes.bijlage import ALLOWED_CONTENT_TYPES
+            from bouwmeester.core.storage import bijlagen_root, safe_resolve
+            from bouwmeester.models.bron import Bron
+            from bouwmeester.models.bron_bijlage import BronBijlage
+
+            # Load chat attachment
+            att_id = UUID(args["attachment_id"])
+            stmt = select(ChatAttachment).where(ChatAttachment.id == att_id)
+            result = await db.execute(stmt)
+            att = result.scalar_one_or_none()
+            if not att:
+                return {
+                    "success": False,
+                    "summary": "Chat-bijlage niet gevonden.",
+                }
+
+            # Validate content type against bron allowlist
+            if att.content_type not in ALLOWED_CONTENT_TYPES:
+                return {
+                    "success": False,
+                    "summary": (
+                        f"Bestandstype '{att.content_type}' is niet"
+                        " toegestaan als bron-bijlage."
+                        " Toegestaan: PDF, Word, ODT, TXT, PNG, JPEG."
+                    ),
+                }
+
+            # Load bron node
+            node_id = UUID(args["node_id"])
+            bron_stmt = select(Bron).where(Bron.id == node_id)
+            bron_result = await db.execute(bron_stmt)
+            bron = bron_result.scalar_one_or_none()
+            if not bron:
+                return {
+                    "success": False,
+                    "summary": (
+                        "Bron-node niet gevonden."
+                        " Controleer of de node van type 'bron' is."
+                    ),
+                }
+
+            # Check if bron already has an attachment
+            existing_stmt = select(BronBijlage).where(BronBijlage.bron_id == node_id)
+            existing_result = await db.execute(existing_stmt)
+            if existing_result.scalar_one_or_none():
+                return {
+                    "success": False,
+                    "summary": (
+                        "Deze bron heeft al een bijlage."
+                        " Verwijder eerst de bestaande bijlage."
+                    ),
+                }
+
+            # Resolve source path with traversal guard
+            root = bijlagen_root()
+            chat_root = root / "chat"
+            try:
+                src_path = safe_resolve(chat_root, att.pad)
+            except ValueError:
+                return {
+                    "success": False,
+                    "summary": "Ongeldig pad voor chat-bijlage.",
+                }
+            if not src_path.exists():
+                return {
+                    "success": False,
+                    "summary": "Bronbestand niet gevonden op disk.",
+                }
+
+            # Copy file from chat dir to bron dir (non-blocking)
+            dest_dir = root / str(node_id)
+            await asyncio.to_thread(dest_dir.mkdir, parents=True, exist_ok=True)
+            dest_name = f"{uuid.uuid4().hex}_{att.bestandsnaam}"
+            dest_path = dest_dir / dest_name
+            await asyncio.to_thread(shutil.copy2, str(src_path), str(dest_path))
+
+            relative_path = f"{node_id}/{dest_name}"
+            bijlage = BronBijlage(
+                bron_id=node_id,
+                bestandsnaam=att.bestandsnaam,
+                content_type=att.content_type,
+                bestandsgrootte=att.bestandsgrootte,
+                pad=relative_path,
+            )
+            db.add(bijlage)
+            await db.commit()
+            return {
+                "success": True,
+                "summary": (
+                    f'Bestand "{att.bestandsnaam}" gekoppeld als bijlage aan bron'
+                ),
+                "entity_id": str(node_id),
                 "entity_type": "node",
             }
 

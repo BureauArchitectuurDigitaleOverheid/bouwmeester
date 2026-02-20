@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.storage import bijlagen_root, safe_resolve
 from bouwmeester.models.chat_attachment import ChatAttachment
 from bouwmeester.schema.chat import (
     ChatAttachmentResponse,
@@ -20,7 +21,7 @@ from bouwmeester.schema.chat import (
     ChatRequest,
     ChatResponse,
 )
-from bouwmeester.services.chat_service import ChatService, chat_bijlagen_root
+from bouwmeester.services.chat_service import ChatService
 from bouwmeester.services.llm import get_llm_service_for
 from bouwmeester.services.llm.base import DataSensitivity
 
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-CHAT_BIJLAGEN_ROOT = chat_bijlagen_root()
+CHAT_BIJLAGEN_ROOT = bijlagen_root() / "chat"
 try:
     CHAT_BIJLAGEN_ROOT.mkdir(parents=True, exist_ok=True)
 except OSError:
@@ -52,10 +53,10 @@ ALLOWED_CONTENT_TYPES = {
 
 def _safe_path(relative: str) -> Path:
     """Resolve a relative path under CHAT_BIJLAGEN_ROOT, guarding against traversal."""
-    resolved = (CHAT_BIJLAGEN_ROOT / relative).resolve()
-    if not resolved.is_relative_to(CHAT_BIJLAGEN_ROOT.resolve()):
+    try:
+        return safe_resolve(CHAT_BIJLAGEN_ROOT, relative)
+    except ValueError:
         raise HTTPException(status_code=400, detail="Ongeldig pad")
-    return resolved
 
 
 @router.post(

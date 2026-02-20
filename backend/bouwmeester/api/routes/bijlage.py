@@ -1,7 +1,6 @@
 """API routes for file attachments on Bron nodes."""
 
 import logging
-import os
 import uuid
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.storage import bijlagen_root, safe_resolve
 from bouwmeester.models.bron import Bron
 from bouwmeester.models.bron_bijlage import BronBijlage
 from bouwmeester.schema.bron import BronBijlageResponse
@@ -20,14 +20,7 @@ from bouwmeester.schema.bron import BronBijlageResponse
 router = APIRouter(prefix="/nodes/{node_id}/bijlage", tags=["bijlage"])
 
 
-def _default_bijlagen_root() -> str:
-    data_path = os.environ.get("DATA_PATH")
-    if data_path:
-        return os.path.join(data_path, "bijlagen")
-    return "/data/bijlagen"
-
-
-BIJLAGEN_ROOT = Path(os.environ.get("BIJLAGEN_ROOT", _default_bijlagen_root()))
+BIJLAGEN_ROOT = bijlagen_root()
 try:
     BIJLAGEN_ROOT.mkdir(parents=True, exist_ok=True)
 except OSError:
@@ -48,10 +41,10 @@ ALLOWED_CONTENT_TYPES = {
 
 def _safe_path(relative: str) -> Path:
     """Resolve a relative path under BIJLAGEN_ROOT, guarding against traversal."""
-    resolved = (BIJLAGEN_ROOT / relative).resolve()
-    if not str(resolved).startswith(str(BIJLAGEN_ROOT.resolve())):
+    try:
+        return safe_resolve(BIJLAGEN_ROOT, relative)
+    except ValueError:
         raise HTTPException(status_code=400, detail="Ongeldig pad")
-    return resolved
 
 
 async def _get_bron(
