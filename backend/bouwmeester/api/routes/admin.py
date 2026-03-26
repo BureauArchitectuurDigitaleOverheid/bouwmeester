@@ -578,6 +578,7 @@ _ALL_MODEL_TABLES = [
     "node_stakeholder",
     "edge",
     "edge_type",
+    "feature_toggle",
     "probleem",
     "effect",
     "beleidsoptie",

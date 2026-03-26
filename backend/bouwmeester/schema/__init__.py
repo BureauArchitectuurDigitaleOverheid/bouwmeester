@@ -66,6 +66,12 @@ from bouwmeester.schema.externe_organisatie import (
     ExterneOrganisatieResponse,
     ExterneOrganisatieUpdate,
 )
+from bouwmeester.schema.feature_toggle import (
+    EenheidFeatureConfig,
+    FeatureToggleBulkUpdate,
+    FeatureToggleResponse,
+    FeatureToggleUpdate,
+)
 from bouwmeester.schema.graph import (
     GraphNeighborsResponse,
     GraphSearchParams,
@@ -270,6 +276,11 @@ __all__ = [
     "EdgeTypeBase",
     "EdgeTypeCreate",
     "EdgeTypeResponse",
+    # feature_toggle
+    "EenheidFeatureConfig",
+    "FeatureToggleBulkUpdate",
+    "FeatureToggleResponse",
+    "FeatureToggleUpdate",
     # task
     "EenheidOverviewResponse",
     "EenheidPersonTaskStats",

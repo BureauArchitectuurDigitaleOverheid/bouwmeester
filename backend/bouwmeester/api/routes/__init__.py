@@ -13,6 +13,7 @@ from bouwmeester.api.routes.edges import router as edges_router
 from bouwmeester.api.routes.externe_organisaties import (
     router as externe_organisaties_router,
 )
+from bouwmeester.api.routes.feature_toggles import router as feature_toggles_router
 from bouwmeester.api.routes.graph import router as graph_router
 from bouwmeester.api.routes.import_export import router as import_export_router
 from bouwmeester.api.routes.leads import router as leads_router
@@ -43,6 +44,7 @@ api_router.include_router(edge_schema_router)
 api_router.include_router(edge_types_router)
 api_router.include_router(edges_router)
 api_router.include_router(externe_organisaties_router)
+api_router.include_router(feature_toggles_router)
 api_router.include_router(graph_router)
 api_router.include_router(import_export_router)
 api_router.include_router(leads_router)

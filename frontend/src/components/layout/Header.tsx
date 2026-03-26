@@ -9,6 +9,7 @@ import { NotificationBell } from '@/components/common/NotificationBell';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { ORGANISATIE_TYPE_LABELS, formatFunctie } from '@/types';
 import { useUIStore } from '@/store/ui';
+import { useFeatureToggle } from '@/contexts/FeatureToggleContext';
 
 const pageTitles: Record<string, string> = {
   '/': 'Inbox',
@@ -25,6 +26,7 @@ const pageTitles: Record<string, string> = {
   '/search': 'Zoeken',
   '/docs': 'Documentatie',
   '/leads': 'Leads',
+  '/beheer/features': 'Functionaliteit per eenheid',
 };
 
 function getInitials(naam: string): string {
@@ -44,6 +46,7 @@ export function Header() {
   const { vocabularyId, setVocabularyId } = useVocabulary();
   const { authenticated, oidcConfigured, person: authPerson, logout } = useAuth();
   const toggleMobileSidebar = useUIStore((s) => s.toggleMobileSidebar);
+  const { isFeatureEnabled } = useFeatureToggle();
   const [showPersonPicker, setShowPersonPicker] = useState(false);
   const [search, setSearch] = useState('');
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -132,6 +135,7 @@ export function Header() {
       {/* Right: Actions */}
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* Vocabulary toggle */}
+        {isFeatureEnabled('header.beleid_architectuur_toggle') && (
         <div className="hidden sm:flex items-center h-9 rounded-xl border border-border text-xs overflow-hidden">
           {(Object.keys(VOCABULARY_LABELS) as VocabularyId[]).map((id) => (
             <button
@@ -147,6 +151,7 @@ export function Header() {
             </button>
           ))}
         </div>
+        )}
 
         {/* Notification bell */}
         <NotificationBell personId={currentPerson?.id} />

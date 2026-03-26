@@ -22,6 +22,7 @@ import logoImg from '/logo.png?url';
 import { useUIStore } from '@/store/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useFeatureToggle } from '@/contexts/FeatureToggleContext';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { ORGANISATIE_TYPE_LABELS } from '@/types';
 
@@ -34,6 +35,7 @@ export function Sidebar({ mobile }: SidebarProps) {
   const { person: authPerson, oidcConfigured } = useAuth();
   const { currentPerson } = useCurrentPerson();
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
+  const { isFeatureEnabled } = useFeatureToggle();
 
   // On mobile the sidebar is always expanded (with labels)
   const expanded = mobile || sidebarOpen;
@@ -45,19 +47,20 @@ export function Sidebar({ mobile }: SidebarProps) {
   }, [managedEenheden]);
 
   const navItems = useMemo(() => {
-    return [
-      { to: '/', icon: Inbox, label: 'Inbox' },
-      { to: '/corpus', icon: Network, label: 'Corpus' },
-      { to: '/tasks', icon: CheckSquare, label: 'Taken' },
-      { to: '/organisatie', icon: Building2, label: 'Organisatie' },
-      { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel },
-      { to: '/opdrachten', icon: Banknote, label: 'Opdrachten' },
-      { to: '/leads', icon: Funnel, label: 'Leads' },
-      { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken' },
-      { to: '/search', icon: Search, label: 'Zoeken' },
-      { to: '/docs', icon: BookOpen, label: 'Documentatie' },
+    const items = [
+      { to: '/', icon: Inbox, label: 'Inbox', featureKey: 'menu.inbox' },
+      { to: '/corpus', icon: Network, label: 'Corpus', featureKey: 'menu.corpus' },
+      { to: '/tasks', icon: CheckSquare, label: 'Taken', featureKey: 'menu.taken' },
+      { to: '/organisatie', icon: Building2, label: 'Organisatie', featureKey: 'menu.organisatie' },
+      { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel, featureKey: 'menu.eenheid_overzicht' },
+      { to: '/opdrachten', icon: Banknote, label: 'Opdrachten', featureKey: 'menu.opdrachten' },
+      { to: '/leads', icon: Funnel, label: 'Leads', featureKey: 'menu.leads' },
+      { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken', featureKey: 'menu.kamerstukken' },
+      { to: '/search', icon: Search, label: 'Zoeken', featureKey: 'menu.zoeken' },
+      { to: '/docs', icon: BookOpen, label: 'Documentatie', featureKey: 'menu.docs' },
     ];
-  }, [eenheidLabel]);
+    return items.filter((item) => isFeatureEnabled(item.featureKey));
+  }, [eenheidLabel, isFeatureEnabled]);
 
   const bottomNavItems = useMemo(() => {
     const items = [

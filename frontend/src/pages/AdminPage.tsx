@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { WhitelistManager } from '@/components/admin/WhitelistManager';
 import { UserManager } from '@/components/admin/UserManager';
@@ -8,22 +8,27 @@ import { AccessRequestManager } from '@/components/admin/AccessRequestManager';
 import { ConfigManager } from '@/components/admin/ConfigManager';
 import { EdgeSchemaManager } from '@/components/admin/EdgeSchemaManager';
 
-type Tab = 'whitelist' | 'users' | 'database' | 'requests' | 'config' | 'schema';
+type Tab = 'whitelist' | 'users' | 'database' | 'requests' | 'config' | 'schema' | 'features';
 
 export function AdminPage() {
   const { person, oidcConfigured, loading } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') as Tab | null;
   const [activeTab, setActiveTab] = useState<Tab>(tabParam || 'whitelist');
 
   // Sync tab from URL param
   useEffect(() => {
-    if (tabParam && ['whitelist', 'users', 'database', 'requests', 'config', 'schema'].includes(tabParam)) {
+    if (tabParam && ['whitelist', 'users', 'database', 'requests', 'config', 'schema', 'features'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [tabParam]);
 
   const handleTabChange = (tab: Tab) => {
+    if (tab === 'features') {
+      navigate('/beheer/features');
+      return;
+    }
     setActiveTab(tab);
     setSearchParams(tab === 'whitelist' ? {} : { tab });
   };
@@ -45,6 +50,7 @@ export function AdminPage() {
     { id: 'database', label: 'Database' },
     { id: 'config', label: 'Instellingen' },
     { id: 'schema', label: 'Relatieschema' },
+    { id: 'features', label: 'Functionaliteit' },
   ];
 
   return (
