@@ -292,6 +292,48 @@ async def auth_status(
                         request.session["is_admin"] = is_admin
                     request.session["is_admin_checked_at"] = time.time()
 
+            # Fetch org eenheid info for the person
+            org_eenheden: list[dict] = []
+            managed_eenheden_list: list[dict] = []
+            needs_placement = False
+            if person_id:
+                pid = UUID(person_id)
+                # Own placements (active)
+                placement_stmt = (
+                    select(
+                        OrganisatieEenheid.id,
+                        OrganisatieEenheid.naam,
+                        OrganisatieEenheid.type,
+                    )
+                    .join(
+                        PersonOrganisatieEenheid,
+                        PersonOrganisatieEenheid.organisatie_eenheid_id
+                        == OrganisatieEenheid.id,
+                    )
+                    .where(
+                        PersonOrganisatieEenheid.person_id == pid,
+                        PersonOrganisatieEenheid.eind_datum.is_(None),
+                    )
+                )
+                placement_result = await db.execute(placement_stmt)
+                org_eenheden = [
+                    {"id": str(r.id), "naam": r.naam, "type": r.type}
+                    for r in placement_result.all()
+                ]
+                needs_placement = len(org_eenheden) == 0
+
+                # Managed eenheden
+                managed_stmt = select(
+                    OrganisatieEenheid.id,
+                    OrganisatieEenheid.naam,
+                    OrganisatieEenheid.type,
+                ).where(OrganisatieEenheid.manager_id == pid)
+                managed_result = await db.execute(managed_stmt)
+                managed_eenheden_list = [
+                    {"id": str(r.id), "naam": r.naam, "type": r.type}
+                    for r in managed_result.all()
+                ]
+
             result["person"] = {
                 "sub": sub,
                 "email": email,
@@ -299,6 +341,9 @@ async def auth_status(
                 "id": person_id,
                 "needs_onboarding": bool(needs_onboarding),
                 "is_admin": bool(is_admin),
+                "organisatie_eenheden": org_eenheden,
+                "managed_eenheden": managed_eenheden_list,
+                "needs_placement": needs_placement,
             }
         except Exception:
             logger.exception(

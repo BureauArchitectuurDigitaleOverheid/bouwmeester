@@ -229,6 +229,31 @@ def build_kompas_relevance_prompt(
     )
 
 
+def build_lead_intake_prompt(raw_text: str) -> str:
+    """Build a prompt to parse raw intake text into structured lead data."""
+    return (
+        "Je bent een beleidsmedewerker van het ministerie van BZK."
+        " Analyseer de volgende intake-tekst en extraheer de relevante"
+        " informatie voor een nieuwe lead.\n\n"
+        f"INTAKE TEKST:\n{raw_text[:MAX_TEXT_IN_PROMPT]}\n\n"
+        "Instructies:\n"
+        "- Extraheer een korte titel (max 100 tekens)\n"
+        "- Extraheer de naam van de organisatie die de vraag stelt\n"
+        "- Maak een beknopte beschrijving van de vraag/behoefte\n"
+        "- Extraheer de naam van de contactpersoon als die wordt genoemd\n"
+        "- Stel maximaal 5 relevante tags voor\n\n"
+        "Geef je analyse als JSON"
+        " (en ALLEEN JSON, geen andere tekst):\n"
+        "{\n"
+        '  "title": "Korte titel",\n'
+        '  "organization": "Naam organisatie",\n'
+        '  "description": "Beschrijving van de vraag",\n'
+        '  "contact_name": "Naam contactpersoon",\n'
+        '  "suggested_tags": ["tag1", "tag2"]\n'
+        "}"
+    )
+
+
 CHAT_SYSTEM_PROMPT = (
     "Je bent de Bouwmeester-assistent, een AI-hulpmiddel voor beleidsmedewerkers"
     " van het ministerie van BZK (Binnenlandse Zaken en Koninkrijksrelaties)."
