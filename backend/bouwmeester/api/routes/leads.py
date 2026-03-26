@@ -443,26 +443,41 @@ async def parse_intake(
     db: AsyncSession = Depends(get_db),
 ) -> LeadParseResult:
     """Parse raw intake text/images using AI to extract lead data."""
+    import base64
+
     from bouwmeester.services.llm.factory import get_llm_service
     from bouwmeester.services.llm.prompts import build_lead_intake_prompt
 
-    # Collect text from form field and/or uploaded files
+    # Collect text and images separately
     text_parts: list[str] = []
+    image_parts: list[dict] = []
+
     if raw_text:
         text_parts.append(raw_text)
+
     if files:
         for f in files:
             content_bytes = await f.read()
-            try:
-                text_parts.append(content_bytes.decode("utf-8", errors="replace"))
-            except Exception:
-                pass
+            ct = f.content_type or ""
+            if ct.startswith("image/"):
+                b64 = base64.b64encode(content_bytes).decode("ascii")
+                image_parts.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{ct};base64,{b64}"},
+                    }
+                )
+            else:
+                # Try to decode as text
+                try:
+                    text_parts.append(content_bytes.decode("utf-8", errors="replace"))
+                except Exception:
+                    pass
 
-    combined_text = "\n\n".join(text_parts).strip()
-    if not combined_text:
+    if not text_parts and not image_parts:
         raise HTTPException(
             status_code=400,
-            detail="Geen tekst opgegeven. Geef raw_text of upload bestanden.",
+            detail="Geen tekst of afbeelding opgegeven.",
         )
 
     llm = await get_llm_service(db)
@@ -472,9 +487,23 @@ async def parse_intake(
             detail="Geen LLM-service beschikbaar.",
         )
 
-    prompt = build_lead_intake_prompt(combined_text)
+    combined_text = "\n\n".join(text_parts).strip()
+    prompt = build_lead_intake_prompt(combined_text or "(zie afbeelding)")
+
     try:
-        response_text = await llm._complete(prompt)
+        if image_parts:
+            # Use vision-style multimodal message with text + images
+            content: list[dict] = [{"type": "text", "text": prompt}]
+            content.extend(image_parts)
+            response = await llm._client.chat.completions.create(
+                model=llm._model,
+                max_tokens=1024,
+                messages=[{"role": "user", "content": content}],
+            )
+            response_text = response.choices[0].message.content or ""
+        else:
+            response_text = await llm._complete(prompt)
+
         parsed = llm._parse_json(response_text)
         return LeadParseResult(
             title=parsed.get("title"),

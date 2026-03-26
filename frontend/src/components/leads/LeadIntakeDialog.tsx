@@ -1,10 +1,10 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Upload, X, FileText, Sparkles } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake } from '@/hooks/useLeads';
-import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import { usePersonOrganisaties } from '@/hooks/usePeople';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { LeadStage } from '@/types';
 import type { LeadParseResult } from '@/types';
@@ -34,8 +34,17 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const createLead = useCreateLead();
   const uploadAttachment = useUploadLeadAttachment();
   const parseLead = useParseLeadIntake();
-  const { data: orgEenheden } = useOrganisatieFlat();
   const { currentPerson } = useCurrentPerson();
+  const { data: personPlaatsingen } = usePersonOrganisaties(currentPerson?.id ?? null);
+
+  const myEenheden = personPlaatsingen ?? [];
+
+  // Auto-select if user has exactly one eenheid
+  useEffect(() => {
+    if (myEenheden.length === 1 && !orgEenheidId) {
+      setOrgEenheidId(myEenheden[0].organisatie_eenheid_id);
+    }
+  }, [myEenheden, orgEenheidId]);
 
   const reset = useCallback(() => {
     setStep('input');
@@ -149,23 +158,25 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     >
       {step === 'input' && (
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">
-              Organisatie-eenheid
-            </label>
-            <select
-              value={orgEenheidId}
-              onChange={(e) => setOrgEenheidId(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-            >
-              <option value="">Selecteer eenheid...</option>
-              {orgEenheden?.map((org) => (
-                <option key={org.id} value={org.id}>
-                  {org.naam}
-                </option>
-              ))}
-            </select>
-          </div>
+          {myEenheden.length !== 1 && (
+            <div>
+              <label className="block text-sm font-medium text-text mb-1">
+                Voor welk team is deze lead?
+              </label>
+              <select
+                value={orgEenheidId}
+                onChange={(e) => setOrgEenheidId(e.target.value)}
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+              >
+                <option value="">Selecteer team...</option>
+                {myEenheden.map((p) => (
+                  <option key={p.organisatie_eenheid_id} value={p.organisatie_eenheid_id}>
+                    {p.organisatie_eenheid_naam}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div
             onPaste={handlePaste}
@@ -259,7 +270,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
                 disabled={!canParse || !orgEenheidId}
                 icon={<Sparkles className="h-4 w-4" />}
               >
-                Analyseren
+                Analyseren met VLAM
               </Button>
             </div>
           </div>
@@ -269,7 +280,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       {step === 'parsing' && (
         <div className="flex flex-col items-center justify-center py-12 gap-3">
           <LoadingSpinner />
-          <p className="text-sm text-text-secondary">Tekst wordt geanalyseerd...</p>
+          <p className="text-sm text-text-secondary">VLAM analyseert de tekst...</p>
         </div>
       )}
 
@@ -277,7 +288,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
         <div className="space-y-4">
           {parseResult && (
             <p className="text-xs text-text-secondary bg-gray-50 rounded-lg px-3 py-2">
-              Voorgestelde velden op basis van analyse. Pas aan waar nodig.
+              VLAM heeft de volgende velden voorgesteld. Pas aan waar nodig.
             </p>
           )}
 
