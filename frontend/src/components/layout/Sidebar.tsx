@@ -16,6 +16,7 @@ import {
   PanelLeftOpen,
   BookOpen,
   Banknote,
+  Funnel,
 } from 'lucide-react';
 import logoImg from '/logo.png?url';
 import { useUIStore } from '@/store/ui';
@@ -51,6 +52,7 @@ export function Sidebar({ mobile }: SidebarProps) {
       { to: '/organisatie', icon: Building2, label: 'Organisatie' },
       { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel },
       { to: '/opdrachten', icon: Banknote, label: 'Opdrachten' },
+      { to: '/leads', icon: Funnel, label: 'Leads' },
       { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken' },
       { to: '/search', icon: Search, label: 'Zoeken' },
       { to: '/docs', icon: BookOpen, label: 'Documentatie' },

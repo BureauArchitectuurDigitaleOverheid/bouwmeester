@@ -2,6 +2,12 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { BASE_URL } from '@/api/client';
 import { getStoredPersonId, isWebAuthnAvailable } from '@/api/webauthn';
 
+interface OrgEenheid {
+  id: string;
+  naam: string;
+  type: string | null;
+}
+
 interface AuthPerson {
   sub: string;
   email: string;
@@ -9,6 +15,9 @@ interface AuthPerson {
   id: string | null;
   needs_onboarding: boolean;
   is_admin: boolean;
+  organisatie_eenheden: OrgEenheid[];
+  managed_eenheden: OrgEenheid[];
+  needs_placement: boolean;
 }
 
 interface AuthState {
@@ -49,6 +58,9 @@ async function fetchAuthStatus(): Promise<AuthState> {
           id: data.person.id ?? null,
           needs_onboarding: data.person.needs_onboarding ?? false,
           is_admin: data.person.is_admin ?? false,
+          organisatie_eenheden: data.person.organisatie_eenheden ?? [],
+          managed_eenheden: data.person.managed_eenheden ?? [],
+          needs_placement: data.person.needs_placement ?? false,
         }
       : null,
     error: null,

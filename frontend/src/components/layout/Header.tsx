@@ -24,6 +24,7 @@ const pageTitles: Record<string, string> = {
   '/auditlog': 'Auditlog',
   '/search': 'Zoeken',
   '/docs': 'Documentatie',
+  '/leads': 'Leads',
 };
 
 function getInitials(naam: string): string {
@@ -91,6 +92,9 @@ export function Header() {
 
   // In SSO mode, determine the authenticated user's display name
   const authDisplayName = oidcConfigured ? (authPerson?.name || authPerson?.email || '') : '';
+
+  // Only admins (or dev mode without OIDC) can use the person picker
+  const canViewAs = !oidcConfigured || !!authPerson?.is_admin;
 
   return (
     <header className="flex items-center justify-between h-16 px-4 md:px-6 bg-surface border-b border-border shrink-0 sticky top-0 z-30">
@@ -174,12 +178,77 @@ export function Header() {
           </div>
         )}
 
-        {/* Person picker */}
-        <div className="relative" ref={pickerRef}>
-          <button
-            onClick={() => setShowPersonPicker(!showPersonPicker)}
-            className="flex items-center gap-1.5 h-9 px-2 rounded-xl border border-border hover:border-border-hover transition-all"
-          >
+        {/* Person picker (admin) or static user display (non-admin) */}
+        {canViewAs ? (
+          <div className="relative" ref={pickerRef}>
+            <button
+              onClick={() => setShowPersonPicker(!showPersonPicker)}
+              className="flex items-center gap-1.5 h-9 px-2 rounded-xl border border-border hover:border-border-hover transition-all"
+            >
+              <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary-100 text-primary-700 text-[11px] font-medium">
+                {initials || <User className="h-3.5 w-3.5" />}
+              </div>
+              {currentPerson && (
+                <span className="text-sm text-text hidden sm:inline max-w-[120px] truncate">
+                  {currentPerson.naam}
+                </span>
+              )}
+              <ChevronDown className="h-3.5 w-3.5 text-text-secondary" />
+            </button>
+
+            {showPersonPicker && (
+              <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-border rounded-xl shadow-lg z-50 overflow-hidden">
+                {/* SSO mode label */}
+                {oidcConfigured && authDisplayName && (
+                  <div className="px-3 py-2 bg-gray-50 border-b border-border">
+                    <p className="text-xs text-text-secondary">Ingelogd als</p>
+                    <p className="text-sm text-text font-medium truncate">{authDisplayName}</p>
+                  </div>
+                )}
+                <div className="p-2 border-b border-border">
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={oidcConfigured ? 'Bekijk als...' : 'Zoek persoon...'}
+                    className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
+                    autoFocus
+                  />
+                </div>
+                <div className="max-h-64 overflow-y-auto py-1">
+                  {filteredPeople.map((person) => (
+                    <button
+                      key={person.id}
+                      onClick={() => {
+                        setCurrentPersonId(person.id);
+                        setShowPersonPicker(false);
+                        setSearch('');
+                      }}
+                      className="flex items-center gap-3 w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center justify-center h-7 w-7 rounded-full bg-primary-100 text-primary-700 text-xs font-medium shrink-0">
+                        {getInitials(person.naam)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-text truncate">{person.naam}</p>
+                        {person.functie && (
+                          <p className="text-xs text-text-secondary truncate">{formatFunctie(person.functie)}</p>
+                        )}
+                      </div>
+                      {currentPerson?.id === person.id && (
+                        <Check className="h-4 w-4 text-primary-600 shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                  {filteredPeople.length === 0 && (
+                    <p className="px-3 py-2 text-sm text-text-secondary">Geen resultaten</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 h-9 px-2 rounded-xl border border-border">
             <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary-100 text-primary-700 text-[11px] font-medium">
               {initials || <User className="h-3.5 w-3.5" />}
             </div>
@@ -188,60 +257,8 @@ export function Header() {
                 {currentPerson.naam}
               </span>
             )}
-            <ChevronDown className="h-3.5 w-3.5 text-text-secondary" />
-          </button>
-
-          {showPersonPicker && (
-            <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-border rounded-xl shadow-lg z-50 overflow-hidden">
-              {/* SSO mode label */}
-              {oidcConfigured && authDisplayName && (
-                <div className="px-3 py-2 bg-gray-50 border-b border-border">
-                  <p className="text-xs text-text-secondary">Ingelogd als</p>
-                  <p className="text-sm text-text font-medium truncate">{authDisplayName}</p>
-                </div>
-              )}
-              <div className="p-2 border-b border-border">
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={oidcConfigured ? 'Bekijk als...' : 'Zoek persoon...'}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
-                  autoFocus
-                />
-              </div>
-              <div className="max-h-64 overflow-y-auto py-1">
-                {filteredPeople.map((person) => (
-                  <button
-                    key={person.id}
-                    onClick={() => {
-                      setCurrentPersonId(person.id);
-                      setShowPersonPicker(false);
-                      setSearch('');
-                    }}
-                    className="flex items-center gap-3 w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center justify-center h-7 w-7 rounded-full bg-primary-100 text-primary-700 text-xs font-medium shrink-0">
-                      {getInitials(person.naam)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-text truncate">{person.naam}</p>
-                      {person.functie && (
-                        <p className="text-xs text-text-secondary truncate">{formatFunctie(person.functie)}</p>
-                      )}
-                    </div>
-                    {currentPerson?.id === person.id && (
-                      <Check className="h-4 w-4 text-primary-600 shrink-0" />
-                    )}
-                  </button>
-                ))}
-                {filteredPeople.length === 0 && (
-                  <p className="px-3 py-2 text-sm text-text-secondary">Geen resultaten</p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Logout button */}
         {authenticated && (
