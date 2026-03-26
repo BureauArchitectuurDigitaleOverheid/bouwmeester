@@ -1,8 +1,11 @@
 """Repository for omni full-text search across all entity types."""
 
+from __future__ import annotations
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.org_context import OrgContext
 from bouwmeester.utils.tiptap import tiptap_to_plain
 
 
@@ -15,6 +18,7 @@ class SearchRepository:
         query: str,
         result_types: list[str] | None = None,
         limit: int = 50,
+        org_ctx: OrgContext | None = None,
     ) -> list[dict]:
         """Search across all entity types using stored tsvector + GIN indexes.
 
@@ -60,6 +64,16 @@ class SearchRepository:
                 )
             return rank
 
+        def _org_filter_sql(col: str = "organisatie_eenheid_id") -> str:
+            """Return an AND clause for org-based visibility filtering."""
+            if org_ctx is None or org_ctx.is_admin:
+                return ""
+            if not org_ctx.is_authenticated:
+                return f" AND {col} IS NULL"
+            if not org_ctx.visible_eenheid_ids:
+                return f" AND {col} IS NULL"
+            return f" AND ({col} IS NULL OR {col} = ANY(:visible_eenheid_ids))"
+
         if "corpus_node" in active_types:
             tc = entity_title_cols["corpus_node"]
             sub_queries.append(f"""
@@ -71,7 +85,7 @@ class SearchRepository:
                     description,
                     {_score(tc)} AS score
                 FROM corpus_node
-                WHERE {_where(tc)}
+                WHERE {_where(tc)}{_org_filter_sql()}
             """)
 
         if "task" in active_types:
@@ -85,7 +99,7 @@ class SearchRepository:
                     description,
                     {_score(tc)} AS score
                 FROM task
-                WHERE {_where(tc)}
+                WHERE {_where(tc)}{_org_filter_sql()}
             """)
 
         if "person" in active_types:
@@ -157,6 +171,15 @@ class SearchRepository:
         params: dict = {"query": query, "limit": limit}
         if short_query:
             params["prefix"] = query.strip() + "%"
+        if (
+            org_ctx is not None
+            and org_ctx.is_authenticated
+            and not org_ctx.is_admin
+            and org_ctx.visible_eenheid_ids
+        ):
+            params["visible_eenheid_ids"] = [
+                str(eid) for eid in org_ctx.visible_eenheid_ids
+            ]
 
         result = await self.session.execute(text(full_sql), params)
         rows = result.all()

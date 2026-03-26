@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.task import TaskCreate, TaskUpdate
@@ -38,6 +39,7 @@ class TaskRepository(BaseRepository[Task]):
         organisatie_eenheid_id: UUID | None = None,
         include_children: bool = False,
         opdracht_id: UUID | None = None,
+        org_ctx: OrgContext | None = None,
     ) -> list[Task]:
         stmt = select(Task).options(*_task_options()).offset(skip).limit(limit)
         if status is not None:
@@ -50,6 +52,7 @@ class TaskRepository(BaseRepository[Task]):
                 stmt = stmt.where(Task.organisatie_eenheid_id == organisatie_eenheid_id)
         if opdracht_id is not None:
             stmt = stmt.where(Task.opdracht_id == opdracht_id)
+        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
         stmt = stmt.order_by(Task.created_at.desc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -113,6 +116,7 @@ class TaskRepository(BaseRepository[Task]):
         assignee_id: UUID,
         skip: int = 0,
         limit: int = 100,
+        org_ctx: OrgContext | None = None,
     ) -> list[Task]:
         stmt = (
             select(Task)
@@ -122,6 +126,12 @@ class TaskRepository(BaseRepository[Task]):
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
+        # Exception: you always see your own tasks, so if the assignee
+        # matches the current user we skip org filtering entirely.
+        if org_ctx is not None and org_ctx.person_id == assignee_id:
+            pass  # no org filter - user sees all their own tasks
+        else:
+            stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -130,6 +140,7 @@ class TaskRepository(BaseRepository[Task]):
         node_id: UUID,
         skip: int = 0,
         limit: int = 100,
+        org_ctx: OrgContext | None = None,
     ) -> list[Task]:
         stmt = (
             select(Task)
@@ -139,6 +150,7 @@ class TaskRepository(BaseRepository[Task]):
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
+        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.repositories.graph_filters import exclude_unconnected_pi
@@ -145,6 +146,7 @@ class GraphRepository:
         self,
         node_types: list[str] | None = None,
         edge_types: list[str] | None = None,
+        org_ctx: OrgContext | None = None,
     ) -> dict:
         """Return all nodes and edges, optionally filtered by type.
 
@@ -162,6 +164,9 @@ class GraphRepository:
         if not node_types or "politieke_input" in node_types:
             nodes_stmt = nodes_stmt.where(exclude_unconnected_pi())
 
+        nodes_stmt = apply_org_filter(
+            nodes_stmt, CorpusNode.organisatie_eenheid_id, org_ctx
+        )
         nodes_stmt = nodes_stmt.order_by(CorpusNode.created_at.desc())
         nodes_result = await self.session.execute(nodes_stmt)
         nodes = list(nodes_result.scalars().all())
@@ -172,8 +177,10 @@ class GraphRepository:
         edges_stmt = select(Edge)
         if edge_types:
             edges_stmt = edges_stmt.where(Edge.edge_type_id.in_(edge_types))
-        # Only include edges whose *both* endpoints are in the node set.
-        if node_types:
+        # Only include edges whose *both* endpoints are in the visible node set.
+        # When org filtering is active, node_ids already reflects visibility,
+        # so edges between invisible nodes are automatically excluded.
+        if node_types or org_ctx is not None:
             edges_stmt = edges_stmt.where(
                 Edge.from_node_id.in_(node_ids),
                 Edge.to_node_id.in_(node_ids),
