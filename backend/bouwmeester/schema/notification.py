@@ -26,6 +26,10 @@ class NotificationType(enum.StrEnum):
     emoji_reaction = "emoji_reaction"
     opdracht_created = "opdracht_created"
     opdracht_status_changed = "opdracht_status_changed"
+    lead_assigned = "lead_assigned"
+    lead_stage_changed = "lead_stage_changed"
+    lead_contact_added = "lead_contact_added"
+    lead_activity_added = "lead_activity_added"
 
 
 class NotificationBase(BaseModel):

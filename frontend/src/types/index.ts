@@ -760,7 +760,8 @@ export type SearchResultType =
   | 'person'
   | 'organisatie_eenheid'
   | 'parlementair_item'
-  | 'tag';
+  | 'tag'
+  | 'lead';
 
 export const SEARCH_RESULT_TYPE_LABELS: Record<SearchResultType, string> = {
   corpus_node: 'Beleidscorpus',
@@ -769,6 +770,7 @@ export const SEARCH_RESULT_TYPE_LABELS: Record<SearchResultType, string> = {
   organisatie_eenheid: 'Organisatie',
   parlementair_item: 'Parlementair',
   tag: 'Tag',
+  lead: 'Lead',
 };
 
 export const SEARCH_RESULT_TYPE_COLORS: Record<SearchResultType, BadgeVariant> = {
@@ -778,6 +780,7 @@ export const SEARCH_RESULT_TYPE_COLORS: Record<SearchResultType, BadgeVariant> =
   organisatie_eenheid: 'purple',
   parlementair_item: 'rose',
   tag: 'cyan',
+  lead: 'orange',
 };
 
 export interface SearchResult {

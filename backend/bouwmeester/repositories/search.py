@@ -32,6 +32,7 @@ class SearchRepository:
             "organisatie_eenheid",
             "parlementair_item",
             "tag",
+            "lead",
         }
         active_types = set(result_types) if result_types else all_types
 
@@ -47,6 +48,7 @@ class SearchRepository:
             "organisatie_eenheid": "naam",
             "parlementair_item": "titel",
             "tag": "name",
+            "lead": "title",
         }
 
         def _where(title_col: str) -> str:
@@ -158,6 +160,20 @@ class SearchRepository:
                 WHERE {_where(tc)}
             """)
 
+        if "lead" in active_types:
+            tc = entity_title_cols["lead"]
+            sub_queries.append(f"""
+                SELECT
+                    id,
+                    'lead' AS result_type,
+                    title,
+                    stage AS subtitle,
+                    description,
+                    {_score(tc)} AS score
+                FROM lead
+                WHERE {_where(tc)}{_org_filter_sql()}
+            """)
+
         if not sub_queries:
             return []
 
@@ -191,6 +207,7 @@ class SearchRepository:
             "organisatie_eenheid": "/organisatie?eenheid={id}",
             "parlementair_item": "/parlementair?item={id}",
             "tag": "/corpus?tag={id}",
+            "lead": "/leads?lead={id}",
         }
 
         # Build results, converting TipTap JSON descriptions to plain text

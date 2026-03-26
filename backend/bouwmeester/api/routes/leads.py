@@ -15,6 +15,7 @@ from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.storage import bijlagen_root, safe_resolve_or_400
+from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.lead_contact import LeadContact
 from bouwmeester.models.lead_node import LeadNode
@@ -38,6 +39,8 @@ from bouwmeester.schema.lead import (
     LeadStage,
     LeadUpdate,
 )
+from bouwmeester.schema.notification import NotificationCreate
+from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
@@ -86,6 +89,19 @@ async def create_lead(
     author_id = current_user.id if current_user else None
     repo = LeadRepository(db)
     lead = await repo.create(data, author_id=author_id)
+
+    # Notify assignee (if any, and not self-assignment)
+    if lead.assignee_id and lead.assignee_id != author_id:
+        notif_svc = NotificationService(db)
+        notification_data = NotificationCreate(
+            person_id=lead.assignee_id,
+            type="lead_assigned",
+            title=f"Je bent toegewezen aan lead: {lead.title}",
+            message=f"Je bent toegewezen aan lead: {lead.title}",
+        )
+        notification = await notif_svc.repo.create(notification_data)
+        notif_svc._send_to_mattermost(notification)
+
     return LeadResponse.model_validate(lead)
 
 
@@ -122,8 +138,45 @@ async def update_lead(
     db: AsyncSession = Depends(get_db),
 ) -> LeadResponse:
     """Update a lead."""
+    actor_id = current_user.id if current_user else None
+
+    # Capture old state before update
+    old_lead = await db.get(Lead, lead_id)
+    old_assignee_id = old_lead.assignee_id if old_lead else None
+    old_stage = old_lead.stage if old_lead else None
+
     repo = LeadRepository(db)
     lead = require_found(await repo.update(lead_id, data), "Lead")
+
+    notif_svc = NotificationService(db)
+
+    # Notify on assignee change
+    new_assignee_id = lead.assignee_id
+    if new_assignee_id and new_assignee_id != old_assignee_id:
+        # Don't notify if actor is the new assignee (self-assignment)
+        if new_assignee_id != actor_id:
+            notification_data = NotificationCreate(
+                person_id=new_assignee_id,
+                type="lead_assigned",
+                title=f"Je bent toegewezen aan lead: {lead.title}",
+                message=f"Je bent toegewezen aan lead: {lead.title}",
+            )
+            notification = await notif_svc.repo.create(notification_data)
+            notif_svc._send_to_mattermost(notification)
+
+    # Notify on stage change
+    if lead.stage != old_stage and lead.assignee_id:
+        # Don't notify if actor is the assignee
+        if lead.assignee_id != actor_id:
+            notification_data = NotificationCreate(
+                person_id=lead.assignee_id,
+                type="lead_stage_changed",
+                title=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
+                message=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
+            )
+            notification = await notif_svc.repo.create(notification_data)
+            notif_svc._send_to_mattermost(notification)
+
     return LeadResponse.model_validate(lead)
 
 
@@ -151,6 +204,19 @@ async def move_lead(
     lead = require_found(
         await repo.move(lead_id, data.stage, author_id=author_id), "Lead"
     )
+
+    # Notify assignee about stage change
+    if lead.assignee_id and lead.assignee_id != author_id:
+        notif_svc = NotificationService(db)
+        notification_data = NotificationCreate(
+            person_id=lead.assignee_id,
+            type="lead_stage_changed",
+            title=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
+            message=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
+        )
+        notification = await notif_svc.repo.create(notification_data)
+        notif_svc._send_to_mattermost(notification)
+
     return LeadResponse.model_validate(lead)
 
 
@@ -183,13 +249,26 @@ async def add_activity(
     db: AsyncSession = Depends(get_db),
 ) -> LeadActivityResponse:
     """Add an activity (note, meeting, call, email) to a lead."""
-    # Verify lead exists
+    # Verify lead exists and get it for notification
     lead_repo = LeadRepository(db)
-    require_found(await lead_repo.get(lead_id), "Lead")
+    lead = require_found(await lead_repo.get(lead_id), "Lead")
 
     author_id = current_user.id if current_user else None
     repo = LeadActivityRepository(db)
     activity = await repo.create(lead_id, data, author_id=author_id)
+
+    # Notify assignee about new activity (if author is not the assignee)
+    if lead.assignee_id and lead.assignee_id != author_id:
+        notif_svc = NotificationService(db)
+        notification_data = NotificationCreate(
+            person_id=lead.assignee_id,
+            type="lead_activity_added",
+            title=f"Nieuwe notitie op lead '{lead.title}'",
+            message=f"Nieuwe notitie op lead '{lead.title}'",
+        )
+        notification = await notif_svc.repo.create(notification_data)
+        notif_svc._send_to_mattermost(notification)
+
     return LeadActivityResponse.model_validate(activity)
 
 
@@ -230,6 +309,22 @@ async def add_contact(
     db.add(contact)
     await db.flush()
     await db.refresh(contact, attribute_names=["person"])
+
+    # Notify the contact person (unless they added themselves)
+    actor_id = current_user.id if current_user else None
+    if data.person_id != actor_id:
+        lead = await db.get(Lead, lead_id)
+        if lead:
+            notif_svc = NotificationService(db)
+            notification_data = NotificationCreate(
+                person_id=data.person_id,
+                type="lead_contact_added",
+                title=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
+                message=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
+            )
+            notification = await notif_svc.repo.create(notification_data)
+            notif_svc._send_to_mattermost(notification)
+
     return LeadContactResponse.model_validate(contact)
 
 

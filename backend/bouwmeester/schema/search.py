@@ -13,6 +13,7 @@ class SearchResultType(StrEnum):
     organisatie_eenheid = "organisatie_eenheid"
     parlementair_item = "parlementair_item"
     tag = "tag"
+    lead = "lead"
 
 
 class SearchResult(BaseModel):
