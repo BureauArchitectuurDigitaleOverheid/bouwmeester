@@ -26,6 +26,11 @@ from bouwmeester.schema.chat import (
     ChatResponse,
     PendingAction,
 )
+from bouwmeester.schema.community_graph import (
+    CommunityGraphEdge,
+    CommunityGraphNode,
+    CommunityGraphResponse,
+)
 from bouwmeester.schema.corpus_node import (
     BeleidskompasProgress,
     CorpusNodeBase,
@@ -217,6 +222,10 @@ __all__ = [
     "AccessRequestResponse",
     "AccessRequestReviewRequest",
     "AccessRequestStatusResponse",
+    # community_graph
+    "CommunityGraphEdge",
+    "CommunityGraphNode",
+    "CommunityGraphResponse",
     # chat
     "ChatAction",
     "ChatAttachmentResponse",

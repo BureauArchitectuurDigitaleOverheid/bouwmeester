@@ -10,6 +10,7 @@ import type {
   LeadFilters,
   LeadAttachment,
   LeadParseResult,
+  CommunityGraphResponse,
 } from '@/types';
 
 export async function getLeads(filters?: LeadFilters): Promise<Lead[]> {
@@ -105,6 +106,10 @@ export async function deleteLeadAttachment(
 
 export function getLeadAttachmentDownloadUrl(leadId: string, attachmentId: string): string {
   return `${BASE_URL}/api/leads/${leadId}/attachments/${attachmentId}/download`;
+}
+
+export async function getCommunityGraph(): Promise<CommunityGraphResponse> {
+  return apiGet<CommunityGraphResponse>('/api/graph/community');
 }
 
 export async function parseLeadIntake(rawText?: string, files?: File[]): Promise<LeadParseResult> {

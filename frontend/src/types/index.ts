@@ -1610,3 +1610,27 @@ export interface LeadParseResult {
   contact_name: string | null;
   suggested_tags: string[];
 }
+
+// Community Graph types (used by LeadGraphView / CommunityGraph)
+export interface CommunityGraphNode {
+  id: string; // prefixed: "lead-xxx", "person-xxx", "org-xxx", "node-xxx"
+  node_type: 'lead' | 'person' | 'organisation' | 'corpus_node';
+  label: string;
+  stage?: string | null;
+  functie?: string | null;
+  org_type?: string | null;
+  corpus_node_type?: string | null;
+}
+
+export interface CommunityGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  edge_type: string;
+  label?: string | null;
+}
+
+export interface CommunityGraphResponse {
+  nodes: CommunityGraphNode[];
+  edges: CommunityGraphEdge[];
+}

@@ -89,13 +89,6 @@ export function LeadKanbanBoard() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <LeadMetricsBar />
-        <Button
-          size="sm"
-          icon={<Plus className="h-4 w-4" />}
-          onClick={() => setShowIntake(true)}
-        >
-          Nieuwe lead
-        </Button>
       </div>
 
       <div className="flex items-center gap-3 mb-4">

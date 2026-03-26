@@ -17,6 +17,7 @@ import {
   uploadLeadAttachment,
   deleteLeadAttachment,
   parseLeadIntake,
+  getCommunityGraph,
 } from '@/api/leads';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
@@ -238,6 +239,13 @@ export function useDeleteLeadAttachment() {
     }) => deleteLeadAttachment(leadId, attachmentId),
     errorMessage: 'Fout bij verwijderen bijlage',
     invalidateKeys: [queryKeys.leads.all],
+  });
+}
+
+export function useCommunityGraph() {
+  return useQuery({
+    queryKey: [...queryKeys.leads.all, 'community-graph'],
+    queryFn: getCommunityGraph,
   });
 }
 
