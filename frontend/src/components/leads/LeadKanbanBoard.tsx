@@ -6,6 +6,8 @@ import { LeadCard } from './LeadCard';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { LeadIntakeDialog } from './LeadIntakeDialog';
 import { useLeads, useMoveLead } from '@/hooks/useLeads';
+import { usePeople } from '@/hooks/usePeople';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import {
   LeadStage,
@@ -13,7 +15,7 @@ import {
   LEAD_STAGE_LABELS,
   LEAD_STAGE_COLORS,
 } from '@/types';
-import type { Lead } from '@/types';
+import type { Lead, LeadFilters } from '@/types';
 
 const COLUMN_BORDER_COLORS: Record<LeadStage, string> = {
   [LeadStage.VERKENNEN]: 'border-t-blue-400',
@@ -25,9 +27,20 @@ const COLUMN_BORDER_COLORS: Record<LeadStage, string> = {
 };
 
 export function LeadKanbanBoard() {
-  const { data: leads, isLoading } = useLeads();
+  const [filterAssignee, setFilterAssignee] = useState('');
+  const [filterTag, setFilterTag] = useState('');
+
+  const filters: LeadFilters = {};
+  if (filterAssignee) filters.assignee_id = filterAssignee;
+  if (filterTag) filters.tag = filterTag;
+
+  const { data: leads, isLoading } = useLeads(
+    Object.keys(filters).length > 0 ? filters : undefined,
+  );
   const moveLead = useMoveLead();
   const { openLeadDetail } = useLeadDetail();
+  const { data: people } = usePeople();
+  const { currentPerson } = useCurrentPerson();
   const [dragOverColumn, setDragOverColumn] = useState<LeadStage | null>(null);
   const [showIntake, setShowIntake] = useState(false);
 
@@ -83,6 +96,46 @@ export function LeadKanbanBoard() {
         >
           Nieuwe lead
         </Button>
+      </div>
+
+      <div className="flex items-center gap-3 mb-4">
+        <select
+          value={filterAssignee}
+          onChange={(e) => setFilterAssignee(e.target.value)}
+          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400"
+        >
+          <option value="">Alle personen</option>
+          {currentPerson && (
+            <option value={currentPerson.id}>
+              Mijn leads ({currentPerson.naam})
+            </option>
+          )}
+          {people
+            ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.naam}
+              </option>
+            ))}
+        </select>
+        <input
+          type="text"
+          value={filterTag}
+          onChange={(e) => setFilterTag(e.target.value)}
+          placeholder="Filter op tag..."
+          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400 w-48"
+        />
+        {(filterAssignee || filterTag) && (
+          <button
+            onClick={() => {
+              setFilterAssignee('');
+              setFilterTag('');
+            }}
+            className="text-sm text-text-secondary hover:text-text transition-colors"
+          >
+            Filters wissen
+          </button>
+        )}
       </div>
 
       <div className="-mx-4 px-4 md:mx-0 md:px-0 flex gap-3 min-h-[500px] overflow-x-auto pb-2 snap-x snap-mandatory md:snap-none md:pb-0">

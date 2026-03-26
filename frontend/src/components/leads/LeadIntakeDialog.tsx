@@ -4,7 +4,7 @@ import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake } from '@/hooks/useLeads';
-import { usePersonOrganisaties } from '@/hooks/usePeople';
+import { usePeople, usePersonOrganisaties } from '@/hooks/usePeople';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { LeadStage } from '@/types';
 import type { LeadParseResult } from '@/types';
@@ -29,6 +29,8 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const [organization, setOrganization] = useState('');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
+  const [contactName, setContactName] = useState('');
+  const [assigneeId, setAssigneeId] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const createLead = useCreateLead();
@@ -36,6 +38,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const parseLead = useParseLeadIntake();
   const { currentPerson } = useCurrentPerson();
   const { data: personPlaatsingen } = usePersonOrganisaties(currentPerson?.id ?? null);
+  const { data: people } = usePeople();
 
   const myEenheden = personPlaatsingen ?? [];
 
@@ -55,6 +58,8 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     setOrganization('');
     setDescription('');
     setTags('');
+    setContactName('');
+    setAssigneeId('');
     setOrgEenheidId('');
   }, []);
 
@@ -97,6 +102,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       setOrganization(result.organization ?? '');
       setDescription(result.description ?? '');
       setTags(result.suggested_tags?.join(', ') ?? '');
+      setContactName(result.contact_name ?? '');
       setStep('confirm');
     } catch {
       // If parsing fails, go straight to confirm with empty suggestions
@@ -124,15 +130,23 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       .map((t) => t.trim())
       .filter(Boolean);
 
+    // Build description, include contact name if provided
+    const descParts = [description.trim()];
+    if (contactName.trim()) {
+      descParts.push(`Contactpersoon: ${contactName.trim()}`);
+    }
+    const fullDescription = descParts.filter(Boolean).join('\n\n') || null;
+
     try {
       const lead = await createLead.mutateAsync({
         title: title.trim(),
-        description: description.trim() || null,
+        description: fullDescription,
         organization: organization.trim() || null,
         stage: LeadStage.VERKENNEN,
         tags: tagList,
         raw_intake_text: rawText.trim() || null,
         organisatie_eenheid_id: orgEenheidId,
+        assignee_id: assigneeId || null,
       });
 
       // Upload attached files
@@ -280,7 +294,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       {step === 'parsing' && (
         <div className="flex flex-col items-center justify-center py-12 gap-3">
           <LoadingSpinner />
-          <p className="text-sm text-text-secondary">VLAM analyseert de tekst...</p>
+          <p className="text-sm text-text-secondary">VLAM analyseert je invoer...</p>
         </div>
       )}
 
@@ -321,6 +335,19 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
 
           <div>
             <label className="block text-sm font-medium text-text mb-1">
+              Contactpersoon
+            </label>
+            <input
+              type="text"
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+              placeholder="Naam van de contactpersoon"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">
               Beschrijving
             </label>
             <textarea
@@ -343,6 +370,26 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
               className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
               placeholder="Komma-gescheiden tags"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">
+              Verantwoordelijke
+            </label>
+            <select
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+            >
+              <option value="">Geen (later toewijzen)</option>
+              {people
+                ?.filter((p) => p.is_active)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.naam}
+                  </option>
+                ))}
+            </select>
           </div>
 
           {files.length > 0 && (
