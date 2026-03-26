@@ -68,6 +68,29 @@ from bouwmeester.schema.graph import (
     NeighborEntry,
 )
 from bouwmeester.schema.inbox import InboxItem, InboxResponse
+from bouwmeester.schema.lead import (
+    LeadActivityCreate,
+    LeadActivityResponse,
+    LeadActivityType,
+    LeadAssigneeSummary,
+    LeadAttachmentResponse,
+    LeadBase,
+    LeadContactCreate,
+    LeadContactResponse,
+    LeadCreate,
+    LeadDetailResponse,
+    LeadExterneOrgSummary,
+    LeadMetricsResponse,
+    LeadMove,
+    LeadNodeCreate,
+    LeadNodeResponse,
+    LeadOrgEenheidSummary,
+    LeadParseResult,
+    LeadReorder,
+    LeadResponse,
+    LeadStage,
+    LeadUpdate,
+)
 from bouwmeester.schema.llm import (
     CorpusGapOverviewResponse,
     CorpusGapSummaryItem,
@@ -101,6 +124,12 @@ from bouwmeester.schema.opdracht import (
     OpdrachtNodeResponse,
     OpdrachtResponse,
     OpdrachtUpdate,
+)
+from bouwmeester.schema.org_placement import (
+    OrgPlacementRequestCreate,
+    OrgPlacementRequestDecision,
+    OrgPlacementRequestResponse,
+    PlacementStatus,
 )
 from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidCreate,
@@ -254,6 +283,11 @@ __all__ = [
     "OpdrachtResponse",
     "OpdrachtenSummary",
     "OpdrachtUpdate",
+    # org_placement
+    "OrgPlacementRequestCreate",
+    "OrgPlacementRequestDecision",
+    "OrgPlacementRequestResponse",
+    "PlacementStatus",
     # organisatie_eenheid
     "OrgManagerRecord",
     "OrgNaamRecord",
@@ -297,6 +331,28 @@ __all__ = [
     # inbox
     "InboxItem",
     "InboxResponse",
+    # lead
+    "LeadActivityCreate",
+    "LeadActivityResponse",
+    "LeadActivityType",
+    "LeadAssigneeSummary",
+    "LeadAttachmentResponse",
+    "LeadBase",
+    "LeadContactCreate",
+    "LeadContactResponse",
+    "LeadCreate",
+    "LeadDetailResponse",
+    "LeadExterneOrgSummary",
+    "LeadMetricsResponse",
+    "LeadMove",
+    "LeadNodeCreate",
+    "LeadNodeResponse",
+    "LeadOrgEenheidSummary",
+    "LeadParseResult",
+    "LeadReorder",
+    "LeadResponse",
+    "LeadStage",
+    "LeadUpdate",
     # search
     "SearchResponse",
     "SearchResult",

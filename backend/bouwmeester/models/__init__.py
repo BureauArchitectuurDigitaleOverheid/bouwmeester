@@ -21,6 +21,11 @@ from bouwmeester.models.effect import Effect  # noqa: F401
 from bouwmeester.models.externe_organisatie import ExterneOrganisatie  # noqa: F401
 from bouwmeester.models.http_session import HttpSession  # noqa: F401
 from bouwmeester.models.instrument import Instrument  # noqa: F401
+from bouwmeester.models.lead import Lead  # noqa: F401
+from bouwmeester.models.lead_activity import LeadActivity  # noqa: F401
+from bouwmeester.models.lead_attachment import LeadAttachment  # noqa: F401
+from bouwmeester.models.lead_contact import LeadContact  # noqa: F401
+from bouwmeester.models.lead_node import LeadNode  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
 from bouwmeester.models.mattermost_user import (  # noqa: F401
     MattermostLinkCode,
@@ -35,6 +40,7 @@ from bouwmeester.models.opdracht import Opdracht, OpdrachtNode  # noqa: F401
 from bouwmeester.models.org_manager import OrganisatieEenheidManager  # noqa: F401
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam  # noqa: F401
 from bouwmeester.models.org_parent import OrganisatieEenheidParent  # noqa: F401
+from bouwmeester.models.org_placement_request import OrgPlacementRequest  # noqa: F401
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid  # noqa: F401
 from bouwmeester.models.parlementair_item import (  # noqa: F401
     ParlementairItem,
@@ -75,6 +81,11 @@ __all__ = [
     "ExterneOrganisatie",
     "HttpSession",
     "Instrument",
+    "Lead",
+    "LeadActivity",
+    "LeadAttachment",
+    "LeadContact",
+    "LeadNode",
     "Maatregel",
     "MattermostLinkCode",
     "MattermostUser",
@@ -85,6 +96,7 @@ __all__ = [
     "Notification",
     "Opdracht",
     "OpdrachtNode",
+    "OrgPlacementRequest",
     "OrganisatieEenheidManager",
     "OrganisatieEenheidNaam",
     "OrganisatieEenheidParent",
