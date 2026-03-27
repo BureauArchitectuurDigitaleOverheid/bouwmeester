@@ -51,11 +51,11 @@ function MermaidBlock({ chart }: { chart: string }) {
 }
 
 /** Parse bm:// links and return { type, id } or null for regular links. */
-function parseBmLink(href: string | undefined): { type: 'node' | 'task'; id: string } | null {
+function parseBmLink(href: string | undefined): { type: 'node' | 'task' | 'lead'; id: string } | null {
   if (!href) return null;
-  const match = href.match(/^bm:\/\/(node|task)\/([a-f0-9-]+)$/i);
+  const match = href.match(/^bm:\/\/(node|task|lead)\/([a-f0-9-]+)$/i);
   if (!match) return null;
-  return { type: match[1] as 'node' | 'task', id: match[2] };
+  return { type: match[1] as 'node' | 'task' | 'lead', id: match[2] };
 }
 
 const defaultComponents: Components = {
@@ -194,7 +194,7 @@ const compactComponents: Components = {
 interface MarkdownRendererProps {
   content: string;
   compact?: boolean;
-  onBmLink?: (type: 'node' | 'task', id: string) => void;
+  onBmLink?: (type: 'node' | 'task' | 'lead', id: string) => void;
 }
 
 export function MarkdownRenderer({ content, compact, onBmLink }: MarkdownRendererProps) {
@@ -205,7 +205,7 @@ export function MarkdownRenderer({ content, compact, onBmLink }: MarkdownRendere
       if (!onBmLink) return;
       const target = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-bm-type]');
       if (!target) return;
-      const type = target.dataset.bmType as 'node' | 'task';
+      const type = target.dataset.bmType as 'node' | 'task' | 'lead';
       const id = target.dataset.bmId;
       if (type && id) {
         e.preventDefault();

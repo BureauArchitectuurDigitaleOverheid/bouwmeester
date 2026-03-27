@@ -549,6 +549,72 @@ _READ_TOOLS: dict[str, dict] = {
             },
         },
     },
+    "search_leads": {
+        "type": "function",
+        "function": {
+            "name": "search_leads",
+            "description": (
+                "Zoek leads in de sales funnel."
+                " Optioneel gefilterd op stage, toegewezen persoon,"
+                " of volgende-actie status."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "stage": {
+                        "type": "string",
+                        "description": (
+                            "Filter op stage: verkennen,"
+                            " eerste_gesprek, interne_check,"
+                            " follow_up, in_the_pocket, koelkast"
+                        ),
+                    },
+                    "assignee_id": {
+                        "type": "string",
+                        "description": ("UUID van de toegewezen persoon (optioneel)"),
+                    },
+                    "next_action_filter": {
+                        "type": "string",
+                        "description": (
+                            "Filter op volgende actie: overdue, today, this_week"
+                        ),
+                    },
+                },
+            },
+        },
+    },
+    "get_lead": {
+        "type": "function",
+        "function": {
+            "name": "get_lead",
+            "description": (
+                "Haal details op van een specifieke lead"
+                " (titel, organisatie, stage, contacten,"
+                " activiteiten, volgende actie)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "lead_id": {
+                        "type": "string",
+                        "description": "UUID van de lead",
+                    },
+                },
+                "required": ["lead_id"],
+            },
+        },
+    },
+    "get_lead_metrics": {
+        "type": "function",
+        "function": {
+            "name": "get_lead_metrics",
+            "description": (
+                "Haal funnel-metrics op: totaal aantal leads,"
+                " aantal per stage, en aantal vervallen leads."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 }
 
 _WRITE_TOOLS: dict[str, dict] = {
@@ -768,6 +834,168 @@ _WRITE_TOOLS: dict[str, dict] = {
             },
         },
     },
+    "create_lead": {
+        "type": "function",
+        "function": {
+            "name": "create_lead",
+            "description": (
+                "Maak een nieuwe lead aan in de sales funnel."
+                " De organisatie_eenheid_id wordt automatisch"
+                " ingevuld op basis van de ingelogde gebruiker."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": (
+                            "Titel van de lead (naam organisatie/afdeling)"
+                        ),
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Beschrijving van de vraag/behoefte",
+                    },
+                    "organization": {
+                        "type": "string",
+                        "description": "Naam van de externe organisatie",
+                    },
+                    "stage": {
+                        "type": "string",
+                        "description": (
+                            "Stage: verkennen, eerste_gesprek,"
+                            " interne_check, follow_up,"
+                            " in_the_pocket, koelkast"
+                            " (standaard: verkennen)"
+                        ),
+                    },
+                    "assignee_id": {
+                        "type": "string",
+                        "description": ("UUID van de toegewezen persoon (optioneel)"),
+                    },
+                    "next_action": {
+                        "type": "string",
+                        "description": (
+                            "Beschrijving van de volgende actie (optioneel)"
+                        ),
+                    },
+                    "next_action_date": {
+                        "type": "string",
+                        "description": (
+                            "Datum van de volgende actie"
+                            " in YYYY-MM-DD formaat (optioneel)"
+                        ),
+                    },
+                },
+                "required": ["title"],
+            },
+        },
+    },
+    "update_lead": {
+        "type": "function",
+        "function": {
+            "name": "update_lead",
+            "description": (
+                "Wijzig een bestaande lead"
+                " (titel, beschrijving, organisatie,"
+                " toewijzing, volgende actie)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "lead_id": {
+                        "type": "string",
+                        "description": "UUID van de lead",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Nieuwe titel (optioneel)",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Nieuwe beschrijving (optioneel)",
+                    },
+                    "organization": {
+                        "type": "string",
+                        "description": "Nieuwe organisatienaam (optioneel)",
+                    },
+                    "assignee_id": {
+                        "type": "string",
+                        "description": (
+                            "UUID van de nieuwe toegewezen persoon (optioneel)"
+                        ),
+                    },
+                    "next_action": {
+                        "type": "string",
+                        "description": ("Nieuwe volgende actie (optioneel)"),
+                    },
+                    "next_action_date": {
+                        "type": "string",
+                        "description": (
+                            "Nieuwe datum volgende actie"
+                            " in YYYY-MM-DD formaat (optioneel)"
+                        ),
+                    },
+                },
+                "required": ["lead_id"],
+            },
+        },
+    },
+    "move_lead": {
+        "type": "function",
+        "function": {
+            "name": "move_lead",
+            "description": ("Verplaats een lead naar een andere stage in de funnel."),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "lead_id": {
+                        "type": "string",
+                        "description": "UUID van de lead",
+                    },
+                    "stage": {
+                        "type": "string",
+                        "description": (
+                            "Nieuwe stage: verkennen,"
+                            " eerste_gesprek, interne_check,"
+                            " follow_up, in_the_pocket, koelkast"
+                        ),
+                    },
+                },
+                "required": ["lead_id", "stage"],
+            },
+        },
+    },
+    "add_lead_activity": {
+        "type": "function",
+        "function": {
+            "name": "add_lead_activity",
+            "description": (
+                "Voeg een activiteit (notitie, meeting,"
+                " telefoongesprek, e-mail) toe aan een lead."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "lead_id": {
+                        "type": "string",
+                        "description": "UUID van de lead",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Inhoud van de activiteit",
+                    },
+                    "activity_type": {
+                        "type": "string",
+                        "description": (
+                            "Type: note, meeting, call, email (standaard: note)"
+                        ),
+                    },
+                },
+                "required": ["lead_id", "content"],
+            },
+        },
+    },
 }
 
 ALL_TOOLS = list(_READ_TOOLS.values()) + list(_WRITE_TOOLS.values())
@@ -793,6 +1021,12 @@ def _describe_action(tool_name: str, args: dict) -> str:
         ),
         "attach_to_bron": lambda a: (
             f"Chatbijlage koppelen aan bron {a.get('node_id', '')[:8]}..."
+        ),
+        "create_lead": lambda a: (f'Lead "{a.get("title", "")}" aanmaken'),
+        "update_lead": lambda a: (f"Lead {a.get('lead_id', '')[:8]}... bijwerken"),
+        "move_lead": lambda a: (f"Lead verplaatsen naar {a.get('stage', '')}"),
+        "add_lead_activity": lambda a: (
+            f"Activiteit ({a.get('activity_type', 'note')}) toevoegen aan lead"
         ),
     }
     fn = descriptions.get(tool_name)
@@ -1158,6 +1392,109 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             ]
             return _safe_dumps({"items": items, "count": len(items)})
 
+        elif tool_name == "search_leads":
+            from bouwmeester.repositories.lead import LeadRepository
+            from bouwmeester.schema.lead import LeadStage
+
+            repo = LeadRepository(db)
+            stage = None
+            if args.get("stage"):
+                try:
+                    stage = LeadStage(args["stage"])
+                except ValueError:
+                    pass
+            assignee_id_val = (
+                UUID(args["assignee_id"]) if args.get("assignee_id") else None
+            )
+            leads = await repo.get_all(
+                limit=15,
+                stage=stage,
+                assignee_id=assignee_id_val,
+                next_action_filter=args.get("next_action_filter"),
+            )
+            items = [
+                {
+                    "id": str(lead.id),
+                    "title": lead.title,
+                    "organization": lead.organization,
+                    "stage": lead.stage,
+                    "assignee": (lead.assignee.naam if lead.assignee else None),
+                    "assignee_id": (
+                        str(lead.assignee_id) if lead.assignee_id else None
+                    ),
+                    "next_action": lead.next_action,
+                    "next_action_date": (
+                        str(lead.next_action_date) if lead.next_action_date else None
+                    ),
+                    "tags": (
+                        [lt.tag.name for lt in lead.lead_tags if lt.tag]
+                        if lead.lead_tags
+                        else []
+                    ),
+                    "created_at": lead.created_at.isoformat(),
+                }
+                for lead in leads
+            ]
+            return _safe_dumps({"leads": items, "count": len(items)})
+
+        elif tool_name == "get_lead":
+            from bouwmeester.repositories.lead import LeadRepository
+
+            repo = LeadRepository(db)
+            lead = await repo.get_detail(UUID(args["lead_id"]))
+            if not lead:
+                return _safe_dumps({"error": "Lead niet gevonden"})
+            activities = [
+                {
+                    "id": str(a.id),
+                    "content": a.content[:300],
+                    "activity_type": a.activity_type,
+                    "author": (a.author.naam if a.author else None),
+                    "created_at": a.created_at.isoformat(),
+                }
+                for a in (lead.activities or [])[:10]
+            ]
+            contacts = [
+                {
+                    "person_naam": (c.person.naam if c.person else ""),
+                    "person_id": str(c.person_id),
+                    "rol": c.rol,
+                }
+                for c in (lead.contacts or [])
+            ]
+            return _safe_dumps(
+                {
+                    "id": str(lead.id),
+                    "title": lead.title,
+                    "description": (lead.description or "")[:500],
+                    "organization": lead.organization,
+                    "stage": lead.stage,
+                    "assignee": (lead.assignee.naam if lead.assignee else None),
+                    "assignee_id": (
+                        str(lead.assignee_id) if lead.assignee_id else None
+                    ),
+                    "next_action": lead.next_action,
+                    "next_action_date": (
+                        str(lead.next_action_date) if lead.next_action_date else None
+                    ),
+                    "tags": (
+                        [lt.tag.name for lt in lead.lead_tags if lt.tag]
+                        if lead.lead_tags
+                        else []
+                    ),
+                    "contacts": contacts,
+                    "activities": activities,
+                    "created_at": lead.created_at.isoformat(),
+                },
+            )
+
+        elif tool_name == "get_lead_metrics":
+            from bouwmeester.repositories.lead import LeadRepository
+
+            repo = LeadRepository(db)
+            metrics = await repo.get_metrics()
+            return _safe_dumps(metrics)
+
         return _safe_dumps({"error": f"Onbekende tool: {tool_name}"})
     except ValueError:
         return _safe_dumps({"error": "Ongeldig ID-formaat. Gebruik een geldig UUID."})
@@ -1166,6 +1503,29 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
         return _safe_dumps(
             {"error": "Er is een fout opgetreden bij het ophalen van data."}
         )
+
+
+async def _resolve_person_org_eenheid(
+    db: AsyncSession, person_id: UUID | None
+) -> UUID | None:
+    """Find the active organisatie_eenheid_id for a person."""
+    if not person_id:
+        return None
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+    from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+
+    stmt = (
+        select(OrganisatieEenheid.id)
+        .join(PersonOrganisatieEenheid)
+        .where(
+            PersonOrganisatieEenheid.person_id == person_id,
+            PersonOrganisatieEenheid.eind_datum.is_(None),
+        )
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    row = result.scalar_one_or_none()
+    return row if row else None
 
 
 async def _execute_write_tool(
@@ -1529,6 +1889,151 @@ async def _execute_write_tool(
                 ),
                 "entity_id": str(node_id),
                 "entity_type": "node",
+            }
+
+        elif tool_name == "create_lead":
+            from bouwmeester.repositories.lead import LeadRepository
+            from bouwmeester.schema.lead import LeadCreate, LeadStage
+
+            # Resolve user's org unit for the lead
+            org_eenheid_id = await _resolve_person_org_eenheid(db, person_id)
+            if not org_eenheid_id:
+                return {
+                    "success": False,
+                    "summary": (
+                        "Kan geen lead aanmaken:"
+                        " geen organisatie-eenheid gevonden"
+                        " voor de ingelogde gebruiker."
+                    ),
+                }
+
+            lead_data: dict = {
+                "title": args["title"],
+                "organisatie_eenheid_id": org_eenheid_id,
+            }
+            if args.get("description"):
+                lead_data["description"] = args["description"]
+            if args.get("organization"):
+                lead_data["organization"] = args["organization"]
+            if args.get("stage"):
+                try:
+                    lead_data["stage"] = LeadStage(args["stage"])
+                except ValueError:
+                    pass
+            if args.get("assignee_id"):
+                lead_data["assignee_id"] = UUID(args["assignee_id"])
+            if args.get("next_action"):
+                lead_data["next_action"] = args["next_action"]
+            if args.get("next_action_date"):
+                from datetime import date as date_cls
+
+                lead_data["next_action_date"] = date_cls.fromisoformat(
+                    args["next_action_date"]
+                )
+
+            repo = LeadRepository(db)
+            data = LeadCreate(**lead_data)
+            lead = await repo.create(data, author_id=person_id)
+            await db.commit()
+            return {
+                "success": True,
+                "summary": f'Lead "{lead.title}" aangemaakt',
+                "entity_id": str(lead.id),
+                "entity_type": "lead",
+            }
+
+        elif tool_name == "update_lead":
+            from bouwmeester.repositories.lead import LeadRepository
+            from bouwmeester.schema.lead import LeadUpdate
+
+            repo = LeadRepository(db)
+            update_data: dict = {}
+            for field in (
+                "title",
+                "description",
+                "organization",
+                "next_action",
+            ):
+                if field in args and args[field] is not None:
+                    update_data[field] = args[field]
+            if args.get("assignee_id"):
+                update_data["assignee_id"] = UUID(args["assignee_id"])
+            if args.get("next_action_date"):
+                from datetime import date as date_cls
+
+                update_data["next_action_date"] = date_cls.fromisoformat(
+                    args["next_action_date"]
+                )
+            data = LeadUpdate(**update_data)
+            lead = await repo.update(UUID(args["lead_id"]), data)
+            if not lead:
+                return {"success": False, "summary": "Lead niet gevonden"}
+            await db.commit()
+            return {
+                "success": True,
+                "summary": f'Lead "{lead.title}" bijgewerkt',
+                "entity_id": str(lead.id),
+                "entity_type": "lead",
+            }
+
+        elif tool_name == "move_lead":
+            from bouwmeester.repositories.lead import LeadRepository
+            from bouwmeester.schema.lead import LeadStage
+
+            repo = LeadRepository(db)
+            try:
+                stage = LeadStage(args["stage"])
+            except ValueError:
+                return {
+                    "success": False,
+                    "summary": f"Onbekende stage: {args['stage']}",
+                }
+            lead = await repo.move(
+                UUID(args["lead_id"]),
+                stage,
+                author_id=person_id,
+            )
+            if not lead:
+                return {"success": False, "summary": "Lead niet gevonden"}
+            await db.commit()
+            return {
+                "success": True,
+                "summary": (f'Lead "{lead.title}" verplaatst naar {stage}'),
+                "entity_id": str(lead.id),
+                "entity_type": "lead",
+            }
+
+        elif tool_name == "add_lead_activity":
+            from bouwmeester.repositories.lead import LeadRepository
+            from bouwmeester.repositories.lead_activity import (
+                LeadActivityRepository,
+            )
+            from bouwmeester.schema.lead import LeadActivityCreate
+
+            # Verify lead exists
+            lead_repo = LeadRepository(db)
+            lead = await lead_repo.get(UUID(args["lead_id"]))
+            if not lead:
+                return {"success": False, "summary": "Lead niet gevonden"}
+
+            act_repo = LeadActivityRepository(db)
+            act_data = LeadActivityCreate(
+                content=args["content"],
+                activity_type=args.get("activity_type", "note"),
+            )
+            activity = await act_repo.create(
+                lead_id=UUID(args["lead_id"]),
+                data=act_data,
+                author_id=person_id,
+            )
+            await db.commit()
+            return {
+                "success": True,
+                "summary": (
+                    f"Activiteit ({activity.activity_type}) toegevoegd aan lead"
+                ),
+                "entity_id": str(lead.id),
+                "entity_type": "lead",
             }
 
         return {"success": False, "summary": f"Onbekende tool: {tool_name}"}

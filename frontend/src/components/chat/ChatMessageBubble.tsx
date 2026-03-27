@@ -5,6 +5,7 @@ import { ChatActionCard } from './ChatActionCard';
 import { ChatPendingActionCard } from './ChatPendingActionCard';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { chatAttachmentPreviewUrl, isImageContentType } from '@/api/chat';
 import type { ChatMessage } from '@/api/chat';
 
@@ -51,17 +52,20 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
   const isUser = message.role === 'user';
   const { openNodeDetail } = useNodeDetail();
   const { openTaskDetail } = useTaskDetail();
+  const { openLeadDetail } = useLeadDetail();
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
 
   const handleBmLink = useCallback(
-    (type: 'node' | 'task', id: string) => {
+    (type: 'node' | 'task' | 'lead', id: string) => {
       if (type === 'node') {
         openNodeDetail(id);
       } else if (type === 'task') {
         openTaskDetail(id);
+      } else if (type === 'lead') {
+        openLeadDetail(id);
       }
     },
-    [openNodeDetail, openTaskDetail],
+    [openNodeDetail, openTaskDetail, openLeadDetail],
   );
 
   const attachments = message.attachments ?? [];

@@ -67,6 +67,8 @@ function getInvalidationKeys(entityType: string | undefined) {
       return [queryKeys.tags.all, queryKeys.nodes.all];
     case 'opdracht':
       return [queryKeys.opdrachten.all];
+    case 'lead':
+      return [queryKeys.leads.all];
     default:
       return [];
   }
@@ -120,6 +122,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const nodeMatch = path.match(/^\/nodes\/([a-f0-9-]+)/i);
     if (nodeMatch) {
       ctx.node_id = nodeMatch[1];
+    }
+
+    // Extract lead context from /leads/:id paths
+    const leadMatch = path.match(/^\/leads\/([a-f0-9-]+)/i);
+    if (leadMatch) {
+      ctx.lead_id = leadMatch[1];
     }
 
     return ctx;
