@@ -229,6 +229,62 @@ def build_kompas_relevance_prompt(
     )
 
 
+def build_lead_intake_prompt(
+    raw_text: str, existing_tags: list[str] | None = None
+) -> str:
+    """Build a prompt to parse raw intake text into structured lead data."""
+    from datetime import date
+
+    today = date.today().isoformat()
+    tags_hint = ""
+    if existing_tags:
+        tags_json = json.dumps(existing_tags[:MAX_TAGS_IN_PROMPT], ensure_ascii=False)
+        tags_hint = f"\n\nBESCHIKBARE TAGS (gebruik deze bij voorkeur):\n{tags_json}\n"
+    return (
+        "Je bent een medewerker van team Regelrecht bij het ministerie van BZK."
+        " Je beheert een sales funnel van leads: organisaties en mensen die"
+        " interesse hebben in Regelrecht of Rules as Code.\n\n"
+        " Analyseer de volgende intake (tekst of screenshot van een e-mail/"
+        "bericht) en extraheer de relevante informatie voor een nieuwe lead.\n\n"
+        f"INTAKE:\n{raw_text[:MAX_TEXT_IN_PROMPT]}\n\n"
+        "Instructies:\n"
+        "- De titel moet de naam van de organisatie of afdeling zijn die"
+        " contact opneemt (bijv. 'CDO Office MinJenV' of 'Gemeente Nijmegen')."
+        " NIET de actie of het onderwerp.\n"
+        "- De organisatie is de volledige naam van de organisatie\n"
+        "- Maak een beknopte beschrijving van wat ze willen\n"
+        "- Extraheer de naam van de contactpersoon als die wordt genoemd\n"
+        "- Extraheer het e-mailadres van de contactpersoon als dat wordt genoemd\n"
+        "- Extraheer het telefoonnummer van de contactpersoon als dat wordt genoemd\n"
+        f"- Vandaag is {today}. Extraheer ALLEEN de verzenddatum van het"
+        " bericht/e-mail zelf (de datum in de header, of 'gisteren',"
+        " 'vorige week'). NIET datums die in de inhoud worden genoemd"
+        " (zoals 'vorig jaar november'). Geef als ISO-formaat (YYYY-MM-DD)."
+        " Als de verzenddatum niet duidelijk zichtbaar is, geef null.\n"
+        "- Als het bericht gericht is aan iemand"
+        " (bijv. 'Hoi Anne' of 'Aan: Schuth, Anne'),"
+        " extraheer dan de voornaam van de ontvanger."
+        " Dit is de persoon via wie de lead binnenkwam.\n"
+        "- Stel maximaal 5 relevante tags voor."
+        " Gebruik bestaande tags als ze relevant zijn."
+        " Verzin gerust nieuwe korte tags als dat beter past"
+        " (bijv. 'rules-as-code', 'belastingdienst', 'poc').\n" + tags_hint + "\n"
+        "Geef je analyse als JSON"
+        " (en ALLEEN JSON, geen andere tekst):\n"
+        "{\n"
+        '  "title": "Naam organisatie/afdeling",\n'
+        '  "organization": "Volledige naam organisatie",\n'
+        '  "description": "Beschrijving van de vraag/behoefte",\n'
+        '  "contact_name": "Naam contactpersoon",\n'
+        '  "contact_email": "email@example.nl of null",\n'
+        '  "contact_phone": "telefoonnummer of null",\n'
+        '  "original_date": "YYYY-MM-DD of null",\n'
+        '  "suggested_tags": ["tag1", "tag2"],\n'
+        '  "addressed_to": "Voornaam van de ontvanger of null"\n'
+        "}"
+    )
+
+
 CHAT_SYSTEM_PROMPT = (
     "Je bent de Bouwmeester-assistent, een AI-hulpmiddel voor beleidsmedewerkers"
     " van het ministerie van BZK (Binnenlandse Zaken en Koninkrijksrelaties)."

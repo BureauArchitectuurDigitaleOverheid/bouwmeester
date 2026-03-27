@@ -27,7 +27,7 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   closeable?: boolean;
   /** z-index layer for stacking multiple modals. Higher = on top. Default 50. */
   zIndex?: number;
@@ -43,6 +43,7 @@ const sizeClasses = {
   sm: 'max-w-md',
   md: 'max-w-lg',
   lg: 'max-w-2xl',
+  xl: 'max-w-4xl',
 };
 
 export function Modal({
@@ -147,7 +148,7 @@ export function Modal({
         </div>
 
         {/* Body – extra bottom padding so dropdown menus have room to open */}
-        <div className="px-6 py-4 max-h-[70vh] sm:max-h-[60vh] overflow-y-auto pb-40">{children}</div>
+        <div className="px-6 py-4 max-h-[80vh] sm:max-h-[75vh] overflow-y-auto pb-20">{children}</div>
 
         {/* Footer */}
         {footer && (

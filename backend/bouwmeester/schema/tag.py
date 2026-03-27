@@ -53,5 +53,18 @@ class NodeTagCreate(BaseModel):
     tag_name: str | None = Field(None, max_length=200)  # For creating tag inline
 
 
+class LeadTagResponse(BaseModel):
+    id: UUID
+    tag: TagResponse
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LeadTagCreate(BaseModel):
+    tag_id: UUID | None = None
+    tag_name: str | None = Field(None, max_length=200)  # For creating tag inline
+
+
 # Resolve forward refs
 TagTreeResponse.model_rebuild()

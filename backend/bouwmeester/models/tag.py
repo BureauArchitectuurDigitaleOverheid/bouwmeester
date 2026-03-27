@@ -11,6 +11,7 @@ from bouwmeester.core.database import Base
 
 if TYPE_CHECKING:
     from bouwmeester.models.corpus_node import CorpusNode
+    from bouwmeester.models.lead import Lead
 
 
 class Tag(Base):
@@ -38,6 +39,9 @@ class Tag(Base):
     node_tags: Mapped[list[NodeTag]] = relationship(
         "NodeTag", back_populates="tag", cascade="all, delete-orphan"
     )
+    lead_tags: Mapped[list[LeadTag]] = relationship(
+        "LeadTag", back_populates="tag", cascade="all, delete-orphan"
+    )
 
 
 class NodeTag(Base):
@@ -60,3 +64,24 @@ class NodeTag(Base):
     # Relationships
     node: Mapped[CorpusNode] = relationship("CorpusNode", back_populates="node_tags")
     tag: Mapped[Tag] = relationship("Tag", back_populates="node_tags")
+
+
+class LeadTag(Base):
+    __tablename__ = "lead_tag"
+    __table_args__ = (UniqueConstraint("lead_id", "tag_id", name="uq_lead_tag"),)
+
+    id: Mapped[UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    lead_id: Mapped[UUID] = mapped_column(
+        ForeignKey("lead.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tag_id: Mapped[UUID] = mapped_column(
+        ForeignKey("tag.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    lead: Mapped[Lead] = relationship("Lead", back_populates="lead_tags")
+    tag: Mapped[Tag] = relationship("Tag", back_populates="lead_tags")

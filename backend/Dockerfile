@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 1001 appuser && \
-    mkdir -p /data/bijlagen/chat && \
+    mkdir -p /data/bijlagen/chat /data/bijlagen/leads && \
     chgrp -R 0 /data && \
     chmod -R g=u /data
 

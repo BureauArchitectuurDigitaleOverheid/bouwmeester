@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { useSearch } from '@/hooks/useSearch';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { richTextToPlain } from '@/utils/richtext';
 import {
   SEARCH_RESULT_TYPE_LABELS,
@@ -18,6 +19,7 @@ import {
   TASK_STATUS_LABELS,
   ORGANISATIE_TYPE_LABELS,
   PARLEMENTAIR_TYPE_LABELS,
+  LEAD_STAGE_LABELS,
   formatFunctie,
   type SearchResultType,
   type SearchResult,
@@ -30,6 +32,7 @@ const SUBTITLE_LABEL_MAPS: Partial<
   task: TASK_STATUS_LABELS,
   organisatie_eenheid: ORGANISATIE_TYPE_LABELS,
   parlementair_item: PARLEMENTAIR_TYPE_LABELS,
+  lead: LEAD_STAGE_LABELS as Record<string, string>,
 };
 
 function formatSubtitle(result: SearchResult): string | undefined {
@@ -48,6 +51,7 @@ const ALL_RESULT_TYPES: SearchResultType[] = [
   'organisatie_eenheid',
   'parlementair_item',
   'tag',
+  'lead',
 ];
 
 export function SearchPage() {
@@ -56,6 +60,7 @@ export function SearchPage() {
   const navigate = useNavigate();
   const { openNodeDetail } = useNodeDetail();
   const { openTaskDetail } = useTaskDetail();
+  const { openLeadDetail } = useLeadDetail();
 
   const filterTypes = activeTypes.length > 0 ? activeTypes : undefined;
   const { data, isLoading, isFetched } = useSearch(query, filterTypes);
@@ -84,6 +89,8 @@ export function SearchPage() {
       openNodeDetail(result.id);
     } else if (result.result_type === 'task') {
       openTaskDetail(result.id);
+    } else if (result.result_type === 'lead') {
+      openLeadDetail(result.id);
     } else {
       navigate(result.url);
     }
@@ -94,7 +101,7 @@ export function SearchPage() {
       {/* Page header */}
       <div>
         <p className="text-sm text-text-secondary">
-          Doorzoek alles: beleidscorpus, taken, personen, organisaties, parlementaire items en tags.
+          Doorzoek alles: beleidscorpus, taken, personen, organisaties, parlementaire items, tags en leads.
         </p>
       </div>
 

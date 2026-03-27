@@ -19,8 +19,14 @@ from bouwmeester.models.edge_schema_rule import EdgeSchemaRule  # noqa: F401
 from bouwmeester.models.edge_type import EdgeType  # noqa: F401
 from bouwmeester.models.effect import Effect  # noqa: F401
 from bouwmeester.models.externe_organisatie import ExterneOrganisatie  # noqa: F401
+from bouwmeester.models.feature_toggle import FeatureToggle  # noqa: F401
 from bouwmeester.models.http_session import HttpSession  # noqa: F401
 from bouwmeester.models.instrument import Instrument  # noqa: F401
+from bouwmeester.models.lead import Lead  # noqa: F401
+from bouwmeester.models.lead_activity import LeadActivity  # noqa: F401
+from bouwmeester.models.lead_attachment import LeadAttachment  # noqa: F401
+from bouwmeester.models.lead_contact import LeadContact  # noqa: F401
+from bouwmeester.models.lead_node import LeadNode  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
 from bouwmeester.models.mattermost_user import (  # noqa: F401
     MattermostLinkCode,
@@ -35,6 +41,7 @@ from bouwmeester.models.opdracht import Opdracht, OpdrachtNode  # noqa: F401
 from bouwmeester.models.org_manager import OrganisatieEenheidManager  # noqa: F401
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam  # noqa: F401
 from bouwmeester.models.org_parent import OrganisatieEenheidParent  # noqa: F401
+from bouwmeester.models.org_placement_request import OrgPlacementRequest  # noqa: F401
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid  # noqa: F401
 from bouwmeester.models.parlementair_item import (  # noqa: F401
     ParlementairItem,
@@ -46,7 +53,7 @@ from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid  # no
 from bouwmeester.models.person_phone import PersonPhone  # noqa: F401
 from bouwmeester.models.politieke_input import PolitiekeInput  # noqa: F401
 from bouwmeester.models.probleem import Probleem  # noqa: F401
-from bouwmeester.models.tag import NodeTag, Tag  # noqa: F401
+from bouwmeester.models.tag import LeadTag, NodeTag, Tag  # noqa: F401
 from bouwmeester.models.task import Task  # noqa: F401
 from bouwmeester.models.team import Team, TeamMember  # noqa: F401
 from bouwmeester.models.webauthn_credential import WebAuthnCredential  # noqa: F401
@@ -73,8 +80,15 @@ __all__ = [
     "EdgeType",
     "Effect",
     "ExterneOrganisatie",
+    "FeatureToggle",
     "HttpSession",
     "Instrument",
+    "Lead",
+    "LeadActivity",
+    "LeadAttachment",
+    "LeadContact",
+    "LeadNode",
+    "LeadTag",
     "Maatregel",
     "MattermostLinkCode",
     "MattermostUser",
@@ -85,6 +99,7 @@ __all__ = [
     "Notification",
     "Opdracht",
     "OpdrachtNode",
+    "OrgPlacementRequest",
     "OrganisatieEenheidManager",
     "OrganisatieEenheidNaam",
     "OrganisatieEenheidParent",

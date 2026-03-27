@@ -5,7 +5,7 @@
  * Prefix keys are useful for broad invalidation (e.g. invalidate all nodes).
  */
 
-import type { ActivityFeedParams, EdgeFilters, OpdrachtFilters, ParlementairItemFilters, SearchResultType, TaskFilters } from '@/types';
+import type { ActivityFeedParams, EdgeFilters, LeadFilters, OpdrachtFilters, ParlementairItemFilters, SearchResultType, TaskFilters } from '@/types';
 
 export const queryKeys = {
   // --- Nodes ---
@@ -64,6 +64,7 @@ export const queryKeys = {
     all: ['tags'] as const,
     list: (params?: { tree?: boolean; search?: string }) => ['tags', params] as const,
     forNode: (nodeId: string) => ['node-tags', nodeId] as const,
+    forLead: (leadId: string) => ['lead-tags', leadId] as const,
   },
 
   // --- Edges ---
@@ -150,6 +151,16 @@ export const queryKeys = {
     lists: () => ['externe-organisaties', 'list'] as const,
     list: (params?: { type?: string; search?: string }) => ['externe-organisaties', 'list', params] as const,
     detail: (id: string | undefined) => ['externe-organisaties', 'detail', id] as const,
+  },
+
+  // --- Leads ---
+  leads: {
+    all: ['leads'] as const,
+    lists: () => ['leads', 'list'] as const,
+    list: (filters?: LeadFilters) => ['leads', 'list', filters] as const,
+    detail: (id: string | null) => ['leads', 'detail', id] as const,
+    activities: (leadId: string | null) => ['leads', 'detail', leadId, 'activities'] as const,
+    metrics: () => ['leads', 'metrics'] as const,
   },
 
   // --- Financieel ---

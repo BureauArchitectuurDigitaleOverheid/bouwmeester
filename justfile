@@ -56,15 +56,23 @@ migration NAME:
 seed:
     cd backend && uv run python scripts/seed.py
 
+# Force restart all services (always works, even after crashes)
+kick:
+    -docker compose down backend
+    docker compose up -d --force-recreate --build
+    @echo "Wachten op backend..."
+    @sleep 25
+    @curl -sf http://localhost:8000/api/auth/status > /dev/null && echo "Backend draait!" || echo "Backend start nog op, probeer over 10 seconden."
+
 # Full database reset: nuke → start db → wait → migrate → seed → start services
 reset-db:
     docker compose down -v
     docker compose up -d --build db
     @echo "Wachten op database..."
-    @sleep 3
-    cd backend && uv run alembic upgrade head
-    cd backend && uv run python scripts/seed.py
-    docker compose up -d --build backend frontend
+    @sleep 5
+    cd backend && DATABASE_URL=postgresql+asyncpg://bouwmeester:bouwmeester@localhost:5433/bouwmeester uv run alembic -c alembic.ini upgrade head
+    cd backend && DATABASE_URL=postgresql+asyncpg://bouwmeester:bouwmeester@localhost:5433/bouwmeester uv run python scripts/seed.py
+    docker compose up -d --force-recreate --build
     @echo "Klaar! Alle services draaien."
 
 # Open a psql shell in the database container

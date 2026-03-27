@@ -760,7 +760,8 @@ export type SearchResultType =
   | 'person'
   | 'organisatie_eenheid'
   | 'parlementair_item'
-  | 'tag';
+  | 'tag'
+  | 'lead';
 
 export const SEARCH_RESULT_TYPE_LABELS: Record<SearchResultType, string> = {
   corpus_node: 'Beleidscorpus',
@@ -769,6 +770,7 @@ export const SEARCH_RESULT_TYPE_LABELS: Record<SearchResultType, string> = {
   organisatie_eenheid: 'Organisatie',
   parlementair_item: 'Parlementair',
   tag: 'Tag',
+  lead: 'Lead',
 };
 
 export const SEARCH_RESULT_TYPE_COLORS: Record<SearchResultType, BadgeVariant> = {
@@ -778,6 +780,7 @@ export const SEARCH_RESULT_TYPE_COLORS: Record<SearchResultType, BadgeVariant> =
   organisatie_eenheid: 'purple',
   parlementair_item: 'rose',
   tag: 'cyan',
+  lead: 'orange',
 };
 
 export interface SearchResult {
@@ -1421,4 +1424,249 @@ export interface FinancieelOverzicht {
   totaal_gerealiseerd: number;
   uitnutting_percentage?: number | null;
   per_jaar: FinancieelJaar[];
+}
+
+// Lead Stage enum and labels
+export enum LeadStage {
+  VERKENNEN = 'verkennen',
+  EERSTE_GESPREK = 'eerste_gesprek',
+  INTERNE_CHECK = 'interne_check',
+  FOLLOW_UP = 'follow_up',
+  IN_THE_POCKET = 'in_the_pocket',
+  KOELKAST = 'koelkast',
+}
+
+export const LEAD_STAGE_LABELS: Record<LeadStage, string> = {
+  [LeadStage.VERKENNEN]: 'Verkennen',
+  [LeadStage.EERSTE_GESPREK]: 'Eerste gesprek',
+  [LeadStage.INTERNE_CHECK]: 'Interne check',
+  [LeadStage.FOLLOW_UP]: 'Follow-up',
+  [LeadStage.IN_THE_POCKET]: 'In the pocket',
+  [LeadStage.KOELKAST]: 'Koelkast',
+};
+
+export const LEAD_STAGE_COLORS: Record<LeadStage, string> = {
+  [LeadStage.VERKENNEN]: 'bg-blue-100 text-blue-800',
+  [LeadStage.EERSTE_GESPREK]: 'bg-yellow-100 text-yellow-800',
+  [LeadStage.INTERNE_CHECK]: 'bg-orange-100 text-orange-800',
+  [LeadStage.FOLLOW_UP]: 'bg-purple-100 text-purple-800',
+  [LeadStage.IN_THE_POCKET]: 'bg-green-100 text-green-800',
+  [LeadStage.KOELKAST]: 'bg-gray-100 text-gray-800',
+};
+
+export const LEAD_STAGE_ORDER: LeadStage[] = [
+  LeadStage.VERKENNEN,
+  LeadStage.EERSTE_GESPREK,
+  LeadStage.INTERNE_CHECK,
+  LeadStage.FOLLOW_UP,
+  LeadStage.IN_THE_POCKET,
+  LeadStage.KOELKAST,
+];
+
+export enum LeadActivityType {
+  NOTE = 'note',
+  STAGE_CHANGE = 'stage_change',
+  MEETING = 'meeting',
+  CALL = 'call',
+  EMAIL = 'email',
+}
+
+export const LEAD_ACTIVITY_TYPE_LABELS: Record<LeadActivityType, string> = {
+  [LeadActivityType.NOTE]: 'Notitie',
+  [LeadActivityType.STAGE_CHANGE]: 'Stage wijziging',
+  [LeadActivityType.MEETING]: 'Meeting',
+  [LeadActivityType.CALL]: 'Telefoongesprek',
+  [LeadActivityType.EMAIL]: 'E-mail',
+};
+
+export interface LeadAssigneeSummary {
+  id: string;
+  naam: string;
+}
+
+export interface LeadOrgEenheidSummary {
+  id: string;
+  naam: string;
+  type: string | null;
+}
+
+export interface LeadExterneOrgSummary {
+  id: string;
+  naam: string;
+  type: string | null;
+}
+
+export interface LeadAttachment {
+  id: string;
+  lead_id: string;
+  bestandsnaam: string;
+  content_type: string;
+  bestandsgrootte: number;
+  created_at: string;
+}
+
+export interface LeadContact {
+  id: string;
+  person_id: string;
+  person_naam: string;
+  rol: string;
+  created_at: string;
+}
+
+export interface LeadNode {
+  id: string;
+  node_id: string;
+  node_title: string;
+  node_type: string;
+  created_at: string;
+}
+
+export interface LeadActivity {
+  id: string;
+  lead_id: string;
+  author_id: string | null;
+  author_naam: string | null;
+  content: string;
+  activity_type: LeadActivityType;
+  metadata_: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface Lead {
+  id: string;
+  title: string;
+  description: string | null;
+  organization: string | null;
+  externe_organisatie_id: string | null;
+  externe_organisatie: LeadExterneOrgSummary | null;
+  stage: LeadStage;
+  assignee_id: string | null;
+  assignee: LeadAssigneeSummary | null;
+  brought_by_id: string | null;
+  brought_by: LeadAssigneeSummary | null;
+  organisatie_eenheid_id: string;
+  organisatie_eenheid: LeadOrgEenheidSummary | null;
+  next_action: string | null;
+  next_action_date: string | null;
+  tags: string[];
+  sort_order: number;
+  raw_intake_text: string | null;
+  attachment_count: number;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface LeadDetail extends Lead {
+  activities: LeadActivity[];
+  attachments: LeadAttachment[];
+  contacts: LeadContact[];
+  linked_nodes: LeadNode[];
+}
+
+export interface LeadCreate {
+  title: string;
+  description?: string | null;
+  organization?: string | null;
+  externe_organisatie_id?: string | null;
+  stage?: LeadStage;
+  assignee_id?: string | null;
+  brought_by_id?: string | null;
+  next_action?: string | null;
+  next_action_date?: string | null;
+  raw_intake_text?: string | null;
+  organisatie_eenheid_id: string;
+  created_at?: string | null;
+}
+
+export interface LeadUpdate {
+  title?: string;
+  description?: string | null;
+  organization?: string | null;
+  externe_organisatie_id?: string | null;
+  stage?: LeadStage;
+  assignee_id?: string | null;
+  brought_by_id?: string | null;
+  next_action?: string | null;
+  next_action_date?: string | null;
+  raw_intake_text?: string | null;
+  organisatie_eenheid_id?: string;
+}
+
+export interface LeadActivityCreate {
+  content: string;
+  activity_type?: LeadActivityType;
+}
+
+export interface LeadMetrics {
+  total: number;
+  by_stage: Record<string, number>;
+  stale_count: number;
+}
+
+export interface LeadFilters {
+  stage?: string;
+  tag?: string;
+  assignee_id?: string;
+  date_from?: string;
+  date_to?: string;
+  next_action_filter?: string;  // "overdue" | "today" | "this_week"
+  sort_by?: string;  // "created_at" | "updated_at" | "next_action_date" | "stage"
+}
+
+export interface LeadTimelineEvent {
+  id: string;
+  lead_id: string;
+  lead_title: string;
+  event_type: 'created' | 'stage_change' | 'note' | 'meeting' | 'call' | 'email';
+  timestamp: string;
+  actor_naam: string | null;
+  content: string | null;
+  from_stage: string | null;
+  to_stage: string | null;
+  organization: string | null;
+  stage: string;
+  assignee_naam: string | null;
+}
+
+export interface LeadTimelineResponse {
+  events: LeadTimelineEvent[];
+  total: number;
+  earliest: string | null;
+  latest: string | null;
+}
+
+export interface LeadParseResult {
+  title: string | null;
+  organization: string | null;
+  description: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  original_date: string | null;
+  suggested_tags: string[];
+  addressed_to: string | null;
+}
+
+// Community Graph types (used by LeadGraphView / CommunityGraph)
+export interface CommunityGraphNode {
+  id: string; // prefixed: "lead-xxx", "person-xxx", "org-xxx", "node-xxx"
+  node_type: 'lead' | 'person' | 'organisation' | 'corpus_node';
+  label: string;
+  stage?: string | null;
+  functie?: string | null;
+  org_type?: string | null;
+  corpus_node_type?: string | null;
+}
+
+export interface CommunityGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  edge_type: string;
+  label?: string | null;
+}
+
+export interface CommunityGraphResponse {
+  nodes: CommunityGraphNode[];
+  edges: CommunityGraphEdge[];
 }

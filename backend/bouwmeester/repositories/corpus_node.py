@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
@@ -104,7 +105,11 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
     # Queries
     # ------------------------------------------------------------------
 
-    async def get(self, id: UUID) -> CorpusNode | None:
+    async def get(
+        self,
+        id: UUID,
+        org_ctx: OrgContext | None = None,
+    ) -> CorpusNode | None:
         stmt = (
             select(CorpusNode)
             .where(CorpusNode.id == id)
@@ -113,6 +118,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
                 selectinload(CorpusNode.edges_to),
             )
         )
+        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -125,6 +131,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         search: str | None = None,
         active_only: bool = True,
         include_unconnected_pi: bool = False,
+        org_ctx: OrgContext | None = None,
     ) -> list[CorpusNode]:
         stmt = select(CorpusNode)
         if node_type is not None:
@@ -142,6 +149,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         ):
             stmt = stmt.where(exclude_unconnected_pi())
 
+        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
         stmt = stmt.order_by(CorpusNode.created_at.desc()).offset(skip).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -290,10 +298,15 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
 
         return progress
 
-    async def count(self, node_type: str | None = None) -> int:
+    async def count(
+        self,
+        node_type: str | None = None,
+        org_ctx: OrgContext | None = None,
+    ) -> int:
         stmt = select(func.count()).select_from(CorpusNode)
         if node_type is not None:
             stmt = stmt.where(CorpusNode.node_type == node_type)
+        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         return result.scalar_one()
 

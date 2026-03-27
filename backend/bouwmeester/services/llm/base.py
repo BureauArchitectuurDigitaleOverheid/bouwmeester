@@ -57,11 +57,16 @@ class BaseLLMService(ABC):
 
     def _parse_json(self, content: str) -> dict:
         """Parse JSON from LLM response, handling markdown code blocks."""
+        import re
+
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0]
         elif "```" in content:
             content = content.split("```")[1].split("```")[0]
-        return json.loads(content.strip())
+        content = content.strip()
+        # Fix trailing commas (common LLM issue)
+        content = re.sub(r",\s*([}\]])", r"\1", content)
+        return json.loads(content)
 
     @abstractmethod
     async def _complete(self, prompt: str, max_tokens: int = 1024) -> str:

@@ -2,11 +2,14 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CurrentPersonProvider } from '@/contexts/CurrentPersonContext';
+import { OrgContextProvider } from '@/contexts/OrgContext';
+import { FeatureToggleProvider } from '@/contexts/FeatureToggleContext';
 import { VocabularyProvider } from '@/contexts/VocabularyContext';
 import { TaskDetailProvider } from '@/contexts/TaskDetailContext';
 import { NodeDetailProvider } from '@/contexts/NodeDetailContext';
 import { OpdrachtDetailProvider } from '@/contexts/OpdrachtDetailContext';
 import { OpdrachtCreateProvider } from '@/contexts/OpdrachtCreateContext';
+import { LeadDetailProvider } from '@/contexts/LeadDetailContext';
 import { ChatProvider } from '@/contexts/ChatContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { DetailModals } from '@/components/common/DetailModals';
@@ -26,6 +29,8 @@ import { AdminPage } from '@/pages/AdminPage';
 import { AuditLogPage } from '@/pages/AuditLogPage';
 import { DocsPage } from '@/pages/DocsPage';
 import { InstellingenPage } from '@/pages/InstellingenPage';
+import { LeadsPage } from '@/pages/LeadsPage';
+import { FeatureTogglesPage } from '@/pages/FeatureTogglesPage';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
@@ -103,6 +108,8 @@ export default function App() {
         <AuthGate>
           <OnboardingGate>
           <CurrentPersonProvider>
+            <OrgContextProvider>
+            <FeatureToggleProvider>
             <VocabularyProvider>
             <BrowserRouter>
               <ChatProvider>
@@ -110,6 +117,7 @@ export default function App() {
               <NodeDetailProvider>
               <OpdrachtCreateProvider>
               <OpdrachtDetailProvider>
+              <LeadDetailProvider>
                 <Routes>
                   <Route element={<AppLayout />}>
                     <Route path="/" element={<InboxPage />} />
@@ -127,9 +135,12 @@ export default function App() {
                     <Route path="/auditlog" element={<AuditLogPage />} />
                     <Route path="/docs" element={<DocsPage />} />
                     <Route path="/instellingen" element={<InstellingenPage />} />
+                    <Route path="/leads" element={<LeadsPage />} />
+                    <Route path="/beheer/features" element={<FeatureTogglesPage />} />
                   </Route>
                 </Routes>
                 <DetailModals />
+              </LeadDetailProvider>
               </OpdrachtDetailProvider>
               </OpdrachtCreateProvider>
               </NodeDetailProvider>
@@ -137,6 +148,8 @@ export default function App() {
             </ChatProvider>
             </BrowserRouter>
             </VocabularyProvider>
+            </FeatureToggleProvider>
+            </OrgContextProvider>
           </CurrentPersonProvider>
           </OnboardingGate>
         </AuthGate>

@@ -2,9 +2,11 @@ import { TaskDetailModal } from '@/components/tasks/TaskDetailModal';
 import { NodeDetailModal } from '@/components/nodes/NodeDetailModal';
 import { OpdrachtDetailModal } from '@/components/opdrachten/OpdrachtDetailModal';
 import { OpdrachtCreateModal } from '@/components/opdrachten/OpdrachtCreateModal';
+import { LeadDetailPanel } from '@/components/leads/LeadDetailPanel';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
+import { useLeadDetail } from '@/contexts/LeadDetailContext';
 
 const BASE_Z = 50;
 
@@ -23,11 +25,13 @@ export function DetailModals() {
   const { taskDetailId, closeTaskDetail, taskOpenSeq } = useTaskDetail();
   const { nodeDetailId, closeNodeDetail, nodeOpenSeq } = useNodeDetail();
   const { opdrachtDetailId, closeOpdrachtDetail, opdrachtOpenSeq } = useOpdrachtDetail();
+  const { leadDetailId, closeLeadDetail, leadOpenSeq } = useLeadDetail();
 
   const modals = [
     { key: 'opdracht', open: !!opdrachtDetailId, seq: opdrachtOpenSeq },
     { key: 'node', open: !!nodeDetailId, seq: nodeOpenSeq },
     { key: 'task', open: !!taskDetailId, seq: taskOpenSeq },
+    { key: 'lead', open: !!leadDetailId, seq: leadOpenSeq },
   ];
 
   // Sort open modals by seq (ascending) — last element gets highest z-index
@@ -60,6 +64,12 @@ export function DetailModals() {
         open={!!taskDetailId}
         onClose={closeTaskDetail}
         zIndex={zIndexFor('task')}
+      />
+      <LeadDetailPanel
+        leadId={leadDetailId}
+        open={!!leadDetailId}
+        onClose={closeLeadDetail}
+        zIndex={zIndexFor('lead')}
       />
     </>
   );

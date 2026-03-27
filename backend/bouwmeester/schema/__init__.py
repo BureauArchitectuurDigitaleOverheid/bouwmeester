@@ -26,6 +26,11 @@ from bouwmeester.schema.chat import (
     ChatResponse,
     PendingAction,
 )
+from bouwmeester.schema.community_graph import (
+    CommunityGraphEdge,
+    CommunityGraphNode,
+    CommunityGraphResponse,
+)
 from bouwmeester.schema.corpus_node import (
     BeleidskompasProgress,
     CorpusNodeBase,
@@ -61,6 +66,12 @@ from bouwmeester.schema.externe_organisatie import (
     ExterneOrganisatieResponse,
     ExterneOrganisatieUpdate,
 )
+from bouwmeester.schema.feature_toggle import (
+    EenheidFeatureConfig,
+    FeatureToggleBulkUpdate,
+    FeatureToggleResponse,
+    FeatureToggleUpdate,
+)
 from bouwmeester.schema.graph import (
     GraphNeighborsResponse,
     GraphSearchParams,
@@ -68,6 +79,32 @@ from bouwmeester.schema.graph import (
     NeighborEntry,
 )
 from bouwmeester.schema.inbox import InboxItem, InboxResponse
+from bouwmeester.schema.lead import (
+    LeadActivityCreate,
+    LeadActivityResponse,
+    LeadActivityType,
+    LeadAssigneeSummary,
+    LeadAttachmentResponse,
+    LeadBase,
+    LeadContactCreate,
+    LeadContactResponse,
+    LeadCreate,
+    LeadDetailResponse,
+    LeadExterneOrgSummary,
+    LeadMergeRequest,
+    LeadMetricsResponse,
+    LeadMove,
+    LeadNodeCreate,
+    LeadNodeResponse,
+    LeadOrgEenheidSummary,
+    LeadParseResult,
+    LeadReorder,
+    LeadResponse,
+    LeadStage,
+    LeadTimelineEvent,
+    LeadTimelineResponse,
+    LeadUpdate,
+)
 from bouwmeester.schema.llm import (
     CorpusGapOverviewResponse,
     CorpusGapSummaryItem,
@@ -101,6 +138,12 @@ from bouwmeester.schema.opdracht import (
     OpdrachtNodeResponse,
     OpdrachtResponse,
     OpdrachtUpdate,
+)
+from bouwmeester.schema.org_placement import (
+    OrgPlacementRequestCreate,
+    OrgPlacementRequestDecision,
+    OrgPlacementRequestResponse,
+    PlacementStatus,
 )
 from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidCreate,
@@ -141,6 +184,8 @@ from bouwmeester.schema.search import (
     SimilarNodesResponse,
 )
 from bouwmeester.schema.tag import (
+    LeadTagCreate,
+    LeadTagResponse,
     NodeTagCreate,
     NodeTagResponse,
     TagBase,
@@ -188,6 +233,10 @@ __all__ = [
     "AccessRequestResponse",
     "AccessRequestReviewRequest",
     "AccessRequestStatusResponse",
+    # community_graph
+    "CommunityGraphEdge",
+    "CommunityGraphNode",
+    "CommunityGraphResponse",
     # chat
     "ChatAction",
     "ChatAttachmentResponse",
@@ -232,6 +281,11 @@ __all__ = [
     "EdgeTypeBase",
     "EdgeTypeCreate",
     "EdgeTypeResponse",
+    # feature_toggle
+    "EenheidFeatureConfig",
+    "FeatureToggleBulkUpdate",
+    "FeatureToggleResponse",
+    "FeatureToggleUpdate",
     # task
     "EenheidOverviewResponse",
     "EenheidPersonTaskStats",
@@ -254,6 +308,11 @@ __all__ = [
     "OpdrachtResponse",
     "OpdrachtenSummary",
     "OpdrachtUpdate",
+    # org_placement
+    "OrgPlacementRequestCreate",
+    "OrgPlacementRequestDecision",
+    "OrgPlacementRequestResponse",
+    "PlacementStatus",
     # organisatie_eenheid
     "OrgManagerRecord",
     "OrgNaamRecord",
@@ -297,6 +356,31 @@ __all__ = [
     # inbox
     "InboxItem",
     "InboxResponse",
+    # lead
+    "LeadActivityCreate",
+    "LeadActivityResponse",
+    "LeadActivityType",
+    "LeadAssigneeSummary",
+    "LeadAttachmentResponse",
+    "LeadBase",
+    "LeadContactCreate",
+    "LeadContactResponse",
+    "LeadCreate",
+    "LeadDetailResponse",
+    "LeadExterneOrgSummary",
+    "LeadMergeRequest",
+    "LeadMetricsResponse",
+    "LeadMove",
+    "LeadNodeCreate",
+    "LeadNodeResponse",
+    "LeadOrgEenheidSummary",
+    "LeadParseResult",
+    "LeadReorder",
+    "LeadResponse",
+    "LeadStage",
+    "LeadTimelineEvent",
+    "LeadTimelineResponse",
+    "LeadUpdate",
     # search
     "SearchResponse",
     "SearchResult",
@@ -304,6 +388,8 @@ __all__ = [
     "SimilarNodeItem",
     "SimilarNodesResponse",
     # tag
+    "LeadTagCreate",
+    "LeadTagResponse",
     "NodeTagCreate",
     "NodeTagResponse",
     "TagBase",

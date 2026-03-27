@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.models.tag import NodeTag, Tag
+from bouwmeester.models.tag import LeadTag, NodeTag, Tag
 from bouwmeester.repositories.base import BaseRepository
 
 
@@ -87,3 +87,35 @@ class TagRepository(BaseRepository[Tag]):
         stmt = select(NodeTag.node_id).where(NodeTag.tag_id == tag_id)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    # --- Lead tag helpers ---
+
+    async def get_by_lead(self, lead_id: UUID) -> list[LeadTag]:
+        """Get all tags for a lead, with tag relationship loaded."""
+        stmt = (
+            select(LeadTag)
+            .where(LeadTag.lead_id == lead_id)
+            .options(selectinload(LeadTag.tag))
+            .order_by(LeadTag.created_at)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def add_tag_to_lead(self, lead_id: UUID, tag_id: UUID) -> LeadTag:
+        lead_tag = LeadTag(lead_id=lead_id, tag_id=tag_id)
+        self.session.add(lead_tag)
+        await self.session.flush()
+        await self.session.refresh(lead_tag, ["tag"])
+        return lead_tag
+
+    async def remove_tag_from_lead(self, lead_id: UUID, tag_id: UUID) -> bool:
+        stmt = select(LeadTag).where(
+            LeadTag.lead_id == lead_id, LeadTag.tag_id == tag_id
+        )
+        result = await self.session.execute(stmt)
+        lead_tag = result.scalar_one_or_none()
+        if lead_tag is None:
+            return False
+        await self.session.delete(lead_tag)
+        await self.session.flush()
+        return True

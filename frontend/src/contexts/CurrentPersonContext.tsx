@@ -45,7 +45,9 @@ export function CurrentPersonProvider({ children }: { children: ReactNode }) {
   const setCurrentPersonId = useCallback(
     (id: string | null) => {
       if (oidcConfigured) {
-        // In SSO mode: setting to null or to your own ID resets to self
+        // Only admins can "view as" another person in SSO mode
+        if (!authPerson?.is_admin) return;
+        // Setting to null or to your own ID resets to self
         setOverrideId(id === authPersonId ? null : id);
       } else {
         // Dev mode: persist in localStorage
@@ -57,7 +59,7 @@ export function CurrentPersonProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [oidcConfigured, authPersonId],
+    [oidcConfigured, authPersonId, authPerson?.is_admin],
   );
 
   const resetToSelf = useCallback(() => {
