@@ -233,6 +233,9 @@ def build_lead_intake_prompt(
     raw_text: str, existing_tags: list[str] | None = None
 ) -> str:
     """Build a prompt to parse raw intake text into structured lead data."""
+    from datetime import date
+
+    today = date.today().isoformat()
     tags_hint = ""
     if existing_tags:
         tags_json = json.dumps(existing_tags[:MAX_TAGS_IN_PROMPT], ensure_ascii=False)
@@ -253,9 +256,11 @@ def build_lead_intake_prompt(
         "- Extraheer de naam van de contactpersoon als die wordt genoemd\n"
         "- Extraheer het e-mailadres van de contactpersoon als dat wordt genoemd\n"
         "- Extraheer het telefoonnummer van de contactpersoon als dat wordt genoemd\n"
-        "- Extraheer de datum van het bericht/e-mail als die zichtbaar is"
-        " (bijv. 'donderdag 26 maart 2026' of '2026-03-26')."
-        " Geef deze als ISO-formaat (YYYY-MM-DD). Als er geen datum is, geef null.\n"
+        f"- Vandaag is {today}. Extraheer ALLEEN de verzenddatum van het"
+        " bericht/e-mail zelf (de datum in de header, of 'gisteren',"
+        " 'vorige week'). NIET datums die in de inhoud worden genoemd"
+        " (zoals 'vorig jaar november'). Geef als ISO-formaat (YYYY-MM-DD)."
+        " Als de verzenddatum niet duidelijk zichtbaar is, geef null.\n"
         "- Als het bericht gericht is aan iemand"
         " (bijv. 'Hoi Anne' of 'Aan: Schuth, Anne'),"
         " extraheer dan de voornaam van de ontvanger."
@@ -263,9 +268,7 @@ def build_lead_intake_prompt(
         "- Stel maximaal 5 relevante tags voor."
         " Gebruik bestaande tags als ze relevant zijn."
         " Verzin gerust nieuwe korte tags als dat beter past"
-        " (bijv. 'rules-as-code', 'belastingdienst', 'poc').\n"
-        + tags_hint
-        + "\n"
+        " (bijv. 'rules-as-code', 'belastingdienst', 'poc').\n" + tags_hint + "\n"
         "Geef je analyse als JSON"
         " (en ALLEEN JSON, geen andere tekst):\n"
         "{\n"

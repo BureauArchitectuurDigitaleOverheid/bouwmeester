@@ -197,7 +197,11 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       setContactName(result.contact_name ?? '');
       setContactEmail(result.contact_email ?? '');
       setContactPhone(result.contact_phone ?? '');
-      setLeadDate(result.original_date || new Date().toISOString().split('T')[0]);
+      const today = new Date().toISOString().split('T')[0];
+      const parsedDate = result.original_date && /^\d{4}-\d{2}-\d{2}$/.test(result.original_date)
+        ? result.original_date
+        : today;
+      setLeadDate(parsedDate);
       if (result.addressed_to && people) {
         const addr = result.addressed_to.toLowerCase();
         // Prioritize the current person (if "Anne" matches "Anne Schuth" who is logged in)
