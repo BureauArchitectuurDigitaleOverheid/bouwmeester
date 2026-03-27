@@ -5,6 +5,7 @@ import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake, useAddLeadContact, useAddTagToLead } from '@/hooks/useLeads';
+import { useTags } from '@/hooks/useTags';
 import { usePeople, usePersonOrganisaties } from '@/hooks/usePeople';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { LeadStage, LEAD_STAGE_ORDER, LEAD_STAGE_LABELS, LEAD_STAGE_COLORS, formatFunctie } from '@/types';
@@ -30,7 +31,9 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const [title, setTitle] = useState('');
   const [organization, setOrganization] = useState('');
   const [description, setDescription] = useState('');
-  const [tags, setTags] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagSearch, setTagSearch] = useState('');
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
   const [stage, setStage] = useState<LeadStage>(LeadStage.VERKENNEN);
   const [contactName, setContactName] = useState('');
   const [contactPersonId, setContactPersonId] = useState<string>('');
@@ -49,6 +52,8 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const { currentPerson } = useCurrentPerson();
   const { data: personPlaatsingen } = usePersonOrganisaties(currentPerson?.id ?? null);
   const { data: people } = usePeople();
+  const { data: allTags } = useTags();
+  const tagContainerRef = useRef<HTMLDivElement>(null);
 
   // Assignee options: current person first (with "(mij)")
   const assigneeOptions = useMemo(
@@ -108,6 +113,26 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     }
   }, [contactName, people]);
 
+  // Filter tags for search dropdown
+  const filteredTags = useMemo(
+    () =>
+      (allTags ?? [])
+        .filter((t) => !selectedTags.includes(t.name))
+        .filter((t) => (tagSearch ? t.name.toLowerCase().includes(tagSearch.toLowerCase()) : false)),
+    [allTags, selectedTags, tagSearch],
+  );
+
+  // Close tag dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tagContainerRef.current && !tagContainerRef.current.contains(e.target as Node)) {
+        setTagDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const reset = useCallback(() => {
     setStep('input');
     setRawText('');
@@ -116,7 +141,9 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     setTitle('');
     setOrganization('');
     setDescription('');
-    setTags('');
+    setSelectedTags([]);
+    setTagSearch('');
+    setTagDropdownOpen(false);
     setStage(LeadStage.VERKENNEN);
     setContactName('');
     setContactPersonId('');
@@ -166,7 +193,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       setTitle(result.title ?? '');
       setOrganization(result.organization ?? '');
       setDescription(result.description ?? '');
-      setTags(result.suggested_tags?.join(', ') ?? '');
+      setSelectedTags(result.suggested_tags ?? []);
       setContactName(result.contact_name ?? '');
       setContactEmail(result.contact_email ?? '');
       setContactPhone(result.contact_phone ?? '');
@@ -183,7 +210,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       setTitle('');
       setOrganization('');
       setDescription(rawText.slice(0, 200));
-      setTags('');
+      setSelectedTags([]);
       setStep('confirm');
     }
   };
@@ -192,17 +219,12 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     setTitle('');
     setOrganization('');
     setDescription('');
-    setTags('');
+    setSelectedTags([]);
     setStep('confirm');
   };
 
   const handleSubmit = async () => {
     if (!title.trim() || !orgEenheidId) return;
-
-    const tagList = tags
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean);
 
     // Build description, include contact info if provided
     const descParts = [description.trim()];
@@ -230,7 +252,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       });
 
       // Add tags via separate endpoint
-      for (const tagName of tagList) {
+      for (const tagName of selectedTags) {
         try {
           await addTagToLead.mutateAsync({ leadId: lead.id, data: { tag_name: tagName } });
         } catch {
@@ -494,13 +516,72 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
                 <label className="block text-sm font-medium text-text mb-1">
                   Tags
                 </label>
-                <input
-                  type="text"
-                  value={tags}
-                  onChange={(e) => setTags(e.target.value)}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                  placeholder="Komma-gescheiden tags"
-                />
+
+                {/* Selected tags as removable chips */}
+                {selectedTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {selectedTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 rounded-full bg-primary-100 text-primary-700 px-2.5 py-0.5 text-xs font-medium"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTags((prev) => prev.filter((t) => t !== tag))}
+                          className="hover:text-red-500"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Search input for adding tags */}
+                <div className="relative" ref={tagContainerRef}>
+                  <input
+                    type="text"
+                    value={tagSearch}
+                    onChange={(e) => {
+                      setTagSearch(e.target.value);
+                      setTagDropdownOpen(true);
+                    }}
+                    onFocus={() => { if (tagSearch) setTagDropdownOpen(true); }}
+                    placeholder="Zoek of typ een tag..."
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && tagSearch.trim()) {
+                        e.preventDefault();
+                        if (!selectedTags.includes(tagSearch.trim())) {
+                          setSelectedTags((prev) => [...prev, tagSearch.trim()]);
+                        }
+                        setTagSearch('');
+                        setTagDropdownOpen(false);
+                      }
+                    }}
+                  />
+
+                  {/* Dropdown with matching existing tags */}
+                  {tagDropdownOpen && tagSearch && filteredTags.length > 0 && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {filteredTags.slice(0, 10).map((tag) => (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedTags((prev) => [...prev, tag.name]);
+                            setTagSearch('');
+                            setTagDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors"
+                        >
+                          {tag.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
