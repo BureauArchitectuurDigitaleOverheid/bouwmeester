@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDebounce } from '@/hooks/useDebounce';
 import {
   getLeads,
   getLead,
@@ -299,10 +300,12 @@ export function useRemoveTagFromLead() {
 }
 
 export function useCheckDuplicates(title: string, organization?: string) {
+  const debouncedTitle = useDebounce(title, 400);
+  const debouncedOrg = useDebounce(organization, 400);
   return useQuery({
-    queryKey: [...queryKeys.leads.all, 'check-duplicates', title, organization],
-    queryFn: () => checkDuplicateLeads(title, organization),
-    enabled: title.length >= 3,
+    queryKey: [...queryKeys.leads.all, 'check-duplicates', debouncedTitle, debouncedOrg],
+    queryFn: () => checkDuplicateLeads(debouncedTitle, debouncedOrg),
+    enabled: debouncedTitle.length >= 3,
   });
 }
 

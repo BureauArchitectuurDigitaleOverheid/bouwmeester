@@ -57,6 +57,19 @@ async def request_placement(
     if current_user is None:
         raise HTTPException(status_code=401, detail="Inloggen vereist")
 
+    # Prevent duplicate pending requests for the same eenheid
+    existing_stmt = select(OrgPlacementRequest).where(
+        OrgPlacementRequest.person_id == current_user.id,
+        OrgPlacementRequest.organisatie_eenheid_id == data.organisatie_eenheid_id,
+        OrgPlacementRequest.status == "pending",
+    )
+    existing = (await db.execute(existing_stmt)).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Er staat al een verzoek open voor deze eenheid",
+        )
+
     req = OrgPlacementRequest(
         person_id=current_user.id,
         organisatie_eenheid_id=data.organisatie_eenheid_id,

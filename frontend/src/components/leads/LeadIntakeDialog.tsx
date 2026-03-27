@@ -164,23 +164,46 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     onClose();
   };
 
+  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB, matches backend limit
+
+  const addFiles = useCallback((newFiles: File[]) => {
+    const valid: File[] = [];
+    const rejected: string[] = [];
+    for (const f of newFiles) {
+      if (f.size > MAX_FILE_SIZE) {
+        rejected.push(f.name);
+      } else {
+        valid.push(f);
+      }
+    }
+    if (rejected.length > 0) {
+      window.alert(`Bestanden te groot (max 20 MB): ${rejected.join(', ')}`);
+    }
+    if (valid.length > 0) {
+      setFiles((prev) => [...prev, ...valid]);
+    }
+  }, []);
+
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
+    const pastedFiles: File[] = [];
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.startsWith('image/')) {
         const file = items[i].getAsFile();
         if (file) {
-          setFiles((prev) => [...prev, file]);
+          pastedFiles.push(file);
         }
       }
+    }
+    if (pastedFiles.length > 0) {
+      addFiles(pastedFiles);
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragActive(false);
-    const droppedFiles = Array.from(e.dataTransfer.files);
-    setFiles((prev) => [...prev, ...droppedFiles]);
+    addFiles(Array.from(e.dataTransfer.files));
   };
 
   const removeFile = (index: number) => {
@@ -414,7 +437,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
             className="hidden"
             onChange={(e) => {
               if (e.target.files) {
-                setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+                addFiles(Array.from(e.target.files));
               }
             }}
           />

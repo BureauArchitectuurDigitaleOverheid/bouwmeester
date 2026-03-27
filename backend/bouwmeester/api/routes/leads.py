@@ -69,8 +69,6 @@ def _robust_parse_json(text: str) -> dict:
     # Fix trailing commas
     text = re.sub(r",\s*([}\]])", r"\1", text)
 
-    # Fix single quotes → double quotes (some LLMs do this)
-    # Only if the text doesn't already have double quotes as JSON delimiters
     try:
         return json.loads(text)
     except json.JSONDecodeError:
@@ -260,6 +258,12 @@ async def merge_leads(
     if target is None:
         raise HTTPException(status_code=404, detail="Doellead niet gevonden")
     _check_lead_access(target, org_ctx)
+    if source.organisatie_eenheid_id != target.organisatie_eenheid_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Leads van verschillende eenheden "
+            "kunnen niet worden samengevoegd",
+        )
     repo = LeadRepository(db)
     result = require_found(await repo.merge(data.source_id, data.target_id), "Lead")
     return LeadResponse.model_validate(result)
@@ -390,6 +394,12 @@ async def reorder_leads(
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[LeadResponse]:
     """Reorder leads within a stage."""
+    # Verify all leads are accessible to the user
+    for lead_id in data.lead_ids:
+        lead = await db.get(Lead, lead_id)
+        if lead is None:
+            raise HTTPException(status_code=404, detail="Lead niet gevonden")
+        _check_lead_access(lead, org_ctx)
     repo = LeadRepository(db)
     leads = await repo.reorder(data.lead_ids, data.stage)
     return validate_list(LeadResponse, leads)
@@ -442,8 +452,13 @@ async def list_activities(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[LeadActivityResponse]:
     """List activities for a lead, newest first."""
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, org_ctx)
     repo = LeadActivityRepository(db)
     activities = await repo.get_by_lead(lead_id)
     return validate_list(LeadActivityResponse, activities)
@@ -483,17 +498,15 @@ async def add_contact(
     # Notify the contact person (unless they added themselves)
     actor_id = current_user.id if current_user else None
     if data.person_id != actor_id:
-        lead = await db.get(Lead, lead_id)
-        if lead:
-            notif_svc = NotificationService(db)
-            notification_data = NotificationCreate(
-                person_id=data.person_id,
-                type="lead_contact_added",
-                title=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
-                message=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
-            )
-            notification = await notif_svc.repo.create(notification_data)
-            notif_svc._send_to_mattermost(notification)
+        notif_svc = NotificationService(db)
+        notification_data = NotificationCreate(
+            person_id=data.person_id,
+            type="lead_contact_added",
+            title=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
+            message=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
+        )
+        notification = await notif_svc.repo.create(notification_data)
+        notif_svc._send_to_mattermost(notification)
 
     return LeadContactResponse.model_validate(contact)
 
@@ -598,12 +611,14 @@ async def get_lead_tags(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[LeadTagResponse]:
     """List all tags applied to a lead."""
     from bouwmeester.repositories.tag import TagRepository
 
     repo = LeadRepository(db)
-    require_found(await repo.get(lead_id), "Lead")
+    lead = require_found(await repo.get(lead_id), "Lead")
+    _check_lead_access(lead, org_ctx)
 
     tag_repo = TagRepository(db)
     lead_tags = await tag_repo.get_by_lead(lead_id)
@@ -746,8 +761,13 @@ async def download_attachment(
     attachment_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> FileResponse:
     """Download a lead attachment."""
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, org_ctx)
     result = await db.execute(
         select(LeadAttachment).where(
             LeadAttachment.id == attachment_id,

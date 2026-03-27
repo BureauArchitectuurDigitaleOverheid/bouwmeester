@@ -39,6 +39,9 @@ class Tag(Base):
     node_tags: Mapped[list[NodeTag]] = relationship(
         "NodeTag", back_populates="tag", cascade="all, delete-orphan"
     )
+    lead_tags: Mapped[list[LeadTag]] = relationship(
+        "LeadTag", back_populates="tag", cascade="all, delete-orphan"
+    )
 
 
 class NodeTag(Base):
@@ -81,4 +84,4 @@ class LeadTag(Base):
     )
 
     lead: Mapped[Lead] = relationship("Lead", back_populates="lead_tags")
-    tag: Mapped[Tag] = relationship("Tag")
+    tag: Mapped[Tag] = relationship("Tag", back_populates="lead_tags")

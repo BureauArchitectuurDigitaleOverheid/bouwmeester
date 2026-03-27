@@ -342,6 +342,20 @@ class LeadRepository(BaseRepository[Lead]):
         Combines lead creation events and activity events into a single
         list sorted by timestamp descending.
         """
+        from datetime import datetime
+
+        # Pre-compute date boundaries once
+        dt_from = (
+            datetime.combine(date_from, datetime.min.time()).replace(tzinfo=UTC)
+            if date_from is not None
+            else None
+        )
+        dt_to = (
+            datetime.combine(date_to, datetime.max.time()).replace(tzinfo=UTC)
+            if date_to is not None
+            else None
+        )
+
         # 1. Query visible leads with optional filters
         lead_stmt = select(Lead).options(
             selectinload(Lead.assignee),
@@ -350,6 +364,10 @@ class LeadRepository(BaseRepository[Lead]):
             lead_stmt = lead_stmt.where(Lead.stage == stage)
         if assignee_id is not None:
             lead_stmt = lead_stmt.where(Lead.assignee_id == assignee_id)
+        if dt_from is not None:
+            lead_stmt = lead_stmt.where(Lead.created_at >= dt_from)
+        if dt_to is not None:
+            lead_stmt = lead_stmt.where(Lead.created_at <= dt_to)
         lead_stmt = apply_org_filter(lead_stmt, Lead.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(lead_stmt)
         leads = list(result.scalars().all())
@@ -380,17 +398,23 @@ class LeadRepository(BaseRepository[Lead]):
                 }
             )
 
-        # 3. Query all activities for those leads
+        # 3. Query activities for those leads (with SQL-level date filter)
         activity_stmt = (
             select(LeadActivity)
             .where(LeadActivity.lead_id.in_(lead_ids))
             .options(selectinload(LeadActivity.author))
         )
+        if dt_from is not None:
+            activity_stmt = activity_stmt.where(LeadActivity.created_at >= dt_from)
+        if dt_to is not None:
+            activity_stmt = activity_stmt.where(LeadActivity.created_at <= dt_to)
         act_result = await self.session.execute(activity_stmt)
         activities = list(act_result.scalars().all())
 
         for act in activities:
-            lead = lead_map[act.lead_id]
+            lead = lead_map.get(act.lead_id)
+            if lead is None:
+                continue
             metadata = act.metadata_ or {}
             events.append(
                 {
@@ -409,24 +433,8 @@ class LeadRepository(BaseRepository[Lead]):
                 }
             )
 
-        # 4. Apply date filters on timestamp
-        if date_from is not None:
-            from datetime import datetime
-
-            dt_from = datetime.combine(date_from, datetime.min.time()).replace(
-                tzinfo=UTC
-            )
-            events = [e for e in events if e["timestamp"] >= dt_from]
-        if date_to is not None:
-            from datetime import datetime
-
-            dt_to = datetime.combine(date_to, datetime.max.time()).replace(tzinfo=UTC)
-            events = [e for e in events if e["timestamp"] <= dt_to]
-
-        # 5. Sort by timestamp descending
+        # 4. Sort by timestamp descending and apply limit
         events.sort(key=lambda e: e["timestamp"], reverse=True)
-
-        # 6. Apply limit
         return events[:limit]
 
     async def get_metrics(self, org_ctx: OrgContext | None = None) -> dict:
