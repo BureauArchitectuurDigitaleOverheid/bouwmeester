@@ -7,7 +7,7 @@ import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake, useAddLeadContact } from '@/hooks/useLeads';
 import { usePeople, usePersonOrganisaties } from '@/hooks/usePeople';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
-import { LeadStage, formatFunctie } from '@/types';
+import { LeadStage, LEAD_STAGE_ORDER, LEAD_STAGE_LABELS, LEAD_STAGE_COLORS, formatFunctie } from '@/types';
 import type { LeadParseResult } from '@/types';
 import { buildPersonOptions } from '@/utils/personOptions';
 
@@ -31,6 +31,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const [organization, setOrganization] = useState('');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
+  const [stage, setStage] = useState<LeadStage>(LeadStage.VERKENNEN);
   const [contactName, setContactName] = useState('');
   const [contactPersonId, setContactPersonId] = useState<string>('');
   const [contactEmail, setContactEmail] = useState('');
@@ -101,6 +102,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     setOrganization('');
     setDescription('');
     setTags('');
+    setStage(LeadStage.VERKENNEN);
     setContactName('');
     setContactPersonId('');
     setContactEmail('');
@@ -191,7 +193,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
         title: title.trim(),
         description: fullDescription,
         organization: organization.trim() || null,
-        stage: LeadStage.VERKENNEN,
+        stage,
         tags: tagList,
         raw_intake_text: rawText.trim() || null,
         organisatie_eenheid_id: orgEenheidId,
@@ -380,6 +382,28 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
               placeholder="Titel van de lead"
               autoFocus
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">
+              Status
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {LEAD_STAGE_ORDER.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStage(s)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                    stage === s
+                      ? `${LEAD_STAGE_COLORS[s]} ring-2 ring-offset-1 ring-current`
+                      : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
+                  }`}
+                >
+                  {LEAD_STAGE_LABELS[s]}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>
