@@ -12,6 +12,7 @@ import {
 import { format, isToday, isYesterday, subDays, subMonths } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { useLeadTimeline } from '@/hooks/useLeads';
 import { usePeople } from '@/hooks/usePeople';
@@ -306,39 +307,41 @@ export function LeadTimelineView() {
         </div>
 
         {/* Stage filter */}
-        <select
-          value={filterStage}
-          onChange={(e) => setFilterStage(e.target.value)}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-        >
-          <option value="">Alle fases</option>
-          {Object.values(LeadStage).map((s) => (
-            <option key={s} value={s}>
-              {LEAD_STAGE_LABELS[s]}
-            </option>
-          ))}
-        </select>
+        <div className="w-40">
+          <CreatableSelect
+            value={filterStage}
+            onChange={setFilterStage}
+            options={[
+              { value: '', label: 'Alle fases' },
+              ...Object.values(LeadStage).map((s) => ({
+                value: s,
+                label: LEAD_STAGE_LABELS[s],
+              })),
+            ]}
+            placeholder="Alle fases"
+            searchable={false}
+            onClear={filterStage ? () => setFilterStage('') : undefined}
+          />
+        </div>
 
         {/* Assignee filter */}
-        <select
-          value={filterAssignee}
-          onChange={(e) => setFilterAssignee(e.target.value)}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-        >
-          <option value="">Alle personen</option>
-          {currentPerson && (
-            <option value={currentPerson.id}>
-              Mijn leads ({currentPerson.naam})
-            </option>
-          )}
-          {people
-            ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.naam}
-              </option>
-            ))}
-        </select>
+        <div className="w-48">
+          <CreatableSelect
+            value={filterAssignee}
+            onChange={setFilterAssignee}
+            options={[
+              { value: '', label: 'Alle personen' },
+              ...(currentPerson
+                ? [{ value: currentPerson.id, label: `Mijn leads (${currentPerson.naam})` }]
+                : []),
+              ...(people
+                ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
+                .map((p) => ({ value: p.id, label: p.naam, description: p.functie ?? undefined })) ?? []),
+            ]}
+            placeholder="Alle personen"
+            onClear={filterAssignee ? () => setFilterAssignee('') : undefined}
+          />
+        </div>
 
         {/* Clear filters */}
         {hasActiveFilters && (

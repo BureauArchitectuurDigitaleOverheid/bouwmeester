@@ -315,29 +315,39 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-text mb-1">Stage</label>
-              <select
+              <CreatableSelect
+                label="Stage"
                 value={editStage}
-                onChange={(e) => setEditStage(e.target.value as LeadStage)}
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-              >
-                {LEAD_STAGE_ORDER.map((s) => (
-                  <option key={s} value={s}>{LEAD_STAGE_LABELS[s]}</option>
-                ))}
-              </select>
+                onChange={(v) => setEditStage(v as LeadStage)}
+                options={LEAD_STAGE_ORDER.map((s) => ({
+                  value: s,
+                  label: LEAD_STAGE_LABELS[s],
+                }))}
+                placeholder="Selecteer stage..."
+                searchable={false}
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-text mb-1">Toegewezen aan</label>
-              <select
+              <CreatableSelect
+                label="Toegewezen aan"
                 value={editAssignee}
-                onChange={(e) => setEditAssignee(e.target.value)}
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-              >
-                <option value="">Niet toegewezen</option>
-                {people?.map((p) => (
-                  <option key={p.id} value={p.id}>{p.naam}</option>
-                ))}
-              </select>
+                onChange={setEditAssignee}
+                options={[
+                  { value: '', label: 'Niet toegewezen' },
+                  ...(people?.map((p) => ({
+                    value: p.id,
+                    label: p.naam,
+                    description: p.functie ?? undefined,
+                  })) ?? []),
+                ]}
+                placeholder="Zoek een persoon..."
+                onCreate={async (name) => {
+                  const result = await createPerson({ naam: name });
+                  return result?.id ?? null;
+                }}
+                createLabel="Nieuwe persoon aanmaken"
+                onClear={editAssignee ? () => setEditAssignee('') : undefined}
+              />
             </div>
           </div>
           <div>
@@ -644,16 +654,18 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
 
             {showLinkNode && (
               <div className="flex items-center gap-2 mt-2">
-                <select
-                  value={linkNodeId}
-                  onChange={(e) => setLinkNodeId(e.target.value)}
-                  className="flex-1 rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-                >
-                  <option value="">Selecteer node...</option>
-                  {nodes?.map((n) => (
-                    <option key={n.id} value={n.id}>{n.title}</option>
-                  ))}
-                </select>
+                <div className="flex-1">
+                  <CreatableSelect
+                    value={linkNodeId}
+                    onChange={setLinkNodeId}
+                    options={nodes?.map((n) => ({
+                      value: n.id,
+                      label: n.title,
+                      description: n.node_type?.replace(/_/g, ' ') ?? undefined,
+                    })) ?? []}
+                    placeholder="Zoek een node..."
+                  />
+                </div>
                 <Button size="sm" onClick={handleLinkNode} disabled={!linkNodeId}>
                   Koppelen
                 </Button>
@@ -681,17 +693,17 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 rows={2}
               />
               <div className="flex items-center gap-2">
-                <select
-                  value={activityType}
-                  onChange={(e) => setActivityType(e.target.value as LeadActivityType)}
-                  className="rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-                >
-                  {Object.entries(LEAD_ACTIVITY_TYPE_LABELS)
-                    .filter(([value]) => value !== LeadActivityType.STAGE_CHANGE)
-                    .map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                </select>
+                <div className="w-36">
+                  <CreatableSelect
+                    value={activityType}
+                    onChange={(v) => setActivityType(v as LeadActivityType)}
+                    options={Object.entries(LEAD_ACTIVITY_TYPE_LABELS)
+                      .filter(([value]) => value !== LeadActivityType.STAGE_CHANGE)
+                      .map(([value, label]) => ({ value, label }))}
+                    placeholder="Type..."
+                    searchable={false}
+                  />
+                </div>
                 <Button
                   size="sm"
                   onClick={handleAddActivity}

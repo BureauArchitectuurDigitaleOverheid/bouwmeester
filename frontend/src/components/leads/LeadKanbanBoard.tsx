@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { LeadCard } from './LeadCard';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { LeadIntakeDialog } from './LeadIntakeDialog';
@@ -15,6 +16,13 @@ import {
   LEAD_STAGE_COLORS,
 } from '@/types';
 import type { Lead, LeadFilters } from '@/types';
+
+const NEXT_ACTION_OPTIONS: SelectOption[] = [
+  { value: '', label: 'Alle acties' },
+  { value: 'overdue', label: 'Achterstallig' },
+  { value: 'today', label: 'Vandaag' },
+  { value: 'this_week', label: 'Deze week' },
+];
 
 const COLUMN_BORDER_COLORS: Record<LeadStage, string> = {
   [LeadStage.VERKENNEN]: 'border-t-blue-400',
@@ -110,25 +118,23 @@ export function LeadKanbanBoard({ searchQuery = '' }: LeadKanbanBoardProps) {
       </div>
 
       <div className="flex items-center gap-3 mb-4">
-        <select
-          value={filterAssignee}
-          onChange={(e) => setFilterAssignee(e.target.value)}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-        >
-          <option value="">Alle personen</option>
-          {currentPerson && (
-            <option value={currentPerson.id}>
-              Mijn leads ({currentPerson.naam})
-            </option>
-          )}
-          {people
-            ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.naam}
-              </option>
-            ))}
-        </select>
+        <div className="w-48">
+          <CreatableSelect
+            value={filterAssignee}
+            onChange={setFilterAssignee}
+            options={[
+              { value: '', label: 'Alle personen' },
+              ...(currentPerson
+                ? [{ value: currentPerson.id, label: `Mijn leads (${currentPerson.naam})` }]
+                : []),
+              ...(people
+                ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
+                .map((p) => ({ value: p.id, label: p.naam, description: p.functie ?? undefined })) ?? []),
+            ]}
+            placeholder="Alle personen"
+            onClear={filterAssignee ? () => setFilterAssignee('') : undefined}
+          />
+        </div>
         <input
           type="text"
           value={filterTag}
@@ -136,16 +142,16 @@ export function LeadKanbanBoard({ searchQuery = '' }: LeadKanbanBoardProps) {
           placeholder="Filter op tag..."
           className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400 w-48"
         />
-        <select
-          value={nextActionFilter}
-          onChange={(e) => setNextActionFilter(e.target.value)}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-        >
-          <option value="">Alle acties</option>
-          <option value="overdue">Achterstallig</option>
-          <option value="today">Vandaag</option>
-          <option value="this_week">Deze week</option>
-        </select>
+        <div className="w-40">
+          <CreatableSelect
+            value={nextActionFilter}
+            onChange={setNextActionFilter}
+            options={NEXT_ACTION_OPTIONS}
+            placeholder="Alle acties"
+            searchable={false}
+            onClear={nextActionFilter ? () => setNextActionFilter('') : undefined}
+          />
+        </div>
         {(filterAssignee || filterTag || nextActionFilter) && (
           <button
             onClick={() => {

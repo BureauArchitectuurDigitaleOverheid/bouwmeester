@@ -4,6 +4,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
+import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { useLeads, useMergeLeads, useDeleteLead } from '@/hooks/useLeads';
 import { usePeople } from '@/hooks/usePeople';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -17,6 +18,20 @@ import {
 } from '@/types';
 import type { Lead, LeadFilters } from '@/types';
 import { isOverdue, formatDateShort, timeAgo } from '@/utils/dates';
+
+const NEXT_ACTION_OPTIONS: SelectOption[] = [
+  { value: '', label: 'Alle acties' },
+  { value: 'overdue', label: 'Achterstallig' },
+  { value: 'today', label: 'Vandaag' },
+  { value: 'this_week', label: 'Deze week' },
+];
+
+const SORT_OPTIONS: SelectOption[] = [
+  { value: '', label: 'Standaard' },
+  { value: 'created_at', label: 'Aangemaakt' },
+  { value: 'updated_at', label: 'Laatst gewijzigd' },
+  { value: 'next_action_date', label: 'Volgende actie' },
+];
 
 interface LeadListViewProps {
   searchQuery?: string;
@@ -95,25 +110,23 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
       </div>
 
       <div className="flex items-center gap-3 mb-4">
-        <select
-          value={filterAssignee}
-          onChange={(e) => setFilterAssignee(e.target.value)}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-        >
-          <option value="">Alle personen</option>
-          {currentPerson && (
-            <option value={currentPerson.id}>
-              Mijn leads ({currentPerson.naam})
-            </option>
-          )}
-          {people
-            ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.naam}
-              </option>
-            ))}
-        </select>
+        <div className="w-48">
+          <CreatableSelect
+            value={filterAssignee}
+            onChange={setFilterAssignee}
+            options={[
+              { value: '', label: 'Alle personen' },
+              ...(currentPerson
+                ? [{ value: currentPerson.id, label: `Mijn leads (${currentPerson.naam})` }]
+                : []),
+              ...(people
+                ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
+                .map((p) => ({ value: p.id, label: p.naam, description: p.functie ?? undefined })) ?? []),
+            ]}
+            placeholder="Alle personen"
+            onClear={filterAssignee ? () => setFilterAssignee('') : undefined}
+          />
+        </div>
         <input
           type="text"
           value={filterTag}
@@ -121,26 +134,26 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
           placeholder="Filter op tag..."
           className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400 w-48"
         />
-        <select
-          value={nextActionFilter}
-          onChange={(e) => setNextActionFilter(e.target.value)}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-        >
-          <option value="">Alle acties</option>
-          <option value="overdue">Achterstallig</option>
-          <option value="today">Vandaag</option>
-          <option value="this_week">Deze week</option>
-        </select>
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-        >
-          <option value="">Standaard</option>
-          <option value="created_at">Aangemaakt</option>
-          <option value="updated_at">Laatst gewijzigd</option>
-          <option value="next_action_date">Volgende actie</option>
-        </select>
+        <div className="w-40">
+          <CreatableSelect
+            value={nextActionFilter}
+            onChange={setNextActionFilter}
+            options={NEXT_ACTION_OPTIONS}
+            placeholder="Alle acties"
+            searchable={false}
+            onClear={nextActionFilter ? () => setNextActionFilter('') : undefined}
+          />
+        </div>
+        <div className="w-44">
+          <CreatableSelect
+            value={sortBy}
+            onChange={setSortBy}
+            options={SORT_OPTIONS}
+            placeholder="Standaard"
+            searchable={false}
+            onClear={sortBy ? () => setSortBy('') : undefined}
+          />
+        </div>
         {(filterAssignee || filterTag || nextActionFilter || sortBy) && (
           <button
             onClick={() => {
