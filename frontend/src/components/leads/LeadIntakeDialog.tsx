@@ -398,7 +398,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
             </p>
           )}
 
-          <div className="flex items-center justify-end gap-2 pt-4 pb-2 sticky bottom-0 bg-white border-t border-border -mx-6 px-6 mt-4">
+          <div className="flex items-center justify-end gap-2 pt-4">
             <Button variant="ghost" onClick={() => setStep('input')}>
               Terug
             </Button>
