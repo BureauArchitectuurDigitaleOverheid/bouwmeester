@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Trash2,
   Pencil,
@@ -14,6 +14,7 @@ import {
   Mail,
   FileText,
   Upload,
+  ZoomIn,
 } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
@@ -118,6 +119,16 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const [linkNodeId, setLinkNodeId] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
+
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxSrc(null);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxSrc]);
 
   if (!open) return null;
 
@@ -241,6 +252,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const overdue = lead?.next_action_date && isOverdue(lead.next_action_date);
 
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -249,31 +261,38 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       zIndex={zIndex}
       entityLabel="Lead"
       footer={
-        <DetailModalFooter
-          onClose={onClose}
-          actions={
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<Pencil className="h-4 w-4" />}
-                onClick={startEditing}
-                disabled={!lead || editing}
-              >
-                Bewerken
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                icon={<Trash2 className="h-4 w-4" />}
-                onClick={handleDelete}
-                disabled={!lead}
-              >
-                Verwijderen
-              </Button>
-            </div>
-          }
-        />
+        editing ? (
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" onClick={() => setEditing(false)}>Annuleren</Button>
+            <Button onClick={saveEdit} loading={updateLead.isPending}>Opslaan</Button>
+          </div>
+        ) : (
+          <DetailModalFooter
+            onClose={onClose}
+            actions={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Pencil className="h-4 w-4" />}
+                  onClick={startEditing}
+                  disabled={!lead}
+                >
+                  Bewerken
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<Trash2 className="h-4 w-4" />}
+                  onClick={handleDelete}
+                  disabled={!lead}
+                >
+                  Verwijderen
+                </Button>
+              </div>
+            }
+          />
+        )
       }
     >
       {isLoading ? (
@@ -366,10 +385,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400 min-h-[80px] resize-y"
               rows={3}
             />
-          </div>
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="ghost" onClick={() => setEditing(false)}>Annuleren</Button>
-            <Button onClick={saveEdit} loading={updateLead.isPending}>Opslaan</Button>
           </div>
         </div>
       ) : (
@@ -490,11 +505,22 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                       </button>
                     </div>
                     {att.content_type?.startsWith('image/') && (
-                      <img
-                        src={getLeadAttachmentDownloadUrl(lead.id, att.id)}
-                        alt={att.bestandsnaam}
-                        className="mt-2 rounded-lg border border-border max-h-48 object-contain ml-2"
-                      />
+                      <button
+                        onClick={() => setLightboxSrc({
+                          src: getLeadAttachmentDownloadUrl(lead.id, att.id),
+                          alt: att.bestandsnaam,
+                        })}
+                        className="relative group mt-2 ml-2 block"
+                      >
+                        <img
+                          src={getLeadAttachmentDownloadUrl(lead.id, att.id)}
+                          alt={att.bestandsnaam}
+                          className="rounded-lg border border-border max-h-48 object-contain"
+                        />
+                        <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                          <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md" />
+                        </div>
+                      </button>
                     )}
                   </div>
                 ))}
@@ -660,9 +686,11 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                   onChange={(e) => setActivityType(e.target.value as LeadActivityType)}
                   className="rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-primary-400"
                 >
-                  {Object.entries(LEAD_ACTIVITY_TYPE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
+                  {Object.entries(LEAD_ACTIVITY_TYPE_LABELS)
+                    .filter(([value]) => value !== LeadActivityType.STAGE_CHANGE)
+                    .map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
                 </select>
                 <Button
                   size="sm"
@@ -705,5 +733,20 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
         </div>
       )}
     </Modal>
+
+    {lightboxSrc && (
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
+        onClick={() => setLightboxSrc(null)}
+      >
+        <img
+          src={lightboxSrc.src}
+          alt={lightboxSrc.alt}
+          className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    )}
+    </>
   );
 }

@@ -18,7 +18,11 @@ import {
 import type { Lead, LeadFilters } from '@/types';
 import { isOverdue, formatDateShort, timeAgo } from '@/utils/dates';
 
-export function LeadListView() {
+interface LeadListViewProps {
+  searchQuery?: string;
+}
+
+export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterTag, setFilterTag] = useState('');
   const [nextActionFilter, setNextActionFilter] = useState('');
@@ -58,15 +62,27 @@ export function LeadListView() {
     return map;
   }, []);
 
-  const sortedLeads = useMemo(() => {
+  const filteredLeads = useMemo(() => {
     if (!leads) return [];
-    return [...leads].sort((a, b) => {
+    if (!searchQuery) return leads;
+    const q = searchQuery.toLowerCase();
+    return leads.filter((l) =>
+      l.title.toLowerCase().includes(q) ||
+      (l.organization ?? '').toLowerCase().includes(q) ||
+      (l.description ?? '').toLowerCase().includes(q) ||
+      (l.assignee?.naam ?? '').toLowerCase().includes(q) ||
+      l.tags.some((t) => t.toLowerCase().includes(q))
+    );
+  }, [leads, searchQuery]);
+
+  const sortedLeads = useMemo(() => {
+    return [...filteredLeads].sort((a, b) => {
       const sa = stageIndex.get(a.stage) ?? 99;
       const sb = stageIndex.get(b.stage) ?? 99;
       if (sa !== sb) return sa - sb;
       return a.sort_order - b.sort_order;
     });
-  }, [leads, stageIndex]);
+  }, [filteredLeads, stageIndex]);
 
   if (isLoading) {
     return <LoadingSpinner className="py-8" />;
