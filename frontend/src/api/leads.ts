@@ -12,6 +12,7 @@ import type {
   LeadParseResult,
   CommunityGraphResponse,
   LeadTimelineResponse,
+  NodeTagResponse,
 } from '@/types';
 
 export async function getLeads(filters?: LeadFilters): Promise<Lead[]> {
@@ -131,6 +132,20 @@ export function getLeadAttachmentDownloadUrl(leadId: string, attachmentId: strin
 
 export async function getCommunityGraph(): Promise<CommunityGraphResponse> {
   return apiGet<CommunityGraphResponse>('/api/graph/community');
+}
+
+// --- Lead tags ---
+
+export async function getLeadTags(leadId: string): Promise<NodeTagResponse[]> {
+  return apiGet<NodeTagResponse[]>(`/api/leads/${leadId}/tags`);
+}
+
+export async function addTagToLead(leadId: string, data: { tag_id?: string; tag_name?: string }): Promise<NodeTagResponse> {
+  return apiPost<NodeTagResponse>(`/api/leads/${leadId}/tags`, data);
+}
+
+export async function removeTagFromLead(leadId: string, tagId: string): Promise<void> {
+  return apiDelete(`/api/leads/${leadId}/tags/${tagId}`);
 }
 
 export async function parseLeadIntake(rawText?: string, files?: File[]): Promise<LeadParseResult> {

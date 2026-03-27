@@ -33,6 +33,9 @@ import {
   useUnlinkLeadNode,
   useUploadLeadAttachment,
   useDeleteLeadAttachment,
+  useLeadTags,
+  useAddTagToLead,
+  useRemoveTagFromLead,
 } from '@/hooks/useLeads';
 import { usePeople } from '@/hooks/usePeople';
 import { useNodes } from '@/hooks/useNodes';
@@ -76,6 +79,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const unlinkNode = useUnlinkLeadNode();
   const uploadAttachment = useUploadLeadAttachment();
   const deleteAttachment = useDeleteLeadAttachment();
+  const { data: leadTags } = useLeadTags(leadId);
+  const addTagToLead = useAddTagToLead();
+  const removeTagFromLead = useRemoveTagFromLead();
 
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -113,11 +119,11 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
     setEditAssignee(lead.assignee_id ?? '');
     setEditNextAction(lead.next_action ?? '');
     setEditNextActionDate(lead.next_action_date ?? '');
-    setEditTags(lead.tags.join(', '));
+    setEditTags((leadTags ?? []).map((lt) => lt.tag.name).join(', '));
     setEditing(true);
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!lead) return;
     const tagList = editTags
       .split(',')
@@ -132,12 +138,35 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       assignee_id: editAssignee || null,
       next_action: editNextAction.trim() || null,
       next_action_date: editNextActionDate || null,
-      tags: tagList,
     };
 
+    // Update lead fields
     updateLead.mutate(
       { id: lead.id, data },
-      { onSuccess: () => setEditing(false) },
+      {
+        onSuccess: async () => {
+          // Sync tags: remove tags not in the new list, add new ones
+          const currentTagNames = (leadTags ?? []).map((lt) => lt.tag.name);
+          const toRemove = (leadTags ?? []).filter((lt) => !tagList.includes(lt.tag.name));
+          const toAdd = tagList.filter((name) => !currentTagNames.includes(name));
+
+          for (const lt of toRemove) {
+            try {
+              await removeTagFromLead.mutateAsync({ leadId: lead.id, tagId: lt.tag.id });
+            } catch {
+              // Non-critical
+            }
+          }
+          for (const name of toAdd) {
+            try {
+              await addTagToLead.mutateAsync({ leadId: lead.id, data: { tag_name: name } });
+            } catch {
+              // Non-critical
+            }
+          }
+          setEditing(false);
+        },
+      },
     );
   };
 
@@ -390,11 +419,11 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           />
 
           {/* Tags */}
-          {lead.tags.length > 0 && (
+          {(leadTags ?? []).length > 0 && (
             <DetailSection title="Tags">
               <div className="flex flex-wrap gap-1.5">
-                {lead.tags.map((tag) => (
-                  <Badge key={tag} variant="gray">{tag}</Badge>
+                {(leadTags ?? []).map((lt) => (
+                  <Badge key={lt.id} variant="gray">{lt.tag.name}</Badge>
                 ))}
               </div>
             </DetailSection>

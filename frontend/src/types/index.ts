@@ -1570,7 +1570,6 @@ export interface LeadCreate {
   assignee_id?: string | null;
   next_action?: string | null;
   next_action_date?: string | null;
-  tags?: string[];
   raw_intake_text?: string | null;
   organisatie_eenheid_id: string;
 }
@@ -1584,7 +1583,6 @@ export interface LeadUpdate {
   assignee_id?: string | null;
   next_action?: string | null;
   next_action_date?: string | null;
-  tags?: string[];
   raw_intake_text?: string | null;
   organisatie_eenheid_id?: string;
 }

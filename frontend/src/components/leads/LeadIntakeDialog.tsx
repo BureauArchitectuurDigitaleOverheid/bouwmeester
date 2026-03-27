@@ -4,7 +4,7 @@ import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
-import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake, useAddLeadContact } from '@/hooks/useLeads';
+import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake, useAddLeadContact, useAddTagToLead } from '@/hooks/useLeads';
 import { usePeople, usePersonOrganisaties } from '@/hooks/usePeople';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { LeadStage, LEAD_STAGE_ORDER, LEAD_STAGE_LABELS, LEAD_STAGE_COLORS, formatFunctie } from '@/types';
@@ -43,6 +43,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const uploadAttachment = useUploadLeadAttachment();
   const parseLead = useParseLeadIntake();
   const addLeadContact = useAddLeadContact();
+  const addTagToLead = useAddTagToLead();
   const { currentPerson } = useCurrentPerson();
   const { data: personPlaatsingen } = usePersonOrganisaties(currentPerson?.id ?? null);
   const { data: people } = usePeople();
@@ -194,11 +195,19 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
         description: fullDescription,
         organization: organization.trim() || null,
         stage,
-        tags: tagList,
         raw_intake_text: rawText.trim() || null,
         organisatie_eenheid_id: orgEenheidId,
         assignee_id: assigneeId || null,
       });
+
+      // Add tags via separate endpoint
+      for (const tagName of tagList) {
+        try {
+          await addTagToLead.mutateAsync({ leadId: lead.id, data: { tag_name: tagName } });
+        } catch {
+          // Non-critical, don't block lead creation
+        }
+      }
 
       // Upload attached files
       for (const file of files) {

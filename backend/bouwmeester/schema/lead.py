@@ -4,7 +4,7 @@ import enum
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class LeadStage(enum.StrEnum):
@@ -38,7 +38,6 @@ class LeadBase(BaseModel):
     assignee_id: UUID | None = None
     next_action: str | None = Field(None, max_length=5000)
     next_action_date: date | None = None
-    tags: list[str] = Field(default_factory=list)
     raw_intake_text: str | None = Field(None, max_length=50000)
     organisatie_eenheid_id: UUID
 
@@ -56,7 +55,6 @@ class LeadUpdate(BaseModel):
     assignee_id: UUID | None = None
     next_action: str | None = Field(None, max_length=5000)
     next_action_date: date | None = None
-    tags: list[str] | None = None
     raw_intake_text: str | None = Field(None, max_length=50000)
     organisatie_eenheid_id: UUID | None = None
 
@@ -171,6 +169,22 @@ class LeadResponse(BaseModel):
     updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _extract_tags(cls, data: object) -> object:
+        """Populate tags from the lead_tags relationship if available."""
+        if hasattr(data, "lead_tags"):
+            lead_tags = data.lead_tags
+            if lead_tags is not None:
+                # Inject a 'tags' attribute onto the ORM object so
+                # from_attributes picks it up as list[str].
+                object.__setattr__(
+                    data,
+                    "tags",
+                    [lt.tag.name for lt in lead_tags if lt.tag],
+                )
+        return data
 
 
 class LeadDetailResponse(LeadResponse):

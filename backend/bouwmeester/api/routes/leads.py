@@ -43,6 +43,7 @@ from bouwmeester.schema.lead import (
     LeadUpdate,
 )
 from bouwmeester.schema.notification import NotificationCreate
+from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse, TagCreate
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/leads", tags=["leads"])
@@ -445,6 +446,83 @@ async def unlink_node(
         raise HTTPException(status_code=404, detail="Node link not found")
     await db.delete(link)
     await db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Tags
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{lead_id}/tags", response_model=list[LeadTagResponse])
+async def get_lead_tags(
+    lead_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[LeadTagResponse]:
+    """List all tags applied to a lead."""
+    from bouwmeester.repositories.tag import TagRepository
+
+    repo = LeadRepository(db)
+    require_found(await repo.get(lead_id), "Lead")
+
+    tag_repo = TagRepository(db)
+    lead_tags = await tag_repo.get_by_lead(lead_id)
+    return [LeadTagResponse.model_validate(lt) for lt in lead_tags]
+
+
+@router.post(
+    "/{lead_id}/tags",
+    response_model=LeadTagResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_tag_to_lead(
+    lead_id: UUID,
+    data: LeadTagCreate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> LeadTagResponse:
+    """Add a tag to a lead.
+
+    Creates the tag if tag_name is given and it doesn't exist.
+    """
+    from bouwmeester.repositories.tag import TagRepository
+
+    repo = LeadRepository(db)
+    require_found(await repo.get(lead_id), "Lead")
+
+    tag_repo = TagRepository(db)
+
+    if data.tag_name and not data.tag_id:
+        existing = await tag_repo.get_by_name(data.tag_name)
+        if existing:
+            tag_id = existing.id
+        else:
+            new_tag = await tag_repo.create(TagCreate(name=data.tag_name))
+            tag_id = new_tag.id
+    elif data.tag_id:
+        tag_id = data.tag_id
+    else:
+        raise HTTPException(status_code=400, detail="Provide tag_id or tag_name")
+
+    lead_tag = await tag_repo.add_tag_to_lead(lead_id, tag_id)
+    return LeadTagResponse.model_validate(lead_tag)
+
+
+@router.delete(
+    "/{lead_id}/tags/{tag_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_tag_from_lead(
+    lead_id: UUID,
+    tag_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Remove a tag from a lead."""
+    from bouwmeester.repositories.tag import TagRepository
+
+    tag_repo = TagRepository(db)
+    require_deleted(await tag_repo.remove_tag_from_lead(lead_id, tag_id), "Tag link")
 
 
 # ---------------------------------------------------------------------------

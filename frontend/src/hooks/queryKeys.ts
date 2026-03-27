@@ -64,6 +64,7 @@ export const queryKeys = {
     all: ['tags'] as const,
     list: (params?: { tree?: boolean; search?: string }) => ['tags', params] as const,
     forNode: (nodeId: string) => ['node-tags', nodeId] as const,
+    forLead: (leadId: string) => ['lead-tags', leadId] as const,
   },
 
   // --- Edges ---

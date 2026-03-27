@@ -19,6 +19,9 @@ import {
   parseLeadIntake,
   getCommunityGraph,
   getLeadTimeline,
+  getLeadTags,
+  addTagToLead,
+  removeTagFromLead,
 } from '@/api/leads';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
@@ -254,6 +257,42 @@ export function useParseLeadIntake() {
   return useMutation({
     mutationFn: ({ rawText, files }: { rawText?: string; files?: File[] }) =>
       parseLeadIntake(rawText, files),
+  });
+}
+
+export function useLeadTags(leadId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.tags.forLead(leadId ?? ''),
+    queryFn: () => getLeadTags(leadId!),
+    enabled: !!leadId,
+  });
+}
+
+export function useAddTagToLead() {
+  const queryClient = useQueryClient();
+
+  return useMutationWithError({
+    mutationFn: ({ leadId, data }: { leadId: string; data: { tag_id?: string; tag_name?: string } }) =>
+      addTagToLead(leadId, data),
+    errorMessage: 'Fout bij toevoegen tag',
+    invalidateKeys: [queryKeys.tags.all, queryKeys.leads.all],
+    onSuccess: (_, { leadId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags.forLead(leadId) });
+    },
+  });
+}
+
+export function useRemoveTagFromLead() {
+  const queryClient = useQueryClient();
+
+  return useMutationWithError({
+    mutationFn: ({ leadId, tagId }: { leadId: string; tagId: string }) =>
+      removeTagFromLead(leadId, tagId),
+    errorMessage: 'Fout bij verwijderen tag',
+    invalidateKeys: [queryKeys.leads.all],
+    onSuccess: (_, { leadId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags.forLead(leadId) });
+    },
   });
 }
 

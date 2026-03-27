@@ -5,7 +5,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import DateTime, ForeignKey, Text, func, text
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from bouwmeester.core.database import Base
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from bouwmeester.models.lead_node import LeadNode
     from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
     from bouwmeester.models.person import Person
+    from bouwmeester.models.tag import LeadTag
 
 
 class Lead(Base):
@@ -49,7 +50,6 @@ class Lead(Base):
     )
     next_action: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_action_date: Mapped[date | None] = mapped_column(nullable=True)
-    tags: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
     sort_order: Mapped[int] = mapped_column(default=0, server_default="0")
     raw_intake_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     organisatie_eenheid_id: Mapped[uuid.UUID] = mapped_column(
@@ -90,6 +90,11 @@ class Lead(Base):
     )
     linked_nodes: Mapped[list["LeadNode"]] = relationship(
         "LeadNode",
+        back_populates="lead",
+        cascade="all, delete-orphan",
+    )
+    lead_tags: Mapped[list["LeadTag"]] = relationship(
+        "LeadTag",
         back_populates="lead",
         cascade="all, delete-orphan",
     )

@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
+from bouwmeester.models.tag import LeadTag, Tag
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.lead import LeadCreate, LeadStage, LeadUpdate
 
@@ -20,6 +21,7 @@ def _lead_options():
         selectinload(Lead.externe_organisatie),
         selectinload(Lead.organisatie_eenheid),
         selectinload(Lead.attachments),
+        selectinload(Lead.lead_tags).selectinload(LeadTag.tag),
     ]
 
 
@@ -49,6 +51,7 @@ class LeadRepository(BaseRepository[Lead]):
                 selectinload(Lead.activities).selectinload(LeadActivity.author),
                 selectinload(Lead.contacts).selectinload(LeadContact.person),
                 selectinload(Lead.linked_nodes).selectinload(LeadNode.node),
+                selectinload(Lead.lead_tags).selectinload(LeadTag.tag),
             )
         )
         stmt = apply_org_filter(stmt, Lead.organisatie_eenheid_id, org_ctx)
@@ -72,7 +75,13 @@ class LeadRepository(BaseRepository[Lead]):
         if stage is not None:
             stmt = stmt.where(Lead.stage == stage)
         if tag is not None:
-            stmt = stmt.where(Lead.tags.op("@>")(f'["{tag}"]'))
+            stmt = stmt.where(
+                Lead.id.in_(
+                    select(LeadTag.lead_id)
+                    .join(Tag, LeadTag.tag_id == Tag.id)
+                    .where(Tag.name == tag)
+                )
+            )
         if assignee_id is not None:
             stmt = stmt.where(Lead.assignee_id == assignee_id)
 
@@ -137,6 +146,7 @@ class LeadRepository(BaseRepository[Lead]):
                 "externe_organisatie",
                 "organisatie_eenheid",
                 "attachments",
+                "lead_tags",
             ],
         )
         return lead
@@ -157,6 +167,7 @@ class LeadRepository(BaseRepository[Lead]):
                 "externe_organisatie",
                 "organisatie_eenheid",
                 "attachments",
+                "lead_tags",
             ],
         )
         return lead
@@ -190,6 +201,7 @@ class LeadRepository(BaseRepository[Lead]):
                 "externe_organisatie",
                 "organisatie_eenheid",
                 "attachments",
+                "lead_tags",
             ],
         )
         return lead

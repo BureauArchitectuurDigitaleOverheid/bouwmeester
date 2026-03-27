@@ -183,6 +183,8 @@ from bouwmeester.schema.search import (
     SimilarNodesResponse,
 )
 from bouwmeester.schema.tag import (
+    LeadTagCreate,
+    LeadTagResponse,
     NodeTagCreate,
     NodeTagResponse,
     TagBase,
@@ -384,6 +386,8 @@ __all__ = [
     "SimilarNodeItem",
     "SimilarNodesResponse",
     # tag
+    "LeadTagCreate",
+    "LeadTagResponse",
     "NodeTagCreate",
     "NodeTagResponse",
     "TagBase",
