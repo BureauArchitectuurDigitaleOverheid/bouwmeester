@@ -555,12 +555,20 @@ _READ_TOOLS: dict[str, dict] = {
             "name": "search_leads",
             "description": (
                 "Zoek leads in de sales funnel."
-                " Optioneel gefilterd op stage, toegewezen persoon,"
+                " Gebruik 'query' om op naam/organisatie te zoeken,"
+                " of filter op stage, toegewezen persoon,"
                 " of volgende-actie status."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "Zoekterm op titel of organisatienaam"
+                            " (optioneel, gebruikt fuzzy matching)"
+                        ),
+                    },
                     "stage": {
                         "type": "string",
                         "description": (
@@ -1052,7 +1060,13 @@ def _task_to_dict(task: object) -> dict:
     }
 
 
-async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> str:
+async def _execute_read_tool(
+    tool_name: str,
+    args: dict,
+    db: AsyncSession,
+    *,
+    person_id: UUID | None = None,
+) -> str:
     """Execute a read-only tool and return a JSON string result."""
     try:
         if tool_name == "search_nodes":
@@ -1396,22 +1410,34 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
             from bouwmeester.repositories.lead import LeadRepository
             from bouwmeester.schema.lead import LeadStage
 
+            org_ctx = await _build_chat_org_context(db, person_id)
             repo = LeadRepository(db)
-            stage = None
-            if args.get("stage"):
-                try:
-                    stage = LeadStage(args["stage"])
-                except ValueError:
-                    pass
-            assignee_id_val = (
-                UUID(args["assignee_id"]) if args.get("assignee_id") else None
-            )
-            leads = await repo.get_all(
-                limit=15,
-                stage=stage,
-                assignee_id=assignee_id_val,
-                next_action_filter=args.get("next_action_filter"),
-            )
+
+            # Text search via find_similar if query provided
+            query = args.get("query")
+            if query:
+                leads = await repo.find_similar(
+                    title=query,
+                    organization=query,
+                    org_ctx=org_ctx,
+                )
+            else:
+                stage = None
+                if args.get("stage"):
+                    try:
+                        stage = LeadStage(args["stage"])
+                    except ValueError:
+                        pass
+                assignee_id_val = (
+                    UUID(args["assignee_id"]) if args.get("assignee_id") else None
+                )
+                leads = await repo.get_all(
+                    limit=15,
+                    stage=stage,
+                    assignee_id=assignee_id_val,
+                    next_action_filter=args.get("next_action_filter"),
+                    org_ctx=org_ctx,
+                )
             items = [
                 {
                     "id": str(lead.id),
@@ -1440,8 +1466,9 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
         elif tool_name == "get_lead":
             from bouwmeester.repositories.lead import LeadRepository
 
+            org_ctx = await _build_chat_org_context(db, person_id)
             repo = LeadRepository(db)
-            lead = await repo.get_detail(UUID(args["lead_id"]))
+            lead = await repo.get_detail(UUID(args["lead_id"]), org_ctx=org_ctx)
             if not lead:
                 return _safe_dumps({"error": "Lead niet gevonden"})
             activities = [
@@ -1491,8 +1518,9 @@ async def _execute_read_tool(tool_name: str, args: dict, db: AsyncSession) -> st
         elif tool_name == "get_lead_metrics":
             from bouwmeester.repositories.lead import LeadRepository
 
+            org_ctx = await _build_chat_org_context(db, person_id)
             repo = LeadRepository(db)
-            metrics = await repo.get_metrics()
+            metrics = await repo.get_metrics(org_ctx=org_ctx)
             return _safe_dumps(metrics)
 
         return _safe_dumps({"error": f"Onbekende tool: {tool_name}"})
@@ -1526,6 +1554,20 @@ async def _resolve_person_org_eenheid(
     result = await db.execute(stmt)
     row = result.scalar_one_or_none()
     return row if row else None
+
+
+async def _build_chat_org_context(db: AsyncSession, person_id: UUID | None) -> object:
+    """Build an OrgContext for the chat user, or None if unauthenticated."""
+    from bouwmeester.core.org_context import OrgContext, build_org_context
+    from bouwmeester.models.person import Person
+
+    if not person_id:
+        return OrgContext(is_authenticated=False)
+    result = await db.execute(select(Person).where(Person.id == person_id))
+    person = result.scalar_one_or_none()
+    if not person:
+        return OrgContext(is_authenticated=False)
+    return await build_org_context(db, person)
 
 
 async def _execute_write_tool(
@@ -1925,11 +1967,18 @@ async def _execute_write_tool(
             if args.get("next_action"):
                 lead_data["next_action"] = args["next_action"]
             if args.get("next_action_date"):
-                from datetime import date as date_cls
-
-                lead_data["next_action_date"] = date_cls.fromisoformat(
-                    args["next_action_date"]
-                )
+                try:
+                    lead_data["next_action_date"] = date.fromisoformat(
+                        args["next_action_date"]
+                    )
+                except ValueError:
+                    return {
+                        "success": False,
+                        "summary": (
+                            "Ongeldig datumformaat voor next_action_date."
+                            " Gebruik YYYY-MM-DD."
+                        ),
+                    }
 
             repo = LeadRepository(db)
             data = LeadCreate(**lead_data)
@@ -1946,24 +1995,46 @@ async def _execute_write_tool(
             from bouwmeester.repositories.lead import LeadRepository
             from bouwmeester.schema.lead import LeadUpdate
 
+            # Verify access via org context
+            org_ctx = await _build_chat_org_context(db, person_id)
             repo = LeadRepository(db)
+            existing = await repo.get(UUID(args["lead_id"]), org_ctx=org_ctx)
+            if not existing:
+                return {"success": False, "summary": "Lead niet gevonden"}
+
             update_data: dict = {}
+            # Allow clearing text fields by passing empty string or null
             for field in (
                 "title",
                 "description",
                 "organization",
                 "next_action",
             ):
-                if field in args and args[field] is not None:
-                    update_data[field] = args[field]
-            if args.get("assignee_id"):
-                update_data["assignee_id"] = UUID(args["assignee_id"])
-            if args.get("next_action_date"):
-                from datetime import date as date_cls
-
-                update_data["next_action_date"] = date_cls.fromisoformat(
-                    args["next_action_date"]
-                )
+                if field in args:
+                    val = args[field]
+                    # Allow explicit null/empty to clear a field,
+                    # but title cannot be empty
+                    if field == "title" and not val:
+                        continue
+                    update_data[field] = val if val else None
+            if "assignee_id" in args:
+                val = args["assignee_id"]
+                update_data["assignee_id"] = UUID(val) if val else None
+            if "next_action_date" in args:
+                val = args["next_action_date"]
+                if val:
+                    try:
+                        update_data["next_action_date"] = date.fromisoformat(val)
+                    except ValueError:
+                        return {
+                            "success": False,
+                            "summary": (
+                                "Ongeldig datumformaat voor next_action_date."
+                                " Gebruik YYYY-MM-DD."
+                            ),
+                        }
+                else:
+                    update_data["next_action_date"] = None
             data = LeadUpdate(**update_data)
             lead = await repo.update(UUID(args["lead_id"]), data)
             if not lead:
@@ -1980,7 +2051,13 @@ async def _execute_write_tool(
             from bouwmeester.repositories.lead import LeadRepository
             from bouwmeester.schema.lead import LeadStage
 
+            # Verify access via org context
+            org_ctx = await _build_chat_org_context(db, person_id)
             repo = LeadRepository(db)
+            existing = await repo.get(UUID(args["lead_id"]), org_ctx=org_ctx)
+            if not existing:
+                return {"success": False, "summary": "Lead niet gevonden"}
+
             try:
                 stage = LeadStage(args["stage"])
             except ValueError:
@@ -2010,9 +2087,10 @@ async def _execute_write_tool(
             )
             from bouwmeester.schema.lead import LeadActivityCreate
 
-            # Verify lead exists
+            # Verify lead exists and user has access
+            org_ctx = await _build_chat_org_context(db, person_id)
             lead_repo = LeadRepository(db)
-            lead = await lead_repo.get(UUID(args["lead_id"]))
+            lead = await lead_repo.get(UUID(args["lead_id"]), org_ctx=org_ctx)
             if not lead:
                 return {"success": False, "summary": "Lead niet gevonden"}
 
@@ -2517,7 +2595,9 @@ class ChatService:
                     has_pending = True
                 else:
                     # Execute read tool immediately
-                    result = await _execute_read_tool(tool_name, args, self._db)
+                    result = await _execute_read_tool(
+                        tool_name, args, self._db, person_id=self._person_id
+                    )
                     messages.append(
                         {
                             "role": "tool",
