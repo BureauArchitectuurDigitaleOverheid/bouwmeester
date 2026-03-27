@@ -43,6 +43,7 @@ import {
   useRemoveTagFromLead,
 } from '@/hooks/useLeads';
 import { usePeople } from '@/hooks/usePeople';
+import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { useNodes } from '@/hooks/useNodes';
 import { getLeadAttachmentDownloadUrl } from '@/api/leads';
 import { isOverdue, formatDateLong, timeAgo } from '@/utils/dates';
@@ -53,6 +54,7 @@ import {
   LEAD_STAGE_ORDER,
   LeadActivityType,
   LEAD_ACTIVITY_TYPE_LABELS,
+  INITIATIEF_COLORS,
 } from '@/types';
 import type { LeadUpdate, LeadActivityCreate } from '@/types';
 
@@ -74,6 +76,8 @@ const ACTIVITY_ICONS: Record<LeadActivityType, React.ReactNode> = {
 export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPanelProps) {
   const { data: lead, isLoading } = useLead(leadId);
   const { data: people } = usePeople();
+  const { data: initiatieven } = useInitiatieven();
+  const createInitiatief = useCreateInitiatief();
   const { data: nodes } = useNodes();
 
   const contactPersonOptions = useMemo(
@@ -105,6 +109,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const [editAssignee, setEditAssignee] = useState('');
   const [editNextAction, setEditNextAction] = useState('');
   const [editNextActionDate, setEditNextActionDate] = useState('');
+  const [editInitiatiefId, setEditInitiatiefId] = useState('');
   const [editTags, setEditTags] = useState('');
 
   // Activity form
@@ -143,6 +148,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
     setEditAssignee(lead.assignee_id ?? '');
     setEditNextAction(lead.next_action ?? '');
     setEditNextActionDate(lead.next_action_date ?? '');
+    setEditInitiatiefId(lead.initiatief_id ?? '');
     setEditTags((leadTags ?? []).map((lt) => lt.tag.name).join(', '));
     setEditing(true);
   };
@@ -162,6 +168,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       assignee_id: editAssignee || null,
       next_action: editNextAction.trim() || null,
       next_action_date: editNextActionDate || null,
+      initiatief_id: editInitiatiefId || null,
     };
 
     // Update lead fields
@@ -362,6 +369,25 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             />
           </div>
           <div>
+            <CreatableSelect
+              label="Initiatief"
+              value={editInitiatiefId}
+              onChange={setEditInitiatiefId}
+              options={[
+                { value: '', label: 'Geen initiatief' },
+                ...(initiatieven?.map((i) => ({ value: i.id, label: i.naam })) ?? []),
+              ]}
+              placeholder="Selecteer initiatief..."
+              onClear={editInitiatiefId ? () => setEditInitiatiefId('') : undefined}
+              onCreate={async (name) => {
+                const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
+                const result = await createInitiatief.mutateAsync({ naam: name, kleur });
+                return result.id;
+              }}
+              createLabel="Nieuw initiatief"
+            />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-text mb-1">Volgende actie</label>
             <input
               type="text"
@@ -440,8 +466,17 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 ),
               },
               {
-                label: 'Eenheid',
-                value: lead.organisatie_eenheid?.naam ?? '-',
+                label: 'Initiatief',
+                value: lead.initiatief ? (
+                  <span
+                    className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                    style={{ backgroundColor: lead.initiatief.kleur || '#6B7280' }}
+                  >
+                    {lead.initiatief.naam}
+                  </span>
+                ) : (
+                  '-'
+                ),
               },
               {
                 label: 'Volgende actie',

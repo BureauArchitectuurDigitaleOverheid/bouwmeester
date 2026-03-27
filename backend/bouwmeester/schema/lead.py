@@ -41,7 +41,7 @@ class LeadBase(BaseModel):
     next_action: str | None = Field(None, max_length=5000)
     next_action_date: date | None = None
     raw_intake_text: str | None = Field(None, max_length=50000)
-    organisatie_eenheid_id: UUID
+    initiatief_id: UUID | None = None
 
 
 class LeadCreate(LeadBase):
@@ -59,7 +59,7 @@ class LeadUpdate(BaseModel):
     next_action: str | None = Field(None, max_length=5000)
     next_action_date: date | None = None
     raw_intake_text: str | None = Field(None, max_length=50000)
-    organisatie_eenheid_id: UUID | None = None
+    initiatief_id: UUID | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -90,10 +90,10 @@ class LeadAssigneeSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class LeadOrgEenheidSummary(BaseModel):
+class LeadInitiatiefSummary(BaseModel):
     id: UUID
     naam: str
-    type: str | None = None
+    kleur: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -185,8 +185,8 @@ class LeadResponse(BaseModel):
     assignee: LeadAssigneeSummary | None = None
     brought_by_id: UUID | None = None
     brought_by: LeadAssigneeSummary | None = None
-    organisatie_eenheid_id: UUID
-    organisatie_eenheid: LeadOrgEenheidSummary | None = None
+    initiatief_id: UUID | None = None
+    initiatief: LeadInitiatiefSummary | None = None
     next_action: str | None = None
     next_action_date: date | None = None
     tags: list[str] = Field(default_factory=list)

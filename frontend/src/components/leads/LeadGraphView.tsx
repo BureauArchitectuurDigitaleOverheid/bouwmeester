@@ -26,6 +26,7 @@ import { LeadMetricsBar } from './LeadMetricsBar';
 import { CommunityEdgeModal } from './CommunityEdgeModal';
 import { AddLeadContactModal } from './AddLeadContactModal';
 import { useCommunityGraph } from '@/hooks/useLeads';
+import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import {
@@ -34,6 +35,7 @@ import {
   NODE_TYPE_HEX_COLORS,
   NodeType,
   LeadStage,
+  INITIATIEF_COLORS,
 } from '@/types';
 import type { CommunityGraphNode, CommunityGraphEdge } from '@/types';
 
@@ -97,6 +99,7 @@ interface CommunityGraphNodeData {
   label: string;
   nodeType: CommunityNodeType;
   stage?: string | null;
+  initiatiefId?: string | null;
   functie?: string | null;
   orgType?: string | null;
   corpusNodeType?: string | null;
@@ -316,6 +319,8 @@ const NODE_TYPE_TOGGLES: NodeTypeToggle[] = [
 function CommunityGraphInner() {
   const isMobile = useIsMobile();
   const { data, isLoading, error } = useCommunityGraph();
+  const { data: initiatieven } = useInitiatieven();
+  const createInitiatief = useCreateInitiatief();
   const { openLeadDetail } = useLeadDetail();
   const { openNodeDetail } = useNodeDetail();
 
@@ -343,6 +348,7 @@ function CommunityGraphInner() {
     new Set(['lead', 'person', 'organisation', 'corpus_node']),
   );
   const [stageFilter, setStageFilter] = useState<string>('');
+  const [initiatiefFilter, setInitiatiefFilter] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
 
   const toggleType = useCallback((type: CommunityNodeType) => {
@@ -384,6 +390,7 @@ function CommunityGraphInner() {
           label: node.label,
           nodeType: node.node_type,
           stage: node.stage,
+          initiatiefId: node.initiatief_id,
           functie: node.functie,
           orgType: node.org_type,
           corpusNodeType: node.corpus_node_type,
@@ -432,8 +439,9 @@ function CommunityGraphInner() {
       const d = node.data as CommunityGraphNodeData;
       const matchesType = enabledTypes.has(d.nodeType);
       const matchesStage = !stageFilter || d.nodeType !== 'lead' || d.stage === stageFilter;
+      const matchesInitiatief = !initiatiefFilter || d.nodeType !== 'lead' || d.initiatiefId === initiatiefFilter;
       const matchesSearch = !q || d.label.toLowerCase().includes(q);
-      const isVisible = matchesType && matchesStage && matchesSearch;
+      const isVisible = matchesType && matchesStage && matchesInitiatief && matchesSearch;
       if (isVisible) visibleIds.add(node.id);
       return { ...node, hidden: !isVisible };
     });
@@ -444,7 +452,7 @@ function CommunityGraphInner() {
     });
 
     return { rfNodes, rfEdges };
-  }, [allRfNodes, allRfEdges, enabledTypes, stageFilter, searchQuery]);
+  }, [allRfNodes, allRfEdges, enabledTypes, stageFilter, initiatiefFilter, searchQuery]);
 
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
@@ -520,6 +528,26 @@ function CommunityGraphInner() {
             placeholder="Alle stages"
             searchable={false}
             onClear={stageFilter ? () => setStageFilter('') : undefined}
+          />
+        </div>
+
+        {/* Initiatief filter */}
+        <div className="w-48">
+          <CreatableSelect
+            value={initiatiefFilter}
+            onChange={setInitiatiefFilter}
+            options={[
+              { value: '', label: 'Alle initiatieven' },
+              ...(initiatieven?.map((i) => ({ value: i.id, label: i.naam })) ?? []),
+            ]}
+            placeholder="Alle initiatieven"
+            onClear={initiatiefFilter ? () => setInitiatiefFilter('') : undefined}
+            onCreate={async (name) => {
+              const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
+              const result = await createInitiatief.mutateAsync({ naam: name, kleur });
+              return result.id;
+            }}
+            createLabel="Nieuw initiatief"
           />
         </div>
 

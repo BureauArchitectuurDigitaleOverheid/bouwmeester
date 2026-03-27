@@ -7,6 +7,7 @@ import { LeadMetricsBar } from './LeadMetricsBar';
 import { LeadIntakeDialog } from './LeadIntakeDialog';
 import { useLeads, useMoveLead } from '@/hooks/useLeads';
 import { usePeople } from '@/hooks/usePeople';
+import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import {
@@ -14,6 +15,7 @@ import {
   LEAD_STAGE_ORDER,
   LEAD_STAGE_LABELS,
   LEAD_STAGE_COLORS,
+  INITIATIEF_COLORS,
 } from '@/types';
 import type { Lead, LeadFilters } from '@/types';
 
@@ -41,11 +43,13 @@ export function LeadKanbanBoard({ searchQuery = '' }: LeadKanbanBoardProps) {
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterTag, setFilterTag] = useState('');
   const [nextActionFilter, setNextActionFilter] = useState('');
+  const [filterInitiatief, setFilterInitiatief] = useState('');
 
   const filters: LeadFilters = {};
   if (filterAssignee) filters.assignee_id = filterAssignee;
   if (filterTag) filters.tag = filterTag;
   if (nextActionFilter) filters.next_action_filter = nextActionFilter;
+  if (filterInitiatief) filters.initiatief_id = filterInitiatief;
 
   const { data: leads, isLoading } = useLeads(
     Object.keys(filters).length > 0 ? filters : undefined,
@@ -53,6 +57,8 @@ export function LeadKanbanBoard({ searchQuery = '' }: LeadKanbanBoardProps) {
   const moveLead = useMoveLead();
   const { openLeadDetail } = useLeadDetail();
   const { data: people } = usePeople();
+  const { data: initiatieven } = useInitiatieven();
+  const createInitiatief = useCreateInitiatief();
   const { currentPerson } = useCurrentPerson();
   const [dragOverColumn, setDragOverColumn] = useState<LeadStage | null>(null);
   const [showIntake, setShowIntake] = useState(false);
@@ -152,12 +158,31 @@ export function LeadKanbanBoard({ searchQuery = '' }: LeadKanbanBoardProps) {
             onClear={nextActionFilter ? () => setNextActionFilter('') : undefined}
           />
         </div>
-        {(filterAssignee || filterTag || nextActionFilter) && (
+        <div className="w-48">
+          <CreatableSelect
+            value={filterInitiatief}
+            onChange={setFilterInitiatief}
+            options={[
+              { value: '', label: 'Alle initiatieven' },
+              ...(initiatieven?.map((i) => ({ value: i.id, label: i.naam })) ?? []),
+            ]}
+            placeholder="Alle initiatieven"
+            onClear={filterInitiatief ? () => setFilterInitiatief('') : undefined}
+            onCreate={async (name) => {
+              const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
+              const result = await createInitiatief.mutateAsync({ naam: name, kleur });
+              return result.id;
+            }}
+            createLabel="Nieuw initiatief"
+          />
+        </div>
+        {(filterAssignee || filterTag || nextActionFilter || filterInitiatief) && (
           <button
             onClick={() => {
               setFilterAssignee('');
               setFilterTag('');
               setNextActionFilter('');
+              setFilterInitiatief('');
             }}
             className="text-sm text-text-secondary hover:text-text transition-colors"
           >

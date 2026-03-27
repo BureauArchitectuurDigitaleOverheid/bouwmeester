@@ -17,6 +17,7 @@ import {
   BookOpen,
   Banknote,
   Funnel,
+  Lightbulb,
 } from 'lucide-react';
 import logoImg from '/logo.png?url';
 import { useUIStore } from '@/store/ui';
@@ -55,6 +56,7 @@ export function Sidebar({ mobile }: SidebarProps) {
       { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel, featureKey: 'menu.eenheid_overzicht' },
       { to: '/opdrachten', icon: Banknote, label: 'Opdrachten', featureKey: 'menu.opdrachten' },
       { to: '/leads', icon: Funnel, label: 'Leads', featureKey: 'menu.leads' },
+      { to: '/initiatieven', icon: Lightbulb, label: 'Initiatieven', featureKey: 'menu.initiatieven' },
       { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken', featureKey: 'menu.kamerstukken' },
       { to: '/search', icon: Search, label: 'Zoeken', featureKey: 'menu.zoeken' },
       { to: '/docs', icon: BookOpen, label: 'Documentatie', featureKey: 'menu.docs' },

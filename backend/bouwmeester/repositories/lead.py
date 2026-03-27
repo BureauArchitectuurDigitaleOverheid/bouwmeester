@@ -6,7 +6,10 @@ from uuid import UUID
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.org_context import OrgContext, apply_org_filter
+from bouwmeester.core.initiatief_context import (
+    InitiatiefContext,
+    apply_initiatief_filter,
+)
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.tag import LeadTag, Tag
@@ -20,7 +23,7 @@ def _lead_options():
         selectinload(Lead.assignee),
         selectinload(Lead.brought_by),
         selectinload(Lead.externe_organisatie),
-        selectinload(Lead.organisatie_eenheid),
+        selectinload(Lead.initiatief),
         selectinload(Lead.attachments),
         selectinload(Lead.lead_tags).selectinload(LeadTag.tag),
     ]
@@ -29,14 +32,16 @@ def _lead_options():
 class LeadRepository(BaseRepository[Lead]):
     model = Lead
 
-    async def get(self, id: UUID, org_ctx: OrgContext | None = None) -> Lead | None:
+    async def get(
+        self, id: UUID, init_ctx: InitiatiefContext | None = None
+    ) -> Lead | None:
         stmt = select(Lead).where(Lead.id == id).options(*_lead_options())
-        stmt = apply_org_filter(stmt, Lead.organisatie_eenheid_id, org_ctx)
+        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def get_detail(
-        self, id: UUID, org_ctx: OrgContext | None = None
+        self, id: UUID, init_ctx: InitiatiefContext | None = None
     ) -> Lead | None:
         from bouwmeester.models.lead_contact import LeadContact
         from bouwmeester.models.lead_node import LeadNode
@@ -48,7 +53,7 @@ class LeadRepository(BaseRepository[Lead]):
                 selectinload(Lead.assignee),
                 selectinload(Lead.brought_by),
                 selectinload(Lead.externe_organisatie),
-                selectinload(Lead.organisatie_eenheid),
+                selectinload(Lead.initiatief),
                 selectinload(Lead.attachments),
                 selectinload(Lead.activities).selectinload(LeadActivity.author),
                 selectinload(Lead.contacts).selectinload(LeadContact.person),
@@ -56,7 +61,7 @@ class LeadRepository(BaseRepository[Lead]):
                 selectinload(Lead.lead_tags).selectinload(LeadTag.tag),
             )
         )
-        stmt = apply_org_filter(stmt, Lead.organisatie_eenheid_id, org_ctx)
+        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -67,13 +72,16 @@ class LeadRepository(BaseRepository[Lead]):
         stage: LeadStage | None = None,
         tag: str | None = None,
         assignee_id: UUID | None = None,
-        org_ctx: OrgContext | None = None,
+        init_ctx: InitiatiefContext | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
         next_action_filter: str | None = None,
         sort_by: str | None = None,
+        initiatief_id: UUID | None = None,
     ) -> list[Lead]:
         stmt = select(Lead).options(*_lead_options()).offset(skip).limit(limit)
+        if initiatief_id is not None:
+            stmt = stmt.where(Lead.initiatief_id == initiatief_id)
         if stage is not None:
             stmt = stmt.where(Lead.stage == stage)
         if tag is not None:
@@ -109,7 +117,7 @@ class LeadRepository(BaseRepository[Lead]):
                     Lead.next_action_date <= today + timedelta(days=7),
                 )
 
-        stmt = apply_org_filter(stmt, Lead.organisatie_eenheid_id, org_ctx)
+        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
 
         # Sorting
         sort_columns = {
@@ -151,7 +159,7 @@ class LeadRepository(BaseRepository[Lead]):
                 "assignee",
                 "brought_by",
                 "externe_organisatie",
-                "organisatie_eenheid",
+                "initiatief",
                 "attachments",
                 "lead_tags",
             ],
@@ -166,19 +174,8 @@ class LeadRepository(BaseRepository[Lead]):
         for key, value in update_data.items():
             setattr(lead, key, value)
         await self.session.flush()
-        await self.session.refresh(
-            lead,
-            attribute_names=[
-                "updated_at",
-                "assignee",
-                "brought_by",
-                "externe_organisatie",
-                "organisatie_eenheid",
-                "attachments",
-                "lead_tags",
-            ],
-        )
-        return lead
+        # Re-fetch with all eager loads to avoid lazy-loading errors
+        return await self.get(id)
 
     async def move(
         self, id: UUID, stage: LeadStage, author_id: UUID | None = None
@@ -233,7 +230,7 @@ class LeadRepository(BaseRepository[Lead]):
         title: str,
         organization: str | None = None,
         exclude_id: UUID | None = None,
-        org_ctx: OrgContext | None = None,
+        init_ctx: InitiatiefContext | None = None,
     ) -> list[Lead]:
         """Find leads with similar title or organization using trigram similarity."""
         conditions = []
@@ -247,7 +244,7 @@ class LeadRepository(BaseRepository[Lead]):
         stmt = select(Lead).where(or_(*conditions)).options(*_lead_options())
         if exclude_id:
             stmt = stmt.where(Lead.id != exclude_id)
-        stmt = apply_org_filter(stmt, Lead.organisatie_eenheid_id, org_ctx)
+        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
         stmt = stmt.order_by(func.similarity(Lead.title, title).desc()).limit(5)
 
         result = await self.session.execute(stmt)
@@ -330,12 +327,13 @@ class LeadRepository(BaseRepository[Lead]):
 
     async def get_timeline(
         self,
-        org_ctx: OrgContext | None = None,
+        init_ctx: InitiatiefContext | None = None,
         stage: str | None = None,
         assignee_id: UUID | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
         limit: int = 500,
+        initiatief_id: UUID | None = None,
     ) -> list[dict]:
         """Build a chronological timeline of all lead events.
 
@@ -360,6 +358,8 @@ class LeadRepository(BaseRepository[Lead]):
         lead_stmt = select(Lead).options(
             selectinload(Lead.assignee),
         )
+        if initiatief_id is not None:
+            lead_stmt = lead_stmt.where(Lead.initiatief_id == initiatief_id)
         if stage is not None:
             lead_stmt = lead_stmt.where(Lead.stage == stage)
         if assignee_id is not None:
@@ -368,7 +368,7 @@ class LeadRepository(BaseRepository[Lead]):
             lead_stmt = lead_stmt.where(Lead.created_at >= dt_from)
         if dt_to is not None:
             lead_stmt = lead_stmt.where(Lead.created_at <= dt_to)
-        lead_stmt = apply_org_filter(lead_stmt, Lead.organisatie_eenheid_id, org_ctx)
+        lead_stmt = apply_initiatief_filter(lead_stmt, Lead.initiatief_id, init_ctx)
         result = await self.session.execute(lead_stmt)
         leads = list(result.scalars().all())
 
@@ -437,15 +437,15 @@ class LeadRepository(BaseRepository[Lead]):
         events.sort(key=lambda e: e["timestamp"], reverse=True)
         return events[:limit]
 
-    async def get_metrics(self, org_ctx: OrgContext | None = None) -> dict:
+    async def get_metrics(self, init_ctx: InitiatiefContext | None = None) -> dict:
         # Total count
         total_stmt = select(func.count()).select_from(Lead)
-        total_stmt = apply_org_filter(total_stmt, Lead.organisatie_eenheid_id, org_ctx)
+        total_stmt = apply_initiatief_filter(total_stmt, Lead.initiatief_id, init_ctx)
         total = (await self.session.execute(total_stmt)).scalar_one()
 
         # Count per stage
         stage_stmt = select(Lead.stage, func.count()).group_by(Lead.stage)
-        stage_stmt = apply_org_filter(stage_stmt, Lead.organisatie_eenheid_id, org_ctx)
+        stage_stmt = apply_initiatief_filter(stage_stmt, Lead.initiatief_id, init_ctx)
         stage_result = await self.session.execute(stage_stmt)
         by_stage = {row[0]: row[1] for row in stage_result.all()}
 
@@ -458,7 +458,7 @@ class LeadRepository(BaseRepository[Lead]):
                 Lead.stage.notin_(["in_the_pocket", "koelkast"]),
             )
         )
-        stale_stmt = apply_org_filter(stale_stmt, Lead.organisatie_eenheid_id, org_ctx)
+        stale_stmt = apply_initiatief_filter(stale_stmt, Lead.initiatief_id, init_ctx)
         stale_count = (await self.session.execute(stale_stmt)).scalar_one()
 
         return {

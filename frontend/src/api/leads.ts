@@ -24,6 +24,7 @@ export async function getLeads(filters?: LeadFilters): Promise<Lead[]> {
   if (filters?.date_to) params.date_to = filters.date_to;
   if (filters?.next_action_filter) params.next_action_filter = filters.next_action_filter;
   if (filters?.sort_by) params.sort_by = filters.sort_by;
+  if (filters?.initiatief_id) params.initiatief_id = filters.initiatief_id;
   return apiGet<Lead[]>('/api/leads', params);
 }
 
@@ -33,6 +34,7 @@ export async function getLeadTimeline(params?: {
   date_from?: string;
   date_to?: string;
   limit?: number;
+  initiatief_id?: string;
 }): Promise<LeadTimelineResponse> {
   const query: Record<string, string | number> = {};
   if (params?.stage) query.stage = params.stage;
@@ -40,6 +42,7 @@ export async function getLeadTimeline(params?: {
   if (params?.date_from) query.date_from = params.date_from;
   if (params?.date_to) query.date_to = params.date_to;
   if (params?.limit) query.limit = params.limit;
+  if (params?.initiatief_id) query.initiatief_id = params.initiatief_id;
   return apiGet<LeadTimelineResponse>('/api/leads/timeline', query);
 }
 

@@ -16,12 +16,14 @@ import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { useLeadTimeline } from '@/hooks/useLeads';
 import { usePeople } from '@/hooks/usePeople';
+import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import {
   LeadStage,
   LEAD_STAGE_LABELS,
   LEAD_STAGE_COLORS,
+  INITIATIEF_COLORS,
 } from '@/types';
 import type { LeadTimelineEvent } from '@/types';
 
@@ -250,9 +252,12 @@ export function LeadTimelineView() {
   const [period, setPeriod] = useState<PeriodKey>('month');
   const [filterStage, setFilterStage] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('');
+  const [filterInitiatief, setFilterInitiatief] = useState('');
   const [displayLimit, setDisplayLimit] = useState(50);
 
   const { data: people } = usePeople();
+  const { data: initiatieven } = useInitiatieven();
+  const createInitiatief = useCreateInitiatief();
   const { currentPerson } = useCurrentPerson();
   const { openLeadDetail } = useLeadDetail();
 
@@ -262,9 +267,10 @@ export function LeadTimelineView() {
       ...dates,
       ...(filterStage ? { stage: filterStage } : {}),
       ...(filterAssignee ? { assignee_id: filterAssignee } : {}),
+      ...(filterInitiatief ? { initiatief_id: filterInitiatief } : {}),
       limit: 500,
     }),
-    [dates.date_from, dates.date_to, filterStage, filterAssignee],
+    [dates.date_from, dates.date_to, filterStage, filterAssignee, filterInitiatief],
   );
 
   const { data, isLoading } = useLeadTimeline(queryParams);
@@ -279,7 +285,7 @@ export function LeadTimelineView() {
     [displayedEvents],
   );
 
-  const hasActiveFilters = filterStage || filterAssignee;
+  const hasActiveFilters = filterStage || filterAssignee || filterInitiatief;
 
   return (
     <div className="space-y-4">
@@ -343,12 +349,33 @@ export function LeadTimelineView() {
           />
         </div>
 
+        {/* Initiatief filter */}
+        <div className="w-48">
+          <CreatableSelect
+            value={filterInitiatief}
+            onChange={setFilterInitiatief}
+            options={[
+              { value: '', label: 'Alle initiatieven' },
+              ...(initiatieven?.map((i) => ({ value: i.id, label: i.naam })) ?? []),
+            ]}
+            placeholder="Alle initiatieven"
+            onClear={filterInitiatief ? () => setFilterInitiatief('') : undefined}
+            onCreate={async (name) => {
+              const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
+              const result = await createInitiatief.mutateAsync({ naam: name, kleur });
+              return result.id;
+            }}
+            createLabel="Nieuw initiatief"
+          />
+        </div>
+
         {/* Clear filters */}
         {hasActiveFilters && (
           <button
             onClick={() => {
               setFilterStage('');
               setFilterAssignee('');
+              setFilterInitiatief('');
             }}
             className="text-sm text-text-secondary hover:text-text transition-colors"
           >
