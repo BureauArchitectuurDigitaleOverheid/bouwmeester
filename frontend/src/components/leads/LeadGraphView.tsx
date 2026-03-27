@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
-import { Building2, User, FileText, Lightbulb, Search } from 'lucide-react';
+import { Building2, User, FileText, Lightbulb, Search, Plus } from 'lucide-react';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import ReactFlow, {
   Background,
@@ -14,6 +14,7 @@ import ReactFlow, {
   type Node as RFNode,
   type Edge as RFEdge,
   type NodeProps,
+  type Connection,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import dagre from 'dagre';
@@ -21,6 +22,8 @@ import dagre from 'dagre';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { LeadMetricsBar } from './LeadMetricsBar';
+import { CommunityEdgeModal } from './CommunityEdgeModal';
+import { AddLeadContactModal } from './AddLeadContactModal';
 import { useCommunityGraph } from '@/hooks/useLeads';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
@@ -97,6 +100,7 @@ interface CommunityGraphNodeData {
   orgType?: string | null;
   corpusNodeType?: string | null;
   onClick?: () => void;
+  onAddContact?: () => void;
 }
 
 function getNodeColor(data: CommunityGraphNodeData): string {
@@ -170,6 +174,7 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
         maxWidth: '220px',
         cursor: data.onClick ? 'pointer' : 'default',
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
       <div style={{ height: '4px', background: color, borderRadius: '10px 10px 0 0' }} />
@@ -191,6 +196,39 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
           {data.label}
         </div>
       </div>
+      {data.onAddContact && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onAddContact?.();
+          }}
+          title="Contact toevoegen"
+          style={{
+            position: 'absolute',
+            bottom: '6px',
+            right: '6px',
+            width: '20px',
+            height: '20px',
+            borderRadius: '50%',
+            background: color,
+            color: '#fff',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: 0.8,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.opacity = '1';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.opacity = '0.8';
+          }}
+        >
+          <Plus style={{ width: '12px', height: '12px' }} />
+        </button>
+      )}
       <Handle
         type="target"
         position={Position.Top}
@@ -286,6 +324,19 @@ function CommunityGraphInner() {
   const openNodeDetailRef = useRef(openNodeDetail);
   openNodeDetailRef.current = openNodeDetail;
 
+  // Edge creation state (drag-to-connect)
+  const [pendingConnection, setPendingConnection] = useState<Connection | null>(null);
+  const handleConnect = useCallback((connection: Connection) => {
+    if (connection.source && connection.target) {
+      setPendingConnection(connection);
+    }
+  }, []);
+
+  // Add contact state (+ button on lead nodes)
+  const [addContactLeadId, setAddContactLeadId] = useState<string | null>(null);
+  const addContactRef = useRef((leadId: string) => setAddContactLeadId(leadId));
+  addContactRef.current = (leadId: string) => setAddContactLeadId(leadId);
+
   // Filter state
   const [enabledTypes, setEnabledTypes] = useState<Set<CommunityNodeType>>(
     new Set(['lead', 'person', 'organisation', 'corpus_node']),
@@ -316,8 +367,10 @@ function CommunityGraphInner() {
       // Determine click handler based on node type
       const rawId = node.id.replace(/^(lead|person|org|node)-/, '');
       let onClick: (() => void) | undefined;
+      let onAddContact: (() => void) | undefined;
       if (node.node_type === 'lead') {
         onClick = () => openLeadDetailRef.current(rawId);
+        onAddContact = () => addContactRef.current(rawId);
       } else if (node.node_type === 'corpus_node') {
         onClick = () => openNodeDetailRef.current(rawId);
       }
@@ -334,6 +387,7 @@ function CommunityGraphInner() {
           orgType: node.org_type,
           corpusNodeType: node.corpus_node_type,
           onClick,
+          onAddContact,
         },
       };
     });
@@ -487,6 +541,7 @@ function CommunityGraphInner() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onConnect={handleConnect}
           nodeTypes={nodeTypes}
           fitView
           fitViewOptions={{ padding: 0.2, maxZoom: 1.5 }}
@@ -517,6 +572,16 @@ function CommunityGraphInner() {
           )}
         </ReactFlow>
       </div>
+
+      <CommunityEdgeModal
+        pendingConnection={pendingConnection}
+        onClose={() => setPendingConnection(null)}
+      />
+
+      <AddLeadContactModal
+        leadId={addContactLeadId}
+        onClose={() => setAddContactLeadId(null)}
+      />
     </div>
   );
 }
