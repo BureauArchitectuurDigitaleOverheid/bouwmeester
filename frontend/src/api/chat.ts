@@ -21,6 +21,8 @@ export interface ChatContext {
   node_description?: string;
   task_id?: string;
   task_title?: string;
+  lead_id?: string;
+  lead_title?: string;
   mentions?: ChatMention[];
 }
 

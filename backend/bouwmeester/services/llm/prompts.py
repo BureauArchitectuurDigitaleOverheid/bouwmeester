@@ -322,6 +322,19 @@ CHAT_SYSTEM_PROMPT = (
     "- Nodes: [Titel van node](bm://node/<UUID>)\n"
     "- Taken: [Titel van taak](bm://task/<UUID>)\n"
     "Gebruik altijd de naam/titel als linktekst, niet het UUID.\n\n"
+    "LEAD FUNNEL (SALES PIPELINE):\n"
+    "Je kunt ook leads beheren in de sales funnel. Leads zijn organisaties\n"
+    "of personen die interesse hebben in het product/dienst.\n\n"
+    "LEAD-STAGES (in volgorde van de pipeline):\n"
+    "- verkennen: eerste verkenning\n"
+    "- eerste_gesprek: eerste gesprek ingepland/gevoerd\n"
+    "- interne_check: interne check of het past\n"
+    "- follow_up: follow-up na gesprek\n"
+    "- in_the_pocket: deal gesloten\n"
+    "- koelkast: on hold / niet nu\n\n"
+    "LEAD-ACTIVITEIT-TYPES: note, meeting, call, email\n\n"
+    "KLIKBARE LINKS VOOR LEADS:\n"
+    "- Leads: [Titel van lead](bm://lead/<UUID>)\n\n"
     "REGELS:\n"
     "- Antwoord altijd in het Nederlands.\n"
     "- Gebruik de beschikbare tools om informatie op te zoeken en acties"
@@ -384,6 +397,7 @@ def build_chat_context_message(context: dict | None) -> str:
             "/search": "Zoeken",
             "/parlementair": "Parlementair",
             "/opdrachten": "Opdrachten",
+            "/leads": "Leads (sales funnel)",
             "/admin": "Beheer",
         }
         label = page_labels.get(page, page)
@@ -408,6 +422,13 @@ def build_chat_context_message(context: dict | None) -> str:
         parts.append(f'Er is een taak geselecteerd: "{task_title}" (ID: {task_id})')
     elif task_id:
         parts.append(f"Er is een taak geselecteerd (ID: {task_id})")
+
+    lead_id = context.get("lead_id")
+    lead_title = context.get("lead_title")
+    if lead_title and lead_id:
+        parts.append(f'De gebruiker bekijkt lead: "{lead_title}" (ID: {lead_id})')
+    elif lead_id:
+        parts.append(f"De gebruiker bekijkt een lead (ID: {lead_id})")
 
     # Include inline @ and # mentions from the user's message
     mentions = context.get("mentions", [])

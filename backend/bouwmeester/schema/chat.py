@@ -21,6 +21,8 @@ class ChatContext(BaseModel):
     node_description: str | None = None
     task_id: str | None = None
     task_title: str | None = None
+    lead_id: str | None = None
+    lead_title: str | None = None
     mentions: list[ChatMention] = []
 
 
