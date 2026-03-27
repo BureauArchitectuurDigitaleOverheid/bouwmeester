@@ -4,7 +4,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
-import { useLeads, useMergeLeads } from '@/hooks/useLeads';
+import { useLeads, useMergeLeads, useDeleteLead } from '@/hooks/useLeads';
 import { usePeople } from '@/hooks/usePeople';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
@@ -39,6 +39,7 @@ export function LeadListView() {
   const { currentPerson } = useCurrentPerson();
   const { openLeadDetail } = useLeadDetail();
   const mergeMutation = useMergeLeads();
+  const deleteLead = useDeleteLead();
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -139,25 +140,30 @@ export function LeadListView() {
         )}
       </div>
 
-      {selectedIds.size === 2 && (
+      {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
           <span className="text-sm font-medium text-amber-800">
-            {selectedIds.size} leads geselecteerd
+            {selectedIds.size} lead{selectedIds.size !== 1 ? 's' : ''} geselecteerd
           </span>
-          <Button size="sm" onClick={() => setShowMergeDialog(true)}>
-            Samenvoegen
+          {selectedIds.size === 2 && (
+            <Button size="sm" onClick={() => setShowMergeDialog(true)}>
+              Samenvoegen
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            onClick={async () => {
+              if (!confirm(`${selectedIds.size} lead${selectedIds.size !== 1 ? 's' : ''} verwijderen?`)) return;
+              for (const id of selectedIds) {
+                await deleteLead.mutateAsync(id);
+              }
+              setSelectedIds(new Set());
+            }}
+          >
+            Verwijderen
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
-            Deselecteren
-          </Button>
-        </div>
-      )}
-
-      {selectedIds.size > 0 && selectedIds.size !== 2 && (
-        <div className="flex items-center gap-3 bg-gray-50 border border-border rounded-lg px-4 py-2">
-          <span className="text-sm text-text-secondary">
-            {selectedIds.size} lead{selectedIds.size !== 1 ? 's' : ''} geselecteerd - selecteer precies 2 om samen te voegen
-          </span>
           <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
             Deselecteren
           </Button>
