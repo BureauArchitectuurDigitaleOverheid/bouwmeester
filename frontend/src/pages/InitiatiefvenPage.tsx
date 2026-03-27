@@ -9,7 +9,7 @@ import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { INITIATIEF_COLORS } from '@/types';
 import type { Initiatief, InitiatiefCreate } from '@/types';
 
-export function InitiativevenPage() {
+export function InitiatiefvenPage() {
   const [selectedInitiatief, setSelectedInitiatief] = useState<Initiatief | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 

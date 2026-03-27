@@ -88,6 +88,11 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("initiatief_id", "eenheid_id"),
     )
+    op.create_index(
+        "ix_initiatief_eenheid_eenheid_id",
+        "initiatief_eenheid",
+        ["eenheid_id"],
+    )
 
     # 4. Add initiatief_id column to lead (nullable for migration)
     op.add_column("lead", sa.Column("initiatief_id", sa.UUID(), nullable=True))
@@ -112,13 +117,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Restore organisatie_eenheid_id to NOT NULL
-    op.alter_column(
-        "lead",
-        "organisatie_eenheid_id",
-        existing_type=sa.UUID(),
-        nullable=False,
-    )
+    # NOTE: organisatie_eenheid_id stays nullable on downgrade because
+    # leads may have been created without it during the migration period.
+    # A separate data migration would be needed to restore NOT NULL.
 
     # Drop initiatief_id from lead
     op.drop_constraint("fk_lead_initiatief", "lead", type_="foreignkey")
@@ -126,6 +127,7 @@ def downgrade() -> None:
     op.drop_column("lead", "initiatief_id")
 
     # Drop tables
+    op.drop_index("ix_initiatief_eenheid_eenheid_id", table_name="initiatief_eenheid")
     op.drop_table("initiatief_eenheid")
     op.drop_table("initiatief_member")
     op.drop_table("initiatief")

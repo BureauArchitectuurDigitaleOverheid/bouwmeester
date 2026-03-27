@@ -27,6 +27,41 @@ from bouwmeester.schema.initiatief import (
 router = APIRouter(prefix="/initiatieven", tags=["initiatieven"])
 
 
+async def _require_eigenaar(
+    repo: InitiatiefRepository,
+    initiatief_id: UUID,
+    user: OptionalUser,
+) -> None:
+    """Raise 403 unless user is eigenaar or admin."""
+    if not user:
+        return  # dev mode, no OIDC
+    if user.is_admin:
+        return
+    role = await repo.get_member_role(initiatief_id, user.id)
+    if role != "eigenaar":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Alleen de eigenaar mag dit doen",
+        )
+
+
+async def _require_member_or_admin(
+    repo: InitiatiefRepository,
+    initiatief_id: UUID,
+    user: OptionalUser,
+) -> None:
+    """Raise 404 unless user is a member (direct or via eenheid) or admin."""
+    if not user:
+        return  # dev mode
+    if user.is_admin:
+        return
+    if not await repo.is_member(initiatief_id, user.id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Initiatief niet gevonden",
+        )
+
+
 @router.get("", response_model=list[InitiatiefResponse])
 async def list_initiatieven(
     current_user: OptionalUser,
@@ -65,6 +100,7 @@ async def get_initiatief(
 ) -> InitiatiefDetailResponse:
     repo = InitiatiefRepository(db)
     initiatief = require_found(await repo.get_detail(id), "Initiatief")
+    await _require_member_or_admin(repo, id, current_user)
     # Build response with member/eenheid names
     members = []
     for m in initiatief.members:
@@ -101,14 +137,7 @@ async def update_initiatief(
     db: AsyncSession = Depends(get_db),
 ) -> InitiatiefResponse:
     repo = InitiatiefRepository(db)
-    # Check ownership
-    if current_user:
-        role = await repo.get_member_role(id, current_user.id)
-        if role != "eigenaar" and not current_user.is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Alleen de eigenaar mag het initiatief bewerken",
-            )
+    await _require_eigenaar(repo, id, current_user)
     initiatief = require_found(await repo.update(id, data), "Initiatief")
     return InitiatiefResponse.model_validate(initiatief)
 
@@ -120,14 +149,7 @@ async def delete_initiatief(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = InitiatiefRepository(db)
-    # Check ownership
-    if current_user:
-        role = await repo.get_member_role(id, current_user.id)
-        if role != "eigenaar" and not current_user.is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Alleen de eigenaar mag het initiatief verwijderen",
-            )
+    await _require_eigenaar(repo, id, current_user)
     require_deleted(await repo.delete(id), "Initiatief")
 
 
@@ -149,6 +171,7 @@ async def add_member(
 ) -> InitiatiefMemberResponse:
     repo = InitiatiefRepository(db)
     require_found(await repo.get_by_id(id), "Initiatief")
+    await _require_eigenaar(repo, id, current_user)
     member = await repo.add_member(id, data.person_id, data.rol)
     return InitiatiefMemberResponse(
         initiatief_id=member.initiatief_id,
@@ -170,6 +193,7 @@ async def remove_member(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = InitiatiefRepository(db)
+    await _require_eigenaar(repo, id, current_user)
     # Prevent removing the last eigenaar
     current_role = await repo.get_member_role(id, person_id)
     if current_role == "eigenaar":
@@ -199,6 +223,7 @@ async def update_member_role(
 ) -> InitiatiefMemberResponse:
     """Update a member's role (e.g. promote to eigenaar)."""
     repo = InitiatiefRepository(db)
+    await _require_eigenaar(repo, id, current_user)
     # Prevent demoting the last eigenaar
     if data.rol != "eigenaar":
         eigenaar_count = await repo.count_eigenaren(id)
@@ -241,6 +266,7 @@ async def add_eenheid(
 ) -> InitiatiefEenheidResponse:
     repo = InitiatiefRepository(db)
     require_found(await repo.get_by_id(id), "Initiatief")
+    await _require_eigenaar(repo, id, current_user)
     link = await repo.add_eenheid(id, data.eenheid_id)
     return InitiatiefEenheidResponse(
         initiatief_id=link.initiatief_id,
@@ -261,6 +287,7 @@ async def remove_eenheid(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = InitiatiefRepository(db)
+    await _require_eigenaar(repo, id, current_user)
     if not await repo.remove_eenheid(id, eenheid_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
