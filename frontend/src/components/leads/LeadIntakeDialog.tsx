@@ -293,7 +293,11 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
 
       // Upload attached files
       for (const file of files) {
-        await uploadAttachment.mutateAsync({ leadId: lead.id, file });
+        try {
+          await uploadAttachment.mutateAsync({ leadId: lead.id, file });
+        } catch {
+          // Non-critical, don't block lead creation
+        }
       }
 
       // Add contact person as LeadContact

@@ -6,7 +6,7 @@ set -e
 export PATH="/app/.venv/bin:$PATH"
 
 # Ensure bijlagen directories exist (volume mounts may override image dirs)
-mkdir -p /data/bijlagen/chat 2>/dev/null || true
+mkdir -p /data/bijlagen/chat /data/bijlagen/leads 2>/dev/null || true
 
 # Verify write access — fail fast with actionable error
 if ! touch /data/bijlagen/chat/.write_test_$$ 2>/dev/null; then
