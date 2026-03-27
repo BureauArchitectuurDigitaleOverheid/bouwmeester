@@ -1,13 +1,15 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Upload, X, FileText, Sparkles } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake } from '@/hooks/useLeads';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake, useAddLeadContact } from '@/hooks/useLeads';
 import { usePeople, usePersonOrganisaties } from '@/hooks/usePeople';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
-import { LeadStage } from '@/types';
+import { LeadStage, formatFunctie } from '@/types';
 import type { LeadParseResult } from '@/types';
+import { buildPersonOptions } from '@/utils/personOptions';
 
 interface LeadIntakeDialogProps {
   open: boolean;
@@ -30,15 +32,28 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
   const [contactName, setContactName] = useState('');
+  const [contactPersonId, setContactPersonId] = useState<string>('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
   const [assigneeId, setAssigneeId] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const createLead = useCreateLead();
   const uploadAttachment = useUploadLeadAttachment();
   const parseLead = useParseLeadIntake();
+  const addLeadContact = useAddLeadContact();
   const { currentPerson } = useCurrentPerson();
   const { data: personPlaatsingen } = usePersonOrganisaties(currentPerson?.id ?? null);
   const { data: people } = usePeople();
+
+  const personOptions = useMemo(
+    () => buildPersonOptions(people ?? [], currentPerson, (p) => ({
+      value: p.id,
+      label: p.naam,
+      description: formatFunctie(p.functie),
+    })),
+    [people, currentPerson],
+  );
 
   const myEenheden = personPlaatsingen ?? [];
 
@@ -48,6 +63,20 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       setOrgEenheidId(myEenheden[0].organisatie_eenheid_id);
     }
   }, [myEenheden, orgEenheidId]);
+
+  // Try to match VLAM's contact_name against existing people
+  useEffect(() => {
+    if (contactName && people) {
+      const match = people.find(
+        (p) =>
+          p.naam.toLowerCase().includes(contactName.toLowerCase()) ||
+          contactName.toLowerCase().includes(p.naam.toLowerCase()),
+      );
+      if (match) {
+        setContactPersonId(match.id);
+      }
+    }
+  }, [contactName, people]);
 
   const reset = useCallback(() => {
     setStep('input');
@@ -59,6 +88,9 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     setDescription('');
     setTags('');
     setContactName('');
+    setContactPersonId('');
+    setContactEmail('');
+    setContactPhone('');
     setAssigneeId('');
     setOrgEenheidId('');
   }, []);
@@ -130,10 +162,13 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       .map((t) => t.trim())
       .filter(Boolean);
 
-    // Build description, include contact name if provided
+    // Build description, include contact info if provided
     const descParts = [description.trim()];
     if (contactName.trim()) {
-      descParts.push(`Contactpersoon: ${contactName.trim()}`);
+      let contactInfo = `Contactpersoon: ${contactName.trim()}`;
+      if (contactEmail.trim()) contactInfo += ` (${contactEmail.trim()})`;
+      if (contactPhone.trim()) contactInfo += ` | Tel: ${contactPhone.trim()}`;
+      descParts.push(contactInfo);
     }
     const fullDescription = descParts.filter(Boolean).join('\n\n') || null;
 
@@ -152,6 +187,19 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       // Upload attached files
       for (const file of files) {
         await uploadAttachment.mutateAsync({ leadId: lead.id, file });
+      }
+
+      // Add contact person as LeadContact if an existing person was selected
+      if (contactPersonId) {
+        try {
+          await addLeadContact.mutateAsync({
+            leadId: lead.id,
+            personId: contactPersonId,
+            rol: 'contactpersoon',
+          });
+        } catch {
+          // Non-critical, don't block lead creation
+        }
       }
 
       handleClose();
@@ -333,18 +381,60 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">
-              Contactpersoon
-            </label>
-            <input
-              type="text"
-              value={contactName}
-              onChange={(e) => setContactName(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-              placeholder="Naam van de contactpersoon"
-            />
-          </div>
+          <CreatableSelect
+            label="Contactpersoon"
+            value={contactPersonId}
+            onChange={(val) => {
+              setContactPersonId(val);
+              // Update contactName from selected person
+              const person = people?.find((p) => p.id === val);
+              if (person) setContactName(person.naam);
+            }}
+            options={personOptions}
+            placeholder="Zoek of typ een naam..."
+            onCreate={async (name) => {
+              setContactName(name);
+              setContactPersonId('');
+              return null;
+            }}
+            createLabel="Nieuw contact"
+            displayValue={!contactPersonId && contactName ? contactName : undefined}
+            onClear={() => {
+              setContactPersonId('');
+              setContactName('');
+              setContactEmail('');
+              setContactPhone('');
+            }}
+          />
+
+          {(contactPersonId || contactName) && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-text mb-1">
+                  E-mail contactpersoon
+                </label>
+                <input
+                  type="email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+                  placeholder="email@organisatie.nl"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text mb-1">
+                  Telefoon contactpersoon
+                </label>
+                <input
+                  type="tel"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+                  placeholder="06-12345678"
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-text mb-1">
@@ -372,25 +462,14 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">
-              Verantwoordelijke
-            </label>
-            <select
-              value={assigneeId}
-              onChange={(e) => setAssigneeId(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-            >
-              <option value="">Geen (later toewijzen)</option>
-              {people
-                ?.filter((p) => p.is_active)
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.naam}
-                  </option>
-                ))}
-            </select>
-          </div>
+          <CreatableSelect
+            label="Verantwoordelijke"
+            value={assigneeId}
+            onChange={setAssigneeId}
+            options={personOptions}
+            placeholder="Zoek een persoon..."
+            onClear={() => setAssigneeId('')}
+          />
 
           {files.length > 0 && (
             <p className="text-xs text-text-secondary">
