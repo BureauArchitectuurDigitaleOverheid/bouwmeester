@@ -20,39 +20,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # externe_organisatie is a prerequisite for lead (FK reference)
-    op.create_table(
-        "externe_organisatie",
-        sa.Column(
-            "id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False
-        ),
-        sa.Column("naam", sa.String(), nullable=False),
-        sa.Column("afkorting", sa.String(), nullable=True),
-        sa.Column(
-            "type",
-            sa.String(),
-            nullable=False,
-            comment="uitvoeringsorganisatie|zbo|koepelorganisatie|stichting|marktpartij|overig",
-        ),
-        sa.Column("kvk_nummer", sa.String(), nullable=True),
-        sa.Column("website", sa.String(), nullable=True),
-        sa.Column("beschrijving", sa.Text(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.CheckConstraint(
-            "type IN ('uitvoeringsorganisatie', 'zbo',"
-            " 'koepelorganisatie', 'stichting',"
-            " 'marktpartij', 'overig')",
-            name="ck_externe_organisatie_type",
-        ),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("naam", name="uq_externe_organisatie_naam"),
-    )
+    # externe_organisatie already exists (created in migration 233ab470df5d)
 
     op.create_table(
         "lead",
@@ -236,4 +204,4 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_lead_organisatie_eenheid_id"), table_name="lead")
     op.drop_index(op.f("ix_lead_assignee_id"), table_name="lead")
     op.drop_table("lead")
-    op.drop_table("externe_organisatie")
+    # externe_organisatie not dropped here (owned by migration 233ab470df5d)
