@@ -1604,6 +1604,32 @@ export interface LeadFilters {
   stage?: string;
   tag?: string;
   assignee_id?: string;
+  date_from?: string;
+  date_to?: string;
+  next_action_filter?: string;  // "overdue" | "today" | "this_week"
+  sort_by?: string;  // "created_at" | "updated_at" | "next_action_date" | "stage"
+}
+
+export interface LeadTimelineEvent {
+  id: string;
+  lead_id: string;
+  lead_title: string;
+  event_type: 'created' | 'stage_change' | 'note' | 'meeting' | 'call' | 'email';
+  timestamp: string;
+  actor_naam: string | null;
+  content: string | null;
+  from_stage: string | null;
+  to_stage: string | null;
+  organization: string | null;
+  stage: string;
+  assignee_naam: string | null;
+}
+
+export interface LeadTimelineResponse {
+  events: LeadTimelineEvent[];
+  total: number;
+  earliest: string | null;
+  latest: string | null;
 }
 
 export interface LeadParseResult {

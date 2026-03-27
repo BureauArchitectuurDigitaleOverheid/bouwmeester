@@ -216,3 +216,39 @@ class LeadParseResult(BaseModel):
     description: str | None = None
     contact_name: str | None = None
     suggested_tags: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Timeline
+# ---------------------------------------------------------------------------
+
+
+class LeadTimelineEvent(BaseModel):
+    """A single event on the lead timeline."""
+
+    id: str  # activity id or "created-{lead_id}"
+    lead_id: UUID
+    lead_title: str
+    event_type: (
+        str  # "created" | "stage_change" | "note" | "meeting" | "call" | "email"
+    )
+    timestamp: datetime
+    actor_naam: str | None = None
+    content: str | None = None  # activity content or creation description
+    # Stage change specific
+    from_stage: str | None = None
+    to_stage: str | None = None
+    # Lead metadata at time of event
+    organization: str | None = None
+    stage: str  # current stage of the lead
+    assignee_naam: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LeadTimelineResponse(BaseModel):
+    events: list[LeadTimelineEvent]
+    total: int
+    # Aggregates for the timeline header
+    earliest: datetime | None = None
+    latest: datetime | None = None

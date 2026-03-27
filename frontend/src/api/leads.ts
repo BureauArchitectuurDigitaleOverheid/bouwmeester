@@ -11,6 +11,7 @@ import type {
   LeadAttachment,
   LeadParseResult,
   CommunityGraphResponse,
+  LeadTimelineResponse,
 } from '@/types';
 
 export async function getLeads(filters?: LeadFilters): Promise<Lead[]> {
@@ -18,7 +19,27 @@ export async function getLeads(filters?: LeadFilters): Promise<Lead[]> {
   if (filters?.stage) params.stage = filters.stage;
   if (filters?.tag) params.tag = filters.tag;
   if (filters?.assignee_id) params.assignee_id = filters.assignee_id;
+  if (filters?.date_from) params.date_from = filters.date_from;
+  if (filters?.date_to) params.date_to = filters.date_to;
+  if (filters?.next_action_filter) params.next_action_filter = filters.next_action_filter;
+  if (filters?.sort_by) params.sort_by = filters.sort_by;
   return apiGet<Lead[]>('/api/leads', params);
+}
+
+export async function getLeadTimeline(params?: {
+  stage?: string;
+  assignee_id?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+}): Promise<LeadTimelineResponse> {
+  const query: Record<string, string | number> = {};
+  if (params?.stage) query.stage = params.stage;
+  if (params?.assignee_id) query.assignee_id = params.assignee_id;
+  if (params?.date_from) query.date_from = params.date_from;
+  if (params?.date_to) query.date_to = params.date_to;
+  if (params?.limit) query.limit = params.limit;
+  return apiGet<LeadTimelineResponse>('/api/leads/timeline', query);
 }
 
 export async function getLead(id: string): Promise<LeadDetail> {

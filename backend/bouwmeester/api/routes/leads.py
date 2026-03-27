@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from datetime import date
 from pathlib import Path
 from uuid import UUID
 
@@ -37,6 +38,8 @@ from bouwmeester.schema.lead import (
     LeadReorder,
     LeadResponse,
     LeadStage,
+    LeadTimelineEvent,
+    LeadTimelineResponse,
     LeadUpdate,
 )
 from bouwmeester.schema.notification import NotificationCreate
@@ -61,6 +64,10 @@ async def list_leads(
     stage: LeadStage | None = Query(None),
     tag: str | None = Query(None),
     assignee_id: UUID | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    next_action_filter: str | None = Query(None),
+    sort_by: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
@@ -75,6 +82,10 @@ async def list_leads(
         tag=tag,
         assignee_id=assignee_id,
         org_ctx=org_ctx,
+        date_from=date_from,
+        date_to=date_to,
+        next_action_filter=next_action_filter,
+        sort_by=sort_by,
     )
     return validate_list(LeadResponse, leads)
 
@@ -115,6 +126,39 @@ async def get_metrics(
     repo = LeadRepository(db)
     metrics = await repo.get_metrics(org_ctx=org_ctx)
     return LeadMetricsResponse(**metrics)
+
+
+@router.get("/timeline", response_model=LeadTimelineResponse)
+async def get_timeline(
+    current_user: OptionalUser,
+    org_ctx: OrgContext = Depends(get_org_context),
+    stage: str | None = Query(None),
+    assignee_id: UUID | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    limit: int = Query(500, le=1000),
+    db: AsyncSession = Depends(get_db),
+) -> LeadTimelineResponse:
+    """Get a chronological timeline of all lead events."""
+    repo = LeadRepository(db)
+    events_data = await repo.get_timeline(
+        org_ctx=org_ctx,
+        stage=stage,
+        assignee_id=assignee_id,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+
+    events = [LeadTimelineEvent(**e) for e in events_data]
+
+    timestamps = [e.timestamp for e in events]
+    return LeadTimelineResponse(
+        events=events,
+        total=len(events),
+        earliest=min(timestamps) if timestamps else None,
+        latest=max(timestamps) if timestamps else None,
+    )
 
 
 @router.get("/{lead_id}", response_model=LeadDetailResponse)

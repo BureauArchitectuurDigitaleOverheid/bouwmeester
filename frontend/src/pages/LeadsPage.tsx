@@ -1,19 +1,21 @@
 import { useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Columns3, LayoutGrid, GitFork } from 'lucide-react';
+import { Plus, Columns3, LayoutGrid, GitFork, Clock } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { ViewToggle } from '@/components/common/ViewToggle';
 import type { ViewToggleOption } from '@/components/common/ViewToggle';
 import { LeadKanbanBoard } from '@/components/leads/LeadKanbanBoard';
 import { LeadListView } from '@/components/leads/LeadListView';
 import { LeadGraphView } from '@/components/leads/LeadGraphView';
+import { LeadTimelineView } from '@/components/leads/LeadTimelineView';
 import { LeadIntakeDialog } from '@/components/leads/LeadIntakeDialog';
 
-type LeadViewMode = 'kanban' | 'list' | 'graph';
+type LeadViewMode = 'kanban' | 'list' | 'graph' | 'timeline';
 
 const VIEW_OPTIONS: ViewToggleOption<LeadViewMode>[] = [
   { value: 'kanban', label: 'Kanban', icon: <Columns3 className="h-3.5 w-3.5" /> },
   { value: 'list', label: 'Lijst', icon: <LayoutGrid className="h-3.5 w-3.5" /> },
+  { value: 'timeline', label: 'Tijdlijn', icon: <Clock className="h-3.5 w-3.5" /> },
   { value: 'graph', label: 'Netwerk', icon: <GitFork className="h-3.5 w-3.5" /> },
 ];
 
@@ -21,7 +23,13 @@ export function LeadsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const viewParam = searchParams.get('view');
   const viewMode: LeadViewMode =
-    viewParam === 'list' ? 'list' : viewParam === 'graph' ? 'graph' : 'kanban';
+    viewParam === 'list'
+      ? 'list'
+      : viewParam === 'graph'
+        ? 'graph'
+        : viewParam === 'timeline'
+          ? 'timeline'
+          : 'kanban';
 
   const [showIntake, setShowIntake] = useState(false);
 
@@ -64,6 +72,8 @@ export function LeadsPage() {
         <LeadKanbanBoard />
       ) : viewMode === 'list' ? (
         <LeadListView />
+      ) : viewMode === 'timeline' ? (
+        <LeadTimelineView />
       ) : viewMode === 'graph' ? (
         <LeadGraphView />
       ) : null}

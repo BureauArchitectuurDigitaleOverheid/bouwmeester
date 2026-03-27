@@ -100,6 +100,8 @@ from bouwmeester.schema.lead import (
     LeadReorder,
     LeadResponse,
     LeadStage,
+    LeadTimelineEvent,
+    LeadTimelineResponse,
     LeadUpdate,
 )
 from bouwmeester.schema.llm import (
@@ -372,6 +374,8 @@ __all__ = [
     "LeadReorder",
     "LeadResponse",
     "LeadStage",
+    "LeadTimelineEvent",
+    "LeadTimelineResponse",
     "LeadUpdate",
     # search
     "SearchResponse",

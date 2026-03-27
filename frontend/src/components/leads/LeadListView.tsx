@@ -18,10 +18,14 @@ import { isOverdue, formatDateShort } from '@/utils/dates';
 export function LeadListView() {
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterTag, setFilterTag] = useState('');
+  const [nextActionFilter, setNextActionFilter] = useState('');
+  const [sortBy, setSortBy] = useState('');
 
   const filters: LeadFilters = {};
   if (filterAssignee) filters.assignee_id = filterAssignee;
   if (filterTag) filters.tag = filterTag;
+  if (nextActionFilter) filters.next_action_filter = nextActionFilter;
+  if (sortBy) filters.sort_by = sortBy;
 
   const { data: leads, isLoading } = useLeads(
     Object.keys(filters).length > 0 ? filters : undefined,
@@ -83,11 +87,33 @@ export function LeadListView() {
           placeholder="Filter op tag..."
           className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400 w-48"
         />
-        {(filterAssignee || filterTag) && (
+        <select
+          value={nextActionFilter}
+          onChange={(e) => setNextActionFilter(e.target.value)}
+          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400"
+        >
+          <option value="">Alle acties</option>
+          <option value="overdue">Achterstallig</option>
+          <option value="today">Vandaag</option>
+          <option value="this_week">Deze week</option>
+        </select>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400"
+        >
+          <option value="">Standaard</option>
+          <option value="created_at">Aangemaakt</option>
+          <option value="updated_at">Laatst gewijzigd</option>
+          <option value="next_action_date">Volgende actie</option>
+        </select>
+        {(filterAssignee || filterTag || nextActionFilter || sortBy) && (
           <button
             onClick={() => {
               setFilterAssignee('');
               setFilterTag('');
+              setNextActionFilter('');
+              setSortBy('');
             }}
             className="text-sm text-text-secondary hover:text-text transition-colors"
           >

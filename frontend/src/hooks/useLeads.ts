@@ -18,6 +18,7 @@ import {
   deleteLeadAttachment,
   parseLeadIntake,
   getCommunityGraph,
+  getLeadTimeline,
 } from '@/api/leads';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
@@ -253,5 +254,18 @@ export function useParseLeadIntake() {
   return useMutation({
     mutationFn: ({ rawText, files }: { rawText?: string; files?: File[] }) =>
       parseLeadIntake(rawText, files),
+  });
+}
+
+export function useLeadTimeline(params?: {
+  stage?: string;
+  assignee_id?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: [...queryKeys.leads.all, 'timeline', params],
+    queryFn: () => getLeadTimeline(params),
   });
 }

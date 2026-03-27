@@ -29,10 +29,12 @@ const COLUMN_BORDER_COLORS: Record<LeadStage, string> = {
 export function LeadKanbanBoard() {
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterTag, setFilterTag] = useState('');
+  const [nextActionFilter, setNextActionFilter] = useState('');
 
   const filters: LeadFilters = {};
   if (filterAssignee) filters.assignee_id = filterAssignee;
   if (filterTag) filters.tag = filterTag;
+  if (nextActionFilter) filters.next_action_filter = nextActionFilter;
 
   const { data: leads, isLoading } = useLeads(
     Object.keys(filters).length > 0 ? filters : undefined,
@@ -118,11 +120,22 @@ export function LeadKanbanBoard() {
           placeholder="Filter op tag..."
           className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400 w-48"
         />
-        {(filterAssignee || filterTag) && (
+        <select
+          value={nextActionFilter}
+          onChange={(e) => setNextActionFilter(e.target.value)}
+          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400"
+        >
+          <option value="">Alle acties</option>
+          <option value="overdue">Achterstallig</option>
+          <option value="today">Vandaag</option>
+          <option value="this_week">Deze week</option>
+        </select>
+        {(filterAssignee || filterTag || nextActionFilter) && (
           <button
             onClick={() => {
               setFilterAssignee('');
               setFilterTag('');
+              setNextActionFilter('');
             }}
             className="text-sm text-text-secondary hover:text-text transition-colors"
           >

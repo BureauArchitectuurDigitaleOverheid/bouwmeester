@@ -1,6 +1,6 @@
 """Repository for Lead CRUD and queries."""
 
-from datetime import date
+from datetime import UTC, date, timedelta
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -63,6 +63,10 @@ class LeadRepository(BaseRepository[Lead]):
         tag: str | None = None,
         assignee_id: UUID | None = None,
         org_ctx: OrgContext | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        next_action_filter: str | None = None,
+        sort_by: str | None = None,
     ) -> list[Lead]:
         stmt = select(Lead).options(*_lead_options()).offset(skip).limit(limit)
         if stage is not None:
@@ -71,8 +75,43 @@ class LeadRepository(BaseRepository[Lead]):
             stmt = stmt.where(Lead.tags.op("@>")(f'["{tag}"]'))
         if assignee_id is not None:
             stmt = stmt.where(Lead.assignee_id == assignee_id)
+
+        # Date filters on created_at
+        if date_from is not None:
+            stmt = stmt.where(func.date(Lead.created_at) >= date_from)
+        if date_to is not None:
+            stmt = stmt.where(func.date(Lead.created_at) <= date_to)
+
+        # Next action date filters
+        if next_action_filter is not None:
+            today = date.today()
+            if next_action_filter == "overdue":
+                stmt = stmt.where(
+                    Lead.next_action_date < today,
+                    Lead.stage.notin_(["in_the_pocket", "koelkast"]),
+                )
+            elif next_action_filter == "today":
+                stmt = stmt.where(Lead.next_action_date == today)
+            elif next_action_filter == "this_week":
+                stmt = stmt.where(
+                    Lead.next_action_date >= today,
+                    Lead.next_action_date <= today + timedelta(days=7),
+                )
+
         stmt = apply_org_filter(stmt, Lead.organisatie_eenheid_id, org_ctx)
-        stmt = stmt.order_by(Lead.sort_order.asc(), Lead.created_at.desc())
+
+        # Sorting
+        sort_columns = {
+            "created_at": Lead.created_at.desc(),
+            "updated_at": Lead.updated_at.desc().nulls_last(),
+            "next_action_date": Lead.next_action_date.asc().nulls_last(),
+            "stage": Lead.stage.asc(),
+        }
+        if sort_by and sort_by in sort_columns:
+            stmt = stmt.order_by(sort_columns[sort_by])
+        else:
+            stmt = stmt.order_by(Lead.sort_order.asc(), Lead.created_at.desc())
+
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -178,6 +217,107 @@ class LeadRepository(BaseRepository[Lead]):
         await self.session.delete(lead)
         await self.session.flush()
         return True
+
+    async def get_timeline(
+        self,
+        org_ctx: OrgContext | None = None,
+        stage: str | None = None,
+        assignee_id: UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """Build a chronological timeline of all lead events.
+
+        Combines lead creation events and activity events into a single
+        list sorted by timestamp descending.
+        """
+        # 1. Query visible leads with optional filters
+        lead_stmt = select(Lead).options(
+            selectinload(Lead.assignee),
+        )
+        if stage is not None:
+            lead_stmt = lead_stmt.where(Lead.stage == stage)
+        if assignee_id is not None:
+            lead_stmt = lead_stmt.where(Lead.assignee_id == assignee_id)
+        lead_stmt = apply_org_filter(lead_stmt, Lead.organisatie_eenheid_id, org_ctx)
+        result = await self.session.execute(lead_stmt)
+        leads = list(result.scalars().all())
+
+        if not leads:
+            return []
+
+        lead_map = {lead.id: lead for lead in leads}
+        lead_ids = list(lead_map.keys())
+
+        # 2. Build "created" events from leads
+        events: list[dict] = []
+        for lead in leads:
+            events.append(
+                {
+                    "id": f"created-{lead.id}",
+                    "lead_id": lead.id,
+                    "lead_title": lead.title,
+                    "event_type": "created",
+                    "timestamp": lead.created_at,
+                    "actor_naam": None,
+                    "content": lead.description,
+                    "from_stage": None,
+                    "to_stage": None,
+                    "organization": lead.organization,
+                    "stage": lead.stage,
+                    "assignee_naam": (lead.assignee.naam if lead.assignee else None),
+                }
+            )
+
+        # 3. Query all activities for those leads
+        activity_stmt = (
+            select(LeadActivity)
+            .where(LeadActivity.lead_id.in_(lead_ids))
+            .options(selectinload(LeadActivity.author))
+        )
+        act_result = await self.session.execute(activity_stmt)
+        activities = list(act_result.scalars().all())
+
+        for act in activities:
+            lead = lead_map[act.lead_id]
+            metadata = act.metadata_ or {}
+            events.append(
+                {
+                    "id": str(act.id),
+                    "lead_id": act.lead_id,
+                    "lead_title": lead.title,
+                    "event_type": act.activity_type,
+                    "timestamp": act.created_at,
+                    "actor_naam": (act.author.naam if act.author else None),
+                    "content": act.content,
+                    "from_stage": metadata.get("from"),
+                    "to_stage": metadata.get("to"),
+                    "organization": lead.organization,
+                    "stage": lead.stage,
+                    "assignee_naam": (lead.assignee.naam if lead.assignee else None),
+                }
+            )
+
+        # 4. Apply date filters on timestamp
+        if date_from is not None:
+            from datetime import datetime
+
+            dt_from = datetime.combine(date_from, datetime.min.time()).replace(
+                tzinfo=UTC
+            )
+            events = [e for e in events if e["timestamp"] >= dt_from]
+        if date_to is not None:
+            from datetime import datetime
+
+            dt_to = datetime.combine(date_to, datetime.max.time()).replace(tzinfo=UTC)
+            events = [e for e in events if e["timestamp"] <= dt_to]
+
+        # 5. Sort by timestamp descending
+        events.sort(key=lambda e: e["timestamp"], reverse=True)
+
+        # 6. Apply limit
+        return events[:limit]
 
     async def get_metrics(self, org_ctx: OrgContext | None = None) -> dict:
         # Total count
