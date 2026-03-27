@@ -1490,10 +1490,10 @@ export interface LeadAssigneeSummary {
   naam: string;
 }
 
-export interface LeadOrgEenheidSummary {
+export interface LeadInitiatiefSummary {
   id: string;
   naam: string;
-  type: string | null;
+  kleur: string | null;
 }
 
 export interface LeadExterneOrgSummary {
@@ -1550,8 +1550,8 @@ export interface Lead {
   assignee: LeadAssigneeSummary | null;
   brought_by_id: string | null;
   brought_by: LeadAssigneeSummary | null;
-  organisatie_eenheid_id: string;
-  organisatie_eenheid: LeadOrgEenheidSummary | null;
+  initiatief_id: string | null;
+  initiatief: LeadInitiatiefSummary | null;
   next_action: string | null;
   next_action_date: string | null;
   tags: string[];
@@ -1580,7 +1580,7 @@ export interface LeadCreate {
   next_action?: string | null;
   next_action_date?: string | null;
   raw_intake_text?: string | null;
-  organisatie_eenheid_id: string;
+  initiatief_id?: string | null;
   created_at?: string | null;
 }
 
@@ -1595,7 +1595,7 @@ export interface LeadUpdate {
   next_action?: string | null;
   next_action_date?: string | null;
   raw_intake_text?: string | null;
-  organisatie_eenheid_id?: string;
+  initiatief_id?: string | null;
 }
 
 export interface LeadActivityCreate {
@@ -1617,6 +1617,7 @@ export interface LeadFilters {
   date_to?: string;
   next_action_filter?: string;  // "overdue" | "today" | "this_week"
   sort_by?: string;  // "created_at" | "updated_at" | "next_action_date" | "stage"
+  initiatief_id?: string;
 }
 
 export interface LeadTimelineEvent {
@@ -1641,6 +1642,63 @@ export interface LeadTimelineResponse {
   latest: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Initiatief
+// ---------------------------------------------------------------------------
+
+export interface Initiatief {
+  id: string;
+  naam: string;
+  beschrijving: string | null;
+  kleur: string | null;
+  created_by_id: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface InitiatiefCreate {
+  naam: string;
+  beschrijving?: string | null;
+  kleur?: string | null;
+}
+
+export interface InitiatiefUpdate {
+  naam?: string;
+  beschrijving?: string | null;
+  kleur?: string | null;
+}
+
+export interface InitiatiefMember {
+  initiatief_id: string;
+  person_id: string;
+  person_naam: string;
+  rol: string;
+  created_at: string;
+}
+
+export interface InitiatiefEenheid {
+  initiatief_id: string;
+  eenheid_id: string;
+  eenheid_naam: string;
+  created_at: string;
+}
+
+export interface InitiatiefDetail extends Initiatief {
+  members: InitiatiefMember[];
+  eenheden: InitiatiefEenheid[];
+}
+
+export const INITIATIEF_COLORS = [
+  '#3B82F6', // blue
+  '#10B981', // green
+  '#F59E0B', // amber
+  '#EF4444', // red
+  '#8B5CF6', // purple
+  '#EC4899', // pink
+  '#06B6D4', // cyan
+  '#F97316', // orange
+];
+
 export interface LeadParseResult {
   title: string | null;
   organization: string | null;
@@ -1659,6 +1717,7 @@ export interface CommunityGraphNode {
   node_type: 'lead' | 'person' | 'organisation' | 'corpus_node';
   label: string;
   stage?: string | null;
+  initiatief_id?: string | null;
   functie?: string | null;
   org_type?: string | null;
   corpus_node_type?: string | null;

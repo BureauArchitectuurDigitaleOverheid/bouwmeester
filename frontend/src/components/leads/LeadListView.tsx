@@ -7,6 +7,7 @@ import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { useLeads, useMergeLeads, useDeleteLead } from '@/hooks/useLeads';
 import { usePeople } from '@/hooks/usePeople';
+import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { LeadMetricsBar } from './LeadMetricsBar';
@@ -15,6 +16,7 @@ import {
   LEAD_STAGE_ORDER,
   LEAD_STAGE_LABELS,
   LEAD_STAGE_COLORS,
+  INITIATIEF_COLORS,
 } from '@/types';
 import type { Lead, LeadFilters } from '@/types';
 import { isOverdue, formatDateShort, timeAgo } from '@/utils/dates';
@@ -41,6 +43,7 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterTag, setFilterTag] = useState('');
   const [nextActionFilter, setNextActionFilter] = useState('');
+  const [filterInitiatief, setFilterInitiatief] = useState('');
   const [sortBy, setSortBy] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showMergeDialog, setShowMergeDialog] = useState(false);
@@ -49,12 +52,15 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
   if (filterAssignee) filters.assignee_id = filterAssignee;
   if (filterTag) filters.tag = filterTag;
   if (nextActionFilter) filters.next_action_filter = nextActionFilter;
+  if (filterInitiatief) filters.initiatief_id = filterInitiatief;
   if (sortBy) filters.sort_by = sortBy;
 
   const { data: leads, isLoading } = useLeads(
     Object.keys(filters).length > 0 ? filters : undefined,
   );
   const { data: people } = usePeople();
+  const { data: initiatieven } = useInitiatieven();
+  const createInitiatief = useCreateInitiatief();
   const { currentPerson } = useCurrentPerson();
   const { openLeadDetail } = useLeadDetail();
   const mergeMutation = useMergeLeads();
@@ -144,6 +150,24 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
             onClear={nextActionFilter ? () => setNextActionFilter('') : undefined}
           />
         </div>
+        <div className="w-48">
+          <CreatableSelect
+            value={filterInitiatief}
+            onChange={setFilterInitiatief}
+            options={[
+              { value: '', label: 'Alle initiatieven' },
+              ...(initiatieven?.map((i) => ({ value: i.id, label: i.naam })) ?? []),
+            ]}
+            placeholder="Alle initiatieven"
+            onClear={filterInitiatief ? () => setFilterInitiatief('') : undefined}
+            onCreate={async (name) => {
+              const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
+              const result = await createInitiatief.mutateAsync({ naam: name, kleur });
+              return result.id;
+            }}
+            createLabel="Nieuw initiatief"
+          />
+        </div>
         <div className="w-44">
           <CreatableSelect
             value={sortBy}
@@ -154,12 +178,13 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
             onClear={sortBy ? () => setSortBy('') : undefined}
           />
         </div>
-        {(filterAssignee || filterTag || nextActionFilter || sortBy) && (
+        {(filterAssignee || filterTag || nextActionFilter || filterInitiatief || sortBy) && (
           <button
             onClick={() => {
               setFilterAssignee('');
               setFilterTag('');
               setNextActionFilter('');
+              setFilterInitiatief('');
               setSortBy('');
             }}
             className="text-sm text-text-secondary hover:text-text transition-colors"
@@ -220,6 +245,9 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
                     Organisatie
                   </th>
                   <th className="text-left px-4 py-3 font-medium text-text-secondary">
+                    Initiatief
+                  </th>
+                  <th className="text-left px-4 py-3 font-medium text-text-secondary">
                     Fase
                   </th>
                   <th className="text-left px-4 py-3 font-medium text-text-secondary">
@@ -261,6 +289,18 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
                         {lead.externe_organisatie?.naam ??
                           lead.organization ??
                           '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {lead.initiatief ? (
+                          <span
+                            className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
+                            style={{ backgroundColor: lead.initiatief.kleur || '#6B7280' }}
+                          >
+                            {lead.initiatief.naam}
+                          </span>
+                        ) : (
+                          <span className="text-text-secondary">-</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span

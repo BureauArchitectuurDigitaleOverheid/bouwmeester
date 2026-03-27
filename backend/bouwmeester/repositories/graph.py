@@ -8,6 +8,10 @@ from uuid import UUID
 from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.initiatief_context import (
+    InitiatiefContext,
+    apply_initiatief_filter,
+)
 from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
@@ -211,12 +215,13 @@ class GraphRepository:
     async def get_community_graph(
         self,
         org_ctx: OrgContext | None = None,
+        init_ctx: InitiatiefContext | None = None,
     ) -> CommunityGraphResponse:
         """Build a unified graph of leads, persons, organisations and corpus nodes.
 
-        The graph includes all visible leads (filtered by OrgContext) and
-        transitively collects every person, external organisation, internal
-        organisatie-eenheid, and corpus node connected to those leads.
+        The graph includes all visible leads (filtered by InitiatiefContext)
+        and transitively collects every person, external organisation, and
+        corpus node connected to those leads.
 
         Returns a ``CommunityGraphResponse`` with deduplicated nodes and edges.
         """
@@ -231,7 +236,7 @@ class GraphRepository:
 
         # -- 1. Visible leads --
         leads_stmt = select(Lead)
-        leads_stmt = apply_org_filter(leads_stmt, Lead.organisatie_eenheid_id, org_ctx)
+        leads_stmt = apply_initiatief_filter(leads_stmt, Lead.initiatief_id, init_ctx)
         leads_result = await self.session.execute(leads_stmt)
         leads = list(leads_result.scalars().all())
 
@@ -244,6 +249,7 @@ class GraphRepository:
                 node_type="lead",
                 label=lead.title,
                 stage=lead.stage,
+                initiatief_id=str(lead.initiatief_id) if lead.initiatief_id else None,
             )
 
         if not lead_ids:

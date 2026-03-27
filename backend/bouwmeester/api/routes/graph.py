@@ -8,6 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.initiatief_context import (
+    InitiatiefContext,
+    get_initiatief_context,
+)
 from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.repositories.graph import GraphRepository
 from bouwmeester.schema.community_graph import CommunityGraphResponse
@@ -72,14 +76,14 @@ async def find_path(
 async def get_community_graph(
     current_user: OptionalUser,
     org_ctx: OrgContext = Depends(get_org_context),
+    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
     db: AsyncSession = Depends(get_db),
 ) -> CommunityGraphResponse:
     """Return a community graph of leads, people, organisations and corpus nodes.
 
     Builds a unified graph starting from all visible leads (filtered by
-    the caller's org context) and transitively includes all related
-    persons, external organisations, internal organisatie-eenheden, and
-    linked corpus nodes with their inter-relationships.
+    the caller's initiatief context) and transitively includes all related
+    persons, external organisations, and linked corpus nodes.
     """
     repo = GraphRepository(db)
-    return await repo.get_community_graph(org_ctx=org_ctx)
+    return await repo.get_community_graph(org_ctx=org_ctx, init_ctx=init_ctx)

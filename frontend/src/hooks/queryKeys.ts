@@ -153,6 +153,14 @@ export const queryKeys = {
     detail: (id: string | undefined) => ['externe-organisaties', 'detail', id] as const,
   },
 
+  // --- Initiatieven ---
+  initiatieven: {
+    all: ['initiatieven'] as const,
+    lists: () => ['initiatieven', 'list'] as const,
+    list: (params?: { search?: string }) => ['initiatieven', 'list', params] as const,
+    detail: (id: string | undefined) => ['initiatieven', 'detail', id] as const,
+  },
+
   // --- Leads ---
   leads: {
     all: ['leads'] as const,

@@ -21,6 +21,11 @@ from bouwmeester.models.effect import Effect  # noqa: F401
 from bouwmeester.models.externe_organisatie import ExterneOrganisatie  # noqa: F401
 from bouwmeester.models.feature_toggle import FeatureToggle  # noqa: F401
 from bouwmeester.models.http_session import HttpSession  # noqa: F401
+from bouwmeester.models.initiatief import (  # noqa: F401
+    Initiatief,
+    InitiatiefEenheid,
+    InitiatiefMember,
+)
 from bouwmeester.models.instrument import Instrument  # noqa: F401
 from bouwmeester.models.lead import Lead  # noqa: F401
 from bouwmeester.models.lead_activity import LeadActivity  # noqa: F401
@@ -82,6 +87,9 @@ __all__ = [
     "ExterneOrganisatie",
     "FeatureToggle",
     "HttpSession",
+    "Initiatief",
+    "InitiatiefMember",
+    "InitiatiefEenheid",
     "Instrument",
     "Lead",
     "LeadActivity",

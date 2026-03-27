@@ -12,6 +12,7 @@ from bouwmeester.core.database import Base
 
 if TYPE_CHECKING:
     from bouwmeester.models.externe_organisatie import ExterneOrganisatie
+    from bouwmeester.models.initiatief import Initiatief
     from bouwmeester.models.lead_activity import LeadActivity
     from bouwmeester.models.lead_attachment import LeadAttachment
     from bouwmeester.models.lead_contact import LeadContact
@@ -58,10 +59,17 @@ class Lead(Base):
     next_action_date: Mapped[date | None] = mapped_column(nullable=True)
     sort_order: Mapped[int] = mapped_column(default=0, server_default="0")
     raw_intake_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    organisatie_eenheid_id: Mapped[uuid.UUID] = mapped_column(
+    # Legacy: kept nullable during migration, will be dropped later
+    organisatie_eenheid_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("organisatie_eenheid.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("organisatie_eenheid.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    initiatief_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("initiatief.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -81,8 +89,11 @@ class Lead(Base):
     externe_organisatie: Mapped[Optional["ExterneOrganisatie"]] = relationship(
         "ExterneOrganisatie"
     )
-    organisatie_eenheid: Mapped["OrganisatieEenheid"] = relationship(
+    organisatie_eenheid: Mapped[Optional["OrganisatieEenheid"]] = relationship(
         "OrganisatieEenheid"
+    )
+    initiatief: Mapped[Optional["Initiatief"]] = relationship(
+        "Initiatief", back_populates="leads"
     )
     activities: Mapped[list["LeadActivity"]] = relationship(
         "LeadActivity",

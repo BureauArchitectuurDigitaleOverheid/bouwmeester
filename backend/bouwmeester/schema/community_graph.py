@@ -11,6 +11,7 @@ class CommunityGraphNode(BaseModel):
     label: str
     # Type-specific metadata
     stage: str | None = None  # for leads
+    initiatief_id: str | None = None  # for leads
     functie: str | None = None  # for persons
     org_type: str | None = None  # for organisations
     corpus_node_type: str | None = None  # for corpus nodes

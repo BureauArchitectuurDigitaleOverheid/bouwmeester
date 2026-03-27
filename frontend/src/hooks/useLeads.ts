@@ -321,6 +321,7 @@ export function useMergeLeads() {
 export function useLeadTimeline(params?: {
   stage?: string;
   assignee_id?: string;
+  initiatief_id?: string;
   date_from?: string;
   date_to?: string;
   limit?: number;

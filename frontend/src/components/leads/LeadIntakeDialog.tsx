@@ -8,11 +8,12 @@ import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { useCreateLead, useParseLeadIntake, useCheckDuplicates } from '@/hooks/useLeads';
 import { addTagToLead as addTagToLeadApi, uploadLeadAttachment as uploadLeadAttachmentApi, addLeadContact as addLeadContactApi } from '@/api/leads';
 import { useTags } from '@/hooks/useTags';
-import { usePeople, usePersonOrganisaties } from '@/hooks/usePeople';
+import { usePeople } from '@/hooks/usePeople';
+import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { createPerson } from '@/api/people';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
-import { LeadStage, LEAD_STAGE_ORDER, LEAD_STAGE_LABELS, LEAD_STAGE_COLORS, formatFunctie } from '@/types';
+import { LeadStage, LEAD_STAGE_ORDER, LEAD_STAGE_LABELS, LEAD_STAGE_COLORS, INITIATIEF_COLORS, formatFunctie } from '@/types';
 import type { LeadParseResult } from '@/types';
 import { buildPersonOptions } from '@/utils/personOptions';
 
@@ -28,7 +29,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const [rawText, setRawText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const [orgEenheidId, setOrgEenheidId] = useState('');
+  const [initiatiefId, setInitiatiefId] = useState('');
   const [parseResult, setParseResult] = useState<LeadParseResult | null>(null);
 
   // Editable fields after parse
@@ -51,7 +52,8 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const createLead = useCreateLead();
   const parseLead = useParseLeadIntake();
   const { currentPerson } = useCurrentPerson();
-  const { data: personPlaatsingen } = usePersonOrganisaties(currentPerson?.id ?? null);
+  const { data: initiatieven } = useInitiatieven();
+  const createInitiatiefMutation = useCreateInitiatief();
   const { data: people } = usePeople();
   const { data: allTags } = useTags();
   const { openLeadDetail } = useLeadDetail();
@@ -81,14 +83,12 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     [people],
   );
 
-  const myEenheden = personPlaatsingen ?? [];
-
-  // Auto-select if user has exactly one eenheid
+  // Auto-select if user has exactly one initiatief
   useEffect(() => {
-    if (myEenheden.length === 1 && !orgEenheidId) {
-      setOrgEenheidId(myEenheden[0].organisatie_eenheid_id);
+    if (initiatieven?.length === 1 && !initiatiefId) {
+      setInitiatiefId(initiatieven[0].id);
     }
-  }, [myEenheden, orgEenheidId]);
+  }, [initiatieven, initiatiefId]);
 
   // Default broughtById and leadDate when dialog opens
   useEffect(() => {
@@ -155,7 +155,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     setAssigneeId('');
     setBroughtById(currentPerson?.id ?? '');
     setLeadDate(new Date().toISOString().split('T')[0]);
-    setOrgEenheidId('');
+    setInitiatiefId('');
   }, [currentPerson]);
 
   const handleClose = () => {
@@ -262,7 +262,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   };
 
   const handleSubmit = async () => {
-    if (!title.trim() || !orgEenheidId) return;
+    if (!title.trim() || !initiatiefId) return;
 
     const fullDescription = description.trim() || null;
 
@@ -273,7 +273,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
         organization: organization.trim() || null,
         stage,
         raw_intake_text: rawText.trim() || null,
-        organisatie_eenheid_id: orgEenheidId,
+        initiatief_id: initiatiefId,
         assignee_id: assigneeId || null,
         brought_by_id: broughtById || null,
         created_at: leadDate !== new Date().toISOString().split('T')[0]
@@ -337,7 +337,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   };
 
   const canParse = rawText.trim().length > 0 || files.length > 0;
-  const canSubmit = title.trim().length > 0 && orgEenheidId.length > 0;
+  const canSubmit = title.trim().length > 0 && initiatiefId.length > 0;
 
   return (
     <Modal
@@ -348,18 +348,23 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     >
       {step === 'input' && (
         <div className="space-y-4">
-          {myEenheden.length !== 1 && (
+          {(initiatieven?.length ?? 0) !== 1 && (
             <div>
               <CreatableSelect
-                label="Voor welk team is deze lead?"
-                value={orgEenheidId}
-                onChange={setOrgEenheidId}
-                options={myEenheden.map((p) => ({
-                  value: p.organisatie_eenheid_id,
-                  label: p.organisatie_eenheid_naam,
-                }))}
-                placeholder="Selecteer team..."
-                searchable={false}
+                label="Voor welk initiatief is deze lead?"
+                value={initiatiefId}
+                onChange={setInitiatiefId}
+                options={initiatieven?.map((i) => ({
+                  value: i.id,
+                  label: i.naam,
+                })) ?? []}
+                placeholder="Selecteer initiatief..."
+                onCreate={async (name) => {
+                  const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
+                  const result = await createInitiatiefMutation.mutateAsync({ naam: name, kleur });
+                  return result.id;
+                }}
+                createLabel="Nieuw initiatief"
               />
             </div>
           )}
@@ -446,13 +451,13 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
               <Button
                 variant="ghost"
                 onClick={handleSkipParse}
-                disabled={!orgEenheidId}
+                disabled={!initiatiefId}
               >
                 Handmatig invullen
               </Button>
               <Button
                 onClick={handleParse}
-                disabled={!canParse || !orgEenheidId}
+                disabled={!canParse || !initiatiefId}
                 icon={<Sparkles className="h-4 w-4" />}
               >
                 Analyseren met VLAM

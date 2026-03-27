@@ -79,6 +79,16 @@ from bouwmeester.schema.graph import (
     NeighborEntry,
 )
 from bouwmeester.schema.inbox import InboxItem, InboxResponse
+from bouwmeester.schema.initiatief import (
+    InitiatiefCreate,
+    InitiatiefDetailResponse,
+    InitiatiefEenheidCreate,
+    InitiatiefEenheidResponse,
+    InitiatiefMemberCreate,
+    InitiatiefMemberResponse,
+    InitiatiefResponse,
+    InitiatiefUpdate,
+)
 from bouwmeester.schema.lead import (
     LeadActivityCreate,
     LeadActivityResponse,
@@ -91,12 +101,12 @@ from bouwmeester.schema.lead import (
     LeadCreate,
     LeadDetailResponse,
     LeadExterneOrgSummary,
+    LeadInitiatiefSummary,
     LeadMergeRequest,
     LeadMetricsResponse,
     LeadMove,
     LeadNodeCreate,
     LeadNodeResponse,
-    LeadOrgEenheidSummary,
     LeadParseResult,
     LeadReorder,
     LeadResponse,
@@ -281,6 +291,15 @@ __all__ = [
     "EdgeTypeBase",
     "EdgeTypeCreate",
     "EdgeTypeResponse",
+    # initiatief
+    "InitiatiefCreate",
+    "InitiatiefDetailResponse",
+    "InitiatiefMemberCreate",
+    "InitiatiefMemberResponse",
+    "InitiatiefResponse",
+    "InitiatiefEenheidCreate",
+    "InitiatiefEenheidResponse",
+    "InitiatiefUpdate",
     # feature_toggle
     "EenheidFeatureConfig",
     "FeatureToggleBulkUpdate",
@@ -373,7 +392,7 @@ __all__ = [
     "LeadMove",
     "LeadNodeCreate",
     "LeadNodeResponse",
-    "LeadOrgEenheidSummary",
+    "LeadInitiatiefSummary",
     "LeadParseResult",
     "LeadReorder",
     "LeadResponse",

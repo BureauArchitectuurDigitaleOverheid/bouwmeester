@@ -26,6 +26,7 @@ const pageTitles: Record<string, string> = {
   '/search': 'Zoeken',
   '/docs': 'Documentatie',
   '/leads': 'Leads',
+  '/initiatieven': 'Initiatieven',
   '/beheer/features': 'Functionaliteit per eenheid',
 };
 

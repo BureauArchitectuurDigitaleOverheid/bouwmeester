@@ -4671,6 +4671,38 @@ async def seed(db: AsyncSession) -> None:
     await db.flush()
     print(f"  Opdrachten: {len(opdracht_refs)} opdrachten/subsidies aangemaakt")
 
+    # =========================================================================
+    # INITIATIEVEN
+    # =========================================================================
+    from bouwmeester.models.initiatief import Initiatief, InitiatiefMember
+
+    initiatieven_data = [
+        ("Regelrecht", "#3B82F6", "Community-tool voor team Regelrecht"),
+        ("Fundament", "#10B981", "Fundament programma"),
+        ("Appmanager", "#F59E0B", "Appmanager initiatief"),
+        ("Nerds", "#8B5CF6", "Nederlandse Richtlijn Digitale Systemen"),
+    ]
+    for naam, kleur, beschrijving in initiatieven_data:
+        init = Initiatief(
+            naam=naam,
+            kleur=kleur,
+            beschrijving=beschrijving,
+        )
+        db.add(init)
+        await db.flush()
+        # First admin found becomes eigenaar
+        admin_person = next((p for p in person_map.values() if p.is_admin), None)
+        if admin_person:
+            db.add(
+                InitiatiefMember(
+                    initiatief_id=init.id,
+                    person_id=admin_person.id,
+                    rol="eigenaar",
+                )
+            )
+    await db.flush()
+    print(f"  Initiatieven: {len(initiatieven_data)} aangemaakt")
+
     await db.commit()
     print("\nSeed voltooid!")
 
