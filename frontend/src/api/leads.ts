@@ -148,6 +148,19 @@ export async function removeTagFromLead(leadId: string, tagId: string): Promise<
   return apiDelete(`/api/leads/${leadId}/tags/${tagId}`);
 }
 
+export async function checkDuplicateLeads(
+  title: string,
+  organization?: string,
+): Promise<Lead[]> {
+  const params: Record<string, string> = { title };
+  if (organization) params.organization = organization;
+  return apiGet<Lead[]>('/api/leads/check-duplicates', params);
+}
+
+export async function mergeLeads(sourceId: string, targetId: string): Promise<Lead> {
+  return apiPost<Lead>('/api/leads/merge', { source_id: sourceId, target_id: targetId });
+}
+
 export async function parseLeadIntake(rawText?: string, files?: File[]): Promise<LeadParseResult> {
   const formData = new FormData();
   if (rawText) formData.append('raw_text', rawText);

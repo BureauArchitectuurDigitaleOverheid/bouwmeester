@@ -3,7 +3,7 @@
 from datetime import UTC, date, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.org_context import OrgContext, apply_org_filter
@@ -227,6 +227,104 @@ class LeadRepository(BaseRepository[Lead]):
         await self.session.delete(lead)
         await self.session.flush()
         return True
+
+    async def find_similar(
+        self,
+        title: str,
+        organization: str | None = None,
+        exclude_id: UUID | None = None,
+    ) -> list[Lead]:
+        """Find leads with similar title or organization using trigram similarity."""
+        conditions = []
+        # Title similarity (trigram) - pg_trgm is available
+        conditions.append(func.similarity(Lead.title, title) > 0.3)
+
+        # Organization match
+        if organization:
+            conditions.append(func.similarity(Lead.organization, organization) > 0.4)
+
+        stmt = select(Lead).where(or_(*conditions)).options(*_lead_options())
+        if exclude_id:
+            stmt = stmt.where(Lead.id != exclude_id)
+        stmt = stmt.order_by(func.similarity(Lead.title, title).desc()).limit(5)
+
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def merge(self, source_id: UUID, target_id: UUID) -> Lead | None:
+        """Merge source lead into target lead, then delete source."""
+        from bouwmeester.models.lead_attachment import LeadAttachment
+        from bouwmeester.models.lead_contact import LeadContact
+        from bouwmeester.models.lead_node import LeadNode
+
+        source = await self.get_detail(source_id)
+        target = await self.get_detail(target_id)
+        if not source or not target:
+            return None
+
+        # Move activities from source to target
+        stmt = select(LeadActivity).where(LeadActivity.lead_id == source_id)
+        result = await self.session.execute(stmt)
+        for activity in result.scalars().all():
+            activity.lead_id = target_id
+
+        # Move contacts from source to target (skip duplicates)
+        stmt = select(LeadContact).where(LeadContact.lead_id == source_id)
+        result = await self.session.execute(stmt)
+        existing_contacts = {(c.person_id, c.rol) for c in target.contacts}
+        for contact in result.scalars().all():
+            if (contact.person_id, contact.rol) not in existing_contacts:
+                contact.lead_id = target_id
+            else:
+                await self.session.delete(contact)
+
+        # Move attachments from source to target
+        stmt = select(LeadAttachment).where(LeadAttachment.lead_id == source_id)
+        result = await self.session.execute(stmt)
+        for attachment in result.scalars().all():
+            attachment.lead_id = target_id
+
+        # Move tags from source to target (skip duplicates)
+        stmt = select(LeadTag).where(LeadTag.lead_id == source_id)
+        result = await self.session.execute(stmt)
+        existing_tags = {lt.tag_id for lt in target.lead_tags}
+        for lead_tag in result.scalars().all():
+            if lead_tag.tag_id not in existing_tags:
+                lead_tag.lead_id = target_id
+            else:
+                await self.session.delete(lead_tag)
+
+        # Move linked nodes from source to target (skip duplicates)
+        stmt = select(LeadNode).where(LeadNode.lead_id == source_id)
+        result = await self.session.execute(stmt)
+        existing_nodes = {ln.node_id for ln in target.linked_nodes}
+        for lead_node in result.scalars().all():
+            if lead_node.node_id not in existing_nodes:
+                lead_node.lead_id = target_id
+            else:
+                await self.session.delete(lead_node)
+
+        # Add merge activity
+        merge_activity = LeadActivity(
+            lead_id=target_id,
+            content=f"Samengevoegd met lead: {source.title}",
+            activity_type="note",
+        )
+        self.session.add(merge_activity)
+
+        # Append source description to target if target has none
+        if source.description and not target.description:
+            target.description = source.description
+        elif source.description and target.description:
+            target.description = (
+                f"{target.description}\n\n---\nSamengevoegd:\n{source.description}"
+            )
+
+        # Delete source lead
+        await self.session.delete(source)
+        await self.session.flush()
+
+        return await self.get(target_id)
 
     async def get_timeline(
         self,

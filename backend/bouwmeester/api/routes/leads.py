@@ -30,6 +30,7 @@ from bouwmeester.schema.lead import (
     LeadContactResponse,
     LeadCreate,
     LeadDetailResponse,
+    LeadMergeRequest,
     LeadMetricsResponse,
     LeadMove,
     LeadNodeCreate,
@@ -200,6 +201,31 @@ async def get_timeline(
         earliest=min(timestamps) if timestamps else None,
         latest=max(timestamps) if timestamps else None,
     )
+
+
+@router.get("/check-duplicates", response_model=list[LeadResponse])
+async def check_duplicates(
+    title: str = Query(...),
+    organization: str | None = Query(None),
+    current_user: OptionalUser = None,
+    db: AsyncSession = Depends(get_db),
+) -> list[LeadResponse]:
+    """Find leads with similar title or organization (trigram similarity)."""
+    repo = LeadRepository(db)
+    similar = await repo.find_similar(title, organization)
+    return validate_list(LeadResponse, similar)
+
+
+@router.post("/merge", response_model=LeadResponse)
+async def merge_leads(
+    data: LeadMergeRequest,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> LeadResponse:
+    """Merge source lead into target lead."""
+    repo = LeadRepository(db)
+    result = require_found(await repo.merge(data.source_id, data.target_id), "Lead")
+    return LeadResponse.model_validate(result)
 
 
 @router.get("/{lead_id}", response_model=LeadDetailResponse)

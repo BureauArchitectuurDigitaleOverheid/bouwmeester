@@ -73,6 +73,11 @@ class LeadReorder(BaseModel):
     stage: LeadStage
 
 
+class LeadMergeRequest(BaseModel):
+    source_id: UUID  # The lead to merge FROM (will be deleted)
+    target_id: UUID  # The lead to merge INTO (will survive)
+
+
 # ---------------------------------------------------------------------------
 # Summary / nested response schemas
 # ---------------------------------------------------------------------------

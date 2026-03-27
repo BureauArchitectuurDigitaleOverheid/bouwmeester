@@ -2,12 +2,15 @@ import { useMemo, useState } from 'react';
 import { Calendar } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { useLeads } from '@/hooks/useLeads';
+import { Modal } from '@/components/common/Modal';
+import { Button } from '@/components/common/Button';
+import { useLeads, useMergeLeads } from '@/hooks/useLeads';
 import { usePeople } from '@/hooks/usePeople';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import {
+  LeadStage,
   LEAD_STAGE_ORDER,
   LEAD_STAGE_LABELS,
   LEAD_STAGE_COLORS,
@@ -20,6 +23,8 @@ export function LeadListView() {
   const [filterTag, setFilterTag] = useState('');
   const [nextActionFilter, setNextActionFilter] = useState('');
   const [sortBy, setSortBy] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showMergeDialog, setShowMergeDialog] = useState(false);
 
   const filters: LeadFilters = {};
   if (filterAssignee) filters.assignee_id = filterAssignee;
@@ -33,6 +38,18 @@ export function LeadListView() {
   const { data: people } = usePeople();
   const { currentPerson } = useCurrentPerson();
   const { openLeadDetail } = useLeadDetail();
+  const mergeMutation = useMergeLeads();
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allLeads = leads ?? [];
 
   const stageIndex = useMemo(() => {
     const map = new Map<string, number>();
@@ -122,6 +139,31 @@ export function LeadListView() {
         )}
       </div>
 
+      {selectedIds.size === 2 && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
+          <span className="text-sm font-medium text-amber-800">
+            {selectedIds.size} leads geselecteerd
+          </span>
+          <Button size="sm" onClick={() => setShowMergeDialog(true)}>
+            Samenvoegen
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+            Deselecteren
+          </Button>
+        </div>
+      )}
+
+      {selectedIds.size > 0 && selectedIds.size !== 2 && (
+        <div className="flex items-center gap-3 bg-gray-50 border border-border rounded-lg px-4 py-2">
+          <span className="text-sm text-text-secondary">
+            {selectedIds.size} lead{selectedIds.size !== 1 ? 's' : ''} geselecteerd - selecteer precies 2 om samen te voegen
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+            Deselecteren
+          </Button>
+        </div>
+      )}
+
       {sortedLeads.length === 0 ? (
         <EmptyState
           title="Geen leads gevonden"
@@ -133,6 +175,9 @@ export function LeadListView() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-gray-50/50">
+                  <th className="w-10 px-4 py-3">
+                    <span className="sr-only">Selecteer</span>
+                  </th>
                   <th className="text-left px-4 py-3 font-medium text-text-secondary">
                     Titel
                   </th>
@@ -166,6 +211,14 @@ export function LeadListView() {
                       onClick={() => openLeadDetail(lead.id)}
                       className="border-b border-border last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors"
                     >
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(lead.id)}
+                          onChange={() => toggleSelect(lead.id)}
+                          className="rounded border-border text-primary-600 focus:ring-primary-400"
+                        />
+                      </td>
                       <td className="px-4 py-3 font-medium text-text max-w-[260px] truncate">
                         {lead.title}
                       </td>
@@ -227,6 +280,48 @@ export function LeadListView() {
             </table>
           </div>
         </div>
+      )}
+
+      {showMergeDialog && (
+        <Modal
+          open={showMergeDialog}
+          onClose={() => setShowMergeDialog(false)}
+          title="Leads samenvoegen"
+          size="md"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-text-secondary">
+              Kies de lead die je wilt behouden. De andere lead wordt hierin samengevoegd
+              (activiteiten, contacten, tags en bijlagen worden overgenomen).
+            </p>
+            {Array.from(selectedIds).map((id) => {
+              const lead = allLeads.find((l) => l.id === id);
+              if (!lead) return null;
+              return (
+                <button
+                  key={id}
+                  onClick={async () => {
+                    const otherId = Array.from(selectedIds).find((x) => x !== id)!;
+                    await mergeMutation.mutateAsync({ sourceId: otherId, targetId: id });
+                    setShowMergeDialog(false);
+                    setSelectedIds(new Set());
+                  }}
+                  disabled={mergeMutation.isPending}
+                  className="w-full text-left p-4 rounded-lg border border-border hover:border-primary-400 hover:bg-primary-50/50 transition-colors disabled:opacity-50"
+                >
+                  <div className="font-medium">{lead.title}</div>
+                  <div className="text-sm text-text-secondary">
+                    {lead.organization ?? 'geen organisatie'} -{' '}
+                    {LEAD_STAGE_LABELS[lead.stage as LeadStage]}
+                  </div>
+                  <div className="text-xs text-primary-600 mt-1">
+                    ← Deze behouden
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </Modal>
       )}
     </div>
   );

@@ -4,11 +4,12 @@ import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
-import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake, useAddLeadContact, useAddTagToLead } from '@/hooks/useLeads';
+import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake, useAddLeadContact, useAddTagToLead, useCheckDuplicates } from '@/hooks/useLeads';
 import { useTags } from '@/hooks/useTags';
 import { usePeople, usePersonOrganisaties } from '@/hooks/usePeople';
 import { createPerson } from '@/api/people';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { LeadStage, LEAD_STAGE_ORDER, LEAD_STAGE_LABELS, LEAD_STAGE_COLORS, formatFunctie } from '@/types';
 import type { LeadParseResult } from '@/types';
 import { buildPersonOptions } from '@/utils/personOptions';
@@ -54,6 +55,8 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const { data: personPlaatsingen } = usePersonOrganisaties(currentPerson?.id ?? null);
   const { data: people } = usePeople();
   const { data: allTags } = useTags();
+  const { openLeadDetail } = useLeadDetail();
+  const { data: duplicates } = useCheckDuplicates(title, organization || undefined);
   const tagContainerRef = useRef<HTMLDivElement>(null);
 
   // Assignee options: current person first (with "(mij)")
@@ -479,6 +482,30 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
                   autoFocus
                 />
               </div>
+
+              {duplicates && duplicates.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm font-medium text-amber-800 mb-1">
+                    Vergelijkbare leads gevonden:
+                  </p>
+                  <ul className="space-y-1">
+                    {duplicates.map((d) => (
+                      <li key={d.id} className="text-sm">
+                        <button
+                          type="button"
+                          onClick={() => { openLeadDetail(d.id); handleClose(); }}
+                          className="text-primary-600 hover:underline"
+                        >
+                          {d.title}
+                        </button>
+                        <span className="text-text-secondary ml-1">
+                          ({d.organization ?? 'geen organisatie'} - {LEAD_STAGE_LABELS[d.stage as LeadStage]})
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-text mb-1">

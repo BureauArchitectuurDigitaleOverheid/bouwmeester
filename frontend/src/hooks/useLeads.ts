@@ -22,6 +22,8 @@ import {
   getLeadTags,
   addTagToLead,
   removeTagFromLead,
+  checkDuplicateLeads,
+  mergeLeads,
 } from '@/api/leads';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
@@ -293,6 +295,23 @@ export function useRemoveTagFromLead() {
     onSuccess: (_, { leadId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tags.forLead(leadId) });
     },
+  });
+}
+
+export function useCheckDuplicates(title: string, organization?: string) {
+  return useQuery({
+    queryKey: [...queryKeys.leads.all, 'check-duplicates', title, organization],
+    queryFn: () => checkDuplicateLeads(title, organization),
+    enabled: title.length >= 3,
+  });
+}
+
+export function useMergeLeads() {
+  return useMutationWithError({
+    mutationFn: ({ sourceId, targetId }: { sourceId: string; targetId: string }) =>
+      mergeLeads(sourceId, targetId),
+    errorMessage: 'Fout bij samenvoegen leads',
+    invalidateKeys: [queryKeys.leads.all],
   });
 }
 
