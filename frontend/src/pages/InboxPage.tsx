@@ -38,8 +38,8 @@ export function InboxPage() {
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
 
   const { currentPerson } = useCurrentPerson();
-  const { data: notifications } = useNotifications(currentPerson?.id);
-  const { data: stats } = useDashboardStats(currentPerson?.id);
+  const { data: notifications } = useNotifications();
+  const { data: stats } = useDashboardStats();
   const markAllRead = useMarkAllNotificationsRead();
   const markRead = useMarkNotificationRead();
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
@@ -174,7 +174,7 @@ export function InboxPage() {
           <h2 className="text-lg font-semibold text-text">Inbox</h2>
           {hasUnread && currentPerson?.id && (
             <button
-              onClick={() => markAllRead.mutate(currentPerson.id)}
+              onClick={() => markAllRead.mutate()}
               className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 transition-colors"
             >
               <CheckCheck className="h-3.5 w-3.5" />

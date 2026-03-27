@@ -13,38 +13,53 @@ import {
 } from '@/api/notifications';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useAuth } from '@/contexts/AuthContext';
 
-export function useNotifications(personId: string | undefined, unreadOnly = false) {
+/** Returns the person ID only in dev mode (no OIDC), for the backend fallback param. */
+function useDevPersonId(): string | undefined {
+  const { oidcConfigured } = useAuth();
+  const { currentPerson } = useCurrentPerson();
+  return oidcConfigured ? undefined : currentPerson?.id;
+}
+
+export function useNotifications(unreadOnly = false) {
+  const devPersonId = useDevPersonId();
+  const { currentPerson } = useCurrentPerson();
   return useQuery({
-    queryKey: queryKeys.notifications.list(personId, unreadOnly),
-    queryFn: () => getNotifications(personId!, unreadOnly),
-    enabled: !!personId,
+    queryKey: queryKeys.notifications.list(unreadOnly),
+    queryFn: () => getNotifications(unreadOnly, devPersonId),
+    enabled: !!currentPerson,
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
   });
 }
 
-export function useNotification(id: string | undefined, personId?: string) {
+export function useNotification(id: string | undefined) {
+  const devPersonId = useDevPersonId();
   return useQuery({
-    queryKey: queryKeys.notifications.detail(id, personId),
-    queryFn: () => getNotification(id!, personId),
+    queryKey: queryKeys.notifications.detail(id),
+    queryFn: () => getNotification(id!, devPersonId),
     enabled: !!id,
   });
 }
 
-export function useUnreadCount(personId: string | undefined) {
+export function useUnreadCount() {
+  const devPersonId = useDevPersonId();
+  const { currentPerson } = useCurrentPerson();
   return useQuery({
-    queryKey: queryKeys.notifications.count(personId),
-    queryFn: () => getUnreadCount(personId!),
-    enabled: !!personId,
+    queryKey: queryKeys.notifications.count(),
+    queryFn: () => getUnreadCount(devPersonId),
+    enabled: !!currentPerson,
     refetchInterval: 30_000,
   });
 }
 
-export function useReplies(notificationId: string | undefined, personId?: string) {
+export function useReplies(notificationId: string | undefined) {
+  const devPersonId = useDevPersonId();
   return useQuery({
-    queryKey: queryKeys.notifications.replies(notificationId, personId),
-    queryFn: () => getReplies(notificationId!, personId),
+    queryKey: queryKeys.notifications.replies(notificationId),
+    queryFn: () => getReplies(notificationId!, devPersonId),
     enabled: !!notificationId,
     refetchInterval: 5_000,
   });
@@ -59,8 +74,9 @@ export function useMarkNotificationRead() {
 }
 
 export function useMarkAllNotificationsRead() {
+  const devPersonId = useDevPersonId();
   return useMutationWithError({
-    mutationFn: (personId: string) => markAllNotificationsRead(personId),
+    mutationFn: () => markAllNotificationsRead(devPersonId),
     errorMessage: 'Fout bij markeren notificaties',
     invalidateKeys: [queryKeys.notifications.all],
   });
@@ -74,11 +90,13 @@ export function useSendMessage() {
   });
 }
 
-export function useDashboardStats(personId: string | undefined) {
+export function useDashboardStats() {
+  const devPersonId = useDevPersonId();
+  const { currentPerson } = useCurrentPerson();
   return useQuery({
-    queryKey: queryKeys.dashboardStats(personId),
-    queryFn: () => getDashboardStats(personId!),
-    enabled: !!personId,
+    queryKey: queryKeys.dashboardStats(),
+    queryFn: () => getDashboardStats(devPersonId),
+    enabled: !!currentPerson,
     refetchInterval: 60_000,
   });
 }

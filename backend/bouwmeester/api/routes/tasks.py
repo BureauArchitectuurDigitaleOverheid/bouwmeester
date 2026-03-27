@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
-from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.task import TaskRepository
@@ -133,26 +133,22 @@ async def get_my_tasks(
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
     """Get tasks assigned to the current user (or person_id in dev mode)."""
-    # Use authenticated user's id when available, fall back to query param for dev
-    effective_id = current_user.id if current_user is not None else person_id
-    if effective_id is None:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=400, detail="person_id is required")
+    pid = effective_person_id(current_user, person_id)
     repo = TaskRepository(db)
-    tasks = await repo.get_by_assignee(effective_id, skip=skip, limit=limit)
+    tasks = await repo.get_by_assignee(pid, skip=skip, limit=limit)
     return validate_list(TaskResponse, tasks)
 
 
 @router.get("/inbox", response_model=InboxResponse)
 async def get_task_inbox(
     current_user: OptionalUser,
-    person_id: UUID = Query(...),
+    person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> InboxResponse:
     """Get aggregated inbox data for a person (tasks, notifications, deadlines)."""
+    pid = effective_person_id(current_user, person_id)
     service = InboxService(db)
-    return await service.get_inbox(person_id)
+    return await service.get_inbox(pid)
 
 
 @router.get("/unassigned", response_model=list[TaskResponse])

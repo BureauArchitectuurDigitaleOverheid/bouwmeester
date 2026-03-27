@@ -81,9 +81,8 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
   const [replyText, setReplyText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { currentPerson } = useCurrentPerson();
-  const personId = currentPerson?.id;
-  const { data: parentMessage } = useNotification(notificationId, personId);
-  const { data: replies } = useReplies(notificationId, personId);
+  const { data: parentMessage } = useNotification(notificationId);
+  const { data: replies } = useReplies(notificationId);
   const replyMutation = useReplyToNotification();
   const markRead = useMarkNotificationRead();
   const reactMutation = useReactToMessage();

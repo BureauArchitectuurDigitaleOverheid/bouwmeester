@@ -87,10 +87,10 @@ export const queryKeys = {
   // --- Notifications ---
   notifications: {
     all: ['notifications'] as const,
-    list: (personId: string | undefined, unreadOnly: boolean) => ['notifications', personId, unreadOnly] as const,
-    detail: (id: string | undefined, personId?: string) => ['notifications', 'detail', id, personId] as const,
-    count: (personId: string | undefined) => ['notifications', 'count', personId] as const,
-    replies: (notificationId: string | undefined, personId?: string) => ['notifications', 'replies', notificationId, personId] as const,
+    list: (unreadOnly: boolean) => ['notifications', unreadOnly] as const,
+    detail: (id: string | undefined) => ['notifications', 'detail', id] as const,
+    count: () => ['notifications', 'count'] as const,
+    replies: (notificationId: string | undefined) => ['notifications', 'replies', notificationId] as const,
   },
 
   // --- Parlementair ---
@@ -114,7 +114,7 @@ export const queryKeys = {
   activityFeed: (params?: ActivityFeedParams) => ['activity-feed', params] as const,
 
   // --- Dashboard ---
-  dashboardStats: (personId: string | undefined) => ['dashboard-stats', personId] as const,
+  dashboardStats: () => ['dashboard-stats'] as const,
 
   // --- Graph ---
   graph: {

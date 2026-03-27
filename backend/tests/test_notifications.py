@@ -1084,33 +1084,53 @@ async def test_send_message_allowed_when_sender_matches(
 
 
 async def test_reply_spoofing_rejected(
-    authenticated_client, sample_person, second_person, sample_notification
+    authenticated_client, sample_person, second_person
 ):
     """POST /api/notifications/{id}/reply rejects sender_id != auth user."""
     # authenticated_client is logged in as second_person.
+    # Create a DM thread so second_person has their own root.
+    send_resp = await authenticated_client.post(
+        "/api/notifications/send",
+        json={
+            "person_id": str(sample_person.id),
+            "sender_id": str(second_person.id),
+            "message": "Hoi",
+        },
+    )
+    sender_root_id = send_resp.json()["id"]
     # Try replying with sample_person as sender → spoofing.
     payload = {
         "sender_id": str(sample_person.id),  # Not the authenticated user
         "message": "Spoofed reactie",
     }
     resp = await authenticated_client.post(
-        f"/api/notifications/{sample_notification.id}/reply", json=payload
+        f"/api/notifications/{sender_root_id}/reply", json=payload
     )
     assert resp.status_code == 403
     assert "Sender" in resp.json()["detail"]
 
 
 async def test_reply_allowed_when_sender_matches(
-    authenticated_client, sample_person, second_person, sample_notification
+    authenticated_client, sample_person, second_person
 ):
     """POST /api/notifications/{id}/reply succeeds when sender matches auth."""
     # authenticated_client is logged in as second_person.
+    # Create a DM thread so second_person has their own root.
+    send_resp = await authenticated_client.post(
+        "/api/notifications/send",
+        json={
+            "person_id": str(sample_person.id),
+            "sender_id": str(second_person.id),
+            "message": "Hoi",
+        },
+    )
+    sender_root_id = send_resp.json()["id"]
     payload = {
         "sender_id": str(second_person.id),
         "message": "Legit reactie",
     }
     resp = await authenticated_client.post(
-        f"/api/notifications/{sample_notification.id}/reply", json=payload
+        f"/api/notifications/{sender_root_id}/reply", json=payload
     )
     assert resp.status_code == 200
 

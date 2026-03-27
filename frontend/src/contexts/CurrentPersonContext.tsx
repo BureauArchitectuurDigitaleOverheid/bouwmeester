@@ -7,24 +7,18 @@ import type { Person } from '@/types';
 const STORAGE_KEY = 'current-person-id';
 
 interface CurrentPersonContextValue {
-  /** The active person (either the SSO-linked user or the "view as" override). */
+  /** The active person (the SSO-linked user, or the dev-mode selection). */
   currentPerson: Person | null;
-  /** Switch to viewing as a different person (or null to reset). */
-  setCurrentPersonId: (id: string | null) => void;
-  /** All people (for the picker dropdown). */
+  /** Dev mode only: select a person by ID (persisted to localStorage). */
+  setDevPersonId: (id: string | null) => void;
+  /** All people (for the dev-mode picker). */
   people: Person[];
-  /** True when viewing as someone other than the authenticated user. */
-  isViewingAsOther: boolean;
-  /** Reset to the authenticated user's own Person. */
-  resetToSelf: () => void;
 }
 
 const CurrentPersonContext = createContext<CurrentPersonContextValue>({
   currentPerson: null,
-  setCurrentPersonId: () => {},
+  setDevPersonId: () => {},
   people: [],
-  isViewingAsOther: false,
-  resetToSelf: () => {},
 });
 
 export function CurrentPersonProvider({ children }: { children: ReactNode }) {
@@ -34,60 +28,43 @@ export function CurrentPersonProvider({ children }: { children: ReactNode }) {
   // The SSO-linked person ID (from auth context)
   const authPersonId = oidcConfigured ? (authPerson?.id ?? null) : null;
 
-  // Override person ID — "view as" in SSO mode, or the localStorage picker in dev mode.
-  const [overrideId, setOverrideId] = useState<string | null>(() => {
+  // Dev mode only: localStorage-backed person selection.
+  const [devPersonId, setDevPersonIdState] = useState<string | null>(() => {
     if (!oidcConfigured) {
       return localStorage.getItem(STORAGE_KEY);
     }
     return null;
   });
 
-  const setCurrentPersonId = useCallback(
+  const setDevPersonId = useCallback(
     (id: string | null) => {
-      if (oidcConfigured) {
-        // Only admins can "view as" another person in SSO mode
-        if (!authPerson?.is_admin) return;
-        // Setting to null or to your own ID resets to self
-        setOverrideId(id === authPersonId ? null : id);
+      // Only effective in dev mode (no OIDC)
+      if (oidcConfigured) return;
+      setDevPersonIdState(id);
+      if (id) {
+        localStorage.setItem(STORAGE_KEY, id);
       } else {
-        // Dev mode: persist in localStorage
-        setOverrideId(id);
-        if (id) {
-          localStorage.setItem(STORAGE_KEY, id);
-        } else {
-          localStorage.removeItem(STORAGE_KEY);
-        }
+        localStorage.removeItem(STORAGE_KEY);
       }
     },
-    [oidcConfigured, authPersonId, authPerson?.is_admin],
+    [oidcConfigured],
   );
 
-  const resetToSelf = useCallback(() => {
-    setOverrideId(null);
-  }, []);
-
-  // The effective person ID: override takes priority, then auth person, then dev localStorage
-  const effectiveId = overrideId ?? authPersonId;
+  // In SSO mode, use the authenticated person; in dev mode, use localStorage selection.
+  const effectiveId = oidcConfigured ? authPersonId : devPersonId;
 
   const currentPerson = useMemo(
     () => (people ?? []).find((p) => p.id === effectiveId) ?? null,
     [people, effectiveId],
   );
 
-  const isViewingAsOther = useMemo(
-    () => oidcConfigured && !!overrideId && overrideId !== authPersonId,
-    [oidcConfigured, overrideId, authPersonId],
-  );
-
   const value = useMemo(
     () => ({
       currentPerson,
-      setCurrentPersonId,
+      setDevPersonId,
       people: people ?? [],
-      isViewingAsOther,
-      resetToSelf,
     }),
-    [currentPerson, setCurrentPersonId, people, isViewingAsOther, resetToSelf],
+    [currentPerson, setDevPersonId, people],
   );
 
   return (

@@ -545,9 +545,9 @@ async def test_inbox_unknown_person(client):
 
 
 async def test_inbox_requires_person_id(client):
-    """Inbox without person_id returns 422 (validation error)."""
+    """Inbox without person_id (and no authenticated user) returns 400."""
     resp = await client.get("/api/activity/inbox")
-    assert resp.status_code == 422
+    assert resp.status_code == 400
 
 
 # ---------------------------------------------------------------------------

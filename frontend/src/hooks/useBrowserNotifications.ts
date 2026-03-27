@@ -81,22 +81,15 @@ function playNotificationChime(): void {
 
 // --- Hook ---
 
-export function useBrowserNotifications(personId: string | undefined): void {
-  const { data: notifications } = useNotifications(personId, false);
+export function useBrowserNotifications(): void {
+  const { data: notifications } = useNotifications(false);
   // Tracks every unread notification ID we've ever encountered (grow-only).
   // This prevents re-firing for notifications that were read and then reappear
   // as unread in a later poll (race condition / eventual consistency).
   const seenIdsRef = useRef<Set<string> | null>(null);
-  const prevPersonIdRef = useRef<string | undefined>(personId);
 
   useEffect(() => {
-    // Reset tracking when personId changes
-    if (prevPersonIdRef.current !== personId) {
-      seenIdsRef.current = null;
-      prevPersonIdRef.current = personId;
-    }
-
-    if (!notifications || !personId) return;
+    if (!notifications) return;
 
     const unreadIds = notifications
       .filter((n) => !n.is_read)
@@ -152,5 +145,5 @@ export function useBrowserNotifications(personId: string | undefined): void {
         };
       }
     }
-  }, [notifications, personId]);
+  }, [notifications]);
 }

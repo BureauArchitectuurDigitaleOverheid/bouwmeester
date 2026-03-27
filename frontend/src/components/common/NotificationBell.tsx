@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, BellOff, BellRing, Check, CheckCheck, Volume2, VolumeOff } from 'lucide-react';
 import { useNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNotificationsRead } from '@/hooks/useNotifications';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { timeAgo } from '@/utils/dates';
@@ -18,10 +19,6 @@ import {
   requestNotificationPermission,
 } from '@/hooks/useBrowserNotifications';
 import { useToast } from '@/contexts/ToastContext';
-
-interface NotificationBellProps {
-  personId: string | undefined;
-}
 
 function NotificationItem({
   notification,
@@ -128,18 +125,19 @@ function NotificationSoundToggle() {
   );
 }
 
-export function NotificationBell({ personId }: NotificationBellProps) {
+export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
+  const { currentPerson } = useCurrentPerson();
 
-  useBrowserNotifications(personId);
+  useBrowserNotifications();
 
-  const { data: countData } = useUnreadCount(personId);
-  const { data: notifications } = useNotifications(personId, false);
+  const { data: countData } = useUnreadCount();
+  const { data: notifications } = useNotifications(false);
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
 
@@ -155,7 +153,7 @@ export function NotificationBell({ personId }: NotificationBellProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  if (!personId) return null;
+  if (!currentPerson) return null;
 
   return (
     <div className="relative" ref={menuRef}>
@@ -181,7 +179,7 @@ export function NotificationBell({ personId }: NotificationBellProps) {
               <NotificationSoundToggle />
               {unreadCount > 0 && (
                 <button
-                  onClick={() => markAllRead.mutate(personId)}
+                  onClick={() => markAllRead.mutate()}
                   className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 transition-colors"
                 >
                   <CheckCheck className="h-3.5 w-3.5" />
