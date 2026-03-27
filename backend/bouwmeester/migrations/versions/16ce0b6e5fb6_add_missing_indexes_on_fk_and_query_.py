@@ -21,13 +21,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # -- FK columns: high priority (queried in WHERE clauses) --
+    op.execute("CREATE INDEX IF NOT EXISTS ix_absence_person_id ON absence (person_id)")
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_absence_person_id"
-        " ON absence (person_id)"
-    )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_absence_substitute_id"
-        " ON absence (substitute_id)"
+        "CREATE INDEX IF NOT EXISTS ix_absence_substitute_id ON absence (substitute_id)"
     )
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_lead_externe_organisatie_id"
@@ -87,31 +83,22 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS ix_parlementair_item_reviewed_by"
         " ON parlementair_item (reviewed_by)"
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_tag_parent_id"
-        " ON tag (parent_id)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_tag_parent_id ON tag (parent_id)")
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_mattermost_link_code_person_id"
         " ON mattermost_link_code (person_id)"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_opdracht_node_node_id"
-        " ON opdracht_node (node_id)"
+        "CREATE INDEX IF NOT EXISTS ix_opdracht_node_node_id ON opdracht_node (node_id)"
     )
 
     # -- Query-pattern indexes (WHERE / ORDER BY / search) --
+    op.execute("CREATE INDEX IF NOT EXISTS ix_lead_stage ON lead (stage)")
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_lead_stage"
-        " ON lead (stage)"
+        "CREATE INDEX IF NOT EXISTS ix_lead_next_action_date ON lead (next_action_date)"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_lead_next_action_date"
-        " ON lead (next_action_date)"
-    )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_lead_created_at"
-        " ON lead (created_at DESC)"
+        "CREATE INDEX IF NOT EXISTS ix_lead_created_at ON lead (created_at DESC)"
     )
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_lead_activity_created_at"
@@ -121,14 +108,8 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS ix_lead_title_trgm"
         " ON lead USING gin (title gin_trgm_ops)"
     )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_task_status"
-        " ON task (status)"
-    )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_task_deadline"
-        " ON task (deadline)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_task_status ON task (status)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_task_deadline ON task (deadline)")
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_notification_unread"
         " ON notification (person_id, is_read)"
