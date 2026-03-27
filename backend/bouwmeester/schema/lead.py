@@ -2,6 +2,7 @@
 
 import enum
 from datetime import date, datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -114,11 +115,19 @@ class LeadAttachmentResponse(BaseModel):
 class LeadContactResponse(BaseModel):
     id: UUID
     person_id: UUID
-    person_naam: str
+    person_naam: str = ""
     rol: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _extract_person_naam(cls, data: Any) -> Any:
+        if hasattr(data, "person") and data.person:
+            if not hasattr(data, "person_naam") or not data.person_naam:
+                data.person_naam = data.person.naam
+        return data
 
 
 class LeadNodeResponse(BaseModel):

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Trash2,
   Pencil,
@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { createPerson } from '@/api/people';
 import { Badge } from '@/components/common/Badge';
 import { DetailSection } from '@/components/common/DetailSection';
 import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
@@ -70,6 +72,15 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const { data: lead, isLoading } = useLead(leadId);
   const { data: people } = usePeople();
   const { data: nodes } = useNodes();
+
+  const contactPersonOptions = useMemo(
+    () => (people ?? [])
+      .filter((p) => p.is_active)
+      .sort((a, b) => a.naam.localeCompare(b.naam))
+      .map((p) => ({ value: p.id, label: p.naam })),
+    [people],
+  );
+
   const updateLead = useUpdateLead();
   const deleteLead = useDeleteLead();
   const createActivity = useCreateLeadActivity();
@@ -532,30 +543,37 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             )}
 
             {showAddContact && (
-              <div className="flex items-center gap-2 mt-2">
-                <select
-                  value={contactPersonId}
-                  onChange={(e) => setContactPersonId(e.target.value)}
-                  className="flex-1 rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-                >
-                  <option value="">Selecteer persoon...</option>
-                  {people?.map((p) => (
-                    <option key={p.id} value={p.id}>{p.naam}</option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  value={contactRol}
-                  onChange={(e) => setContactRol(e.target.value)}
-                  placeholder="Rol"
-                  className="w-32 rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-                />
-                <Button size="sm" onClick={handleAddContact} disabled={!contactPersonId}>
-                  Toevoegen
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setShowAddContact(false)}>
-                  Annuleren
-                </Button>
+              <div className="space-y-2 mt-2">
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <CreatableSelect
+                      value={contactPersonId}
+                      onChange={setContactPersonId}
+                      options={contactPersonOptions}
+                      placeholder="Zoek of typ een naam..."
+                      onCreate={async (name) => {
+                        const newPerson = await createPerson({ naam: name });
+                        return newPerson.id;
+                      }}
+                      createLabel="Nieuw contact"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={contactRol}
+                    onChange={(e) => setContactRol(e.target.value)}
+                    placeholder="Rol"
+                    className="w-32 rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-primary-400"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={handleAddContact} disabled={!contactPersonId}>
+                    Toevoegen
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowAddContact(false)}>
+                    Annuleren
+                  </Button>
+                </div>
               </div>
             )}
           </DetailSection>
