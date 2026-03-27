@@ -27,6 +27,19 @@ from bouwmeester.services.notification_service import NotificationService
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
+def _check_notification_access(
+    notification: Notification, current_user_id: UUID | None
+) -> None:
+    """Raise 403 if the authenticated user is neither the recipient nor sender."""
+    if current_user_id is None:
+        return  # dev mode — no ownership enforcement
+    if notification.person_id == current_user_id:
+        return
+    if notification.sender_id == current_user_id:
+        return
+    raise HTTPException(403, "Geen toegang tot deze melding")
+
+
 def _format_last_message(message: str | None, notif_type: str) -> str | None:
     """Format preview text — show 'Reactie op bericht' for emoji reactions."""
     if notif_type == "emoji_reaction" and message:
@@ -210,6 +223,7 @@ async def get_notification(
     pid = current_user.id if current_user is not None else person_id
     service = NotificationService(db)
     notification = require_found(await service.repo.get_by_id(id), "Notification")
+    _check_notification_access(notification, current_user.id if current_user else None)
     resp = await _enrich_response(notification, service, db)
     await _attach_reactions([resp], service, db, pid)
     return resp
@@ -226,6 +240,7 @@ async def get_replies(
     pid = current_user.id if current_user is not None else person_id
     service = NotificationService(db)
     notification = require_found(await service.repo.get_by_id(id), "Notification")
+    _check_notification_access(notification, current_user.id if current_user else None)
     # Use thread_id to fetch replies (replies are parented to the recipient's root)
     reply_parent_id = notification.thread_id if notification.thread_id else id
     replies = await service.repo.get_replies(reply_parent_id)
@@ -242,6 +257,8 @@ async def mark_notification_read(
 ) -> NotificationResponse:
     """Mark a single notification as read."""
     service = NotificationService(db)
+    notification = require_found(await service.repo.get_by_id(id), "Notification")
+    _check_notification_access(notification, current_user.id if current_user else None)
     notification = require_found(await service.mark_read(id), "Notification")
     return await _enrich_response(notification, service, db)
 
