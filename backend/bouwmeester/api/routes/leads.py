@@ -51,6 +51,46 @@ router = APIRouter(prefix="/leads", tags=["leads"])
 logger = logging.getLogger(__name__)
 
 LEADS_BIJLAGEN_ROOT = bijlagen_root()
+
+
+def _robust_parse_json(text: str) -> dict:
+    """Parse JSON from LLM response with aggressive cleanup."""
+    import json
+    import re
+
+    # Strip markdown code blocks
+    if "```json" in text:
+        text = text.split("```json", 1)[1].split("```", 1)[0]
+    elif "```" in text:
+        text = text.split("```", 1)[1].split("```", 1)[0]
+    text = text.strip()
+
+    # Fix trailing commas
+    text = re.sub(r",\s*([}\]])", r"\1", text)
+
+    # Fix single quotes → double quotes (some LLMs do this)
+    # Only if the text doesn't already have double quotes as JSON delimiters
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Try to find the first { ... } block (handles preamble text)
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        candidate = match.group()
+        candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    # Give up with clear error
+    raise json.JSONDecodeError(
+        f"Could not parse LLM response as JSON. Raw text: {text[:200]}", text, 0
+    )
+
+
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
@@ -735,8 +775,10 @@ async def parse_intake(
         else:
             response_text = await llm._complete(prompt)
 
-        logger.debug("LLM response for parse-intake: %s", response_text[:500])
-        parsed = llm._parse_json(response_text)
+        logger.warning(
+            "LLM raw response (%d chars): %s", len(response_text), response_text[:1500]
+        )
+        parsed = _robust_parse_json(response_text)
         return LeadParseResult(
             title=parsed.get("title"),
             organization=parsed.get("organization"),
