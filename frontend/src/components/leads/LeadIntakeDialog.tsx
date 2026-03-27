@@ -239,15 +239,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const handleSubmit = async () => {
     if (!title.trim() || !orgEenheidId) return;
 
-    // Build description, include contact info if provided
-    const descParts = [description.trim()];
-    if (contactName.trim()) {
-      let contactInfo = `Contactpersoon: ${contactName.trim()}`;
-      if (contactEmail.trim()) contactInfo += ` (${contactEmail.trim()})`;
-      if (contactPhone.trim()) contactInfo += ` | Tel: ${contactPhone.trim()}`;
-      descParts.push(contactInfo);
-    }
-    const fullDescription = descParts.filter(Boolean).join('\n\n') || null;
+    const fullDescription = description.trim() || null;
 
     try {
       const lead = await createLead.mutateAsync({
@@ -291,15 +283,25 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
           // Non-critical, don't block lead creation
         }
       } else if (contactName.trim()) {
-        // New person - create them first, then link
+        // New person - try to find by email first, otherwise create
         try {
-          const newPerson = await createPerson({
-            naam: contactName.trim(),
-            email: contactEmail.trim() || undefined,
-          });
+          let personId: string | null = null;
+          if (contactEmail.trim() && people) {
+            const byEmail = people.find(
+              (p) => p.email?.toLowerCase() === contactEmail.trim().toLowerCase(),
+            );
+            if (byEmail) personId = byEmail.id;
+          }
+          if (!personId) {
+            const newPerson = await createPerson({
+              naam: contactName.trim(),
+              email: contactEmail.trim() || undefined,
+            });
+            personId = newPerson.id;
+          }
           await addLeadContact.mutateAsync({
             leadId: lead.id,
-            personId: newPerson.id,
+            personId,
             rol: 'contactpersoon',
           });
         } catch {
