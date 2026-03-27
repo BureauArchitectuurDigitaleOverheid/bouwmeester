@@ -9,7 +9,7 @@ import {
   ChevronDown,
   Sparkles,
 } from 'lucide-react';
-import { format, isToday, isYesterday, subDays, subMonths, startOfDay } from 'date-fns';
+import { format, isToday, isYesterday, subDays, subMonths } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { LeadMetricsBar } from './LeadMetricsBar';
@@ -90,7 +90,8 @@ function EventIcon({ type }: { type: string }) {
 
 // -- Date group label --
 function formatDateGroupLabel(dateStr: string): string {
-  const date = new Date(dateStr);
+  // Parse as noon local time to avoid timezone-induced off-by-one
+  const date = new Date(dateStr + 'T12:00:00');
   if (isToday(date)) return 'Vandaag';
   if (isYesterday(date)) return 'Gisteren';
   return format(date, 'd MMMM yyyy', { locale: nl });
@@ -100,7 +101,7 @@ function formatDateGroupLabel(dateStr: string): string {
 function groupEventsByDate(events: LeadTimelineEvent[]): Map<string, LeadTimelineEvent[]> {
   const groups = new Map<string, LeadTimelineEvent[]>();
   for (const event of events) {
-    const day = startOfDay(new Date(event.timestamp)).toISOString().slice(0, 10);
+    const day = format(new Date(event.timestamp), 'yyyy-MM-dd');
     const existing = groups.get(day);
     if (existing) {
       existing.push(event);
