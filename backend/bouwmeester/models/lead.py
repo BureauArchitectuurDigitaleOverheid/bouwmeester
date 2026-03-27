@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from bouwmeester.models.lead_attachment import LeadAttachment
     from bouwmeester.models.lead_contact import LeadContact
     from bouwmeester.models.lead_node import LeadNode
-    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
     from bouwmeester.models.person import Person
     from bouwmeester.models.tag import LeadTag
 
@@ -59,13 +58,6 @@ class Lead(Base):
     next_action_date: Mapped[date | None] = mapped_column(nullable=True)
     sort_order: Mapped[int] = mapped_column(default=0, server_default="0")
     raw_intake_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Legacy: kept nullable during migration, will be dropped later
-    organisatie_eenheid_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("organisatie_eenheid.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
     initiatief_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("initiatief.id", ondelete="CASCADE"),
@@ -88,9 +80,6 @@ class Lead(Base):
     )
     externe_organisatie: Mapped[Optional["ExterneOrganisatie"]] = relationship(
         "ExterneOrganisatie"
-    )
-    organisatie_eenheid: Mapped[Optional["OrganisatieEenheid"]] = relationship(
-        "OrganisatieEenheid"
     )
     initiatief: Mapped[Optional["Initiatief"]] = relationship(
         "Initiatief", back_populates="leads"
