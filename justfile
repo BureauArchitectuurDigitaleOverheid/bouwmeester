@@ -58,9 +58,10 @@ seed:
 
 # Force restart all services (always works, even after crashes)
 kick:
+    -docker compose down backend
     docker compose up -d --force-recreate --build
     @echo "Wachten op backend..."
-    @sleep 20
+    @sleep 25
     @curl -sf http://localhost:8000/api/auth/status > /dev/null && echo "Backend draait!" || echo "Backend start nog op, probeer over 10 seconden."
 
 # Full database reset: nuke → start db → wait → migrate → seed → start services
