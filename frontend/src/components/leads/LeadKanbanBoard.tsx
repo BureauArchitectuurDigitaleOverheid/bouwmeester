@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { Button } from '@/components/common/Button';
 import { LeadCard } from './LeadCard';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { LeadIntakeDialog } from './LeadIntakeDialog';
