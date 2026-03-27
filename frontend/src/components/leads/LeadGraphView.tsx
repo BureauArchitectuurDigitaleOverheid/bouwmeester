@@ -178,7 +178,7 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
       }}
     >
       <div style={{ height: '4px', background: color, borderRadius: '10px 10px 0 0' }} />
-      <div style={{ padding: '8px 12px' }}>
+      <div style={{ padding: '8px 12px', paddingBottom: data.onAddContact ? '28px' : '8px' }}>
         {badgeContent}
         <div
           style={{

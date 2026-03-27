@@ -5,12 +5,11 @@ import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { usePeople, useCreatePerson } from '@/hooks/usePeople';
 import { useAddLeadContact } from '@/hooks/useLeads';
+import { LEAD_CONTACT_ROL_LABELS } from '@/types';
 
-const CONTACT_ROLLEN: SelectOption[] = [
-  { value: 'contactpersoon', label: 'Contactpersoon' },
-  { value: 'opdrachtgever', label: 'Opdrachtgever' },
-  { value: 'betrokken', label: 'Betrokken' },
-];
+const CONTACT_ROLLEN: SelectOption[] = Object.entries(LEAD_CONTACT_ROL_LABELS).map(
+  ([value, label]) => ({ value, label }),
+);
 
 interface Props {
   leadId: string | null;
@@ -47,8 +46,12 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
 
   const handleSubmit = useCallback(async () => {
     if (!leadId || !personId) return;
-    await addContact.mutateAsync({ leadId, personId, rol });
-    resetAndClose();
+    try {
+      await addContact.mutateAsync({ leadId, personId, rol });
+      resetAndClose();
+    } catch {
+      // useMutationWithError already shows a toast; keep modal open so the user can retry
+    }
   }, [leadId, personId, rol, addContact, resetAndClose]);
 
   return (

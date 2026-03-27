@@ -38,10 +38,14 @@ export function routeConnection(sourceId: string, targetId: string): ConnectionR
     return { kind: 'invalid', reason: 'Dit type node kan niet gekoppeld worden.' };
   }
 
-  // Normalize: put the "bigger" type first for consistent matching
+  // Same-type connections are only valid for corpus nodes (node ↔ node)
+  if (src.type === tgt.type && src.type !== 'node') {
+    const label = src.type === 'lead' ? 'lead' : src.type === 'person' ? 'persoon' : 'organisatie';
+    return { kind: 'invalid', reason: `Een ${label} kan niet aan een andere ${label} gekoppeld worden.` };
+  }
+
   const pair = [src, tgt] as const;
 
-  // lead + person -> lead_contact (either direction)
   const lead = pair.find((n) => n.type === 'lead');
   const person = pair.find((n) => n.type === 'person');
   const org = pair.find((n) => n.type === 'org');

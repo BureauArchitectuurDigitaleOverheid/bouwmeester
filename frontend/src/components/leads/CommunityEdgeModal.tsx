@@ -10,15 +10,13 @@ import { useCreateEdge } from '@/hooks/useEdges';
 import { useAddNodeStakeholder } from '@/hooks/useNodes';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
-import { STAKEHOLDER_ROL_LABELS } from '@/types';
+import { STAKEHOLDER_ROL_LABELS, LEAD_CONTACT_ROL_LABELS } from '@/types';
 import { queryKeys } from '@/hooks/queryKeys';
 import { routeConnection, type ConnectionRoute } from '@/utils/communityEdgeRouting';
 
-const CONTACT_ROLLEN: SelectOption[] = [
-  { value: 'contactpersoon', label: 'Contactpersoon' },
-  { value: 'opdrachtgever', label: 'Opdrachtgever' },
-  { value: 'betrokken', label: 'Betrokken' },
-];
+const CONTACT_ROLLEN: SelectOption[] = Object.entries(LEAD_CONTACT_ROL_LABELS).map(
+  ([value, label]) => ({ value, label }),
+);
 
 const STAKEHOLDER_ROLLEN: SelectOption[] = Object.entries(STAKEHOLDER_ROL_LABELS).map(
   ([value, label]) => ({ value, label }),
@@ -76,49 +74,52 @@ export function CommunityEdgeModal({ pendingConnection, onClose }: Props) {
   const handleSubmit = useCallback(async () => {
     if (!route || route.kind === 'invalid') return;
 
-    switch (route.kind) {
-      case 'lead_contact':
-        await addContact.mutateAsync({
-          leadId: route.leadId,
-          personId: route.personId,
-          rol: selectedRole,
-        });
-        break;
+    try {
+      switch (route.kind) {
+        case 'lead_contact':
+          await addContact.mutateAsync({
+            leadId: route.leadId,
+            personId: route.personId,
+            rol: selectedRole,
+          });
+          break;
 
-      case 'lead_node':
-        await linkNode.mutateAsync({
-          leadId: route.leadId,
-          nodeId: route.nodeId,
-        });
-        break;
+        case 'lead_node':
+          await linkNode.mutateAsync({
+            leadId: route.leadId,
+            nodeId: route.nodeId,
+          });
+          break;
 
-      case 'lead_org':
-        await updateLead.mutateAsync({
-          id: route.leadId,
-          data: { externe_organisatie_id: route.orgId },
-        });
-        break;
+        case 'lead_org':
+          await updateLead.mutateAsync({
+            id: route.leadId,
+            data: { externe_organisatie_id: route.orgId },
+          });
+          break;
 
-      case 'corpus_edge':
-        await createEdge.mutateAsync({
-          from_node_id: route.fromNodeId,
-          to_node_id: route.toNodeId,
-          edge_type_id: selectedEdgeType,
-        });
-        // createEdge doesn't invalidate leads, but the community graph needs it
-        await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all });
-        break;
+        case 'corpus_edge':
+          await createEdge.mutateAsync({
+            from_node_id: route.fromNodeId,
+            to_node_id: route.toNodeId,
+            edge_type_id: selectedEdgeType,
+          });
+          await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all });
+          break;
 
-      case 'node_stakeholder':
-        await addStakeholder.mutateAsync({
-          nodeId: route.nodeId,
-          data: { person_id: route.personId, rol: selectedStakeholderRole },
-        });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all });
-        break;
+        case 'node_stakeholder':
+          await addStakeholder.mutateAsync({
+            nodeId: route.nodeId,
+            data: { person_id: route.personId, rol: selectedStakeholderRole },
+          });
+          await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all });
+          break;
+      }
+
+      resetAndClose();
+    } catch {
+      // useMutationWithError already shows a toast; keep modal open so the user can retry
     }
-
-    resetAndClose();
   }, [
     route,
     selectedRole,
