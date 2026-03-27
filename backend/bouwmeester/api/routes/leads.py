@@ -719,7 +719,12 @@ async def parse_intake(
     try:
         if image_parts:
             # Use vision-style multimodal message with text + images
-            content: list[dict] = [{"type": "text", "text": prompt}]
+            # Use shorter tag list for vision to stay within token limits
+            shorter_prompt = build_lead_intake_prompt(
+                combined_text or "(zie afbeelding)",
+                existing_tags=existing_tag_names[:50],
+            )
+            content: list[dict] = [{"type": "text", "text": shorter_prompt}]
             content.extend(image_parts)
             response = await llm._client.chat.completions.create(
                 model=llm._model,
@@ -730,6 +735,7 @@ async def parse_intake(
         else:
             response_text = await llm._complete(prompt)
 
+        logger.debug("LLM response for parse-intake: %s", response_text[:500])
         parsed = llm._parse_json(response_text)
         return LeadParseResult(
             title=parsed.get("title"),
