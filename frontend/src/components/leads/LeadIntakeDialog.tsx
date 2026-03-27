@@ -4,7 +4,8 @@ import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
-import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake, useAddLeadContact, useAddTagToLead, useCheckDuplicates } from '@/hooks/useLeads';
+import { useCreateLead, useParseLeadIntake, useCheckDuplicates } from '@/hooks/useLeads';
+import { addTagToLead as addTagToLeadApi, uploadLeadAttachment as uploadLeadAttachmentApi, addLeadContact as addLeadContactApi } from '@/api/leads';
 import { useTags } from '@/hooks/useTags';
 import { usePeople, usePersonOrganisaties } from '@/hooks/usePeople';
 import { createPerson } from '@/api/people';
@@ -47,10 +48,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const createLead = useCreateLead();
-  const uploadAttachment = useUploadLeadAttachment();
   const parseLead = useParseLeadIntake();
-  const addLeadContact = useAddLeadContact();
-  const addTagToLead = useAddTagToLead();
   const { currentPerson } = useCurrentPerson();
   const { data: personPlaatsingen } = usePersonOrganisaties(currentPerson?.id ?? null);
   const { data: people } = usePeople();
@@ -285,7 +283,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       // Add tags via separate endpoint
       for (const tagName of selectedTags) {
         try {
-          await addTagToLead.mutateAsync({ leadId: lead.id, data: { tag_name: tagName } });
+          await addTagToLeadApi(lead.id, { tag_name: tagName });
         } catch {
           // Non-critical, don't block lead creation
         }
@@ -294,7 +292,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       // Upload attached files
       for (const file of files) {
         try {
-          await uploadAttachment.mutateAsync({ leadId: lead.id, file });
+          await uploadLeadAttachmentApi(lead.id, file);
         } catch {
           // Non-critical, don't block lead creation
         }
@@ -304,11 +302,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       if (contactPersonId) {
         // Existing person matched - link as contact
         try {
-          await addLeadContact.mutateAsync({
-            leadId: lead.id,
-            personId: contactPersonId,
-            rol: 'contactpersoon',
-          });
+          await addLeadContactApi(lead.id, contactPersonId, 'contactpersoon');
         } catch {
           // Non-critical, don't block lead creation
         }
@@ -329,11 +323,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
             });
             personId = newPerson.id;
           }
-          await addLeadContact.mutateAsync({
-            leadId: lead.id,
-            personId,
-            rol: 'contactpersoon',
-          });
+          await addLeadContactApi(lead.id, personId, 'contactpersoon');
         } catch {
           // Non-critical, don't block lead creation
         }
