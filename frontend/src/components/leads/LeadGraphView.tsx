@@ -21,6 +21,7 @@ import dagre from 'dagre';
 
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { CommunityEdgeModal } from './CommunityEdgeModal';
 import { AddLeadContactModal } from './AddLeadContactModal';
@@ -505,18 +506,22 @@ function CommunityGraphInner() {
         })}
 
         {/* Stage filter */}
-        <select
-          value={stageFilter}
-          onChange={(e) => setStageFilter(e.target.value)}
-          className="rounded-full border border-gray-200 px-3 py-1 text-xs text-gray-700 bg-white"
-        >
-          <option value="">Alle stages</option>
-          {Object.values(LeadStage).map((s) => (
-            <option key={s} value={s}>
-              {LEAD_STAGE_LABELS[s]}
-            </option>
-          ))}
-        </select>
+        <div className="w-40">
+          <CreatableSelect
+            value={stageFilter}
+            onChange={setStageFilter}
+            options={[
+              { value: '', label: 'Alle stages' },
+              ...Object.values(LeadStage).map((s) => ({
+                value: s,
+                label: LEAD_STAGE_LABELS[s],
+              })),
+            ]}
+            placeholder="Alle stages"
+            searchable={false}
+            onClear={stageFilter ? () => setStageFilter('') : undefined}
+          />
+        </div>
 
         {/* Search */}
         <div className="relative ml-auto">

@@ -349,21 +349,17 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
         <div className="space-y-4">
           {myEenheden.length !== 1 && (
             <div>
-              <label className="block text-sm font-medium text-text mb-1">
-                Voor welk team is deze lead?
-              </label>
-              <select
+              <CreatableSelect
+                label="Voor welk team is deze lead?"
                 value={orgEenheidId}
-                onChange={(e) => setOrgEenheidId(e.target.value)}
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-              >
-                <option value="">Selecteer team...</option>
-                {myEenheden.map((p) => (
-                  <option key={p.organisatie_eenheid_id} value={p.organisatie_eenheid_id}>
-                    {p.organisatie_eenheid_naam}
-                  </option>
-                ))}
-              </select>
+                onChange={setOrgEenheidId}
+                options={myEenheden.map((p) => ({
+                  value: p.organisatie_eenheid_id,
+                  label: p.organisatie_eenheid_naam,
+                }))}
+                placeholder="Selecteer team..."
+                searchable={false}
+              />
             </div>
           )}
 
