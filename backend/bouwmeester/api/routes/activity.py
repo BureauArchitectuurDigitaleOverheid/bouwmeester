@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.database import get_db
 from bouwmeester.schema.activity import ActivityFeedResponse, ActivityResponse
 from bouwmeester.schema.inbox import InboxResponse
@@ -41,9 +41,10 @@ async def get_activity_feed(
 @router.get("/inbox", response_model=InboxResponse)
 async def get_inbox(
     current_user: OptionalUser,
-    person_id: UUID = Query(...),
+    person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> InboxResponse:
     """Get aggregated inbox for a person (tasks, notifications, deadlines)."""
+    pid = effective_person_id(current_user, person_id)
     service = InboxService(db)
-    return await service.get_inbox(person_id)
+    return await service.get_inbox(pid)

@@ -843,3 +843,24 @@ async def get_admin_user(
 CurrentUser = Annotated[Person, Depends(get_current_user)]
 OptionalUser = Annotated[Person | None, Depends(get_optional_user)]
 AdminUser = Annotated[Person | None, Depends(get_admin_user)]
+
+
+def effective_person_id(
+    current_user: Person | None,
+    person_id: UUID | None = None,
+) -> UUID:
+    """Return the authenticated user's ID, falling back to *person_id* in dev mode.
+
+    When OIDC is active *current_user* is always set and the query-param is
+    ignored — this prevents impersonation.  In dev mode (no OIDC,
+    *current_user* is ``None``) the explicit *person_id* is accepted so
+    local development keeps working without an identity provider.
+    """
+    if current_user is not None:
+        return current_user.id
+    if person_id is not None:
+        return person_id
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="person_id is required when not authenticated",
+    )

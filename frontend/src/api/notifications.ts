@@ -2,30 +2,30 @@ import { apiGet, apiPost, apiPut } from './client';
 import type { Notification, UnreadCountResponse, DashboardStats } from '@/types';
 
 export async function getNotifications(
-  personId: string,
   unreadOnly = false,
+  devPersonId?: string,
 ): Promise<Notification[]> {
-  return apiGet<Notification[]>('/api/notifications', {
-    person_id: personId,
-    unread_only: unreadOnly,
-  });
+  const params: Record<string, string> = {};
+  if (unreadOnly) params.unread_only = 'true';
+  if (devPersonId) params.person_id = devPersonId;
+  return apiGet<Notification[]>('/api/notifications', params);
 }
 
-export async function getNotification(id: string, personId?: string): Promise<Notification> {
+export async function getNotification(id: string, devPersonId?: string): Promise<Notification> {
   const params: Record<string, string> = {};
-  if (personId) params.person_id = personId;
+  if (devPersonId) params.person_id = devPersonId;
   return apiGet<Notification>(`/api/notifications/${id}`, params);
 }
 
-export async function getUnreadCount(personId: string): Promise<UnreadCountResponse> {
-  return apiGet<UnreadCountResponse>('/api/notifications/count', {
-    person_id: personId,
-  });
+export async function getUnreadCount(devPersonId?: string): Promise<UnreadCountResponse> {
+  const params: Record<string, string> = {};
+  if (devPersonId) params.person_id = devPersonId;
+  return apiGet<UnreadCountResponse>('/api/notifications/count', params);
 }
 
-export async function getReplies(notificationId: string, personId?: string): Promise<Notification[]> {
+export async function getReplies(notificationId: string, devPersonId?: string): Promise<Notification[]> {
   const params: Record<string, string> = {};
-  if (personId) params.person_id = personId;
+  if (devPersonId) params.person_id = devPersonId;
   return apiGet<Notification[]>(`/api/notifications/${notificationId}/replies`, params);
 }
 
@@ -33,8 +33,9 @@ export async function markNotificationRead(id: string): Promise<Notification> {
   return apiPut<Notification>(`/api/notifications/${id}/read`);
 }
 
-export async function markAllNotificationsRead(personId: string): Promise<{ marked_read: number }> {
-  return apiPut<{ marked_read: number }>(`/api/notifications/read-all?person_id=${encodeURIComponent(personId)}`);
+export async function markAllNotificationsRead(devPersonId?: string): Promise<{ marked_read: number }> {
+  const params = devPersonId ? `?person_id=${encodeURIComponent(devPersonId)}` : '';
+  return apiPut<{ marked_read: number }>(`/api/notifications/read-all${params}`);
 }
 
 export async function sendMessage(data: {
@@ -59,8 +60,8 @@ export async function reactToMessage(
   return apiPost<{ action: string }>(`/api/notifications/${notificationId}/react`, data);
 }
 
-export async function getDashboardStats(personId: string): Promise<DashboardStats> {
-  return apiGet<DashboardStats>('/api/notifications/dashboard-stats', {
-    person_id: personId,
-  });
+export async function getDashboardStats(devPersonId?: string): Promise<DashboardStats> {
+  const params: Record<string, string> = {};
+  if (devPersonId) params.person_id = devPersonId;
+  return apiGet<DashboardStats>('/api/notifications/dashboard-stats', params);
 }

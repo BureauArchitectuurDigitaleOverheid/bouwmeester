@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, User, ChevronDown, Check, LogOut, Eye, X, Menu } from 'lucide-react';
+import { Search, User, ChevronDown, Check, LogOut, Menu } from 'lucide-react';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -41,13 +41,14 @@ function getInitials(naam: string): string {
 export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentPerson, setCurrentPersonId, people, isViewingAsOther, resetToSelf } =
-    useCurrentPerson();
+  const { currentPerson, setDevPersonId, people } = useCurrentPerson();
   const { vocabularyId, setVocabularyId } = useVocabulary();
-  const { authenticated, oidcConfigured, person: authPerson, logout } = useAuth();
+  const { authenticated, oidcConfigured, logout } = useAuth();
   const toggleMobileSidebar = useUIStore((s) => s.toggleMobileSidebar);
   const { isFeatureEnabled } = useFeatureToggle();
-  const [showPersonPicker, setShowPersonPicker] = useState(false);
+
+  // Dev-mode person picker state (only used when !oidcConfigured)
+  const [showDevPicker, setShowDevPicker] = useState(false);
   const [search, setSearch] = useState('');
   const pickerRef = useRef<HTMLDivElement>(null);
 
@@ -76,28 +77,22 @@ export function Header() {
 
   // Close picker on outside click
   useEffect(() => {
-    if (!showPersonPicker) return;
+    if (!showDevPicker) return;
     const handleClick = (e: MouseEvent) => {
       if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setShowPersonPicker(false);
+        setShowDevPicker(false);
         setSearch('');
       }
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [showPersonPicker]);
+  }, [showDevPicker]);
 
   const filteredPeople = people.filter((p) =>
     p.naam.toLowerCase().includes(search.toLowerCase()),
   );
 
   const initials = currentPerson ? getInitials(currentPerson.naam) : null;
-
-  // In SSO mode, determine the authenticated user's display name
-  const authDisplayName = oidcConfigured ? (authPerson?.name || authPerson?.email || '') : '';
-
-  // Only admins (or dev mode without OIDC) can use the person picker
-  const canViewAs = !oidcConfigured || !!authPerson?.is_admin;
 
   return (
     <header className="flex items-center justify-between h-16 px-4 md:px-6 bg-surface border-b border-border shrink-0 sticky top-0 z-30">
@@ -154,7 +149,7 @@ export function Header() {
         )}
 
         {/* Notification bell */}
-        <NotificationBell personId={currentPerson?.id} />
+        <NotificationBell />
 
         {/* Search shortcut */}
         <button
@@ -168,26 +163,11 @@ export function Header() {
           </kbd>
         </button>
 
-        {/* "Viewing as" indicator (SSO mode only) */}
-        {isViewingAsOther && (
-          <div className="flex items-center gap-1.5 h-9 px-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700">
-            <Eye className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Bekijk als {currentPerson?.naam}</span>
-            <button
-              onClick={resetToSelf}
-              className="ml-0.5 p-0.5 rounded hover:bg-amber-100 transition-colors"
-              title="Terug naar eigen profiel"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        )}
-
-        {/* Person picker (admin) or static user display (non-admin) */}
-        {canViewAs ? (
+        {/* Dev-mode person picker (only when OIDC is not configured) */}
+        {!oidcConfigured ? (
           <div className="relative" ref={pickerRef}>
             <button
-              onClick={() => setShowPersonPicker(!showPersonPicker)}
+              onClick={() => setShowDevPicker(!showDevPicker)}
               className="flex items-center gap-1.5 h-9 px-2 rounded-xl border border-border hover:border-border-hover transition-all"
             >
               <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary-100 text-primary-700 text-[11px] font-medium">
@@ -201,21 +181,14 @@ export function Header() {
               <ChevronDown className="h-3.5 w-3.5 text-text-secondary" />
             </button>
 
-            {showPersonPicker && (
+            {showDevPicker && (
               <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-border rounded-xl shadow-lg z-50 overflow-hidden">
-                {/* SSO mode label */}
-                {oidcConfigured && authDisplayName && (
-                  <div className="px-3 py-2 bg-gray-50 border-b border-border">
-                    <p className="text-xs text-text-secondary">Ingelogd als</p>
-                    <p className="text-sm text-text font-medium truncate">{authDisplayName}</p>
-                  </div>
-                )}
                 <div className="p-2 border-b border-border">
                   <input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder={oidcConfigured ? 'Bekijk als...' : 'Zoek persoon...'}
+                    placeholder="Zoek persoon..."
                     className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
                     autoFocus
                   />
@@ -225,8 +198,8 @@ export function Header() {
                     <button
                       key={person.id}
                       onClick={() => {
-                        setCurrentPersonId(person.id);
-                        setShowPersonPicker(false);
+                        setDevPersonId(person.id);
+                        setShowDevPicker(false);
                         setSearch('');
                       }}
                       className="flex items-center gap-3 w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors"

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
-from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.database import get_db
 from bouwmeester.models.notification import Notification
 from bouwmeester.models.person import Person
@@ -152,7 +152,7 @@ async def _attach_reactions(
 @router.get("", response_model=list[NotificationResponse])
 async def list_notifications(
     current_user: OptionalUser,
-    person_id: UUID = Query(...),
+    person_id: UUID | None = Query(None),
     unread_only: bool = Query(False),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -162,9 +162,10 @@ async def list_notifications(
 
     Filter with unread_only.
     """
+    pid = effective_person_id(current_user, person_id)
     service = NotificationService(db)
     notifications = await service.get_notifications(
-        person_id, unread_only=unread_only, skip=skip, limit=limit
+        pid, unread_only=unread_only, skip=skip, limit=limit
     )
     responses = await _enrich_batch(notifications, service, db)
     # Re-sort so threads with recent replies bubble to the top
@@ -175,24 +176,26 @@ async def list_notifications(
 @router.get("/count", response_model=UnreadCountResponse)
 async def get_unread_count(
     current_user: OptionalUser,
-    person_id: UUID = Query(...),
+    person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> UnreadCountResponse:
     """Get the count of unread notifications for a person."""
+    pid = effective_person_id(current_user, person_id)
     service = NotificationService(db)
-    count = await service.count_unread(person_id)
+    count = await service.count_unread(pid)
     return UnreadCountResponse(count=count)
 
 
 @router.get("/dashboard-stats", response_model=DashboardStatsResponse)
 async def get_dashboard_stats(
     current_user: OptionalUser,
-    person_id: UUID = Query(...),
+    person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> DashboardStatsResponse:
     """Return dashboard statistics for a person."""
+    pid = effective_person_id(current_user, person_id)
     service = NotificationService(db)
-    stats = await service.get_dashboard_stats(person_id)
+    stats = await service.get_dashboard_stats(pid)
     return DashboardStatsResponse(**stats)
 
 
@@ -204,10 +207,11 @@ async def get_notification(
     db: AsyncSession = Depends(get_db),
 ) -> NotificationResponse:
     """Get a single notification by ID with sender name, reply count, and reactions."""
+    pid = current_user.id if current_user is not None else person_id
     service = NotificationService(db)
     notification = require_found(await service.repo.get_by_id(id), "Notification")
     resp = await _enrich_response(notification, service, db)
-    await _attach_reactions([resp], service, db, person_id)
+    await _attach_reactions([resp], service, db, pid)
     return resp
 
 
@@ -219,13 +223,14 @@ async def get_replies(
     db: AsyncSession = Depends(get_db),
 ) -> list[NotificationResponse]:
     """Get all replies in a notification thread, with reactions attached."""
+    pid = current_user.id if current_user is not None else person_id
     service = NotificationService(db)
     notification = require_found(await service.repo.get_by_id(id), "Notification")
     # Use thread_id to fetch replies (replies are parented to the recipient's root)
     reply_parent_id = notification.thread_id if notification.thread_id else id
     replies = await service.repo.get_replies(reply_parent_id)
     responses = await _enrich_batch(replies, service, db)
-    await _attach_reactions(responses, service, db, person_id)
+    await _attach_reactions(responses, service, db, pid)
     return responses
 
 
@@ -244,12 +249,13 @@ async def mark_notification_read(
 @router.put("/read-all")
 async def mark_all_notifications_read(
     current_user: OptionalUser,
-    person_id: UUID = Query(...),
+    person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, int]:
     """Mark all notifications as read for a person. Returns count marked."""
+    pid = effective_person_id(current_user, person_id)
     service = NotificationService(db)
-    count = await service.mark_all_read(person_id)
+    count = await service.mark_all_read(pid)
     return {"marked_read": count}
 
 
