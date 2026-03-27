@@ -201,19 +201,8 @@ class LeadRepository(BaseRepository[Lead]):
         self.session.add(activity)
         await self.session.flush()
 
-        await self.session.refresh(
-            lead,
-            attribute_names=[
-                "updated_at",
-                "assignee",
-                "brought_by",
-                "externe_organisatie",
-                "organisatie_eenheid",
-                "attachments",
-                "lead_tags",
-            ],
-        )
-        return lead
+        # Re-fetch with all eager loads to avoid lazy-loading errors
+        return await self.get(id)
 
     async def reorder(self, lead_ids: list[UUID], stage: LeadStage) -> list[Lead]:
         for idx, lead_id in enumerate(lead_ids):
