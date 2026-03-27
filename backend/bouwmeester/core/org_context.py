@@ -164,7 +164,14 @@ async def get_org_context(
         return cached
 
     if person is None:
-        ctx = OrgContext(is_authenticated=False)
+        # In dev mode (no OIDC), treat as admin so all data is visible
+        from bouwmeester.core.config import get_settings
+
+        settings = get_settings()
+        if not settings.OIDC_ISSUER:
+            ctx = OrgContext(is_admin=True, is_authenticated=True)
+        else:
+            ctx = OrgContext(is_authenticated=False)
     else:
         ctx = await build_org_context(db, person)
 
