@@ -36,6 +36,7 @@ class LeadBase(BaseModel):
     externe_organisatie_id: UUID | None = None
     stage: LeadStage = LeadStage.verkennen
     assignee_id: UUID | None = None
+    brought_by_id: UUID | None = None
     next_action: str | None = Field(None, max_length=5000)
     next_action_date: date | None = None
     raw_intake_text: str | None = Field(None, max_length=50000)
@@ -53,6 +54,7 @@ class LeadUpdate(BaseModel):
     externe_organisatie_id: UUID | None = None
     stage: LeadStage | None = None
     assignee_id: UUID | None = None
+    brought_by_id: UUID | None = None
     next_action: str | None = Field(None, max_length=5000)
     next_action_date: date | None = None
     raw_intake_text: str | None = Field(None, max_length=50000)
@@ -157,6 +159,8 @@ class LeadResponse(BaseModel):
     stage: LeadStage
     assignee_id: UUID | None = None
     assignee: LeadAssigneeSummary | None = None
+    brought_by_id: UUID | None = None
+    brought_by: LeadAssigneeSummary | None = None
     organisatie_eenheid_id: UUID
     organisatie_eenheid: LeadOrgEenheidSummary | None = None
     next_action: str | None = None
@@ -233,6 +237,7 @@ class LeadParseResult(BaseModel):
     contact_phone: str | None = None
     original_date: str | None = None  # ISO date from the source message
     suggested_tags: list[str] = Field(default_factory=list)
+    addressed_to: str | None = None
 
 
 # ---------------------------------------------------------------------------

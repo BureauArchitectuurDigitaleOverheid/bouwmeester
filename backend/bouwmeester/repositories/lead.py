@@ -18,6 +18,7 @@ def _lead_options():
     """Standard eager-load options for lead queries."""
     return [
         selectinload(Lead.assignee),
+        selectinload(Lead.brought_by),
         selectinload(Lead.externe_organisatie),
         selectinload(Lead.organisatie_eenheid),
         selectinload(Lead.attachments),
@@ -45,6 +46,7 @@ class LeadRepository(BaseRepository[Lead]):
             .where(Lead.id == id)
             .options(
                 selectinload(Lead.assignee),
+                selectinload(Lead.brought_by),
                 selectinload(Lead.externe_organisatie),
                 selectinload(Lead.organisatie_eenheid),
                 selectinload(Lead.attachments),
@@ -147,6 +149,7 @@ class LeadRepository(BaseRepository[Lead]):
             lead,
             attribute_names=[
                 "assignee",
+                "brought_by",
                 "externe_organisatie",
                 "organisatie_eenheid",
                 "attachments",
@@ -168,6 +171,7 @@ class LeadRepository(BaseRepository[Lead]):
             attribute_names=[
                 "updated_at",
                 "assignee",
+                "brought_by",
                 "externe_organisatie",
                 "organisatie_eenheid",
                 "attachments",
@@ -202,6 +206,7 @@ class LeadRepository(BaseRepository[Lead]):
             attribute_names=[
                 "updated_at",
                 "assignee",
+                "brought_by",
                 "externe_organisatie",
                 "organisatie_eenheid",
                 "attachments",

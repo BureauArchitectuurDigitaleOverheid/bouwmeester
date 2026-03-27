@@ -48,6 +48,12 @@ class Lead(Base):
         nullable=True,
         index=True,
     )
+    brought_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("person.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     next_action: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_action_date: Mapped[date | None] = mapped_column(nullable=True)
     sort_order: Mapped[int] = mapped_column(default=0, server_default="0")
@@ -66,7 +72,12 @@ class Lead(Base):
     )
 
     # Relationships
-    assignee: Mapped[Optional["Person"]] = relationship("Person")
+    assignee: Mapped[Optional["Person"]] = relationship(
+        "Person", foreign_keys=[assignee_id]
+    )
+    brought_by: Mapped[Optional["Person"]] = relationship(
+        "Person", foreign_keys=[brought_by_id]
+    )
     externe_organisatie: Mapped[Optional["ExterneOrganisatie"]] = relationship(
         "ExterneOrganisatie"
     )

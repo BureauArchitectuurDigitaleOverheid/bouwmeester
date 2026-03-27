@@ -37,6 +37,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [assigneeId, setAssigneeId] = useState<string>('');
+  const [broughtById, setBroughtById] = useState<string>('');
   const [leadDate, setLeadDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,6 +82,13 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     }
   }, [myEenheden, orgEenheidId]);
 
+  // Default broughtById to current person
+  useEffect(() => {
+    if (!broughtById && currentPerson) {
+      setBroughtById(currentPerson.id);
+    }
+  }, [broughtById, currentPerson]);
+
   // Try to match VLAM's contact_name against existing people
   useEffect(() => {
     if (contactName && people) {
@@ -110,9 +118,10 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     setContactEmail('');
     setContactPhone('');
     setAssigneeId('');
+    setBroughtById(currentPerson?.id ?? '');
     setLeadDate(new Date().toISOString().split('T')[0]);
     setOrgEenheidId('');
-  }, []);
+  }, [currentPerson]);
 
   const handleClose = () => {
     reset();
@@ -157,6 +166,12 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       setContactEmail(result.contact_email ?? '');
       setContactPhone(result.contact_phone ?? '');
       if (result.original_date) setLeadDate(result.original_date);
+      if (result.addressed_to && people) {
+        const match = people.find(p =>
+          p.naam.toLowerCase().includes(result.addressed_to!.toLowerCase()),
+        );
+        if (match) setBroughtById(match.id);
+      }
       setStep('confirm');
     } catch {
       // If parsing fails, go straight to confirm with empty suggestions
@@ -203,6 +218,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
         raw_intake_text: rawText.trim() || null,
         organisatie_eenheid_id: orgEenheidId,
         assignee_id: assigneeId || null,
+        brought_by_id: broughtById || null,
         created_at: leadDate !== new Date().toISOString().split('T')[0]
           ? `${leadDate}T00:00:00Z`
           : null,
@@ -388,158 +404,179 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
             </p>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">
-              Titel <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-              placeholder="Titel van de lead"
-              autoFocus
-            />
-          </div>
+          {/* Two-column layout */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+            {/* LEFT COLUMN: Lead info */}
+            <div className="space-y-4">
+              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Lead</h4>
 
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">
-              Status
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {LEAD_STAGE_ORDER.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setStage(s)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                    stage === s
-                      ? `${LEAD_STAGE_COLORS[s]} ring-2 ring-offset-1 ring-current`
-                      : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
-                  }`}
-                >
-                  {LEAD_STAGE_LABELS[s]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">
-                Datum
-              </label>
-              <input
-                type="date"
-                value={leadDate}
-                onChange={(e) => setLeadDate(e.target.value)}
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">
-                Organisatie
-              </label>
-              <input
-                type="text"
-                value={organization}
-                onChange={(e) => setOrganization(e.target.value)}
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                placeholder="Naam van de organisatie"
-              />
-            </div>
-          </div>
-
-          <CreatableSelect
-            label="Contactpersoon"
-            value={contactPersonId}
-            onChange={(val) => {
-              setContactPersonId(val);
-              // Update contactName from selected person
-              const person = people?.find((p) => p.id === val);
-              if (person) setContactName(person.naam);
-            }}
-            options={contactOptions}
-            placeholder="Zoek of typ een naam..."
-            onCreate={async (name) => {
-              setContactName(name);
-              setContactPersonId('');
-              return null;
-            }}
-            createLabel="Nieuw contact"
-            displayValue={!contactPersonId && contactName ? contactName : undefined}
-            onClear={() => {
-              setContactPersonId('');
-              setContactName('');
-              setContactEmail('');
-              setContactPhone('');
-            }}
-          />
-
-          {(contactPersonId || contactName) && (
-            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-text mb-1">
-                  E-mail contactpersoon
+                  Titel <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="email"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                  placeholder="email@organisatie.nl"
+                  placeholder="Titel van de lead"
+                  autoFocus
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-text mb-1">
-                  Telefoon contactpersoon
+                  Status
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {LEAD_STAGE_ORDER.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setStage(s)}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                        stage === s
+                          ? `${LEAD_STAGE_COLORS[s]} ring-2 ring-offset-1 ring-current`
+                          : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
+                      }`}
+                    >
+                      {LEAD_STAGE_LABELS[s]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-text mb-1">
+                    Datum
+                  </label>
+                  <input
+                    type="date"
+                    value={leadDate}
+                    onChange={(e) => setLeadDate(e.target.value)}
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-text mb-1">
+                    Organisatie
+                  </label>
+                  <input
+                    type="text"
+                    value={organization}
+                    onChange={(e) => setOrganization(e.target.value)}
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+                    placeholder="Naam van de organisatie"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text mb-1">
+                  Beschrijving
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400 min-h-[80px] resize-y"
+                  placeholder="Korte beschrijving"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text mb-1">
+                  Tags
                 </label>
                 <input
-                  type="tel"
-                  value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
+                  type="text"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                  placeholder="06-12345678"
+                  placeholder="Komma-gescheiden tags"
                 />
               </div>
             </div>
-          )}
 
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">
-              Beschrijving
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400 min-h-[80px] resize-y"
-              placeholder="Korte beschrijving"
-              rows={3}
-            />
+            {/* RIGHT COLUMN: People */}
+            <div className="space-y-4">
+              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Personen</h4>
+
+              <CreatableSelect
+                label="Binnengebracht door"
+                value={broughtById}
+                onChange={setBroughtById}
+                options={assigneeOptions}
+                placeholder="Zoek een teamlid..."
+              />
+
+              <CreatableSelect
+                label="Verantwoordelijke"
+                value={assigneeId}
+                onChange={setAssigneeId}
+                options={assigneeOptions}
+                placeholder="Zoek een persoon..."
+                onClear={() => setAssigneeId('')}
+              />
+
+              <CreatableSelect
+                label="Contactpersoon (extern)"
+                value={contactPersonId}
+                onChange={(val) => {
+                  setContactPersonId(val);
+                  const person = people?.find((p) => p.id === val);
+                  if (person) setContactName(person.naam);
+                }}
+                options={contactOptions}
+                placeholder="Zoek of typ een naam..."
+                onCreate={async (name) => {
+                  setContactName(name);
+                  setContactPersonId('');
+                  return null;
+                }}
+                createLabel="Nieuw contact"
+                displayValue={!contactPersonId && contactName ? contactName : undefined}
+                onClear={() => {
+                  setContactPersonId('');
+                  setContactName('');
+                  setContactEmail('');
+                  setContactPhone('');
+                }}
+              />
+
+              {(contactPersonId || contactName) && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-text mb-1">
+                      E-mail
+                    </label>
+                    <input
+                      type="email"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+                      placeholder="email@organisatie.nl"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-text mb-1">
+                      Telefoon
+                    </label>
+                    <input
+                      type="tel"
+                      value={contactPhone}
+                      onChange={(e) => setContactPhone(e.target.value)}
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+                      placeholder="06-12345678"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">
-              Tags
-            </label>
-            <input
-              type="text"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-              placeholder="Komma-gescheiden tags"
-            />
-          </div>
-
-          <CreatableSelect
-            label="Verantwoordelijke"
-            value={assigneeId}
-            onChange={setAssigneeId}
-            options={assigneeOptions}
-            placeholder="Zoek een persoon..."
-            onClear={() => setAssigneeId('')}
-          />
-
+          {/* Files + buttons below both columns */}
           {files.length > 0 && (
             <p className="text-xs text-text-secondary">
               {files.length} {files.length === 1 ? 'bijlage' : 'bijlagen'} worden meegestuurd

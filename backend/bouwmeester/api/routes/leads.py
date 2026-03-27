@@ -731,6 +731,7 @@ async def parse_intake(
             contact_phone=parsed.get("contact_phone"),
             original_date=parsed.get("original_date"),
             suggested_tags=parsed.get("suggested_tags", []),
+            addressed_to=parsed.get("addressed_to"),
         )
     except Exception:
         logger.exception("Failed to parse intake text with LLM")

@@ -1542,6 +1542,8 @@ export interface Lead {
   stage: LeadStage;
   assignee_id: string | null;
   assignee: LeadAssigneeSummary | null;
+  brought_by_id: string | null;
+  brought_by: LeadAssigneeSummary | null;
   organisatie_eenheid_id: string;
   organisatie_eenheid: LeadOrgEenheidSummary | null;
   next_action: string | null;
@@ -1568,6 +1570,7 @@ export interface LeadCreate {
   externe_organisatie_id?: string | null;
   stage?: LeadStage;
   assignee_id?: string | null;
+  brought_by_id?: string | null;
   next_action?: string | null;
   next_action_date?: string | null;
   raw_intake_text?: string | null;
@@ -1582,6 +1585,7 @@ export interface LeadUpdate {
   externe_organisatie_id?: string | null;
   stage?: LeadStage;
   assignee_id?: string | null;
+  brought_by_id?: string | null;
   next_action?: string | null;
   next_action_date?: string | null;
   raw_intake_text?: string | null;
@@ -1640,6 +1644,7 @@ export interface LeadParseResult {
   contact_phone: string | null;
   original_date: string | null;
   suggested_tags: string[];
+  addressed_to: string | null;
 }
 
 // Community Graph types (used by LeadGraphView / CommunityGraph)
