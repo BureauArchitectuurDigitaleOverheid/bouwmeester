@@ -46,13 +46,27 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const { data: personPlaatsingen } = usePersonOrganisaties(currentPerson?.id ?? null);
   const { data: people } = usePeople();
 
-  const personOptions = useMemo(
+  // Assignee options: current person first (with "(mij)")
+  const assigneeOptions = useMemo(
     () => buildPersonOptions(people ?? [], currentPerson, (p) => ({
       value: p.id,
       label: p.naam,
       description: formatFunctie(p.functie),
     })),
     [people, currentPerson],
+  );
+
+  // Contact options: plain alphabetical, no "mij" at top
+  const contactOptions = useMemo(
+    () => (people ?? [])
+      .filter((p) => p.is_active)
+      .sort((a, b) => a.naam.localeCompare(b.naam))
+      .map((p) => ({
+        value: p.id,
+        label: p.naam,
+        description: formatFunctie(p.functie),
+      })),
+    [people],
   );
 
   const myEenheden = personPlaatsingen ?? [];
@@ -390,7 +404,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
               const person = people?.find((p) => p.id === val);
               if (person) setContactName(person.naam);
             }}
-            options={personOptions}
+            options={contactOptions}
             placeholder="Zoek of typ een naam..."
             onCreate={async (name) => {
               setContactName(name);
@@ -466,7 +480,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
             label="Verantwoordelijke"
             value={assigneeId}
             onChange={setAssigneeId}
-            options={personOptions}
+            options={assigneeOptions}
             placeholder="Zoek een persoon..."
             onClear={() => setAssigneeId('')}
           />
