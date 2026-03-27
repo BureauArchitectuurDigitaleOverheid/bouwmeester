@@ -621,6 +621,12 @@ export const STAKEHOLDER_ROL_LABELS: Record<string, string> = {
   indiener: 'Indiener',
 };
 
+export const LEAD_CONTACT_ROL_LABELS: Record<string, string> = {
+  contactpersoon: 'Contactpersoon',
+  opdrachtgever: 'Opdrachtgever',
+  betrokken: 'Betrokken',
+};
+
 // Notification type labels and colors
 export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   task_assigned: 'taak toegewezen',
