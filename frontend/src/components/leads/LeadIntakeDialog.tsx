@@ -750,7 +750,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
             <Button
               onClick={handleSubmit}
               disabled={!canSubmit}
-              loading={createLead.isPending || uploadAttachment.isPending}
+              loading={createLead.isPending}
             >
               Lead aanmaken
             </Button>
