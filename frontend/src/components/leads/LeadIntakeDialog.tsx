@@ -4,6 +4,7 @@ import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { useCreateLead, useParseLeadIntake, useCheckDuplicates } from '@/hooks/useLeads';
 import { addTagToLead as addTagToLeadApi, uploadLeadAttachment as uploadLeadAttachmentApi, addLeadContact as addLeadContactApi } from '@/api/leads';
 import { useTags } from '@/hooks/useTags';
@@ -568,18 +569,13 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-text mb-1">
-                  Beschrijving
-                </label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400 min-h-[80px] resize-y"
-                  placeholder="Korte beschrijving"
-                  rows={3}
-                />
-              </div>
+              <RichTextFormField
+                label="Beschrijving"
+                value={description}
+                onChange={setDescription}
+                rows={5}
+                placeholder="Korte beschrijving... Gebruik @ voor personen, # voor nodes/taken"
+              />
 
               <div>
                 <label className="block text-sm font-medium text-text mb-1">
