@@ -25,6 +25,7 @@ const FEATURE_DEFINITIONS: FeatureDefinition[] = [
   { key: 'menu.eenheid_overzicht', label: 'Eenheid overzicht', category: 'Menu' },
   { key: 'menu.opdrachten', label: 'Opdrachten', category: 'Menu' },
   { key: 'menu.leads', label: 'Leads', category: 'Menu' },
+  { key: 'menu.initiatieven', label: 'Initiatieven', category: 'Menu' },
   { key: 'menu.kamerstukken', label: 'Kamerstukken', category: 'Menu' },
   { key: 'menu.zoeken', label: 'Zoeken', category: 'Menu' },
   { key: 'menu.docs', label: 'Documentatie', category: 'Menu' },
