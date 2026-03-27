@@ -229,6 +229,8 @@ class LeadParseResult(BaseModel):
     organization: str | None = None
     description: str | None = None
     contact_name: str | None = None
+    contact_email: str | None = None
+    contact_phone: str | None = None
     suggested_tags: list[str] = Field(default_factory=list)
 
 

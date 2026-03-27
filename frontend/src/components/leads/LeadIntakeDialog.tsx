@@ -152,6 +152,8 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       setDescription(result.description ?? '');
       setTags(result.suggested_tags?.join(', ') ?? '');
       setContactName(result.contact_name ?? '');
+      setContactEmail(result.contact_email ?? '');
+      setContactPhone(result.contact_phone ?? '');
       setStep('confirm');
     } catch {
       // If parsing fails, go straight to confirm with empty suggestions
@@ -282,6 +284,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
               placeholder="Plak tekst, screenshot, of sleep een bestand hierheen..."
               className="w-full rounded-xl px-4 py-3 text-sm min-h-[160px] resize-y focus:outline-none bg-transparent"
               rows={6}
+              autoFocus
             />
             {dragActive && (
               <div className="absolute inset-0 flex items-center justify-center bg-primary-50/80 rounded-xl pointer-events-none">

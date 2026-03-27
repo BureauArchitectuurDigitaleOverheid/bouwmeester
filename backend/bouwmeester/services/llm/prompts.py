@@ -245,6 +245,8 @@ def build_lead_intake_prompt(raw_text: str) -> str:
         "- De organisatie is de volledige naam van de organisatie\n"
         "- Maak een beknopte beschrijving van wat ze willen\n"
         "- Extraheer de naam van de contactpersoon als die wordt genoemd\n"
+        "- Extraheer het e-mailadres van de contactpersoon als dat wordt genoemd\n"
+        "- Extraheer het telefoonnummer van de contactpersoon als dat wordt genoemd\n"
         "- Stel maximaal 5 relevante tags voor\n\n"
         "Geef je analyse als JSON"
         " (en ALLEEN JSON, geen andere tekst):\n"
@@ -253,6 +255,8 @@ def build_lead_intake_prompt(raw_text: str) -> str:
         '  "organization": "Volledige naam organisatie",\n'
         '  "description": "Beschrijving van de vraag/behoefte",\n'
         '  "contact_name": "Naam contactpersoon",\n'
+        '  "contact_email": "email@example.nl of null",\n'
+        '  "contact_phone": "telefoonnummer of null",\n'
         '  "suggested_tags": ["tag1", "tag2"]\n'
         "}"
     )

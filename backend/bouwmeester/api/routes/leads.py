@@ -727,6 +727,8 @@ async def parse_intake(
             organization=parsed.get("organization"),
             description=parsed.get("description"),
             contact_name=parsed.get("contact_name"),
+            contact_email=parsed.get("contact_email"),
+            contact_phone=parsed.get("contact_phone"),
             suggested_tags=parsed.get("suggested_tags", []),
         )
     except Exception:
