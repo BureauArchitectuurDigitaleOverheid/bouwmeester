@@ -19,6 +19,8 @@ import {
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { RichTextFormField } from '@/components/common/RichTextFormField';
+import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { createPerson } from '@/api/people';
 import { Badge } from '@/components/common/Badge';
 import { DetailSection } from '@/components/common/DetailSection';
@@ -387,15 +389,12 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               placeholder="Komma-gescheiden tags"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Beschrijving</label>
-            <textarea
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400 min-h-[80px] resize-y"
-              rows={3}
-            />
-          </div>
+          <RichTextFormField
+            label="Beschrijving"
+            value={editDescription}
+            onChange={setEditDescription}
+            rows={5}
+          />
         </div>
       ) : (
         /* View mode */
@@ -416,7 +415,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           {/* Description */}
           {lead.description && (
             <DetailSection title="Beschrijving">
-              <p className="text-sm text-text whitespace-pre-wrap">{lead.description}</p>
+              <div className="text-sm text-text">
+                <RichTextDisplay content={lead.description} />
+              </div>
             </DetailSection>
           )}
 
