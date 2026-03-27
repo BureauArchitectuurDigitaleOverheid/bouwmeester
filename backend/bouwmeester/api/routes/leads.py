@@ -261,8 +261,7 @@ async def merge_leads(
     if source.organisatie_eenheid_id != target.organisatie_eenheid_id:
         raise HTTPException(
             status_code=400,
-            detail="Leads van verschillende eenheden "
-            "kunnen niet worden samengevoegd",
+            detail="Leads van verschillende eenheden kunnen niet worden samengevoegd",
         )
     repo = LeadRepository(db)
     result = require_found(await repo.merge(data.source_id, data.target_id), "Lead")
