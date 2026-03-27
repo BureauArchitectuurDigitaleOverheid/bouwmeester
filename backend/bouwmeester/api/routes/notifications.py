@@ -30,12 +30,15 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 def _check_notification_access(
     notification: Notification, current_user_id: UUID | None
 ) -> None:
-    """Raise 403 if the authenticated user is neither the recipient nor sender."""
+    """Raise 403 if the authenticated user is not the notification recipient.
+
+    Each DM participant has their own root notification (person_id = self),
+    so checking person_id is sufficient — the sender accesses the thread
+    via their own root, not the recipient's.
+    """
     if current_user_id is None:
         return  # dev mode — no ownership enforcement
     if notification.person_id == current_user_id:
-        return
-    if notification.sender_id == current_user_id:
         return
     raise HTTPException(403, "Geen toegang tot deze melding")
 
