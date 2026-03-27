@@ -37,6 +37,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [assigneeId, setAssigneeId] = useState<string>('');
+  const [leadDate, setLeadDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const createLead = useCreateLead();
@@ -109,6 +110,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     setContactEmail('');
     setContactPhone('');
     setAssigneeId('');
+    setLeadDate(new Date().toISOString().split('T')[0]);
     setOrgEenheidId('');
   }, []);
 
@@ -154,6 +156,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       setContactName(result.contact_name ?? '');
       setContactEmail(result.contact_email ?? '');
       setContactPhone(result.contact_phone ?? '');
+      if (result.original_date) setLeadDate(result.original_date);
       setStep('confirm');
     } catch {
       // If parsing fails, go straight to confirm with empty suggestions
@@ -200,6 +203,9 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
         raw_intake_text: rawText.trim() || null,
         organisatie_eenheid_id: orgEenheidId,
         assignee_id: assigneeId || null,
+        created_at: leadDate !== new Date().toISOString().split('T')[0]
+          ? `${leadDate}T00:00:00Z`
+          : null,
       });
 
       // Add tags via separate endpoint
@@ -418,17 +424,30 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">
-              Organisatie
-            </label>
-            <input
-              type="text"
-              value={organization}
-              onChange={(e) => setOrganization(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-              placeholder="Naam van de organisatie"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-text mb-1">
+                Datum
+              </label>
+              <input
+                type="date"
+                value={leadDate}
+                onChange={(e) => setLeadDate(e.target.value)}
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text mb-1">
+                Organisatie
+              </label>
+              <input
+                type="text"
+                value={organization}
+                onChange={(e) => setOrganization(e.target.value)}
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+                placeholder="Naam van de organisatie"
+              />
+            </div>
           </div>
 
           <CreatableSelect

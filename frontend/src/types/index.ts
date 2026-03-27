@@ -1572,6 +1572,7 @@ export interface LeadCreate {
   next_action_date?: string | null;
   raw_intake_text?: string | null;
   organisatie_eenheid_id: string;
+  created_at?: string | null;
 }
 
 export interface LeadUpdate {
@@ -1637,6 +1638,7 @@ export interface LeadParseResult {
   contact_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;
+  original_date: string | null;
   suggested_tags: string[];
 }
 

@@ -43,7 +43,7 @@ class LeadBase(BaseModel):
 
 
 class LeadCreate(LeadBase):
-    pass
+    created_at: datetime | None = None  # Optional: backdate the lead
 
 
 class LeadUpdate(BaseModel):
@@ -231,6 +231,7 @@ class LeadParseResult(BaseModel):
     contact_name: str | None = None
     contact_email: str | None = None
     contact_phone: str | None = None
+    original_date: str | None = None  # ISO date from the source message
     suggested_tags: list[str] = Field(default_factory=list)
 
 

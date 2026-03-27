@@ -247,6 +247,9 @@ def build_lead_intake_prompt(raw_text: str) -> str:
         "- Extraheer de naam van de contactpersoon als die wordt genoemd\n"
         "- Extraheer het e-mailadres van de contactpersoon als dat wordt genoemd\n"
         "- Extraheer het telefoonnummer van de contactpersoon als dat wordt genoemd\n"
+        "- Extraheer de datum van het bericht/e-mail als die zichtbaar is"
+        " (bijv. 'donderdag 26 maart 2026' of '2026-03-26')."
+        " Geef deze als ISO-formaat (YYYY-MM-DD). Als er geen datum is, geef null.\n"
         "- Stel maximaal 5 relevante tags voor\n\n"
         "Geef je analyse als JSON"
         " (en ALLEEN JSON, geen andere tekst):\n"
@@ -257,6 +260,7 @@ def build_lead_intake_prompt(raw_text: str) -> str:
         '  "contact_name": "Naam contactpersoon",\n'
         '  "contact_email": "email@example.nl of null",\n'
         '  "contact_phone": "telefoonnummer of null",\n'
+        '  "original_date": "YYYY-MM-DD of null",\n'
         '  "suggested_tags": ["tag1", "tag2"]\n'
         "}"
     )

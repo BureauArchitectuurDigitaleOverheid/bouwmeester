@@ -125,7 +125,11 @@ class LeadRepository(BaseRepository[Lead]):
         return list(result.scalars().all())
 
     async def create(self, data: LeadCreate, author_id: UUID | None = None) -> Lead:
-        lead = Lead(**data.model_dump())
+        dump = data.model_dump()
+        # Only set created_at if explicitly provided (for backdating)
+        if dump.get("created_at") is None:
+            dump.pop("created_at", None)
+        lead = Lead(**dump)
         self.session.add(lead)
         await self.session.flush()
 
