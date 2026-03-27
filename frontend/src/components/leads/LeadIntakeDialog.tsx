@@ -7,6 +7,7 @@ import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useCreateLead, useUploadLeadAttachment, useParseLeadIntake, useAddLeadContact, useAddTagToLead } from '@/hooks/useLeads';
 import { useTags } from '@/hooks/useTags';
 import { usePeople, usePersonOrganisaties } from '@/hooks/usePeople';
+import { createPerson } from '@/api/people';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { LeadStage, LEAD_STAGE_ORDER, LEAD_STAGE_LABELS, LEAD_STAGE_COLORS, formatFunctie } from '@/types';
 import type { LeadParseResult } from '@/types';
@@ -277,12 +278,28 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
         await uploadAttachment.mutateAsync({ leadId: lead.id, file });
       }
 
-      // Add contact person as LeadContact if an existing person was selected
+      // Add contact person as LeadContact
       if (contactPersonId) {
+        // Existing person matched - link as contact
         try {
           await addLeadContact.mutateAsync({
             leadId: lead.id,
             personId: contactPersonId,
+            rol: 'contactpersoon',
+          });
+        } catch {
+          // Non-critical, don't block lead creation
+        }
+      } else if (contactName.trim()) {
+        // New person - create them first, then link
+        try {
+          const newPerson = await createPerson({
+            naam: contactName.trim(),
+            email: contactEmail.trim() || undefined,
+          });
+          await addLeadContact.mutateAsync({
+            leadId: lead.id,
+            personId: newPerson.id,
             rol: 'contactpersoon',
           });
         } catch {

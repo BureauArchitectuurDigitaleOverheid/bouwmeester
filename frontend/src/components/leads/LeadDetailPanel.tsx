@@ -458,24 +458,33 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             {lead.attachments.length > 0 ? (
               <div className="space-y-1">
                 {lead.attachments.map((att) => (
-                  <div key={att.id} className="flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-gray-50">
-                    <Paperclip className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-                    <span className="flex-1 truncate text-text">{att.bestandsnaam}</span>
-                    <span className="text-xs text-text-secondary">{Math.round(att.bestandsgrootte / 1024)} KB</span>
-                    <a
-                      href={getLeadAttachmentDownloadUrl(lead.id, att.id)}
-                      className="p-1 text-text-secondary hover:text-primary-600 transition-colors"
-                      title="Downloaden"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </a>
-                    <button
-                      onClick={() => deleteAttachment.mutate({ leadId: lead.id, attachmentId: att.id })}
-                      className="p-1 text-text-secondary hover:text-red-500 transition-colors"
-                      title="Verwijderen"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                  <div key={att.id}>
+                    <div className="flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-gray-50">
+                      <Paperclip className="h-3.5 w-3.5 text-text-secondary shrink-0" />
+                      <span className="flex-1 truncate text-text">{att.bestandsnaam}</span>
+                      <span className="text-xs text-text-secondary">{Math.round(att.bestandsgrootte / 1024)} KB</span>
+                      <a
+                        href={getLeadAttachmentDownloadUrl(lead.id, att.id)}
+                        className="p-1 text-text-secondary hover:text-primary-600 transition-colors"
+                        title="Downloaden"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </a>
+                      <button
+                        onClick={() => deleteAttachment.mutate({ leadId: lead.id, attachmentId: att.id })}
+                        className="p-1 text-text-secondary hover:text-red-500 transition-colors"
+                        title="Verwijderen"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    {att.content_type?.startsWith('image/') && (
+                      <img
+                        src={getLeadAttachmentDownloadUrl(lead.id, att.id)}
+                        alt={att.bestandsnaam}
+                        className="mt-2 rounded-lg border border-border max-h-48 object-contain ml-2"
+                      />
+                    )}
                   </div>
                 ))}
               </div>
