@@ -16,7 +16,7 @@ import {
   LEAD_STAGE_COLORS,
 } from '@/types';
 import type { Lead, LeadFilters } from '@/types';
-import { isOverdue, formatDateShort } from '@/utils/dates';
+import { isOverdue, formatDateShort, timeAgo } from '@/utils/dates';
 
 export function LeadListView() {
   const [filterAssignee, setFilterAssignee] = useState('');
@@ -277,7 +277,7 @@ export function LeadListView() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-xs text-text-secondary whitespace-nowrap">
-                        {formatDateShort(lead.created_at)}
+                        <span title={formatDateShort(lead.created_at)}>{timeAgo(lead.created_at)}</span>
                       </td>
                     </tr>
                   );
