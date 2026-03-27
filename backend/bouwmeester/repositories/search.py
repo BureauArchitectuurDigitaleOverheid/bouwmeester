@@ -87,7 +87,7 @@ class SearchRepository:
                     description,
                     {_score(tc)} AS score
                 FROM corpus_node
-                WHERE {_where(tc)}{_org_filter_sql()}
+                WHERE {_where(tc)}
             """)
 
         if "task" in active_types:

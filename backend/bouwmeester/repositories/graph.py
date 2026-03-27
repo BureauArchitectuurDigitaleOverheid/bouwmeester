@@ -178,9 +178,10 @@ class GraphRepository:
         if not node_types or "politieke_input" in node_types:
             nodes_stmt = nodes_stmt.where(exclude_unconnected_pi())
 
-        nodes_stmt = apply_org_filter(
-            nodes_stmt, CorpusNode.organisatie_eenheid_id, org_ctx
-        )
+        # TODO: add organisatie_eenheid_id column to CorpusNode, then re-enable
+        # nodes_stmt = apply_org_filter(
+        #     nodes_stmt, CorpusNode.organisatie_eenheid_id, org_ctx
+        # )
         nodes_stmt = nodes_stmt.order_by(CorpusNode.created_at.desc())
         nodes_result = await self.session.execute(nodes_stmt)
         nodes = list(nodes_result.scalars().all())
@@ -331,9 +332,10 @@ class GraphRepository:
         # Fetch the actual corpus nodes (apply org filter)
         if corpus_node_ids:
             cn_stmt = select(CorpusNode).where(CorpusNode.id.in_(corpus_node_ids))
-            cn_stmt = apply_org_filter(
-                cn_stmt, CorpusNode.organisatie_eenheid_id, org_ctx
-            )
+            # TODO: add organisatie_eenheid_id column to CorpusNode, then re-enable
+            # cn_stmt = apply_org_filter(
+            #     cn_stmt, CorpusNode.organisatie_eenheid_id, org_ctx
+            # )
             cn_result = await self.session.execute(cn_stmt)
             visible_corpus_nodes = list(cn_result.scalars().all())
             visible_cn_ids = set[UUID]()
