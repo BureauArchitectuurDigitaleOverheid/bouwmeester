@@ -147,7 +147,7 @@ export function Modal({
         </div>
 
         {/* Body – extra bottom padding so dropdown menus have room to open */}
-        <div className="px-6 py-4 max-h-[70vh] sm:max-h-[60vh] overflow-y-auto pb-40">{children}</div>
+        <div className="px-6 py-4 max-h-[80vh] sm:max-h-[75vh] overflow-y-auto pb-20">{children}</div>
 
         {/* Footer */}
         {footer && (
