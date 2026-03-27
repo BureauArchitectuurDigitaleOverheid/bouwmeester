@@ -104,7 +104,12 @@ def _check_lead_access(lead: Lead, init_ctx: InitiatiefContext) -> None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Lead niet gevonden"
         )
-    if lead.initiatief_id not in init_ctx.visible_initiatief_ids:
+    # Leads without initiatief are visible to all authenticated users
+    # (migration period: allows assigning them to an initiatief)
+    if (
+        lead.initiatief_id is not None
+        and lead.initiatief_id not in init_ctx.visible_initiatief_ids
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Lead niet gevonden"
         )
