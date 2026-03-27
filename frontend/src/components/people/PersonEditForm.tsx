@@ -18,7 +18,7 @@ import {
   useRemovePersonPhone,
   useSetDefaultPhone,
 } from '@/hooks/usePeople';
-import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS } from '@/types';
+import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS, formatFunctie } from '@/types';
 import type { Person, PersonFormSubmitParams } from '@/types';
 
 // Character names from Bordewijk's novel "Karakter" — used as agent names
@@ -149,7 +149,7 @@ export function PersonEditForm({
           setFunctieOptions((prev) =>
             prev.some((o) => o.value === editData.functie)
               ? prev
-              : [...prev, { value: editData.functie!, label: editData.functie! }],
+              : [...prev, { value: editData.functie!, label: formatFunctie(editData.functie!) || editData.functie! }],
           );
         }
       } else {
@@ -244,7 +244,7 @@ export function PersonEditForm({
         setFunctieOptions((prev) =>
           prev.some((o) => o.value === person.functie)
             ? prev
-            : [...prev, { value: person.functie!, label: person.functie! }],
+            : [...prev, { value: person.functie!, label: formatFunctie(person.functie!) || person.functie! }],
         );
       }
     }
