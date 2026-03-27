@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Trash2,
   Pencil,
@@ -14,6 +14,7 @@ import {
   Mail,
   FileText,
   Upload,
+  ZoomIn,
 } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
@@ -118,6 +119,16 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const [linkNodeId, setLinkNodeId] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
+
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxSrc(null);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxSrc]);
 
   if (!open) return null;
 
@@ -241,6 +252,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const overdue = lead?.next_action_date && isOverdue(lead.next_action_date);
 
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -493,11 +505,22 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                       </button>
                     </div>
                     {att.content_type?.startsWith('image/') && (
-                      <img
-                        src={getLeadAttachmentDownloadUrl(lead.id, att.id)}
-                        alt={att.bestandsnaam}
-                        className="mt-2 rounded-lg border border-border max-h-48 object-contain ml-2"
-                      />
+                      <button
+                        onClick={() => setLightboxSrc({
+                          src: getLeadAttachmentDownloadUrl(lead.id, att.id),
+                          alt: att.bestandsnaam,
+                        })}
+                        className="relative group mt-2 ml-2 block"
+                      >
+                        <img
+                          src={getLeadAttachmentDownloadUrl(lead.id, att.id)}
+                          alt={att.bestandsnaam}
+                          className="rounded-lg border border-border max-h-48 object-contain"
+                        />
+                        <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                          <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md" />
+                        </div>
+                      </button>
                     )}
                   </div>
                 ))}
@@ -710,5 +733,20 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
         </div>
       )}
     </Modal>
+
+    {lightboxSrc && (
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
+        onClick={() => setLightboxSrc(null)}
+      >
+        <img
+          src={lightboxSrc.src}
+          alt={lightboxSrc.alt}
+          className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    )}
+    </>
   );
 }
