@@ -2,9 +2,9 @@
 
 import uuid
 from datetime import date, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, Text, func, text
+from sqlalchemy import DateTime, ForeignKey, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from bouwmeester.models.node_stakeholder import NodeStakeholder
     from bouwmeester.models.node_status import CorpusNodeStatus
     from bouwmeester.models.node_title import CorpusNodeTitle
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
     from bouwmeester.models.tag import NodeTag
     from bouwmeester.models.task import Task
 
@@ -38,6 +39,12 @@ class CorpusNode(Base):
         server_default=text("CURRENT_DATE"), default=date.today
     )
     geldig_tot: Mapped[date | None] = mapped_column(nullable=True)
+    organisatie_eenheid_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organisatie_eenheid.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -46,6 +53,9 @@ class CorpusNode(Base):
     )
 
     # Relationships
+    organisatie_eenheid: Mapped[Optional["OrganisatieEenheid"]] = relationship(
+        "OrganisatieEenheid",
+    )
     edges_from: Mapped[list["Edge"]] = relationship(
         "Edge",
         foreign_keys="Edge.from_node_id",

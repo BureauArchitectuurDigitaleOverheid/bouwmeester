@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.org_context import OrgContext
+from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
@@ -118,8 +118,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
                 selectinload(CorpusNode.edges_to),
             )
         )
-        # TODO: add organisatie_eenheid_id column to CorpusNode, then re-enable
-        # stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
+        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -150,8 +149,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         ):
             stmt = stmt.where(exclude_unconnected_pi())
 
-        # TODO: add organisatie_eenheid_id column to CorpusNode, then re-enable
-        # stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
+        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
         stmt = stmt.order_by(CorpusNode.created_at.desc()).offset(skip).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -308,8 +306,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         stmt = select(func.count()).select_from(CorpusNode)
         if node_type is not None:
             stmt = stmt.where(CorpusNode.node_type == node_type)
-        # TODO: add organisatie_eenheid_id column to CorpusNode, then re-enable
-        # stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
+        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         return result.scalar_one()
 
