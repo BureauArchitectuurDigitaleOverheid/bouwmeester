@@ -82,12 +82,17 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     }
   }, [myEenheden, orgEenheidId]);
 
-  // Default broughtById to current person
+  // Default broughtById and leadDate when dialog opens
   useEffect(() => {
-    if (!broughtById && currentPerson) {
-      setBroughtById(currentPerson.id);
+    if (open) {
+      if (!broughtById && currentPerson) {
+        setBroughtById(currentPerson.id);
+      }
+      if (!leadDate) {
+        setLeadDate(new Date().toISOString().split('T')[0]);
+      }
     }
-  }, [broughtById, currentPerson]);
+  }, [open, broughtById, currentPerson, leadDate]);
 
   // Try to match VLAM's contact_name against existing people
   useEffect(() => {
@@ -265,7 +270,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       open={open}
       onClose={handleClose}
       title="Nieuwe lead"
-      size="lg"
+      size="xl"
     >
       {step === 'input' && (
         <div className="space-y-4">

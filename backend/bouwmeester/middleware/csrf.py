@@ -27,6 +27,7 @@ _CSRF_EXEMPT_PREFIXES = (
     "/api/mattermost/slash",
     "/api/mattermost/action",
     "/api/mattermost/verify-link",
+    "/api/leads/parse-intake",
 )
 
 
