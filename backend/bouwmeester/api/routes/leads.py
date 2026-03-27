@@ -704,8 +704,17 @@ async def parse_intake(
             detail="Geen LLM-service beschikbaar.",
         )
 
+    # Fetch existing tag names so VLAM can prefer them
+    from bouwmeester.models.tag import Tag
+
+    tag_result = await db.execute(select(Tag.name).order_by(Tag.name))
+    existing_tag_names = [row[0] for row in tag_result.all()]
+
     combined_text = "\n\n".join(text_parts).strip()
-    prompt = build_lead_intake_prompt(combined_text or "(zie afbeelding)")
+    prompt = build_lead_intake_prompt(
+        combined_text or "(zie afbeelding)",
+        existing_tags=existing_tag_names,
+    )
 
     try:
         if image_parts:

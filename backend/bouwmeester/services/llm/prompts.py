@@ -229,8 +229,14 @@ def build_kompas_relevance_prompt(
     )
 
 
-def build_lead_intake_prompt(raw_text: str) -> str:
+def build_lead_intake_prompt(
+    raw_text: str, existing_tags: list[str] | None = None
+) -> str:
     """Build a prompt to parse raw intake text into structured lead data."""
+    tags_hint = ""
+    if existing_tags:
+        tags_json = json.dumps(existing_tags[:MAX_TAGS_IN_PROMPT], ensure_ascii=False)
+        tags_hint = f"\n\nBESCHIKBARE TAGS (gebruik deze bij voorkeur):\n{tags_json}\n"
     return (
         "Je bent een medewerker van team Regelrecht bij het ministerie van BZK."
         " Je beheert een sales funnel van leads: organisaties en mensen die"
@@ -254,7 +260,9 @@ def build_lead_intake_prompt(raw_text: str) -> str:
         " (bijv. 'Hoi Anne' of 'Aan: Schuth, Anne'),"
         " extraheer dan de voornaam van de ontvanger."
         " Dit is de persoon via wie de lead binnenkwam.\n"
-        "- Stel maximaal 5 relevante tags voor\n\n"
+        "- Stel maximaal 5 relevante tags voor. Gebruik bij voorkeur bestaande"
+        " tags uit de lijst hieronder. Maak alleen nieuwe tags als er echt"
+        " geen passende bestaande tag is.\n" + tags_hint + "\n"
         "Geef je analyse als JSON"
         " (en ALLEEN JSON, geen andere tekst):\n"
         "{\n"
