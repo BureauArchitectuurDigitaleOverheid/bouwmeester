@@ -60,11 +60,11 @@ export async function deleteLead(id: string): Promise<void> {
 }
 
 export async function moveLead(id: string, stage: string): Promise<Lead> {
-  return apiPut<Lead>(`/api/leads/${id}/move`, { stage });
+  return apiPost<Lead>(`/api/leads/${id}/move`, { stage });
 }
 
 export async function reorderLeads(leadIds: string[], stage: string): Promise<void> {
-  return apiPut(`/api/leads/reorder`, { lead_ids: leadIds, stage });
+  return apiPost(`/api/leads/reorder`, { lead_ids: leadIds, stage });
 }
 
 export async function getLeadActivities(leadId: string): Promise<LeadActivity[]> {
