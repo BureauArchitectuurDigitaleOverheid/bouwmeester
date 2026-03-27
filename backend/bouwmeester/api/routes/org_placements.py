@@ -10,7 +10,9 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.schema.org_placement import (
     OrgPlacementRequestCreate,
@@ -65,10 +67,20 @@ async def request_placement(
     return _to_response(req)
 
 
+async def _get_managed_eenheid_ids(db: AsyncSession, person_id: UUID) -> list[UUID]:
+    """Return eenheid IDs where the person is the manager."""
+    stmt = select(OrganisatieEenheid.id).where(
+        OrganisatieEenheid.manager_id == person_id,
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
 @router.get("/pending", response_model=list[OrgPlacementRequestResponse])
 async def list_pending(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[OrgPlacementRequestResponse]:
     """List pending placement requests (for managers of the requested eenheid)."""
     stmt = (
@@ -77,6 +89,13 @@ async def list_pending(
         .options(*_load_options())
         .order_by(OrgPlacementRequest.requested_at.desc())
     )
+    # Non-admins only see requests for eenheden they manage
+    if not org_ctx.is_admin and current_user is not None:
+        managed_ids = await _get_managed_eenheid_ids(db, current_user.id)
+        stmt = stmt.where(OrgPlacementRequest.organisatie_eenheid_id.in_(managed_ids))
+    elif not org_ctx.is_admin:
+        # Unauthenticated users see nothing
+        return []
     result = await db.execute(stmt)
     requests = list(result.scalars().all())
     return [_to_response(r) for r in requests]
@@ -87,6 +106,7 @@ async def approve_placement(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> OrgPlacementRequestResponse:
     """Approve a placement request, creating a PersonOrganisatieEenheid record."""
     stmt = (
@@ -100,6 +120,14 @@ async def approve_placement(
         raise HTTPException(status_code=404, detail="Verzoek niet gevonden")
     if req.status != "pending":
         raise HTTPException(status_code=400, detail="Verzoek is al afgehandeld")
+
+    # Only admins or managers of the requested eenheid may approve
+    if not org_ctx.is_admin:
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Inloggen vereist")
+        managed_ids = await _get_managed_eenheid_ids(db, current_user.id)
+        if req.organisatie_eenheid_id not in managed_ids:
+            raise HTTPException(status_code=403, detail="Geen bevoegdheid")
 
     req.status = "approved"
     req.decided_at = datetime.now(UTC)
@@ -124,6 +152,7 @@ async def deny_placement(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> OrgPlacementRequestResponse:
     """Deny a placement request."""
     stmt = (
@@ -137,6 +166,14 @@ async def deny_placement(
         raise HTTPException(status_code=404, detail="Verzoek niet gevonden")
     if req.status != "pending":
         raise HTTPException(status_code=400, detail="Verzoek is al afgehandeld")
+
+    # Only admins or managers of the requested eenheid may deny
+    if not org_ctx.is_admin:
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Inloggen vereist")
+        managed_ids = await _get_managed_eenheid_ids(db, current_user.id)
+        if req.organisatie_eenheid_id not in managed_ids:
+            raise HTTPException(status_code=403, detail="Geen bevoegdheid")
 
     req.status = "denied"
     req.decided_at = datetime.now(UTC)

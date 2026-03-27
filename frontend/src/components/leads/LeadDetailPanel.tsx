@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
   Trash2,
   Pencil,
@@ -117,7 +117,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const [showLinkNode, setShowLinkNode] = useState(false);
   const [linkNodeId, setLinkNodeId] = useState('');
 
-  const fileInputRef = useState<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!open) return null;
 
@@ -452,14 +452,14 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                   type="file"
                   multiple
                   className="hidden"
-                  ref={(el) => { fileInputRef[1](el); }}
+                  ref={fileInputRef}
                   onChange={handleFileUpload}
                 />
                 <Button
                   variant="ghost"
                   size="sm"
                   icon={<Upload className="h-3.5 w-3.5" />}
-                  onClick={() => fileInputRef[0]?.click()}
+                  onClick={() => fileInputRef.current?.click()}
                 >
                   Uploaden
                 </Button>

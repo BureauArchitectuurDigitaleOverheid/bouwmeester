@@ -233,6 +233,7 @@ class LeadRepository(BaseRepository[Lead]):
         title: str,
         organization: str | None = None,
         exclude_id: UUID | None = None,
+        org_ctx: OrgContext | None = None,
     ) -> list[Lead]:
         """Find leads with similar title or organization using trigram similarity."""
         conditions = []
@@ -246,6 +247,7 @@ class LeadRepository(BaseRepository[Lead]):
         stmt = select(Lead).where(or_(*conditions)).options(*_lead_options())
         if exclude_id:
             stmt = stmt.where(Lead.id != exclude_id)
+        stmt = apply_org_filter(stmt, Lead.organisatie_eenheid_id, org_ctx)
         stmt = stmt.order_by(func.similarity(Lead.title, title).desc()).limit(5)
 
         result = await self.session.execute(stmt)

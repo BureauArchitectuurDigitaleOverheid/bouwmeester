@@ -95,6 +95,31 @@ def _robust_parse_json(text: str) -> dict:
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
+def _check_lead_access(lead: Lead, org_ctx: OrgContext) -> None:
+    """Raise 404 if the user cannot access this lead's org eenheid."""
+    if org_ctx.is_admin:
+        return
+    if not org_ctx.is_authenticated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Lead niet gevonden"
+        )
+    if lead.organisatie_eenheid_id not in org_ctx.visible_eenheid_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Lead niet gevonden"
+        )
+
+
+def _check_eenheid_access(eenheid_id: UUID, org_ctx: OrgContext) -> None:
+    """Raise 403 if user cannot create resources in this eenheid."""
+    if org_ctx.is_admin:
+        return
+    if eenheid_id not in org_ctx.visible_eenheid_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Geen toegang tot deze eenheid",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Lead CRUD
 # ---------------------------------------------------------------------------
@@ -137,8 +162,10 @@ async def create_lead(
     data: LeadCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> LeadResponse:
     """Create a new lead."""
+    _check_eenheid_access(data.organisatie_eenheid_id, org_ctx)
     author_id = current_user.id if current_user else None
     repo = LeadRepository(db)
     lead = await repo.create(data, author_id=author_id)
@@ -209,10 +236,11 @@ async def check_duplicates(
     organization: str | None = Query(None),
     current_user: OptionalUser = None,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[LeadResponse]:
     """Find leads with similar title or organization (trigram similarity)."""
     repo = LeadRepository(db)
-    similar = await repo.find_similar(title, organization)
+    similar = await repo.find_similar(title, organization, org_ctx=org_ctx)
     return validate_list(LeadResponse, similar)
 
 
@@ -221,8 +249,17 @@ async def merge_leads(
     data: LeadMergeRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> LeadResponse:
     """Merge source lead into target lead."""
+    source = await db.get(Lead, data.source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Bronlead niet gevonden")
+    _check_lead_access(source, org_ctx)
+    target = await db.get(Lead, data.target_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Doellead niet gevonden")
+    _check_lead_access(target, org_ctx)
     repo = LeadRepository(db)
     result = require_found(await repo.merge(data.source_id, data.target_id), "Lead")
     return LeadResponse.model_validate(result)
@@ -247,14 +284,18 @@ async def update_lead(
     data: LeadUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> LeadResponse:
     """Update a lead."""
     actor_id = current_user.id if current_user else None
 
     # Capture old state before update
     old_lead = await db.get(Lead, lead_id)
-    old_assignee_id = old_lead.assignee_id if old_lead else None
-    old_stage = old_lead.stage if old_lead else None
+    if old_lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(old_lead, org_ctx)
+    old_assignee_id = old_lead.assignee_id
+    old_stage = old_lead.stage
 
     repo = LeadRepository(db)
     lead = require_found(await repo.update(lead_id, data), "Lead")
@@ -296,8 +337,13 @@ async def delete_lead(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     """Delete a lead permanently."""
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, org_ctx)
     repo = LeadRepository(db)
     require_deleted(await repo.delete(lead_id), "Lead")
 
@@ -308,8 +354,13 @@ async def move_lead(
     data: LeadMove,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> LeadResponse:
     """Move a lead to a new stage."""
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, org_ctx)
     author_id = current_user.id if current_user else None
     repo = LeadRepository(db)
     lead = require_found(
@@ -336,6 +387,7 @@ async def reorder_leads(
     data: LeadReorder,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[LeadResponse]:
     """Reorder leads within a stage."""
     repo = LeadRepository(db)
@@ -358,11 +410,13 @@ async def add_activity(
     data: LeadActivityCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> LeadActivityResponse:
     """Add an activity (note, meeting, call, email) to a lead."""
     # Verify lead exists and get it for notification
     lead_repo = LeadRepository(db)
     lead = require_found(await lead_repo.get(lead_id), "Lead")
+    _check_lead_access(lead, org_ctx)
 
     author_id = current_user.id if current_user else None
     repo = LeadActivityRepository(db)
@@ -410,8 +464,13 @@ async def add_contact(
     data: LeadContactCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> LeadContactResponse:
     """Link a person as contact to a lead."""
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, org_ctx)
     contact = LeadContact(
         lead_id=lead_id,
         person_id=data.person_id,
@@ -448,8 +507,13 @@ async def remove_contact(
     contact_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     """Remove a contact link from a lead."""
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, org_ctx)
     result = await db.execute(
         select(LeadContact).where(
             LeadContact.id == contact_id,
@@ -478,8 +542,13 @@ async def link_node(
     data: LeadNodeCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> LeadNodeResponse:
     """Link a corpus node to a lead."""
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, org_ctx)
     link = LeadNode(
         lead_id=lead_id,
         node_id=data.node_id,
@@ -499,8 +568,13 @@ async def unlink_node(
     link_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     """Remove a corpus node link from a lead."""
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, org_ctx)
     result = await db.execute(
         select(LeadNode).where(
             LeadNode.id == link_id,
@@ -546,6 +620,7 @@ async def add_tag_to_lead(
     data: LeadTagCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> LeadTagResponse:
     """Add a tag to a lead.
 
@@ -554,7 +629,8 @@ async def add_tag_to_lead(
     from bouwmeester.repositories.tag import TagRepository
 
     repo = LeadRepository(db)
-    require_found(await repo.get(lead_id), "Lead")
+    lead = require_found(await repo.get(lead_id), "Lead")
+    _check_lead_access(lead, org_ctx)
 
     tag_repo = TagRepository(db)
 
@@ -583,10 +659,15 @@ async def remove_tag_from_lead(
     tag_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     """Remove a tag from a lead."""
     from bouwmeester.repositories.tag import TagRepository
 
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, org_ctx)
     tag_repo = TagRepository(db)
     require_deleted(await tag_repo.remove_tag_from_lead(lead_id, tag_id), "Tag link")
 
@@ -606,8 +687,13 @@ async def upload_attachment(
     file: UploadFile,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> LeadAttachmentResponse:
     """Upload a file attachment to a lead."""
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, org_ctx)
     # Read file in chunks
     chunks: list[bytes] = []
     total = 0
@@ -695,8 +781,13 @@ async def delete_attachment(
     attachment_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     """Delete a lead attachment (DB record and file on disk)."""
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, org_ctx)
     result = await db.execute(
         select(LeadAttachment).where(
             LeadAttachment.id == attachment_id,

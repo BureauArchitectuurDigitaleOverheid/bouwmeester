@@ -138,11 +138,21 @@ class LeadContactResponse(BaseModel):
 class LeadNodeResponse(BaseModel):
     id: UUID
     node_id: UUID
-    node_title: str
-    node_type: str
+    node_title: str = ""
+    node_type: str = ""
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _extract_node_info(cls, data: Any) -> Any:
+        if hasattr(data, "node") and data.node:
+            if not hasattr(data, "node_title") or not data.node_title:
+                data.node_title = data.node.title
+            if not hasattr(data, "node_type") or not data.node_type:
+                data.node_type = data.node.node_type
+        return data
 
 
 class LeadActivityResponse(BaseModel):
