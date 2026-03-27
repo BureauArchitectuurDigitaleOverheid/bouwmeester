@@ -281,6 +281,26 @@ class GraphRepository:
                         )
                     )
 
+        # -- 2b. Lead → organisation (free-text field) --
+        for lead in leads:
+            if lead.organization and not lead.externe_organisatie_id:
+                org_key = f"orgtext-{lead.organization}"
+                if org_key not in graph_nodes:
+                    graph_nodes[org_key] = CommunityGraphNode(
+                        id=org_key,
+                        node_type="organisation",
+                        label=lead.organization,
+                    )
+                graph_edges.append(
+                    CommunityGraphEdge(
+                        id=_next_edge_id(),
+                        source=f"lead-{lead.id}",
+                        target=org_key,
+                        edge_type="organisatie",
+                        label="organisatie",
+                    )
+                )
+
         # -- 3. Lead → Person (assignee) edges --
         person_ids = set[UUID]()
         for lead in leads:

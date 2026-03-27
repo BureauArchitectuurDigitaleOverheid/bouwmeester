@@ -425,17 +425,15 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
             >
               Bestand toevoegen
             </Button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
-                size="sm"
                 onClick={handleSkipParse}
                 disabled={!orgEenheidId}
               >
                 Handmatig invullen
               </Button>
               <Button
-                size="sm"
                 onClick={handleParse}
                 disabled={!canParse || !orgEenheidId}
                 icon={<Sparkles className="h-4 w-4" />}
