@@ -249,31 +249,38 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       zIndex={zIndex}
       entityLabel="Lead"
       footer={
-        <DetailModalFooter
-          onClose={onClose}
-          actions={
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<Pencil className="h-4 w-4" />}
-                onClick={startEditing}
-                disabled={!lead || editing}
-              >
-                Bewerken
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                icon={<Trash2 className="h-4 w-4" />}
-                onClick={handleDelete}
-                disabled={!lead}
-              >
-                Verwijderen
-              </Button>
-            </div>
-          }
-        />
+        editing ? (
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" onClick={() => setEditing(false)}>Annuleren</Button>
+            <Button onClick={saveEdit} loading={updateLead.isPending}>Opslaan</Button>
+          </div>
+        ) : (
+          <DetailModalFooter
+            onClose={onClose}
+            actions={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Pencil className="h-4 w-4" />}
+                  onClick={startEditing}
+                  disabled={!lead}
+                >
+                  Bewerken
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<Trash2 className="h-4 w-4" />}
+                  onClick={handleDelete}
+                  disabled={!lead}
+                >
+                  Verwijderen
+                </Button>
+              </div>
+            }
+          />
+        )
       }
     >
       {isLoading ? (
@@ -366,10 +373,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400 min-h-[80px] resize-y"
               rows={3}
             />
-          </div>
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="ghost" onClick={() => setEditing(false)}>Annuleren</Button>
-            <Button onClick={saveEdit} loading={updateLead.isPending}>Opslaan</Button>
           </div>
         </div>
       ) : (
