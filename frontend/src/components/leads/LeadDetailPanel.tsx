@@ -663,9 +663,11 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                   onChange={(e) => setActivityType(e.target.value as LeadActivityType)}
                   className="rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-primary-400"
                 >
-                  {Object.entries(LEAD_ACTIVITY_TYPE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
+                  {Object.entries(LEAD_ACTIVITY_TYPE_LABELS)
+                    .filter(([value]) => value !== LeadActivityType.STAGE_CHANGE)
+                    .map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
                 </select>
                 <Button
                   size="sm"

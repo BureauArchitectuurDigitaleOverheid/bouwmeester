@@ -25,7 +25,11 @@ const COLUMN_BORDER_COLORS: Record<LeadStage, string> = {
   [LeadStage.KOELKAST]: 'border-t-gray-400',
 };
 
-export function LeadKanbanBoard() {
+interface LeadKanbanBoardProps {
+  searchQuery?: string;
+}
+
+export function LeadKanbanBoard({ searchQuery = '' }: LeadKanbanBoardProps) {
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterTag, setFilterTag] = useState('');
   const [nextActionFilter, setNextActionFilter] = useState('');
@@ -51,9 +55,22 @@ export function LeadKanbanBoard() {
 
   const allLeads = leads ?? [];
 
+  const filteredLeads = searchQuery
+    ? allLeads.filter((l) => {
+        const q = searchQuery.toLowerCase();
+        return (
+          l.title.toLowerCase().includes(q) ||
+          (l.organization ?? '').toLowerCase().includes(q) ||
+          (l.description ?? '').toLowerCase().includes(q) ||
+          (l.assignee?.naam ?? '').toLowerCase().includes(q) ||
+          l.tags.some((t) => t.toLowerCase().includes(q))
+        );
+      })
+    : allLeads;
+
   const leadsByStage = LEAD_STAGE_ORDER.reduce(
     (acc, stage) => {
-      acc[stage] = allLeads
+      acc[stage] = filteredLeads
         .filter((l) => l.stage === stage)
         .sort((a, b) => a.sort_order - b.sort_order);
       return acc;
