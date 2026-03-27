@@ -197,12 +197,19 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
       setContactName(result.contact_name ?? '');
       setContactEmail(result.contact_email ?? '');
       setContactPhone(result.contact_phone ?? '');
-      if (result.original_date) setLeadDate(result.original_date);
+      setLeadDate(result.original_date || new Date().toISOString().split('T')[0]);
       if (result.addressed_to && people) {
-        const match = people.find(p =>
-          p.naam.toLowerCase().includes(result.addressed_to!.toLowerCase()),
-        );
-        if (match) setBroughtById(match.id);
+        const addr = result.addressed_to.toLowerCase();
+        // Prioritize the current person (if "Anne" matches "Anne Schuth" who is logged in)
+        if (currentPerson && currentPerson.naam.toLowerCase().includes(addr)) {
+          setBroughtById(currentPerson.id);
+        } else {
+          // Fall back to first match in people list
+          const match = people.find(p =>
+            p.naam.toLowerCase().startsWith(addr),
+          );
+          if (match) setBroughtById(match.id);
+        }
       }
       setStep('confirm');
     } catch {
@@ -220,6 +227,7 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     setOrganization('');
     setDescription('');
     setSelectedTags([]);
+    if (!leadDate) setLeadDate(new Date().toISOString().split('T')[0]);
     setStep('confirm');
   };
 
@@ -523,9 +531,10 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
                     {selectedTags.map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center gap-1 rounded-full bg-primary-100 text-primary-700 px-2.5 py-0.5 text-xs font-medium"
+                        title={tag}
+                        className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 px-2.5 py-0.5 text-xs font-medium"
                       >
-                        {tag}
+                        {tag.includes('/') ? tag.split('/').pop() : tag}
                         <button
                           type="button"
                           onClick={() => setSelectedTags((prev) => prev.filter((t) => t !== tag))}
