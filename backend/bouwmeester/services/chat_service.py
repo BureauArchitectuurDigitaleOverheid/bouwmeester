@@ -1030,9 +1030,9 @@ def _describe_action(tool_name: str, args: dict) -> str:
         "attach_to_bron": lambda a: (
             f"Chatbijlage koppelen aan bron {a.get('node_id', '')[:8]}..."
         ),
-        "create_lead": lambda a: (f'Lead "{a.get("title", "")}" aanmaken'),
-        "update_lead": lambda a: (f"Lead {a.get('lead_id', '')[:8]}... bijwerken"),
-        "move_lead": lambda a: (f"Lead verplaatsen naar {a.get('stage', '')}"),
+        "create_lead": lambda a: f'Lead "{a.get("title", "")}" aanmaken',
+        "update_lead": lambda a: f"Lead {a.get('lead_id', '')[:8]}... bijwerken",
+        "move_lead": lambda a: f"Lead verplaatsen naar {a.get('stage', '')}",
         "add_lead_activity": lambda a: (
             f"Activiteit ({a.get('activity_type', 'note')}) toevoegen aan lead"
         ),
