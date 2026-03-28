@@ -26,7 +26,6 @@ const pageTitles: Record<string, string> = {
   '/search': 'Zoeken',
   '/docs': 'Documentatie',
   '/leads': 'Leads',
-  '/beheer/features': 'Functionaliteit per eenheid',
 };
 
 function getInitials(naam: string): string {

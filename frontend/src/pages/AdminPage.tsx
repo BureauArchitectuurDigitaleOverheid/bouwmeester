@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate, useSearchParams, useNavigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { WhitelistManager } from '@/components/admin/WhitelistManager';
 import { UserManager } from '@/components/admin/UserManager';
@@ -7,12 +7,12 @@ import { DatabaseBackup } from '@/components/admin/DatabaseBackup';
 import { AccessRequestManager } from '@/components/admin/AccessRequestManager';
 import { ConfigManager } from '@/components/admin/ConfigManager';
 import { EdgeSchemaManager } from '@/components/admin/EdgeSchemaManager';
+import { FeatureTogglesContent } from '@/pages/FeatureTogglesPage';
 
 type Tab = 'whitelist' | 'users' | 'database' | 'requests' | 'config' | 'schema' | 'features';
 
 export function AdminPage() {
   const { person, oidcConfigured, loading } = useAuth();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') as Tab | null;
   const [activeTab, setActiveTab] = useState<Tab>(tabParam || 'whitelist');
@@ -25,10 +25,6 @@ export function AdminPage() {
   }, [tabParam]);
 
   const handleTabChange = (tab: Tab) => {
-    if (tab === 'features') {
-      navigate('/beheer/features');
-      return;
-    }
     setActiveTab(tab);
     setSearchParams(tab === 'whitelist' ? {} : { tab });
   };
@@ -47,10 +43,10 @@ export function AdminPage() {
     { id: 'whitelist', label: 'Toegangslijst' },
     { id: 'requests', label: 'Verzoeken' },
     { id: 'users', label: 'Gebruikers' },
-    { id: 'database', label: 'Database' },
-    { id: 'config', label: 'Instellingen' },
-    { id: 'schema', label: 'Relatieschema' },
+    { id: 'config', label: 'Omgevingsvariabelen' },
     { id: 'features', label: 'Functionaliteit' },
+    { id: 'schema', label: 'Relatieschema' },
+    { id: 'database', label: 'Database' },
   ];
 
   return (
@@ -78,6 +74,7 @@ export function AdminPage() {
       {activeTab === 'users' && <UserManager />}
       {activeTab === 'database' && <DatabaseBackup />}
       {activeTab === 'config' && <ConfigManager />}
+      {activeTab === 'features' && <FeatureTogglesContent />}
       {activeTab === 'schema' && <EdgeSchemaManager />}
     </div>
   );
