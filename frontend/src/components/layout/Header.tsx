@@ -154,7 +154,7 @@ export function Header() {
 
         {/* Search shortcut */}
         <button
-          onClick={() => navigate('/search')}
+          onClick={() => useUIStore.getState().setSearchModalOpen(true)}
           className="flex items-center justify-center gap-2 h-9 px-2.5 sm:px-3 rounded-xl border border-border text-sm text-text-secondary hover:border-border-hover hover:text-text transition-all"
         >
           <Search className="h-4 w-4" />

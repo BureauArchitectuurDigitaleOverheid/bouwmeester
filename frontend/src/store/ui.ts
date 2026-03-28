@@ -25,6 +25,9 @@ interface UIState {
 
   chatWidth: number;
   setChatWidth: (width: number) => void;
+
+  searchModalOpen: boolean;
+  setSearchModalOpen: (open: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -54,4 +57,7 @@ export const useUIStore = create<UIState>((set) => ({
 
   chatWidth: 384,
   setChatWidth: (width) => set({ chatWidth: Math.min(Math.max(width, 320), 800) }),
+
+  searchModalOpen: false,
+  setSearchModalOpen: (open) => set({ searchModalOpen: open }),
 }));
