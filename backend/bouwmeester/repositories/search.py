@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.org_context import OrgContext, org_filter_sql_clause
+from bouwmeester.core.query_utils import escape_like
 from bouwmeester.utils.tiptap import tiptap_to_plain
 
 
@@ -36,11 +37,9 @@ class SearchRepository:
         }
         active_types = set(result_types) if result_types else all_types
 
-        short_query = len(query.strip()) < 4
-
         sub_queries = []
 
-        # title_col per entity for ILIKE fallback on short queries
+        # title_col per entity for ILIKE fallback
         entity_title_cols = {
             "corpus_node": "title",
             "task": "title",
@@ -52,19 +51,19 @@ class SearchRepository:
         }
 
         def _where(title_col: str) -> str:
+            # FTS for stemmed word matching, ILIKE for substring-in-title
+            # fallback (handles abbreviations like "JenV" inside "MinJenV").
             fts = "search_vector @@ plainto_tsquery('dutch', :query)"
-            if short_query:
-                return f"({fts} OR {title_col} ILIKE :prefix)"
-            return fts
+            return f"({fts} OR {title_col} ILIKE :ilike_pattern)"
 
         def _score(title_col: str) -> str:
+            # FTS rank dominates; ILIKE-only matches get a low base score
+            # so they appear below proper FTS hits.
             rank = "ts_rank(search_vector, plainto_tsquery('dutch', :query))"
-            if short_query:
-                return (
-                    f"GREATEST({rank}, "
-                    f"CASE WHEN {title_col} ILIKE :prefix THEN 0.1 ELSE 0 END)"
-                )
-            return rank
+            return (
+                f"GREATEST({rank}, "
+                f"CASE WHEN {title_col} ILIKE :ilike_pattern THEN 0.05 ELSE 0 END)"
+            )
 
         def _org_sql(col: str = "organisatie_eenheid_id") -> str:
             return org_filter_sql_clause(col, org_ctx)
@@ -177,9 +176,11 @@ class SearchRepository:
             LIMIT :limit
         """
 
-        params: dict = {"query": query, "limit": limit}
-        if short_query:
-            params["prefix"] = query.strip() + "%"
+        params: dict = {
+            "query": query,
+            "limit": limit,
+            "ilike_pattern": f"%{escape_like(query.strip())}%",
+        }
         if (
             org_ctx is not None
             and org_ctx.is_authenticated
