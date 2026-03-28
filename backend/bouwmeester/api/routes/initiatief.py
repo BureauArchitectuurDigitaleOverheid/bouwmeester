@@ -23,6 +23,7 @@ from bouwmeester.schema.initiatief import (
     InitiatiefResponse,
     InitiatiefUpdate,
 )
+from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/initiatieven", tags=["initiatieven"])
 
@@ -89,6 +90,15 @@ async def create_initiatief(
     repo = InitiatiefRepository(db)
     created_by_id = current_user.id if current_user else None
     initiatief = await repo.create(data, created_by_id=created_by_id)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "initiatief.created",
+        details={"initiatief_id": str(initiatief.id), "naam": initiatief.naam},
+    )
+
     return InitiatiefResponse.model_validate(initiatief)
 
 
@@ -139,6 +149,15 @@ async def update_initiatief(
     repo = InitiatiefRepository(db)
     await _require_eigenaar(repo, id, current_user)
     initiatief = require_found(await repo.update(id, data), "Initiatief")
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "initiatief.updated",
+        details={"initiatief_id": str(initiatief.id), "naam": initiatief.naam},
+    )
+
     return InitiatiefResponse.model_validate(initiatief)
 
 
@@ -150,7 +169,17 @@ async def delete_initiatief(
 ) -> None:
     repo = InitiatiefRepository(db)
     await _require_eigenaar(repo, id, current_user)
+    initiatief = require_found(await repo.get_by_id(id), "Initiatief")
+    initiatief_naam = initiatief.naam
     require_deleted(await repo.delete(id), "Initiatief")
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "initiatief.deleted",
+        details={"initiatief_id": str(id), "naam": initiatief_naam},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +202,19 @@ async def add_member(
     require_found(await repo.get_by_id(id), "Initiatief")
     await _require_eigenaar(repo, id, current_user)
     member = await repo.add_member(id, data.person_id, data.rol)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "initiatief_member.added",
+        details={
+            "initiatief_id": str(id),
+            "person_id": str(data.person_id),
+            "rol": data.rol,
+        },
+    )
+
     return InitiatiefMemberResponse(
         initiatief_id=member.initiatief_id,
         person_id=member.person_id,
@@ -209,6 +251,14 @@ async def remove_member(
             detail="Lid niet gevonden",
         )
 
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "initiatief_member.removed",
+        details={"initiatief_id": str(id), "person_id": str(person_id)},
+    )
+
 
 @router.put(
     "/{id}/members/{person_id}",
@@ -239,6 +289,19 @@ async def update_member_role(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lid niet gevonden",
         )
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "initiatief_member.updated",
+        details={
+            "initiatief_id": str(id),
+            "person_id": str(person_id),
+            "rol": data.rol,
+        },
+    )
+
     return InitiatiefMemberResponse(
         initiatief_id=member.initiatief_id,
         person_id=member.person_id,
@@ -268,6 +331,15 @@ async def add_eenheid(
     require_found(await repo.get_by_id(id), "Initiatief")
     await _require_eigenaar(repo, id, current_user)
     link = await repo.add_eenheid(id, data.eenheid_id)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "initiatief_eenheid.added",
+        details={"initiatief_id": str(id), "eenheid_id": str(data.eenheid_id)},
+    )
+
     return InitiatiefEenheidResponse(
         initiatief_id=link.initiatief_id,
         eenheid_id=link.eenheid_id,
@@ -293,3 +365,11 @@ async def remove_eenheid(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Eenheid niet gevonden",
         )
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "initiatief_eenheid.removed",
+        details={"initiatief_id": str(id), "eenheid_id": str(eenheid_id)},
+    )

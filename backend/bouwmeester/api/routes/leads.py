@@ -53,6 +53,7 @@ from bouwmeester.schema.lead import (
 )
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse, TagCreate
+from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/leads", tags=["leads"])
@@ -196,6 +197,14 @@ async def create_lead(
         notification = await notif_svc.repo.create(notification_data)
         notif_svc._send_to_mattermost(notification)
 
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead.created",
+        details={"lead_id": str(lead.id), "title": lead.title},
+    )
+
     return LeadResponse.model_validate(lead)
 
 
@@ -284,6 +293,19 @@ async def merge_leads(
         )
     repo = LeadRepository(db)
     result = require_found(await repo.merge(data.source_id, data.target_id), "Lead")
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead.merged",
+        details={
+            "source_id": str(data.source_id),
+            "target_id": str(data.target_id),
+            "title": result.title,
+        },
+    )
+
     return LeadResponse.model_validate(result)
 
 
@@ -351,6 +373,14 @@ async def update_lead(
             notification = await notif_svc.repo.create(notification_data)
             notif_svc._send_to_mattermost(notification)
 
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead.updated",
+        details={"lead_id": str(lead.id), "title": lead.title},
+    )
+
     return LeadResponse.model_validate(lead)
 
 
@@ -366,8 +396,17 @@ async def delete_lead(
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead niet gevonden")
     _check_lead_access(lead, init_ctx)
+    lead_title = lead.title
     repo = LeadRepository(db)
     require_deleted(await repo.delete(lead_id), "Lead")
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead.deleted",
+        details={"lead_id": str(lead_id), "title": lead_title},
+    )
 
 
 @router.post("/{lead_id}/move", response_model=LeadResponse)
@@ -400,6 +439,14 @@ async def move_lead(
         )
         notification = await notif_svc.repo.create(notification_data)
         notif_svc._send_to_mattermost(notification)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead.moved",
+        details={"lead_id": str(lead.id), "title": lead.title, "stage": lead.stage},
+    )
 
     return LeadResponse.model_validate(lead)
 
@@ -461,6 +508,18 @@ async def add_activity(
         )
         notification = await notif_svc.repo.create(notification_data)
         notif_svc._send_to_mattermost(notification)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_activity.added",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "activity_type": data.type,
+        },
+    )
 
     return LeadActivityResponse.model_validate(activity)
 
@@ -526,6 +585,18 @@ async def add_contact(
         notification = await notif_svc.repo.create(notification_data)
         notif_svc._send_to_mattermost(notification)
 
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_contact.added",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "person_id": str(data.person_id),
+        },
+    )
+
     return LeadContactResponse.model_validate(contact)
 
 
@@ -557,6 +628,18 @@ async def remove_contact(
     await db.delete(contact)
     await db.flush()
 
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_contact.removed",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "contact_id": str(contact_id),
+        },
+    )
+
 
 # ---------------------------------------------------------------------------
 # Linked corpus nodes
@@ -587,6 +670,19 @@ async def link_node(
     db.add(link)
     await db.flush()
     await db.refresh(link, attribute_names=["node"])
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_node.added",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "node_id": str(data.node_id),
+        },
+    )
+
     return LeadNodeResponse.model_validate(link)
 
 
@@ -617,6 +713,18 @@ async def unlink_node(
         raise HTTPException(status_code=404, detail="Node link not found")
     await db.delete(link)
     await db.flush()
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_node.removed",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "link_id": str(link_id),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -680,6 +788,19 @@ async def add_tag_to_lead(
         raise HTTPException(status_code=400, detail="Provide tag_id or tag_name")
 
     lead_tag = await tag_repo.add_tag_to_lead(lead_id, tag_id)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_tag.added",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "tag_id": str(tag_id),
+        },
+    )
+
     return LeadTagResponse.model_validate(lead_tag)
 
 
@@ -703,6 +824,18 @@ async def remove_tag_from_lead(
     _check_lead_access(lead, init_ctx)
     tag_repo = TagRepository(db)
     require_deleted(await tag_repo.remove_tag_from_lead(lead_id, tag_id), "Tag link")
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_tag.removed",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "tag_id": str(tag_id),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -750,6 +883,18 @@ async def upload_attachment(
     db.add(attachment)
     await db.flush()
     await db.refresh(attachment)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_attachment.uploaded",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "filename": filename,
+        },
+    )
 
     return LeadAttachmentResponse.model_validate(attachment)
 
@@ -815,9 +960,22 @@ async def delete_attachment(
         raise HTTPException(status_code=404, detail="Bijlage niet gevonden")
 
     file_path = safe_resolve_or_400(LEADS_BIJLAGEN_ROOT, attachment.pad)
+    attachment_naam = attachment.bestandsnaam
     await db.delete(attachment)
     if file_path.exists():
         file_path.unlink()
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_attachment.deleted",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "filename": attachment_naam,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
