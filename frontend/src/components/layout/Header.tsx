@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, User, ChevronDown, Check, LogOut, Menu } from 'lucide-react';
+import { Search, User, ChevronDown, Check, LogOut, Menu, Eye, EyeOff } from 'lucide-react';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,7 +43,7 @@ export function Header() {
   const navigate = useNavigate();
   const { currentPerson, setDevPersonId, people } = useCurrentPerson();
   const { vocabularyId, setVocabularyId } = useVocabulary();
-  const { authenticated, oidcConfigured, logout } = useAuth();
+  const { authenticated, oidcConfigured, logout, realIsAdmin, viewAsNonAdmin, toggleViewAsNonAdmin } = useAuth();
   const toggleMobileSidebar = useUIStore((s) => s.toggleMobileSidebar);
   const { isFeatureEnabled } = useFeatureToggle();
 
@@ -146,6 +146,21 @@ export function Header() {
             </button>
           ))}
         </div>
+        )}
+
+        {/* Admin view-as-non-admin toggle */}
+        {realIsAdmin && (
+          <button
+            onClick={toggleViewAsNonAdmin}
+            className={`flex items-center justify-center h-7 w-7 rounded-lg transition-all ${
+              viewAsNonAdmin
+                ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                : 'text-text-secondary hover:text-text hover:bg-gray-100'
+            }`}
+            title={viewAsNonAdmin ? 'Terug naar beheerweergave' : 'Bekijk als medewerker'}
+          >
+            {viewAsNonAdmin ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </button>
         )}
 
         {/* Notification bell */}
