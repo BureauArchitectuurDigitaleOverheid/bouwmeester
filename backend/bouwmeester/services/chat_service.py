@@ -1202,15 +1202,14 @@ async def _execute_read_tool(
             if not unit:
                 return _safe_dumps({"error": "Organisatie-eenheid niet gevonden"})
             personen = await repo.get_personen(unit.id)
+            manager = await repo.get_unit_manager(unit.id)
             return _safe_dumps(
                 {
                     "id": str(unit.id),
                     "naam": unit.naam,
                     "type": unit.type,
-                    "manager": (
-                        unit.manager.naam if getattr(unit, "manager", None) else None
-                    ),
-                    "manager_id": str(unit.manager_id) if unit.manager_id else None,
+                    "manager": manager.naam if manager else None,
+                    "manager_id": str(manager.id) if manager else None,
                     "parent_id": str(unit.parent_id) if unit.parent_id else None,
                     "medewerkers": [
                         {"id": str(p.id), "naam": p.naam} for p in personen[:20]

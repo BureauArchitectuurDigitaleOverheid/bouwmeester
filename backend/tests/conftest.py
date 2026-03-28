@@ -406,10 +406,10 @@ async def third_person(create_person):
 
 @pytest.fixture
 async def org_with_manager(db_session: AsyncSession, third_person):
-    """Create an org unit with a temporal manager record."""
-    from bouwmeester.models.org_manager import OrganisatieEenheidManager
+    """Create an org unit with a unit_manager person_role."""
     from bouwmeester.models.org_naam import OrganisatieEenheidNaam
     from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+    from bouwmeester.models.role import PersonRole
 
     org = OrganisatieEenheid(
         id=uuid.uuid4(),
@@ -425,34 +425,11 @@ async def org_with_manager(db_session: AsyncSession, third_person):
         )
     )
     db_session.add(
-        OrganisatieEenheidManager(
-            eenheid_id=org.id,
-            manager_id=third_person.id,
-            geldig_van=date.today() - timedelta(days=30),
-        )
-    )
-    await db_session.flush()
-    return org
-
-
-@pytest.fixture
-async def org_with_legacy_manager(db_session: AsyncSession, third_person):
-    """Create an org unit with only legacy manager_id (no temporal record)."""
-    from bouwmeester.models.org_naam import OrganisatieEenheidNaam
-    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-
-    org = OrganisatieEenheid(
-        id=uuid.uuid4(),
-        naam="Legacy Afdeling",
-        type="afdeling",
-        beschrijving="Afdeling met legacy manager",
-        manager_id=third_person.id,
-    )
-    db_session.add(org)
-    await db_session.flush()
-    db_session.add(
-        OrganisatieEenheidNaam(
-            eenheid_id=org.id, naam=org.naam, geldig_van=date.today()
+        PersonRole(
+            person_id=third_person.id,
+            role_id="unit_manager",
+            organisatie_eenheid_id=org.id,
+            start_datum=date.today() - timedelta(days=30),
         )
     )
     await db_session.flush()

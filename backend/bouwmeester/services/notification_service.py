@@ -12,10 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.notification import Notification
 from bouwmeester.models.opdracht import Opdracht
-from bouwmeester.models.org_manager import OrganisatieEenheidManager
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.resource_permission import ResourcePermission
+from bouwmeester.models.role import PersonRole
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.notification import NotificationRepository
 from bouwmeester.schema.notification import NotificationCreate
@@ -414,30 +413,17 @@ class NotificationService:
     async def notify_team_manager(
         self, task: Task, eenheid_id: UUID, exclude_person_id: UUID | None = None
     ) -> Notification | None:
-        """Notify the manager of an org unit about a task assignment.
-
-        Uses temporal manager record first, falls back to legacy manager_id.
-        """
+        """Notify the manager of an org unit about a task assignment."""
         today = date.today()
 
-        # Try temporal manager record
-        stmt = select(OrganisatieEenheidManager).where(
-            OrganisatieEenheidManager.eenheid_id == eenheid_id,
-            OrganisatieEenheidManager.geldig_van <= today,
-            (OrganisatieEenheidManager.geldig_tot.is_(None))
-            | (OrganisatieEenheidManager.geldig_tot >= today),
+        stmt = select(PersonRole.person_id).where(
+            PersonRole.organisatie_eenheid_id == eenheid_id,
+            PersonRole.role_id == "unit_manager",
+            PersonRole.start_datum <= today,
+            (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
         )
         result = await self.session.execute(stmt)
-        manager_record = result.scalar_one_or_none()
-
-        manager_id: UUID | None = None
-        if manager_record and manager_record.manager_id:
-            manager_id = manager_record.manager_id
-        else:
-            # Fallback to legacy manager_id on OrganisatieEenheid
-            eenheid = await self.session.get(OrganisatieEenheid, eenheid_id)
-            if eenheid and eenheid.manager_id:
-                manager_id = eenheid.manager_id
+        manager_id = result.scalar_one_or_none()
 
         if not manager_id:
             return None
@@ -573,23 +559,15 @@ class NotificationService:
         notified_ids: set[UUID] = set()
         today = date.today()
 
-        # Resolve manager: temporal record first, legacy fallback
-        stmt = select(OrganisatieEenheidManager).where(
-            OrganisatieEenheidManager.eenheid_id == eenheid_id,
-            OrganisatieEenheidManager.geldig_van <= today,
-            (OrganisatieEenheidManager.geldig_tot.is_(None))
-            | (OrganisatieEenheidManager.geldig_tot >= today),
+        # Resolve manager from person_role
+        stmt = select(PersonRole.person_id).where(
+            PersonRole.organisatie_eenheid_id == eenheid_id,
+            PersonRole.role_id == "unit_manager",
+            PersonRole.start_datum <= today,
+            (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
         )
         result = await self.session.execute(stmt)
-        manager_record = result.scalar_one_or_none()
-
-        manager_id: UUID | None = None
-        if manager_record and manager_record.manager_id:
-            manager_id = manager_record.manager_id
-        else:
-            eenheid = await self.session.get(OrganisatieEenheid, eenheid_id)
-            if eenheid and eenheid.manager_id:
-                manager_id = eenheid.manager_id
+        manager_id = result.scalar_one_or_none()
 
         if manager_id:
             notified_ids.add(manager_id)

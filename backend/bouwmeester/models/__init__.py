@@ -39,7 +39,6 @@ from bouwmeester.models.node_status import CorpusNodeStatus  # noqa: F401
 from bouwmeester.models.node_title import CorpusNodeTitle  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
 from bouwmeester.models.opdracht import Opdracht, OpdrachtNode  # noqa: F401
-from bouwmeester.models.org_manager import OrganisatieEenheidManager  # noqa: F401
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam  # noqa: F401
 from bouwmeester.models.org_parent import OrganisatieEenheidParent  # noqa: F401
 from bouwmeester.models.org_placement_request import OrgPlacementRequest  # noqa: F401
@@ -108,7 +107,6 @@ __all__ = [
     "Opdracht",
     "OpdrachtNode",
     "OrgPlacementRequest",
-    "OrganisatieEenheidManager",
     "OrganisatieEenheidNaam",
     "OrganisatieEenheidParent",
     "OrganisatieEenheid",
