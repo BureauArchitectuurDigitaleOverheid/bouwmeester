@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight, Shield } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePeople } from '@/hooks/usePeople';
 import { isPersonOnline, formatRelativeTime } from '@/utils/people';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
@@ -16,12 +16,8 @@ import {
   useRemovePersonResourcePermission,
 } from '@/hooks/useResourcePermissions';
 import type { PersonResourcePermission } from '@/hooks/useResourcePermissions';
-import { useNodes } from '@/hooks/useNodes';
-import { useInitiatieven } from '@/hooks/useInitiatieven';
-import { useLeads } from '@/hooks/useLeads';
-import { useOpdrachten } from '@/hooks/useOpdrachten';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
-import { apiPost } from '@/api/client';
+import { apiGet, apiPost } from '@/api/client';
 import { queryKeys } from '@/hooks/queryKeys';
 
 function AssignmentRow({
@@ -383,32 +379,31 @@ const RESOURCE_TYPE_OPTIONS = [
   { value: 'opdracht', label: 'Opdracht' },
 ];
 
-function useResourceOptions(resourceType: string) {
-  const nodes = useNodes(undefined, undefined);
-  const initiatieven = useInitiatieven();
-  const leads = useLeads();
-  const opdrachten = useOpdrachten();
+interface ResourceOption {
+  id: string;
+  label: string;
+}
 
-  return useMemo(() => {
-    switch (resourceType) {
-      case 'corpus_node':
-        return (nodes.data ?? []).map((n) => ({ id: n.id, label: n.title }));
-      case 'initiatief':
-        return (initiatieven.data ?? []).map((i) => ({
-          id: i.id,
-          label: i.naam,
-        }));
-      case 'lead':
-        return (leads.data ?? []).map((l) => ({ id: l.id, label: l.title }));
-      case 'opdracht':
-        return (opdrachten.data ?? []).map((o) => ({
-          id: o.id,
-          label: o.titel,
-        }));
-      default:
-        return [];
-    }
-  }, [resourceType, nodes.data, initiatieven.data, leads.data, opdrachten.data]);
+const RESOURCE_API_MAP: Record<string, { url: string; map: (item: Record<string, unknown>) => ResourceOption }> = {
+  corpus_node: { url: '/api/nodes', map: (n) => ({ id: n.id as string, label: n.title as string }) },
+  initiatief: { url: '/api/initiatieven', map: (i) => ({ id: i.id as string, label: i.naam as string }) },
+  lead: { url: '/api/leads', map: (l) => ({ id: l.id as string, label: l.title as string }) },
+  opdracht: { url: '/api/opdrachten', map: (o) => ({ id: o.id as string, label: o.titel as string }) },
+};
+
+function useResourceOptions(resourceType: string) {
+  const config = RESOURCE_API_MAP[resourceType];
+  const { data } = useQuery({
+    queryKey: ['resource-options', resourceType],
+    queryFn: () => apiGet<Record<string, unknown>[]>(config.url),
+    enabled: !!config,
+    staleTime: 60_000,
+  });
+
+  return useMemo(
+    () => (data ?? []).map(config?.map ?? (() => ({ id: '', label: '' }))),
+    [data, config],
+  );
 }
 
 function PersonResourcePermissionsSection({ personId }: { personId: string }) {
