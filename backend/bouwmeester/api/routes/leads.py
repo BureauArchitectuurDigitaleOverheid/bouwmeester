@@ -26,7 +26,6 @@ from bouwmeester.core.storage import (
 )
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_attachment import LeadAttachment
-from bouwmeester.models.lead_contact import LeadContact
 from bouwmeester.models.lead_node import LeadNode
 from bouwmeester.repositories.lead import LeadRepository
 from bouwmeester.repositories.lead_activity import LeadActivityRepository
@@ -318,7 +317,28 @@ async def get_lead(
     """Get lead detail including activities, contacts, and linked nodes."""
     repo = LeadRepository(db)
     lead = require_found(await repo.get_detail(lead_id, init_ctx=init_ctx), "Lead")
-    return LeadDetailResponse.model_validate(lead)
+
+    # Build contacts from resource_permission
+    from bouwmeester.repositories.resource_permission import (
+        ResourcePermissionRepository,
+    )
+
+    rp_repo = ResourcePermissionRepository(db)
+    rp_contacts = await rp_repo.list_for_resource("lead", lead_id)
+    contacts = [
+        LeadContactResponse(
+            id=rp.id,
+            person_id=rp.person_id,
+            person_naam=rp.person.naam if rp.person else "",
+            rol=rp.rol,
+            created_at=rp.created_at,
+        )
+        for rp in rp_contacts
+    ]
+
+    response = LeadDetailResponse.model_validate(lead)
+    response.contacts = contacts
+    return response
 
 
 @router.put("/{lead_id}", response_model=LeadResponse)
@@ -394,6 +414,19 @@ async def delete_lead(
         raise HTTPException(status_code=404, detail="Lead niet gevonden")
     _check_lead_access(lead, init_ctx)
     lead_title = lead.title
+
+    # Clean up resource_permission rows (no FK cascade on polymorphic)
+    from sqlalchemy import delete as sa_delete
+
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    await db.execute(
+        sa_delete(ResourcePermission).where(
+            ResourcePermission.resource_type == "lead",
+            ResourcePermission.resource_id == lead_id,
+        )
+    )
+
     repo = LeadRepository(db)
     require_deleted(await repo.delete(lead_id), "Lead")
 
@@ -558,9 +591,12 @@ async def add_contact(
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead niet gevonden")
     _check_lead_access(lead, init_ctx)
-    contact = LeadContact(
-        lead_id=lead_id,
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    contact = ResourcePermission(
         person_id=data.person_id,
+        resource_type="lead",
+        resource_id=lead_id,
         rol=data.rol,
     )
     db.add(contact)
@@ -610,10 +646,13 @@ async def remove_contact(
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead niet gevonden")
     _check_lead_access(lead, init_ctx)
+    from bouwmeester.models.resource_permission import ResourcePermission
+
     result = await db.execute(
-        select(LeadContact).where(
-            LeadContact.id == contact_id,
-            LeadContact.lead_id == lead_id,
+        select(ResourcePermission).where(
+            ResourcePermission.id == contact_id,
+            ResourcePermission.resource_type == "lead",
+            ResourcePermission.resource_id == lead_id,
         )
     )
     contact = result.scalar_one_or_none()

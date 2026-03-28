@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useActivityFeed } from '@/hooks/useActivity';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
@@ -228,6 +229,7 @@ function DetailCell({
 
 export function AuditLogPage() {
   const { person, oidcConfigured, loading, viewAsNonAdmin } = useAuth();
+  const { hasPermission } = usePermissions();
   const [page, setPage] = useState(0);
   const [category, setCategory] = useState('');
   const { openNodeDetail } = useNodeDetail();
@@ -249,7 +251,7 @@ export function AuditLogPage() {
   }, [totalPages, page]);
 
   if (loading) return null;
-  if (viewAsNonAdmin || (oidcConfigured && (!person || !person.is_admin))) {
+  if (viewAsNonAdmin || (oidcConfigured && (!person || !hasPermission('audit:read')))) {
     return <Navigate to="/" replace />;
   }
 

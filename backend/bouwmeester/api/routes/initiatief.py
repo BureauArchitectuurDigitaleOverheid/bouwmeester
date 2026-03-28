@@ -112,17 +112,22 @@ async def get_initiatief(
     initiatief = require_found(await repo.get_detail(id), "Initiatief")
     await _require_member_or_admin(repo, id, current_user)
     # Build response with member/eenheid names
-    members = []
-    for m in initiatief.members:
-        members.append(
-            InitiatiefMemberResponse(
-                initiatief_id=m.initiatief_id,
-                person_id=m.person_id,
-                person_naam=m.person.naam if m.person else "",
-                rol=m.rol,
-                created_at=m.created_at,
-            )
+    from bouwmeester.repositories.resource_permission import (
+        ResourcePermissionRepository,
+    )
+
+    rp_repo = ResourcePermissionRepository(db)
+    rp_members = await rp_repo.list_for_resource("initiatief", id)
+    members = [
+        InitiatiefMemberResponse(
+            initiatief_id=rp.resource_id,
+            person_id=rp.person_id,
+            person_naam=rp.person.naam if rp.person else "",
+            rol=rp.rol,
+            created_at=rp.created_at,
         )
+        for rp in rp_members
+    ]
     eenheden = []
     for e in initiatief.eenheden:
         eenheden.append(
@@ -171,6 +176,19 @@ async def delete_initiatief(
     await _require_eigenaar(repo, id, current_user)
     initiatief = require_found(await repo.get_by_id(id), "Initiatief")
     initiatief_naam = initiatief.naam
+
+    # Clean up resource_permission rows
+    from sqlalchemy import delete as sa_delete
+
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    await db.execute(
+        sa_delete(ResourcePermission).where(
+            ResourcePermission.resource_type == "initiatief",
+            ResourcePermission.resource_id == id,
+        )
+    )
+
     require_deleted(await repo.delete(id), "Initiatief")
 
     await log_activity(
@@ -216,7 +234,7 @@ async def add_member(
     )
 
     return InitiatiefMemberResponse(
-        initiatief_id=member.initiatief_id,
+        initiatief_id=member.resource_id,
         person_id=member.person_id,
         person_naam=member.person.naam if member.person else "",
         rol=member.rol,
@@ -303,7 +321,7 @@ async def update_member_role(
     )
 
     return InitiatiefMemberResponse(
-        initiatief_id=member.initiatief_id,
+        initiatief_id=member.resource_id,
         person_id=member.person_id,
         person_naam=member.person.naam if member.person else "",
         rol=member.rol,

@@ -17,12 +17,11 @@ from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.externe_organisatie import ExterneOrganisatie
 from bouwmeester.models.lead import Lead
-from bouwmeester.models.lead_contact import LeadContact
 from bouwmeester.models.lead_node import LeadNode
-from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.graph_filters import exclude_unconnected_pi
 from bouwmeester.schema.community_graph import (
     CommunityGraphEdge,
@@ -322,15 +321,18 @@ class GraphRepository:
                     )
                 )
 
-        # -- 4. Lead → Person (contacts via LeadContact) --
-        contacts_stmt = select(LeadContact).where(LeadContact.lead_id.in_(lead_ids))
+        # -- 4. Lead → Person (contacts via ResourcePermission) --
+        contacts_stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "lead",
+            ResourcePermission.resource_id.in_(lead_ids),
+        )
         contacts_result = await self.session.execute(contacts_stmt)
         for contact in contacts_result.scalars().all():
             person_ids.add(contact.person_id)
             graph_edges.append(
                 CommunityGraphEdge(
                     id=_next_edge_id(),
-                    source=f"lead-{contact.lead_id}",
+                    source=f"lead-{contact.resource_id}",
                     target=f"person-{contact.person_id}",
                     edge_type="contact",
                     label=contact.rol,
@@ -410,10 +412,11 @@ class GraphRepository:
                         )
                     )
 
-        # -- 7. CorpusNode → Person (via NodeStakeholder) --
+        # -- 7. CorpusNode → Person (via ResourcePermission) --
         if corpus_node_ids:
-            stakeholders_stmt = select(NodeStakeholder).where(
-                NodeStakeholder.node_id.in_(corpus_node_ids)
+            stakeholders_stmt = select(ResourcePermission).where(
+                ResourcePermission.resource_type == "corpus_node",
+                ResourcePermission.resource_id.in_(corpus_node_ids),
             )
             stakeholders_result = await self.session.execute(stakeholders_stmt)
             for sh in stakeholders_result.scalars().all():
@@ -421,7 +424,7 @@ class GraphRepository:
                 graph_edges.append(
                     CommunityGraphEdge(
                         id=_next_edge_id(),
-                        source=f"node-{sh.node_id}",
+                        source=f"node-{sh.resource_id}",
                         target=f"person-{sh.person_id}",
                         edge_type=sh.rol,
                         label=sh.rol,

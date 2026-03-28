@@ -1,7 +1,7 @@
 """Initiatief-based access context for leads visibility filtering.
 
 Determines which initiatieven a user can see based on:
-- Direct membership (InitiatiefMember)
+- Direct membership (resource_permission with resource_type='initiatief')
 - Organisatie-eenheid membership (InitiatiefEenheid + PersonOrganisatieEenheid)
 """
 
@@ -18,9 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
-from bouwmeester.models.initiatief import InitiatiefEenheid, InitiatiefMember
+from bouwmeester.models.initiatief import InitiatiefEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.resource_permission import ResourcePermission
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +52,10 @@ async def build_initiatief_context(
             is_authenticated=True,
         )
 
-    # Direct membership
-    direct_stmt = select(InitiatiefMember.initiatief_id).where(
-        InitiatiefMember.person_id == person.id,
+    # Direct membership via resource_permission
+    direct_stmt = select(ResourcePermission.resource_id.label("initiatief_id")).where(
+        ResourcePermission.resource_type == "initiatief",
+        ResourcePermission.person_id == person.id,
     )
 
     # Via organisatie-eenheid membership
@@ -77,7 +79,7 @@ async def build_initiatief_context(
 
     # Union of both
     combined = union(direct_stmt, eenheid_stmt)
-    result = await db.execute(select(combined.c.initiatief_id))
+    result = await db.execute(combined)
     visible_ids = list(result.scalars().all())
 
     return InitiatiefContext(

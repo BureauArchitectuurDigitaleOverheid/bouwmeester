@@ -5,8 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.auth import AdminUser, OptionalUser, effective_person_id
+from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.database import get_db
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.schema.activity import ActivityFeedResponse, ActivityResponse
 from bouwmeester.schema.inbox import InboxResponse
 from bouwmeester.services.activity_service import ActivityService
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/activity", tags=["activity"])
 
 @router.get("/feed", response_model=ActivityFeedResponse)
 async def get_activity_feed(
-    current_user: AdminUser,
+    _perm=Depends(require_permission("audit:read")),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     event_type: str | None = Query(None, max_length=50, pattern=r"^[a-z][a-z_.]*$"),

@@ -295,16 +295,21 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         self,
         person_id: UUID,
     ) -> list[OrganisatieEenheid]:
-        """Get all active eenheden where this person is current manager."""
+        """Get all active eenheden where this person has a unit_manager role."""
+        from bouwmeester.models.role import PersonRole
+
+        today = date.today()
         stmt = (
             select(OrganisatieEenheid)
             .join(
-                OrganisatieEenheidManager,
-                OrganisatieEenheidManager.eenheid_id == OrganisatieEenheid.id,
+                PersonRole,
+                PersonRole.organisatie_eenheid_id == OrganisatieEenheid.id,
             )
             .where(
-                OrganisatieEenheidManager.manager_id == person_id,
-                OrganisatieEenheidManager.geldig_tot.is_(None),
+                PersonRole.person_id == person_id,
+                PersonRole.role_id == "unit_manager",
+                PersonRole.start_datum <= today,
+                (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
             )
             .order_by(OrganisatieEenheid.naam)
         )

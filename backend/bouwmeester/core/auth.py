@@ -815,16 +815,26 @@ async def get_admin_user(
     Checks API key first, then WebAuthn session, then OIDC.  In development
     mode (no OIDC and no API key) returns ``None`` (all access open).
     Raises 403 if the user is authenticated but not an admin.
+
+    Supports both the legacy ``is_admin`` flag and the new role-based
+    system (``super_admin`` or ``platform_admin`` person_role).
     """
     person = await _resolve_user(request, db, settings)
     if person is None:
         return None
-    if not person.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-    return person
+    # Legacy check
+    if person.is_admin:
+        return person
+    # New RBAC check
+    from bouwmeester.core.permissions import build_permission_context
+
+    perm_ctx = await build_permission_context(db, person)
+    if perm_ctx.is_super_admin or "platform_admin" in perm_ctx.system_roles:
+        return person
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Admin access required",
+    )
 
 
 # Type aliases for convenient use in route signatures.
@@ -843,6 +853,15 @@ async def get_admin_user(
 CurrentUser = Annotated[Person, Depends(get_current_user)]
 OptionalUser = Annotated[Person | None, Depends(get_optional_user)]
 AdminUser = Annotated[Person | None, Depends(get_admin_user)]
+
+# New RBAC dependency — returns the resolved PermissionContext.
+# Import here to avoid circular imports at module level.
+from bouwmeester.core.permissions import (  # noqa: E402
+    PermissionContext,
+    get_permission_context,
+)
+
+PermUser = Annotated[PermissionContext, Depends(get_permission_context)]
 
 
 def effective_person_id(

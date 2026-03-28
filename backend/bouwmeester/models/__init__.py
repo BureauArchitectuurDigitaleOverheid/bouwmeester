@@ -19,18 +19,15 @@ from bouwmeester.models.edge_schema_rule import EdgeSchemaRule  # noqa: F401
 from bouwmeester.models.edge_type import EdgeType  # noqa: F401
 from bouwmeester.models.effect import Effect  # noqa: F401
 from bouwmeester.models.externe_organisatie import ExterneOrganisatie  # noqa: F401
-from bouwmeester.models.feature_toggle import FeatureToggle  # noqa: F401
 from bouwmeester.models.http_session import HttpSession  # noqa: F401
 from bouwmeester.models.initiatief import (  # noqa: F401
     Initiatief,
     InitiatiefEenheid,
-    InitiatiefMember,
 )
 from bouwmeester.models.instrument import Instrument  # noqa: F401
 from bouwmeester.models.lead import Lead  # noqa: F401
 from bouwmeester.models.lead_activity import LeadActivity  # noqa: F401
 from bouwmeester.models.lead_attachment import LeadAttachment  # noqa: F401
-from bouwmeester.models.lead_contact import LeadContact  # noqa: F401
 from bouwmeester.models.lead_node import LeadNode  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
 from bouwmeester.models.mattermost_user import (  # noqa: F401
@@ -38,7 +35,6 @@ from bouwmeester.models.mattermost_user import (  # noqa: F401
     MattermostUser,
 )
 from bouwmeester.models.mention import Mention  # noqa: F401
-from bouwmeester.models.node_stakeholder import NodeStakeholder  # noqa: F401
 from bouwmeester.models.node_status import CorpusNodeStatus  # noqa: F401
 from bouwmeester.models.node_title import CorpusNodeTitle  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
@@ -58,6 +54,14 @@ from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid  # no
 from bouwmeester.models.person_phone import PersonPhone  # noqa: F401
 from bouwmeester.models.politieke_input import PolitiekeInput  # noqa: F401
 from bouwmeester.models.probleem import Probleem  # noqa: F401
+from bouwmeester.models.resource_permission import ResourcePermission  # noqa: F401
+from bouwmeester.models.role import (  # noqa: F401
+    Permission,
+    PersonRole,
+    Role,
+    RolePermission,
+)
+from bouwmeester.models.shared_access import SharedAccess  # noqa: F401
 from bouwmeester.models.tag import LeadTag, NodeTag, Tag  # noqa: F401
 from bouwmeester.models.task import Task  # noqa: F401
 from bouwmeester.models.team import Team, TeamMember  # noqa: F401
@@ -85,16 +89,13 @@ __all__ = [
     "EdgeType",
     "Effect",
     "ExterneOrganisatie",
-    "FeatureToggle",
     "HttpSession",
     "Initiatief",
-    "InitiatiefMember",
     "InitiatiefEenheid",
     "Instrument",
     "Lead",
     "LeadActivity",
     "LeadAttachment",
-    "LeadContact",
     "LeadNode",
     "LeadTag",
     "Maatregel",
@@ -102,7 +103,6 @@ __all__ = [
     "MattermostUser",
     "Mention",
     "ParlementairItem",
-    "NodeStakeholder",
     "NodeTag",
     "Notification",
     "Opdracht",
@@ -112,12 +112,18 @@ __all__ = [
     "OrganisatieEenheidNaam",
     "OrganisatieEenheidParent",
     "OrganisatieEenheid",
+    "Permission",
     "Person",
+    "PersonRole",
     "PersonEmail",
     "PersonOrganisatieEenheid",
     "PersonPhone",
     "PolitiekeInput",
     "Probleem",
+    "ResourcePermission",
+    "Role",
+    "RolePermission",
+    "SharedAccess",
     "SuggestedEdge",
     "Tag",
     "Task",

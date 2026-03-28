@@ -263,15 +263,25 @@ class TestManagerChange:
     async def test_managed_by_endpoint(
         self,
         client,
+        db_session,
         sample_eenheid,
         manager_person,
     ):
-        """GET /managed-by/{person_id} uses temporal manager table."""
+        """GET /managed-by/{person_id} uses unit_manager PersonRole."""
+        from datetime import date
+
+        from bouwmeester.models.role import PersonRole
+
         eid = sample_eenheid["id"]
-        await client.put(
-            f"/api/organisatie/{eid}",
-            json={"manager_id": str(manager_person.id)},
+        db_session.add(
+            PersonRole(
+                person_id=manager_person.id,
+                role_id="unit_manager",
+                organisatie_eenheid_id=eid,
+                start_datum=date.today(),
+            )
         )
+        await db_session.flush()
 
         resp = await client.get(
             f"/api/organisatie/managed-by/{manager_person.id}",

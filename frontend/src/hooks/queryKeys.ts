@@ -108,6 +108,13 @@ export const queryKeys = {
     accessRequestsAll: () => ['admin', 'access-requests'] as const,
     accessRequests: (status?: string) => ['admin', 'access-requests', status] as const,
     config: () => ['admin', 'config'] as const,
+    sharing: () => ['admin', 'sharing'] as const,
+    roles: () => ['admin', 'roles'] as const,
+    roleAssignmentsAll: () => ['admin', 'role-assignments'] as const,
+    roleAssignments: (personId: string | null) =>
+      ['admin', 'role-assignments', personId] as const,
+    personResourcePermissions: (personId: string | null) =>
+      ['admin', 'resource-permissions', personId] as const,
   },
 
   // --- Org Placements ---

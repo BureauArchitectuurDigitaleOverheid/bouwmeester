@@ -10,7 +10,7 @@ import os
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
@@ -219,7 +219,8 @@ async def seed(db: AsyncSession) -> None:
         "node_tag",
         "tag",
         "task",
-        "node_stakeholder",
+        "resource_permission",
+        "shared_access",
         "edge",
         "edge_schema_rule",
         "edge_type",
@@ -3418,7 +3419,7 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
     # 7. NODE STAKEHOLDERS
     # =========================================================================
-    from bouwmeester.models.node_stakeholder import NodeStakeholder
+    from bouwmeester.models.resource_permission import ResourcePermission
 
     stakeholders_data = [
         # Directeuren als eigenaar van koepeldossiers
@@ -3513,9 +3514,10 @@ async def seed(db: AsyncSession) -> None:
 
     for node, person, rol in stakeholders_data:
         db.add(
-            NodeStakeholder(
-                node_id=node.id,
+            ResourcePermission(
                 person_id=person.id,
+                resource_type="corpus_node",
+                resource_id=node.id,
                 rol=rol,
             )
         )
@@ -4672,9 +4674,110 @@ async def seed(db: AsyncSession) -> None:
     print(f"  Opdrachten: {len(opdracht_refs)} opdrachten/subsidies aangemaakt")
 
     # =========================================================================
+    # ROLE ASSIGNMENTS (access management)
+    # =========================================================================
+    from bouwmeester.models.role import PersonRole
+
+    # First named person becomes super_admin
+    first_person = list(person_map.values())[0]
+    first_person.is_admin = True
+    db.add(
+        PersonRole(
+            person_id=first_person.id,
+            role_id="super_admin",
+            granted_by_id=first_person.id,
+            start_datum=date.today(),
+        )
+    )
+    await db.flush()
+
+    # Collect person IDs that are managers — they get unit_manager,
+    # so we skip lower functie-based roles for them.
+    manager_person_ids = {mgr.id for _, mgr in manager_assignments if not mgr.is_agent}
+
+    # Assign manager roles first (unit_manager on their managed eenheid).
+    mgr_seen: set[tuple] = set()
+    mgr_role_count = 0
+    for unit, manager in manager_assignments:
+        if manager.is_agent:
+            continue
+        key = (manager.id, unit.id)
+        if key in mgr_seen:
+            continue
+        mgr_seen.add(key)
+        db.add(
+            PersonRole(
+                person_id=manager.id,
+                role_id="unit_manager",
+                organisatie_eenheid_id=unit.id,
+                granted_by_id=first_person.id,
+                start_datum=date.today(),
+            )
+        )
+        mgr_role_count += 1
+    await db.flush()
+
+    # Assign functie-based roles for non-managers
+    functie_role_map = {
+        "directeur_generaal": "ministry_admin",
+        "directeur": "ministry_admin",
+        "senior_beleidsmedewerker": "editor",
+        "projectleider": "editor",
+        "beleidsmedewerker": "viewer",
+        "adviseur": "viewer",
+        "jurist": "viewer",
+        "communicatieadviseur": "viewer",
+    }
+    from bouwmeester.models.person import Person
+
+    all_persons_result = await db.execute(
+        select(Person).where(Person.is_agent.is_(False))
+    )
+    all_persons = list(all_persons_result.scalars().all())
+    functie_role_count = 0
+    for p in all_persons:
+        if p.id == first_person.id:
+            continue
+        # Skip people who already got a manager role
+        if p.id in manager_person_ids:
+            continue
+        role_id = functie_role_map.get(p.functie)
+        if not role_id:
+            continue
+        # Get this person's active org placement
+        poe_stmt = (
+            select(PersonOrganisatieEenheid.organisatie_eenheid_id)
+            .where(
+                PersonOrganisatieEenheid.person_id == p.id,
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
+            .limit(1)
+        )
+        poe_result = await db.execute(poe_stmt)
+        eenheid_id = poe_result.scalar_one_or_none()
+        if not eenheid_id:
+            continue
+        db.add(
+            PersonRole(
+                person_id=p.id,
+                role_id=role_id,
+                organisatie_eenheid_id=eenheid_id,
+                granted_by_id=first_person.id,
+                start_datum=date.today(),
+            )
+        )
+        functie_role_count += 1
+    await db.flush()
+    print(
+        f"  Rollen: {mgr_role_count} managers + "
+        f"{functie_role_count} functie-rollen + 1 admin"
+    )
+
+    # =========================================================================
     # INITIATIEVEN
     # =========================================================================
-    from bouwmeester.models.initiatief import Initiatief, InitiatiefMember
+    from bouwmeester.models.initiatief import Initiatief
+    from bouwmeester.models.resource_permission import ResourcePermission
 
     initiatieven_data = [
         ("Regelrecht", "#3B82F6", "Community-tool voor team Regelrecht"),
@@ -4694,14 +4797,82 @@ async def seed(db: AsyncSession) -> None:
         admin_person = next((p for p in person_map.values() if p.is_admin), None)
         if admin_person:
             db.add(
-                InitiatiefMember(
-                    initiatief_id=init.id,
+                ResourcePermission(
                     person_id=admin_person.id,
+                    resource_type="initiatief",
+                    resource_id=init.id,
                     rol="eigenaar",
                 )
             )
     await db.flush()
     print(f"  Initiatieven: {len(initiatieven_data)} aangemaakt")
+
+    # =========================================================================
+    # LEADS
+    # =========================================================================
+    from bouwmeester.models.lead import Lead
+
+    leads_data = [
+        (
+            "VNG - Standaarden afstemming",
+            "Adoptie API Design Rules bij gemeenten.",
+            "eerste_gesprek",
+            "Vereniging van Nederlandse Gemeenten",
+        ),
+        (
+            "Logius - DigiD koppelvlak",
+            "Modernisering DigiD koppelvlak.",
+            "verkennen",
+            "Logius",
+        ),
+        (
+            "ICTU - Open source kennisdeling",
+            "Samenwerking open source beleid.",
+            "interne_check",
+            "ICTU",
+        ),
+        (
+            "KvK - API strategie",
+            "Ondersteuning API strategie.",
+            "follow_up",
+            "Kamer van Koophandel",
+        ),
+        (
+            "Geonovum - Linked data",
+            "Linked data standaarden en GDI.",
+            "verkennen",
+            "Geonovum",
+        ),
+        (
+            "RvIG - Identiteitsstelsel",
+            "Vernieuwing identiteitsstelsel.",
+            "eerste_gesprek",
+            "Rijksdienst voor Identiteitsgegevens",
+        ),
+        (
+            "CIBG - Registers ontsluiting",
+            "Registers via API's ontsluiten.",
+            "in_the_pocket",
+            "CIBG",
+        ),
+        (
+            "Atos - Cloud migratie",
+            "Cloud migratie overheidsapplicaties.",
+            "koelkast",
+            "Atos Nederland",
+        ),
+    ]
+    for title, desc, stage, org in leads_data:
+        db.add(
+            Lead(
+                title=title,
+                description=desc,
+                stage=stage,
+                organization=org,
+            )
+        )
+    await db.flush()
+    print(f"  Leads: {len(leads_data)} aangemaakt")
 
     await db.commit()
     print("\nSeed voltooid!")

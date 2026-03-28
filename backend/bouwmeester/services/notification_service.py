@@ -10,12 +10,12 @@ from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
-from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.notification import Notification
 from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.org_manager import OrganisatieEenheidManager
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.notification import NotificationRepository
 from bouwmeester.schema.notification import NotificationCreate
@@ -126,9 +126,10 @@ class NotificationService:
         self, node: CorpusNode, actor: Person
     ) -> list[Notification]:
         """Notify all stakeholders of a node update (except the actor)."""
-        stmt = select(NodeStakeholder).where(
-            NodeStakeholder.node_id == node.id,
-            NodeStakeholder.person_id != actor.id,
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "corpus_node",
+            ResourcePermission.resource_id == node.id,
+            ResourcePermission.person_id != actor.id,
         )
         result = await self.session.execute(stmt)
         stakeholders = result.scalars().all()
@@ -157,16 +158,17 @@ class NotificationService:
         node_ids = [node.id for node in nodes]
         node_map = {node.id: node for node in nodes}
 
-        stmt = select(NodeStakeholder).where(
-            NodeStakeholder.node_id.in_(node_ids),
-            NodeStakeholder.person_id != absent_person.id,
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "corpus_node",
+            ResourcePermission.resource_id.in_(node_ids),
+            ResourcePermission.person_id != absent_person.id,
         )
         result = await self.session.execute(stmt)
         all_stakeholders = result.scalars().all()
 
-        stakeholders_by_node: dict[UUID, list[NodeStakeholder]] = defaultdict(list)
+        stakeholders_by_node: dict[UUID, list[ResourcePermission]] = defaultdict(list)
         for sh in all_stakeholders:
-            stakeholders_by_node[sh.node_id].append(sh)
+            stakeholders_by_node[sh.resource_id].append(sh)
 
         notifications = []
         for node_id, stakeholders in stakeholders_by_node.items():
@@ -208,15 +210,16 @@ class NotificationService:
         node_ids = [node.id for node in affected_nodes]
         node_map = {node.id: node for node in affected_nodes}
 
-        stmt = select(NodeStakeholder).where(
-            NodeStakeholder.node_id.in_(node_ids),
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "corpus_node",
+            ResourcePermission.resource_id.in_(node_ids),
         )
         result = await self.session.execute(stmt)
         all_stakeholders = result.scalars().all()
 
-        stakeholders_by_node: dict[UUID, list[NodeStakeholder]] = defaultdict(list)
+        stakeholders_by_node: dict[UUID, list[ResourcePermission]] = defaultdict(list)
         for sh in all_stakeholders:
-            stakeholders_by_node[sh.node_id].append(sh)
+            stakeholders_by_node[sh.resource_id].append(sh)
 
         notifications = []
         notified_person_ids: set[UUID] = set()
@@ -273,9 +276,10 @@ class NotificationService:
 
         # Notify node stakeholders
         if task.node_id:
-            stmt = select(NodeStakeholder).where(
-                NodeStakeholder.node_id == task.node_id,
-                NodeStakeholder.person_id.notin_(notified_ids),
+            stmt = select(ResourcePermission).where(
+                ResourcePermission.resource_type == "corpus_node",
+                ResourcePermission.resource_id == task.node_id,
+                ResourcePermission.person_id.notin_(notified_ids),
             )
             result = await self.session.execute(stmt)
             for sh in result.scalars().all():
@@ -336,8 +340,9 @@ class NotificationService:
     ) -> list[Notification]:
         """Notify stakeholders of both nodes about a new edge."""
         node_ids = [from_node.id, to_node.id]
-        stmt = select(NodeStakeholder).where(
-            NodeStakeholder.node_id.in_(node_ids),
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "corpus_node",
+            ResourcePermission.resource_id.in_(node_ids),
         )
         result = await self.session.execute(stmt)
         all_stakeholders = result.scalars().all()
@@ -645,9 +650,10 @@ class NotificationService:
 
         # Notify instrument stakeholders
         if opdracht.instrument_id:
-            stmt = select(NodeStakeholder).where(
-                NodeStakeholder.node_id == opdracht.instrument_id,
-                NodeStakeholder.person_id.notin_(notified_ids),
+            stmt = select(ResourcePermission).where(
+                ResourcePermission.resource_type == "corpus_node",
+                ResourcePermission.resource_id == opdracht.instrument_id,
+                ResourcePermission.person_id.notin_(notified_ids),
             )
             result = await self.session.execute(stmt)
             for sh in result.scalars().all():
@@ -701,9 +707,10 @@ class NotificationService:
 
         # Notify instrument stakeholders
         if opdracht.instrument_id:
-            stmt = select(NodeStakeholder).where(
-                NodeStakeholder.node_id == opdracht.instrument_id,
-                NodeStakeholder.person_id.notin_(notified_ids),
+            stmt = select(ResourcePermission).where(
+                ResourcePermission.resource_type == "corpus_node",
+                ResourcePermission.resource_id == opdracht.instrument_id,
+                ResourcePermission.person_id.notin_(notified_ids),
             )
             result = await self.session.execute(stmt)
             for sh in result.scalars().all():

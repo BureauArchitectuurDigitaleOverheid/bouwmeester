@@ -22,7 +22,7 @@ import logoImg from '/logo.png?url';
 import { useUIStore } from '@/store/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
-import { useFeatureToggle } from '@/contexts/FeatureToggleContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { ORGANISATIE_TYPE_LABELS } from '@/types';
 
@@ -32,10 +32,10 @@ interface SidebarProps {
 
 export function Sidebar({ mobile }: SidebarProps) {
   const { sidebarOpen, toggleSidebar, setMobileSidebarOpen } = useUIStore();
-  const { person: authPerson, oidcConfigured, viewAsNonAdmin } = useAuth();
+  const { person: authPerson } = useAuth();
   const { currentPerson } = useCurrentPerson();
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
-  const { isFeatureEnabled } = useFeatureToggle();
+  const { hasPermission, hasAnyPermission } = usePermissions();
 
   // On mobile the sidebar is always expanded (with labels)
   const expanded = mobile || sidebarOpen;
@@ -47,35 +47,44 @@ export function Sidebar({ mobile }: SidebarProps) {
   }, [managedEenheden]);
 
   const navItems = useMemo(() => {
-    const items = [
-      { to: '/', icon: Inbox, label: 'Inbox', featureKey: 'menu.inbox' },
-      { to: '/corpus', icon: Network, label: 'Corpus', featureKey: 'menu.corpus' },
-      { to: '/tasks', icon: CheckSquare, label: 'Taken', featureKey: 'menu.taken' },
-      { to: '/organisatie', icon: Building2, label: 'Organisatie', featureKey: 'menu.organisatie' },
-      { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel, featureKey: 'menu.eenheid_overzicht' },
-      { to: '/opdrachten', icon: Banknote, label: 'Opdrachten', featureKey: 'menu.opdrachten' },
-      { to: '/leads', icon: Funnel, label: 'Leads', featureKey: 'menu.leads' },
-      { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken', featureKey: 'menu.kamerstukken' },
-      { to: '/search', icon: Search, label: 'Zoeken', featureKey: 'menu.zoeken' },
-      { to: '/docs', icon: BookOpen, label: 'Documentatie', featureKey: 'menu.docs' },
+    const items: { to: string; icon: typeof Inbox; label: string; permission?: string }[] = [
+      { to: '/', icon: Inbox, label: 'Inbox' },
+      { to: '/corpus', icon: Network, label: 'Corpus', permission: 'node:read' },
+      { to: '/tasks', icon: CheckSquare, label: 'Taken', permission: 'task:read' },
+      { to: '/organisatie', icon: Building2, label: 'Organisatie', permission: 'org:read' },
+      { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel, permission: 'org:read' },
+      { to: '/opdrachten', icon: Banknote, label: 'Opdrachten', permission: 'opdracht:read' },
+      { to: '/leads', icon: Funnel, label: 'Leads', permission: 'lead:read' },
+      { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken', permission: 'node:read' },
+      { to: '/search', icon: Search, label: 'Zoeken' },
+      { to: '/docs', icon: BookOpen, label: 'Documentatie' },
     ];
-    return items.filter((item) => isFeatureEnabled(item.featureKey));
-  }, [eenheidLabel, isFeatureEnabled]);
+    return items.filter((item) => !item.permission || hasPermission(item.permission));
+  }, [eenheidLabel, hasPermission]);
 
   const bottomNavItems = useMemo(() => {
     const items = [
       { to: '/instellingen', icon: Settings, label: 'Instellingen' },
     ];
-    const isAdmin = !viewAsNonAdmin && (!oidcConfigured || authPerson?.is_admin);
+    const canAdmin = hasAnyPermission(
+      'whitelist:manage',
+      'people:manage',
+      'config:manage',
+      'database:backup',
+      'people:assign_role',
+      'org:manage',
+    );
     const isManager = (authPerson?.managed_eenheden?.length ?? 0) > 0;
-    if (isAdmin) {
+    if (hasPermission('audit:read')) {
       items.push({ to: '/auditlog', icon: History, label: 'Auditlog' });
+    }
+    if (canAdmin) {
       items.push({ to: '/admin', icon: Shield, label: 'Beheer' });
     } else if (isManager) {
       items.push({ to: '/admin?tab=placements', icon: Shield, label: 'Beheer' });
     }
     return items;
-  }, [oidcConfigured, authPerson?.is_admin, authPerson?.managed_eenheden, viewAsNonAdmin]);
+  }, [authPerson?.managed_eenheden, hasPermission, hasAnyPermission]);
 
   const handleNavClick = () => {
     if (mobile) {

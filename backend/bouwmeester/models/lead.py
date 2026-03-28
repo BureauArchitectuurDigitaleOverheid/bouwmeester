@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from bouwmeester.models.initiatief import Initiatief
     from bouwmeester.models.lead_activity import LeadActivity
     from bouwmeester.models.lead_attachment import LeadAttachment
-    from bouwmeester.models.lead_contact import LeadContact
     from bouwmeester.models.lead_node import LeadNode
     from bouwmeester.models.person import Person
     from bouwmeester.models.tag import LeadTag
@@ -91,11 +90,6 @@ class Lead(Base):
     )
     attachments: Mapped[list["LeadAttachment"]] = relationship(
         "LeadAttachment",
-        back_populates="lead",
-        cascade="all, delete-orphan",
-    )
-    contacts: Mapped[list["LeadContact"]] = relationship(
-        "LeadContact",
         back_populates="lead",
         cascade="all, delete-orphan",
     )

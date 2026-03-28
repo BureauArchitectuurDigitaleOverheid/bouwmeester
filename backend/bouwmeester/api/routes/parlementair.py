@@ -15,8 +15,8 @@ from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
-from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.person import Person
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.parlementair_item import (
     ParlementairItemRepository,
@@ -252,17 +252,19 @@ async def complete_review(
         raise HTTPException(status_code=404, detail="Eigenaar person not found")
 
     # Upsert eigenaar stakeholder on the corpus node
-    stmt = select(NodeStakeholder).where(
-        NodeStakeholder.node_id == item.corpus_node_id,
-        NodeStakeholder.rol == "eigenaar",
+    stmt = select(ResourcePermission).where(
+        ResourcePermission.resource_type == "corpus_node",
+        ResourcePermission.resource_id == item.corpus_node_id,
+        ResourcePermission.rol == "eigenaar",
     )
     result = await db.execute(stmt)
     existing = result.scalar_one_or_none()
     if existing is None:
         db.add(
-            NodeStakeholder(
-                node_id=item.corpus_node_id,
+            ResourcePermission(
                 person_id=body.eigenaar_id,
+                resource_type="corpus_node",
+                resource_id=item.corpus_node_id,
                 rol="eigenaar",
             )
         )

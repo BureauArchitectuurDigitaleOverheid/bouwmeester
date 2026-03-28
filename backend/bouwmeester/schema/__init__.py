@@ -66,12 +66,6 @@ from bouwmeester.schema.externe_organisatie import (
     ExterneOrganisatieResponse,
     ExterneOrganisatieUpdate,
 )
-from bouwmeester.schema.feature_toggle import (
-    EenheidFeatureConfig,
-    FeatureToggleBulkUpdate,
-    FeatureToggleResponse,
-    FeatureToggleUpdate,
-)
 from bouwmeester.schema.graph import (
     GraphNeighborsResponse,
     GraphSearchParams,
@@ -186,6 +180,19 @@ from bouwmeester.schema.person import (
     PersonSummaryResponse,
     PersonUpdate,
 )
+from bouwmeester.schema.resource_permission import (
+    ResourcePermissionCreate,
+    ResourcePermissionResponse,
+    ResourcePermissionUpdate,
+)
+from bouwmeester.schema.role import (
+    MyPermissionsResponse,
+    PermissionResponse,
+    PersonRoleCreate,
+    PersonRoleResponse,
+    RoleResponse,
+    RoleWithPermissionsResponse,
+)
 from bouwmeester.schema.search import (
     SearchResponse,
     SearchResult,
@@ -193,6 +200,7 @@ from bouwmeester.schema.search import (
     SimilarNodeItem,
     SimilarNodesResponse,
 )
+from bouwmeester.schema.shared_access import SharedAccessCreate, SharedAccessResponse
 from bouwmeester.schema.tag import (
     LeadTagCreate,
     LeadTagResponse,
@@ -300,11 +308,6 @@ __all__ = [
     "InitiatiefEenheidCreate",
     "InitiatiefEenheidResponse",
     "InitiatiefUpdate",
-    # feature_toggle
-    "EenheidFeatureConfig",
-    "FeatureToggleBulkUpdate",
-    "FeatureToggleResponse",
-    "FeatureToggleUpdate",
     # task
     "EenheidOverviewResponse",
     "EenheidPersonTaskStats",
@@ -437,6 +440,20 @@ __all__ = [
     "KompasGuidanceResponse",
     "TagSuggestionRequest",
     "TagSuggestionResponse",
+    # resource_permission
+    "ResourcePermissionCreate",
+    "ResourcePermissionResponse",
+    "ResourcePermissionUpdate",
+    # role
+    "MyPermissionsResponse",
+    "PermissionResponse",
+    "PersonRoleCreate",
+    "PersonRoleResponse",
+    "RoleResponse",
+    "RoleWithPermissionsResponse",
+    # shared_access
+    "SharedAccessCreate",
+    "SharedAccessResponse",
     # parlementair_item
     "ParlementairItemResponse",
     "ReviewAction",
