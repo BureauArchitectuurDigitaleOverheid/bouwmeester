@@ -4807,6 +4807,73 @@ async def seed(db: AsyncSession) -> None:
     await db.flush()
     print(f"  Initiatieven: {len(initiatieven_data)} aangemaakt")
 
+    # =========================================================================
+    # LEADS
+    # =========================================================================
+    from bouwmeester.models.lead import Lead
+
+    leads_data = [
+        (
+            "VNG - Standaarden afstemming",
+            "Adoptie API Design Rules bij gemeenten.",
+            "eerste_gesprek",
+            "Vereniging van Nederlandse Gemeenten",
+        ),
+        (
+            "Logius - DigiD koppelvlak",
+            "Modernisering DigiD koppelvlak.",
+            "verkennen",
+            "Logius",
+        ),
+        (
+            "ICTU - Open source kennisdeling",
+            "Samenwerking open source beleid.",
+            "interne_check",
+            "ICTU",
+        ),
+        (
+            "KvK - API strategie",
+            "Ondersteuning API strategie.",
+            "follow_up",
+            "Kamer van Koophandel",
+        ),
+        (
+            "Geonovum - Linked data",
+            "Linked data standaarden en GDI.",
+            "verkennen",
+            "Geonovum",
+        ),
+        (
+            "RvIG - Identiteitsstelsel",
+            "Vernieuwing identiteitsstelsel.",
+            "eerste_gesprek",
+            "Rijksdienst voor Identiteitsgegevens",
+        ),
+        (
+            "CIBG - Registers ontsluiting",
+            "Registers via API's ontsluiten.",
+            "in_the_pocket",
+            "CIBG",
+        ),
+        (
+            "Atos - Cloud migratie",
+            "Cloud migratie overheidsapplicaties.",
+            "koelkast",
+            "Atos Nederland",
+        ),
+    ]
+    for title, desc, stage, org in leads_data:
+        db.add(
+            Lead(
+                title=title,
+                description=desc,
+                stage=stage,
+                organization=org,
+            )
+        )
+    await db.flush()
+    print(f"  Leads: {len(leads_data)} aangemaakt")
+
     await db.commit()
     print("\nSeed voltooid!")
 
