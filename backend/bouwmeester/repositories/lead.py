@@ -43,7 +43,6 @@ class LeadRepository(BaseRepository[Lead]):
     async def get_detail(
         self, id: UUID, init_ctx: InitiatiefContext | None = None
     ) -> Lead | None:
-        from bouwmeester.models.lead_contact import LeadContact
         from bouwmeester.models.lead_node import LeadNode
 
         stmt = (
@@ -56,7 +55,6 @@ class LeadRepository(BaseRepository[Lead]):
                 selectinload(Lead.initiatief),
                 selectinload(Lead.attachments),
                 selectinload(Lead.activities).selectinload(LeadActivity.author),
-                selectinload(Lead.contacts).selectinload(LeadContact.person),
                 selectinload(Lead.linked_nodes).selectinload(LeadNode.node),
                 selectinload(Lead.lead_tags).selectinload(LeadTag.tag),
             )
@@ -253,8 +251,8 @@ class LeadRepository(BaseRepository[Lead]):
     async def merge(self, source_id: UUID, target_id: UUID) -> Lead | None:
         """Merge source lead into target lead, then delete source."""
         from bouwmeester.models.lead_attachment import LeadAttachment
-        from bouwmeester.models.lead_contact import LeadContact
         from bouwmeester.models.lead_node import LeadNode
+        from bouwmeester.models.resource_permission import ResourcePermission
 
         source = await self.get_detail(source_id)
         target = await self.get_detail(target_id)
@@ -268,12 +266,23 @@ class LeadRepository(BaseRepository[Lead]):
             activity.lead_id = target_id
 
         # Move contacts from source to target (skip duplicates)
-        stmt = select(LeadContact).where(LeadContact.lead_id == source_id)
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "lead",
+            ResourcePermission.resource_id == source_id,
+        )
         result = await self.session.execute(stmt)
-        existing_contacts = {(c.person_id, c.rol) for c in target.contacts}
+        # Get existing target contacts
+        target_stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "lead",
+            ResourcePermission.resource_id == target_id,
+        )
+        target_result = await self.session.execute(target_stmt)
+        existing_contacts = {
+            (c.person_id, c.rol) for c in target_result.scalars().all()
+        }
         for contact in result.scalars().all():
             if (contact.person_id, contact.rol) not in existing_contacts:
-                contact.lead_id = target_id
+                contact.resource_id = target_id
             else:
                 await self.session.delete(contact)
 

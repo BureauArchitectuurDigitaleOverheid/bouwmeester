@@ -10,8 +10,8 @@ from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.initiatief import (
     Initiatief,
     InitiatiefEenheid,
-    InitiatiefMember,
 )
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.initiatief import InitiatiefCreate, InitiatiefUpdate
 
@@ -43,7 +43,6 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
             select(Initiatief)
             .where(Initiatief.id == id)
             .options(
-                selectinload(Initiatief.members).selectinload(InitiatiefMember.person),
                 selectinload(Initiatief.eenheden).selectinload(
                     InitiatiefEenheid.eenheid
                 ),
@@ -64,12 +63,13 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
 
         # Auto-add creator as eigenaar
         if created_by_id:
-            member = InitiatiefMember(
-                initiatief_id=initiatief.id,
+            rp = ResourcePermission(
                 person_id=created_by_id,
+                resource_type="initiatief",
+                resource_id=initiatief.id,
                 rol="eigenaar",
             )
-            self.session.add(member)
+            self.session.add(rp)
             await self.session.flush()
 
         await self.session.refresh(initiatief)
@@ -87,46 +87,53 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
 
     async def add_member(
         self, initiatief_id: UUID, person_id: UUID, rol: str = "contributor"
-    ) -> InitiatiefMember:
-        member = InitiatiefMember(
-            initiatief_id=initiatief_id,
+    ) -> ResourcePermission:
+        rp = ResourcePermission(
             person_id=person_id,
+            resource_type="initiatief",
+            resource_id=initiatief_id,
             rol=rol,
         )
-        self.session.add(member)
+        self.session.add(rp)
         await self.session.flush()
-        await self.session.refresh(member, attribute_names=["person"])
-        return member
+        await self.session.refresh(rp, attribute_names=["person"])
+        return rp
 
     async def update_member_role(
         self,
         initiatief_id: UUID,
         person_id: UUID,
         rol: str,
-    ) -> InitiatiefMember | None:
-        stmt = select(InitiatiefMember).where(
-            InitiatiefMember.initiatief_id == initiatief_id,
-            InitiatiefMember.person_id == person_id,
+    ) -> ResourcePermission | None:
+        stmt = (
+            select(ResourcePermission)
+            .where(
+                ResourcePermission.resource_type == "initiatief",
+                ResourcePermission.resource_id == initiatief_id,
+                ResourcePermission.person_id == person_id,
+            )
+            .options(selectinload(ResourcePermission.person))
         )
         result = await self.session.execute(stmt)
-        member = result.scalar_one_or_none()
-        if member is None:
+        rp = result.scalar_one_or_none()
+        if rp is None:
             return None
-        member.rol = rol
+        rp.rol = rol
         await self.session.flush()
-        await self.session.refresh(member, attribute_names=["person"])
-        return member
+        await self.session.refresh(rp, attribute_names=["person"])
+        return rp
 
     async def remove_member(self, initiatief_id: UUID, person_id: UUID) -> bool:
-        stmt = select(InitiatiefMember).where(
-            InitiatiefMember.initiatief_id == initiatief_id,
-            InitiatiefMember.person_id == person_id,
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "initiatief",
+            ResourcePermission.resource_id == initiatief_id,
+            ResourcePermission.person_id == person_id,
         )
         result = await self.session.execute(stmt)
-        member = result.scalar_one_or_none()
-        if member is None:
+        rp = result.scalar_one_or_none()
+        if rp is None:
             return False
-        await self.session.delete(member)
+        await self.session.delete(rp)
         await self.session.flush()
         return True
 
@@ -156,20 +163,21 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         return True
 
     async def is_member(self, initiatief_id: UUID, person_id: UUID) -> bool:
-        """Check if person has access to an initiatief (direct or via eenheid)."""
-        # Direct membership
-        direct = select(InitiatiefMember.person_id).where(
-            InitiatiefMember.initiatief_id == initiatief_id,
-            InitiatiefMember.person_id == person_id,
+        """Check if person has access (direct or via eenheid)."""
+        direct = select(ResourcePermission.person_id).where(
+            ResourcePermission.resource_type == "initiatief",
+            ResourcePermission.resource_id == initiatief_id,
+            ResourcePermission.person_id == person_id,
         )
         result = await self.session.execute(direct)
         if result.scalar_one_or_none() is not None:
             return True
 
-        # Via organisatie-eenheid
         from datetime import date
 
-        from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+        from bouwmeester.models.person_organisatie import (
+            PersonOrganisatieEenheid,
+        )
 
         today = date.today()
         eenheid_stmt = (
@@ -193,25 +201,27 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         return result.scalar_one_or_none() is not None
 
     async def count_eigenaren(self, initiatief_id: UUID) -> int:
-        """Count the number of eigenaren for an initiatief."""
+        """Count eigenaren for an initiatief."""
         from sqlalchemy import func
 
         stmt = (
             select(func.count())
-            .select_from(InitiatiefMember)
+            .select_from(ResourcePermission)
             .where(
-                InitiatiefMember.initiatief_id == initiatief_id,
-                InitiatiefMember.rol == "eigenaar",
+                ResourcePermission.resource_type == "initiatief",
+                ResourcePermission.resource_id == initiatief_id,
+                ResourcePermission.rol == "eigenaar",
             )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one()
 
     async def get_member_role(self, initiatief_id: UUID, person_id: UUID) -> str | None:
-        """Get the direct role of a person in an initiatief, or None."""
-        stmt = select(InitiatiefMember.rol).where(
-            InitiatiefMember.initiatief_id == initiatief_id,
-            InitiatiefMember.person_id == person_id,
+        """Get the direct role of a person in an initiatief."""
+        stmt = select(ResourcePermission.rol).where(
+            ResourcePermission.resource_type == "initiatief",
+            ResourcePermission.resource_id == initiatief_id,
+            ResourcePermission.person_id == person_id,
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
