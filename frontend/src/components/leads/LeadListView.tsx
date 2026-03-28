@@ -6,9 +6,6 @@ import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { useLeads, useMergeLeads, useDeleteLead } from '@/hooks/useLeads';
-import { usePeople } from '@/hooks/usePeople';
-import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
-import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import {
@@ -16,17 +13,9 @@ import {
   LEAD_STAGE_ORDER,
   LEAD_STAGE_LABELS,
   LEAD_STAGE_COLORS,
-  INITIATIEF_COLORS,
 } from '@/types';
 import type { Lead, LeadFilters } from '@/types';
 import { isOverdue, formatDateShort, timeAgo } from '@/utils/dates';
-
-const NEXT_ACTION_OPTIONS: SelectOption[] = [
-  { value: '', label: 'Alle acties' },
-  { value: 'overdue', label: 'Achterstallig' },
-  { value: 'today', label: 'Vandaag' },
-  { value: 'this_week', label: 'Deze week' },
-];
 
 const SORT_OPTIONS: SelectOption[] = [
   { value: '', label: 'Standaard' },
@@ -37,31 +26,36 @@ const SORT_OPTIONS: SelectOption[] = [
 
 interface LeadListViewProps {
   searchQuery?: string;
+  initiatiefId: string;
+  assigneeId?: string;
+  tag?: string;
+  nextActionFilter?: string;
+  stageFilter?: string;
 }
 
-export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
-  const [filterAssignee, setFilterAssignee] = useState('');
-  const [filterTag, setFilterTag] = useState('');
-  const [nextActionFilter, setNextActionFilter] = useState('');
-  const [filterInitiatief, setFilterInitiatief] = useState('');
+export function LeadListView({
+  searchQuery = '',
+  initiatiefId,
+  assigneeId,
+  tag,
+  nextActionFilter,
+  stageFilter,
+}: LeadListViewProps) {
   const [sortBy, setSortBy] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showMergeDialog, setShowMergeDialog] = useState(false);
 
   const filters: LeadFilters = {};
-  if (filterAssignee) filters.assignee_id = filterAssignee;
-  if (filterTag) filters.tag = filterTag;
+  if (initiatiefId) filters.initiatief_id = initiatiefId;
+  if (assigneeId) filters.assignee_id = assigneeId;
+  if (tag) filters.tag = tag;
   if (nextActionFilter) filters.next_action_filter = nextActionFilter;
-  if (filterInitiatief) filters.initiatief_id = filterInitiatief;
+  if (stageFilter) filters.stage = stageFilter;
   if (sortBy) filters.sort_by = sortBy;
 
   const { data: leads, isLoading } = useLeads(
     Object.keys(filters).length > 0 ? filters : undefined,
   );
-  const { data: people } = usePeople();
-  const { data: initiatieven } = useInitiatieven();
-  const createInitiatief = useCreateInitiatief();
-  const { currentPerson } = useCurrentPerson();
   const { openLeadDetail } = useLeadDetail();
   const mergeMutation = useMergeLeads();
   const deleteLead = useDeleteLead();
@@ -113,62 +107,7 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <LeadMetricsBar />
-      </div>
-
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-48">
-          <CreatableSelect
-            value={filterAssignee}
-            onChange={setFilterAssignee}
-            options={[
-              { value: '', label: 'Alle personen' },
-              ...(currentPerson
-                ? [{ value: currentPerson.id, label: `Mijn leads (${currentPerson.naam})` }]
-                : []),
-              ...(people
-                ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
-                .map((p) => ({ value: p.id, label: p.naam, description: p.functie ?? undefined })) ?? []),
-            ]}
-            placeholder="Alle personen"
-            onClear={filterAssignee ? () => setFilterAssignee('') : undefined}
-          />
-        </div>
-        <input
-          type="text"
-          value={filterTag}
-          onChange={(e) => setFilterTag(e.target.value)}
-          placeholder="Filter op tag..."
-          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400 w-48"
-        />
-        <div className="w-40">
-          <CreatableSelect
-            value={nextActionFilter}
-            onChange={setNextActionFilter}
-            options={NEXT_ACTION_OPTIONS}
-            placeholder="Alle acties"
-            searchable={false}
-            onClear={nextActionFilter ? () => setNextActionFilter('') : undefined}
-          />
-        </div>
-        <div className="w-48">
-          <CreatableSelect
-            value={filterInitiatief}
-            onChange={setFilterInitiatief}
-            options={[
-              { value: '', label: 'Alle initiatieven' },
-              ...(initiatieven?.map((i) => ({ value: i.id, label: i.naam })) ?? []),
-            ]}
-            placeholder="Alle initiatieven"
-            onClear={filterInitiatief ? () => setFilterInitiatief('') : undefined}
-            onCreate={async (name) => {
-              const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
-              const result = await createInitiatief.mutateAsync({ naam: name, kleur });
-              return result.id;
-            }}
-            createLabel="Nieuw initiatief"
-          />
-        </div>
-        <div className="w-44">
+        <div className="w-full sm:w-44">
           <CreatableSelect
             value={sortBy}
             onChange={setSortBy}
@@ -178,20 +117,6 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
             onClear={sortBy ? () => setSortBy('') : undefined}
           />
         </div>
-        {(filterAssignee || filterTag || nextActionFilter || filterInitiatief || sortBy) && (
-          <button
-            onClick={() => {
-              setFilterAssignee('');
-              setFilterTag('');
-              setNextActionFilter('');
-              setFilterInitiatief('');
-              setSortBy('');
-            }}
-            className="text-sm text-text-secondary hover:text-text transition-colors"
-          >
-            Filters wissen
-          </button>
-        )}
       </div>
 
       {selectedIds.size > 0 && (
@@ -293,7 +218,7 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
                       <td className="px-4 py-3">
                         {lead.initiatief ? (
                           <span
-                            className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
+                            className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium text-white whitespace-nowrap"
                             style={{ backgroundColor: lead.initiatief.kleur || '#6B7280' }}
                           >
                             {lead.initiatief.naam}
@@ -304,7 +229,7 @@ export function LeadListView({ searchQuery = '' }: LeadListViewProps) {
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${LEAD_STAGE_COLORS[lead.stage]}`}
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${LEAD_STAGE_COLORS[lead.stage]}`}
                         >
                           {LEAD_STAGE_LABELS[lead.stage]}
                         </span>

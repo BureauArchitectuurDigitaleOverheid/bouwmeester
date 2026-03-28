@@ -12,18 +12,13 @@ import {
 import { format, isToday, isYesterday, subDays, subMonths } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { useLeadTimeline } from '@/hooks/useLeads';
-import { usePeople } from '@/hooks/usePeople';
-import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
-import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import {
   LeadStage,
   LEAD_STAGE_LABELS,
   LEAD_STAGE_COLORS,
-  INITIATIEF_COLORS,
 } from '@/types';
 import type { LeadTimelineEvent } from '@/types';
 
@@ -248,44 +243,62 @@ function TimelineEventCard({
 }
 
 // -- Main timeline view --
-export function LeadTimelineView() {
+interface LeadTimelineViewProps {
+  searchQuery?: string;
+  initiatiefId: string;
+  assigneeId?: string;
+  tag?: string;
+  nextActionFilter?: string;
+  stageFilter?: string;
+}
+
+export function LeadTimelineView({
+  searchQuery = '',
+  initiatiefId,
+  assigneeId,
+  stageFilter,
+}: LeadTimelineViewProps) {
   const [period, setPeriod] = useState<PeriodKey>('month');
-  const [filterStage, setFilterStage] = useState('');
-  const [filterAssignee, setFilterAssignee] = useState('');
-  const [filterInitiatief, setFilterInitiatief] = useState('');
   const [displayLimit, setDisplayLimit] = useState(50);
 
-  const { data: people } = usePeople();
-  const { data: initiatieven } = useInitiatieven();
-  const createInitiatief = useCreateInitiatief();
-  const { currentPerson } = useCurrentPerson();
   const { openLeadDetail } = useLeadDetail();
 
   const dates = periodToDates(period);
   const queryParams = useMemo(
     () => ({
       ...dates,
-      ...(filterStage ? { stage: filterStage } : {}),
-      ...(filterAssignee ? { assignee_id: filterAssignee } : {}),
-      ...(filterInitiatief ? { initiatief_id: filterInitiatief } : {}),
+      ...(stageFilter ? { stage: stageFilter } : {}),
+      ...(assigneeId ? { assignee_id: assigneeId } : {}),
+      ...(initiatiefId ? { initiatief_id: initiatiefId } : {}),
       limit: 500,
     }),
-    [dates.date_from, dates.date_to, filterStage, filterAssignee, filterInitiatief],
+    [dates.date_from, dates.date_to, stageFilter, assigneeId, initiatiefId],
   );
 
   const { data, isLoading } = useLeadTimeline(queryParams);
 
   const events = data?.events ?? [];
   const totalEvents = data?.total ?? 0;
-  const displayedEvents = events.slice(0, displayLimit);
-  const hasMore = displayedEvents.length < events.length;
+
+  // Apply client-side search
+  const filteredEvents = useMemo(() => {
+    if (!searchQuery) return events;
+    const q = searchQuery.toLowerCase();
+    return events.filter((e) =>
+      e.lead_title.toLowerCase().includes(q) ||
+      (e.organization ?? '').toLowerCase().includes(q) ||
+      (e.actor_naam ?? '').toLowerCase().includes(q) ||
+      (e.content ?? '').toLowerCase().includes(q)
+    );
+  }, [events, searchQuery]);
+
+  const displayedEvents = filteredEvents.slice(0, displayLimit);
+  const hasMore = displayedEvents.length < filteredEvents.length;
 
   const groupedEvents = useMemo(
     () => groupEventsByDate(displayedEvents),
     [displayedEvents],
   );
-
-  const hasActiveFilters = filterStage || filterAssignee || filterInitiatief;
 
   return (
     <div className="space-y-4">
@@ -293,9 +306,8 @@ export function LeadTimelineView() {
         <LeadMetricsBar />
       </div>
 
-      {/* Filter bar */}
+      {/* Period selector + event count */}
       <div className="flex items-center gap-3 flex-wrap">
-        {/* Period selector */}
         <div className="flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5">
           {PERIOD_OPTIONS.map((opt) => (
             <button
@@ -312,78 +324,6 @@ export function LeadTimelineView() {
           ))}
         </div>
 
-        {/* Stage filter */}
-        <div className="w-40">
-          <CreatableSelect
-            value={filterStage}
-            onChange={setFilterStage}
-            options={[
-              { value: '', label: 'Alle fases' },
-              ...Object.values(LeadStage).map((s) => ({
-                value: s,
-                label: LEAD_STAGE_LABELS[s],
-              })),
-            ]}
-            placeholder="Alle fases"
-            searchable={false}
-            onClear={filterStage ? () => setFilterStage('') : undefined}
-          />
-        </div>
-
-        {/* Assignee filter */}
-        <div className="w-48">
-          <CreatableSelect
-            value={filterAssignee}
-            onChange={setFilterAssignee}
-            options={[
-              { value: '', label: 'Alle personen' },
-              ...(currentPerson
-                ? [{ value: currentPerson.id, label: `Mijn leads (${currentPerson.naam})` }]
-                : []),
-              ...(people
-                ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
-                .map((p) => ({ value: p.id, label: p.naam, description: p.functie ?? undefined })) ?? []),
-            ]}
-            placeholder="Alle personen"
-            onClear={filterAssignee ? () => setFilterAssignee('') : undefined}
-          />
-        </div>
-
-        {/* Initiatief filter */}
-        <div className="w-48">
-          <CreatableSelect
-            value={filterInitiatief}
-            onChange={setFilterInitiatief}
-            options={[
-              { value: '', label: 'Alle initiatieven' },
-              ...(initiatieven?.map((i) => ({ value: i.id, label: i.naam })) ?? []),
-            ]}
-            placeholder="Alle initiatieven"
-            onClear={filterInitiatief ? () => setFilterInitiatief('') : undefined}
-            onCreate={async (name) => {
-              const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
-              const result = await createInitiatief.mutateAsync({ naam: name, kleur });
-              return result.id;
-            }}
-            createLabel="Nieuw initiatief"
-          />
-        </div>
-
-        {/* Clear filters */}
-        {hasActiveFilters && (
-          <button
-            onClick={() => {
-              setFilterStage('');
-              setFilterAssignee('');
-              setFilterInitiatief('');
-            }}
-            className="text-sm text-text-secondary hover:text-text transition-colors"
-          >
-            Filters wissen
-          </button>
-        )}
-
-        {/* Event count */}
         {!isLoading && (
           <span className="ml-auto text-xs text-text-secondary">
             {totalEvents} {totalEvents === 1 ? 'activiteit' : 'activiteiten'}
@@ -394,7 +334,7 @@ export function LeadTimelineView() {
       {/* Timeline */}
       {isLoading ? (
         <LoadingSpinner className="py-12" />
-      ) : events.length === 0 ? (
+      ) : filteredEvents.length === 0 ? (
         <EmptyTimeline />
       ) : (
         <div className="relative pb-8">
@@ -429,7 +369,7 @@ export function LeadTimelineView() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:text-text hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
               >
                 <ChevronDown className="h-4 w-4" />
-                Meer laden ({events.length - displayLimit} overig)
+                Meer laden ({filteredEvents.length - displayLimit} overig)
               </button>
             </div>
           )}

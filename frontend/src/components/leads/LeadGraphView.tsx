@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
-import { Building2, User, FileText, Lightbulb, Search, Plus } from 'lucide-react';
+import { Building2, User, FileText, Lightbulb, Plus } from 'lucide-react';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import ReactFlow, {
   Background,
@@ -21,12 +21,10 @@ import dagre from 'dagre';
 
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { CommunityEdgeModal } from './CommunityEdgeModal';
 import { AddLeadContactModal } from './AddLeadContactModal';
 import { useCommunityGraph } from '@/hooks/useLeads';
-import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import {
@@ -34,8 +32,7 @@ import {
   LEAD_STAGE_COLORS,
   NODE_TYPE_HEX_COLORS,
   NodeType,
-  LeadStage,
-  INITIATIEF_COLORS,
+  formatFunctie,
 } from '@/types';
 import type { CommunityGraphNode, CommunityGraphEdge } from '@/types';
 
@@ -138,7 +135,7 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
         <div className="flex items-center gap-1 mb-1">
           <User className="h-3 w-3" style={{ color }} />
           <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
-            {data.functie ?? 'Persoon'}
+            {formatFunctie(data.functie) ?? 'Persoon'}
           </span>
         </div>
       );
@@ -316,11 +313,19 @@ const NODE_TYPE_TOGGLES: NodeTypeToggle[] = [
 ];
 
 // ---- Inner component ----
-function CommunityGraphInner() {
+interface CommunityGraphInnerProps {
+  searchQuery?: string;
+  initiatiefId: string;
+  stageFilter?: string;
+}
+
+function CommunityGraphInner({
+  searchQuery: searchQueryProp = '',
+  initiatiefId,
+  stageFilter: stageFilterProp = '',
+}: CommunityGraphInnerProps) {
   const isMobile = useIsMobile();
   const { data, isLoading, error } = useCommunityGraph();
-  const { data: initiatieven } = useInitiatieven();
-  const createInitiatief = useCreateInitiatief();
   const { openLeadDetail } = useLeadDetail();
   const { openNodeDetail } = useNodeDetail();
 
@@ -343,13 +348,10 @@ function CommunityGraphInner() {
   const addContactRef = useRef((leadId: string) => setAddContactLeadId(leadId));
   addContactRef.current = (leadId: string) => setAddContactLeadId(leadId);
 
-  // Filter state
+  // View-specific filter: node type toggles
   const [enabledTypes, setEnabledTypes] = useState<Set<CommunityNodeType>>(
     new Set(['lead', 'person', 'organisation', 'corpus_node']),
   );
-  const [stageFilter, setStageFilter] = useState<string>('');
-  const [initiatiefFilter, setInitiatiefFilter] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
 
   const toggleType = useCallback((type: CommunityNodeType) => {
     setEnabledTypes((prev) => {
@@ -430,16 +432,16 @@ function CommunityGraphInner() {
     return { allRfNodes, allRfEdges };
   }, [data]);
 
-  // Apply filters (type toggles, stage, search)
+  // Apply filters (type toggles, stage, initiative, search from props)
   const { rfNodes, rfEdges } = useMemo(() => {
-    const q = searchQuery.toLowerCase();
+    const q = searchQueryProp.toLowerCase();
     const visibleIds = new Set<string>();
 
     const rfNodes = allRfNodes.map((node) => {
       const d = node.data as CommunityGraphNodeData;
       const matchesType = enabledTypes.has(d.nodeType);
-      const matchesStage = !stageFilter || d.nodeType !== 'lead' || d.stage === stageFilter;
-      const matchesInitiatief = !initiatiefFilter || d.nodeType !== 'lead' || d.initiatiefId === initiatiefFilter;
+      const matchesStage = !stageFilterProp || d.nodeType !== 'lead' || d.stage === stageFilterProp;
+      const matchesInitiatief = !initiatiefId || d.nodeType !== 'lead' || d.initiatiefId === initiatiefId;
       const matchesSearch = !q || d.label.toLowerCase().includes(q);
       const isVisible = matchesType && matchesStage && matchesInitiatief && matchesSearch;
       if (isVisible) visibleIds.add(node.id);
@@ -452,7 +454,7 @@ function CommunityGraphInner() {
     });
 
     return { rfNodes, rfEdges };
-  }, [allRfNodes, allRfEdges, enabledTypes, stageFilter, initiatiefFilter, searchQuery]);
+  }, [allRfNodes, allRfEdges, enabledTypes, stageFilterProp, initiatiefId, searchQueryProp]);
 
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
@@ -495,7 +497,7 @@ function CommunityGraphInner() {
     <div className="space-y-4">
       <LeadMetricsBar />
 
-      {/* Filter bar */}
+      {/* Node type toggles */}
       <div className="flex items-center gap-2 flex-wrap">
         {NODE_TYPE_TOGGLES.map((toggle) => {
           const active = enabledTypes.has(toggle.key);
@@ -512,56 +514,6 @@ function CommunityGraphInner() {
             </button>
           );
         })}
-
-        {/* Stage filter */}
-        <div className="w-40">
-          <CreatableSelect
-            value={stageFilter}
-            onChange={setStageFilter}
-            options={[
-              { value: '', label: 'Alle stages' },
-              ...Object.values(LeadStage).map((s) => ({
-                value: s,
-                label: LEAD_STAGE_LABELS[s],
-              })),
-            ]}
-            placeholder="Alle stages"
-            searchable={false}
-            onClear={stageFilter ? () => setStageFilter('') : undefined}
-          />
-        </div>
-
-        {/* Initiatief filter */}
-        <div className="w-48">
-          <CreatableSelect
-            value={initiatiefFilter}
-            onChange={setInitiatiefFilter}
-            options={[
-              { value: '', label: 'Alle initiatieven' },
-              ...(initiatieven?.map((i) => ({ value: i.id, label: i.naam })) ?? []),
-            ]}
-            placeholder="Alle initiatieven"
-            onClear={initiatiefFilter ? () => setInitiatiefFilter('') : undefined}
-            onCreate={async (name) => {
-              const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
-              const result = await createInitiatief.mutateAsync({ naam: name, kleur });
-              return result.id;
-            }}
-            createLabel="Nieuw initiatief"
-          />
-        </div>
-
-        {/* Search */}
-        <div className="relative ml-auto">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Zoeken..."
-            className="rounded-full border border-gray-200 pl-8 pr-3 py-1 text-xs text-gray-700 bg-white w-48 focus:outline-none focus:ring-1 focus:ring-blue-300"
-          />
-        </div>
       </div>
 
       {/* Graph canvas */}
@@ -620,10 +572,20 @@ function CommunityGraphInner() {
 }
 
 // Wrap in ReactFlowProvider
-export function LeadGraphView() {
+interface LeadGraphViewProps {
+  searchQuery?: string;
+  initiatiefId: string;
+  stageFilter?: string;
+}
+
+export function LeadGraphView({ searchQuery, initiatiefId, stageFilter }: LeadGraphViewProps) {
   return (
     <ReactFlowProvider>
-      <CommunityGraphInner />
+      <CommunityGraphInner
+        searchQuery={searchQuery}
+        initiatiefId={initiatiefId}
+        stageFilter={stageFilter}
+      />
     </ReactFlowProvider>
   );
 }

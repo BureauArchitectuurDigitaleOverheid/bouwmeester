@@ -55,6 +55,7 @@ import {
   LeadActivityType,
   LEAD_ACTIVITY_TYPE_LABELS,
   INITIATIEF_COLORS,
+  LEAD_CONTACT_ROL_LABELS,
 } from '@/types';
 import type { LeadUpdate, LeadActivityCreate } from '@/types';
 
@@ -599,7 +600,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                   <div key={contact.id} className="flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-gray-50">
                     <User className="h-3.5 w-3.5 text-text-secondary shrink-0" />
                     <span className="flex-1 text-text">{contact.person_naam}</span>
-                    <Badge variant="gray">{contact.rol}</Badge>
+                    <Badge variant="gray">{LEAD_CONTACT_ROL_LABELS[contact.rol] ?? contact.rol}</Badge>
                     <button
                       onClick={() => removeContact.mutate({ leadId: lead.id, contactId: contact.id })}
                       className="p-1 text-text-secondary hover:text-red-500 transition-colors"
