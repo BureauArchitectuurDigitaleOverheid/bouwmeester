@@ -9,6 +9,8 @@ import { AccessRequestManager } from '@/components/admin/AccessRequestManager';
 import { PlacementRequestManager } from '@/components/admin/PlacementRequestManager';
 import { ConfigManager } from '@/components/admin/ConfigManager';
 import { EdgeSchemaManager } from '@/components/admin/EdgeSchemaManager';
+import { SharingManager } from '@/components/admin/SharingManager';
+import { RoleManager } from '@/components/admin/RoleManager';
 
 type Tab =
   | 'whitelist'
@@ -113,12 +115,8 @@ export function AdminPage() {
       {activeTab === 'database' && <DatabaseBackup />}
       {activeTab === 'config' && <ConfigManager />}
       {activeTab === 'schema' && <EdgeSchemaManager />}
-      {activeTab === 'roles' && (
-        <div className="text-text-secondary text-sm">Rollenbeheer komt hier. Gebruik de API endpoints (/api/roles) in de tussentijd.</div>
-      )}
-      {activeTab === 'sharing' && (
-        <div className="text-text-secondary text-sm">Deelbeheer komt hier. Gebruik de API endpoints (/api/sharing) in de tussentijd.</div>
-      )}
+      {activeTab === 'roles' && <RoleManager />}
+      {activeTab === 'sharing' && <SharingManager />}
     </div>
   );
 }

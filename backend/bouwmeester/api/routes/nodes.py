@@ -11,8 +11,8 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
-from bouwmeester.repositories.node_stakeholder import NodeStakeholderRepository
 from bouwmeester.repositories.opdracht import OpdrachtRepository
+from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.bron import BronResponse, BronUpdate
 from bouwmeester.schema.corpus_node import (
@@ -327,13 +327,14 @@ async def get_node_stakeholders(
     db: AsyncSession = Depends(get_db),
 ) -> list[NodeStakeholderResponse]:
     """List stakeholders (eigenaar/betrokken/adviseur) of a node."""
-    # Verify node exists
     service = NodeService(db)
     require_found(await service.get(id), "Node")
 
-    repo = NodeStakeholderRepository(db)
-    stakeholders = await repo.get_by_node(id)
-    return [NodeStakeholderResponse.model_validate(s) for s in stakeholders]
+    repo = ResourcePermissionRepository(db)
+    perms = await repo.list_for_resource("corpus_node", id)
+    return [
+        NodeStakeholderResponse(id=rp.id, person=rp.person, rol=rp.rol) for rp in perms
+    ]
 
 
 @router.post(
@@ -353,12 +354,11 @@ async def add_node_stakeholder(
     node = require_found(await service.get(id), "Node")
     require_found(await db.get(Person, data.person_id), "Person")
 
-    repo = NodeStakeholderRepository(db)
-    stakeholder = await repo.create_stakeholder(id, data.person_id, data.rol)
+    repo = ResourcePermissionRepository(db)
+    rp = await repo.create_permission(data.person_id, "corpus_node", id, data.rol)
 
     resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
 
-    # Notify the newly added person (skip if they added themselves)
     notif_svc = NotificationService(db)
     await notif_svc.notify_stakeholder_added(
         node,
@@ -382,7 +382,7 @@ async def add_node_stakeholder(
 
     await db.commit()
 
-    return NodeStakeholderResponse.model_validate(stakeholder)
+    return NodeStakeholderResponse(id=rp.id, person=rp.person, rol=rp.rol)
 
 
 @router.put(
@@ -397,29 +397,28 @@ async def update_node_stakeholder(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> NodeStakeholderResponse:
-    """Update a stakeholder's role on a node. Notifies if role changed."""
-    repo = NodeStakeholderRepository(db)
-    stakeholder = require_found(
-        await repo.get_with_person(stakeholder_id, id),
+    """Update a stakeholder's role on a node."""
+    repo = ResourcePermissionRepository(db)
+    rp = require_found(
+        await repo.get_with_person(stakeholder_id),
         "Stakeholder",
     )
 
-    old_rol = stakeholder.rol
-    stakeholder.rol = data.rol
+    old_rol = rp.rol
+    rp.rol = data.rol
     await db.flush()
-    await db.refresh(stakeholder)
+    await db.refresh(rp)
 
-    # Notify if role actually changed
     if old_rol != data.rol:
         service = NodeService(db)
         node = await service.get(id)
         if node:
             notif_svc = NotificationService(db)
             await notif_svc.notify_stakeholder_role_changed(
-                node, stakeholder.person_id, old_rol, data.rol
+                node, rp.person_id, old_rol, data.rol
             )
 
-    person = await db.get(Person, stakeholder.person_id)
+    person = await db.get(Person, rp.person_id)
     await log_activity(
         db,
         current_user,
@@ -427,7 +426,7 @@ async def update_node_stakeholder(
         "stakeholder.updated",
         node_id=id,
         details={
-            "person_id": str(stakeholder.person_id),
+            "person_id": str(rp.person_id),
             "person_naam": person.naam if person else None,
             "old_rol": old_rol,
             "new_rol": data.rol,
@@ -436,7 +435,7 @@ async def update_node_stakeholder(
 
     await db.commit()
 
-    return NodeStakeholderResponse.model_validate(stakeholder)
+    return NodeStakeholderResponse(id=rp.id, person=rp.person, rol=rp.rol)
 
 
 @router.delete(
@@ -451,17 +450,17 @@ async def remove_node_stakeholder(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Remove a stakeholder from a node."""
-    repo = NodeStakeholderRepository(db)
-    stakeholder = require_found(
-        await repo.get_with_person(stakeholder_id, id),
+    repo = ResourcePermissionRepository(db)
+    rp = require_found(
+        await repo.get_with_person(stakeholder_id),
         "Stakeholder",
     )
 
-    stakeholder_person_id = str(stakeholder.person_id)
-    stakeholder_rol = stakeholder.rol
-    person = await db.get(Person, stakeholder.person_id)
-    stakeholder_person_naam = person.naam if person else None
-    await db.delete(stakeholder)
+    rp_person_id = str(rp.person_id)
+    rp_rol = rp.rol
+    person = await db.get(Person, rp.person_id)
+    rp_person_naam = person.naam if person else None
+    await repo.delete(stakeholder_id)
 
     await log_activity(
         db,
@@ -470,9 +469,9 @@ async def remove_node_stakeholder(
         "stakeholder.removed",
         node_id=id,
         details={
-            "person_id": stakeholder_person_id,
-            "person_naam": stakeholder_person_naam,
-            "rol": stakeholder_rol,
+            "person_id": rp_person_id,
+            "person_naam": rp_person_naam,
+            "rol": rp_rol,
         },
     )
 

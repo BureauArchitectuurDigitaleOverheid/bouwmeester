@@ -1,0 +1,442 @@
+import { useState, useMemo } from 'react';
+import { Plus, Trash2, ChevronDown, ChevronRight, Shield } from 'lucide-react';
+import { usePeople } from '@/hooks/usePeople';
+import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import {
+  useRoles,
+  usePersonRoleAssignments,
+  useAssignRole,
+  useRevokeRole,
+} from '@/hooks/useRoles';
+import type { PersonRoleAssignment } from '@/hooks/useRoles';
+
+function AssignmentRow({
+  assignment,
+  onRevoke,
+  revoking,
+}: {
+  assignment: PersonRoleAssignment;
+  onRevoke: (id: string) => void;
+  revoking: boolean;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  return (
+    <tr className="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors">
+      <td className="px-4 py-2 text-text text-sm">
+        {assignment.role_naam || assignment.role_id}
+      </td>
+      <td className="px-4 py-2 text-text-secondary text-sm hidden sm:table-cell">
+        {assignment.organisatie_eenheid_naam || '-'}
+      </td>
+      <td className="px-4 py-2 text-text-secondary text-sm hidden md:table-cell">
+        {new Date(assignment.start_datum).toLocaleDateString('nl-NL')}
+      </td>
+      <td className="px-4 py-2 text-text-secondary text-sm hidden md:table-cell">
+        {assignment.eind_datum
+          ? new Date(assignment.eind_datum).toLocaleDateString('nl-NL')
+          : '-'}
+      </td>
+      <td className="px-4 py-2">
+        {confirmDelete ? (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                onRevoke(assignment.id);
+                setConfirmDelete(false);
+              }}
+              disabled={revoking}
+              className="px-2 py-0.5 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+            >
+              Ja
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-text hover:bg-gray-300 transition-colors"
+            >
+              Nee
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="p-1 rounded hover:bg-red-50 text-text-secondary hover:text-red-600 transition-colors"
+            title="Intrekken"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function PersonRolesPanel({
+  personId,
+  personNaam,
+}: {
+  personId: string;
+  personNaam: string;
+}) {
+  const { data: assignments, isLoading } = usePersonRoleAssignments(personId);
+  const { data: roles } = useRoles();
+  const { data: orgUnits } = useOrganisatieFlat();
+  const assignRole = useAssignRole();
+  const revokeRole = useRevokeRole();
+
+  const [showForm, setShowForm] = useState(false);
+  const [selectedRoleId, setSelectedRoleId] = useState('');
+  const [selectedOrgId, setSelectedOrgId] = useState('');
+  const [startDatum, setStartDatum] = useState('');
+  const [eindDatum, setEindDatum] = useState('');
+
+  const selectedRole = roles?.find((r) => r.id === selectedRoleId);
+  const isSystemLevel = selectedRole?.level === 'system';
+
+  const handleAssign = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRoleId) return;
+
+    assignRole.mutate(
+      {
+        person_id: personId,
+        role_id: selectedRoleId,
+        organisatie_eenheid_id:
+          isSystemLevel ? undefined : selectedOrgId || undefined,
+        start_datum: startDatum || undefined,
+        eind_datum: eindDatum || undefined,
+      },
+      {
+        onSuccess: () => {
+          setSelectedRoleId('');
+          setSelectedOrgId('');
+          setStartDatum('');
+          setEindDatum('');
+          setShowForm(false);
+        },
+      },
+    );
+  };
+
+  const handleRevoke = (assignmentId: string) => {
+    revokeRole.mutate(assignmentId);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="text-sm text-text-secondary py-4 px-4">Laden...</div>
+    );
+  }
+
+  return (
+    <div className="border-t border-border bg-gray-50/50">
+      {/* Current assignments table */}
+      {assignments && assignments.length > 0 ? (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="text-left px-4 py-2 font-medium text-text-secondary text-xs">
+                Rol
+              </th>
+              <th className="text-left px-4 py-2 font-medium text-text-secondary text-xs hidden sm:table-cell">
+                Eenheid
+              </th>
+              <th className="text-left px-4 py-2 font-medium text-text-secondary text-xs hidden md:table-cell">
+                Vanaf
+              </th>
+              <th className="text-left px-4 py-2 font-medium text-text-secondary text-xs hidden md:table-cell">
+                Tot
+              </th>
+              <th className="w-10 px-4 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {assignments.map((a) => (
+              <AssignmentRow
+                key={a.id}
+                assignment={a}
+                onRevoke={handleRevoke}
+                revoking={revokeRole.isPending}
+              />
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <div className="px-4 py-3 text-sm text-text-secondary">
+          {personNaam} heeft nog geen rollen.
+        </div>
+      )}
+
+      {/* Add role button / form */}
+      {!showForm ? (
+        <div className="px-4 py-2 border-t border-border">
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Rol toewijzen
+          </button>
+        </div>
+      ) : (
+        <form
+          onSubmit={handleAssign}
+          className="px-4 py-3 border-t border-border space-y-3"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Role selector */}
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">
+                Rol
+              </label>
+              <select
+                value={selectedRoleId}
+                onChange={(e) => {
+                  setSelectedRoleId(e.target.value);
+                  // Reset org when switching to system role
+                  const role = roles?.find((r) => r.id === e.target.value);
+                  if (role?.level === 'system') setSelectedOrgId('');
+                }}
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400 bg-white"
+                required
+              >
+                <option value="">Kies een rol...</option>
+                {roles?.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.naam}
+                    {role.description ? ` - ${role.description}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Org unit selector (hidden for system roles) */}
+            {!isSystemLevel && (
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1">
+                  Organisatie-eenheid
+                </label>
+                <select
+                  value={selectedOrgId}
+                  onChange={(e) => setSelectedOrgId(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400 bg-white"
+                  required={!!selectedRoleId && !isSystemLevel}
+                >
+                  <option value="">Kies een eenheid...</option>
+                  {orgUnits?.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.naam}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Start date */}
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">
+                Startdatum (optioneel)
+              </label>
+              <input
+                type="date"
+                value={startDatum}
+                onChange={(e) => setStartDatum(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400 bg-white"
+              />
+            </div>
+
+            {/* End date */}
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">
+                Einddatum (optioneel)
+              </label>
+              <input
+                type="date"
+                value={eindDatum}
+                onChange={(e) => setEindDatum(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400 bg-white"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={assignRole.isPending || !selectedRoleId}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Toewijzen
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowForm(false);
+                setSelectedRoleId('');
+                setSelectedOrgId('');
+                setStartDatum('');
+                setEindDatum('');
+              }}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-200 text-text hover:bg-gray-300 transition-colors"
+            >
+              Annuleren
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+export function RoleManager() {
+  const { data: people, isLoading: loadingPeople } = usePeople();
+  const { data: roles, isLoading: loadingRoles } = useRoles();
+  const [expandedPersonId, setExpandedPersonId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredPeople = useMemo(() => {
+    if (!people) return [];
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return people;
+    return people.filter(
+      (p) =>
+        p.naam.toLowerCase().includes(q) ||
+        (p.email && p.email.toLowerCase().includes(q)) ||
+        (p.functie && p.functie.toLowerCase().includes(q)),
+    );
+  }, [people, searchQuery]);
+
+  if (loadingPeople || loadingRoles) {
+    return (
+      <div className="text-sm text-text-secondary py-8 text-center">
+        Laden...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Description */}
+      <div className="flex items-start gap-2 text-sm text-text-secondary">
+        <Shield className="h-4 w-4 mt-0.5 shrink-0 text-primary-500" />
+        <span>
+          Beheer roltoewijzingen per persoon. Klik op een persoon om rollen te
+          bekijken, toe te wijzen of in te trekken.
+          {roles && roles.length > 0 && (
+            <>
+              {' '}
+              Beschikbare rollen:{' '}
+              {roles.map((r) => r.naam).join(', ')}.
+            </>
+          )}
+        </span>
+      </div>
+
+      {/* Search */}
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder="Zoek op naam, e-mail of functie..."
+        className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
+      />
+
+      {/* People list with expandable role panels */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 border-b border-border">
+              <th className="w-8 px-3 py-2.5"></th>
+              <th className="text-left px-4 py-2.5 font-medium text-text-secondary">
+                Naam
+              </th>
+              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden sm:table-cell">
+                E-mail
+              </th>
+              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden md:table-cell">
+                Functie
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredPeople.map((person) => {
+              const isExpanded = expandedPersonId === person.id;
+              return (
+                <PersonRow
+                  key={person.id}
+                  personId={person.id}
+                  naam={person.naam}
+                  email={person.email}
+                  functie={person.functie}
+                  isExpanded={isExpanded}
+                  onToggle={() =>
+                    setExpandedPersonId(isExpanded ? null : person.id)
+                  }
+                />
+              );
+            })}
+            {filteredPeople.length === 0 && (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-4 py-8 text-center text-text-secondary"
+                >
+                  {searchQuery
+                    ? 'Geen personen gevonden'
+                    : 'Geen personen beschikbaar'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PersonRow({
+  personId,
+  naam,
+  email,
+  functie,
+  isExpanded,
+  onToggle,
+}: {
+  personId: string;
+  naam: string;
+  email?: string;
+  functie?: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <>
+      <tr
+        onClick={onToggle}
+        className="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors cursor-pointer"
+      >
+        <td className="px-3 py-2.5 text-text-secondary">
+          {isExpanded ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+        </td>
+        <td className="px-4 py-2.5 text-text">{naam}</td>
+        <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
+          {email || '-'}
+        </td>
+        <td className="px-4 py-2.5 text-text-secondary hidden md:table-cell">
+          {functie || '-'}
+        </td>
+      </tr>
+      {isExpanded && (
+        <tr>
+          <td colSpan={4} className="p-0">
+            <PersonRolesPanel personId={personId} personNaam={naam} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
