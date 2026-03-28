@@ -962,8 +962,6 @@ async def delete_attachment(
     file_path = safe_resolve_or_400(LEADS_BIJLAGEN_ROOT, attachment.pad)
     attachment_naam = attachment.bestandsnaam
     await db.delete(attachment)
-    if file_path.exists():
-        file_path.unlink()
 
     await log_activity(
         db,
@@ -976,6 +974,9 @@ async def delete_attachment(
             "filename": attachment_naam,
         },
     )
+
+    if file_path.exists():
+        file_path.unlink()
 
 
 # ---------------------------------------------------------------------------

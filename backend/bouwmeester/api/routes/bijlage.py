@@ -156,9 +156,6 @@ async def delete_bijlage(
     file_path = safe_resolve_or_400(BIJLAGEN_ROOT, bijlage.pad)
     bijlage_naam = bijlage.bestandsnaam
     await db.delete(bijlage)
-    # Delete file after DB delete succeeds (commit happens in get_db).
-    if file_path.exists():
-        file_path.unlink()
 
     await log_activity(
         db,
@@ -168,3 +165,7 @@ async def delete_bijlage(
         node_id=node_id,
         details={"filename": bijlage_naam},
     )
+
+    # Delete file after DB delete succeeds (commit happens in get_db).
+    if file_path.exists():
+        file_path.unlink()
