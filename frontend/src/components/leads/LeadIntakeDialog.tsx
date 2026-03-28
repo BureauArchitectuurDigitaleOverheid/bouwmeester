@@ -20,11 +20,12 @@ import { buildPersonOptions } from '@/utils/personOptions';
 interface LeadIntakeDialogProps {
   open: boolean;
   onClose: () => void;
+  defaultInitiatiefId?: string;
 }
 
 type Step = 'input' | 'parsing' | 'confirm';
 
-export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
+export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId }: LeadIntakeDialogProps) {
   const [step, setStep] = useState<Step>('input');
   const [rawText, setRawText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -83,12 +84,15 @@ export function LeadIntakeDialog({ open, onClose }: LeadIntakeDialogProps) {
     [people],
   );
 
-  // Auto-select if user has exactly one initiatief
+  // Auto-select initiative: prefer defaultInitiatiefId, then single-option auto-select
   useEffect(() => {
-    if (initiatieven?.length === 1 && !initiatiefId) {
+    if (initiatiefId) return;
+    if (defaultInitiatiefId) {
+      setInitiatiefId(defaultInitiatiefId);
+    } else if (initiatieven?.length === 1) {
       setInitiatiefId(initiatieven[0].id);
     }
-  }, [initiatieven, initiatiefId]);
+  }, [initiatieven, initiatiefId, defaultInitiatiefId]);
 
   // Default broughtById and leadDate when dialog opens
   useEffect(() => {

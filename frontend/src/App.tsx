@@ -30,7 +30,6 @@ import { AuditLogPage } from '@/pages/AuditLogPage';
 import { DocsPage } from '@/pages/DocsPage';
 import { InstellingenPage } from '@/pages/InstellingenPage';
 import { LeadsPage } from '@/pages/LeadsPage';
-import { InitiatiefvenPage } from '@/pages/InitiatiefvenPage';
 import { FeatureTogglesPage } from '@/pages/FeatureTogglesPage';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { LoginPage } from '@/pages/LoginPage';
@@ -137,7 +136,6 @@ export default function App() {
                     <Route path="/docs" element={<DocsPage />} />
                     <Route path="/instellingen" element={<InstellingenPage />} />
                     <Route path="/leads" element={<LeadsPage />} />
-                    <Route path="/initiatieven" element={<InitiatiefvenPage />} />
                     <Route path="/beheer/features" element={<FeatureTogglesPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Route>

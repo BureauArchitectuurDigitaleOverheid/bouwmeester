@@ -1,30 +1,18 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { LeadCard } from './LeadCard';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { LeadIntakeDialog } from './LeadIntakeDialog';
 import { useLeads, useMoveLead } from '@/hooks/useLeads';
-import { usePeople } from '@/hooks/usePeople';
-import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
-import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import {
   LeadStage,
   LEAD_STAGE_ORDER,
   LEAD_STAGE_LABELS,
   LEAD_STAGE_COLORS,
-  INITIATIEF_COLORS,
 } from '@/types';
 import type { Lead, LeadFilters } from '@/types';
-
-const NEXT_ACTION_OPTIONS: SelectOption[] = [
-  { value: '', label: 'Alle acties' },
-  { value: 'overdue', label: 'Achterstallig' },
-  { value: 'today', label: 'Vandaag' },
-  { value: 'this_week', label: 'Deze week' },
-];
 
 const COLUMN_BORDER_COLORS: Record<LeadStage, string> = {
   [LeadStage.VERKENNEN]: 'border-t-blue-400',
@@ -37,29 +25,33 @@ const COLUMN_BORDER_COLORS: Record<LeadStage, string> = {
 
 interface LeadKanbanBoardProps {
   searchQuery?: string;
+  initiatiefId: string;
+  assigneeId?: string;
+  tag?: string;
+  nextActionFilter?: string;
+  stageFilter?: string;
 }
 
-export function LeadKanbanBoard({ searchQuery = '' }: LeadKanbanBoardProps) {
-  const [filterAssignee, setFilterAssignee] = useState('');
-  const [filterTag, setFilterTag] = useState('');
-  const [nextActionFilter, setNextActionFilter] = useState('');
-  const [filterInitiatief, setFilterInitiatief] = useState('');
-
+export function LeadKanbanBoard({
+  searchQuery = '',
+  initiatiefId,
+  assigneeId,
+  tag,
+  nextActionFilter,
+  stageFilter,
+}: LeadKanbanBoardProps) {
   const filters: LeadFilters = {};
-  if (filterAssignee) filters.assignee_id = filterAssignee;
-  if (filterTag) filters.tag = filterTag;
+  if (initiatiefId) filters.initiatief_id = initiatiefId;
+  if (assigneeId) filters.assignee_id = assigneeId;
+  if (tag) filters.tag = tag;
   if (nextActionFilter) filters.next_action_filter = nextActionFilter;
-  if (filterInitiatief) filters.initiatief_id = filterInitiatief;
+  if (stageFilter) filters.stage = stageFilter;
 
   const { data: leads, isLoading } = useLeads(
     Object.keys(filters).length > 0 ? filters : undefined,
   );
   const moveLead = useMoveLead();
   const { openLeadDetail } = useLeadDetail();
-  const { data: people } = usePeople();
-  const { data: initiatieven } = useInitiatieven();
-  const createInitiatief = useCreateInitiatief();
-  const { currentPerson } = useCurrentPerson();
   const [dragOverColumn, setDragOverColumn] = useState<LeadStage | null>(null);
   const [showIntake, setShowIntake] = useState(false);
 
@@ -123,124 +115,58 @@ export function LeadKanbanBoard({ searchQuery = '' }: LeadKanbanBoardProps) {
         <LeadMetricsBar />
       </div>
 
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-48">
-          <CreatableSelect
-            value={filterAssignee}
-            onChange={setFilterAssignee}
-            options={[
-              { value: '', label: 'Alle personen' },
-              ...(currentPerson
-                ? [{ value: currentPerson.id, label: `Mijn leads (${currentPerson.naam})` }]
-                : []),
-              ...(people
-                ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
-                .map((p) => ({ value: p.id, label: p.naam, description: p.functie ?? undefined })) ?? []),
-            ]}
-            placeholder="Alle personen"
-            onClear={filterAssignee ? () => setFilterAssignee('') : undefined}
-          />
-        </div>
-        <input
-          type="text"
-          value={filterTag}
-          onChange={(e) => setFilterTag(e.target.value)}
-          placeholder="Filter op tag..."
-          className="rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-primary-400 w-48"
-        />
-        <div className="w-40">
-          <CreatableSelect
-            value={nextActionFilter}
-            onChange={setNextActionFilter}
-            options={NEXT_ACTION_OPTIONS}
-            placeholder="Alle acties"
-            searchable={false}
-            onClear={nextActionFilter ? () => setNextActionFilter('') : undefined}
-          />
-        </div>
-        <div className="w-48">
-          <CreatableSelect
-            value={filterInitiatief}
-            onChange={setFilterInitiatief}
-            options={[
-              { value: '', label: 'Alle initiatieven' },
-              ...(initiatieven?.map((i) => ({ value: i.id, label: i.naam })) ?? []),
-            ]}
-            placeholder="Alle initiatieven"
-            onClear={filterInitiatief ? () => setFilterInitiatief('') : undefined}
-            onCreate={async (name) => {
-              const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
-              const result = await createInitiatief.mutateAsync({ naam: name, kleur });
-              return result.id;
-            }}
-            createLabel="Nieuw initiatief"
-          />
-        </div>
-        {(filterAssignee || filterTag || nextActionFilter || filterInitiatief) && (
-          <button
-            onClick={() => {
-              setFilterAssignee('');
-              setFilterTag('');
-              setNextActionFilter('');
-              setFilterInitiatief('');
-            }}
-            className="text-sm text-text-secondary hover:text-text transition-colors"
-          >
-            Filters wissen
-          </button>
-        )}
-      </div>
-
       <div className="-mx-4 px-4 md:mx-0 md:px-0 flex gap-3 min-h-[500px] overflow-x-auto pb-2 snap-x snap-mandatory md:snap-none md:pb-0">
-        {LEAD_STAGE_ORDER.map((stage) => (
+        {LEAD_STAGE_ORDER.filter((s) => !stageFilter || s === stageFilter).map((stage) => (
           <div
             key={stage}
             onDragOver={(e) => handleDragOver(e, stage)}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, stage)}
-            className={`rounded-xl border border-border bg-gray-50/50 border-t-4 w-[280px] min-w-[280px] shrink-0 flex flex-col ${COLUMN_BORDER_COLORS[stage]} transition-colors ${
-              dragOverColumn === stage ? 'bg-primary-50/50 border-primary-200' : ''
+            className={`flex-none w-[85vw] sm:w-[320px] md:flex-1 md:min-w-[200px] snap-center ${
+              dragOverColumn === stage ? 'ring-2 ring-primary-300 ring-inset rounded-xl' : ''
             }`}
           >
-            <div className="px-3 py-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-text flex items-center gap-2">
+            <div
+              className={`rounded-xl border border-border bg-gray-50/50 min-h-full flex flex-col border-t-3 ${COLUMN_BORDER_COLORS[stage]}`}
+            >
+              {/* Column header */}
+              <div className="flex items-center justify-between px-3 py-2.5">
                 <span
-                  className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${LEAD_STAGE_COLORS[stage]}`}
+                  className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${LEAD_STAGE_COLORS[stage]}`}
                 >
                   {LEAD_STAGE_LABELS[stage]}
                 </span>
-              </h3>
-              <span className="text-xs text-text-secondary bg-white rounded-full px-2 py-0.5 border border-border">
-                {leadsByStage[stage]?.length ?? 0}
-              </span>
-            </div>
+                <span className="text-xs text-text-secondary tabular-nums">
+                  {leadsByStage[stage]?.length ?? 0}
+                </span>
+              </div>
 
-            <div className="px-2 pb-2 space-y-2 flex-1 overflow-y-auto min-h-[100px]">
-              {leadsByStage[stage]?.map((lead) => (
-                <div
-                  key={lead.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, lead)}
-                  className="cursor-grab active:cursor-grabbing"
-                >
-                  <LeadCard
-                    lead={lead}
-                    onClick={() => openLeadDetail(lead.id)}
-                  />
-                </div>
-              ))}
+              {/* Cards */}
+              <div className="flex-1 px-2 pb-2 space-y-2">
+                {(leadsByStage[stage] ?? []).length > 0 ? (
+                  (leadsByStage[stage] ?? []).map((lead) => (
+                    <div
+                      key={lead.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, lead)}
+                    >
+                      <LeadCard
+                        lead={lead}
+                        onClick={() => openLeadDetail(lead.id)}
+                      />
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-text-secondary text-center py-6">
+                    Sleep leads hierheen
+                  </p>
+                )}
+              </div>
 
-              {(leadsByStage[stage]?.length ?? 0) === 0 && (
-                <div className="flex items-center justify-center h-[80px] text-xs text-text-secondary">
-                  Sleep leads hierheen
-                </div>
-              )}
-            </div>
-
-            <div className="px-2 pb-2">
+              {/* Add lead button */}
               <button
                 onClick={() => setShowIntake(true)}
-                className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-text-secondary hover:text-text hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex items-center justify-center gap-1 px-3 py-2 text-xs text-text-secondary hover:text-text hover:bg-gray-100/80 transition-colors rounded-b-xl"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Nieuwe lead
@@ -250,10 +176,7 @@ export function LeadKanbanBoard({ searchQuery = '' }: LeadKanbanBoardProps) {
         ))}
       </div>
 
-      <LeadIntakeDialog
-        open={showIntake}
-        onClose={() => setShowIntake(false)}
-      />
+      <LeadIntakeDialog open={showIntake} onClose={() => setShowIntake(false)} defaultInitiatiefId={initiatiefId} />
     </div>
   );
 }
