@@ -116,7 +116,7 @@ export function LeadKanbanBoard({
       </div>
 
       <div className="-mx-4 px-4 md:mx-0 md:px-0 flex gap-3 min-h-[500px] overflow-x-auto pb-2 snap-x snap-mandatory md:snap-none md:pb-0">
-        {LEAD_STAGE_ORDER.map((stage) => (
+        {LEAD_STAGE_ORDER.filter((s) => !stageFilter || s === stageFilter).map((stage) => (
           <div
             key={stage}
             onDragOver={(e) => handleDragOver(e, stage)}
@@ -176,7 +176,7 @@ export function LeadKanbanBoard({
         ))}
       </div>
 
-      <LeadIntakeDialog open={showIntake} onClose={() => setShowIntake(false)} />
+      <LeadIntakeDialog open={showIntake} onClose={() => setShowIntake(false)} defaultInitiatiefId={initiatiefId} />
     </div>
   );
 }

@@ -247,8 +247,6 @@ interface LeadTimelineViewProps {
   searchQuery?: string;
   initiatiefId: string;
   assigneeId?: string;
-  tag?: string;
-  nextActionFilter?: string;
   stageFilter?: string;
 }
 

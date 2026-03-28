@@ -135,6 +135,11 @@ export function LeadsPage() {
     setCreateForm({ naam: '', beschrijving: '', kleur: INITIATIEF_COLORS[0] });
   };
 
+  // Filters applicable per view: kanban+list support all; timeline lacks tag/next_action; graph only has stage
+  const supportsAssignee = viewMode !== 'graph';
+  const supportsTag = viewMode === 'kanban' || viewMode === 'list';
+  const supportsNextAction = viewMode === 'kanban' || viewMode === 'list';
+
   const hasActiveFilters = filterAssignee || filterTag || nextActionFilter || filterStage;
 
   const clearFilters = () => {
@@ -206,52 +211,58 @@ export function LeadsPage() {
         </div>
 
         {/* Assignee */}
-        <div className="w-full sm:w-48">
-          <CreatableSelect
-            value={filterAssignee}
-            onChange={setFilterAssignee}
-            options={[
-              { value: '', label: 'Alle personen' },
-              ...(currentPerson
-                ? [{ value: currentPerson.id, label: `Mijn leads (${currentPerson.naam})` }]
-                : []),
-              ...(people
-                ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
-                .map((p) => ({ value: p.id, label: p.naam, description: p.functie ?? undefined })) ?? []),
-            ]}
-            placeholder="Alle personen"
-            onClear={filterAssignee ? () => setFilterAssignee('') : undefined}
-          />
-        </div>
+        {supportsAssignee && (
+          <div className="w-full sm:w-48">
+            <CreatableSelect
+              value={filterAssignee}
+              onChange={setFilterAssignee}
+              options={[
+                { value: '', label: 'Alle personen' },
+                ...(currentPerson
+                  ? [{ value: currentPerson.id, label: `Mijn leads (${currentPerson.naam})` }]
+                  : []),
+                ...(people
+                  ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
+                  .map((p) => ({ value: p.id, label: p.naam, description: p.functie ?? undefined })) ?? []),
+              ]}
+              placeholder="Alle personen"
+              onClear={filterAssignee ? () => setFilterAssignee('') : undefined}
+            />
+          </div>
+        )}
 
         {/* Tag */}
-        <div className="relative w-full sm:w-44">
-          <Input
-            value={filterTag}
-            onChange={(e) => setFilterTag(e.target.value)}
-            placeholder="Filter op tag..."
-          />
-          {filterTag && (
-            <button
-              onClick={() => setFilterTag('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-text-secondary hover:text-text"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        {supportsTag && (
+          <div className="relative w-full sm:w-44">
+            <Input
+              value={filterTag}
+              onChange={(e) => setFilterTag(e.target.value)}
+              placeholder="Filter op tag..."
+            />
+            {filterTag && (
+              <button
+                onClick={() => setFilterTag('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-text-secondary hover:text-text"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Next action */}
-        <div className="w-full sm:w-40">
-          <CreatableSelect
-            value={nextActionFilter}
-            onChange={setNextActionFilter}
-            options={NEXT_ACTION_OPTIONS}
-            placeholder="Alle acties"
-            searchable={false}
-            onClear={nextActionFilter ? () => setNextActionFilter('') : undefined}
-          />
-        </div>
+        {supportsNextAction && (
+          <div className="w-full sm:w-40">
+            <CreatableSelect
+              value={nextActionFilter}
+              onChange={setNextActionFilter}
+              options={NEXT_ACTION_OPTIONS}
+              placeholder="Alle acties"
+              searchable={false}
+              onClear={nextActionFilter ? () => setNextActionFilter('') : undefined}
+            />
+          </div>
+        )}
 
         {/* Stage */}
         <div className="w-full sm:w-40">
@@ -300,8 +311,6 @@ export function LeadsPage() {
           searchQuery={searchQuery}
           initiatiefId={selectedInitiatiefId}
           assigneeId={filterAssignee}
-          tag={filterTag}
-          nextActionFilter={nextActionFilter}
           stageFilter={filterStage}
         />
       ) : viewMode === 'graph' ? (
@@ -312,7 +321,7 @@ export function LeadsPage() {
         />
       ) : null}
 
-      <LeadIntakeDialog open={showIntake} onClose={() => setShowIntake(false)} />
+      <LeadIntakeDialog open={showIntake} onClose={() => setShowIntake(false)} defaultInitiatiefId={selectedInitiatiefId} />
 
       {/* Create initiatief modal */}
       {showCreateInitiatief && (
