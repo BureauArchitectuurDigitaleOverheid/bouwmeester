@@ -213,7 +213,7 @@ async def approve_placement(
     # Notify the requester
     eenheid_naam = req.organisatie_eenheid.naam if req.organisatie_eenheid else ""
     notif_svc = NotificationService(db)
-    await notif_svc.repo.create(
+    await notif_svc.send(
         NotificationCreate(
             person_id=req.person_id,
             type="placement_approved",
@@ -261,7 +261,7 @@ async def deny_placement(
     # Notify the requester
     eenheid_naam = req.organisatie_eenheid.naam if req.organisatie_eenheid else ""
     notif_svc = NotificationService(db)
-    await notif_svc.repo.create(
+    await notif_svc.send(
         NotificationCreate(
             person_id=req.person_id,
             type="placement_denied",

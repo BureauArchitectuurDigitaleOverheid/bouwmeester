@@ -429,7 +429,7 @@ async def react_to_message(
         sender_id=body.sender_id,
         parent_id=message.id,
     )
-    await service.repo.create(data)
+    await service.send(data)
 
     # Mark the other party's thread root as unread so they see the reaction.
     # Walk up to the thread root (message may be root or reply).

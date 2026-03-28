@@ -59,6 +59,17 @@ class NotificationService:
         self.session = session
         self.repo = NotificationRepository(session)
 
+    async def send(self, data: NotificationCreate) -> Notification:
+        """Create a notification and schedule Mattermost forwarding.
+
+        This is the single entry point external code should use to send
+        notifications.  Internal helper methods may still use repo.create
+        + _send_to_mattermost directly when they need finer control.
+        """
+        notification = await self.repo.create(data)
+        self._send_to_mattermost(notification)
+        return notification
+
     def _send_to_mattermost(self, notification: Notification) -> None:
         """Schedule Mattermost forwarding after the current transaction commits.
 

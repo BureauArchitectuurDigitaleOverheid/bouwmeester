@@ -194,8 +194,7 @@ async def create_lead(
             title=f"Je bent toegewezen aan lead: {lead.title}",
             message=f"Je bent toegewezen aan lead: {lead.title}",
         )
-        notification = await notif_svc.repo.create(notification_data)
-        notif_svc._send_to_mattermost(notification)
+        await notif_svc.send(notification_data)
 
     await log_activity(
         db,
@@ -357,8 +356,7 @@ async def update_lead(
                 title=f"Je bent toegewezen aan lead: {lead.title}",
                 message=f"Je bent toegewezen aan lead: {lead.title}",
             )
-            notification = await notif_svc.repo.create(notification_data)
-            notif_svc._send_to_mattermost(notification)
+            await notif_svc.send(notification_data)
 
     # Notify on stage change
     if lead.stage != old_stage and lead.assignee_id:
@@ -370,8 +368,7 @@ async def update_lead(
                 title=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
                 message=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
             )
-            notification = await notif_svc.repo.create(notification_data)
-            notif_svc._send_to_mattermost(notification)
+            await notif_svc.send(notification_data)
 
     await log_activity(
         db,
@@ -437,8 +434,7 @@ async def move_lead(
             title=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
             message=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
         )
-        notification = await notif_svc.repo.create(notification_data)
-        notif_svc._send_to_mattermost(notification)
+        await notif_svc.send(notification_data)
 
     await log_activity(
         db,
@@ -506,8 +502,7 @@ async def add_activity(
             title=f"Nieuwe notitie op lead '{lead.title}'",
             message=f"Nieuwe notitie op lead '{lead.title}'",
         )
-        notification = await notif_svc.repo.create(notification_data)
-        notif_svc._send_to_mattermost(notification)
+        await notif_svc.send(notification_data)
 
     await log_activity(
         db,
@@ -582,8 +577,7 @@ async def add_contact(
             title=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
             message=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
         )
-        notification = await notif_svc.repo.create(notification_data)
-        notif_svc._send_to_mattermost(notification)
+        await notif_svc.send(notification_data)
 
     await log_activity(
         db,
