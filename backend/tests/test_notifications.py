@@ -920,15 +920,15 @@ async def test_manager_not_notified_when_also_assignee(
     assert len(task_notifs) == 1
 
 
-async def test_manager_fallback_to_legacy(
-    client, sample_node, sample_person, org_with_legacy_manager, third_person
+async def test_manager_notification_via_person_role(
+    client, sample_node, sample_person, org_with_manager, third_person
 ):
-    """No temporal record → uses legacy manager_id."""
+    """Manager resolved from person_role(unit_manager) gets notified."""
     payload = {
-        "title": "Legacy manager taak",
+        "title": "Manager taak via person_role",
         "node_id": str(sample_node.id),
         "assignee_id": str(sample_person.id),
-        "organisatie_eenheid_id": str(org_with_legacy_manager.id),
+        "organisatie_eenheid_id": str(org_with_manager.id),
     }
     resp = await client.post("/api/tasks", json=payload)
     assert resp.status_code == 201

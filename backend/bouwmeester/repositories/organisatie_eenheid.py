@@ -1,7 +1,8 @@
 """Repository for OrganisatieEenheid CRUD and tree queries.
 
 Overrides BaseRepository.create() and update() to manage temporal records
-(naam, parent, manager) alongside dual-written legacy columns.
+(naam, parent) alongside dual-written legacy columns. Manager is resolved
+from person_role (role_id='unit_manager').
 """
 
 from datetime import date
@@ -11,12 +12,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from bouwmeester.core.query_utils import escape_like
-from bouwmeester.models.org_manager import OrganisatieEenheidManager
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam
 from bouwmeester.models.org_parent import OrganisatieEenheidParent
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.role import PersonRole
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.repositories.temporal import (
     close_active_records,
@@ -41,7 +42,6 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
             naam=data.naam,
             type=data.type,
             parent_id=data.parent_id,
-            manager_id=data.manager_id,
             beschrijving=data.beschrijving,
             geldig_van=effective,
         )
@@ -66,10 +66,11 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
             )
         if data.manager_id is not None:
             self.session.add(
-                OrganisatieEenheidManager(
-                    eenheid_id=eenheid.id,
-                    manager_id=data.manager_id,
-                    geldig_van=effective,
+                PersonRole(
+                    person_id=data.manager_id,
+                    role_id="unit_manager",
+                    organisatie_eenheid_id=eenheid.id,
+                    start_datum=effective,
                 )
             )
 
@@ -110,13 +111,14 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
             eenheid.parent_id = changes["parent_id"]
 
         # Manager change
-        if "manager_id" in changes and changes["manager_id"] != eenheid.manager_id:
-            await self._rotate_manager(
-                eenheid.id,
-                changes["manager_id"],
-                effective,
-            )
-            eenheid.manager_id = changes["manager_id"]
+        if "manager_id" in changes:
+            current_manager_id = await self._get_current_manager_id(eenheid.id)
+            if changes["manager_id"] != current_manager_id:
+                await self._rotate_unit_manager_role(
+                    eenheid.id,
+                    changes["manager_id"],
+                    effective,
+                )
 
         # Simple field updates
         for key in ("type", "beschrijving"):
@@ -126,6 +128,59 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         await self.session.flush()
         await self.session.refresh(eenheid)
         return eenheid
+
+    # ------------------------------------------------------------------
+    # Manager queries (from person_role)
+    # ------------------------------------------------------------------
+
+    async def get_unit_manager(self, eenheid_id: UUID) -> Person | None:
+        """Get the active unit_manager for an eenheid from person_role."""
+        today = date.today()
+        stmt = (
+            select(Person)
+            .join(PersonRole, PersonRole.person_id == Person.id)
+            .where(
+                PersonRole.organisatie_eenheid_id == eenheid_id,
+                PersonRole.role_id == "unit_manager",
+                PersonRole.start_datum <= today,
+                PersonRole.eind_datum.is_(None),
+            )
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_unit_managers_batch(
+        self, eenheid_ids: list[UUID]
+    ) -> dict[UUID, Person]:
+        """Get active unit_managers for multiple eenheden from person_role."""
+        if not eenheid_ids:
+            return {}
+        today = date.today()
+        stmt = (
+            select(PersonRole.organisatie_eenheid_id, Person)
+            .join(Person, PersonRole.person_id == Person.id)
+            .where(
+                PersonRole.organisatie_eenheid_id.in_(eenheid_ids),
+                PersonRole.role_id == "unit_manager",
+                PersonRole.start_datum <= today,
+                PersonRole.eind_datum.is_(None),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return {row[0]: row[1] for row in result.all()}
+
+    async def _get_current_manager_id(self, eenheid_id: UUID) -> UUID | None:
+        """Get current manager's person_id from person_role."""
+        today = date.today()
+        stmt = select(PersonRole.person_id).where(
+            PersonRole.organisatie_eenheid_id == eenheid_id,
+            PersonRole.role_id == "unit_manager",
+            PersonRole.start_datum <= today,
+            PersonRole.eind_datum.is_(None),
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
     # ------------------------------------------------------------------
     # Queries
@@ -260,12 +315,11 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
             return []
         stmt = (
             select(OrganisatieEenheid)
-            .options(joinedload(OrganisatieEenheid.manager))
             .where(OrganisatieEenheid.id.in_(unit_ids))
             .order_by(OrganisatieEenheid.naam)
         )
         result = await self.session.execute(stmt)
-        return list(result.unique().scalars().all())
+        return list(result.scalars().all())
 
     async def search(
         self,
@@ -296,8 +350,6 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         person_id: UUID,
     ) -> list[OrganisatieEenheid]:
         """Get all active eenheden where this person has a unit_manager role."""
-        from bouwmeester.models.role import PersonRole
-
         today = date.today()
         stmt = (
             select(OrganisatieEenheid)
@@ -309,7 +361,7 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
                 PersonRole.person_id == person_id,
                 PersonRole.role_id == "unit_manager",
                 PersonRole.start_datum <= today,
-                (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
+                PersonRole.eind_datum.is_(None),
             )
             .order_by(OrganisatieEenheid.naam)
         )
@@ -371,17 +423,22 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
     async def get_manager_history(
         self,
         eenheid_id: UUID,
-    ) -> list[OrganisatieEenheidManager]:
+    ) -> list[PersonRole]:
+        """Get temporal history of manager changes from person_role."""
         stmt = (
-            select(OrganisatieEenheidManager)
-            .where(OrganisatieEenheidManager.eenheid_id == eenheid_id)
+            select(PersonRole)
+            .options(joinedload(PersonRole.person))
+            .where(
+                PersonRole.organisatie_eenheid_id == eenheid_id,
+                PersonRole.role_id == "unit_manager",
+            )
             .order_by(
-                OrganisatieEenheidManager.geldig_van.desc(),
-                OrganisatieEenheidManager.geldig_tot.asc().nulls_first(),
+                PersonRole.start_datum.desc(),
+                PersonRole.eind_datum.asc().nulls_first(),
             )
         )
         result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        return list(result.unique().scalars().all())
 
     # ------------------------------------------------------------------
     # Private temporal helpers
@@ -426,27 +483,33 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
             new_record,
         )
 
-    async def _rotate_manager(
+    async def _rotate_unit_manager_role(
         self,
         eenheid_id: UUID,
         new_manager_id: UUID | None,
         effective: date,
     ) -> None:
-        new_record = (
-            OrganisatieEenheidManager(
-                eenheid_id=eenheid_id, manager_id=new_manager_id, geldig_van=effective
+        """Close any existing unit_manager role for this eenheid, create new."""
+        # Close existing active unit_manager entries
+        stmt = select(PersonRole).where(
+            PersonRole.organisatie_eenheid_id == eenheid_id,
+            PersonRole.role_id == "unit_manager",
+            PersonRole.eind_datum.is_(None),
+        )
+        result = await self.session.execute(stmt)
+        for existing in result.scalars().all():
+            existing.eind_datum = effective
+
+        # Create new if a manager is specified
+        if new_manager_id is not None:
+            self.session.add(
+                PersonRole(
+                    person_id=new_manager_id,
+                    role_id="unit_manager",
+                    organisatie_eenheid_id=eenheid_id,
+                    start_datum=effective,
+                )
             )
-            if new_manager_id is not None
-            else None
-        )
-        await rotate_temporal_record(
-            self.session,
-            OrganisatieEenheidManager,
-            OrganisatieEenheidManager.eenheid_id,
-            eenheid_id,
-            effective,
-            new_record,
-        )
 
     async def _close_all_active(
         self,
@@ -459,8 +522,16 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
             [
                 (OrganisatieEenheidNaam, OrganisatieEenheidNaam.eenheid_id),
                 (OrganisatieEenheidParent, OrganisatieEenheidParent.eenheid_id),
-                (OrganisatieEenheidManager, OrganisatieEenheidManager.eenheid_id),
             ],
             eenheid_id,
             end_date,
         )
+        # Also close unit_manager person_role entries
+        stmt = select(PersonRole).where(
+            PersonRole.organisatie_eenheid_id == eenheid_id,
+            PersonRole.role_id == "unit_manager",
+            PersonRole.eind_datum.is_(None),
+        )
+        result = await self.session.execute(stmt)
+        for pr in result.scalars().all():
+            pr.eind_datum = end_date

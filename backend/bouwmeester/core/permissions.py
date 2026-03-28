@@ -114,10 +114,6 @@ async def build_permission_context(
     pr_repo = PersonRoleRepository(db)
     system_roles, scoped_roles = await pr_repo.get_active_role_ids_for_person(person.id)
 
-    # Legacy support: if person.is_admin, treat as super_admin
-    if person.is_admin and "super_admin" not in system_roles:
-        system_roles = ["super_admin"] + system_roles
-
     is_super_admin = "super_admin" in system_roles
 
     if is_super_admin:

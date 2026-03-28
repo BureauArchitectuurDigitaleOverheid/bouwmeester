@@ -12,6 +12,11 @@ from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
 )
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    build_permission_context,
+    get_permission_context,
+)
 from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.schema.initiatief import (
     InitiatiefCreate,
@@ -32,11 +37,14 @@ async def _require_eigenaar(
     repo: InitiatiefRepository,
     initiatief_id: UUID,
     user: OptionalUser,
+    perm_ctx: PermissionContext | None = None,
 ) -> None:
     """Raise 403 unless user is eigenaar or admin."""
     if not user:
         return  # dev mode, no OIDC
-    if user.is_admin:
+    if perm_ctx is None:
+        perm_ctx = await build_permission_context(repo.session, user)
+    if perm_ctx.is_super_admin:
         return
     role = await repo.get_member_role(initiatief_id, user.id)
     if role != "eigenaar":
@@ -50,11 +58,14 @@ async def _require_member_or_admin(
     repo: InitiatiefRepository,
     initiatief_id: UUID,
     user: OptionalUser,
+    perm_ctx: PermissionContext | None = None,
 ) -> None:
     """Raise 404 unless user is a member (direct or via eenheid) or admin."""
     if not user:
         return  # dev mode
-    if user.is_admin:
+    if perm_ctx is None:
+        perm_ctx = await build_permission_context(repo.session, user)
+    if perm_ctx.is_super_admin:
         return
     if not await repo.is_member(initiatief_id, user.id):
         raise HTTPException(
@@ -107,10 +118,11 @@ async def get_initiatief(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InitiatiefDetailResponse:
     repo = InitiatiefRepository(db)
     initiatief = require_found(await repo.get_detail(id), "Initiatief")
-    await _require_member_or_admin(repo, id, current_user)
+    await _require_member_or_admin(repo, id, current_user, perm_ctx)
     # Build response with member/eenheid names
     from bouwmeester.repositories.resource_permission import (
         ResourcePermissionRepository,
@@ -150,9 +162,10 @@ async def update_initiatief(
     data: InitiatiefUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InitiatiefResponse:
     repo = InitiatiefRepository(db)
-    await _require_eigenaar(repo, id, current_user)
+    await _require_eigenaar(repo, id, current_user, perm_ctx)
     initiatief = require_found(await repo.update(id, data), "Initiatief")
 
     await log_activity(
@@ -171,9 +184,10 @@ async def delete_initiatief(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     repo = InitiatiefRepository(db)
-    await _require_eigenaar(repo, id, current_user)
+    await _require_eigenaar(repo, id, current_user, perm_ctx)
     initiatief = require_found(await repo.get_by_id(id), "Initiatief")
     initiatief_naam = initiatief.naam
 
@@ -215,10 +229,11 @@ async def add_member(
     data: InitiatiefMemberCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InitiatiefMemberResponse:
     repo = InitiatiefRepository(db)
     require_found(await repo.get_by_id(id), "Initiatief")
-    await _require_eigenaar(repo, id, current_user)
+    await _require_eigenaar(repo, id, current_user, perm_ctx)
     member = await repo.add_member(id, data.person_id, data.rol)
 
     await log_activity(
@@ -251,9 +266,10 @@ async def remove_member(
     person_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     repo = InitiatiefRepository(db)
-    await _require_eigenaar(repo, id, current_user)
+    await _require_eigenaar(repo, id, current_user, perm_ctx)
     # Prevent removing the last eigenaar
     current_role = await repo.get_member_role(id, person_id)
     if current_role == "eigenaar":
@@ -288,10 +304,11 @@ async def update_member_role(
     data: InitiatiefMemberCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InitiatiefMemberResponse:
     """Update a member's role (e.g. promote to eigenaar)."""
     repo = InitiatiefRepository(db)
-    await _require_eigenaar(repo, id, current_user)
+    await _require_eigenaar(repo, id, current_user, perm_ctx)
     # Prevent demoting the last eigenaar
     if data.rol != "eigenaar":
         eigenaar_count = await repo.count_eigenaren(id)
@@ -344,10 +361,11 @@ async def add_eenheid(
     data: InitiatiefEenheidCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InitiatiefEenheidResponse:
     repo = InitiatiefRepository(db)
     require_found(await repo.get_by_id(id), "Initiatief")
-    await _require_eigenaar(repo, id, current_user)
+    await _require_eigenaar(repo, id, current_user, perm_ctx)
     link = await repo.add_eenheid(id, data.eenheid_id)
 
     await log_activity(
@@ -375,9 +393,10 @@ async def remove_eenheid(
     eenheid_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     repo = InitiatiefRepository(db)
-    await _require_eigenaar(repo, id, current_user)
+    await _require_eigenaar(repo, id, current_user, perm_ctx)
     if not await repo.remove_eenheid(id, eenheid_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -92,7 +92,7 @@ class PersonResponse(PersonBase):
     id: UUID
     is_active: bool
     is_agent: bool
-    is_admin: bool
+    is_admin: bool = False
     created_at: datetime
     last_seen_at: datetime | None = None
     emails: list[PersonEmailResponse] = []

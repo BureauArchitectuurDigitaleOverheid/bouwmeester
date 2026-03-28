@@ -12,8 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.notification import Notification
 from bouwmeester.models.opdracht import Opdracht
-from bouwmeester.models.org_manager import OrganisatieEenheidManager
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
@@ -414,30 +412,15 @@ class NotificationService:
     async def notify_team_manager(
         self, task: Task, eenheid_id: UUID, exclude_person_id: UUID | None = None
     ) -> Notification | None:
-        """Notify the manager of an org unit about a task assignment.
-
-        Uses temporal manager record first, falls back to legacy manager_id.
-        """
-        today = date.today()
-
-        # Try temporal manager record
-        stmt = select(OrganisatieEenheidManager).where(
-            OrganisatieEenheidManager.eenheid_id == eenheid_id,
-            OrganisatieEenheidManager.geldig_van <= today,
-            (OrganisatieEenheidManager.geldig_tot.is_(None))
-            | (OrganisatieEenheidManager.geldig_tot >= today),
+        """Notify the manager of an org unit about a task assignment."""
+        from bouwmeester.repositories.organisatie_eenheid import (
+            OrganisatieEenheidRepository,
         )
-        result = await self.session.execute(stmt)
-        manager_record = result.scalar_one_or_none()
 
-        manager_id: UUID | None = None
-        if manager_record and manager_record.manager_id:
-            manager_id = manager_record.manager_id
-        else:
-            # Fallback to legacy manager_id on OrganisatieEenheid
-            eenheid = await self.session.get(OrganisatieEenheid, eenheid_id)
-            if eenheid and eenheid.manager_id:
-                manager_id = eenheid.manager_id
+        manager = await OrganisatieEenheidRepository(self.session).get_unit_manager(
+            eenheid_id
+        )
+        manager_id = manager.id if manager else None
 
         if not manager_id:
             return None
@@ -548,9 +531,9 @@ class NotificationService:
 
     async def notify_access_request(self, email: str, naam: str) -> list[Notification]:
         """Notify all admin users about a new access request."""
-        stmt = select(Person).where(Person.is_admin == True)  # noqa: E712
-        result = await self.session.execute(stmt)
-        admins = result.scalars().all()
+        from bouwmeester.repositories.role import PersonRoleRepository
+
+        admins = await PersonRoleRepository(self.session).get_super_admins()
 
         notifications: list[Notification] = []
         for admin in admins:
@@ -571,25 +554,16 @@ class NotificationService:
         """Notify the team manager and all admins about a placement request."""
         notifications: list[Notification] = []
         notified_ids: set[UUID] = set()
-        today = date.today()
 
-        # Resolve manager: temporal record first, legacy fallback
-        stmt = select(OrganisatieEenheidManager).where(
-            OrganisatieEenheidManager.eenheid_id == eenheid_id,
-            OrganisatieEenheidManager.geldig_van <= today,
-            (OrganisatieEenheidManager.geldig_tot.is_(None))
-            | (OrganisatieEenheidManager.geldig_tot >= today),
+        # Resolve manager from person_role
+        from bouwmeester.repositories.organisatie_eenheid import (
+            OrganisatieEenheidRepository,
         )
-        result = await self.session.execute(stmt)
-        manager_record = result.scalar_one_or_none()
 
-        manager_id: UUID | None = None
-        if manager_record and manager_record.manager_id:
-            manager_id = manager_record.manager_id
-        else:
-            eenheid = await self.session.get(OrganisatieEenheid, eenheid_id)
-            if eenheid and eenheid.manager_id:
-                manager_id = eenheid.manager_id
+        manager = await OrganisatieEenheidRepository(self.session).get_unit_manager(
+            eenheid_id
+        )
+        manager_id = manager.id if manager else None
 
         if manager_id:
             notified_ids.add(manager_id)
@@ -604,9 +578,10 @@ class NotificationService:
             notifications.append(notification)
 
         # Also notify all admins
-        admin_stmt = select(Person).where(Person.is_admin == True)  # noqa: E712
-        admin_result = await self.session.execute(admin_stmt)
-        for admin in admin_result.scalars().all():
+        from bouwmeester.repositories.role import PersonRoleRepository
+
+        admins = await PersonRoleRepository(self.session).get_super_admins()
+        for admin in admins:
             if admin.id not in notified_ids:
                 notified_ids.add(admin.id)
                 data = NotificationCreate(

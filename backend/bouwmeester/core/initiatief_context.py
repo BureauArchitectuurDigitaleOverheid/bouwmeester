@@ -45,7 +45,10 @@ async def build_initiatief_context(
     Queries direct membership and team-based membership to determine
     which initiatieven are visible.
     """
-    if person.is_admin:
+    from bouwmeester.core.permissions import build_permission_context
+
+    perm_ctx = await build_permission_context(db, person)
+    if perm_ctx.is_super_admin:
         return InitiatiefContext(
             person_id=person.id,
             is_admin=True,

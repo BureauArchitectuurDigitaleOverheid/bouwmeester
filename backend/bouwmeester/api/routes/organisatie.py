@@ -27,6 +27,23 @@ from bouwmeester.services.mention_helper import sync_and_notify_mentions
 router = APIRouter(prefix="/organisatie", tags=["organisatie"])
 
 
+async def _enrich_with_managers(
+    repo: OrganisatieEenheidRepository,
+    responses: list[OrganisatieEenheidResponse],
+) -> None:
+    """Populate manager/manager_id on responses from person_role."""
+    eenheid_ids = [r.id for r in responses]
+    managers_map = await repo.get_unit_managers_batch(eenheid_ids)
+    for resp in responses:
+        mgr = managers_map.get(resp.id)
+        if mgr:
+            resp.manager = PersonResponse.model_validate(mgr)
+            resp.manager_id = mgr.id
+        else:
+            resp.manager = None
+            resp.manager_id = None
+
+
 def _build_tree(
     all_items: list[OrganisatieEenheidResponse],
     personen_counts: dict[UUID, int],
@@ -61,6 +78,7 @@ async def list_organisatie(
     repo = OrganisatieEenheidRepository(db)
     items = await repo.get_all()
     flat = [OrganisatieEenheidResponse.model_validate(item) for item in items]
+    await _enrich_with_managers(repo, flat)
 
     if format == "tree":
         personen_counts = await repo.count_personen_batch([item.id for item in items])
@@ -81,7 +99,9 @@ async def search_organisatie(
         return []
     repo = OrganisatieEenheidRepository(db)
     units = await repo.search(q.strip(), limit=limit)
-    return [OrganisatieEenheidResponse.model_validate(u) for u in units]
+    results = [OrganisatieEenheidResponse.model_validate(u) for u in units]
+    await _enrich_with_managers(repo, results)
+    return results
 
 
 @router.get("/managed-by/{person_id}", response_model=list[OrganisatieEenheidResponse])
@@ -93,7 +113,9 @@ async def get_managed_eenheden(
     """Get all eenheden where person_id is the manager."""
     repo = OrganisatieEenheidRepository(db)
     eenheden = await repo.get_by_manager(person_id)
-    return [OrganisatieEenheidResponse.model_validate(e) for e in eenheden]
+    results = [OrganisatieEenheidResponse.model_validate(e) for e in eenheden]
+    await _enrich_with_managers(repo, results)
+    return results
 
 
 @router.post(
@@ -127,7 +149,9 @@ async def create_organisatie(
         details={"organisatie_id": str(eenheid.id), "naam": eenheid.naam},
     )
 
-    return OrganisatieEenheidResponse.model_validate(eenheid)
+    resp = OrganisatieEenheidResponse.model_validate(eenheid)
+    await _enrich_with_managers(repo, [resp])
+    return resp
 
 
 @router.get("/{id}", response_model=OrganisatieEenheidResponse)
@@ -139,7 +163,9 @@ async def get_organisatie(
     """Get a single org unit by ID."""
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
-    return OrganisatieEenheidResponse.model_validate(eenheid)
+    resp = OrganisatieEenheidResponse.model_validate(eenheid)
+    await _enrich_with_managers(repo, [resp])
+    return resp
 
 
 @router.put("/{id}", response_model=OrganisatieEenheidResponse)
@@ -179,7 +205,9 @@ async def update_organisatie(
         details={"organisatie_id": str(eenheid.id), "naam": eenheid.naam},
     )
 
-    return OrganisatieEenheidResponse.model_validate(eenheid)
+    resp = OrganisatieEenheidResponse.model_validate(eenheid)
+    await _enrich_with_managers(repo, [resp])
+    return resp
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -246,11 +274,20 @@ async def get_manager_history(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[OrgManagerRecord]:
-    """Get temporal history of manager changes for an org unit."""
+    """Get temporal history of manager changes from person_role."""
     repo = OrganisatieEenheidRepository(db)
     require_found(await repo.get(id), "Eenheid")
     records = await repo.get_manager_history(id)
-    return [OrgManagerRecord.model_validate(r) for r in records]
+    return [
+        OrgManagerRecord(
+            id=r.id,
+            manager_id=r.person_id,
+            manager=PersonResponse.model_validate(r.person) if r.person else None,
+            geldig_van=r.start_datum,
+            geldig_tot=r.eind_datum,
+        )
+        for r in records
+    ]
 
 
 @router.get(
@@ -279,6 +316,9 @@ async def get_organisatie_personen(
     all_units = await repo.get_units_by_ids(descendant_ids)
     personen_with_units = await repo.get_personen_for_units(descendant_ids)
 
+    # Pre-fetch all managers for the descendant tree
+    managers_map = await repo.get_unit_managers_batch(descendant_ids)
+
     # Index people by unit ID
     personen_by_unit: dict[UUID, list[PersonResponse]] = defaultdict(list)
     for person, unit_id in personen_with_units:
@@ -294,12 +334,20 @@ async def get_organisatie_personen(
         repository to stay in sync with temporal parent records.
         """
         unit = units_by_id[unit_id]
+        resp = OrganisatieEenheidResponse.model_validate(unit)
+        mgr = managers_map.get(unit_id)
+        if mgr:
+            resp.manager = PersonResponse.model_validate(mgr)
+            resp.manager_id = mgr.id
+        else:
+            resp.manager = None
+            resp.manager_id = None
         direct_children = sorted(
             [u for u in all_units if u.parent_id == unit_id],
             key=lambda u: u.naam,
         )
         return OrganisatieEenheidPersonenGroup(
-            eenheid=OrganisatieEenheidResponse.model_validate(unit),
+            eenheid=resp,
             personen=personen_by_unit.get(unit_id, []),
             children=[build_group(c.id) for c in direct_children],
         )

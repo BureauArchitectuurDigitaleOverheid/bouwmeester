@@ -49,15 +49,20 @@ router = APIRouter(prefix="/webauthn", tags=["webauthn"])
 _MAX_CREDENTIALS_PER_USER = 10
 
 
-def _init_webauthn_session(session: dict, person: Person) -> None:
+async def _init_webauthn_session(
+    session: dict, person: Person, db: AsyncSession
+) -> None:
     """Populate a cleared session dict for a WebAuthn-only login."""
+    from bouwmeester.core.permissions import build_permission_context
+
+    perm_ctx = await build_permission_context(db, person)
     session["webauthn_session"] = True
     session["webauthn_created_at"] = time.time()
     session["person_db_id"] = str(person.id)
     session["person_email"] = person.email or ""
     session["person_name"] = person.naam
     session["person_sub"] = person.oidc_subject or ""
-    session["is_admin"] = person.is_admin
+    session["is_admin"] = perm_ctx.is_super_admin
     session["_rotate"] = True
 
 
@@ -361,7 +366,7 @@ async def authenticate_verify(
     # Create a WebAuthn-only session (no OIDC tokens).
     session = request.session
     session.clear()
-    _init_webauthn_session(session, person)
+    await _init_webauthn_session(session, person, db)
 
     logger.info("WebAuthn authentication successful for %s", email)
 

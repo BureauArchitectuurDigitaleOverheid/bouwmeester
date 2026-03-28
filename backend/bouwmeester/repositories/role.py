@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.models.person import Person
 from bouwmeester.models.role import Permission, PersonRole, Role, RolePermission
 
 
@@ -131,6 +132,32 @@ class PersonRoleRepository:
         await self.session.delete(pr)
         await self.session.flush()
         return True
+
+    async def get_super_admins(self) -> list[Person]:
+        """Return all persons with an active super_admin role."""
+        today = date.today()
+        stmt = (
+            select(Person)
+            .join(PersonRole, PersonRole.person_id == Person.id)
+            .where(
+                PersonRole.role_id == "super_admin",
+                PersonRole.start_datum <= today,
+                PersonRole.eind_datum.is_(None),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_super_admin_ids(self) -> set[UUID]:
+        """Return person IDs of all active super_admins."""
+        today = date.today()
+        stmt = select(PersonRole.person_id).where(
+            PersonRole.role_id == "super_admin",
+            PersonRole.start_datum <= today,
+            PersonRole.eind_datum.is_(None),
+        )
+        result = await self.session.execute(stmt)
+        return set(result.scalars().all())
 
     async def get_active_role_ids_for_person(
         self, person_id: UUID

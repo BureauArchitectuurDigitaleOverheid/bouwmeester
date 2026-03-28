@@ -1,6 +1,7 @@
 """Tests for access request endpoints (submit, status check, admin review)."""
 
 import uuid
+from datetime import date
 
 import pytest
 from sqlalchemy import select
@@ -9,6 +10,7 @@ from bouwmeester.core import whitelist
 from bouwmeester.models.access_request import AccessRequest
 from bouwmeester.models.notification import Notification
 from bouwmeester.models.person import Person
+from bouwmeester.models.role import PersonRole
 from bouwmeester.models.whitelist_email import WhitelistEmail
 
 
@@ -90,13 +92,21 @@ async def test_request_access_already_allowed(client):
 
 async def test_request_access_notifies_admins(client, db_session):
     """Submitting an access request sends notifications to admin users."""
+    admin_id = uuid.uuid4()
     admin = Person(
-        id=uuid.uuid4(),
+        id=admin_id,
         naam="Admin User",
         email="admin@example.com",
-        is_admin=True,
     )
     db_session.add(admin)
+    await db_session.flush()
+    db_session.add(
+        PersonRole(
+            person_id=admin_id,
+            role_id="super_admin",
+            start_datum=date.today(),
+        )
+    )
     await db_session.flush()
 
     resp = await client.post(

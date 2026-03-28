@@ -261,26 +261,31 @@ async def auth_status(
             }
 
         try:
+            from bouwmeester.core.permissions import build_permission_context
+
             # Use cached values from session to avoid DB queries on every
             # page load.
             person_id = request.session.get("person_db_id")
             needs_onboarding = request.session.get("needs_onboarding")
 
             is_admin = request.session.get("is_admin")
+            perm_ctx = None  # reused below for roles/permissions
 
             # Resolve from DB on first call.
             if person_id is None and sub and email:
                 person = await get_or_create_person(db, sub=sub, email=email, name=name)
                 person_id = str(person.id)
                 needs_onboarding = _check_needs_onboarding(person)
-                is_admin = person.is_admin
+
+                perm_ctx = await build_permission_context(db, person)
+                is_admin = perm_ctx.is_super_admin
 
                 # Cache in session.
                 request.session["person_db_id"] = person_id
                 request.session["needs_onboarding"] = needs_onboarding
                 request.session["is_admin"] = is_admin
             elif person_id is not None:
-                # Re-fetch is_admin from DB periodically so admin-role
+                # Re-fetch is_admin from RBAC periodically so admin-role
                 # changes take effect without requiring the target user to
                 # re-login.  Throttled to at most once per 60s to avoid a
                 # DB query on every page load.
@@ -288,7 +293,8 @@ async def auth_status(
                 if time.time() - last_check > 60:
                     person_obj = await db.get(Person, UUID(person_id))
                     if person_obj is not None:
-                        is_admin = person_obj.is_admin
+                        perm_ctx = await build_permission_context(db, person_obj)
+                        is_admin = perm_ctx.is_super_admin
                         request.session["is_admin"] = is_admin
                     request.session["is_admin_checked_at"] = time.time()
 
@@ -374,18 +380,17 @@ async def auth_status(
             roles_list: list[dict] = []
             permissions_list: list[str] = []
             if person_id:
-                from bouwmeester.core.permissions import (
-                    build_permission_context,
-                )
                 from bouwmeester.repositories.role import (
                     PersonRoleRepository,
                 )
 
                 pid_uuid = UUID(person_id)
-                # Build person stub for permission context
-                person_for_perm = await db.get(Person, pid_uuid)
-                if person_for_perm:
-                    perm_ctx = await build_permission_context(db, person_for_perm)
+                # Reuse perm_ctx if already built above, otherwise build it
+                if perm_ctx is None:
+                    person_for_perm = await db.get(Person, pid_uuid)
+                    if person_for_perm:
+                        perm_ctx = await build_permission_context(db, person_for_perm)
+                if perm_ctx is not None:
                     permissions_list = sorted(perm_ctx.effective_permissions)
 
                     pr_repo = PersonRoleRepository(db)
