@@ -237,7 +237,6 @@ async def seed(db: AsyncSession) -> None:
         "corpus_node_status",
         "corpus_node",
         "person_organisatie_eenheid",
-        "organisatie_eenheid_manager",
         "organisatie_eenheid_parent",
         "organisatie_eenheid_naam",
         "person",
@@ -4792,12 +4791,11 @@ async def seed(db: AsyncSession) -> None:
         )
         db.add(init)
         await db.flush()
-        # First admin found becomes eigenaar
-        admin_person = next((p for p in person_map.values() if p.is_admin), None)
-        if admin_person:
+        # First person (super_admin) becomes eigenaar
+        if first_person:
             db.add(
                 ResourcePermission(
-                    person_id=admin_person.id,
+                    person_id=first_person.id,
                     resource_type="initiatief",
                     resource_id=init.id,
                     rol="eigenaar",

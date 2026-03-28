@@ -65,7 +65,6 @@ async def org_visibility_setup(db_session: AsyncSession, _test_app):
         email=f"orgtest-{uuid.uuid4().hex[:8]}@example.com",
         functie="tester",
         is_active=True,
-        is_admin=False,
     )
     db_session.add(person)
     await db_session.flush()

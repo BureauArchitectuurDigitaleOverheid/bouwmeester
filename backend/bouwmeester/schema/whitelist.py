@@ -24,7 +24,7 @@ class AdminUserResponse(BaseModel):
     naam: str
     email: str | None = None
     functie: str | None = None
-    is_admin: bool
+    is_admin: bool = False
     is_active: bool
     last_seen_at: datetime | None = None
 
