@@ -111,26 +111,26 @@ async def build_permission_context(
     person: Person,
 ) -> PermissionContext:
     """Build a PermissionContext by querying person_role + role_permission."""
-    # Legacy support: if person.is_admin, treat as super_admin
-    if person.is_admin:
-        return PermissionContext(
-            person_id=person.id,
-            is_authenticated=True,
-            system_roles=["super_admin"],
-            is_super_admin=True,
-        )
-
     pr_repo = PersonRoleRepository(db)
     system_roles, scoped_roles = await pr_repo.get_active_role_ids_for_person(person.id)
+
+    # Legacy support: if person.is_admin, treat as super_admin
+    if person.is_admin and "super_admin" not in system_roles:
+        system_roles = ["super_admin"] + system_roles
 
     is_super_admin = "super_admin" in system_roles
 
     if is_super_admin:
+        # Resolve all permissions so they can be enumerated
+        role_repo = RoleRepository(db)
+        all_perms = await role_repo.get_role_permission_ids("super_admin")
         return PermissionContext(
             person_id=person.id,
             is_authenticated=True,
             system_roles=system_roles,
             scoped_roles=scoped_roles,
+            effective_permissions=all_perms,
+            system_permissions=all_perms,
             is_super_admin=True,
         )
 

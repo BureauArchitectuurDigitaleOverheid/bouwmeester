@@ -104,14 +104,22 @@ async def list_roles(
 )
 async def my_permissions(
     user: OptionalUser,
+    person_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Return the current user's roles and resolved permissions."""
-    if user is None:
+    """Return the current user's roles and resolved permissions.
+
+    In dev mode (no OIDC), accepts an optional person_id query param
+    to resolve permissions for a specific person.
+    """
+    effective_user = user
+    if effective_user is None and person_id is not None:
+        effective_user = await db.get(Person, person_id)
+    if effective_user is None:
         return MyPermissionsResponse(roles=[], permissions=[])
-    perm_ctx = await build_permission_context(db, user)
+    perm_ctx = await build_permission_context(db, effective_user)
     pr_repo = PersonRoleRepository(db)
-    assignments = await pr_repo.list_for_person(user.id)
+    assignments = await pr_repo.list_for_person(effective_user.id)
     roles = [_assignment_to_response(a) for a in assignments]
     return MyPermissionsResponse(
         roles=roles,
