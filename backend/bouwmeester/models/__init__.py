@@ -23,13 +23,11 @@ from bouwmeester.models.http_session import HttpSession  # noqa: F401
 from bouwmeester.models.initiatief import (  # noqa: F401
     Initiatief,
     InitiatiefEenheid,
-    InitiatiefMember,
 )
 from bouwmeester.models.instrument import Instrument  # noqa: F401
 from bouwmeester.models.lead import Lead  # noqa: F401
 from bouwmeester.models.lead_activity import LeadActivity  # noqa: F401
 from bouwmeester.models.lead_attachment import LeadAttachment  # noqa: F401
-from bouwmeester.models.lead_contact import LeadContact  # noqa: F401
 from bouwmeester.models.lead_node import LeadNode  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
 from bouwmeester.models.mattermost_user import (  # noqa: F401
@@ -37,7 +35,6 @@ from bouwmeester.models.mattermost_user import (  # noqa: F401
     MattermostUser,
 )
 from bouwmeester.models.mention import Mention  # noqa: F401
-from bouwmeester.models.node_stakeholder import NodeStakeholder  # noqa: F401
 from bouwmeester.models.node_status import CorpusNodeStatus  # noqa: F401
 from bouwmeester.models.node_title import CorpusNodeTitle  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
@@ -94,13 +91,11 @@ __all__ = [
     "ExterneOrganisatie",
     "HttpSession",
     "Initiatief",
-    "InitiatiefMember",
     "InitiatiefEenheid",
     "Instrument",
     "Lead",
     "LeadActivity",
     "LeadAttachment",
-    "LeadContact",
     "LeadNode",
     "LeadTag",
     "Maatregel",
@@ -108,7 +103,6 @@ __all__ = [
     "MattermostUser",
     "Mention",
     "ParlementairItem",
-    "NodeStakeholder",
     "NodeTag",
     "Notification",
     "Opdracht",

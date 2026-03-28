@@ -219,6 +219,8 @@ async def seed(db: AsyncSession) -> None:
         "node_tag",
         "tag",
         "task",
+        "resource_permission",
+        "shared_access",
         "node_stakeholder",
         "edge",
         "edge_schema_rule",
@@ -3418,7 +3420,7 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
     # 7. NODE STAKEHOLDERS
     # =========================================================================
-    from bouwmeester.models.node_stakeholder import NodeStakeholder
+    from bouwmeester.models.resource_permission import ResourcePermission
 
     stakeholders_data = [
         # Directeuren als eigenaar van koepeldossiers
@@ -3513,9 +3515,10 @@ async def seed(db: AsyncSession) -> None:
 
     for node, person, rol in stakeholders_data:
         db.add(
-            NodeStakeholder(
-                node_id=node.id,
+            ResourcePermission(
                 person_id=person.id,
+                resource_type="corpus_node",
+                resource_id=node.id,
                 rol=rol,
             )
         )

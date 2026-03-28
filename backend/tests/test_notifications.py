@@ -702,12 +702,13 @@ async def test_update_task_completion_notifies_stakeholders(
     client, db_session, sample_task, sample_node, second_person
 ):
     """Status → done → stakeholders get task_completed."""
-    from bouwmeester.models.node_stakeholder import NodeStakeholder
+    from bouwmeester.models.resource_permission import ResourcePermission
 
     # Add second_person as stakeholder
-    sh = NodeStakeholder(
-        node_id=sample_node.id,
+    sh = ResourcePermission(
         person_id=second_person.id,
+        resource_type="corpus_node",
+        resource_id=sample_node.id,
         rol="betrokken",
     )
     db_session.add(sh)
@@ -750,11 +751,12 @@ async def test_create_edge_notifies_stakeholders(
     client, db_session, sample_node, second_node, sample_edge_type, sample_person
 ):
     """Stakeholders of both nodes get edge_created."""
-    from bouwmeester.models.node_stakeholder import NodeStakeholder
+    from bouwmeester.models.resource_permission import ResourcePermission
 
-    sh = NodeStakeholder(
-        node_id=sample_node.id,
+    sh = ResourcePermission(
         person_id=sample_person.id,
+        resource_type="corpus_node",
+        resource_id=sample_node.id,
         rol="eigenaar",
     )
     db_session.add(sh)
@@ -780,13 +782,14 @@ async def test_create_edge_deduplicates(
     client, db_session, sample_node, second_node, sample_edge_type, sample_person
 ):
     """Person on both nodes → only 1 notification."""
-    from bouwmeester.models.node_stakeholder import NodeStakeholder
+    from bouwmeester.models.resource_permission import ResourcePermission
 
     # Add same person as stakeholder on both nodes
     for node in [sample_node, second_node]:
-        sh = NodeStakeholder(
-            node_id=node.id,
+        sh = ResourcePermission(
             person_id=sample_person.id,
+            resource_type="corpus_node",
+            resource_id=node.id,
             rol="eigenaar",
         )
         db_session.add(sh)
@@ -835,11 +838,12 @@ async def test_update_stakeholder_role_notifies_person(
     client, db_session, sample_node, second_person
 ):
     """Changing role notifies the person."""
-    from bouwmeester.models.node_stakeholder import NodeStakeholder
+    from bouwmeester.models.resource_permission import ResourcePermission
 
-    sh = NodeStakeholder(
-        node_id=sample_node.id,
+    sh = ResourcePermission(
         person_id=second_person.id,
+        resource_type="corpus_node",
+        resource_id=sample_node.id,
         rol="betrokken",
     )
     db_session.add(sh)
@@ -863,11 +867,12 @@ async def test_update_stakeholder_same_role_no_notification(
     client, db_session, sample_node, second_person
 ):
     """Same role → no stakeholder_role_changed notification."""
-    from bouwmeester.models.node_stakeholder import NodeStakeholder
+    from bouwmeester.models.resource_permission import ResourcePermission
 
-    sh = NodeStakeholder(
-        node_id=sample_node.id,
+    sh = ResourcePermission(
         person_id=second_person.id,
+        resource_type="corpus_node",
+        resource_id=sample_node.id,
         rol="betrokken",
     )
     db_session.add(sh)

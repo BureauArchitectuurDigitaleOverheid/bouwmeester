@@ -77,6 +77,8 @@ class PermissionContext:
     system_roles: list[str] = field(default_factory=list)
     scoped_roles: dict[UUID, list[str]] = field(default_factory=dict)
     effective_permissions: set[str] = field(default_factory=set)
+    # Permissions granted only by system-level roles (apply to all eenheden)
+    system_permissions: set[str] = field(default_factory=set)
     # Per-eenheid resolved permissions for scoped checks
     scoped_permissions: dict[UUID, set[str]] = field(default_factory=dict)
     is_super_admin: bool = False
@@ -92,7 +94,7 @@ class PermissionContext:
         if self.is_super_admin:
             return True
         # System-level permissions apply everywhere
-        if self.system_roles and perm in self.effective_permissions:
+        if perm in self.system_permissions:
             return True
         # Check scoped permissions for this specific eenheid
         eenheid_perms = self.scoped_permissions.get(eenheid_id, set())
@@ -154,10 +156,13 @@ async def build_permission_context(
             eenheid_perms |= role_perm_cache.get(role_id, set())
         scoped_permissions[eenheid_id] = eenheid_perms
 
-    # Effective = union of system + all scoped
-    effective_permissions: set[str] = set()
+    # System-level permissions (apply to all eenheden)
+    system_perms: set[str] = set()
     for role_id in system_roles:
-        effective_permissions |= role_perm_cache.get(role_id, set())
+        system_perms |= role_perm_cache.get(role_id, set())
+
+    # Effective = union of system + all scoped
+    effective_permissions: set[str] = set(system_perms)
     for perms in scoped_permissions.values():
         effective_permissions |= perms
 
@@ -167,6 +172,7 @@ async def build_permission_context(
         system_roles=system_roles,
         scoped_roles=scoped_roles,
         effective_permissions=effective_permissions,
+        system_permissions=system_perms,
         scoped_permissions=scoped_permissions,
         is_super_admin=False,
     )

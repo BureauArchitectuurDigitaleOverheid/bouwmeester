@@ -55,11 +55,27 @@ def _validate_resource_type(resource_type: str) -> None:
 async def list_resource_permissions(
     resource_type: str,
     resource_id: UUID,
-    _perm: PermissionContext = Depends(get_permission_context),
+    perm: PermissionContext = Depends(get_permission_context),
     db: AsyncSession = Depends(get_db),
 ):
     """List people and roles on a resource."""
     _validate_resource_type(resource_type)
+    if not perm.is_authenticated:
+        raise HTTPException(401, "Not authenticated")
+
+    # Require RBAC permission or resource-level access
+    if not perm.is_super_admin:
+        has_rbac = perm.has_permission("resource_permission:manage")
+        has_resource = await check_resource_permission(
+            db,
+            perm.person_id,  # type: ignore[arg-type]
+            resource_type,
+            resource_id,
+            "resource_permission:manage",
+        )
+        if not has_rbac and not has_resource:
+            raise HTTPException(403, "Insufficient permissions")
+
     repo = ResourcePermissionRepository(db)
     perms = await repo.list_for_resource(resource_type, resource_id)
     return [

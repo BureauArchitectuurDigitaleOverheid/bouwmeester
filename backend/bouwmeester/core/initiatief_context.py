@@ -1,7 +1,7 @@
 """Initiatief-based access context for leads visibility filtering.
 
 Determines which initiatieven a user can see based on:
-- Direct membership (InitiatiefMember)
+- Direct membership (resource_permission with resource_type='initiatief')
 - Organisatie-eenheid membership (InitiatiefEenheid + PersonOrganisatieEenheid)
 """
 
@@ -53,7 +53,7 @@ async def build_initiatief_context(
         )
 
     # Direct membership via resource_permission
-    direct_stmt = select(ResourcePermission.resource_id).where(
+    direct_stmt = select(ResourcePermission.resource_id.label("initiatief_id")).where(
         ResourcePermission.resource_type == "initiatief",
         ResourcePermission.person_id == person.id,
     )

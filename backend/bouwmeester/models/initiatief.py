@@ -1,4 +1,4 @@
-"""Initiatief, InitiatiefMember, and InitiatiefEenheid models."""
+"""Initiatief and InitiatiefEenheid models."""
 
 import uuid
 from datetime import datetime
@@ -36,11 +36,6 @@ class Initiatief(Base):
 
     # Relationships
     created_by: Mapped["Person"] = relationship("Person", foreign_keys=[created_by_id])  # noqa: F821
-    members: Mapped[list["InitiatiefMember"]] = relationship(
-        "InitiatiefMember",
-        back_populates="initiatief",
-        cascade="all, delete-orphan",
-    )
     eenheden: Mapped[list["InitiatiefEenheid"]] = relationship(
         "InitiatiefEenheid",
         back_populates="initiatief",
@@ -50,35 +45,6 @@ class Initiatief(Base):
         "Lead",
         back_populates="initiatief",
     )
-
-
-class InitiatiefMember(Base):
-    __tablename__ = "initiatief_member"
-
-    initiatief_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("initiatief.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    person_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("person.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    rol: Mapped[str] = mapped_column(
-        default="contributor",
-        server_default="contributor",
-        comment="eigenaar|contributor",
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-
-    # Relationships
-    initiatief: Mapped["Initiatief"] = relationship(
-        "Initiatief", back_populates="members"
-    )
-    person: Mapped["Person"] = relationship("Person")  # noqa: F821
 
 
 class InitiatiefEenheid(Base):

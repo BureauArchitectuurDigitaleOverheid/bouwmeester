@@ -85,7 +85,7 @@ Common HTTP status codes:
 | **Person** | A user or agent. Agents have `is_agent: true` and use API keys |
 | **OrganisatieEenheid** | Organizational unit (ministerie > directoraat_generaal > directie > dienst > afdeling > cluster/bureau > team) |
 | **Tag** | Hierarchical label applied to nodes via NodeTag |
-| **NodeStakeholder** | Links a person to a node with a role (eigenaar/betrokken/adviseur/indiener) |
+| **ResourcePermission** | Links a person to a resource (node/initiatief/lead/team/opdracht) with a role |
 | **Notification** | In-app messages and alerts for persons |
 | **Activity** | Audit log of all create/update/delete actions |
 | **ParlementairItem** | Imported parliamentary items (moties, kamervragen, toezeggingen). These have **suggested edges** that are reviewed by humans via `/api/parlementair/edges/*` — agents should generally not interact with this review workflow |
