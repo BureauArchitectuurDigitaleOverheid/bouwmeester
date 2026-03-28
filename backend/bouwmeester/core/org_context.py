@@ -32,6 +32,8 @@ class OrgContext:
     person_id: UUID | None = None
     own_eenheid_ids: list[UUID] = field(default_factory=list)
     visible_eenheid_ids: list[UUID] = field(default_factory=list)
+    shared_eenheid_ids: list[UUID] = field(default_factory=list)
+    shared_node_ids: list[UUID] = field(default_factory=list)
     is_admin: bool = False
     is_authenticated: bool = False
 
@@ -140,10 +142,19 @@ async def build_org_context(
 
     all_visible = set(own_ids) | parent_ids | set(managed_ids) | managed_sub_ids
 
+    # Query shared access grants targeting the user's eenheden
+    from bouwmeester.repositories.shared_access import SharedAccessRepository
+
+    sa_repo = SharedAccessRepository(db)
+    shared_eenheid_ids = await sa_repo.get_shared_eenheid_ids(own_ids)
+    shared_node_ids = await sa_repo.get_shared_node_ids(own_ids)
+
     return OrgContext(
         person_id=person.id,
         own_eenheid_ids=own_ids,
         visible_eenheid_ids=list(all_visible),
+        shared_eenheid_ids=shared_eenheid_ids,
+        shared_node_ids=shared_node_ids,
         is_admin=False,
         is_authenticated=True,
     )
@@ -195,10 +206,11 @@ def apply_org_filter(stmt, column, ctx: OrgContext | None):
         return stmt
     if not ctx.is_authenticated:
         return stmt.where(column.is_(None))
+    all_visible = list(set(ctx.visible_eenheid_ids) | set(ctx.shared_eenheid_ids))
     return stmt.where(
         or_(
             column.is_(None),
-            column.in_(ctx.visible_eenheid_ids),
+            column.in_(all_visible),
         )
     )
 
@@ -221,6 +233,7 @@ def org_filter_sql_clause(column: str, ctx: OrgContext | None) -> str:
         return ""
     if not ctx.is_authenticated:
         return f" AND {column} IS NULL"
-    if not ctx.visible_eenheid_ids:
+    all_visible = list(set(ctx.visible_eenheid_ids) | set(ctx.shared_eenheid_ids))
+    if not all_visible:
         return f" AND {column} IS NULL"
     return f" AND ({column} IS NULL OR {column} = ANY(:visible_eenheid_ids))"

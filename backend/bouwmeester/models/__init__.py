@@ -58,6 +58,14 @@ from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid  # no
 from bouwmeester.models.person_phone import PersonPhone  # noqa: F401
 from bouwmeester.models.politieke_input import PolitiekeInput  # noqa: F401
 from bouwmeester.models.probleem import Probleem  # noqa: F401
+from bouwmeester.models.resource_permission import ResourcePermission  # noqa: F401
+from bouwmeester.models.role import (  # noqa: F401
+    Permission,
+    PersonRole,
+    Role,
+    RolePermission,
+)
+from bouwmeester.models.shared_access import SharedAccess  # noqa: F401
 from bouwmeester.models.tag import LeadTag, NodeTag, Tag  # noqa: F401
 from bouwmeester.models.task import Task  # noqa: F401
 from bouwmeester.models.team import Team, TeamMember  # noqa: F401
@@ -112,12 +120,18 @@ __all__ = [
     "OrganisatieEenheidNaam",
     "OrganisatieEenheidParent",
     "OrganisatieEenheid",
+    "Permission",
     "Person",
+    "PersonRole",
     "PersonEmail",
     "PersonOrganisatieEenheid",
     "PersonPhone",
     "PolitiekeInput",
     "Probleem",
+    "ResourcePermission",
+    "Role",
+    "RolePermission",
+    "SharedAccess",
     "SuggestedEdge",
     "Tag",
     "Task",

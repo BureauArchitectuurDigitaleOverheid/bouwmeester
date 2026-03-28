@@ -112,18 +112,22 @@ async def _get_existing_emails(session: AsyncSession, emails: set[str]) -> set[s
 
 
 async def seed_admins_from_file(session: AsyncSession) -> int:
-    """Ensure admin persons exist and have ``is_admin = True``.
+    """Ensure admin persons exist and have ``is_admin = True`` + ``super_admin`` role.
 
     For each email in the admin seed file:
     - If a Person with that email exists → set ``is_admin = True``
     - If not → create a stub Person with ``is_admin = True``
+    - Ensure a ``person_role`` record with ``super_admin`` exists
 
     Runs on every startup (idempotent).  Never revokes admin rights.
 
     Returns the number of newly created person stubs.
     """
+    from datetime import date
+
     from bouwmeester.models.person import Person
     from bouwmeester.models.person_email import PersonEmail
+    from bouwmeester.models.role import PersonRole
 
     try:
         emails = _load_emails_from_file(_ADMIN_JSON_PATH, _ADMIN_AGE_PATH)
@@ -157,6 +161,25 @@ async def seed_admins_from_file(session: AsyncSession) -> int:
         session.add(PersonEmail(person_id=person.id, email=email, is_default=True))
     if missing_emails:
         await session.flush()
+
+    # Ensure all admin persons have a super_admin person_role
+    refreshed_ids = await _get_person_ids_by_emails(session, emails)
+    for person_id in refreshed_ids:
+        existing_role = await session.execute(
+            select(PersonRole.id).where(
+                PersonRole.person_id == person_id,
+                PersonRole.role_id == "super_admin",
+            )
+        )
+        if not existing_role.scalar_one_or_none():
+            session.add(
+                PersonRole(
+                    person_id=person_id,
+                    role_id="super_admin",
+                    start_datum=date.today(),
+                )
+            )
+    await session.flush()
 
     logger.info(
         "Admin seed: updated %d existing, created %d new person stubs (from %d emails)",

@@ -187,9 +187,10 @@ class SearchRepository:
             and not org_ctx.is_admin
             and org_ctx.visible_eenheid_ids
         ):
-            params["visible_eenheid_ids"] = [
-                str(eid) for eid in org_ctx.visible_eenheid_ids
-            ]
+            all_visible = list(
+                set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
+            )
+            params["visible_eenheid_ids"] = [str(eid) for eid in all_visible]
 
         result = await self.session.execute(text(full_sql), params)
         rows = result.all()
