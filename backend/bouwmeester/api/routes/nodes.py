@@ -416,6 +416,12 @@ async def update_node_stakeholder(
         "Stakeholder",
     )
 
+    if rp.resource_type != "corpus_node" or rp.resource_id != id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stakeholder not found",
+        )
+
     old_rol = rp.rol
     rp.rol = data.rol
     await db.flush()
@@ -467,6 +473,12 @@ async def remove_node_stakeholder(
         await repo.get_with_person(stakeholder_id),
         "Stakeholder",
     )
+
+    if rp.resource_type != "corpus_node" or rp.resource_id != id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stakeholder not found",
+        )
 
     rp_person_id = str(rp.person_id)
     rp_rol = rp.rol

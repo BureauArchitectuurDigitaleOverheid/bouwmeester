@@ -244,6 +244,43 @@ async def revoke_role(
     if assignment is None:
         raise HTTPException(404, "Assignment not found")
 
+    # Scope enforcement: same rules as assign_role
+    if not _perm.is_super_admin:
+        role_repo = RoleRepository(db)
+        target_role = await role_repo.get_role(assignment.role_id)
+
+        # Rank check: can only revoke roles you outrank
+        grantor_roles = _perm.system_roles + [
+            r for roles in _perm.scoped_roles.values() for r in roles
+        ]
+        grantor_max_rank = 0
+        for gr in grantor_roles:
+            gr_obj = await role_repo.get_role(gr)
+            if gr_obj and gr_obj.rank > grantor_max_rank:
+                grantor_max_rank = gr_obj.rank
+        if target_role and target_role.rank >= grantor_max_rank:
+            raise HTTPException(
+                403,
+                "Cannot revoke a role at or above your own level",
+            )
+
+        # Org scope check: can only revoke roles within accessible eenheden
+        if assignment.organisatie_eenheid_id:
+            from bouwmeester.core.org_context import build_org_context
+
+            person_obj = await db.get(Person, _perm.person_id)
+            if person_obj:
+                org_ctx = await build_org_context(db, person_obj)
+                if (
+                    not org_ctx.is_admin
+                    and assignment.organisatie_eenheid_id
+                    not in org_ctx.visible_eenheid_ids
+                ):
+                    raise HTTPException(
+                        403,
+                        "Cannot revoke roles outside your org scope",
+                    )
+
     await repo.revoke(assignment_id)
 
     await log_activity(
