@@ -524,7 +524,7 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
           onSubmit={handleAdd}
           className="px-4 py-3 space-y-3"
         >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_1fr] gap-3">
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1">
                 Resource type
