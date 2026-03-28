@@ -199,16 +199,15 @@ async def test_managed_by_with_manager(
     """GET /api/organisatie/managed-by/{person_id} returns units managed by person."""
     from datetime import date
 
-    from bouwmeester.models.org_manager import OrganisatieEenheidManager
+    from bouwmeester.models.role import PersonRole
 
-    # Set sample_person as manager (legacy column + temporal record)
-    sample_organisatie.manager_id = sample_person.id
-    db_session.add(sample_organisatie)
+    # Set sample_person as unit_manager via RBAC
     db_session.add(
-        OrganisatieEenheidManager(
-            eenheid_id=sample_organisatie.id,
-            manager_id=sample_person.id,
-            geldig_van=date.today(),
+        PersonRole(
+            person_id=sample_person.id,
+            role_id="unit_manager",
+            organisatie_eenheid_id=sample_organisatie.id,
+            start_datum=date.today(),
         )
     )
     await db_session.flush()
