@@ -37,14 +37,6 @@ class OrganisatieEenheid(Base):
         ForeignKey("organisatie_eenheid.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    # Legacy column — no longer read by the application.
-    # Manager is now resolved from person_role (role_id='unit_manager').
-    # Column kept to avoid a migration that drops it.
-    manager_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("person.id", ondelete="SET NULL"),
-        nullable=True,
-    )
 
     type: Mapped[str] = mapped_column(
         nullable=False,

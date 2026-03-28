@@ -596,7 +596,6 @@ _ALL_MODEL_TABLES = [
     "person_email",
     "person_phone",
     "person_organisatie_eenheid",
-    "organisatie_eenheid_manager",
     "organisatie_eenheid_parent",
     "organisatie_eenheid_naam",
     "activity",
