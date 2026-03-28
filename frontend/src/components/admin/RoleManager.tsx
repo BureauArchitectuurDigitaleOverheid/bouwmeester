@@ -134,7 +134,11 @@ function PersonRolesPanel({
 
   if (isLoading) {
     return (
-      <div className="text-sm text-text-secondary py-4 px-4">Laden...</div>
+      <div className="bg-gray-50 border-l-3 border-l-primary-300 py-3 px-2">
+        <div className="px-4 py-2 text-sm text-text-secondary animate-pulse">
+          Laden...
+        </div>
+      </div>
     );
   }
 
@@ -407,7 +411,7 @@ function useResourceOptions(resourceType: string) {
 }
 
 function PersonResourcePermissionsSection({ personId }: { personId: string }) {
-  const { data: perms, isLoading } = usePersonResourcePermissions(personId);
+  const { data: perms } = usePersonResourcePermissions(personId);
   const removeRp = useRemovePersonResourcePermission(personId);
   const queryClient = useQueryClient();
 
@@ -458,8 +462,6 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
       { onSuccess: resetForm },
     );
   };
-
-  if (isLoading) return null;
 
   const hasPerms = perms && perms.length > 0;
 
