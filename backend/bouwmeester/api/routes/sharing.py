@@ -14,6 +14,7 @@ from bouwmeester.schema.shared_access import (
     SharedAccessCreate,
     SharedAccessResponse,
 )
+from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/sharing", tags=["sharing"])
 
@@ -83,6 +84,25 @@ async def create_share(
     db.add(share)
     await db.flush()
     await db.refresh(share)
+
+    await log_activity(
+        db,
+        None,
+        perm.person_id,
+        "sharing.created",
+        details={
+            "share_id": str(share.id),
+            "source_node_id": (
+                str(share.source_node_id) if share.source_node_id else None
+            ),
+            "source_eenheid_id": (
+                str(share.source_eenheid_id) if share.source_eenheid_id else None
+            ),
+            "target_eenheid_id": str(share.target_eenheid_id),
+            "access_level": share.access_level,
+        },
+    )
+
     return SharedAccessResponse(
         id=share.id,
         source_node_id=share.source_node_id,
@@ -108,4 +128,13 @@ async def revoke_share(
     deleted = await repo.delete(share_id)
     if not deleted:
         raise HTTPException(404, "Share not found")
+
+    await log_activity(
+        db,
+        None,
+        _perm.person_id,
+        "sharing.revoked",
+        details={"share_id": str(share_id)},
+    )
+
     return {"ok": True}

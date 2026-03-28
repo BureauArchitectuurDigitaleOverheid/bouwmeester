@@ -24,6 +24,7 @@ from bouwmeester.schema.resource_permission import (
     ResourcePermissionResponse,
     ResourcePermissionUpdate,
 )
+from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(
     prefix="/resource-permissions",
@@ -118,6 +119,20 @@ async def add_resource_permission(
             409,
             "Permission already exists",
         )
+
+    await log_activity(
+        db,
+        None,
+        perm.person_id,
+        "resource_permission.added",
+        details={
+            "resource_type": resource_type,
+            "resource_id": str(resource_id),
+            "person_id": str(data.person_id),
+            "rol": data.rol,
+        },
+    )
+
     return ResourcePermissionResponse(
         id=rp.id,
         person_id=rp.person_id,
@@ -200,6 +215,19 @@ async def delete_resource_permission(
         )
         if not has_rbac and not has_resource:
             raise HTTPException(403, "Insufficient permissions")
+
+    await log_activity(
+        db,
+        None,
+        perm.person_id,
+        "resource_permission.removed",
+        details={
+            "resource_type": rp.resource_type,
+            "resource_id": str(rp.resource_id),
+            "person_id": str(rp.person_id),
+            "rol": rp.rol,
+        },
+    )
 
     await repo.delete(rp_id)
     return {"ok": True}

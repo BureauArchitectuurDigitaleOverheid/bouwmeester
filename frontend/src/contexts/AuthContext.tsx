@@ -20,6 +20,8 @@ interface AuthPerson {
   needs_placement: boolean;
   has_pending_placement: boolean;
   placement_denied: boolean;
+  roles?: { role_id: string; role_naam: string | null; organisatie_eenheid_id: string | null; eenheid_naam: string | null }[];
+  permissions?: string[];
 }
 
 interface AuthState {
@@ -68,6 +70,8 @@ async function fetchAuthStatus(): Promise<AuthState> {
           needs_placement: data.person.needs_placement ?? false,
           has_pending_placement: data.person.has_pending_placement ?? false,
           placement_denied: data.person.placement_denied ?? false,
+          roles: data.person.roles ?? [],
+          permissions: data.person.permissions ?? [],
         }
       : null,
     error: null,
@@ -170,7 +174,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const effectiveState = useMemo(() => {
     if (!viewAsNonAdmin || !state.person) return state;
-    return { ...state, person: { ...state.person, is_admin: false } };
+    return {
+      ...state,
+      person: {
+        ...state.person,
+        is_admin: false,
+        roles: [],
+        permissions: ['node:read', 'task:read', 'edge:read', 'lead:read', 'initiatief:read', 'opdracht:read', 'tag:read', 'people:read', 'org:read'],
+      },
+    };
   }, [state, viewAsNonAdmin]);
 
   const value: AuthContextValue = {

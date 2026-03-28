@@ -22,6 +22,7 @@ from bouwmeester.schema.role import (
     PersonRoleResponse,
     RoleWithPermissionsResponse,
 )
+from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/roles", tags=["roles"])
 
@@ -158,6 +159,23 @@ async def assign_role(
         )
     except Exception:
         raise HTTPException(409, "Role assignment already exists")
+
+    await log_activity(
+        db,
+        None,
+        grantor_id,
+        "role.assigned",
+        details={
+            "person_id": str(data.person_id),
+            "role_id": data.role_id,
+            "eenheid_id": (
+                str(data.organisatie_eenheid_id)
+                if data.organisatie_eenheid_id
+                else None
+            ),
+        },
+    )
+
     return PersonRoleResponse(
         id=assignment.id,
         person_id=assignment.person_id,
@@ -185,7 +203,27 @@ async def revoke_role(
 ):
     """Revoke a role assignment."""
     repo = PersonRoleRepository(db)
-    deleted = await repo.revoke(assignment_id)
-    if not deleted:
+    # Read before delete for logging
+    assignment = await repo.get_by_id(assignment_id)
+    if assignment is None:
         raise HTTPException(404, "Assignment not found")
+
+    await repo.revoke(assignment_id)
+
+    await log_activity(
+        db,
+        None,
+        _perm.person_id,
+        "role.revoked",
+        details={
+            "person_id": str(assignment.person_id),
+            "role_id": assignment.role_id,
+            "eenheid_id": (
+                str(assignment.organisatie_eenheid_id)
+                if assignment.organisatie_eenheid_id
+                else None
+            ),
+        },
+    )
+
     return {"ok": True}
