@@ -4676,7 +4676,8 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
     # INITIATIEVEN
     # =========================================================================
-    from bouwmeester.models.initiatief import Initiatief, InitiatiefMember
+    from bouwmeester.models.initiatief import Initiatief
+    from bouwmeester.models.resource_permission import ResourcePermission
 
     initiatieven_data = [
         ("Regelrecht", "#3B82F6", "Community-tool voor team Regelrecht"),
@@ -4696,9 +4697,10 @@ async def seed(db: AsyncSession) -> None:
         admin_person = next((p for p in person_map.values() if p.is_admin), None)
         if admin_person:
             db.add(
-                InitiatiefMember(
-                    initiatief_id=init.id,
+                ResourcePermission(
                     person_id=admin_person.id,
+                    resource_type="initiatief",
+                    resource_id=init.id,
                     rol="eigenaar",
                 )
             )
