@@ -467,21 +467,21 @@ def test_is_webauthn_session_expired_no_created_at():
 # ---------------------------------------------------------------------------
 
 
-async def test_init_webauthn_session(webauthn_person):
+async def test_init_webauthn_session(webauthn_person, db_session):
     import time
 
     from bouwmeester.api.routes.webauthn import _init_webauthn_session
 
     before = time.time()
     session: dict = {}
-    _init_webauthn_session(session, webauthn_person)
+    await _init_webauthn_session(session, webauthn_person, db_session)
     after = time.time()
 
     assert session["webauthn_session"] is True
     assert session["person_db_id"] == str(webauthn_person.id)
     assert session["person_email"] == webauthn_person.email
     assert session["person_name"] == webauthn_person.naam
-    assert session["is_admin"] == webauthn_person.is_admin
+    assert session["is_admin"] is False  # No super_admin role assigned
     assert session["_rotate"] is True
     assert before <= session["webauthn_created_at"] <= after
 

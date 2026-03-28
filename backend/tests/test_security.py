@@ -1,12 +1,14 @@
 """Security tests for is_agent mass assignment guard and security headers."""
 
 import uuid
+from datetime import date
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
+from bouwmeester.models.role import PersonRole
 
 # ---------------------------------------------------------------------------
 # Fixtures: build clients with a specific authenticated user injected
@@ -32,8 +34,17 @@ async def authed_client(db_session, _test_app, create_person, request):
     user = await create_person(
         naam="Auth Override",
         prefix="auth",
-        is_admin=is_admin,
     )
+
+    if is_admin:
+        db_session.add(
+            PersonRole(
+                person_id=user.id,
+                role_id="super_admin",
+                start_datum=date.today(),
+            )
+        )
+        await db_session.flush()
 
     app = _test_app
 

@@ -141,6 +141,8 @@ async def list_admin_users(
     db: AsyncSession = Depends(get_db),
 ) -> list[AdminUserResponse]:
     """List all human users (excluding agents) with admin status."""
+    from bouwmeester.repositories.role import PersonRoleRepository
+
     result = await db.execute(
         select(Person)
         .where(Person.is_agent == False)  # noqa: E712
@@ -148,7 +150,16 @@ async def list_admin_users(
         .offset(skip)
         .limit(limit)
     )
-    return [AdminUserResponse.model_validate(p) for p in result.scalars().all()]
+    persons = result.scalars().all()
+
+    admin_person_ids = await PersonRoleRepository(db).get_super_admin_ids()
+
+    responses = []
+    for p in persons:
+        resp = AdminUserResponse.model_validate(p)
+        resp.is_admin = p.id in admin_person_ids
+        responses.append(resp)
+    return responses
 
 
 @router.patch("/users/{id}", response_model=AdminUserResponse)
@@ -159,6 +170,10 @@ async def toggle_admin(
     db: AsyncSession = Depends(get_db),
 ) -> AdminUserResponse:
     """Grant or revoke admin status. Cannot revoke your own admin rights."""
+    from datetime import date
+
+    from bouwmeester.models.role import PersonRole
+
     person = await db.get(Person, id)
     if person is None:
         raise HTTPException(
@@ -173,11 +188,37 @@ async def toggle_admin(
             detail="Je kunt je eigen admin-rechten niet intrekken",
         )
 
-    person.is_admin = data.is_admin
+    # Find existing active super_admin role
+    existing_role_result = await db.execute(
+        select(PersonRole).where(
+            PersonRole.person_id == id,
+            PersonRole.role_id == "super_admin",
+            PersonRole.eind_datum.is_(None),
+        )
+    )
+    existing_role = existing_role_result.scalar_one_or_none()
+
+    if data.is_admin and not existing_role:
+        # Grant super_admin role
+        db.add(
+            PersonRole(
+                person_id=id,
+                role_id="super_admin",
+                start_datum=date.today(),
+                granted_by_id=admin.id if admin else None,
+            )
+        )
+    elif not data.is_admin and existing_role:
+        # Revoke super_admin role (close it)
+        existing_role.eind_datum = date.today()
+
     await db.flush()
     await db.refresh(person)
 
-    return AdminUserResponse.model_validate(person)
+    # Build response with is_admin derived from RBAC
+    resp = AdminUserResponse.model_validate(person)
+    resp.is_admin = data.is_admin
+    return resp
 
 
 # ---------------------------------------------------------------------------

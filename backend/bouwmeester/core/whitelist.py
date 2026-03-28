@@ -4,7 +4,7 @@ The whitelist is stored in the ``whitelist_email`` database table and managed
 via the admin UI.
 
 Admin emails are bootstrapped from ``admin_emails.json`` /
-``admin_emails.json.age`` — those persons get ``is_admin = True``.
+``admin_emails.json.age`` — those persons get the ``super_admin`` role.
 
 When the whitelist table is empty the whitelist is considered inactive and all
 emails are allowed (backwards compatible for local development).
@@ -22,7 +22,7 @@ import os
 from pathlib import Path
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.query_utils import normalize_email
@@ -112,12 +112,11 @@ async def _get_existing_emails(session: AsyncSession, emails: set[str]) -> set[s
 
 
 async def seed_admins_from_file(session: AsyncSession) -> int:
-    """Ensure admin persons exist and have ``is_admin = True`` + ``super_admin`` role.
+    """Ensure admin persons exist and have a ``super_admin`` person_role.
 
     For each email in the admin seed file:
-    - If a Person with that email exists → set ``is_admin = True``
-    - If not → create a stub Person with ``is_admin = True``
-    - Ensure a ``person_role`` record with ``super_admin`` exists
+    - If a Person with that email exists → ensure ``super_admin`` role
+    - If not → create a stub Person and assign ``super_admin`` role
 
     Runs on every startup (idempotent).  Never revokes admin rights.
 
@@ -142,19 +141,11 @@ async def seed_admins_from_file(session: AsyncSession) -> int:
     if not emails:
         return 0
 
-    all_person_ids = await _get_person_ids_by_emails(session, emails)
-    updated = 0
-    if all_person_ids:
-        result = await session.execute(
-            update(Person).where(Person.id.in_(all_person_ids)).values(is_admin=True)
-        )
-        updated = result.rowcount
-
     existing_emails = await _get_existing_emails(session, emails)
     missing_emails = emails - existing_emails
 
     for email in missing_emails:
-        person = Person(email=email, naam=email, is_admin=True)
+        person = Person(email=email, naam=email)
         session.add(person)
         await session.flush()
         # Also create PersonEmail row
@@ -182,8 +173,7 @@ async def seed_admins_from_file(session: AsyncSession) -> int:
     await session.flush()
 
     logger.info(
-        "Admin seed: updated %d existing, created %d new person stubs (from %d emails)",
-        updated,
+        "Admin seed: created %d new person stubs (from %d emails)",
         len(missing_emails),
         len(emails),
     )

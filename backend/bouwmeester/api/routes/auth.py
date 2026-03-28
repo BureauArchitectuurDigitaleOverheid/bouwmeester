@@ -273,14 +273,18 @@ async def auth_status(
                 person = await get_or_create_person(db, sub=sub, email=email, name=name)
                 person_id = str(person.id)
                 needs_onboarding = _check_needs_onboarding(person)
-                is_admin = person.is_admin
+
+                from bouwmeester.core.permissions import build_permission_context
+
+                perm_ctx = await build_permission_context(db, person)
+                is_admin = perm_ctx.is_super_admin
 
                 # Cache in session.
                 request.session["person_db_id"] = person_id
                 request.session["needs_onboarding"] = needs_onboarding
                 request.session["is_admin"] = is_admin
             elif person_id is not None:
-                # Re-fetch is_admin from DB periodically so admin-role
+                # Re-fetch is_admin from RBAC periodically so admin-role
                 # changes take effect without requiring the target user to
                 # re-login.  Throttled to at most once per 60s to avoid a
                 # DB query on every page load.
@@ -288,7 +292,12 @@ async def auth_status(
                 if time.time() - last_check > 60:
                     person_obj = await db.get(Person, UUID(person_id))
                     if person_obj is not None:
-                        is_admin = person_obj.is_admin
+                        from bouwmeester.core.permissions import (
+                            build_permission_context,
+                        )
+
+                        perm_ctx = await build_permission_context(db, person_obj)
+                        is_admin = perm_ctx.is_super_admin
                         request.session["is_admin"] = is_admin
                     request.session["is_admin_checked_at"] = time.time()
 

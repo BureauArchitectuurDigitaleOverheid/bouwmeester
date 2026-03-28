@@ -14,7 +14,6 @@ from bouwmeester.models.notification import Notification
 from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.person import Person
 from bouwmeester.models.resource_permission import ResourcePermission
-from bouwmeester.models.role import PersonRole
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.notification import NotificationRepository
 from bouwmeester.schema.notification import NotificationCreate
@@ -414,16 +413,14 @@ class NotificationService:
         self, task: Task, eenheid_id: UUID, exclude_person_id: UUID | None = None
     ) -> Notification | None:
         """Notify the manager of an org unit about a task assignment."""
-        today = date.today()
-
-        stmt = select(PersonRole.person_id).where(
-            PersonRole.organisatie_eenheid_id == eenheid_id,
-            PersonRole.role_id == "unit_manager",
-            PersonRole.start_datum <= today,
-            PersonRole.eind_datum.is_(None),
+        from bouwmeester.repositories.organisatie_eenheid import (
+            OrganisatieEenheidRepository,
         )
-        result = await self.session.execute(stmt)
-        manager_id = result.scalar_one_or_none()
+
+        manager = await OrganisatieEenheidRepository(self.session).get_unit_manager(
+            eenheid_id
+        )
+        manager_id = manager.id if manager else None
 
         if not manager_id:
             return None
@@ -534,9 +531,9 @@ class NotificationService:
 
     async def notify_access_request(self, email: str, naam: str) -> list[Notification]:
         """Notify all admin users about a new access request."""
-        stmt = select(Person).where(Person.is_admin == True)  # noqa: E712
-        result = await self.session.execute(stmt)
-        admins = result.scalars().all()
+        from bouwmeester.repositories.role import PersonRoleRepository
+
+        admins = await PersonRoleRepository(self.session).get_super_admins()
 
         notifications: list[Notification] = []
         for admin in admins:
@@ -557,17 +554,16 @@ class NotificationService:
         """Notify the team manager and all admins about a placement request."""
         notifications: list[Notification] = []
         notified_ids: set[UUID] = set()
-        today = date.today()
 
         # Resolve manager from person_role
-        stmt = select(PersonRole.person_id).where(
-            PersonRole.organisatie_eenheid_id == eenheid_id,
-            PersonRole.role_id == "unit_manager",
-            PersonRole.start_datum <= today,
-            PersonRole.eind_datum.is_(None),
+        from bouwmeester.repositories.organisatie_eenheid import (
+            OrganisatieEenheidRepository,
         )
-        result = await self.session.execute(stmt)
-        manager_id = result.scalar_one_or_none()
+
+        manager = await OrganisatieEenheidRepository(self.session).get_unit_manager(
+            eenheid_id
+        )
+        manager_id = manager.id if manager else None
 
         if manager_id:
             notified_ids.add(manager_id)
@@ -582,9 +578,10 @@ class NotificationService:
             notifications.append(notification)
 
         # Also notify all admins
-        admin_stmt = select(Person).where(Person.is_admin == True)  # noqa: E712
-        admin_result = await self.session.execute(admin_stmt)
-        for admin in admin_result.scalars().all():
+        from bouwmeester.repositories.role import PersonRoleRepository
+
+        admins = await PersonRoleRepository(self.session).get_super_admins()
+        for admin in admins:
             if admin.id not in notified_ids:
                 notified_ids.add(admin.id)
                 data = NotificationCreate(

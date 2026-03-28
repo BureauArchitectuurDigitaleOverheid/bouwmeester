@@ -816,16 +816,11 @@ async def get_admin_user(
     mode (no OIDC and no API key) returns ``None`` (all access open).
     Raises 403 if the user is authenticated but not an admin.
 
-    Supports both the legacy ``is_admin`` flag and the new role-based
-    system (``super_admin`` or ``platform_admin`` person_role).
+    Uses the RBAC system (``super_admin`` or ``platform_admin`` person_role).
     """
     person = await _resolve_user(request, db, settings)
     if person is None:
         return None
-    # Legacy check
-    if person.is_admin:
-        return person
-    # New RBAC check
     from bouwmeester.core.permissions import build_permission_context
 
     perm_ctx = await build_permission_context(db, person)

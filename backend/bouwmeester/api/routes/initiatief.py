@@ -12,6 +12,7 @@ from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
 )
+from bouwmeester.core.permissions import build_permission_context
 from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.schema.initiatief import (
     InitiatiefCreate,
@@ -36,7 +37,8 @@ async def _require_eigenaar(
     """Raise 403 unless user is eigenaar or admin."""
     if not user:
         return  # dev mode, no OIDC
-    if user.is_admin:
+    perm_ctx = await build_permission_context(repo.session, user)
+    if perm_ctx.is_super_admin:
         return
     role = await repo.get_member_role(initiatief_id, user.id)
     if role != "eigenaar":
@@ -54,7 +56,8 @@ async def _require_member_or_admin(
     """Raise 404 unless user is a member (direct or via eenheid) or admin."""
     if not user:
         return  # dev mode
-    if user.is_admin:
+    perm_ctx = await build_permission_context(repo.session, user)
+    if perm_ctx.is_super_admin:
         return
     if not await repo.is_member(initiatief_id, user.id):
         raise HTTPException(

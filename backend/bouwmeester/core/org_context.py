@@ -136,7 +136,10 @@ async def build_org_context(
     - Parent chain (walking up from each own eenheid)
     - Managed sub-trees (walking down from eenheden where person is manager)
     """
-    if person.is_admin:
+    from bouwmeester.core.permissions import build_permission_context
+
+    perm_ctx = await build_permission_context(db, person)
+    if perm_ctx.is_super_admin:
         return OrgContext(
             person_id=person.id,
             is_admin=True,

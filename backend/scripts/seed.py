@@ -4680,7 +4680,6 @@ async def seed(db: AsyncSession) -> None:
 
     # First named person becomes super_admin
     first_person = list(person_map.values())[0]
-    first_person.is_admin = True
     db.add(
         PersonRole(
             person_id=first_person.id,
