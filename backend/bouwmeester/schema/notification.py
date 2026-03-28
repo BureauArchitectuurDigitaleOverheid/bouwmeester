@@ -24,6 +24,8 @@ class NotificationType(enum.StrEnum):
     mention = "mention"
     access_request = "access_request"
     placement_request = "placement_request"
+    placement_approved = "placement_approved"
+    placement_denied = "placement_denied"
     emoji_reaction = "emoji_reaction"
     opdracht_created = "opdracht_created"
     opdracht_status_changed = "opdracht_status_changed"

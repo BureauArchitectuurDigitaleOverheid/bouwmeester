@@ -15,6 +15,7 @@ from bouwmeester.models.org_manager import OrganisatieEenheidManager
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.org_placement import (
     OrgPlacementRequestCreate,
     OrgPlacementRequestResponse,
@@ -209,6 +210,18 @@ async def approve_placement(
     db.add(placement)
     await db.flush()
 
+    # Notify the requester
+    eenheid_naam = req.organisatie_eenheid.naam if req.organisatie_eenheid else ""
+    notif_svc = NotificationService(db)
+    await notif_svc.repo.create(
+        NotificationCreate(
+            person_id=req.person_id,
+            type="placement_approved",
+            title=f"Plaatsing goedgekeurd: {eenheid_naam}",
+            message=f"Je bent geplaatst bij '{eenheid_naam}'.",
+        )
+    )
+
     return _to_response(req)
 
 
@@ -244,5 +257,20 @@ async def deny_placement(
     req.decided_at = datetime.now(UTC)
     req.decided_by = current_user.id if current_user else None
     await db.flush()
+
+    # Notify the requester
+    eenheid_naam = req.organisatie_eenheid.naam if req.organisatie_eenheid else ""
+    notif_svc = NotificationService(db)
+    await notif_svc.repo.create(
+        NotificationCreate(
+            person_id=req.person_id,
+            type="placement_denied",
+            title=f"Plaatsing afgewezen: {eenheid_naam}",
+            message=(
+                f"Je verzoek om geplaatst te worden bij '{eenheid_naam}' "
+                f"is afgewezen. Je kunt een nieuw verzoek indienen."
+            ),
+        )
+    )
 
     return _to_response(req)

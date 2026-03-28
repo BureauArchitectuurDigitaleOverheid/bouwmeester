@@ -89,6 +89,8 @@ _NOTIFICATION_COLORS: dict[str, str] = {
     "mention": "#3B82F6",  # blue
     "access_request": "#F59E0B",  # amber
     "placement_request": "#6366F1",  # indigo
+    "placement_approved": "#22C55E",  # green
+    "placement_denied": "#EF4444",  # red
 }
 
 # Types that should go to the channel (broadcast) instead of DM.

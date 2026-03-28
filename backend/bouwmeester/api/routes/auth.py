@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import date
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -28,6 +29,7 @@ from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.core.whitelist import is_email_allowed
 from bouwmeester.models.access_request import AccessRequest
+from bouwmeester.models.org_manager import OrganisatieEenheidManager
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
@@ -178,7 +180,7 @@ async def logout(
 # ---------------------------------------------------------------------------
 
 
-async def _check_needs_onboarding(db: AsyncSession, person: Person) -> bool:
+def _check_needs_onboarding(person: Person) -> bool:
     """Return True if the person has not yet completed the onboarding form.
 
     Onboarding is considered complete once the person has a functie set.
@@ -270,7 +272,7 @@ async def auth_status(
             if person_id is None and sub and email:
                 person = await get_or_create_person(db, sub=sub, email=email, name=name)
                 person_id = str(person.id)
-                needs_onboarding = await _check_needs_onboarding(db, person)
+                needs_onboarding = _check_needs_onboarding(person)
                 is_admin = person.is_admin
 
                 # Cache in session.
@@ -295,6 +297,7 @@ async def auth_status(
             managed_eenheden_list: list[dict] = []
             needs_placement = False
             has_pending_placement = False
+            placement_denied = False
             if person_id:
                 pid = UUID(person_id)
                 # Own placements (active)
@@ -321,32 +324,55 @@ async def auth_status(
                 ]
                 needs_placement = len(org_eenheden) == 0
 
-                # Check for pending placement request
+                # Check for pending/denied placement request
                 if needs_placement:
-                    pending_stmt = (
-                        select(OrgPlacementRequest.id)
+                    latest_req_stmt = (
+                        select(
+                            OrgPlacementRequest.status,
+                        )
                         .where(
                             OrgPlacementRequest.person_id == pid,
-                            OrgPlacementRequest.status == "pending",
                         )
+                        .order_by(OrgPlacementRequest.requested_at.desc())
                         .limit(1)
                     )
-                    pending_result = await db.execute(pending_stmt)
-                    has_pending_placement = (
-                        pending_result.scalar_one_or_none() is not None
-                    )
+                    latest_req_result = await db.execute(latest_req_stmt)
+                    latest_req = latest_req_result.scalar_one_or_none()
+                    if latest_req == "pending":
+                        has_pending_placement = True
+                    elif latest_req == "denied":
+                        placement_denied = True
 
-                # Managed eenheden
-                managed_stmt = select(
-                    OrganisatieEenheid.id,
-                    OrganisatieEenheid.naam,
-                    OrganisatieEenheid.type,
-                ).where(OrganisatieEenheid.manager_id == pid)
-                managed_result = await db.execute(managed_stmt)
-                managed_eenheden_list = [
-                    {"id": str(r.id), "naam": r.naam, "type": r.type}
-                    for r in managed_result.all()
-                ]
+                # Managed eenheden (legacy + temporal)
+                managed_ids: set[UUID] = set()
+
+                legacy_mgr_stmt = select(OrganisatieEenheid.id).where(
+                    OrganisatieEenheid.manager_id == pid
+                )
+                legacy_mgr_result = await db.execute(legacy_mgr_stmt)
+                managed_ids.update(legacy_mgr_result.scalars().all())
+
+                today = date.today()
+                temporal_mgr_stmt = select(OrganisatieEenheidManager.eenheid_id).where(
+                    OrganisatieEenheidManager.manager_id == pid,
+                    OrganisatieEenheidManager.geldig_van <= today,
+                    (OrganisatieEenheidManager.geldig_tot.is_(None))
+                    | (OrganisatieEenheidManager.geldig_tot >= today),
+                )
+                temporal_mgr_result = await db.execute(temporal_mgr_stmt)
+                managed_ids.update(temporal_mgr_result.scalars().all())
+
+                if managed_ids:
+                    managed_detail_stmt = select(
+                        OrganisatieEenheid.id,
+                        OrganisatieEenheid.naam,
+                        OrganisatieEenheid.type,
+                    ).where(OrganisatieEenheid.id.in_(managed_ids))
+                    managed_detail_result = await db.execute(managed_detail_stmt)
+                    managed_eenheden_list = [
+                        {"id": str(r.id), "naam": r.naam, "type": r.type}
+                        for r in managed_detail_result.all()
+                    ]
 
             result["person"] = {
                 "sub": sub,
@@ -359,6 +385,7 @@ async def auth_status(
                 "managed_eenheden": managed_eenheden_list,
                 "needs_placement": needs_placement,
                 "has_pending_placement": has_pending_placement,
+                "placement_denied": placement_denied,
             }
         except Exception:
             logger.exception(
