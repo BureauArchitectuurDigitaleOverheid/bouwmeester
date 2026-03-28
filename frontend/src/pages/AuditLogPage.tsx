@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useActivityFeed } from '@/hooks/useActivity';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
@@ -225,6 +227,7 @@ function DetailCell({
 }
 
 export function AuditLogPage() {
+  const { person, oidcConfigured, loading } = useAuth();
   const [page, setPage] = useState(0);
   const [category, setCategory] = useState('');
   const { openNodeDetail } = useNodeDetail();
@@ -244,6 +247,11 @@ export function AuditLogPage() {
       setPage(totalPages - 1);
     }
   }, [totalPages, page]);
+
+  if (loading) return null;
+  if (oidcConfigured && (!person || !person.is_admin)) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="space-y-6">
