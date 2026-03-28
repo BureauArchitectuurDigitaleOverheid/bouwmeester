@@ -374,6 +374,44 @@ async def auth_status(
                         for r in managed_detail_result.all()
                     ]
 
+            # Resolve RBAC roles and permissions
+            roles_list: list[dict] = []
+            permissions_list: list[str] = []
+            if person_id:
+                from bouwmeester.core.permissions import (
+                    build_permission_context,
+                )
+                from bouwmeester.repositories.role import (
+                    PersonRoleRepository,
+                )
+
+                pid_uuid = UUID(person_id)
+                # Build person stub for permission context
+                person_for_perm = await db.get(Person, pid_uuid)
+                if person_for_perm:
+                    perm_ctx = await build_permission_context(db, person_for_perm)
+                    permissions_list = sorted(perm_ctx.effective_permissions)
+
+                    pr_repo = PersonRoleRepository(db)
+                    assignments = await pr_repo.list_for_person(pid_uuid)
+                    roles_list = [
+                        {
+                            "role_id": a.role_id,
+                            "role_naam": (a.role.naam if a.role else None),
+                            "organisatie_eenheid_id": (
+                                str(a.organisatie_eenheid_id)
+                                if a.organisatie_eenheid_id
+                                else None
+                            ),
+                            "eenheid_naam": (
+                                a.organisatie_eenheid.naam
+                                if a.organisatie_eenheid
+                                else None
+                            ),
+                        }
+                        for a in assignments
+                    ]
+
             result["person"] = {
                 "sub": sub,
                 "email": email,
@@ -386,6 +424,8 @@ async def auth_status(
                 "needs_placement": needs_placement,
                 "has_pending_placement": has_pending_placement,
                 "placement_denied": placement_denied,
+                "roles": roles_list,
+                "permissions": permissions_list,
             }
         except Exception:
             logger.exception(
