@@ -4674,6 +4674,25 @@ async def seed(db: AsyncSession) -> None:
     print(f"  Opdrachten: {len(opdracht_refs)} opdrachten/subsidies aangemaakt")
 
     # =========================================================================
+    # ROLE ASSIGNMENTS (access management)
+    # =========================================================================
+    from bouwmeester.models.role import PersonRole
+
+    # First named person becomes super_admin
+    first_person = list(person_map.values())[0]
+    first_person.is_admin = True
+    db.add(
+        PersonRole(
+            person_id=first_person.id,
+            role_id="super_admin",
+            granted_by_id=first_person.id,
+            start_datum=date.today(),
+        )
+    )
+    await db.flush()
+    print(f"  Rollen: super_admin toegewezen aan {first_person.naam}")
+
+    # =========================================================================
     # INITIATIEVEN
     # =========================================================================
     from bouwmeester.models.initiatief import Initiatief
