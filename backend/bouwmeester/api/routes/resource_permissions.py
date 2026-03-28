@@ -8,6 +8,7 @@ contacts across all resource types.
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
@@ -16,6 +17,7 @@ from bouwmeester.core.permissions import (
     check_resource_permission,
     get_permission_context,
 )
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.resource_permission import (
     ResourcePermissionRepository,
 )
@@ -48,6 +50,39 @@ def _validate_resource_type(resource_type: str) -> None:
         )
 
 
+async def _require_manage_permission(
+    perm: PermissionContext,
+    db: AsyncSession,
+    resource_type: str,
+    resource_id: UUID,
+) -> None:
+    """Check that the caller can manage permissions on the given resource."""
+    if perm.is_super_admin:
+        return
+    has_rbac = perm.has_permission("resource_permission:manage")
+    has_resource = await check_resource_permission(
+        db,
+        perm.person_id,  # type: ignore[arg-type]
+        resource_type,
+        resource_id,
+        "resource_permission:manage",
+    )
+    if not has_rbac and not has_resource:
+        raise HTTPException(403, "Insufficient permissions")
+
+
+def _to_response(rp: ResourcePermission) -> ResourcePermissionResponse:
+    return ResourcePermissionResponse(
+        id=rp.id,
+        person_id=rp.person_id,
+        person=rp.person,
+        resource_type=rp.resource_type,
+        resource_id=rp.resource_id,
+        rol=rp.rol,
+        created_at=rp.created_at,
+    )
+
+
 @router.get(
     "/{resource_type}/{resource_id}",
     response_model=list[ResourcePermissionResponse],
@@ -62,34 +97,11 @@ async def list_resource_permissions(
     _validate_resource_type(resource_type)
     if not perm.is_authenticated:
         raise HTTPException(401, "Not authenticated")
-
-    # Require RBAC permission or resource-level access
-    if not perm.is_super_admin:
-        has_rbac = perm.has_permission("resource_permission:manage")
-        has_resource = await check_resource_permission(
-            db,
-            perm.person_id,  # type: ignore[arg-type]
-            resource_type,
-            resource_id,
-            "resource_permission:manage",
-        )
-        if not has_rbac and not has_resource:
-            raise HTTPException(403, "Insufficient permissions")
+    await _require_manage_permission(perm, db, resource_type, resource_id)
 
     repo = ResourcePermissionRepository(db)
     perms = await repo.list_for_resource(resource_type, resource_id)
-    return [
-        ResourcePermissionResponse(
-            id=rp.id,
-            person_id=rp.person_id,
-            person=rp.person,
-            resource_type=rp.resource_type,
-            resource_id=rp.resource_id,
-            rol=rp.rol,
-            created_at=rp.created_at,
-        )
-        for rp in perms
-    ]
+    return [_to_response(rp) for rp in perms]
 
 
 @router.post(
@@ -107,20 +119,7 @@ async def add_resource_permission(
     _validate_resource_type(resource_type)
     if not perm.is_authenticated:
         raise HTTPException(401, "Not authenticated")
-
-    # Check: user needs resource_permission:manage via RBAC
-    # or eigenaar role on this resource
-    if not perm.is_super_admin:
-        has_rbac = perm.has_permission("resource_permission:manage")
-        has_resource = await check_resource_permission(
-            db,
-            perm.person_id,  # type: ignore[arg-type]
-            resource_type,
-            resource_id,
-            "resource_permission:manage",
-        )
-        if not has_rbac and not has_resource:
-            raise HTTPException(403, "Insufficient permissions")
+    await _require_manage_permission(perm, db, resource_type, resource_id)
 
     repo = ResourcePermissionRepository(db)
     try:
@@ -130,7 +129,7 @@ async def add_resource_permission(
             resource_id=resource_id,
             rol=data.rol,
         )
-    except Exception:
+    except IntegrityError:
         raise HTTPException(
             409,
             "Permission already exists",
@@ -149,15 +148,7 @@ async def add_resource_permission(
         },
     )
 
-    return ResourcePermissionResponse(
-        id=rp.id,
-        person_id=rp.person_id,
-        person=rp.person,
-        resource_type=rp.resource_type,
-        resource_id=rp.resource_id,
-        rol=rp.rol,
-        created_at=rp.created_at,
-    )
+    return _to_response(rp)
 
 
 @router.put(
@@ -178,31 +169,12 @@ async def update_resource_permission(
     rp = await repo.get_with_person(rp_id)
     if rp is None:
         raise HTTPException(404, "Permission not found")
-
-    if not perm.is_super_admin:
-        has_rbac = perm.has_permission("resource_permission:manage")
-        has_resource = await check_resource_permission(
-            db,
-            perm.person_id,  # type: ignore[arg-type]
-            rp.resource_type,
-            rp.resource_id,
-            "resource_permission:manage",
-        )
-        if not has_rbac and not has_resource:
-            raise HTTPException(403, "Insufficient permissions")
+    await _require_manage_permission(perm, db, rp.resource_type, rp.resource_id)
 
     rp.rol = data.rol
     await db.flush()
     await db.refresh(rp)
-    return ResourcePermissionResponse(
-        id=rp.id,
-        person_id=rp.person_id,
-        person=rp.person,
-        resource_type=rp.resource_type,
-        resource_id=rp.resource_id,
-        rol=rp.rol,
-        created_at=rp.created_at,
-    )
+    return _to_response(rp)
 
 
 @router.delete("/{rp_id}")
@@ -219,18 +191,7 @@ async def delete_resource_permission(
     rp = await repo.get_with_person(rp_id)
     if rp is None:
         raise HTTPException(404, "Permission not found")
-
-    if not perm.is_super_admin:
-        has_rbac = perm.has_permission("resource_permission:manage")
-        has_resource = await check_resource_permission(
-            db,
-            perm.person_id,  # type: ignore[arg-type]
-            rp.resource_type,
-            rp.resource_id,
-            "resource_permission:manage",
-        )
-        if not has_rbac and not has_resource:
-            raise HTTPException(403, "Insufficient permissions")
+    await _require_manage_permission(perm, db, rp.resource_type, rp.resource_id)
 
     await log_activity(
         db,

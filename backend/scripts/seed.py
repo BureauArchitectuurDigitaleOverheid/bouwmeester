@@ -221,7 +221,6 @@ async def seed(db: AsyncSession) -> None:
         "task",
         "resource_permission",
         "shared_access",
-        "node_stakeholder",
         "edge",
         "edge_schema_rule",
         "edge_type",

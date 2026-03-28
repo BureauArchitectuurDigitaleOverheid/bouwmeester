@@ -4,6 +4,7 @@ from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
@@ -26,6 +27,51 @@ from bouwmeester.schema.role import (
 from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/roles", tags=["roles"])
+
+
+def _assignment_to_response(a) -> PersonRoleResponse:
+    return PersonRoleResponse(
+        id=a.id,
+        person_id=a.person_id,
+        person_naam=(a.person.naam if a.person else None),
+        role_id=a.role_id,
+        role_naam=a.role.naam if a.role else None,
+        organisatie_eenheid_id=a.organisatie_eenheid_id,
+        organisatie_eenheid_naam=(
+            a.organisatie_eenheid.naam if a.organisatie_eenheid else None
+        ),
+        granted_by_id=a.granted_by_id,
+        start_datum=a.start_datum,
+        eind_datum=a.eind_datum,
+        created_at=a.created_at,
+    )
+
+
+async def _get_max_rank(perm, role_repo: RoleRepository) -> int:
+    """Get the highest rank among all roles assigned to the caller."""
+    grantor_roles = perm.system_roles + [
+        r for roles in perm.scoped_roles.values() for r in roles
+    ]
+    grantor_max_rank = 0
+    for gr in grantor_roles:
+        gr_obj = await role_repo.get_role(gr)
+        if gr_obj and gr_obj.rank > grantor_max_rank:
+            grantor_max_rank = gr_obj.rank
+    return grantor_max_rank
+
+
+async def _check_org_scope(db: AsyncSession, perm, eenheid_id: UUID) -> None:
+    """Raise 403 if the caller cannot access the given eenheid."""
+    from bouwmeester.core.org_context import build_org_context
+
+    person_obj = await db.get(Person, perm.person_id)
+    if person_obj:
+        org_ctx = await build_org_context(db, person_obj)
+        if not org_ctx.is_admin and eenheid_id not in org_ctx.visible_eenheid_ids:
+            raise HTTPException(
+                403,
+                "Cannot manage roles outside your org scope",
+            )
 
 
 @router.get("", response_model=list[RoleWithPermissionsResponse])
@@ -66,24 +112,7 @@ async def my_permissions(
     perm_ctx = await build_permission_context(db, user)
     pr_repo = PersonRoleRepository(db)
     assignments = await pr_repo.list_for_person(user.id)
-    roles = [
-        PersonRoleResponse(
-            id=a.id,
-            person_id=a.person_id,
-            person_naam=user.naam,
-            role_id=a.role_id,
-            role_naam=a.role.naam if a.role else None,
-            organisatie_eenheid_id=a.organisatie_eenheid_id,
-            organisatie_eenheid_naam=(
-                a.organisatie_eenheid.naam if a.organisatie_eenheid else None
-            ),
-            granted_by_id=a.granted_by_id,
-            start_datum=a.start_datum,
-            eind_datum=a.eind_datum,
-            created_at=a.created_at,
-        )
-        for a in assignments
-    ]
+    roles = [_assignment_to_response(a) for a in assignments]
     return MyPermissionsResponse(
         roles=roles,
         permissions=sorted(perm_ctx.effective_permissions),
@@ -102,24 +131,7 @@ async def list_person_roles(
     """List role assignments for a person."""
     repo = PersonRoleRepository(db)
     assignments = await repo.list_for_person(person_id)
-    return [
-        PersonRoleResponse(
-            id=a.id,
-            person_id=a.person_id,
-            person_naam=(a.person.naam if a.person else None),
-            role_id=a.role_id,
-            role_naam=a.role.naam if a.role else None,
-            organisatie_eenheid_id=a.organisatie_eenheid_id,
-            organisatie_eenheid_naam=(
-                a.organisatie_eenheid.naam if a.organisatie_eenheid else None
-            ),
-            granted_by_id=a.granted_by_id,
-            start_datum=a.start_datum,
-            eind_datum=a.eind_datum,
-            created_at=a.created_at,
-        )
-        for a in assignments
-    ]
+    return [_assignment_to_response(a) for a in assignments]
 
 
 @router.post("/assign", response_model=PersonRoleResponse)
@@ -150,37 +162,14 @@ async def assign_role(
     # Scope enforcement: can only assign roles you outrank,
     # and only within eenheden you have access to
     if not perm.is_super_admin:
-        # Check rank: grantor must outrank the role being assigned
-        grantor_roles = perm.system_roles + [
-            r for roles in perm.scoped_roles.values() for r in roles
-        ]
-        grantor_max_rank = 0
-        for gr in grantor_roles:
-            gr_obj = await role_repo.get_role(gr)
-            if gr_obj and gr_obj.rank > grantor_max_rank:
-                grantor_max_rank = gr_obj.rank
+        grantor_max_rank = await _get_max_rank(perm, role_repo)
         if role.rank >= grantor_max_rank:
             raise HTTPException(
                 403,
                 "Cannot assign a role at or above your own level",
             )
-
-        # Check scope: for scoped roles, grantor must have
-        # access to the target eenheid
         if data.organisatie_eenheid_id:
-            from bouwmeester.core.org_context import build_org_context
-
-            person_obj = await db.get(Person, perm.person_id)
-            if person_obj:
-                org_ctx = await build_org_context(db, person_obj)
-                if (
-                    not org_ctx.is_admin
-                    and data.organisatie_eenheid_id not in org_ctx.visible_eenheid_ids
-                ):
-                    raise HTTPException(
-                        403,
-                        "Cannot assign roles outside your org scope",
-                    )
+            await _check_org_scope(db, perm, data.organisatie_eenheid_id)
 
     repo = PersonRoleRepository(db)
     grantor_id = perm.person_id if perm.person_id else None
@@ -193,7 +182,7 @@ async def assign_role(
             start_datum=data.start_datum or date.today(),
             eind_datum=data.eind_datum,
         )
-    except Exception:
+    except IntegrityError:
         raise HTTPException(409, "Role assignment already exists")
 
     await log_activity(
@@ -212,23 +201,7 @@ async def assign_role(
         },
     )
 
-    return PersonRoleResponse(
-        id=assignment.id,
-        person_id=assignment.person_id,
-        person_naam=(assignment.person.naam if assignment.person else None),
-        role_id=assignment.role_id,
-        role_naam=(assignment.role.naam if assignment.role else None),
-        organisatie_eenheid_id=assignment.organisatie_eenheid_id,
-        organisatie_eenheid_naam=(
-            assignment.organisatie_eenheid.naam
-            if assignment.organisatie_eenheid
-            else None
-        ),
-        granted_by_id=assignment.granted_by_id,
-        start_datum=assignment.start_datum,
-        eind_datum=assignment.eind_datum,
-        created_at=assignment.created_at,
-    )
+    return _assignment_to_response(assignment)
 
 
 @router.delete("/assignments/{assignment_id}")
@@ -249,37 +222,14 @@ async def revoke_role(
         role_repo = RoleRepository(db)
         target_role = await role_repo.get_role(assignment.role_id)
 
-        # Rank check: can only revoke roles you outrank
-        grantor_roles = _perm.system_roles + [
-            r for roles in _perm.scoped_roles.values() for r in roles
-        ]
-        grantor_max_rank = 0
-        for gr in grantor_roles:
-            gr_obj = await role_repo.get_role(gr)
-            if gr_obj and gr_obj.rank > grantor_max_rank:
-                grantor_max_rank = gr_obj.rank
+        grantor_max_rank = await _get_max_rank(_perm, role_repo)
         if target_role and target_role.rank >= grantor_max_rank:
             raise HTTPException(
                 403,
                 "Cannot revoke a role at or above your own level",
             )
-
-        # Org scope check: can only revoke roles within accessible eenheden
         if assignment.organisatie_eenheid_id:
-            from bouwmeester.core.org_context import build_org_context
-
-            person_obj = await db.get(Person, _perm.person_id)
-            if person_obj:
-                org_ctx = await build_org_context(db, person_obj)
-                if (
-                    not org_ctx.is_admin
-                    and assignment.organisatie_eenheid_id
-                    not in org_ctx.visible_eenheid_ids
-                ):
-                    raise HTTPException(
-                        403,
-                        "Cannot revoke roles outside your org scope",
-                    )
+            await _check_org_scope(db, _perm, assignment.organisatie_eenheid_id)
 
     await repo.revoke(assignment_id)
 

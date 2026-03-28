@@ -110,7 +110,8 @@ frontend/
 ```
 Person
 ├── Task (assignee_id)
-├── NodeStakeholder (eigenaar/betrokken/adviseur on corpus nodes)
+├── ResourcePermission (eigenaar/betrokken/adviseur on any resource)
+├── PersonRole (role assignments, system or scoped to eenheid)
 ├── OrganisatieEenheid (member via organisatie_eenheid_id)
 ├── OrganisatieEenheid (manager via manager_id)
 ├── Activity (actor_id)
@@ -120,7 +121,7 @@ Person
 CorpusNode (dossier/doel/instrument/beleidskader/maatregel/politieke_input/probleem/effect/beleidsoptie)
 ├── Edge (from_node_id / to_node_id, typed via EdgeType)
 ├── Task (node_id)
-├── NodeStakeholder (node_id)
+├── ResourcePermission (resource_type=corpus_node, resource_id=node_id)
 └── NodeTag (node_id → Tag, hierarchical tagging)
 
 Tag (hierarchical, parent_id self-ref)

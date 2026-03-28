@@ -36,7 +36,7 @@ export function AdminPage() {
     'config:manage',
     'database:backup',
     'people:assign_role',
-    'audit:read',
+    'org:manage',
   );
 
   const defaultTab: Tab = canAdmin ? 'whitelist' : 'placements';
@@ -107,16 +107,20 @@ export function AdminPage() {
         ))}
       </div>
 
-      {/* Tab content */}
-      {activeTab === 'whitelist' && <WhitelistManager />}
-      {activeTab === 'requests' && <AccessRequestManager />}
-      {activeTab === 'placements' && <PlacementRequestManager />}
-      {activeTab === 'users' && <UserManager />}
-      {activeTab === 'database' && <DatabaseBackup />}
-      {activeTab === 'config' && <ConfigManager />}
-      {activeTab === 'schema' && <EdgeSchemaManager />}
-      {activeTab === 'roles' && <RoleManager />}
-      {activeTab === 'sharing' && <SharingManager />}
+      {/* Tab content — only render if the tab is in the visible set */}
+      {tabs.some((t) => t.id === activeTab) ? (
+        <>
+          {activeTab === 'whitelist' && <WhitelistManager />}
+          {activeTab === 'requests' && <AccessRequestManager />}
+          {activeTab === 'placements' && <PlacementRequestManager />}
+          {activeTab === 'users' && <UserManager />}
+          {activeTab === 'database' && <DatabaseBackup />}
+          {activeTab === 'config' && <ConfigManager />}
+          {activeTab === 'schema' && <EdgeSchemaManager />}
+          {activeTab === 'roles' && <RoleManager />}
+          {activeTab === 'sharing' && <SharingManager />}
+        </>
+      ) : null}
     </div>
   );
 }

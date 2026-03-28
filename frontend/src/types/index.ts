@@ -755,7 +755,6 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
   'externe_organisatie.deleted': 'Externe organisatie verwijderd',
   'bijlage.uploaded': 'Bijlage geüpload',
   'bijlage.deleted': 'Bijlage verwijderd',
-  'feature_toggle.updated': 'Feature toggle gewijzigd',
   'import.politieke_inputs': 'Politieke inputs geïmporteerd',
   'import.nodes': 'Nodes geïmporteerd',
   'import.edges': 'Relaties geïmporteerd',
@@ -785,7 +784,6 @@ export const EVENT_TYPE_CATEGORY_LABELS: Record<string, string> = {
   initiatief_eenheid: 'Initiatief-eenheden',
   externe_organisatie: 'Externe organisaties',
   bijlage: 'Bijlagen',
-  feature_toggle: 'Feature toggles',
   import: 'Imports',
   opdracht: 'Opdrachten',
 };

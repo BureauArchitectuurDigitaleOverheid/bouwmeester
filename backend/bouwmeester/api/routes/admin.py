@@ -577,7 +577,6 @@ _ALL_MODEL_TABLES = [
     "task",
     "resource_permission",
     "shared_access",
-    "node_stakeholder",
     "edge",
     "edge_type",
     "probleem",

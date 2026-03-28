@@ -127,7 +127,6 @@ export function Header() {
       {/* Right: Actions */}
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* Vocabulary toggle */}
-        {(
         <div className="hidden sm:flex items-center h-9 rounded-xl border border-border text-xs overflow-hidden">
           {(Object.keys(VOCABULARY_LABELS) as VocabularyId[]).map((id) => (
             <button
@@ -143,7 +142,6 @@ export function Header() {
             </button>
           ))}
         </div>
-        )}
 
         {/* Admin view-as-non-admin toggle */}
         {realIsAdmin && (

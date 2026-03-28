@@ -19,6 +19,7 @@ import {
 import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { INITIATIEF_COLORS } from '@/types';
 import type { InitiatiefUpdate } from '@/types';
 
@@ -35,6 +36,7 @@ export function InitiatiefDetailModal({
 }: InitiatiefDetailModalProps) {
   const { data: detail, isLoading } = useInitiatief(open ? initiatiefId : undefined);
   const { currentPerson } = useCurrentPerson();
+  const { hasPermission } = usePermissions();
 
   const [editing, setEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -50,8 +52,8 @@ export function InitiatiefDetailModal({
 
   const isEigenaar = useMemo(() => {
     if (!detail) return false;
-    // Admin can always edit
-    if (currentPerson?.is_admin) return true;
+    // Admin or people:manage permission can always edit
+    if (hasPermission('people:manage')) return true;
     // In dev mode (no OIDC), treat as admin
     if (!currentPerson) return true;
     // Creator is eigenaar, or person with eigenaar role
@@ -59,7 +61,7 @@ export function InitiatiefDetailModal({
     return detail.members.some(
       (m) => m.person_id === currentPerson.id && m.rol === 'eigenaar',
     );
-  }, [detail, currentPerson]);
+  }, [detail, currentPerson, hasPermission]);
 
   const eigenaarCount = useMemo(
     () => detail?.members.filter((m) => m.rol === 'eigenaar').length ?? 0,
