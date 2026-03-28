@@ -65,9 +65,9 @@ export function Sidebar({ mobile }: SidebarProps) {
   const bottomNavItems = useMemo(() => {
     const items = [
       { to: '/instellingen', icon: Settings, label: 'Instellingen' },
-      { to: '/auditlog', icon: History, label: 'Auditlog' },
     ];
     if (!oidcConfigured || authPerson?.is_admin) {
+      items.push({ to: '/auditlog', icon: History, label: 'Auditlog' });
       items.push({ to: '/admin', icon: Shield, label: 'Beheer' });
     }
     return items;
