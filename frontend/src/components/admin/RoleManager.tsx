@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight, Shield } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePeople } from '@/hooks/usePeople';
+import { isPersonOnline, formatRelativeTime } from '@/utils/people';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import {
   useRoles,
@@ -686,6 +687,9 @@ export function RoleManager() {
               <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden md:table-cell">
                 Functie
               </th>
+              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden lg:table-cell">
+                Laatst actief
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -698,6 +702,8 @@ export function RoleManager() {
                   naam={person.naam}
                   email={person.email}
                   functie={person.functie}
+                  lastSeenAt={person.last_seen_at}
+                  isAgent={person.is_agent}
                   isExpanded={isExpanded}
                   onToggle={() =>
                     setExpandedPersonId(isExpanded ? null : person.id)
@@ -708,7 +714,7 @@ export function RoleManager() {
             {filteredPeople.length === 0 && (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={5}
                   className="px-4 py-8 text-center text-text-secondary"
                 >
                   {searchQuery
@@ -729,6 +735,8 @@ function PersonRow({
   naam,
   email,
   functie,
+  lastSeenAt,
+  isAgent,
   isExpanded,
   onToggle,
 }: {
@@ -736,9 +744,13 @@ function PersonRow({
   naam: string;
   email?: string;
   functie?: string;
+  lastSeenAt?: string | null;
+  isAgent?: boolean;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
+  const online = isPersonOnline({ last_seen_at: lastSeenAt, is_agent: isAgent });
+
   return (
     <>
       <tr
@@ -759,10 +771,20 @@ function PersonRow({
         <td className="px-4 py-2.5 text-text-secondary hidden md:table-cell">
           {functie || '-'}
         </td>
+        <td className="px-4 py-2.5 text-text-secondary hidden lg:table-cell">
+          {online ? (
+            <span className="inline-flex items-center gap-1.5 text-green-600">
+              <span className="block h-2 w-2 rounded-full bg-green-500" />
+              Nu actief
+            </span>
+          ) : (
+            formatRelativeTime(lastSeenAt)
+          )}
+        </td>
       </tr>
       {isExpanded && (
         <tr className="border-b-2 border-primary-200">
-          <td colSpan={4} className="p-0">
+          <td colSpan={5} className="p-0">
             <PersonRolesPanel personId={personId} personNaam={naam} />
           </td>
         </tr>

@@ -3,7 +3,6 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { WhitelistManager } from '@/components/admin/WhitelistManager';
-import { UserManager } from '@/components/admin/UserManager';
 import { DatabaseBackup } from '@/components/admin/DatabaseBackup';
 import { AccessRequestManager } from '@/components/admin/AccessRequestManager';
 import { PlacementRequestManager } from '@/components/admin/PlacementRequestManager';
@@ -14,13 +13,12 @@ import { RoleManager } from '@/components/admin/RoleManager';
 
 type Tab =
   | 'whitelist'
-  | 'users'
   | 'database'
   | 'requests'
   | 'placements'
   | 'config'
   | 'schema'
-  | 'roles'
+  | 'users'
   | 'sharing';
 
 export function AdminPage() {
@@ -71,11 +69,8 @@ export function AdminPage() {
   if (hasPermission('people:manage') || isManager) {
     tabs.push({ id: 'placements', label: 'Plaatsingsverzoeken' });
   }
-  if (hasPermission('people:manage')) {
-    tabs.push({ id: 'users', label: 'Gebruikers' });
-  }
   if (hasPermission('people:assign_role')) {
-    tabs.push({ id: 'roles', label: 'Rollen' });
+    tabs.push({ id: 'users', label: 'Gebruikers' });
   }
   if (hasPermission('org:manage')) {
     tabs.push({ id: 'sharing', label: 'Delen' });
@@ -113,11 +108,10 @@ export function AdminPage() {
           {activeTab === 'whitelist' && <WhitelistManager />}
           {activeTab === 'requests' && <AccessRequestManager />}
           {activeTab === 'placements' && <PlacementRequestManager />}
-          {activeTab === 'users' && <UserManager />}
+          {activeTab === 'users' && <RoleManager />}
           {activeTab === 'database' && <DatabaseBackup />}
           {activeTab === 'config' && <ConfigManager />}
           {activeTab === 'schema' && <EdgeSchemaManager />}
-          {activeTab === 'roles' && <RoleManager />}
           {activeTab === 'sharing' && <SharingManager />}
         </>
       ) : null}
