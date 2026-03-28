@@ -169,10 +169,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { ...state, person: { ...state.person, is_admin: false } };
   }, [state, viewAsNonAdmin]);
 
+  const value: AuthContextValue = {
+    ...effectiveState,
+    login,
+    logout,
+    refreshAuthStatus,
+    canBiometricReauth,
+    realIsAdmin,
+    viewAsNonAdmin,
+    toggleViewAsNonAdmin,
+  };
+
   return (
-    <AuthContext.Provider
-      value={{ ...effectiveState, login, logout, refreshAuthStatus, canBiometricReauth, realIsAdmin, viewAsNonAdmin, toggleViewAsNonAdmin }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
