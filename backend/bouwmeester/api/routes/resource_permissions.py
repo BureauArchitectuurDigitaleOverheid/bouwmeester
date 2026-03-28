@@ -8,6 +8,7 @@ contacts across all resource types.
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,12 +17,14 @@ from bouwmeester.core.permissions import (
     PermissionContext,
     check_resource_permission,
     get_permission_context,
+    require_permission,
 )
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.resource_permission import (
     ResourcePermissionRepository,
 )
 from bouwmeester.schema.resource_permission import (
+    PersonResourcePermissionResponse,
     ResourcePermissionCreate,
     ResourcePermissionResponse,
     ResourcePermissionUpdate,
@@ -81,6 +84,70 @@ def _to_response(rp: ResourcePermission) -> ResourcePermissionResponse:
         rol=rp.rol,
         created_at=rp.created_at,
     )
+
+
+async def _resolve_resource_names(
+    db: AsyncSession,
+    permissions: list[ResourcePermission],
+) -> dict[UUID, str]:
+    """Batch-resolve display names for polymorphic resource_ids."""
+    from bouwmeester.models.corpus_node import CorpusNode
+    from bouwmeester.models.initiatief import Initiatief
+    from bouwmeester.models.lead import Lead
+    from bouwmeester.models.opdracht import Opdracht
+    from bouwmeester.models.team import Team
+
+    table_map: dict[str, tuple] = {
+        "corpus_node": (CorpusNode, CorpusNode.title),
+        "initiatief": (Initiatief, Initiatief.naam),
+        "lead": (Lead, Lead.title),
+        "team": (Team, Team.naam),
+        "opdracht": (Opdracht, Opdracht.titel),
+    }
+
+    ids_by_type: dict[str, set[UUID]] = {}
+    for rp in permissions:
+        ids_by_type.setdefault(rp.resource_type, set()).add(rp.resource_id)
+
+    names: dict[UUID, str] = {}
+    for rtype, ids in ids_by_type.items():
+        if rtype not in table_map:
+            continue
+        model, name_col = table_map[rtype]
+        stmt = select(model.id, name_col).where(model.id.in_(ids))
+        result = await db.execute(stmt)
+        for rid, rname in result.all():
+            names[rid] = rname or str(rid)
+
+    return names
+
+
+@router.get(
+    "/by-person/{person_id}",
+    response_model=list[PersonResourcePermissionResponse],
+)
+async def list_person_resource_permissions(
+    person_id: UUID,
+    _perm=Depends(require_permission("people:read")),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all resource permissions for a person, with resolved names."""
+    repo = ResourcePermissionRepository(db)
+    perms = await repo.list_for_person(person_id)
+    names = await _resolve_resource_names(db, perms)
+    return [
+        PersonResourcePermissionResponse(
+            id=rp.id,
+            person_id=rp.person_id,
+            person=rp.person,
+            resource_type=rp.resource_type,
+            resource_id=rp.resource_id,
+            rol=rp.rol,
+            created_at=rp.created_at,
+            resource_name=names.get(rp.resource_id, str(rp.resource_id)),
+        )
+        for rp in perms
+    ]
 
 
 @router.get(

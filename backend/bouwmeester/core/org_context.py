@@ -21,6 +21,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.role import PersonRole
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +87,17 @@ async def _get_managed_eenheid_ids(
     db: AsyncSession,
     person_id: UUID,
 ) -> list[UUID]:
-    """Return eenheid IDs where the person is the (legacy) manager."""
-    stmt = select(OrganisatieEenheid.id).where(
-        OrganisatieEenheid.manager_id == person_id,
+    """Return eenheid IDs where the person has a unit_manager role assignment."""
+    today = date.today()
+    stmt = select(PersonRole.organisatie_eenheid_id).where(
+        PersonRole.person_id == person_id,
+        PersonRole.role_id == "unit_manager",
+        PersonRole.organisatie_eenheid_id.isnot(None),
+        PersonRole.start_datum <= today,
+        or_(
+            PersonRole.eind_datum.is_(None),
+            PersonRole.eind_datum >= today,
+        ),
     )
     result = await db.execute(stmt)
     return list(result.scalars().all())

@@ -11,10 +11,9 @@ from sqlalchemy.orm import selectinload
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
-from bouwmeester.models.org_manager import OrganisatieEenheidManager
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.role import PersonRole
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.org_placement import (
     OrgPlacementRequestCreate,
@@ -48,32 +47,17 @@ def _load_options():
 
 
 async def _get_managed_eenheid_ids(db: AsyncSession, person_id: UUID) -> list[UUID]:
-    """Return eenheid IDs where the person is the current manager.
-
-    Checks both the legacy ``manager_id`` column and the temporal
-    ``OrganisatieEenheidManager`` records.
-    """
-    ids: set[UUID] = set()
-
-    # Legacy manager_id
-    legacy_stmt = select(OrganisatieEenheid.id).where(
-        OrganisatieEenheid.manager_id == person_id,
-    )
-    result = await db.execute(legacy_stmt)
-    ids.update(result.scalars().all())
-
-    # Temporal manager records
+    """Return eenheid IDs where the person has a unit_manager role assignment."""
     today = date.today()
-    temporal_stmt = select(OrganisatieEenheidManager.eenheid_id).where(
-        OrganisatieEenheidManager.manager_id == person_id,
-        OrganisatieEenheidManager.geldig_van <= today,
-        (OrganisatieEenheidManager.geldig_tot.is_(None))
-        | (OrganisatieEenheidManager.geldig_tot >= today),
+    stmt = select(PersonRole.organisatie_eenheid_id).where(
+        PersonRole.person_id == person_id,
+        PersonRole.role_id == "unit_manager",
+        PersonRole.organisatie_eenheid_id.isnot(None),
+        PersonRole.start_datum <= today,
+        (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
     )
-    result = await db.execute(temporal_stmt)
-    ids.update(result.scalars().all())
-
-    return list(ids)
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
 
 
 @router.post(

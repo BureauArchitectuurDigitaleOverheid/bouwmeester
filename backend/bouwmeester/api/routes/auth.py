@@ -29,11 +29,11 @@ from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.core.whitelist import is_email_allowed
 from bouwmeester.models.access_request import AccessRequest
-from bouwmeester.models.org_manager import OrganisatieEenheidManager
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.role import PersonRole
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.access_request import (
     AccessRequestCreate,
@@ -343,24 +343,20 @@ async def auth_status(
                     elif latest_req == "denied":
                         placement_denied = True
 
-                # Managed eenheden (legacy + temporal)
-                managed_ids: set[UUID] = set()
-
-                legacy_mgr_stmt = select(OrganisatieEenheid.id).where(
-                    OrganisatieEenheid.manager_id == pid
-                )
-                legacy_mgr_result = await db.execute(legacy_mgr_stmt)
-                managed_ids.update(legacy_mgr_result.scalars().all())
-
+                # Managed eenheden (via unit_manager role assignment)
                 today = date.today()
-                temporal_mgr_stmt = select(OrganisatieEenheidManager.eenheid_id).where(
-                    OrganisatieEenheidManager.manager_id == pid,
-                    OrganisatieEenheidManager.geldig_van <= today,
-                    (OrganisatieEenheidManager.geldig_tot.is_(None))
-                    | (OrganisatieEenheidManager.geldig_tot >= today),
+                mgr_role_stmt = select(
+                    PersonRole.organisatie_eenheid_id,
+                ).where(
+                    PersonRole.person_id == pid,
+                    PersonRole.role_id == "unit_manager",
+                    PersonRole.organisatie_eenheid_id.isnot(None),
+                    PersonRole.start_datum <= today,
+                    (PersonRole.eind_datum.is_(None))
+                    | (PersonRole.eind_datum >= today),
                 )
-                temporal_mgr_result = await db.execute(temporal_mgr_stmt)
-                managed_ids.update(temporal_mgr_result.scalars().all())
+                mgr_role_result = await db.execute(mgr_role_stmt)
+                managed_ids = set(mgr_role_result.scalars().all())
 
                 if managed_ids:
                     managed_detail_stmt = select(

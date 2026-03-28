@@ -113,6 +113,8 @@ export const queryKeys = {
     roleAssignmentsAll: () => ['admin', 'role-assignments'] as const,
     roleAssignments: (personId: string | null) =>
       ['admin', 'role-assignments', personId] as const,
+    personResourcePermissions: (personId: string | null) =>
+      ['admin', 'resource-permissions', personId] as const,
   },
 
   // --- Org Placements ---

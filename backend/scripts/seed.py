@@ -10,7 +10,7 @@ import os
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import and_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
@@ -4690,7 +4690,91 @@ async def seed(db: AsyncSession) -> None:
         )
     )
     await db.flush()
-    print(f"  Rollen: super_admin toegewezen aan {first_person.naam}")
+    role_count = 1
+
+    # Assign roles based on functie + org placement
+    # Map functie -> role_id (scoped roles need an eenheid)
+    functie_role_map = {
+        "directeur_generaal": "ministry_admin",
+        "directeur": "ministry_admin",
+        "afdelingshoofd": "unit_manager",
+        "coordinator": "editor",
+        "projectleider": "editor",
+        "senior_beleidsmedewerker": "editor",
+        "beleidsmedewerker": "viewer",
+        "adviseur": "viewer",
+        "jurist": "viewer",
+        "communicatieadviseur": "viewer",
+    }
+    from bouwmeester.models.person import Person
+
+    all_persons_result = await db.execute(
+        select(Person).where(Person.is_agent.is_(False))
+    )
+    all_persons = list(all_persons_result.scalars().all())
+    for p in all_persons:
+        if p.is_agent or p.id == first_person.id:
+            continue
+        role_id = functie_role_map.get(p.functie)
+        if not role_id:
+            continue
+        # Get this person's active org placement
+        poe_stmt = (
+            select(PersonOrganisatieEenheid.organisatie_eenheid_id)
+            .where(
+                PersonOrganisatieEenheid.person_id == p.id,
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
+            .limit(1)
+        )
+        poe_result = await db.execute(poe_stmt)
+        eenheid_id = poe_result.scalar_one_or_none()
+        if not eenheid_id:
+            continue
+        db.add(
+            PersonRole(
+                person_id=p.id,
+                role_id=role_id,
+                organisatie_eenheid_id=eenheid_id,
+                granted_by_id=first_person.id,
+                start_datum=date.today(),
+            )
+        )
+        role_count += 1
+    await db.flush()
+
+    # Ensure every manager_assignment also gets a unit_manager PersonRole
+    # for the eenheid they manage (may differ from their own placement).
+    mgr_role_count = 0
+    for unit, manager in manager_assignments:
+        if manager.is_agent:
+            continue
+        # Check if they already have a unit_manager role for this eenheid
+        existing_stmt = select(PersonRole.id).where(
+            and_(
+                PersonRole.person_id == manager.id,
+                PersonRole.role_id == "unit_manager",
+                PersonRole.organisatie_eenheid_id == unit.id,
+            )
+        )
+        existing_result = await db.execute(existing_stmt)
+        if existing_result.scalar_one_or_none() is not None:
+            continue
+        db.add(
+            PersonRole(
+                person_id=manager.id,
+                role_id="unit_manager",
+                organisatie_eenheid_id=unit.id,
+                granted_by_id=first_person.id,
+                start_datum=date.today(),
+            )
+        )
+        mgr_role_count += 1
+    await db.flush()
+    print(
+        f"  Rollen: {role_count} roltoewijzingen + "
+        f"{mgr_role_count} manager-rollen aangemaakt"
+    )
 
     # =========================================================================
     # INITIATIEVEN

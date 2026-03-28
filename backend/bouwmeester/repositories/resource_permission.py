@@ -65,6 +65,17 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
         result = await self.session.execute(stmt)
         return set(result.scalars().all())
 
+    async def list_for_person(self, person_id: UUID) -> list[ResourcePermission]:
+        """Return all resource permissions for a person."""
+        stmt = (
+            select(ResourcePermission)
+            .where(ResourcePermission.person_id == person_id)
+            .options(selectinload(ResourcePermission.person))
+            .order_by(ResourcePermission.resource_type, ResourcePermission.rol)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_resource_ids_for_person(
         self, person_id: UUID, resource_type: str
     ) -> dict[UUID, set[str]]:
