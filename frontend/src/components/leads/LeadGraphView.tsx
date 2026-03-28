@@ -28,6 +28,7 @@ import { useCommunityGraph } from '@/hooks/useLeads';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import {
+  LeadStage,
   LEAD_STAGE_LABELS,
   LEAD_STAGE_COLORS,
   NODE_TYPE_HEX_COLORS,
