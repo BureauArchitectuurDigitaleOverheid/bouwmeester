@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BASE_URL } from '@/api/client';
 import { getStoredPersonId, isWebAuthnAvailable } from '@/api/webauthn';
 
@@ -37,6 +37,9 @@ interface AuthContextValue extends AuthState {
   logout: () => void;
   refreshAuthStatus: () => Promise<void>;
   canBiometricReauth: boolean;
+  realIsAdmin: boolean;
+  viewAsNonAdmin: boolean;
+  toggleViewAsNonAdmin: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -157,8 +160,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // localStorage changes after registration or logout.
   const canBiometricReauth = isWebAuthnAvailable() && !!getStoredPersonId();
 
+  const [viewAsNonAdmin, setViewAsNonAdmin] = useState(false);
+  const toggleViewAsNonAdmin = useCallback(() => setViewAsNonAdmin((prev) => !prev), []);
+  const realIsAdmin = state.person?.is_admin ?? false;
+
+  const effectiveState = useMemo(() => {
+    if (!viewAsNonAdmin || !state.person) return state;
+    return { ...state, person: { ...state.person, is_admin: false } };
+  }, [state, viewAsNonAdmin]);
+
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, refreshAuthStatus, canBiometricReauth }}>
+    <AuthContext.Provider
+      value={{ ...effectiveState, login, logout, refreshAuthStatus, canBiometricReauth, realIsAdmin, viewAsNonAdmin, toggleViewAsNonAdmin }}
+    >
       {children}
     </AuthContext.Provider>
   );
