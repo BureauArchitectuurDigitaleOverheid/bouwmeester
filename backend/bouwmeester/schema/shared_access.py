@@ -1,6 +1,7 @@
 """Pydantic schemas for cross-org shared access grants."""
 
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -10,7 +11,7 @@ class SharedAccessCreate(BaseModel):
     source_node_id: UUID | None = None
     source_eenheid_id: UUID | None = None
     target_eenheid_id: UUID
-    access_level: str  # read|edit
+    access_level: Literal["read", "edit"]
     reason: str | None = None
     geldig_van: date | None = None
     geldig_tot: date | None = None

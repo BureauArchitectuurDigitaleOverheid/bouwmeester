@@ -156,9 +156,16 @@ async def revoke_share(
 
     # Scope enforcement: user must have authority over the source
     if not _perm.is_super_admin and not org_ctx.is_admin:
-        source_eenheid = share.source_eenheid_id
-        if source_eenheid and source_eenheid not in org_ctx.visible_eenheid_ids:
-            raise HTTPException(403, "Cannot revoke a share outside your scope")
+        if share.source_eenheid_id:
+            if share.source_eenheid_id not in org_ctx.visible_eenheid_ids:
+                raise HTTPException(403, "Cannot revoke a share outside your scope")
+        elif share.source_node_id:
+            node = await db.get(CorpusNode, share.source_node_id)
+            if node and (
+                node.organisatie_eenheid_id
+                and node.organisatie_eenheid_id not in org_ctx.visible_eenheid_ids
+            ):
+                raise HTTPException(403, "Cannot revoke a share outside your scope")
 
     repo = SharedAccessRepository(db)
     await repo.delete(share_id)

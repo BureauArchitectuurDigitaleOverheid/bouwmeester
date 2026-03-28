@@ -64,14 +64,17 @@ async def _check_org_scope(db: AsyncSession, perm, eenheid_id: UUID) -> None:
     """Raise 403 if the caller cannot access the given eenheid."""
     from bouwmeester.core.org_context import build_org_context
 
+    if perm.person_id is None:
+        raise HTTPException(403, "Cannot manage roles without an identified user")
     person_obj = await db.get(Person, perm.person_id)
-    if person_obj:
-        org_ctx = await build_org_context(db, person_obj)
-        if not org_ctx.is_admin and eenheid_id not in org_ctx.visible_eenheid_ids:
-            raise HTTPException(
-                403,
-                "Cannot manage roles outside your org scope",
-            )
+    if person_obj is None:
+        raise HTTPException(403, "Cannot manage roles without an identified user")
+    org_ctx = await build_org_context(db, person_obj)
+    if not org_ctx.is_admin and eenheid_id not in org_ctx.visible_eenheid_ids:
+        raise HTTPException(
+            403,
+            "Cannot manage roles outside your org scope",
+        )
 
 
 @router.get("", response_model=list[RoleWithPermissionsResponse])

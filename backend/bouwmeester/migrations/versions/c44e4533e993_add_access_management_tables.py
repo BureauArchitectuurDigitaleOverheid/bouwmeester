@@ -7,7 +7,6 @@ Create Date: 2026-03-28 14:36:11.922560
 """
 
 from collections.abc import Sequence
-from datetime import date
 
 import sqlalchemy as sa
 from alembic import op
@@ -470,19 +469,15 @@ def upgrade() -> None:
     # 3. Migrate existing data
     # -----------------------------------------------------------------------
 
-    today = date.today().isoformat()
-
     # 3a. is_admin=True -> person_role(super_admin)
     op.execute(
-        sa.text(
-            f"""
+        sa.text("""
             INSERT INTO person_role (person_id, role_id, start_datum)
-            SELECT id, 'super_admin', '{today}'::date
+            SELECT id, 'super_admin', CURRENT_DATE
             FROM person
             WHERE is_admin = TRUE
             ON CONFLICT DO NOTHING
-            """
-        )
+        """)
     )
 
     # 3b. Active PersonOrganisatieEenheid -> person_role(editor)

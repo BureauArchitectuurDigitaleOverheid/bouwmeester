@@ -3,18 +3,48 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from bouwmeester.schema.person import PersonResponse
+
+# All valid resource role values (union across all resource types)
+_VALID_ROLES: set[str] = {
+    "eigenaar",
+    "betrokken",
+    "adviseur",
+    "indiener",
+    "contributor",
+    "opdrachtgever",
+    "contactpersoon",
+    "coordinator",
+    "lid",
+}
+
+
+def _validate_rol(v: str) -> str:
+    if v not in _VALID_ROLES:
+        msg = f"Invalid rol '{v}'. Must be one of: {', '.join(sorted(_VALID_ROLES))}"
+        raise ValueError(msg)
+    return v
 
 
 class ResourcePermissionCreate(BaseModel):
     person_id: UUID
     rol: str
 
+    @field_validator("rol")
+    @classmethod
+    def check_rol(cls, v: str) -> str:
+        return _validate_rol(v)
+
 
 class ResourcePermissionUpdate(BaseModel):
     rol: str
+
+    @field_validator("rol")
+    @classmethod
+    def check_rol(cls, v: str) -> str:
+        return _validate_rol(v)
 
 
 class ResourcePermissionResponse(BaseModel):
