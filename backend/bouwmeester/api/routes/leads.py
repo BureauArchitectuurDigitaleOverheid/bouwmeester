@@ -18,7 +18,12 @@ from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
 )
-from bouwmeester.core.storage import bijlagen_root, safe_resolve_or_400
+from bouwmeester.core.storage import (
+    bijlagen_root,
+    read_upload_content,
+    safe_resolve_or_400,
+    validate_upload,
+)
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.lead_contact import LeadContact
@@ -91,9 +96,6 @@ def _robust_parse_json(text: str) -> dict:
     raise json.JSONDecodeError(
         f"Could not parse LLM response as JSON. Raw text: {text[:200]}", text, 0
     )
-
-
-MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
 def _check_lead_access(lead: Lead, init_ctx: InitiatiefContext) -> None:
@@ -725,19 +727,10 @@ async def upload_attachment(
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead niet gevonden")
     _check_lead_access(lead, init_ctx)
-    # Read file in chunks
-    chunks: list[bytes] = []
-    total = 0
-    while chunk := await file.read(8192):
-        total += len(chunk)
-        if total > MAX_UPLOAD_SIZE:
-            max_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Bestand te groot. Maximum is {max_mb} MB.",
-            )
-        chunks.append(chunk)
-    content = b"".join(chunks)
+
+    content_type = file.content_type or "application/octet-stream"
+    content = await read_upload_content(file)
+    validate_upload(content, content_type)
 
     raw_name = file.filename or "bijlage"
     filename = Path(raw_name).name or "bijlage"
@@ -748,19 +741,19 @@ async def upload_attachment(
         dir_path.mkdir(parents=True, exist_ok=True)
         new_file_path = dir_path / safe_name
         new_file_path.write_bytes(content)
-    except OSError as exc:
+    except OSError:
         logger.exception("Failed to write lead attachment to %s", dir_path)
         raise HTTPException(
             status_code=500,
-            detail=f"Kan bestand niet opslaan op disk: {exc}",
-        ) from exc
+            detail="Kan bestand niet opslaan.",
+        )
 
     relative_path = f"leads/{lead_id}/{safe_name}"
 
     attachment = LeadAttachment(
         lead_id=lead_id,
         bestandsnaam=filename,
-        content_type=file.content_type or "application/octet-stream",
+        content_type=content_type,
         bestandsgrootte=len(content),
         pad=relative_path,
     )

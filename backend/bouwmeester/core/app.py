@@ -50,6 +50,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
 
+    # Only expose OpenAPI/docs when OIDC is not configured (local dev).
+    # In production (OIDC enabled), these endpoints are disabled to avoid
+    # leaking the full API surface to unauthenticated users.
+    _show_docs = not settings.OIDC_ISSUER
+
     app = FastAPI(
         title=settings.APP_NAME,
         version="1.0.0",
@@ -65,9 +70,9 @@ def create_app() -> FastAPI:
         debug=settings.DEBUG,
         lifespan=lifespan,
         redirect_slashes=False,
-        openapi_url="/api/openapi.json",
-        docs_url="/api/docs",
-        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json" if _show_docs else None,
+        docs_url="/api/docs" if _show_docs else None,
+        redoc_url="/api/redoc" if _show_docs else None,
         openapi_tags=[
             {"name": "nodes", "description": "Corpus nodes"},
             {"name": "edges", "description": "Edges between nodes"},
@@ -167,21 +172,20 @@ def create_app() -> FastAPI:
             request.url.path,
             exc.errors(),
         )
-        return JSONResponse(
-            status_code=500,
-            content={
-                "detail": "Response serialisation error — stored data does "
-                "not match the response schema.",
-                "errors": [
-                    {
-                        "loc": list(e["loc"]),
-                        "msg": e["msg"],
-                        "type": e["type"],
-                    }
-                    for e in exc.errors()
-                ],
-            },
-        )
+        content: dict = {
+            "detail": "Response serialisation error — stored data does "
+            "not match the response schema.",
+        }
+        if settings.DEBUG:
+            content["errors"] = [
+                {
+                    "loc": list(e["loc"]),
+                    "msg": e["msg"],
+                    "type": e["type"],
+                }
+                for e in exc.errors()
+            ]
+        return JSONResponse(status_code=500, content=content)
 
     @app.get("/api/health/live")
     async def liveness() -> dict[str, str]:

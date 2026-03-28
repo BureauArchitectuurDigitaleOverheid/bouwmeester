@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.repositories.search import SearchRepository
 from bouwmeester.schema.search import (
     SearchResponse,
@@ -28,6 +29,7 @@ async def search(
     result_types: list[SearchResultType] | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SearchResponse:
     """Full-text search across nodes, tasks, people, and org units."""
     repo = SearchRepository(db)
@@ -36,6 +38,7 @@ async def search(
         query=q,
         result_types=type_values,
         limit=limit,
+        org_ctx=org_ctx,
     )
     return SearchResponse(
         results=[SearchResult(**r) for r in results],

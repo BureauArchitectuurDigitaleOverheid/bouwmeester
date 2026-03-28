@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.org_context import OrgContext
 from bouwmeester.models.beleidskader import Beleidskader
 from bouwmeester.models.bron import Bron
 from bouwmeester.models.corpus_node import CorpusNode
@@ -23,8 +24,12 @@ class NodeService:
         self.session = session
         self.repo = CorpusNodeRepository(session)
 
-    async def get(self, id: UUID) -> CorpusNode | None:
-        return await self.repo.get(id)
+    async def get(
+        self,
+        id: UUID,
+        org_ctx: OrgContext | None = None,
+    ) -> CorpusNode | None:
+        return await self.repo.get(id, org_ctx=org_ctx)
 
     async def get_all(
         self,
@@ -34,6 +39,7 @@ class NodeService:
         *,
         search: str | None = None,
         include_unconnected_pi: bool = False,
+        org_ctx: OrgContext | None = None,
     ) -> list[CorpusNode]:
         return await self.repo.get_all(
             skip=skip,
@@ -41,6 +47,7 @@ class NodeService:
             node_type=node_type,
             search=search,
             include_unconnected_pi=include_unconnected_pi,
+            org_ctx=org_ctx,
         )
 
     async def create(self, data: CorpusNodeCreate) -> CorpusNode:

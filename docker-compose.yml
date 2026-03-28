@@ -15,7 +15,7 @@ services:
   db:
     image: postgres:16
     ports:
-      - "${DB_HOST_PORT:-5433}:5432"
+      - "127.0.0.1:${DB_HOST_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: bouwmeester
       POSTGRES_PASSWORD: bouwmeester

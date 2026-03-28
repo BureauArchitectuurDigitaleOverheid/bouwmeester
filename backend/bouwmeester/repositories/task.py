@@ -99,6 +99,7 @@ class TaskRepository(BaseRepository[Task]):
         opdracht_id: UUID,
         skip: int = 0,
         limit: int = 100,
+        org_ctx: OrgContext | None = None,
     ) -> list[Task]:
         stmt = (
             select(Task)
@@ -108,6 +109,7 @@ class TaskRepository(BaseRepository[Task]):
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
+        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -178,6 +180,7 @@ class TaskRepository(BaseRepository[Task]):
         include_children: bool = False,
         skip: int = 0,
         limit: int = 100,
+        org_ctx: OrgContext | None = None,
     ) -> list[Task]:
         if include_children:
             unit_ids = await self._get_descendant_ids(eenheid_id)
@@ -190,6 +193,7 @@ class TaskRepository(BaseRepository[Task]):
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
+        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import DOMPurify from 'dompurify';
 import mermaid from 'mermaid';
 
 mermaid.initialize({
@@ -23,7 +24,7 @@ function MermaidBlock({ chart }: { chart: string }) {
     mermaid
       .render(id, chart)
       .then(({ svg: rendered }) => {
-        if (!cancelled) setSvg(rendered);
+        if (!cancelled) setSvg(DOMPurify.sanitize(rendered, { USE_PROFILES: { svg: true, svgFilters: true } }));
       })
       .catch((err) => {
         if (!cancelled) setError(String(err));

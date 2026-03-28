@@ -13,8 +13,9 @@ from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.storage import (
     bijlagen_root,
+    read_upload_content,
     safe_resolve_or_400,
-    verify_content_type,
+    validate_upload,
 )
 from bouwmeester.models.chat_attachment import ChatAttachment
 from bouwmeester.schema.chat import (
@@ -41,20 +42,6 @@ try:
 except OSError:
     pass  # May fail in CI/test
 
-MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
-
-ALLOWED_CONTENT_TYPES = {
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.oasis.opendocument.text",
-    "text/plain",
-    "image/png",
-    "image/jpeg",
-    "image/gif",
-    "image/webp",
-}
-
 
 def _safe_path(relative: str) -> Path:
     """Resolve a relative path under CHAT_BIJLAGEN_ROOT, guarding against traversal."""
@@ -73,35 +60,8 @@ async def upload_chat_attachment(
 ) -> ChatAttachmentResponse:
     """Upload a file for use in chat messages."""
     content_type = file.content_type or ""
-    if content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Ongeldig bestandstype: {content_type}. "
-                "Toegestaan: PDF, Word, ODT, TXT, PNG, JPEG, GIF, WebP."
-            ),
-        )
-
-    # Read in chunks to enforce size limit
-    chunks: list[bytes] = []
-    total = 0
-    while chunk := await file.read(8192):
-        total += len(chunk)
-        if total > MAX_UPLOAD_SIZE:
-            max_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Bestand te groot. Maximum is {max_mb} MB.",
-            )
-        chunks.append(chunk)
-    content = b"".join(chunks)
-
-    # Verify that file magic bytes match the claimed content type
-    if not verify_content_type(content, content_type):
-        raise HTTPException(
-            status_code=400,
-            detail="Bestandsinhoud komt niet overeen met het opgegeven bestandstype.",
-        )
+    content = await read_upload_content(file)
+    validate_upload(content, content_type)
 
     # Sanitize filename
     raw_name = file.filename or "bijlage"
@@ -173,10 +133,13 @@ async def preview_chat_attachment(
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Bestand niet gevonden op disk")
 
+    safe_filename = (
+        attachment.bestandsnaam.replace('"', "").replace("\r", "").replace("\n", "")
+    )
     return FileResponse(
         path=str(file_path),
-        media_type=attachment.content_type,
-        filename=attachment.bestandsnaam,
+        media_type="application/octet-stream",
+        filename=safe_filename,
     )
 
 

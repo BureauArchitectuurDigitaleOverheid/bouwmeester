@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.tag import LeadTag, NodeTag, Tag
 from bouwmeester.repositories.base import BaseRepository
 
@@ -46,8 +47,12 @@ class TagRepository(BaseRepository[Tag]):
         return {tag.name: tag for tag in result.scalars().all()}
 
     async def search(self, query: str) -> list[Tag]:
+        safe_q = escape_like(query)
         stmt = (
-            select(Tag).where(Tag.name.ilike(f"%{query}%")).order_by(Tag.name).limit(20)
+            select(Tag)
+            .where(Tag.name.ilike(f"%{safe_q}%"))
+            .order_by(Tag.name)
+            .limit(20)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

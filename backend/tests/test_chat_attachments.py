@@ -86,7 +86,7 @@ async def test_upload_rejects_spoofed_content_type(client, chat_bijlagen_tmp):
 async def test_upload_rejects_oversized_file(client, chat_bijlagen_tmp):
     """Upload rejects files larger than the size limit."""
     # Patch MAX_UPLOAD_SIZE to a tiny value for testing
-    with patch("bouwmeester.api.routes.chat.MAX_UPLOAD_SIZE", 100):
+    with patch("bouwmeester.core.storage.MAX_UPLOAD_SIZE", 100):
         resp = await client.post(
             "/api/chat/upload",
             files={"file": ("big.pdf", b"%PDF" + b"x" * 200, "application/pdf")},

@@ -12,7 +12,13 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.storage import bijlagen_root, safe_resolve_or_400
+from bouwmeester.core.storage import (
+    BRON_ALLOWED_CONTENT_TYPES,
+    bijlagen_root,
+    read_upload_content,
+    safe_resolve_or_400,
+    validate_upload,
+)
 from bouwmeester.models.bron import Bron
 from bouwmeester.models.bron_bijlage import BronBijlage
 from bouwmeester.schema.bron import BronBijlageResponse
@@ -25,18 +31,7 @@ try:
     BIJLAGEN_ROOT.mkdir(parents=True, exist_ok=True)
 except OSError:
     pass  # May fail in CI/test; directory is also created per-upload
-MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
-
 logger = logging.getLogger(__name__)
-ALLOWED_CONTENT_TYPES = {
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.oasis.opendocument.text",
-    "text/plain",
-    "image/png",
-    "image/jpeg",
-}
 
 
 def _safe_path(relative: str) -> Path:
@@ -73,28 +68,8 @@ async def upload_bijlage(
     bron = await _get_bron(node_id, db, load_bijlage=True)
 
     content_type = file.content_type or ""
-    if content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Ongeldig bestandstype: {content_type}. "
-                "Toegestaan: PDF, Word, ODT, TXT, PNG, JPEG."
-            ),
-        )
-
-    # Read file in chunks to avoid loading arbitrarily large uploads into memory.
-    chunks: list[bytes] = []
-    total = 0
-    while chunk := await file.read(8192):
-        total += len(chunk)
-        if total > MAX_UPLOAD_SIZE:
-            max_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Bestand te groot. Maximum is {max_mb} MB.",
-            )
-        chunks.append(chunk)
-    content = b"".join(chunks)
+    content = await read_upload_content(file)
+    validate_upload(content, content_type, allowed=BRON_ALLOWED_CONTENT_TYPES)
 
     # Sanitize filename: strip path components, keep only the basename.
     raw_name = file.filename or "bijlage"
@@ -108,12 +83,12 @@ async def upload_bijlage(
         dir_path.mkdir(parents=True, exist_ok=True)
         new_file_path = dir_path / safe_name
         new_file_path.write_bytes(content)
-    except OSError as exc:
+    except OSError:
         logger.exception("Failed to write bijlage to %s", dir_path)
         raise HTTPException(
             status_code=500,
-            detail=f"Kan bestand niet opslaan op disk: {exc}",
-        ) from exc
+            detail="Kan bestand niet opslaan.",
+        )
 
     relative_path = f"{node_id}/{safe_name}"
 

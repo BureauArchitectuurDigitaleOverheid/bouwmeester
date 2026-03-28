@@ -1,7 +1,7 @@
 """API routes for parliamentary item imports and review."""
 
 import logging
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -165,7 +165,7 @@ async def reject_import(
     """Reject a parliamentary import item (sets status to rejected)."""
     repo = ParlementairItemRepository(db)
     item = await repo.update_status(
-        import_id, "rejected", reviewed_at=datetime.utcnow()
+        import_id, "rejected", reviewed_at=datetime.now(UTC)
     )
     if item is None:
         raise HTTPException(status_code=404, detail="Import not found")
@@ -297,7 +297,7 @@ async def complete_review(
 
     # Update item status to reviewed
     item = await repo.update_status(
-        import_id, "reviewed", reviewed_at=datetime.utcnow()
+        import_id, "reviewed", reviewed_at=datetime.now(UTC)
     )
 
     await log_activity(
@@ -383,7 +383,7 @@ async def approve_edge(
     # Update suggested edge status
     suggested_edge.status = "approved"
     suggested_edge.edge_id = edge.id
-    suggested_edge.reviewed_at = datetime.utcnow()
+    suggested_edge.reviewed_at = datetime.now(UTC)
     await db.flush()
 
     await log_activity(
@@ -410,7 +410,7 @@ async def reject_edge(
     updated = await repo.update_status(
         edge_id,
         "rejected",
-        reviewed_at=datetime.utcnow(),
+        reviewed_at=datetime.now(UTC),
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Suggested edge not found")
