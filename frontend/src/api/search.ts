@@ -5,11 +5,12 @@ export async function search(
   query: string,
   resultTypes?: SearchResultType[],
 ): Promise<SearchResponse> {
-  const params: Record<string, string> = { q: query };
+  const params = new URLSearchParams();
+  params.append('q', query);
   if (resultTypes && resultTypes.length > 0) {
-    params.result_types = resultTypes.join(',');
+    resultTypes.forEach((t) => params.append('result_types', t));
   }
-  return apiGet<SearchResponse>('/api/search', params);
+  return apiGet<SearchResponse>(`/api/search?${params.toString()}`);
 }
 
 export async function findSimilarNodes(
