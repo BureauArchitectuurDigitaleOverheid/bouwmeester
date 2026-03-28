@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/contexts/AuthContext';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { apiGet, apiPut } from '@/api/client';
 
@@ -33,8 +31,7 @@ const FEATURE_DEFINITIONS: FeatureDefinition[] = [
 
 const CATEGORIES = [...new Set(FEATURE_DEFINITIONS.map((f) => f.category))];
 
-export function FeatureTogglesPage() {
-  const { person, oidcConfigured, loading: authLoading } = useAuth();
+export function FeatureTogglesContent() {
   const queryClient = useQueryClient();
   const { data: eenheden, isLoading: eenhedenLoading } = useOrganisatieFlat();
   const [selectedEenheidId, setSelectedEenheidId] = useState<string | null>(null);
@@ -82,11 +79,6 @@ export function FeatureTogglesPage() {
       setDirty(false);
     },
   });
-
-  if (authLoading) return null;
-  if (oidcConfigured && (!person || !person.is_admin)) {
-    return <Navigate to="/" replace />;
-  }
 
   const toggleFeature = (key: string) => {
     setLocalFeatures((prev) => ({ ...prev, [key]: !prev[key] }));
