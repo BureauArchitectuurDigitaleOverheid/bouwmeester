@@ -18,6 +18,7 @@ interface AuthPerson {
   organisatie_eenheden: OrgEenheid[];
   managed_eenheden: OrgEenheid[];
   needs_placement: boolean;
+  has_pending_placement: boolean;
 }
 
 interface AuthState {
@@ -64,6 +65,7 @@ async function fetchAuthStatus(): Promise<AuthState> {
           organisatie_eenheden: data.person.organisatie_eenheden ?? [],
           managed_eenheden: data.person.managed_eenheden ?? [],
           needs_placement: data.person.needs_placement ?? false,
+          has_pending_placement: data.person.has_pending_placement ?? false,
         }
       : null,
     error: null,

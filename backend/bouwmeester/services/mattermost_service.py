@@ -88,6 +88,7 @@ _NOTIFICATION_COLORS: dict[str, str] = {
     "politieke_input_imported": "#EC4899",  # pink
     "mention": "#3B82F6",  # blue
     "access_request": "#F59E0B",  # amber
+    "placement_request": "#6366F1",  # indigo
 }
 
 # Types that should go to the channel (broadcast) instead of DM.

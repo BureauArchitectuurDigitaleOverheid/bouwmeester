@@ -549,6 +549,64 @@ class NotificationService:
             notifications.append(notification)
         return notifications
 
+    async def notify_placement_request(
+        self, person_naam: str, eenheid_id: UUID, eenheid_naam: str
+    ) -> list[Notification]:
+        """Notify the team manager and all admins about a placement request."""
+        notifications: list[Notification] = []
+        notified_ids: set[UUID] = set()
+        today = date.today()
+
+        # Resolve manager: temporal record first, legacy fallback
+        stmt = select(OrganisatieEenheidManager).where(
+            OrganisatieEenheidManager.eenheid_id == eenheid_id,
+            OrganisatieEenheidManager.geldig_van <= today,
+            (OrganisatieEenheidManager.geldig_tot.is_(None))
+            | (OrganisatieEenheidManager.geldig_tot >= today),
+        )
+        result = await self.session.execute(stmt)
+        manager_record = result.scalar_one_or_none()
+
+        manager_id: UUID | None = None
+        if manager_record and manager_record.manager_id:
+            manager_id = manager_record.manager_id
+        else:
+            eenheid = await self.session.get(OrganisatieEenheid, eenheid_id)
+            if eenheid and eenheid.manager_id:
+                manager_id = eenheid.manager_id
+
+        if manager_id:
+            notified_ids.add(manager_id)
+            data = NotificationCreate(
+                person_id=manager_id,
+                type="placement_request",
+                title=f"Plaatsingsverzoek: {person_naam}",
+                message=(f"{person_naam} wil geplaatst worden bij '{eenheid_naam}'."),
+            )
+            notification = await self.repo.create(data)
+            self._send_to_mattermost(notification)
+            notifications.append(notification)
+
+        # Also notify all admins
+        admin_stmt = select(Person).where(Person.is_admin == True)  # noqa: E712
+        admin_result = await self.session.execute(admin_stmt)
+        for admin in admin_result.scalars().all():
+            if admin.id not in notified_ids:
+                notified_ids.add(admin.id)
+                data = NotificationCreate(
+                    person_id=admin.id,
+                    type="placement_request",
+                    title=f"Plaatsingsverzoek: {person_naam}",
+                    message=(
+                        f"{person_naam} wil geplaatst worden bij '{eenheid_naam}'."
+                    ),
+                )
+                notification = await self.repo.create(data)
+                self._send_to_mattermost(notification)
+                notifications.append(notification)
+
+        return notifications
+
     async def notify_opdracht_assigned(
         self, opdracht: Opdracht, actor_id: UUID | None = None
     ) -> list[Notification]:

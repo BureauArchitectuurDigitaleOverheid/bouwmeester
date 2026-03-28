@@ -202,6 +202,10 @@ export function NotificationBell() {
                       navigate('/admin?tab=requests');
                       if (!notification.is_read) markRead.mutate(notification.id);
                       setOpen(false);
+                    } else if (notification.type === 'placement_request') {
+                      navigate('/admin?tab=placements');
+                      if (!notification.is_read) markRead.mutate(notification.id);
+                      setOpen(false);
                     } else if (notification.type === 'direct_message' || notification.type === 'agent_prompt') {
                       setThreadId(notification.id);
                       setOpen(false);

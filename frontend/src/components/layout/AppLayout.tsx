@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { Clock } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { ChatPanel } from '@/components/chat/ChatPanel';
@@ -7,6 +8,18 @@ import { ChatToggleButton } from '@/components/chat/ChatToggleButton';
 import { SearchModal } from '@/components/search/SearchModal';
 import { useUIStore } from '@/store/ui';
 import { useIsMobile } from '@/hooks/useMediaQuery';
+import { useAuth } from '@/contexts/AuthContext';
+
+function PendingPlacementBanner() {
+  const { person } = useAuth();
+  if (!person?.needs_placement || !person?.has_pending_placement) return null;
+  return (
+    <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2 text-sm text-amber-800">
+      <Clock className="h-4 w-4 shrink-0" />
+      <span>Je plaatsingsverzoek wordt beoordeeld door een manager.</span>
+    </div>
+  );
+}
 
 export function AppLayout() {
   const isMobile = useIsMobile();
@@ -68,6 +81,7 @@ export function AppLayout() {
         style={{ marginRight: chatOpen && !isMobile ? chatWidth : 0 }}
       >
         <Header />
+        <PendingPlacementBanner />
         <main className="flex-1 p-4 md:p-6 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
           <Outlet />
         </main>

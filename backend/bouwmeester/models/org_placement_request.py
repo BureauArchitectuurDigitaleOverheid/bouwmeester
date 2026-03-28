@@ -35,6 +35,11 @@ class OrgPlacementRequest(Base):
         nullable=False,
         index=True,
     )
+    dienstverband: Mapped[str] = mapped_column(
+        default="in_dienst",
+        server_default="in_dienst",
+        comment="in_dienst|ingehuurd|extern",
+    )
     status: Mapped[str] = mapped_column(
         default="pending",
         server_default="pending",

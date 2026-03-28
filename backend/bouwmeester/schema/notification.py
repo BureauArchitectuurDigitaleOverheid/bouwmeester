@@ -23,6 +23,7 @@ class NotificationType(enum.StrEnum):
     agent_prompt = "agent_prompt"
     mention = "mention"
     access_request = "access_request"
+    placement_request = "placement_request"
     emoji_reaction = "emoji_reaction"
     opdracht_created = "opdracht_created"
     opdracht_status_changed = "opdracht_status_changed"

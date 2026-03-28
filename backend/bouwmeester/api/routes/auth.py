@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -29,6 +28,7 @@ from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.core.whitelist import is_email_allowed
 from bouwmeester.models.access_request import AccessRequest
+from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
@@ -179,15 +179,13 @@ async def logout(
 
 
 async def _check_needs_onboarding(db: AsyncSession, person: Person) -> bool:
-    """Return True if the person is missing functie or an active org placement."""
-    if not person.functie:
-        return True
-    stmt = select(PersonOrganisatieEenheid.id).where(
-        PersonOrganisatieEenheid.person_id == person.id,
-        PersonOrganisatieEenheid.eind_datum.is_(None),
-    )
-    result = await db.execute(stmt)
-    return result.first() is None
+    """Return True if the person has not yet completed the onboarding form.
+
+    Onboarding is considered complete once the person has a functie set.
+    Whether they have an active org placement is tracked separately via
+    ``needs_placement`` / ``has_pending_placement``.
+    """
+    return not person.functie
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +294,7 @@ async def auth_status(
             org_eenheden: list[dict] = []
             managed_eenheden_list: list[dict] = []
             needs_placement = False
+            has_pending_placement = False
             if person_id:
                 pid = UUID(person_id)
                 # Own placements (active)
@@ -322,6 +321,21 @@ async def auth_status(
                 ]
                 needs_placement = len(org_eenheden) == 0
 
+                # Check for pending placement request
+                if needs_placement:
+                    pending_stmt = (
+                        select(OrgPlacementRequest.id)
+                        .where(
+                            OrgPlacementRequest.person_id == pid,
+                            OrgPlacementRequest.status == "pending",
+                        )
+                        .limit(1)
+                    )
+                    pending_result = await db.execute(pending_stmt)
+                    has_pending_placement = (
+                        pending_result.scalar_one_or_none() is not None
+                    )
+
                 # Managed eenheden
                 managed_stmt = select(
                     OrganisatieEenheid.id,
@@ -344,6 +358,7 @@ async def auth_status(
                 "organisatie_eenheden": org_eenheden,
                 "managed_eenheden": managed_eenheden_list,
                 "needs_placement": needs_placement,
+                "has_pending_placement": has_pending_placement,
             }
         except Exception:
             logger.exception(
@@ -391,16 +406,17 @@ async def complete_onboarding(
 ) -> PersonDetailResponse:
     """Complete the onboarding flow for a newly-created SSO user.
 
-    Updates the person's name and functie, and creates an org placement
-    if none exists yet. Idempotent — safe to call again after a session
-    reset or re-login.
+    Updates the person's name and functie immediately. Instead of creating
+    an org placement directly, a placement *request* is created which must
+    be approved by the team manager or an admin.
     """
     # Validate that the org unit exists.
-    org_stmt = select(OrganisatieEenheid.id).where(
+    org_stmt = select(OrganisatieEenheid.id, OrganisatieEenheid.naam).where(
         OrganisatieEenheid.id == body.organisatie_eenheid_id
     )
     org_result = await db.execute(org_stmt)
-    if org_result.scalar_one_or_none() is None:
+    org_row = org_result.first()
+    if org_row is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Organisatie-eenheid niet gevonden",
@@ -410,7 +426,8 @@ async def complete_onboarding(
     current_user.naam = body.naam
     current_user.functie = body.functie
 
-    # Only create an org placement if none exists yet.
+    # Create a placement request if the user has no active placement and no
+    # pending request for this eenheid yet.
     existing_placement = await db.execute(
         select(PersonOrganisatieEenheid.id).where(
             PersonOrganisatieEenheid.person_id == current_user.id,
@@ -418,13 +435,31 @@ async def complete_onboarding(
         )
     )
     if existing_placement.scalar_one_or_none() is None:
-        placement = PersonOrganisatieEenheid(
-            person_id=current_user.id,
-            organisatie_eenheid_id=body.organisatie_eenheid_id,
-            dienstverband=body.dienstverband,
-            start_datum=date.today(),
+        # Check for existing pending request
+        existing_request = await db.execute(
+            select(OrgPlacementRequest.id).where(
+                OrgPlacementRequest.person_id == current_user.id,
+                OrgPlacementRequest.organisatie_eenheid_id
+                == body.organisatie_eenheid_id,
+                OrgPlacementRequest.status == "pending",
+            )
         )
-        db.add(placement)
+        if existing_request.scalar_one_or_none() is None:
+            placement_req = OrgPlacementRequest(
+                person_id=current_user.id,
+                organisatie_eenheid_id=body.organisatie_eenheid_id,
+                dienstverband=body.dienstverband,
+            )
+            db.add(placement_req)
+            await db.flush()
+
+            # Notify team manager and admins
+            notif_svc = NotificationService(db)
+            await notif_svc.notify_placement_request(
+                person_naam=body.naam,
+                eenheid_id=body.organisatie_eenheid_id,
+                eenheid_naam=org_row.naam,
+            )
 
     await db.flush()
 

@@ -1,6 +1,6 @@
 """API routes for org placement requests (onboarding)."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
+from bouwmeester.models.org_manager import OrganisatieEenheidManager
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
@@ -18,6 +19,7 @@ from bouwmeester.schema.org_placement import (
     OrgPlacementRequestCreate,
     OrgPlacementRequestResponse,
 )
+from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/org-placements", tags=["org-placements"])
 
@@ -29,6 +31,7 @@ def _to_response(req: OrgPlacementRequest) -> OrgPlacementRequestResponse:
         person_naam=req.person.naam if req.person else "",
         organisatie_eenheid_id=req.organisatie_eenheid_id,
         eenheid_naam=req.organisatie_eenheid.naam if req.organisatie_eenheid else "",
+        dienstverband=req.dienstverband,
         status=req.status,
         requested_at=req.requested_at,
         decided_at=req.decided_at,
@@ -41,6 +44,35 @@ def _load_options():
         selectinload(OrgPlacementRequest.person),
         selectinload(OrgPlacementRequest.organisatie_eenheid),
     ]
+
+
+async def _get_managed_eenheid_ids(db: AsyncSession, person_id: UUID) -> list[UUID]:
+    """Return eenheid IDs where the person is the current manager.
+
+    Checks both the legacy ``manager_id`` column and the temporal
+    ``OrganisatieEenheidManager`` records.
+    """
+    ids: set[UUID] = set()
+
+    # Legacy manager_id
+    legacy_stmt = select(OrganisatieEenheid.id).where(
+        OrganisatieEenheid.manager_id == person_id,
+    )
+    result = await db.execute(legacy_stmt)
+    ids.update(result.scalars().all())
+
+    # Temporal manager records
+    today = date.today()
+    temporal_stmt = select(OrganisatieEenheidManager.eenheid_id).where(
+        OrganisatieEenheidManager.manager_id == person_id,
+        OrganisatieEenheidManager.geldig_van <= today,
+        (OrganisatieEenheidManager.geldig_tot.is_(None))
+        | (OrganisatieEenheidManager.geldig_tot >= today),
+    )
+    result = await db.execute(temporal_stmt)
+    ids.update(result.scalars().all())
+
+    return list(ids)
 
 
 @router.post(
@@ -73,20 +105,41 @@ async def request_placement(
     req = OrgPlacementRequest(
         person_id=current_user.id,
         organisatie_eenheid_id=data.organisatie_eenheid_id,
+        dienstverband=data.dienstverband,
     )
     db.add(req)
     await db.flush()
     await db.refresh(req, attribute_names=["person", "organisatie_eenheid"])
+
+    # Notify the team manager and admins
+    notif_svc = NotificationService(db)
+    eenheid_naam = req.organisatie_eenheid.naam if req.organisatie_eenheid else ""
+    person_naam = req.person.naam if req.person else ""
+    await notif_svc.notify_placement_request(
+        person_naam=person_naam,
+        eenheid_id=req.organisatie_eenheid_id,
+        eenheid_naam=eenheid_naam,
+    )
+
     return _to_response(req)
 
 
-async def _get_managed_eenheid_ids(db: AsyncSession, person_id: UUID) -> list[UUID]:
-    """Return eenheid IDs where the person is the manager."""
-    stmt = select(OrganisatieEenheid.id).where(
-        OrganisatieEenheid.manager_id == person_id,
+@router.get("/my-requests", response_model=list[OrgPlacementRequestResponse])
+async def my_requests(
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[OrgPlacementRequestResponse]:
+    """List the current user's placement requests (all statuses)."""
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Inloggen vereist")
+    stmt = (
+        select(OrgPlacementRequest)
+        .where(OrgPlacementRequest.person_id == current_user.id)
+        .options(*_load_options())
+        .order_by(OrgPlacementRequest.requested_at.desc())
     )
     result = await db.execute(stmt)
-    return list(result.scalars().all())
+    return [_to_response(r) for r in result.scalars().all()]
 
 
 @router.get("/pending", response_model=list[OrgPlacementRequestResponse])
@@ -147,11 +200,10 @@ async def approve_placement(
     req.decided_by = current_user.id if current_user else None
 
     # Create the actual placement
-    from datetime import date
-
     placement = PersonOrganisatieEenheid(
         person_id=req.person_id,
         organisatie_eenheid_id=req.organisatie_eenheid_id,
+        dienstverband=req.dienstverband,
         start_datum=date.today(),
     )
     db.add(placement)
