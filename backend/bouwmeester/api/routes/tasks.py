@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.inbox import InboxResponse
@@ -44,27 +45,34 @@ async def list_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List tasks with optional filters."""
     repo = TaskRepository(db)
     if opdracht_id is not None:
-        tasks = await repo.get_by_opdracht(opdracht_id, skip=skip, limit=limit)
+        tasks = await repo.get_by_opdracht(
+            opdracht_id, skip=skip, limit=limit, org_ctx=org_ctx
+        )
     elif node_id is not None:
-        tasks = await repo.get_by_node(node_id, skip=skip, limit=limit)
+        tasks = await repo.get_by_node(node_id, skip=skip, limit=limit, org_ctx=org_ctx)
     elif assignee_id is not None:
-        tasks = await repo.get_by_assignee(assignee_id, skip=skip, limit=limit)
+        tasks = await repo.get_by_assignee(
+            assignee_id, skip=skip, limit=limit, org_ctx=org_ctx
+        )
     elif organisatie_eenheid_id is not None:
         tasks = await repo.get_by_organisatie_eenheid(
             organisatie_eenheid_id,
             include_children=include_children,
             skip=skip,
             limit=limit,
+            org_ctx=org_ctx,
         )
     else:
         tasks = await repo.get_all(
             skip=skip,
             limit=limit,
             status=status_filter,
+            org_ctx=org_ctx,
         )
     return validate_list(TaskResponse, tasks)
 

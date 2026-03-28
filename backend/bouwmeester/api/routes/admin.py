@@ -469,7 +469,7 @@ async def export_database(
     return StreamingResponse(
         io.BytesIO(file_bytes),
         media_type=media_type,
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

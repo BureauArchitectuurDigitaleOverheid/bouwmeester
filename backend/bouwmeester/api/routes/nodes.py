@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.repositories.node_stakeholder import NodeStakeholderRepository
@@ -67,6 +68,7 @@ async def list_nodes(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[CorpusNodeResponse]:
     """List all corpus nodes, optionally filtered by node_type and/or title search.
 
@@ -81,6 +83,7 @@ async def list_nodes(
         node_type=node_type_str,
         search=search,
         include_unconnected_pi=include_unconnected_pi,
+        org_ctx=org_ctx,
     )
     responses = validate_list(CorpusNodeResponse, nodes)
 
@@ -150,10 +153,11 @@ async def get_node(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> CorpusNodeWithEdges:
     """Get a single node by ID, including its incoming and outgoing edges."""
     service = NodeService(db)
-    node = require_found(await service.get(id), "Node")
+    node = require_found(await service.get(id, org_ctx=org_ctx), "Node")
     edges_from = [EdgeResponse.model_validate(e) for e in node.edges_from]
     edges_to = [EdgeResponse.model_validate(e) for e in node.edges_to]
     return CorpusNodeWithEdges(

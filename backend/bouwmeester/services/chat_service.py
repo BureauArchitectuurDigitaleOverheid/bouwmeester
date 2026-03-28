@@ -1831,8 +1831,11 @@ async def _execute_write_tool(
         elif tool_name == "attach_to_bron":
             import shutil
 
-            from bouwmeester.api.routes.bijlage import ALLOWED_CONTENT_TYPES
-            from bouwmeester.core.storage import bijlagen_root, safe_resolve
+            from bouwmeester.core.storage import (
+                BRON_ALLOWED_CONTENT_TYPES,
+                bijlagen_root,
+                safe_resolve,
+            )
             from bouwmeester.models.bron import Bron
             from bouwmeester.models.bron_bijlage import BronBijlage
 
@@ -1855,7 +1858,7 @@ async def _execute_write_tool(
                 }
 
             # Validate content type against bron allowlist
-            if att.content_type not in ALLOWED_CONTENT_TYPES:
+            if att.content_type not in BRON_ALLOWED_CONTENT_TYPES:
                 return {
                     "success": False,
                     "summary": (

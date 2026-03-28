@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.org_context import OrgContext
+from bouwmeester.core.org_context import OrgContext, org_filter_sql_clause
 from bouwmeester.utils.tiptap import tiptap_to_plain
 
 
@@ -66,15 +66,8 @@ class SearchRepository:
                 )
             return rank
 
-        def _org_filter_sql(col: str = "organisatie_eenheid_id") -> str:
-            """Return an AND clause for org-based visibility filtering."""
-            if org_ctx is None or org_ctx.is_admin:
-                return ""
-            if not org_ctx.is_authenticated:
-                return f" AND {col} IS NULL"
-            if not org_ctx.visible_eenheid_ids:
-                return f" AND {col} IS NULL"
-            return f" AND ({col} IS NULL OR {col} = ANY(:visible_eenheid_ids))"
+        def _org_sql(col: str = "organisatie_eenheid_id") -> str:
+            return org_filter_sql_clause(col, org_ctx)
 
         if "corpus_node" in active_types:
             tc = entity_title_cols["corpus_node"]
@@ -87,7 +80,7 @@ class SearchRepository:
                     description,
                     {_score(tc)} AS score
                 FROM corpus_node
-                WHERE {_where(tc)}{_org_filter_sql()}
+                WHERE {_where(tc)}{_org_sql()}
             """)
 
         if "task" in active_types:
@@ -101,7 +94,7 @@ class SearchRepository:
                     description,
                     {_score(tc)} AS score
                 FROM task
-                WHERE {_where(tc)}{_org_filter_sql()}
+                WHERE {_where(tc)}{_org_sql()}
             """)
 
         if "person" in active_types:
@@ -171,7 +164,7 @@ class SearchRepository:
                     description,
                     {_score(tc)} AS score
                 FROM lead
-                WHERE {_where(tc)}{_org_filter_sql()}
+                WHERE {_where(tc)}{_org_sql()}
             """)
 
         if not sub_queries:

@@ -1,8 +1,6 @@
 """API routes for file attachments on Bron nodes."""
 
-import logging
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -12,36 +10,22 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.storage import bijlagen_root, safe_resolve_or_400
+from bouwmeester.core.storage import (
+    BRON_ALLOWED_CONTENT_TYPES,
+    ensure_bijlagen_dir,
+    read_upload_content,
+    safe_resolve_or_400,
+    sanitize_download_filename,
+    validate_upload,
+    write_upload_to_disk,
+)
 from bouwmeester.models.bron import Bron
 from bouwmeester.models.bron_bijlage import BronBijlage
 from bouwmeester.schema.bron import BronBijlageResponse
 
 router = APIRouter(prefix="/nodes/{node_id}/bijlage", tags=["bijlage"])
 
-
-BIJLAGEN_ROOT = bijlagen_root()
-try:
-    BIJLAGEN_ROOT.mkdir(parents=True, exist_ok=True)
-except OSError:
-    pass  # May fail in CI/test; directory is also created per-upload
-MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
-
-logger = logging.getLogger(__name__)
-ALLOWED_CONTENT_TYPES = {
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.oasis.opendocument.text",
-    "text/plain",
-    "image/png",
-    "image/jpeg",
-}
-
-
-def _safe_path(relative: str) -> Path:
-    """Resolve a relative path under BIJLAGEN_ROOT, guarding against traversal."""
-    return safe_resolve_or_400(BIJLAGEN_ROOT, relative)
+BIJLAGEN_ROOT = ensure_bijlagen_dir()
 
 
 async def _get_bron(
@@ -73,53 +57,18 @@ async def upload_bijlage(
     bron = await _get_bron(node_id, db, load_bijlage=True)
 
     content_type = file.content_type or ""
-    if content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Ongeldig bestandstype: {content_type}. "
-                "Toegestaan: PDF, Word, ODT, TXT, PNG, JPEG."
-            ),
-        )
-
-    # Read file in chunks to avoid loading arbitrarily large uploads into memory.
-    chunks: list[bytes] = []
-    total = 0
-    while chunk := await file.read(8192):
-        total += len(chunk)
-        if total > MAX_UPLOAD_SIZE:
-            max_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Bestand te groot. Maximum is {max_mb} MB.",
-            )
-        chunks.append(chunk)
-    content = b"".join(chunks)
-
-    # Sanitize filename: strip path components, keep only the basename.
-    raw_name = file.filename or "bijlage"
-    filename = Path(raw_name).name or "bijlage"
-    safe_name = f"{uuid.uuid4().hex}_{filename}"
+    content = await read_upload_content(file)
+    validate_upload(content, content_type, allowed=BRON_ALLOWED_CONTENT_TYPES)
 
     # Write new file first (before deleting old one, to avoid data loss
     # on write failure).
-    dir_path = BIJLAGEN_ROOT / str(node_id)
-    try:
-        dir_path.mkdir(parents=True, exist_ok=True)
-        new_file_path = dir_path / safe_name
-        new_file_path.write_bytes(content)
-    except OSError as exc:
-        logger.exception("Failed to write bijlage to %s", dir_path)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Kan bestand niet opslaan op disk: {exc}",
-        ) from exc
-
-    relative_path = f"{node_id}/{safe_name}"
+    filename, relative_path, _ = write_upload_to_disk(
+        content, file.filename or "bijlage", BIJLAGEN_ROOT, item_id=node_id
+    )
 
     # Remove existing bijlage if present (file + DB row).
     if bron.bijlage:
-        old_path = _safe_path(bron.bijlage.pad)
+        old_path = safe_resolve_or_400(BIJLAGEN_ROOT, bron.bijlage.pad)
         if old_path.exists():
             old_path.unlink()
         await db.delete(bron.bijlage)
@@ -169,19 +118,13 @@ async def download_bijlage(
     if bijlage is None:
         raise HTTPException(status_code=404, detail="Geen bijlage gevonden")
 
-    file_path = _safe_path(bijlage.pad)
+    file_path = safe_resolve_or_400(BIJLAGEN_ROOT, bijlage.pad)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Bestand niet gevonden op disk")
 
-    # Force download (Content-Disposition: attachment) to prevent inline
-    # rendering of potentially dangerous content (e.g. HTML/SVG).
-    # Sanitize filename to prevent header injection via control chars.
-    safe_filename = (
-        bijlage.bestandsnaam.replace('"', "").replace("\r", "").replace("\n", "")
-    )
     return FileResponse(
         path=str(file_path),
-        filename=safe_filename,
+        filename=sanitize_download_filename(bijlage.bestandsnaam),
         media_type="application/octet-stream",
     )
 
@@ -200,7 +143,7 @@ async def delete_bijlage(
     if bijlage is None:
         raise HTTPException(status_code=404, detail="Geen bijlage gevonden")
 
-    file_path = _safe_path(bijlage.pad)
+    file_path = safe_resolve_or_400(BIJLAGEN_ROOT, bijlage.pad)
     await db.delete(bijlage)
     # Delete file after DB delete succeeds (commit happens in get_db).
     if file_path.exists():

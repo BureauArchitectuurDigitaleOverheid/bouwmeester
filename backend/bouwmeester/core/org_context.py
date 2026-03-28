@@ -201,3 +201,26 @@ def apply_org_filter(stmt, column, ctx: OrgContext | None):
             column.in_(ctx.visible_eenheid_ids),
         )
     )
+
+
+def org_filter_sql_clause(column: str, ctx: OrgContext | None) -> str:
+    """Return a raw SQL AND clause for org-based visibility filtering.
+
+    Raw SQL variant of :func:`apply_org_filter` for use in queries that
+    cannot be expressed with the SQLAlchemy ORM (e.g. UNION ALL across
+    heterogeneous tables).
+
+    Args:
+        column: SQL column name (e.g. ``"organisatie_eenheid_id"``).
+        ctx: OrgContext, or None (no filtering applied).
+
+    Returns:
+        An ``" AND ..."`` SQL fragment, or ``""`` when no filtering is needed.
+    """
+    if ctx is None or ctx.is_admin:
+        return ""
+    if not ctx.is_authenticated:
+        return f" AND {column} IS NULL"
+    if not ctx.visible_eenheid_ids:
+        return f" AND {column} IS NULL"
+    return f" AND ({column} IS NULL OR {column} = ANY(:visible_eenheid_ids))"

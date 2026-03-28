@@ -1,9 +1,7 @@
 """API routes for leads (sales/intake funnel)."""
 
 import logging
-import uuid
 from datetime import date
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
@@ -18,7 +16,14 @@ from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
 )
-from bouwmeester.core.storage import bijlagen_root, safe_resolve_or_400
+from bouwmeester.core.storage import (
+    ensure_bijlagen_dir,
+    read_upload_content,
+    safe_resolve_or_400,
+    sanitize_download_filename,
+    validate_upload,
+    write_upload_to_disk,
+)
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.lead_contact import LeadContact
@@ -54,7 +59,7 @@ router = APIRouter(prefix="/leads", tags=["leads"])
 
 logger = logging.getLogger(__name__)
 
-LEADS_BIJLAGEN_ROOT = bijlagen_root()
+LEADS_BIJLAGEN_ROOT = ensure_bijlagen_dir()
 
 
 def _robust_parse_json(text: str) -> dict:
@@ -91,9 +96,6 @@ def _robust_parse_json(text: str) -> dict:
     raise json.JSONDecodeError(
         f"Could not parse LLM response as JSON. Raw text: {text[:200]}", text, 0
     )
-
-
-MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
 def _check_lead_access(lead: Lead, init_ctx: InitiatiefContext) -> None:
@@ -725,42 +727,23 @@ async def upload_attachment(
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead niet gevonden")
     _check_lead_access(lead, init_ctx)
-    # Read file in chunks
-    chunks: list[bytes] = []
-    total = 0
-    while chunk := await file.read(8192):
-        total += len(chunk)
-        if total > MAX_UPLOAD_SIZE:
-            max_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Bestand te groot. Maximum is {max_mb} MB.",
-            )
-        chunks.append(chunk)
-    content = b"".join(chunks)
 
-    raw_name = file.filename or "bijlage"
-    filename = Path(raw_name).name or "bijlage"
-    safe_name = f"{uuid.uuid4().hex}_{filename}"
+    content_type = file.content_type or "application/octet-stream"
+    content = await read_upload_content(file)
+    validate_upload(content, content_type)
 
-    dir_path = LEADS_BIJLAGEN_ROOT / "leads" / str(lead_id)
-    try:
-        dir_path.mkdir(parents=True, exist_ok=True)
-        new_file_path = dir_path / safe_name
-        new_file_path.write_bytes(content)
-    except OSError as exc:
-        logger.exception("Failed to write lead attachment to %s", dir_path)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Kan bestand niet opslaan op disk: {exc}",
-        ) from exc
-
-    relative_path = f"leads/{lead_id}/{safe_name}"
+    leads_dir = LEADS_BIJLAGEN_ROOT / "leads"
+    filename, relative_path, _ = write_upload_to_disk(
+        content, file.filename or "bijlage", leads_dir, item_id=lead_id
+    )
+    # Prefix with "leads/" since write_upload_to_disk returns path relative
+    # to leads_dir, but DB stores path relative to LEADS_BIJLAGEN_ROOT.
+    relative_path = f"leads/{relative_path}"
 
     attachment = LeadAttachment(
         lead_id=lead_id,
         bestandsnaam=filename,
-        content_type=file.content_type or "application/octet-stream",
+        content_type=content_type,
         bestandsgrootte=len(content),
         pad=relative_path,
     )
@@ -798,12 +781,9 @@ async def download_attachment(
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Bestand niet gevonden op disk")
 
-    safe_filename = (
-        attachment.bestandsnaam.replace('"', "").replace("\r", "").replace("\n", "")
-    )
     return FileResponse(
         path=str(file_path),
-        filename=safe_filename,
+        filename=sanitize_download_filename(attachment.bestandsnaam),
         media_type="application/octet-stream",
     )
 

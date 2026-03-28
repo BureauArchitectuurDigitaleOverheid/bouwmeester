@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.schema.edge import EdgeCreate, EdgeResponse, EdgeUpdate, EdgeWithNodes
@@ -33,6 +34,7 @@ async def list_edges(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[EdgeWithNodes]:
     """List edges with full node data.
 
@@ -46,6 +48,7 @@ async def list_edges(
         to_node_id=to_node_id,
         node_id=node_id,
         edge_type_id=edge_type_id,
+        org_ctx=org_ctx,
     )
     return validate_list(EdgeWithNodes, edges)
 
@@ -113,10 +116,11 @@ async def get_edge(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> EdgeWithNodes:
     """Get a single edge by ID, including full from/to node data."""
     repo = EdgeRepository(db)
-    edge = require_found(await repo.get(id), "Edge")
+    edge = require_found(await repo.get(id, org_ctx=org_ctx), "Edge")
     return EdgeWithNodes.model_validate(edge)
 
 

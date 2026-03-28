@@ -20,6 +20,7 @@ export async function getGraphView(nodeTypes?: string[], limit?: number): Promis
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
     });
     if (!response.ok) {
       throw new Error(`API Error ${response.status}: ${response.statusText}`);
