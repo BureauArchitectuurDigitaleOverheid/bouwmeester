@@ -119,6 +119,7 @@ class PersonRole(Base):
     role_id: Mapped[str] = mapped_column(
         ForeignKey("role.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     organisatie_eenheid_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

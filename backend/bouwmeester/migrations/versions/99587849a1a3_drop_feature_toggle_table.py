@@ -20,6 +20,12 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.drop_table("feature_toggle")
+    # Add missing index on person_role.role_id
+    op.create_index(
+        "ix_person_role_role_id",
+        "person_role",
+        ["role_id"],
+    )
 
 
 def downgrade() -> None:
