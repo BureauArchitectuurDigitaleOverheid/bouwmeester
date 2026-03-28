@@ -51,10 +51,14 @@ async def test_onboarding_validates_required_fields(client):
 
 # ---------------------------------------------------------------------------
 # _check_needs_onboarding logic
+#
+# After the placement approval workflow change, _check_needs_onboarding only
+# checks whether the person has a functie set. Placement status is tracked
+# separately via needs_placement / has_pending_placement.
 # ---------------------------------------------------------------------------
 
 
-async def test_needs_onboarding_no_functie(db_session):
+def test_needs_onboarding_no_functie():
     """Person without functie needs onboarding."""
     person = Person(
         id=uuid.uuid4(),
@@ -63,14 +67,14 @@ async def test_needs_onboarding_no_functie(db_session):
         oidc_subject="sub-nofunctie",
         functie=None,
     )
-    db_session.add(person)
-    await db_session.flush()
-
-    assert await _check_needs_onboarding(db_session, person) is True
+    assert _check_needs_onboarding(person) is True
 
 
-async def test_needs_onboarding_no_placement(db_session):
-    """Person with functie but no active org placement needs onboarding."""
+def test_needs_onboarding_no_placement():
+    """Person with functie but no active org placement does NOT need onboarding.
+
+    Placement is now tracked separately -- onboarding only cares about functie.
+    """
     person = Person(
         id=uuid.uuid4(),
         naam="No Placement User",
@@ -78,14 +82,11 @@ async def test_needs_onboarding_no_placement(db_session):
         oidc_subject="sub-noplacement",
         functie="Beleidsmedewerker",
     )
-    db_session.add(person)
-    await db_session.flush()
-
-    assert await _check_needs_onboarding(db_session, person) is True
+    assert _check_needs_onboarding(person) is False
 
 
-async def test_needs_onboarding_with_ended_placement(db_session, sample_organisatie):
-    """Person with only ended placements still needs onboarding."""
+def test_needs_onboarding_with_ended_placement():
+    """Person with functie and only ended placements does NOT need onboarding."""
     person = Person(
         id=uuid.uuid4(),
         naam="Ended Placement User",
@@ -93,25 +94,11 @@ async def test_needs_onboarding_with_ended_placement(db_session, sample_organisa
         oidc_subject="sub-ended",
         functie="Beleidsmedewerker",
     )
-    db_session.add(person)
-    await db_session.flush()
-
-    # Create an ended placement
-    placement = PersonOrganisatieEenheid(
-        person_id=person.id,
-        organisatie_eenheid_id=sample_organisatie.id,
-        dienstverband="in_dienst",
-        start_datum=date(2024, 1, 1),
-        eind_datum=date(2024, 12, 31),
-    )
-    db_session.add(placement)
-    await db_session.flush()
-
-    assert await _check_needs_onboarding(db_session, person) is True
+    assert _check_needs_onboarding(person) is False
 
 
-async def test_onboarding_complete(db_session, sample_organisatie):
-    """Person with functie and active placement does NOT need onboarding."""
+def test_onboarding_complete():
+    """Person with functie does NOT need onboarding."""
     person = Person(
         id=uuid.uuid4(),
         naam="Complete User",
@@ -119,37 +106,11 @@ async def test_onboarding_complete(db_session, sample_organisatie):
         oidc_subject="sub-complete",
         functie="Beleidsmedewerker",
     )
-    db_session.add(person)
-    await db_session.flush()
-
-    placement = PersonOrganisatieEenheid(
-        person_id=person.id,
-        organisatie_eenheid_id=sample_organisatie.id,
-        dienstverband="in_dienst",
-        start_datum=date.today(),
-    )
-    db_session.add(placement)
-    await db_session.flush()
-
-    assert await _check_needs_onboarding(db_session, person) is False
+    assert _check_needs_onboarding(person) is False
 
 
-async def test_onboarding_multiple_active_placements(db_session, sample_organisatie):
-    """Person with multiple active placements does NOT need onboarding.
-
-    Regression test: scalar_one_or_none() raised MultipleResultsFound
-    when a person had more than one active org placement.
-    """
-    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-
-    # Create a second org unit so we can have two distinct active placements.
-    org2 = OrganisatieEenheid(
-        id=uuid.uuid4(),
-        naam="Second Org",
-        type="directie",
-    )
-    db_session.add(org2)
-
+def test_onboarding_multiple_active_placements():
+    """Person with functie does NOT need onboarding regardless of placements."""
     person = Person(
         id=uuid.uuid4(),
         naam="Multi Placement User",
@@ -157,21 +118,7 @@ async def test_onboarding_multiple_active_placements(db_session, sample_organisa
         oidc_subject="sub-multi",
         functie="Beleidsmedewerker",
     )
-    db_session.add(person)
-    await db_session.flush()
-
-    for org in [sample_organisatie, org2]:
-        db_session.add(
-            PersonOrganisatieEenheid(
-                person_id=person.id,
-                organisatie_eenheid_id=org.id,
-                dienstverband="in_dienst",
-                start_datum=date.today(),
-            )
-        )
-    await db_session.flush()
-
-    assert await _check_needs_onboarding(db_session, person) is False
+    assert _check_needs_onboarding(person) is False
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +127,7 @@ async def test_onboarding_multiple_active_placements(db_session, sample_organisa
 
 
 async def test_onboarding_creates_placement(db_session, sample_organisatie):
-    """Simulate onboarding: update person + create placement."""
+    """Simulate onboarding: update person + create placement request."""
     person = Person(
         id=uuid.uuid4(),
         naam="Onboarding User",
@@ -191,33 +138,18 @@ async def test_onboarding_creates_placement(db_session, sample_organisatie):
     db_session.add(person)
     await db_session.flush()
 
-    # Before: needs onboarding
-    assert await _check_needs_onboarding(db_session, person) is True
+    # Before: needs onboarding (no functie)
+    assert _check_needs_onboarding(person) is True
 
-    # Simulate onboarding
+    # Simulate onboarding: set functie
     person.naam = "Updated Name"
     person.functie = "Beleidsmedewerker"
-    placement = PersonOrganisatieEenheid(
-        person_id=person.id,
-        organisatie_eenheid_id=sample_organisatie.id,
-        dienstverband="in_dienst",
-        start_datum=date.today(),
-    )
-    db_session.add(placement)
     await db_session.flush()
 
-    # After: onboarding complete
-    assert await _check_needs_onboarding(db_session, person) is False
+    # After: onboarding complete (functie is set)
+    assert _check_needs_onboarding(person) is False
     assert person.naam == "Updated Name"
     assert person.functie == "Beleidsmedewerker"
-
-    # Verify placement was created
-    stmt = select(PersonOrganisatieEenheid).where(
-        PersonOrganisatieEenheid.person_id == person.id,
-        PersonOrganisatieEenheid.eind_datum.is_(None),
-    )
-    result = await db_session.execute(stmt)
-    assert result.scalar_one_or_none() is not None
 
 
 async def test_onboarding_idempotent_no_duplicate_placement(
@@ -244,7 +176,7 @@ async def test_onboarding_idempotent_no_duplicate_placement(
     db_session.add(placement)
     await db_session.flush()
 
-    assert await _check_needs_onboarding(db_session, person) is False
+    assert _check_needs_onboarding(person) is False
 
     # Simulate the idempotent onboarding endpoint logic:
     # always update naam/functie, only create placement if none exists
