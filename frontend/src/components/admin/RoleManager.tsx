@@ -83,10 +83,8 @@ function AssignmentRow({
 
 function PersonRolesPanel({
   personId,
-  personNaam,
 }: {
   personId: string;
-  personNaam: string;
 }) {
   const { data: assignments, isLoading } = usePersonRoleAssignments(personId);
   const { data: roles } = useRoles();
@@ -144,6 +142,11 @@ function PersonRolesPanel({
 
   return (
     <div className="bg-gray-50 border-l-3 border-l-primary-300 py-3 px-2">
+      <div className="px-4 pb-1.5">
+        <h4 className="text-xs font-medium text-text-secondary uppercase tracking-wider">
+          Rollen
+        </h4>
+      </div>
       {/* Current assignments table */}
       {assignments && assignments.length > 0 ? (
         <table className="w-full text-sm">
@@ -177,7 +180,7 @@ function PersonRolesPanel({
         </table>
       ) : (
         <div className="px-4 py-2 text-sm text-text-secondary">
-          {personNaam} heeft nog geen rollen.
+          Geen rollen.
         </div>
       )}
 
@@ -782,7 +785,7 @@ function PersonRow({
       {isExpanded && (
         <tr className="border-b-2 border-primary-200">
           <td colSpan={5} className="p-0">
-            <PersonRolesPanel personId={personId} personNaam={naam} />
+            <PersonRolesPanel personId={personId} />
           </td>
         </tr>
       )}
