@@ -420,7 +420,7 @@ class NotificationService:
             PersonRole.organisatie_eenheid_id == eenheid_id,
             PersonRole.role_id == "unit_manager",
             PersonRole.start_datum <= today,
-            (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
+            PersonRole.eind_datum.is_(None),
         )
         result = await self.session.execute(stmt)
         manager_id = result.scalar_one_or_none()
@@ -564,7 +564,7 @@ class NotificationService:
             PersonRole.organisatie_eenheid_id == eenheid_id,
             PersonRole.role_id == "unit_manager",
             PersonRole.start_datum <= today,
-            (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
+            PersonRole.eind_datum.is_(None),
         )
         result = await self.session.execute(stmt)
         manager_id = result.scalar_one_or_none()

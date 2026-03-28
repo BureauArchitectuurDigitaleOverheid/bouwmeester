@@ -143,7 +143,7 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
                 PersonRole.organisatie_eenheid_id == eenheid_id,
                 PersonRole.role_id == "unit_manager",
                 PersonRole.start_datum <= today,
-                (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
+                PersonRole.eind_datum.is_(None),
             )
             .limit(1)
         )
@@ -164,7 +164,7 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
                 PersonRole.organisatie_eenheid_id.in_(eenheid_ids),
                 PersonRole.role_id == "unit_manager",
                 PersonRole.start_datum <= today,
-                (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
+                PersonRole.eind_datum.is_(None),
             )
         )
         result = await self.session.execute(stmt)
@@ -177,7 +177,7 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
             PersonRole.organisatie_eenheid_id == eenheid_id,
             PersonRole.role_id == "unit_manager",
             PersonRole.start_datum <= today,
-            (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
+            PersonRole.eind_datum.is_(None),
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
@@ -361,7 +361,7 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
                 PersonRole.person_id == person_id,
                 PersonRole.role_id == "unit_manager",
                 PersonRole.start_datum <= today,
-                (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
+                PersonRole.eind_datum.is_(None),
             )
             .order_by(OrganisatieEenheid.naam)
         )
