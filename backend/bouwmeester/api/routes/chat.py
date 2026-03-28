@@ -1,8 +1,6 @@
 """API routes for AI chat feature."""
 
-import logging
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -12,10 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.storage import (
-    bijlagen_root,
+    ensure_bijlagen_dir,
     read_upload_content,
     safe_resolve_or_400,
+    sanitize_download_filename,
     validate_upload,
+    write_upload_to_disk,
 )
 from bouwmeester.models.chat_attachment import ChatAttachment
 from bouwmeester.schema.chat import (
@@ -31,21 +31,9 @@ from bouwmeester.services.chat_service import ChatService
 from bouwmeester.services.llm import get_llm_service_for
 from bouwmeester.services.llm.base import DataSensitivity
 
-logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-
-CHAT_BIJLAGEN_ROOT = bijlagen_root() / "chat"
-try:
-    CHAT_BIJLAGEN_ROOT.mkdir(parents=True, exist_ok=True)
-except OSError:
-    pass  # May fail in CI/test
-
-
-def _safe_path(relative: str) -> Path:
-    """Resolve a relative path under CHAT_BIJLAGEN_ROOT, guarding against traversal."""
-    return safe_resolve_or_400(CHAT_BIJLAGEN_ROOT, relative)
+CHAT_BIJLAGEN_ROOT = ensure_bijlagen_dir("chat")
 
 
 @router.post(
@@ -63,27 +51,13 @@ async def upload_chat_attachment(
     content = await read_upload_content(file)
     validate_upload(content, content_type)
 
-    # Sanitize filename
-    raw_name = file.filename or "bijlage"
-    filename = Path(raw_name).name or "bijlage"
-
     attachment_id = uuid.uuid4()
-    safe_name = f"{attachment_id.hex}_{filename}"
-
-    # Write to disk
-    dir_path = CHAT_BIJLAGEN_ROOT / str(attachment_id)
-    try:
-        dir_path.mkdir(parents=True, exist_ok=True)
-        file_path = dir_path / safe_name
-        file_path.write_bytes(content)
-    except OSError:
-        logger.exception("Failed to write chat attachment to %s", dir_path)
-        raise HTTPException(
-            status_code=500,
-            detail="Kan bestand niet opslaan.",
-        )
-
-    relative_path = f"{attachment_id}/{safe_name}"
+    filename, relative_path, _ = write_upload_to_disk(
+        content,
+        file.filename or "bijlage",
+        CHAT_BIJLAGEN_ROOT,
+        item_id=attachment_id,
+    )
     person_id = current_user.id if current_user else None
 
     attachment = ChatAttachment(
@@ -129,16 +103,20 @@ async def preview_chat_attachment(
     if not attachment:
         raise HTTPException(status_code=404, detail="Bijlage niet gevonden")
 
-    file_path = _safe_path(attachment.pad)
+    file_path = safe_resolve_or_400(CHAT_BIJLAGEN_ROOT, attachment.pad)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Bestand niet gevonden op disk")
 
-    safe_filename = (
-        attachment.bestandsnaam.replace('"', "").replace("\r", "").replace("\n", "")
-    )
+    safe_filename = sanitize_download_filename(attachment.bestandsnaam)
+    # Serve images with their real content type so <img> tags and inline
+    # preview work.  Non-image types get application/octet-stream to
+    # prevent browsers from rendering potentially dangerous content
+    # (HTML, SVG, etc.) inline.
+    ct = attachment.content_type or ""
+    media_type = ct if ct.startswith("image/") else "application/octet-stream"
     return FileResponse(
         path=str(file_path),
-        media_type="application/octet-stream",
+        media_type=media_type,
         filename=safe_filename,
     )
 

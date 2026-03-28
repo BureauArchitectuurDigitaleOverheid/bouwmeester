@@ -16,7 +16,7 @@ instruments, measures, and their relationships as a directed graph.
 
 ## Authentication
 
-All API endpoints (except `/api/skill.md`, `/api/auth/*`, `/api/health/*`)
+All API endpoints (except `/api/auth/*`, `/api/health/*`)
 require authentication.
 
 **For agents**, use a `bm_`-prefixed API key in the `Authorization` header:

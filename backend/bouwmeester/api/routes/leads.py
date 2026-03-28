@@ -1,9 +1,7 @@
 """API routes for leads (sales/intake funnel)."""
 
 import logging
-import uuid
 from datetime import date
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
@@ -19,10 +17,12 @@ from bouwmeester.core.initiatief_context import (
     get_initiatief_context,
 )
 from bouwmeester.core.storage import (
-    bijlagen_root,
+    ensure_bijlagen_dir,
     read_upload_content,
     safe_resolve_or_400,
+    sanitize_download_filename,
     validate_upload,
+    write_upload_to_disk,
 )
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_attachment import LeadAttachment
@@ -59,7 +59,7 @@ router = APIRouter(prefix="/leads", tags=["leads"])
 
 logger = logging.getLogger(__name__)
 
-LEADS_BIJLAGEN_ROOT = bijlagen_root()
+LEADS_BIJLAGEN_ROOT = ensure_bijlagen_dir()
 
 
 def _robust_parse_json(text: str) -> dict:
@@ -732,23 +732,13 @@ async def upload_attachment(
     content = await read_upload_content(file)
     validate_upload(content, content_type)
 
-    raw_name = file.filename or "bijlage"
-    filename = Path(raw_name).name or "bijlage"
-    safe_name = f"{uuid.uuid4().hex}_{filename}"
-
-    dir_path = LEADS_BIJLAGEN_ROOT / "leads" / str(lead_id)
-    try:
-        dir_path.mkdir(parents=True, exist_ok=True)
-        new_file_path = dir_path / safe_name
-        new_file_path.write_bytes(content)
-    except OSError:
-        logger.exception("Failed to write lead attachment to %s", dir_path)
-        raise HTTPException(
-            status_code=500,
-            detail="Kan bestand niet opslaan.",
-        )
-
-    relative_path = f"leads/{lead_id}/{safe_name}"
+    leads_dir = LEADS_BIJLAGEN_ROOT / "leads"
+    filename, relative_path, _ = write_upload_to_disk(
+        content, file.filename or "bijlage", leads_dir, item_id=lead_id
+    )
+    # Prefix with "leads/" since write_upload_to_disk returns path relative
+    # to leads_dir, but DB stores path relative to LEADS_BIJLAGEN_ROOT.
+    relative_path = f"leads/{relative_path}"
 
     attachment = LeadAttachment(
         lead_id=lead_id,
@@ -791,12 +781,9 @@ async def download_attachment(
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Bestand niet gevonden op disk")
 
-    safe_filename = (
-        attachment.bestandsnaam.replace('"', "").replace("\r", "").replace("\n", "")
-    )
     return FileResponse(
         path=str(file_path),
-        filename=safe_filename,
+        filename=sanitize_download_filename(attachment.bestandsnaam),
         media_type="application/octet-stream",
     )
 

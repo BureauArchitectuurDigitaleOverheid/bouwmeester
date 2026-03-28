@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import uuid as _uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,6 +12,8 @@ from fastapi import HTTPException
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
+
+logger = logging.getLogger(__name__)
 
 
 def bijlagen_root() -> Path:
@@ -69,12 +73,17 @@ ALLOWED_CONTENT_TYPES = {
     "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
     "application/vnd.oasis.opendocument.text",
+    "application/vnd.oasis.opendocument.spreadsheet",
     "text/plain",
+    "text/csv",
     "image/png",
     "image/jpeg",
     "image/gif",
     "image/webp",
+    "application/zip",
 }
 
 # Stricter allowlist for bron (document) attachments - no animated images.
@@ -131,6 +140,66 @@ def validate_upload(
             status_code=400,
             detail="Bestandsinhoud komt niet overeen met het opgegeven bestandstype.",
         )
+
+
+def sanitize_download_filename(name: str) -> str:
+    """Strip characters that could cause header injection in Content-Disposition."""
+    return name.replace('"', "").replace("\r", "").replace("\n", "")
+
+
+def ensure_bijlagen_dir(subdir: str | None = None) -> Path:
+    """Return a bijlagen subdirectory, creating it if possible.
+
+    Returns ``bijlagen_root() / subdir`` (or just ``bijlagen_root()``
+    when *subdir* is ``None``) after a best-effort ``mkdir``.
+    """
+    path = bijlagen_root() / subdir if subdir else bijlagen_root()
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass  # May fail in CI/test; directories are also created per-upload
+    return path
+
+
+def write_upload_to_disk(
+    content: bytes,
+    filename: str,
+    storage_dir: Path,
+    item_id: _uuid.UUID | str | None = None,
+) -> tuple[str, str, Path]:
+    """Sanitize *filename*, write *content* to disk, return metadata.
+
+    Creates ``storage_dir / item_id / <uuid>_<safe_name>`` (or
+    ``storage_dir / <uuid>_<safe_name>`` when *item_id* is ``None``).
+
+    Returns:
+        ``(sanitized_filename, relative_path, absolute_path)``
+
+    Raises:
+        ``HTTPException(500)`` on write failure.
+    """
+    safe_basename = Path(filename).name or "bijlage"
+    safe_name = f"{_uuid.uuid4().hex}_{safe_basename}"
+
+    if item_id is not None:
+        dir_path = storage_dir / str(item_id)
+    else:
+        dir_path = storage_dir
+
+    try:
+        dir_path.mkdir(parents=True, exist_ok=True)
+        abs_path = dir_path / safe_name
+        abs_path.write_bytes(content)
+    except OSError:
+        logger.exception("Failed to write upload to %s", dir_path)
+        raise HTTPException(
+            status_code=500,
+            detail="Kan bestand niet opslaan.",
+        )
+
+    # Build a relative path from storage_dir for DB storage.
+    rel_path = str(abs_path.relative_to(storage_dir))
+    return safe_basename, rel_path, abs_path
 
 
 async def read_upload_content(file: UploadFile, max_size: int | None = None) -> bytes:
