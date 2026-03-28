@@ -643,6 +643,9 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   mention: 'vermelding',
   politieke_input_imported: 'parlementair item',
   access_request: 'toegangsverzoek',
+  placement_request: 'plaatsingsverzoek',
+  placement_approved: 'plaatsing goedgekeurd',
+  placement_denied: 'plaatsing afgewezen',
   emoji_reaction: 'reactie',
 };
 
@@ -661,6 +664,9 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   mention: 'bg-cyan-100 text-cyan-700',
   politieke_input_imported: 'bg-rose-100 text-rose-700',
   access_request: 'bg-amber-100 text-amber-700',
+  placement_request: 'bg-indigo-100 text-indigo-700',
+  placement_approved: 'bg-green-100 text-green-700',
+  placement_denied: 'bg-red-100 text-red-700',
   emoji_reaction: 'bg-pink-100 text-pink-700',
 };
 

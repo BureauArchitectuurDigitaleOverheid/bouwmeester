@@ -66,13 +66,16 @@ export function Sidebar({ mobile }: SidebarProps) {
     const items = [
       { to: '/instellingen', icon: Settings, label: 'Instellingen' },
     ];
-    const showAdmin = !viewAsNonAdmin && (!oidcConfigured || authPerson?.is_admin);
-    if (showAdmin) {
+    const isAdmin = !viewAsNonAdmin && (!oidcConfigured || authPerson?.is_admin);
+    const isManager = (authPerson?.managed_eenheden?.length ?? 0) > 0;
+    if (isAdmin) {
       items.push({ to: '/auditlog', icon: History, label: 'Auditlog' });
       items.push({ to: '/admin', icon: Shield, label: 'Beheer' });
+    } else if (isManager) {
+      items.push({ to: '/admin?tab=placements', icon: Shield, label: 'Beheer' });
     }
     return items;
-  }, [oidcConfigured, authPerson?.is_admin, viewAsNonAdmin]);
+  }, [oidcConfigured, authPerson?.is_admin, authPerson?.managed_eenheden, viewAsNonAdmin]);
 
   const handleNavClick = () => {
     if (mobile) {

@@ -110,6 +110,13 @@ export const queryKeys = {
     config: () => ['admin', 'config'] as const,
   },
 
+  // --- Org Placements ---
+  orgPlacements: {
+    all: ['org-placements'] as const,
+    pending: () => ['org-placements', 'pending'] as const,
+    myRequests: () => ['org-placements', 'my-requests'] as const,
+  },
+
   // --- Activity ---
   activityFeed: (params?: ActivityFeedParams) => ['activity-feed', params] as const,
 

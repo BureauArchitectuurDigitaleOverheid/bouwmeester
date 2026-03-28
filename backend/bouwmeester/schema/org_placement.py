@@ -15,6 +15,7 @@ class PlacementStatus(enum.StrEnum):
 
 class OrgPlacementRequestCreate(BaseModel):
     organisatie_eenheid_id: UUID
+    dienstverband: str = "in_dienst"
 
 
 class OrgPlacementRequestDecision(BaseModel):
@@ -27,6 +28,7 @@ class OrgPlacementRequestResponse(BaseModel):
     person_naam: str
     organisatie_eenheid_id: UUID
     eenheid_naam: str
+    dienstverband: str
     status: str
     requested_at: datetime
     decided_at: datetime | None = None
