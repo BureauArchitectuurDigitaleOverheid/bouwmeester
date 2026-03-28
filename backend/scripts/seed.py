@@ -4722,6 +4722,7 @@ async def seed(db: AsyncSession) -> None:
         "directeur_generaal": "ministry_admin",
         "directeur": "ministry_admin",
         "senior_beleidsmedewerker": "editor",
+        "projectleider": "editor",
         "beleidsmedewerker": "viewer",
         "adviseur": "viewer",
         "jurist": "viewer",
