@@ -28,7 +28,12 @@ from bouwmeester.api.routes.org_placements import router as org_placements_route
 from bouwmeester.api.routes.organisatie import router as organisatie_router
 from bouwmeester.api.routes.parlementair import router as parlementair_router
 from bouwmeester.api.routes.people import router as people_router
+from bouwmeester.api.routes.resource_permissions import (
+    router as resource_permissions_router,
+)
+from bouwmeester.api.routes.roles import router as roles_router
 from bouwmeester.api.routes.search import router as search_router
+from bouwmeester.api.routes.sharing import router as sharing_router
 from bouwmeester.api.routes.skill import router as skill_router
 from bouwmeester.api.routes.tags import router as tags_router
 from bouwmeester.api.routes.tasks import router as tasks_router
@@ -60,7 +65,10 @@ api_router.include_router(org_placements_router)
 api_router.include_router(organisatie_router)
 api_router.include_router(parlementair_router)
 api_router.include_router(people_router)
+api_router.include_router(resource_permissions_router)
+api_router.include_router(roles_router)
 api_router.include_router(search_router)
+api_router.include_router(sharing_router)
 api_router.include_router(skill_router)
 api_router.include_router(tags_router)
 api_router.include_router(tasks_router)
