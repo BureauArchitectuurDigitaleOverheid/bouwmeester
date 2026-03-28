@@ -135,11 +135,13 @@ class PersonRoleRepository:
 
     async def get_super_admins(self) -> list[Person]:
         """Return all persons with an active super_admin role."""
+        today = date.today()
         stmt = (
             select(Person)
             .join(PersonRole, PersonRole.person_id == Person.id)
             .where(
                 PersonRole.role_id == "super_admin",
+                PersonRole.start_datum <= today,
                 PersonRole.eind_datum.is_(None),
             )
         )
@@ -148,8 +150,10 @@ class PersonRoleRepository:
 
     async def get_super_admin_ids(self) -> set[UUID]:
         """Return person IDs of all active super_admins."""
+        today = date.today()
         stmt = select(PersonRole.person_id).where(
             PersonRole.role_id == "super_admin",
+            PersonRole.start_datum <= today,
             PersonRole.eind_datum.is_(None),
         )
         result = await self.session.execute(stmt)
