@@ -3,6 +3,7 @@ import { Plus, Trash2, ChevronDown, ChevronRight, Shield } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePeople } from '@/hooks/usePeople';
 import { isPersonOnline, formatRelativeTime } from '@/utils/people';
+import { formatFunctie } from '@/types';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import {
   useRoles,
@@ -769,7 +770,7 @@ function PersonRow({
           {email || '-'}
         </td>
         <td className="px-4 py-2.5 text-text-secondary hidden md:table-cell">
-          {functie || '-'}
+          {formatFunctie(functie) || '-'}
         </td>
         <td className="px-4 py-2.5 text-text-secondary hidden lg:table-cell">
           {online ? (
