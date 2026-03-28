@@ -89,7 +89,7 @@ export function AdminPage() {
   }
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-6xl">
       {/* Tab bar */}
       <div className="flex border-b border-border mb-6 overflow-x-auto scrollbar-hide -mx-4 px-4 md:-mx-6 md:px-6">
         {tabs.map((tab) => (

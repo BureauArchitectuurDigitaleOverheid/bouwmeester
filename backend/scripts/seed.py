@@ -10,7 +10,7 @@ import os
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import and_, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
@@ -4690,16 +4690,37 @@ async def seed(db: AsyncSession) -> None:
         )
     )
     await db.flush()
-    role_count = 1
 
-    # Assign roles based on functie + org placement
-    # Map functie -> role_id (scoped roles need an eenheid)
+    # Collect person IDs that are managers — they get unit_manager,
+    # so we skip lower functie-based roles for them.
+    manager_person_ids = {mgr.id for _, mgr in manager_assignments if not mgr.is_agent}
+
+    # Assign manager roles first (unit_manager on their managed eenheid).
+    mgr_seen: set[tuple] = set()
+    mgr_role_count = 0
+    for unit, manager in manager_assignments:
+        if manager.is_agent:
+            continue
+        key = (manager.id, unit.id)
+        if key in mgr_seen:
+            continue
+        mgr_seen.add(key)
+        db.add(
+            PersonRole(
+                person_id=manager.id,
+                role_id="unit_manager",
+                organisatie_eenheid_id=unit.id,
+                granted_by_id=first_person.id,
+                start_datum=date.today(),
+            )
+        )
+        mgr_role_count += 1
+    await db.flush()
+
+    # Assign functie-based roles for non-managers
     functie_role_map = {
         "directeur_generaal": "ministry_admin",
         "directeur": "ministry_admin",
-        "afdelingshoofd": "unit_manager",
-        "coordinator": "editor",
-        "projectleider": "editor",
         "senior_beleidsmedewerker": "editor",
         "beleidsmedewerker": "viewer",
         "adviseur": "viewer",
@@ -4712,8 +4733,12 @@ async def seed(db: AsyncSession) -> None:
         select(Person).where(Person.is_agent.is_(False))
     )
     all_persons = list(all_persons_result.scalars().all())
+    functie_role_count = 0
     for p in all_persons:
-        if p.is_agent or p.id == first_person.id:
+        if p.id == first_person.id:
+            continue
+        # Skip people who already got a manager role
+        if p.id in manager_person_ids:
             continue
         role_id = functie_role_map.get(p.functie)
         if not role_id:
@@ -4740,40 +4765,11 @@ async def seed(db: AsyncSession) -> None:
                 start_datum=date.today(),
             )
         )
-        role_count += 1
-    await db.flush()
-
-    # Ensure every manager_assignment also gets a unit_manager PersonRole
-    # for the eenheid they manage (may differ from their own placement).
-    mgr_role_count = 0
-    for unit, manager in manager_assignments:
-        if manager.is_agent:
-            continue
-        # Check if they already have a unit_manager role for this eenheid
-        existing_stmt = select(PersonRole.id).where(
-            and_(
-                PersonRole.person_id == manager.id,
-                PersonRole.role_id == "unit_manager",
-                PersonRole.organisatie_eenheid_id == unit.id,
-            )
-        )
-        existing_result = await db.execute(existing_stmt)
-        if existing_result.scalar_one_or_none() is not None:
-            continue
-        db.add(
-            PersonRole(
-                person_id=manager.id,
-                role_id="unit_manager",
-                organisatie_eenheid_id=unit.id,
-                granted_by_id=first_person.id,
-                start_datum=date.today(),
-            )
-        )
-        mgr_role_count += 1
+        functie_role_count += 1
     await db.flush()
     print(
-        f"  Rollen: {role_count} roltoewijzingen + "
-        f"{mgr_role_count} manager-rollen aangemaakt"
+        f"  Rollen: {mgr_role_count} managers + "
+        f"{functie_role_count} functie-rollen + 1 admin"
     )
 
     # =========================================================================
