@@ -5,19 +5,19 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
 from bouwmeester.core.auth import AdminUser, OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.query_utils import normalize_email
-from bouwmeester.models.node_stakeholder import NodeStakeholder
+from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.person_phone import PersonPhone
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.person import (
@@ -196,22 +196,30 @@ async def get_person_summary(
     ]
 
     # Stakeholder nodes
-    stakeholder_stmt = (
-        select(NodeStakeholder)
-        .where(NodeStakeholder.person_id == id)
-        .options(selectinload(NodeStakeholder.node))
+    stakeholder_stmt = select(ResourcePermission).where(
+        ResourcePermission.resource_type == "corpus_node",
+        ResourcePermission.person_id == id,
     )
     stakeholder_result = await db.execute(stakeholder_stmt)
-    stakeholder_nodes = [
-        PersonStakeholderNode(
-            node_id=s.node.id,
-            node_title=s.node.title,
-            node_type=s.node.node_type,
-            stakeholder_rol=s.rol,
+    permissions = list(stakeholder_result.scalars().all())
+
+    stakeholder_nodes = []
+    if permissions:
+        node_ids = [rp.resource_id for rp in permissions]
+        nodes_result = await db.execute(
+            select(CorpusNode).where(CorpusNode.id.in_(node_ids))
         )
-        for s in stakeholder_result.scalars().all()
-        if s.node is not None
-    ]
+        node_map = {n.id: n for n in nodes_result.scalars().all()}
+        stakeholder_nodes = [
+            PersonStakeholderNode(
+                node_id=node_map[rp.resource_id].id,
+                node_title=node_map[rp.resource_id].title,
+                node_type=node_map[rp.resource_id].node_type,
+                stakeholder_rol=rp.rol,
+            )
+            for rp in permissions
+            if rp.resource_id in node_map
+        ]
 
     return PersonSummaryResponse(
         open_task_count=open_count,

@@ -414,6 +414,19 @@ async def delete_lead(
         raise HTTPException(status_code=404, detail="Lead niet gevonden")
     _check_lead_access(lead, init_ctx)
     lead_title = lead.title
+
+    # Clean up resource_permission rows (no FK cascade on polymorphic)
+    from sqlalchemy import delete as sa_delete
+
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    await db.execute(
+        sa_delete(ResourcePermission).where(
+            ResourcePermission.resource_type == "lead",
+            ResourcePermission.resource_id == lead_id,
+        )
+    )
+
     repo = LeadRepository(db)
     require_deleted(await repo.delete(lead_id), "Lead")
 

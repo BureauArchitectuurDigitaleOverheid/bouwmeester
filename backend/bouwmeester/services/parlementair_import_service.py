@@ -16,10 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.models.corpus_node import CorpusNode
-from bouwmeester.models.node_stakeholder import NodeStakeholder
 from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.person import Person
 from bouwmeester.models.politieke_input import PolitiekeInput
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.parlementair_item import (
     ParlementairItemRepository,
@@ -520,9 +520,10 @@ class ParlementairImportService:
             return None
 
         node_ids = [n.id for n in affected_nodes]
-        stmt = select(NodeStakeholder).where(
-            NodeStakeholder.node_id.in_(node_ids),
-            NodeStakeholder.rol == "eigenaar",
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "corpus_node",
+            ResourcePermission.resource_id.in_(node_ids),
+            ResourcePermission.rol == "eigenaar",
         )
         result = await self.session.execute(stmt)
         stakeholders = result.scalars().all()
@@ -821,12 +822,13 @@ class ParlementairImportService:
 
             try:
                 person = await self._find_or_create_person(naam, kamer)
-                stakeholder = NodeStakeholder(
-                    node_id=node_id,
+                rp = ResourcePermission(
                     person_id=person.id,
+                    resource_type="corpus_node",
+                    resource_id=node_id,
                     rol="indiener",
                 )
-                self.session.add(stakeholder)
+                self.session.add(rp)
             except SQLAlchemyError:
                 logger.exception(f"Error linking indiener '{naam}' to node")
 

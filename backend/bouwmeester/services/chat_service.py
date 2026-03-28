@@ -1789,10 +1789,10 @@ async def _execute_write_tool(
             from bouwmeester.repositories.corpus_node import (
                 CorpusNodeRepository,
             )
-            from bouwmeester.repositories.node_stakeholder import (
-                NodeStakeholderRepository,
-            )
             from bouwmeester.repositories.person import PersonRepository
+            from bouwmeester.repositories.resource_permission import (
+                ResourcePermissionRepository,
+            )
 
             node_repo = CorpusNodeRepository(db)
             node = await node_repo.get(UUID(args["node_id"]))
@@ -1814,10 +1814,11 @@ async def _execute_write_tool(
                     ),
                 }
 
-            repo = NodeStakeholderRepository(db)
-            await repo.create_stakeholder(
-                node_id=node.id,
+            repo = ResourcePermissionRepository(db)
+            await repo.create_permission(
                 person_id=person.id,
+                resource_type="corpus_node",
+                resource_id=node.id,
                 rol=args["rol"],
             )
             await db.commit()

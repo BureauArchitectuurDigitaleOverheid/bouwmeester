@@ -77,6 +77,8 @@ class PermissionContext:
     system_roles: list[str] = field(default_factory=list)
     scoped_roles: dict[UUID, list[str]] = field(default_factory=dict)
     effective_permissions: set[str] = field(default_factory=set)
+    # Per-eenheid resolved permissions for scoped checks
+    scoped_permissions: dict[UUID, set[str]] = field(default_factory=dict)
     is_super_admin: bool = False
 
     def has_permission(self, perm: str) -> bool:
@@ -89,15 +91,12 @@ class PermissionContext:
         """Check if the user has a permission for a specific eenheid."""
         if self.is_super_admin:
             return True
-        if perm in self.effective_permissions:
-            # System roles grant everywhere
-            if self.system_roles:
-                return True
-            # Check if any scoped role for this eenheid grants the permission
-            roles_for_eenheid = self.scoped_roles.get(eenheid_id, [])
-            if roles_for_eenheid:
-                return True
-        return False
+        # System-level permissions apply everywhere
+        if self.system_roles and perm in self.effective_permissions:
+            return True
+        # Check scoped permissions for this specific eenheid
+        eenheid_perms = self.scoped_permissions.get(eenheid_id, set())
+        return perm in eenheid_perms
 
     def has_any_permission(self, *perms: str) -> bool:
         if self.is_super_admin:
@@ -133,15 +132,34 @@ async def build_permission_context(
             is_super_admin=True,
         )
 
-    # Collect all unique role IDs
+    # Resolve per-role permissions
+    role_repo = RoleRepository(db)
+
+    # Collect all unique role IDs for a single batch query
     all_role_ids = list(set(system_roles))
     for role_ids in scoped_roles.values():
         all_role_ids.extend(role_ids)
     all_role_ids = list(set(all_role_ids))
 
-    # Resolve permissions
-    role_repo = RoleRepository(db)
-    effective_permissions = await role_repo.get_permissions_for_roles(all_role_ids)
+    # Get per-role permission sets
+    role_perm_cache: dict[str, set[str]] = {}
+    for role_id in all_role_ids:
+        role_perm_cache[role_id] = await role_repo.get_role_permission_ids(role_id)
+
+    # Build per-eenheid permissions
+    scoped_permissions: dict[UUID, set[str]] = {}
+    for eenheid_id, role_ids in scoped_roles.items():
+        eenheid_perms: set[str] = set()
+        for role_id in role_ids:
+            eenheid_perms |= role_perm_cache.get(role_id, set())
+        scoped_permissions[eenheid_id] = eenheid_perms
+
+    # Effective = union of system + all scoped
+    effective_permissions: set[str] = set()
+    for role_id in system_roles:
+        effective_permissions |= role_perm_cache.get(role_id, set())
+    for perms in scoped_permissions.values():
+        effective_permissions |= perms
 
     return PermissionContext(
         person_id=person.id,
@@ -149,6 +167,7 @@ async def build_permission_context(
         system_roles=system_roles,
         scoped_roles=scoped_roles,
         effective_permissions=effective_permissions,
+        scoped_permissions=scoped_permissions,
         is_super_admin=False,
     )
 

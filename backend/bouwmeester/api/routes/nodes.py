@@ -243,6 +243,18 @@ async def delete_node(
         if bijlage:
             bijlage_path_to_delete = bijlage.pad
 
+    # Clean up resource_permission rows (no FK cascade on polymorphic)
+    from sqlalchemy import delete as sa_delete
+
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    await db.execute(
+        sa_delete(ResourcePermission).where(
+            ResourcePermission.resource_type == "corpus_node",
+            ResourcePermission.resource_id == id,
+        )
+    )
+
     require_deleted(await service.delete(id), "Node")
 
     # Delete the file after DB deletion succeeds.

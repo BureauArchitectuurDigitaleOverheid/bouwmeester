@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
-from bouwmeester.models.node_stakeholder import NodeStakeholder
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.schema.llm import (
     CorpusGapSummaryItem,
     GapItem,
@@ -95,8 +95,9 @@ class GapDetectionService:
                 nodes_by_type.setdefault(node.node_type, []).append(node)
 
         # Check stakeholders
-        stakeholder_stmt = select(NodeStakeholder).where(
-            NodeStakeholder.node_id == dossier_uuid
+        stakeholder_stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "corpus_node",
+            ResourcePermission.resource_id == dossier_uuid,
         )
         stakeholder_result = await self.session.execute(stakeholder_stmt)
         has_stakeholders = len(stakeholder_result.all()) > 0
@@ -153,8 +154,9 @@ class GapDetectionService:
             gaps, completed, total, _ = await self.analyze_dossier(dossier_id)
 
             # Check stakeholders
-            stakeholder_stmt = select(NodeStakeholder).where(
-                NodeStakeholder.node_id == dossier.id
+            stakeholder_stmt = select(ResourcePermission).where(
+                ResourcePermission.resource_type == "corpus_node",
+                ResourcePermission.resource_id == dossier.id,
             )
             stakeholder_result = await self.session.execute(stakeholder_stmt)
             has_stakeholders = len(stakeholder_result.all()) > 0

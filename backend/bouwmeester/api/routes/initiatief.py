@@ -176,6 +176,19 @@ async def delete_initiatief(
     await _require_eigenaar(repo, id, current_user)
     initiatief = require_found(await repo.get_by_id(id), "Initiatief")
     initiatief_naam = initiatief.naam
+
+    # Clean up resource_permission rows
+    from sqlalchemy import delete as sa_delete
+
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    await db.execute(
+        sa_delete(ResourcePermission).where(
+            ResourcePermission.resource_type == "initiatief",
+            ResourcePermission.resource_id == id,
+        )
+    )
+
     require_deleted(await repo.delete(id), "Initiatief")
 
     await log_activity(

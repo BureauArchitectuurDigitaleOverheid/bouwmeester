@@ -12,6 +12,7 @@ from bouwmeester.core.permissions import (
     build_permission_context,
     require_permission,
 )
+from bouwmeester.models.person import Person
 from bouwmeester.repositories.role import (
     PersonRoleRepository,
     RoleRepository,
@@ -145,6 +146,41 @@ async def assign_role(
             400,
             f"Role '{data.role_id}' requires an organisatie_eenheid_id",
         )
+
+    # Scope enforcement: can only assign roles you outrank,
+    # and only within eenheden you have access to
+    if not perm.is_super_admin:
+        # Check rank: grantor must outrank the role being assigned
+        grantor_roles = perm.system_roles + [
+            r for roles in perm.scoped_roles.values() for r in roles
+        ]
+        grantor_max_rank = 0
+        for gr in grantor_roles:
+            gr_obj = await role_repo.get_role(gr)
+            if gr_obj and gr_obj.rank > grantor_max_rank:
+                grantor_max_rank = gr_obj.rank
+        if role.rank >= grantor_max_rank:
+            raise HTTPException(
+                403,
+                "Cannot assign a role at or above your own level",
+            )
+
+        # Check scope: for scoped roles, grantor must have
+        # access to the target eenheid
+        if data.organisatie_eenheid_id:
+            from bouwmeester.core.org_context import build_org_context
+
+            person_obj = await db.get(Person, perm.person_id)
+            if person_obj:
+                org_ctx = await build_org_context(db, person_obj)
+                if (
+                    not org_ctx.is_admin
+                    and data.organisatie_eenheid_id not in org_ctx.visible_eenheid_ids
+                ):
+                    raise HTTPException(
+                        403,
+                        "Cannot assign roles outside your org scope",
+                    )
 
     repo = PersonRoleRepository(db)
     grantor_id = perm.person_id if perm.person_id else None
