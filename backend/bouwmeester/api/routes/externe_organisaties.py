@@ -14,6 +14,7 @@ from bouwmeester.schema.externe_organisatie import (
     ExterneOrganisatieResponse,
     ExterneOrganisatieUpdate,
 )
+from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/externe-organisaties", tags=["externe-organisaties"])
 
@@ -44,6 +45,15 @@ async def create_externe_organisatie(
 ) -> ExterneOrganisatieResponse:
     repo = ExterneOrganisatieRepository(db)
     org = await repo.create(data)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "externe_organisatie.created",
+        details={"organisatie_id": str(org.id), "naam": org.naam},
+    )
+
     return ExterneOrganisatieResponse.model_validate(org)
 
 
@@ -67,6 +77,15 @@ async def update_externe_organisatie(
 ) -> ExterneOrganisatieResponse:
     repo = ExterneOrganisatieRepository(db)
     org = require_found(await repo.update(id, data), "Externe organisatie")
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "externe_organisatie.updated",
+        details={"organisatie_id": str(org.id), "naam": org.naam},
+    )
+
     return ExterneOrganisatieResponse.model_validate(org)
 
 
@@ -77,4 +96,14 @@ async def delete_externe_organisatie(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     repo = ExterneOrganisatieRepository(db)
+    org = require_found(await repo.get_by_id(id), "Externe organisatie")
+    org_naam = org.naam
     require_deleted(await repo.delete(id), "Externe organisatie")
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "externe_organisatie.deleted",
+        details={"organisatie_id": str(id), "naam": org_naam},
+    )

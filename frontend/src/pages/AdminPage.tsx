@@ -12,7 +12,7 @@ import { FeatureTogglesContent } from '@/pages/FeatureTogglesPage';
 type Tab = 'whitelist' | 'users' | 'database' | 'requests' | 'config' | 'schema' | 'features';
 
 export function AdminPage() {
-  const { person, oidcConfigured, loading } = useAuth();
+  const { person, oidcConfigured, loading, viewAsNonAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') as Tab | null;
   const [activeTab, setActiveTab] = useState<Tab>(tabParam || 'whitelist');
@@ -34,8 +34,8 @@ export function AdminPage() {
     return null;
   }
 
-  // In OIDC mode: redirect non-admins immediately (before rendering content)
-  if (oidcConfigured && (!person || !person.is_admin)) {
+  // Redirect non-admins (or admins in view-as-non-admin mode)
+  if (viewAsNonAdmin || (oidcConfigured && (!person || !person.is_admin))) {
     return <Navigate to="/" replace />;
   }
 

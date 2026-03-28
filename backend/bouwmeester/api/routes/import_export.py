@@ -10,6 +10,7 @@ from bouwmeester.api.deps import validate_csv_upload
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.schema.import_export import ImportResult
+from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.archimate_export_service import (
     ArchiMateExportService,
 )
@@ -31,7 +32,17 @@ async def import_politieke_inputs(
     """Upload a CSV to bulk-import politieke inputs."""
     content = await validate_csv_upload(file)
     service = ImportService(db)
-    return await service.import_politieke_inputs_csv(content)
+    result = await service.import_politieke_inputs_csv(content)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "import.politieke_inputs",
+        details={"created": result.created, "errors": len(result.errors)},
+    )
+
+    return result
 
 
 @router.post("/import/nodes", response_model=ImportResult)
@@ -43,7 +54,17 @@ async def import_nodes(
     """Upload a CSV to bulk-import generic nodes."""
     content = await validate_csv_upload(file)
     service = ImportService(db)
-    return await service.import_nodes_csv(content)
+    result = await service.import_nodes_csv(content)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "import.nodes",
+        details={"created": result.created, "errors": len(result.errors)},
+    )
+
+    return result
 
 
 @router.post("/import/edges", response_model=ImportResult)
@@ -55,7 +76,17 @@ async def import_edges(
     """Upload a CSV to bulk-import edges."""
     content = await validate_csv_upload(file)
     service = ImportService(db)
-    return await service.import_edges_csv(content)
+    result = await service.import_edges_csv(content)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "import.edges",
+        details={"created": result.created, "errors": len(result.errors)},
+    )
+
+    return result
 
 
 # ── Export routes ──────────────────────────────────────────────────────

@@ -22,6 +22,7 @@ from bouwmeester.core.storage import (
 from bouwmeester.models.bron import Bron
 from bouwmeester.models.bron_bijlage import BronBijlage
 from bouwmeester.schema.bron import BronBijlageResponse
+from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/nodes/{node_id}/bijlage", tags=["bijlage"])
 
@@ -85,6 +86,15 @@ async def upload_bijlage(
     await db.flush()
     await db.refresh(bijlage)
 
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "bijlage.uploaded",
+        node_id=node_id,
+        details={"filename": filename},
+    )
+
     return BronBijlageResponse.model_validate(bijlage)
 
 
@@ -144,7 +154,18 @@ async def delete_bijlage(
         raise HTTPException(status_code=404, detail="Geen bijlage gevonden")
 
     file_path = safe_resolve_or_400(BIJLAGEN_ROOT, bijlage.pad)
+    bijlage_naam = bijlage.bestandsnaam
     await db.delete(bijlage)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "bijlage.deleted",
+        node_id=node_id,
+        details={"filename": bijlage_naam},
+    )
+
     # Delete file after DB delete succeeds (commit happens in get_db).
     if file_path.exists():
         file_path.unlink()

@@ -17,6 +17,7 @@ from bouwmeester.schema.feature_toggle import (
     EenheidFeatureConfig,
     FeatureToggleBulkUpdate,
 )
+from bouwmeester.services.activity_service import log_activity
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,18 @@ async def update_eenheid_feature_config(
     await db.flush()
 
     features = {key: t.enabled for key, t in existing.items()}
+
+    await log_activity(
+        db,
+        admin,
+        None,
+        "feature_toggle.updated",
+        details={
+            "eenheid_id": str(eenheid_id),
+            "eenheid_naam": eenheid.naam,
+            "toggles": {item.feature_key: item.enabled for item in data.toggles},
+        },
+    )
 
     return EenheidFeatureConfig(
         organisatie_eenheid_id=eenheid.id,

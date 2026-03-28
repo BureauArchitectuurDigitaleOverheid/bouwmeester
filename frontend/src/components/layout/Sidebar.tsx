@@ -32,7 +32,7 @@ interface SidebarProps {
 
 export function Sidebar({ mobile }: SidebarProps) {
   const { sidebarOpen, toggleSidebar, setMobileSidebarOpen } = useUIStore();
-  const { person: authPerson, oidcConfigured } = useAuth();
+  const { person: authPerson, oidcConfigured, viewAsNonAdmin } = useAuth();
   const { currentPerson } = useCurrentPerson();
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
   const { isFeatureEnabled } = useFeatureToggle();
@@ -66,12 +66,13 @@ export function Sidebar({ mobile }: SidebarProps) {
     const items = [
       { to: '/instellingen', icon: Settings, label: 'Instellingen' },
     ];
-    if (!oidcConfigured || authPerson?.is_admin) {
+    const showAdmin = !viewAsNonAdmin && (!oidcConfigured || authPerson?.is_admin);
+    if (showAdmin) {
       items.push({ to: '/auditlog', icon: History, label: 'Auditlog' });
       items.push({ to: '/admin', icon: Shield, label: 'Beheer' });
     }
     return items;
-  }, [oidcConfigured, authPerson?.is_admin]);
+  }, [oidcConfigured, authPerson?.is_admin, viewAsNonAdmin]);
 
   const handleNavClick = () => {
     if (mobile) {
