@@ -74,6 +74,7 @@ class PersonRoleRepository:
                 (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
             )
             .options(
+                selectinload(PersonRole.person),
                 selectinload(PersonRole.role),
                 selectinload(PersonRole.organisatie_eenheid),
             )
