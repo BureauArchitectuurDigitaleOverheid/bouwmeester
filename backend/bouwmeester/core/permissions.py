@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import get_optional_user
@@ -148,6 +149,40 @@ async def build_permission_context(
         for role_id in role_ids:
             eenheid_perms |= role_perm_cache.get(role_id, set())
         scoped_permissions[eenheid_id] = eenheid_perms
+
+    # Subtract disabled modules per eenheid
+    if scoped_permissions:
+        from bouwmeester.repositories.eenheid_module import (
+            EenheidModuleRepository,
+        )
+        from bouwmeester.schema.eenheid_module import (
+            MODULE_PERMISSION_CATEGORIES,
+        )
+
+        em_repo = EenheidModuleRepository(db)
+        disabled_map = await em_repo.get_all_disabled_modules_bulk(
+            list(scoped_permissions.keys())
+        )
+        has_any_disabled = any(disabled_map.values())
+
+        if has_any_disabled:
+            # Build category → permission-id mapping (one query, reused)
+            from bouwmeester.models.role import Permission as PermModel
+
+            cat_stmt = select(PermModel.id, PermModel.category)
+            cat_result = await db.execute(cat_stmt)
+            perm_by_category: dict[str, set[str]] = {}
+            for pid, cat in cat_result.all():
+                perm_by_category.setdefault(cat, set()).add(pid)
+
+            for eenheid_id, disabled_modules in disabled_map.items():
+                if not disabled_modules:
+                    continue
+                denied_perms: set[str] = set()
+                for mod in disabled_modules:
+                    for cat in MODULE_PERMISSION_CATEGORIES.get(mod, []):
+                        denied_perms |= perm_by_category.get(cat, set())
+                scoped_permissions[eenheid_id] -= denied_perms
 
     # System-level permissions (apply to all eenheden)
     system_perms: set[str] = set()
