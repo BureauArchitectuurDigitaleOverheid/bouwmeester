@@ -23,7 +23,6 @@ interface AuthPerson {
   roles?: { role_id: string; role_naam: string | null; organisatie_eenheid_id: string | null; eenheid_naam: string | null }[];
   permissions?: string[];
   visible_eenheid_ids?: string[];
-  max_role_rank?: number;
 }
 
 interface AuthState {

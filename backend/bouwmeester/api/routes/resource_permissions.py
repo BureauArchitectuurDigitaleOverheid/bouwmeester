@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import (
     OrgContext,
+    check_resource_org_scope,
     get_org_context,
-    resolve_resource_eenheid_id,
 )
 from bouwmeester.core.permissions import (
     PermissionContext,
@@ -63,7 +63,7 @@ async def _require_manage_permission(
     db: AsyncSession,
     resource_type: str,
     resource_id: UUID,
-    org_ctx: OrgContext | None = None,
+    org_ctx: OrgContext,
 ) -> None:
     """Check that the caller can manage permissions on the given resource.
 
@@ -72,6 +72,7 @@ async def _require_manage_permission(
     """
     if perm.is_super_admin:
         return
+
     has_resource = await check_resource_permission(
         db,
         perm.person_id,  # type: ignore[arg-type]
@@ -79,23 +80,13 @@ async def _require_manage_permission(
         resource_id,
         "resource_permission:manage",
     )
-    if has_resource:
-        return
-
     has_rbac = perm.has_permission("resource_permission:manage")
-    if not has_rbac:
+
+    if not has_resource and not has_rbac:
         raise HTTPException(403, "Insufficient permissions")
 
-    # RBAC grants the permission, but check org scope: the resource
-    # must belong to an eenheid the caller can see.
-    eenheid_id = await resolve_resource_eenheid_id(db, resource_type, resource_id)
-    if eenheid_id is not None and org_ctx is not None:
-        if (
-            not org_ctx.is_admin
-            and eenheid_id not in org_ctx.visible_eenheid_ids
-            and eenheid_id not in org_ctx.shared_eenheid_ids
-        ):
-            raise HTTPException(403, "Resource valt buiten je organisatiescope")
+    # Even with resource-level or RBAC permission, enforce org scope
+    await check_resource_org_scope(db, resource_type, resource_id, org_ctx)
 
 
 def _to_response(rp: ResourcePermission) -> ResourcePermissionResponse:

@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import OrgContext, get_org_context
+from bouwmeester.core.org_context import (
+    OrgContext,
+    check_org_scope,
+    check_resource_org_scope,
+    get_org_context,
+)
 from bouwmeester.core.permissions import require_permission
 from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.schema.opdracht import (
@@ -102,6 +107,7 @@ async def create_opdracht(
     _perm=Depends(require_permission("opdracht:create")),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> OpdrachtResponse:
+    check_org_scope(data.opdrachtgever_id, org_ctx)
     repo = OpdrachtRepository(db)
     opdracht = await repo.create(data)
 
@@ -155,6 +161,9 @@ async def update_opdracht(
     repo = OpdrachtRepository(db)
 
     # Capture old state before update
+    await check_resource_org_scope(db, "opdracht", id, org_ctx)
+    if data.opdrachtgever_id is not None:
+        check_org_scope(data.opdrachtgever_id, org_ctx)
     old = await repo.get(id)
     require_found(old, "Opdracht")
     old_status = old.status
@@ -203,6 +212,7 @@ async def delete_opdracht(
     repo = OpdrachtRepository(db)
 
     # Capture info before deletion for activity log
+    await check_resource_org_scope(db, "opdracht", id, org_ctx)
     opdracht = await repo.get(id)
     require_found(opdracht, "Opdracht")
     instrument_id = opdracht.instrument_id
@@ -239,6 +249,7 @@ async def add_node_koppeling(
     _perm=Depends(require_permission("opdracht:update")),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> OpdrachtNodeResponse:
+    await check_resource_org_scope(db, "opdracht", opdracht_id, org_ctx)
     repo = OpdrachtRepository(db)
     require_found(await repo.get(opdracht_id), "Opdracht")
     link = await repo.add_node_koppeling(opdracht_id, data)
@@ -257,6 +268,7 @@ async def remove_node_koppeling(
     _perm=Depends(require_permission("opdracht:update")),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
+    await check_resource_org_scope(db, "opdracht", opdracht_id, org_ctx)
     repo = OpdrachtRepository(db)
     require_deleted(
         await repo.remove_node_koppeling(opdracht_id, koppeling_id), "Koppeling"

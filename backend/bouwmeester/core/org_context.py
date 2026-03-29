@@ -291,6 +291,21 @@ def check_org_scope(
         )
 
 
+async def check_resource_org_scope(
+    db: AsyncSession,
+    resource_type: str,
+    resource_id: UUID,
+    org_ctx: OrgContext,
+) -> None:
+    """Resolve the org unit for a resource and check org scope in one step.
+
+    Convenience wrapper around :func:`resolve_resource_eenheid_id` +
+    :func:`check_org_scope` to keep route code DRY.
+    """
+    eenheid_id = await resolve_resource_eenheid_id(db, resource_type, resource_id)
+    check_org_scope(eenheid_id, org_ctx)
+
+
 async def resolve_resource_eenheid_id(
     db: AsyncSession,
     resource_type: str,
@@ -315,6 +330,13 @@ async def resolve_resource_eenheid_id(
         from bouwmeester.models.opdracht import Opdracht
 
         stmt = select(Opdracht.opdrachtgever_id).where(Opdracht.id == resource_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    if resource_type == "task":
+        from bouwmeester.models.task import Task
+
+        stmt = select(Task.organisatie_eenheid_id).where(Task.id == resource_id)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 

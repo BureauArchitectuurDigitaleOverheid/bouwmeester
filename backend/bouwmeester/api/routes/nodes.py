@@ -8,7 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import OrgContext, get_org_context
+from bouwmeester.core.org_context import (
+    OrgContext,
+    check_resource_org_scope,
+    get_org_context,
+)
 from bouwmeester.core.permissions import require_permission
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
@@ -190,6 +194,7 @@ async def update_node(
     _perm=Depends(require_permission("node:update")),
 ) -> CorpusNodeResponse:
     """Update a corpus node. Notifies stakeholders of changes."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     node = require_found(await service.update(id, data), "Node")
 
@@ -231,6 +236,7 @@ async def delete_node(
     _perm=Depends(require_permission("node:delete")),
 ) -> None:
     """Delete a corpus node. Cleans up bijlage files for bron nodes."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     node = await service.get(id)
     node_title = node.title if node else None
@@ -371,6 +377,7 @@ async def add_node_stakeholder(
     _perm=Depends(require_permission("resource_permission:manage")),
 ) -> NodeStakeholderResponse:
     """Add a person as stakeholder on a node with a role."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     node = require_found(await service.get(id), "Node")
     require_found(await db.get(Person, data.person_id), "Person")
@@ -421,6 +428,7 @@ async def update_node_stakeholder(
     _perm=Depends(require_permission("resource_permission:manage")),
 ) -> NodeStakeholderResponse:
     """Update a stakeholder's role on a node."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     repo = ResourcePermissionRepository(db)
     rp = require_found(
         await repo.get_with_person(stakeholder_id),
@@ -481,6 +489,7 @@ async def remove_node_stakeholder(
     _perm=Depends(require_permission("resource_permission:manage")),
 ) -> None:
     """Remove a stakeholder from a node."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     repo = ResourcePermissionRepository(db)
     rp = require_found(
         await repo.get_with_person(stakeholder_id),
@@ -552,6 +561,7 @@ async def add_tag_to_node(
     """
     from bouwmeester.repositories.tag import TagRepository
 
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     require_found(await service.get(id), "Node")
 
@@ -597,6 +607,8 @@ async def remove_tag_from_node(
 ) -> None:
     """Remove a tag from a node."""
     from bouwmeester.repositories.tag import TagRepository
+
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
 
     tag_repo = TagRepository(db)
     tag = await tag_repo.get_by_id(tag_id)
@@ -671,6 +683,8 @@ async def update_node_bron_detail(
     from sqlalchemy import select
 
     from bouwmeester.models.bron import Bron
+
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
 
     stmt = select(Bron).where(Bron.id == id)
     result = await db.execute(stmt)
