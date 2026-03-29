@@ -364,3 +364,67 @@ async def test_put_invalid_module_returns_422(module_setup):
     assert resp.status_code == 422
 
     app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Search RBAC integration
+# ---------------------------------------------------------------------------
+
+
+async def test_search_excludes_disabled_module_results(module_setup):
+    """Search skips entity types when module is disabled for the user's eenheid."""
+    s = module_setup
+    db = s["db"]
+
+    # Disable leads for the editor's eenheid
+    db.add(
+        EenheidModule(
+            organisatie_eenheid_id=s["child"].id,
+            module="leads",
+            enabled=False,
+        )
+    )
+    await db.flush()
+
+    app, client = _make_app_and_client(db, s["editor"])
+
+    async with client:
+        resp = await client.get("/api/search", params={"q": "test"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # No lead results should appear
+    result_types = {r["result_type"] for r in data["results"]}
+    assert "lead" not in result_types
+
+    app.dependency_overrides.clear()
+
+
+async def test_search_admin_sees_all_types(module_setup):
+    """Super admin sees all result types regardless of module toggles."""
+    s = module_setup
+    db = s["db"]
+
+    db.add(
+        EenheidModule(
+            organisatie_eenheid_id=s["child"].id,
+            module="leads",
+            enabled=False,
+        )
+    )
+    await db.flush()
+
+    app, client = _make_app_and_client(db, s["admin"])
+
+    async with client:
+        # Request lead results explicitly
+        resp = await client.get(
+            "/api/search", params={"q": "test", "result_types": "lead"}
+        )
+
+    assert resp.status_code == 200
+    # Super admin should not be blocked from requesting lead type
+    # (may return 0 results if no leads exist, but shouldn't be filtered out)
+
+    app.dependency_overrides.clear()

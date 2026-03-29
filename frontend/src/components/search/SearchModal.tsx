@@ -1,13 +1,15 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Search as SearchIcon } from 'lucide-react';
 import { useSearch } from '@/hooks/useSearch';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
+  ALL_RESULT_TYPES,
   FilterChips,
   SearchResultsList,
   groupResults,
   useResultNavigation,
 } from './SearchResults';
-import type { SearchResultType } from '@/types';
+import { SEARCH_TYPE_PERMISSIONS, type SearchResultType } from '@/types';
 
 interface SearchModalProps {
   open: boolean;
@@ -20,6 +22,12 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const { hasPermission } = usePermissions();
+
+  const allowedTypes = useMemo(
+    () => ALL_RESULT_TYPES.filter((t) => hasPermission(SEARCH_TYPE_PERMISSIONS[t])),
+    [hasPermission],
+  );
 
   const filterTypes = activeTypes.length > 0 ? activeTypes : undefined;
   const { data, isLoading, isFetched } = useSearch(query, filterTypes);
@@ -119,7 +127,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
 
         {/* Filter chips */}
         <div className="border-b border-border px-5 py-3">
-          <FilterChips activeTypes={activeTypes} onToggle={toggleType} />
+          <FilterChips activeTypes={activeTypes} onToggle={toggleType} allowedTypes={allowedTypes} />
         </div>
 
         {/* Results */}

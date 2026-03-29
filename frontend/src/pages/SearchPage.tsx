@@ -8,17 +8,7 @@ import {
   useResultNavigation,
 } from '@/components/search/SearchResults';
 import { usePermissions } from '@/hooks/usePermissions';
-import type { SearchResultType } from '@/types';
-
-const TYPE_PERMISSION: Record<SearchResultType, string> = {
-  corpus_node: 'node:read',
-  task: 'task:read',
-  person: 'people:read',
-  organisatie_eenheid: 'org:read',
-  parlementair_item: 'node:read',
-  tag: 'node:read',
-  lead: 'lead:read',
-};
+import { SEARCH_TYPE_PERMISSIONS, type SearchResultType } from '@/types';
 
 export function SearchPage() {
   const [query, setQuery] = useState('');
@@ -27,7 +17,7 @@ export function SearchPage() {
   const { hasPermission } = usePermissions();
 
   const allowedTypes = useMemo(
-    () => ALL_RESULT_TYPES.filter((t) => hasPermission(TYPE_PERMISSION[t])),
+    () => ALL_RESULT_TYPES.filter((t) => hasPermission(SEARCH_TYPE_PERMISSIONS[t])),
     [hasPermission],
   );
 

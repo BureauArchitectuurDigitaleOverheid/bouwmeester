@@ -827,6 +827,16 @@ export type SearchResultType =
   | 'tag'
   | 'lead';
 
+export const SEARCH_TYPE_PERMISSIONS: Record<SearchResultType, string> = {
+  corpus_node: 'node:read',
+  task: 'task:read',
+  person: 'people:read',
+  organisatie_eenheid: 'org:read',
+  parlementair_item: 'node:read',
+  tag: 'node:read',
+  lead: 'lead:read',
+};
+
 export const SEARCH_RESULT_TYPE_LABELS: Record<SearchResultType, string> = {
   corpus_node: 'Beleidscorpus',
   task: 'Taak',
