@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight, Shield } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePeople } from '@/hooks/usePeople';
+import { useAuth } from '@/contexts/AuthContext';
 import { isPersonOnline, formatRelativeTime } from '@/utils/people';
 import { formatFunctie } from '@/types';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
@@ -25,10 +26,12 @@ function AssignmentRow({
   assignment,
   onRevoke,
   revoking,
+  isProtected,
 }: {
   assignment: PersonRoleAssignment;
   onRevoke: (id: string) => void;
   revoking: boolean;
+  isProtected: boolean;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -49,7 +52,7 @@ function AssignmentRow({
           : '-'}
       </td>
       <td className="px-4 py-2">
-        {confirmDelete ? (
+        {isProtected ? null : confirmDelete ? (
           <div className="flex items-center gap-1">
             <button
               onClick={() => {
@@ -87,6 +90,8 @@ function PersonRolesPanel({
 }: {
   personId: string;
 }) {
+  const { person: authPerson } = useAuth();
+  const isSelf = authPerson?.id === personId;
   const { data: assignments, isLoading } = usePersonRoleAssignments(personId);
   const { data: roles } = useRoles();
   const { data: orgUnits } = useOrganisatieFlat();
@@ -175,6 +180,7 @@ function PersonRolesPanel({
                 assignment={a}
                 onRevoke={handleRevoke}
                 revoking={revokeRole.isPending}
+                isProtected={isSelf && a.role_id === 'super_admin'}
               />
             ))}
           </tbody>
@@ -621,6 +627,7 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
 }
 
 export function RoleManager() {
+  const { person: authPerson } = useAuth();
   const { data: people, isLoading: loadingPeople } = usePeople();
   const { data: roles, isLoading: loadingRoles } = useRoles();
   const [expandedPersonId, setExpandedPersonId] = useState<string | null>(null);
@@ -706,6 +713,7 @@ export function RoleManager() {
                   lastSeenAt={person.last_seen_at}
                   isAgent={person.is_agent}
                   isExpanded={isExpanded}
+                  isSelf={authPerson?.id === person.id}
                   onToggle={() =>
                     setExpandedPersonId(isExpanded ? null : person.id)
                   }
@@ -739,6 +747,7 @@ function PersonRow({
   lastSeenAt,
   isAgent,
   isExpanded,
+  isSelf,
   onToggle,
 }: {
   personId: string;
@@ -748,6 +757,7 @@ function PersonRow({
   lastSeenAt?: string | null;
   isAgent?: boolean;
   isExpanded: boolean;
+  isSelf: boolean;
   onToggle: () => void;
 }) {
   const online = isPersonOnline({ last_seen_at: lastSeenAt, is_agent: isAgent });
@@ -765,7 +775,12 @@ function PersonRow({
             <ChevronRight className="h-4 w-4" />
           )}
         </td>
-        <td className="px-4 py-2.5 text-text">{naam}</td>
+        <td className="px-4 py-2.5 text-text">
+          {naam}
+          {isSelf && (
+            <span className="ml-1.5 text-xs text-text-secondary">(jij)</span>
+          )}
+        </td>
         <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
           {email || '-'}
         </td>
