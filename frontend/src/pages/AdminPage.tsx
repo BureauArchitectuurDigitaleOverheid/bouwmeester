@@ -10,6 +10,7 @@ import { ConfigManager } from '@/components/admin/ConfigManager';
 import { EdgeSchemaManager } from '@/components/admin/EdgeSchemaManager';
 import { SharingManager } from '@/components/admin/SharingManager';
 import { RoleManager } from '@/components/admin/RoleManager';
+import { EenheidModuleManager } from '@/components/admin/EenheidModuleManager';
 
 type Tab =
   | 'whitelist'
@@ -19,7 +20,8 @@ type Tab =
   | 'config'
   | 'schema'
   | 'users'
-  | 'sharing';
+  | 'sharing'
+  | 'modules';
 
 export function AdminPage() {
   const { person, oidcConfigured, loading, viewAsNonAdmin } = useAuth();
@@ -35,6 +37,7 @@ export function AdminPage() {
     'database:backup',
     'people:assign_role',
     'org:manage',
+    'feature_toggle:manage',
   );
 
   const defaultTab: Tab = canAdmin ? 'whitelist' : 'placements';
@@ -79,6 +82,9 @@ export function AdminPage() {
     tabs.push({ id: 'config', label: 'Omgevingsvariabelen' });
     tabs.push({ id: 'schema', label: 'Relatieschema' });
   }
+  if (hasPermission('feature_toggle:manage')) {
+    tabs.push({ id: 'modules', label: 'Modules' });
+  }
   if (hasPermission('database:backup')) {
     tabs.push({ id: 'database', label: 'Database' });
   }
@@ -113,6 +119,7 @@ export function AdminPage() {
           {activeTab === 'config' && <ConfigManager />}
           {activeTab === 'schema' && <EdgeSchemaManager />}
           {activeTab === 'sharing' && <SharingManager />}
+          {activeTab === 'modules' && <EenheidModuleManager />}
         </>
       ) : null}
     </div>

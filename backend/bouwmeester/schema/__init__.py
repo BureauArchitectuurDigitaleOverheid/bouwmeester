@@ -61,6 +61,11 @@ from bouwmeester.schema.edge_schema_rule import (
     ValidEdgeTypesResponse,
 )
 from bouwmeester.schema.edge_type import EdgeTypeBase, EdgeTypeCreate, EdgeTypeResponse
+from bouwmeester.schema.eenheid_module import (  # noqa: F401
+    EenheidModuleResponse,
+    EenheidModulesResponse,
+    EenheidModuleUpdate,
+)
 from bouwmeester.schema.externe_organisatie import (
     ExterneOrganisatieCreate,
     ExterneOrganisatieResponse,
@@ -286,6 +291,9 @@ __all__ = [
     "ExterneOrganisatieResponse",
     "ExterneOrganisatieUpdate",
     # edge
+    "EenheidModuleResponse",
+    "EenheidModulesResponse",
+    "EenheidModuleUpdate",
     "EdgeBase",
     "EdgeCreate",
     "EdgeResponse",

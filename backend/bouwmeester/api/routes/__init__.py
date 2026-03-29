@@ -10,6 +10,7 @@ from bouwmeester.api.routes.chat import router as chat_router
 from bouwmeester.api.routes.edge_schema import router as edge_schema_router
 from bouwmeester.api.routes.edge_types import router as edge_types_router
 from bouwmeester.api.routes.edges import router as edges_router
+from bouwmeester.api.routes.eenheid_modules import router as eenheid_modules_router
 from bouwmeester.api.routes.externe_organisaties import (
     router as externe_organisaties_router,
 )
@@ -47,6 +48,7 @@ api_router.include_router(chat_router)
 api_router.include_router(bijlage_router)
 api_router.include_router(edge_schema_router)
 api_router.include_router(edge_types_router)
+api_router.include_router(eenheid_modules_router)
 api_router.include_router(edges_router)
 api_router.include_router(externe_organisaties_router)
 api_router.include_router(graph_router)

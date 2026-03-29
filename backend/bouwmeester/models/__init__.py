@@ -17,6 +17,7 @@ from bouwmeester.models.dossier import Dossier  # noqa: F401
 from bouwmeester.models.edge import Edge  # noqa: F401
 from bouwmeester.models.edge_schema_rule import EdgeSchemaRule  # noqa: F401
 from bouwmeester.models.edge_type import EdgeType  # noqa: F401
+from bouwmeester.models.eenheid_module import EenheidModule  # noqa: F401
 from bouwmeester.models.effect import Effect  # noqa: F401
 from bouwmeester.models.externe_organisatie import ExterneOrganisatie  # noqa: F401
 from bouwmeester.models.http_session import HttpSession  # noqa: F401
@@ -82,6 +83,7 @@ __all__ = [
     "CorpusNodeTitle",
     "Doel",
     "Dossier",
+    "EenheidModule",
     "Edge",
     "EdgeSchemaRule",
     "EdgeType",
