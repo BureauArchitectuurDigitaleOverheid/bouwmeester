@@ -133,6 +133,8 @@ async def _walk_children(
 async def build_org_context(
     db: AsyncSession,
     person: Person,
+    *,
+    perm_ctx=None,
 ) -> OrgContext:
     """Build an OrgContext for the given person.
 
@@ -140,10 +142,15 @@ async def build_org_context(
     - Own memberships (active plaatsingen)
     - Parent chain (walking up from each own eenheid)
     - Managed sub-trees (walking down from eenheden where person is manager)
+
+    Pass an existing *perm_ctx* (a ``PermissionContext``) to avoid a
+    redundant ``build_permission_context`` call when the caller already
+    has one.
     """
     from bouwmeester.core.permissions import build_permission_context
 
-    perm_ctx = await build_permission_context(db, person)
+    if perm_ctx is None:
+        perm_ctx = await build_permission_context(db, person)
     if perm_ctx.is_super_admin:
         return OrgContext(
             person_id=person.id,

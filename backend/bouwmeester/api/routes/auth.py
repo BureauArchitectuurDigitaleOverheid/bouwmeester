@@ -356,7 +356,9 @@ async def auth_status(
 
                 person_for_org = await db.get(Person, UUID(person_id))
                 if person_for_org:
-                    org_ctx = await build_org_context(db, person_for_org)
+                    org_ctx = await build_org_context(
+                        db, person_for_org, perm_ctx=perm_ctx
+                    )
 
                     if org_ctx.is_admin:
                         visible_eenheid_ids_list = ["*"]
