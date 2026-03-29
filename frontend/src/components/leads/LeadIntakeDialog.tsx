@@ -21,11 +21,13 @@ interface LeadIntakeDialogProps {
   open: boolean;
   onClose: () => void;
   defaultInitiatiefId?: string;
+  sharedParseResult?: LeadParseResult;
+  sharedFiles?: File[];
 }
 
 type Step = 'input' | 'parsing' | 'confirm';
 
-export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId }: LeadIntakeDialogProps) {
+export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedParseResult, sharedFiles }: LeadIntakeDialogProps) {
   const [step, setStep] = useState<Step>('input');
   const [rawText, setRawText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -105,6 +107,41 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId }: LeadInt
       }
     }
   }, [open, broughtById, currentPerson, leadDate]);
+
+  // Apply a parse result to the form fields
+  const applyParseResult = useCallback((result: LeadParseResult) => {
+    setParseResult(result);
+    setTitle(result.title ?? '');
+    setOrganization(result.organization ?? '');
+    setDescription(result.description ?? '');
+    setSelectedTags(result.suggested_tags ?? []);
+    setContactName(result.contact_name ?? '');
+    setContactEmail(result.contact_email ?? '');
+    setContactPhone(result.contact_phone ?? '');
+    const today = new Date().toISOString().split('T')[0];
+    const parsedDate = result.original_date && /^\d{4}-\d{2}-\d{2}$/.test(result.original_date)
+      ? result.original_date
+      : today;
+    setLeadDate(parsedDate);
+    if (result.addressed_to && people) {
+      const addr = result.addressed_to.toLowerCase();
+      if (currentPerson && currentPerson.naam.toLowerCase().includes(addr)) {
+        setBroughtById(currentPerson.id);
+      } else {
+        const match = people.find(p => p.naam.toLowerCase().startsWith(addr));
+        if (match) setBroughtById(match.id);
+      }
+    }
+  }, [people, currentPerson]);
+
+  // Apply shared parse result (from share target) — skip input step
+  useEffect(() => {
+    if (open && sharedParseResult && step === 'input') {
+      applyParseResult(sharedParseResult);
+      if (sharedFiles) setFiles(sharedFiles);
+      setStep('confirm');
+    }
+  }, [open, sharedParseResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Try to match VLAM's contact_name against existing people
   useEffect(() => {
@@ -219,32 +256,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId }: LeadInt
     setStep('parsing');
     try {
       const result = await parseLead.mutateAsync({ rawText: rawText.trim() || undefined, files: files.length > 0 ? files : undefined });
-      setParseResult(result);
-      setTitle(result.title ?? '');
-      setOrganization(result.organization ?? '');
-      setDescription(result.description ?? '');
-      setSelectedTags(result.suggested_tags ?? []);
-      setContactName(result.contact_name ?? '');
-      setContactEmail(result.contact_email ?? '');
-      setContactPhone(result.contact_phone ?? '');
-      const today = new Date().toISOString().split('T')[0];
-      const parsedDate = result.original_date && /^\d{4}-\d{2}-\d{2}$/.test(result.original_date)
-        ? result.original_date
-        : today;
-      setLeadDate(parsedDate);
-      if (result.addressed_to && people) {
-        const addr = result.addressed_to.toLowerCase();
-        // Prioritize the current person (if "Anne" matches "Anne Schuth" who is logged in)
-        if (currentPerson && currentPerson.naam.toLowerCase().includes(addr)) {
-          setBroughtById(currentPerson.id);
-        } else {
-          // Fall back to first match in people list
-          const match = people.find(p =>
-            p.naam.toLowerCase().startsWith(addr),
-          );
-          if (match) setBroughtById(match.id);
-        }
-      }
+      applyParseResult(result);
       setStep('confirm');
     } catch {
       // If parsing fails, go straight to confirm with empty suggestions
