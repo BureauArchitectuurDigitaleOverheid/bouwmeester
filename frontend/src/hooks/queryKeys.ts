@@ -115,6 +115,8 @@ export const queryKeys = {
       ['admin', 'role-assignments', personId] as const,
     personResourcePermissions: (personId: string | null) =>
       ['admin', 'resource-permissions', personId] as const,
+    eenheidRoleAssignments: (eenheidId: string | null) =>
+      ['admin', 'eenheid-role-assignments', eenheidId] as const,
   },
 
   // --- Org Placements ---

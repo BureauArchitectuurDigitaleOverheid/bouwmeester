@@ -155,6 +155,21 @@ async def list_person_roles(
     return [_assignment_to_response(a) for a in assignments]
 
 
+@router.get(
+    "/eenheid/{eenheid_id}/assignments",
+    response_model=list[PersonRoleResponse],
+)
+async def list_eenheid_roles(
+    eenheid_id: UUID,
+    _perm=Depends(require_permission("people:assign_role")),
+    db: AsyncSession = Depends(get_db),
+):
+    """List role assignments scoped to an eenheid."""
+    repo = PersonRoleRepository(db)
+    assignments = await repo.list_for_eenheid(eenheid_id)
+    return [_assignment_to_response(a) for a in assignments]
+
+
 @router.post("/assign", response_model=PersonRoleResponse)
 async def assign_role(
     data: PersonRoleCreate,
