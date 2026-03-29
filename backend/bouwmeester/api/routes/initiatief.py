@@ -25,6 +25,7 @@ from bouwmeester.schema.initiatief import (
     InitiatiefEenheidCreate,
     InitiatiefEenheidResponse,
     InitiatiefEenheidUpdate,
+    InitiatiefEenheidWithNameResponse,
     InitiatiefMemberCreate,
     InitiatiefMemberResponse,
     InitiatiefResponse,
@@ -490,3 +491,32 @@ async def update_eenheid_rol(
         rol=link.rol,
         created_at=link.created_at,
     )
+
+
+# ---------------------------------------------------------------------------
+# Eenheid → initiatieven (reverse lookup)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/by-eenheid/{eenheid_id}",
+    response_model=list[InitiatiefEenheidWithNameResponse],
+)
+async def list_initiatieven_for_eenheid(
+    eenheid_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(get_permission_context),
+) -> list[InitiatiefEenheidWithNameResponse]:
+    """List all initiatieven linked to an eenheid."""
+    repo = InitiatiefRepository(db)
+    links = await repo.list_for_eenheid(eenheid_id)
+    return [
+        InitiatiefEenheidWithNameResponse(
+            initiatief_id=link.initiatief_id,
+            initiatief_naam=link.initiatief.naam if link.initiatief else "",
+            eenheid_id=link.eenheid_id,
+            rol=link.rol,
+            created_at=link.created_at,
+        )
+        for link in links
+    ]

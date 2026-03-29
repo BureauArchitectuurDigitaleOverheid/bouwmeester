@@ -92,3 +92,19 @@ export async function updateInitiatiefEenheidRol(
     { rol },
   );
 }
+
+export interface InitiatiefEenheidWithName {
+  initiatief_id: string;
+  initiatief_naam: string;
+  eenheid_id: string;
+  rol: string;
+  created_at: string;
+}
+
+export async function getInitiatievenForEenheid(
+  eenheidId: string,
+): Promise<InitiatiefEenheidWithName[]> {
+  return apiGet<InitiatiefEenheidWithName[]>(
+    `/api/initiatieven/by-eenheid/${eenheidId}`,
+  );
+}

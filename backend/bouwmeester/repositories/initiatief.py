@@ -285,3 +285,14 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         if not roles:
             return None
         return max(roles, key=lambda r: EENHEID_ROL_RANK.get(r, 0))
+
+    async def list_for_eenheid(self, eenheid_id: UUID) -> list[InitiatiefEenheid]:
+        """List initiatieven linked to an eenheid."""
+        stmt = (
+            select(InitiatiefEenheid)
+            .where(InitiatiefEenheid.eenheid_id == eenheid_id)
+            .options(selectinload(InitiatiefEenheid.initiatief))
+            .order_by(InitiatiefEenheid.created_at.desc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

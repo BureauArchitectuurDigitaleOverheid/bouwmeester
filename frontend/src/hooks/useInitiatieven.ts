@@ -11,7 +11,9 @@ import {
   addInitiatiefEenheid,
   removeInitiatiefEenheid,
   updateInitiatiefEenheidRol,
+  getInitiatievenForEenheid,
 } from '@/api/initiatieven';
+import type { InitiatiefEenheidWithName } from '@/api/initiatieven';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { InitiatiefCreate, InitiatiefUpdate } from '@/types';
 
@@ -162,3 +164,13 @@ export function useUpdateInitiatiefEenheidRol() {
     },
   });
 }
+
+export function useInitiatievenForEenheid(eenheidId: string | null) {
+  return useQuery({
+    queryKey: ['initiatieven-for-eenheid', eenheidId],
+    queryFn: () => getInitiatievenForEenheid(eenheidId!),
+    enabled: !!eenheidId,
+  });
+}
+
+export type { InitiatiefEenheidWithName };

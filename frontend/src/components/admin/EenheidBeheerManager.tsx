@@ -1,15 +1,15 @@
 import { useState, useMemo } from 'react';
-import { ChevronRight, ChevronDown, Search, Users, Blocks } from 'lucide-react';
+import { ChevronRight, ChevronDown, Search, Blocks, Lightbulb } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Badge } from '@/components/common/Badge';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
-import { useEenheidRoleAssignments } from '@/hooks/useRoles';
+import { useInitiatievenForEenheid } from '@/hooks/useInitiatieven';
 import {
   useEenheidModules,
   useAvailableModules,
   useUpdateEenheidModule,
 } from '@/hooks/useEenheidModules';
-import { ORGANISATIE_TYPE_LABELS } from '@/types';
+import { ORGANISATIE_TYPE_LABELS, INITIATIEF_ROL_LABELS } from '@/types';
 
 const MODULE_DESCRIPTIONS: Record<string, string> = {
   corpus: 'Beleidsdossiers, doelen, instrumenten en hun relaties',
@@ -39,7 +39,7 @@ export function EenheidBeheerManager() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-secondary">
-        Beheer rollen en modules per organisatie-eenheid. Klik op een eenheid om de details te zien.
+        Beheer initiatieven en modules per organisatie-eenheid. Klik op een eenheid om de details te zien.
       </p>
 
       {/* Search */}
@@ -135,11 +135,11 @@ function EenheidRow({
 }
 
 // ---------------------------------------------------------------------------
-// Detail panel: rollen + modules
+// Detail panel: initiatieven + modules
 // ---------------------------------------------------------------------------
 
 function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
-  const { data: assignments, isLoading: rolesLoading } = useEenheidRoleAssignments(eenheidId);
+  const { data: initiatieven, isLoading: initiativeLoading } = useInitiatievenForEenheid(eenheidId);
   const { data: moduleConfig, isLoading: modulesLoading } = useEenheidModules(eenheidId);
   const { data: moduleLabels } = useAvailableModules();
   const updateModuleMutation = useUpdateEenheidModule();
@@ -158,42 +158,36 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
 
   return (
     <div className="bg-gray-50 border-l-[3px] border-l-primary-300 px-6 py-5 space-y-6">
-      {/* Rollen sectie */}
+      {/* Initiatieven sectie */}
       <div>
         <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5 mb-3">
-          <Users className="h-3.5 w-3.5" />
-          Rollen in deze eenheid
+          <Lightbulb className="h-3.5 w-3.5" />
+          Initiatieven
         </h4>
 
-        {rolesLoading && <LoadingSpinner className="py-4" />}
+        {initiativeLoading && <LoadingSpinner className="py-4" />}
 
-        {!rolesLoading && assignments && assignments.length === 0 && (
-          <p className="text-sm text-text-secondary">Geen roltoewijzingen.</p>
+        {!initiativeLoading && initiatieven && initiatieven.length === 0 && (
+          <p className="text-sm text-text-secondary">Geen gekoppelde initiatieven.</p>
         )}
 
-        {!rolesLoading && assignments && assignments.length > 0 && (
+        {!initiativeLoading && initiatieven && initiatieven.length > 0 && (
           <div className="rounded-lg border border-border bg-white overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs font-medium text-text-secondary uppercase tracking-wider bg-gray-50">
-                  <th className="px-3 py-2">Persoon</th>
+                  <th className="px-3 py-2">Initiatief</th>
                   <th className="px-3 py-2">Rol</th>
-                  <th className="px-3 py-2 hidden md:table-cell">Vanaf</th>
-                  <th className="px-3 py-2 hidden md:table-cell">Tot</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {assignments.map((a) => (
-                  <tr key={a.id}>
-                    <td className="px-3 py-2 text-text">{a.person_naam ?? '—'}</td>
+                {initiatieven.map((link) => (
+                  <tr key={link.initiatief_id}>
+                    <td className="px-3 py-2 text-text">{link.initiatief_naam}</td>
                     <td className="px-3 py-2">
-                      <Badge variant="blue">{a.role_naam ?? a.role_id}</Badge>
-                    </td>
-                    <td className="px-3 py-2 text-text-secondary hidden md:table-cell">
-                      {a.start_datum}
-                    </td>
-                    <td className="px-3 py-2 text-text-secondary hidden md:table-cell">
-                      {a.eind_datum ?? '—'}
+                      <Badge variant={link.rol === 'eigenaar' ? 'purple' : link.rol === 'contributor' ? 'blue' : 'gray'}>
+                        {INITIATIEF_ROL_LABELS[link.rol] ?? link.rol}
+                      </Badge>
                     </td>
                   </tr>
                 ))}
