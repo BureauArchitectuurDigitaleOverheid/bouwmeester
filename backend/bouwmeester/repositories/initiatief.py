@@ -13,7 +13,11 @@ from bouwmeester.models.initiatief import (
 )
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
-from bouwmeester.schema.initiatief import InitiatiefCreate, InitiatiefUpdate
+from bouwmeester.schema.initiatief import (
+    EENHEID_ROL_RANK,
+    InitiatiefCreate,
+    InitiatiefUpdate,
+)
 
 
 class InitiatiefRepository(BaseRepository[Initiatief]):
@@ -280,6 +284,4 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         roles = result.scalars().all()
         if not roles:
             return None
-        # Return highest privilege
-        rank = {"eigenaar": 3, "contributor": 2, "viewer": 1}
-        return max(roles, key=lambda r: rank.get(r, 0))
+        return max(roles, key=lambda r: EENHEID_ROL_RANK.get(r, 0))

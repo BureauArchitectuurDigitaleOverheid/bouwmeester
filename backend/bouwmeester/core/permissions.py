@@ -45,7 +45,8 @@ RESOURCE_ROLE_PERMISSIONS: dict[str, dict[str, set[str]]] = {
             "initiatief:delete",
             "resource_permission:manage",
         },
-        "contributor": {"initiatief:read"},
+        "contributor": {"initiatief:read", "initiatief:update"},
+        "viewer": {"initiatief:read"},
     },
     "lead": {
         "opdrachtgever": {"lead:read", "lead:update"},

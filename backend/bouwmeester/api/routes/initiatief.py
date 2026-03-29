@@ -19,6 +19,7 @@ from bouwmeester.core.permissions import (
 )
 from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.schema.initiatief import (
+    EENHEID_ROL_RANK,
     InitiatiefCreate,
     InitiatiefDetailResponse,
     InitiatiefEenheidCreate,
@@ -34,9 +35,6 @@ from bouwmeester.services.activity_service import log_activity
 router = APIRouter(prefix="/initiatieven", tags=["initiatieven"])
 
 
-_ROLE_RANK = {"eigenaar": 3, "contributor": 2, "viewer": 1}
-
-
 async def _resolve_access_level(
     repo: InitiatiefRepository,
     initiatief_id: UUID,
@@ -45,10 +43,10 @@ async def _resolve_access_level(
 ) -> str | None:
     """Return the highest access level the user has on this initiatief.
 
-    Checks (in order of precedence):
-    1. Super admin / system RBAC permissions → "eigenaar"
-    2. Direct membership via ResourcePermission
-    3. Eenheid membership via InitiatiefEenheid.rol
+    Collects levels from all sources and returns the maximum:
+    - Super admin / system RBAC permissions
+    - Direct membership via ResourcePermission
+    - Eenheid membership via InitiatiefEenheid.rol
     """
     if not user:
         return "eigenaar"  # dev mode, no OIDC
@@ -56,21 +54,28 @@ async def _resolve_access_level(
         perm_ctx = await build_permission_context(repo.session, user)
     if perm_ctx.is_super_admin:
         return "eigenaar"
-    if perm_ctx.has_permission("initiatief:delete"):
-        return "eigenaar"
-    if perm_ctx.has_permission("initiatief:update"):
-        return "contributor"
 
     levels: list[str] = []
+
+    # System RBAC permissions
+    if perm_ctx.has_permission("initiatief:delete"):
+        levels.append("eigenaar")
+    elif perm_ctx.has_permission("initiatief:update"):
+        levels.append("contributor")
+
+    # Direct membership
     direct_role = await repo.get_member_role(initiatief_id, user.id)
     if direct_role:
         levels.append(direct_role)
+
+    # Eenheid membership
     eenheid_role = await repo.get_eenheid_access_level(initiatief_id, user.id)
     if eenheid_role:
         levels.append(eenheid_role)
+
     if not levels:
         return None
-    return max(levels, key=lambda r: _ROLE_RANK.get(r, 0))
+    return max(levels, key=lambda r: EENHEID_ROL_RANK.get(r, 0))
 
 
 async def _require_access(
@@ -87,30 +92,10 @@ async def _require_access(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Geen toegang tot dit initiatief",
         )
-    if _ROLE_RANK.get(level, 0) < _ROLE_RANK.get(required_level, 0):
+    if EENHEID_ROL_RANK.get(level, 0) < EENHEID_ROL_RANK.get(required_level, 0):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Onvoldoende rechten voor deze actie",
-        )
-
-
-async def _require_member_or_admin(
-    repo: InitiatiefRepository,
-    initiatief_id: UUID,
-    user: OptionalUser,
-    perm_ctx: PermissionContext | None = None,
-) -> None:
-    """Raise 404 unless user is a member (direct or via eenheid) or admin."""
-    if not user:
-        return  # dev mode
-    if perm_ctx is None:
-        perm_ctx = await build_permission_context(repo.session, user)
-    if perm_ctx.is_super_admin:
-        return
-    if not await repo.is_member(initiatief_id, user.id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Initiatief niet gevonden",
         )
 
 
@@ -162,8 +147,13 @@ async def get_initiatief(
 ) -> InitiatiefDetailResponse:
     repo = InitiatiefRepository(db)
     initiatief = require_found(await repo.get_detail(id), "Initiatief")
-    await _require_member_or_admin(repo, id, current_user, perm_ctx)
-    # Build response with member/eenheid names
+    # Resolve access level (also serves as the membership check)
+    access_level = await _resolve_access_level(repo, id, current_user, perm_ctx)
+    if access_level is None and current_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Initiatief niet gevonden",
+        )
     from bouwmeester.repositories.resource_permission import (
         ResourcePermissionRepository,
     )
@@ -194,6 +184,7 @@ async def get_initiatief(
     resp = InitiatiefDetailResponse.model_validate(initiatief)
     resp.members = members
     resp.eenheden = eenheden
+    resp.access_level = access_level
     return resp
 
 

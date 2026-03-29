@@ -143,7 +143,7 @@ async def test_my_permissions_returns_per_eenheid_scoped_permissions(scoped_setu
 
 
 async def test_my_permissions_admin_has_empty_scoped(scoped_setup):
-    """Super admin gets empty scoped_permissions."""
+    """Super admin gets empty scoped_permissions and system_permissions."""
     s = scoped_setup
     resp = await s["admin_client"].get(
         f"/api/roles/my-permissions?person_id={s['admin'].id}"
@@ -151,8 +151,8 @@ async def test_my_permissions_admin_has_empty_scoped(scoped_setup):
     assert resp.status_code == 200
     data = resp.json()
 
-    scoped = data.get("scoped_permissions", {})
-    assert scoped == {}
+    assert data.get("scoped_permissions", {}) == {}
+    assert data.get("system_permissions", []) == []
 
 
 async def test_my_permissions_flat_is_union_of_scoped(scoped_setup):
@@ -175,3 +175,29 @@ async def test_my_permissions_flat_is_union_of_scoped(scoped_setup):
     assert "node:create" in flat
     # Viewer has node:read (from org_b) in flat set
     assert "node:read" in flat
+
+
+async def test_my_permissions_returns_system_permissions(scoped_setup):
+    """system_permissions contains only non-scoped (system-role) permissions."""
+    s = scoped_setup
+    resp = await s["editor_client"].get(
+        f"/api/roles/my-permissions?person_id={s['editor'].id}"
+    )
+    data = resp.json()
+
+    system = set(data.get("system_permissions", []))
+    scoped = data["scoped_permissions"]
+
+    # System permissions should be in the flat set
+    flat = set(data["permissions"])
+    for p in system:
+        assert p in flat, f"{p} in system_permissions but not in flat"
+
+    # No scoped permission should be in system (unless also granted by a
+    # system-level role, which this test user doesn't have)
+    all_scoped = set()
+    for perms in scoped.values():
+        all_scoped.update(perms)
+
+    # The test user has no system-level roles, so system should be empty
+    assert system == set()

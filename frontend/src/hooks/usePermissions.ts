@@ -8,6 +8,7 @@ interface MyPermissionsResponse {
   roles: unknown[];
   permissions: string[];
   scoped_permissions?: Record<string, string[]>;
+  system_permissions?: string[];
 }
 
 export function usePermissions() {
@@ -43,19 +44,13 @@ export function usePermissions() {
     return map;
   }, [person?.scoped_permissions, oidcConfigured, devPerms?.scoped_permissions]);
 
-  // Derive system-level permissions: those in the flat set but not in any
-  // scoped set. These apply to all eenheden.
+  // System-level permissions from the backend (apply to all eenheden)
   const systemPermissions = useMemo(() => {
-    const allScoped = new Set<string>();
-    for (const perms of scopedPermissions.values()) {
-      for (const p of perms) allScoped.add(p);
-    }
-    const sys = new Set<string>();
-    for (const p of permissions) {
-      if (!allScoped.has(p)) sys.add(p);
-    }
-    return sys;
-  }, [permissions, scopedPermissions]);
+    const raw = !oidcConfigured
+      ? devPerms?.system_permissions ?? []
+      : person?.system_permissions ?? [];
+    return new Set(raw);
+  }, [person?.system_permissions, oidcConfigured, devPerms?.system_permissions]);
 
   const hasPermission = useCallback((perm: string): boolean => permissions.has(perm), [permissions]);
 
@@ -69,9 +64,7 @@ export function usePermissions() {
   const hasPermissionForEenheid = useCallback(
     (perm: string, eenheidId: string): boolean => {
       if (isAdmin) return true;
-      // System-level permissions apply everywhere
       if (systemPermissions.has(perm)) return true;
-      // Check scoped permissions for this specific eenheid
       const eenheidPerms = scopedPermissions.get(eenheidId);
       return eenheidPerms?.has(perm) ?? false;
     },

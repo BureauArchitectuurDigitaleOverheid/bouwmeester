@@ -125,15 +125,18 @@ async def my_permissions(
     assignments = await pr_repo.list_for_person(effective_user.id)
     roles = [_assignment_to_response(a) for a in assignments]
     scoped: dict[str, list[str]] = {}
+    system: list[str] = []
     if not perm_ctx.is_super_admin:
         scoped = {
             str(eid): sorted(perms)
             for eid, perms in perm_ctx.scoped_permissions.items()
         }
+        system = sorted(perm_ctx.system_permissions)
     return MyPermissionsResponse(
         roles=roles,
         permissions=sorted(perm_ctx.effective_permissions),
         scoped_permissions=scoped,
+        system_permissions=system,
     )
 
 

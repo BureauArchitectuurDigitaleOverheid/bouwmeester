@@ -627,6 +627,12 @@ export const LEAD_CONTACT_ROL_LABELS: Record<string, string> = {
   betrokken: 'Betrokken',
 };
 
+export const INITIATIEF_ROL_LABELS: Record<string, string> = {
+  eigenaar: 'Eigenaar',
+  contributor: 'Bijdrager',
+  viewer: 'Lezer',
+};
+
 // Notification type labels and colors
 export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   task_assigned: 'taak toegewezen',
@@ -1739,6 +1745,7 @@ export interface InitiatiefEenheid {
 export interface InitiatiefDetail extends Initiatief {
   members: InitiatiefMember[];
   eenheden: InitiatiefEenheid[];
+  access_level: 'eigenaar' | 'contributor' | 'viewer' | null;
 }
 
 export const INITIATIEF_COLORS = [

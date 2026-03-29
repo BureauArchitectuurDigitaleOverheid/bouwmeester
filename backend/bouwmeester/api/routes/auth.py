@@ -386,6 +386,7 @@ async def auth_status(
             roles_list: list[dict] = []
             permissions_list: list[str] = []
             scoped_permissions_dict: dict[str, list[str]] = {}
+            system_permissions_list: list[str] = []
             if person_id:
                 from bouwmeester.repositories.role import (
                     PersonRoleRepository,
@@ -404,6 +405,7 @@ async def auth_status(
                             str(eid): sorted(perms)
                             for eid, perms in perm_ctx.scoped_permissions.items()
                         }
+                        system_permissions_list = sorted(perm_ctx.system_permissions)
 
                     pr_repo = PersonRoleRepository(db)
                     assignments = await pr_repo.list_for_person(pid_uuid)
@@ -441,6 +443,7 @@ async def auth_status(
                 "permissions": permissions_list,
                 "visible_eenheid_ids": visible_eenheid_ids_list,
                 "scoped_permissions": scoped_permissions_dict,
+                "system_permissions": system_permissions_list,
             }
         except Exception:
             logger.exception(

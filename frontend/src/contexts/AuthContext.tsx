@@ -23,6 +23,7 @@ interface AuthPerson {
   roles?: { role_id: string; role_naam: string | null; organisatie_eenheid_id: string | null; eenheid_naam: string | null }[];
   permissions?: string[];
   scoped_permissions?: Record<string, string[]>;
+  system_permissions?: string[];
   visible_eenheid_ids?: string[];
 }
 
@@ -75,6 +76,7 @@ async function fetchAuthStatus(): Promise<AuthState> {
           roles: data.person.roles ?? [],
           permissions: data.person.permissions ?? [],
           scoped_permissions: data.person.scoped_permissions ?? {},
+          system_permissions: data.person.system_permissions ?? [],
           visible_eenheid_ids: data.person.visible_eenheid_ids ?? [],
         }
       : null,

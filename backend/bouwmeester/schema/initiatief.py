@@ -1,9 +1,14 @@
 """Pydantic schemas for Initiatief."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# Canonical eenheid-rol type — used in schemas, routes, and repository
+InitiatiefEenheidRol = Literal["eigenaar", "contributor", "viewer"]
+EENHEID_ROL_RANK: dict[str, int] = {"eigenaar": 3, "contributor": 2, "viewer": 1}
 
 
 class InitiatiefBase(BaseModel):
@@ -29,11 +34,11 @@ class InitiatiefMemberCreate(BaseModel):
 
 class InitiatiefEenheidCreate(BaseModel):
     eenheid_id: UUID
-    rol: str = "contributor"
+    rol: InitiatiefEenheidRol = "contributor"
 
 
 class InitiatiefEenheidUpdate(BaseModel):
-    rol: str
+    rol: InitiatiefEenheidRol
 
 
 class InitiatiefMemberResponse(BaseModel):
@@ -71,3 +76,4 @@ class InitiatiefResponse(BaseModel):
 class InitiatiefDetailResponse(InitiatiefResponse):
     members: list[InitiatiefMemberResponse] = Field(default_factory=list)
     eenheden: list[InitiatiefEenheidResponse] = Field(default_factory=list)
+    access_level: str | None = None
