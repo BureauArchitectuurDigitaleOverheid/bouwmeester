@@ -29,6 +29,7 @@ import { AuditLogPage } from '@/pages/AuditLogPage';
 import { DocsPage } from '@/pages/DocsPage';
 import { InstellingenPage } from '@/pages/InstellingenPage';
 import { LeadsPage } from '@/pages/LeadsPage';
+import { ShareTargetPage } from '@/pages/ShareTargetPage';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
@@ -133,6 +134,7 @@ export default function App() {
                     <Route path="/docs" element={<DocsPage />} />
                     <Route path="/instellingen" element={<InstellingenPage />} />
                     <Route path="/leads" element={<LeadsPage />} />
+                    <Route path="/share-target" element={<ShareTargetPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Route>
                 </Routes>

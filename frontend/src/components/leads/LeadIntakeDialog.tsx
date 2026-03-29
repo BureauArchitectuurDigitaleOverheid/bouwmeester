@@ -21,11 +21,13 @@ interface LeadIntakeDialogProps {
   open: boolean;
   onClose: () => void;
   defaultInitiatiefId?: string;
+  sharedParseResult?: LeadParseResult;
+  sharedFiles?: File[];
 }
 
 type Step = 'input' | 'parsing' | 'confirm';
 
-export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId }: LeadIntakeDialogProps) {
+export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedParseResult, sharedFiles }: LeadIntakeDialogProps) {
   const [step, setStep] = useState<Step>('input');
   const [rawText, setRawText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -105,6 +107,36 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId }: LeadInt
       }
     }
   }, [open, broughtById, currentPerson, leadDate]);
+
+  // Apply shared parse result (from share target) — skip input step
+  useEffect(() => {
+    if (open && sharedParseResult && step === 'input') {
+      setParseResult(sharedParseResult);
+      setTitle(sharedParseResult.title ?? '');
+      setOrganization(sharedParseResult.organization ?? '');
+      setDescription(sharedParseResult.description ?? '');
+      setSelectedTags(sharedParseResult.suggested_tags ?? []);
+      setContactName(sharedParseResult.contact_name ?? '');
+      setContactEmail(sharedParseResult.contact_email ?? '');
+      setContactPhone(sharedParseResult.contact_phone ?? '');
+      const today = new Date().toISOString().split('T')[0];
+      const parsedDate = sharedParseResult.original_date && /^\d{4}-\d{2}-\d{2}$/.test(sharedParseResult.original_date)
+        ? sharedParseResult.original_date
+        : today;
+      setLeadDate(parsedDate);
+      if (sharedParseResult.addressed_to && people) {
+        const addr = sharedParseResult.addressed_to.toLowerCase();
+        if (currentPerson && currentPerson.naam.toLowerCase().includes(addr)) {
+          setBroughtById(currentPerson.id);
+        } else {
+          const match = people?.find(p => p.naam.toLowerCase().startsWith(addr));
+          if (match) setBroughtById(match.id);
+        }
+      }
+      if (sharedFiles) setFiles(sharedFiles);
+      setStep('confirm');
+    }
+  }, [open, sharedParseResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Try to match VLAM's contact_name against existing people
   useEffect(() => {
