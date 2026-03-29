@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import OrgContext, get_org_context
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.schema.opdracht import (
     OpdrachtCreate,
@@ -97,6 +99,8 @@ async def create_opdracht(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:create")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> OpdrachtResponse:
     repo = OpdrachtRepository(db)
     opdracht = await repo.create(data)
@@ -145,6 +149,8 @@ async def update_opdracht(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> OpdrachtResponse:
     repo = OpdrachtRepository(db)
 
@@ -191,6 +197,8 @@ async def delete_opdracht(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:delete")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     repo = OpdrachtRepository(db)
 
@@ -228,6 +236,8 @@ async def add_node_koppeling(
     data: OpdrachtNodeCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> OpdrachtNodeResponse:
     repo = OpdrachtRepository(db)
     require_found(await repo.get(opdracht_id), "Opdracht")
@@ -244,6 +254,8 @@ async def remove_node_koppeling(
     koppeling_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     repo = OpdrachtRepository(db)
     require_deleted(

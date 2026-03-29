@@ -13,7 +13,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import OrgContext, get_org_context
+from bouwmeester.core.org_context import (
+    OrgContext,
+    get_org_context,
+    resolve_resource_eenheid_id,
+)
 from bouwmeester.core.permissions import (
     PermissionContext,
     check_resource_permission,
@@ -54,52 +58,6 @@ def _validate_resource_type(resource_type: str) -> None:
         )
 
 
-async def _get_resource_eenheid_id(
-    db: AsyncSession,
-    resource_type: str,
-    resource_id: UUID,
-) -> UUID | None:
-    """Resolve the organisatie_eenheid_id for a polymorphic resource."""
-    if resource_type == "corpus_node":
-        from bouwmeester.models.corpus_node import CorpusNode
-
-        stmt = select(CorpusNode.organisatie_eenheid_id).where(
-            CorpusNode.id == resource_id
-        )
-        result = await db.execute(stmt)
-        return result.scalar_one_or_none()
-
-    if resource_type == "opdracht":
-        from bouwmeester.models.opdracht import Opdracht
-
-        stmt = select(Opdracht.opdrachtgever_id).where(Opdracht.id == resource_id)
-        result = await db.execute(stmt)
-        return result.scalar_one_or_none()
-
-    if resource_type == "initiatief":
-        from bouwmeester.models.initiatief import InitiatiefEenheid
-
-        stmt = select(InitiatiefEenheid.eenheid_id).where(
-            InitiatiefEenheid.initiatief_id == resource_id
-        )
-        result = await db.execute(stmt)
-        return result.scalars().first()
-
-    if resource_type == "lead":
-        from bouwmeester.models.initiatief import InitiatiefEenheid
-        from bouwmeester.models.lead import Lead
-
-        stmt = (
-            select(InitiatiefEenheid.eenheid_id)
-            .join(Lead, Lead.initiatief_id == InitiatiefEenheid.initiatief_id)
-            .where(Lead.id == resource_id)
-        )
-        result = await db.execute(stmt)
-        return result.scalars().first()
-
-    return None
-
-
 async def _require_manage_permission(
     perm: PermissionContext,
     db: AsyncSession,
@@ -130,7 +88,7 @@ async def _require_manage_permission(
 
     # RBAC grants the permission, but check org scope: the resource
     # must belong to an eenheid the caller can see.
-    eenheid_id = await _get_resource_eenheid_id(db, resource_type, resource_id)
+    eenheid_id = await resolve_resource_eenheid_id(db, resource_type, resource_id)
     if eenheid_id is not None and org_ctx is not None:
         if (
             not org_ctx.is_admin

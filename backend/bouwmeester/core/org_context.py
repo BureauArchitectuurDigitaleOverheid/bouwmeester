@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from uuid import UUID
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -253,3 +253,90 @@ def org_filter_sql_clause(column: str, ctx: OrgContext | None) -> str:
     if not all_visible:
         return f" AND {column} IS NULL"
     return f" AND ({column} IS NULL OR {column} = ANY(:visible_eenheid_ids))"
+
+
+# ---------------------------------------------------------------------------
+# Write-side scope enforcement
+# ---------------------------------------------------------------------------
+
+
+def check_org_scope(
+    eenheid_id: UUID | None,
+    org_ctx: OrgContext,
+    *,
+    allow_none: bool = True,
+) -> None:
+    """Raise 403 if *eenheid_id* is outside the user's visible org scope.
+
+    Call this in write endpoints before creating or mutating a resource
+    that belongs to an organisatie-eenheid.
+
+    Args:
+        eenheid_id: The organisatie-eenheid to check (``None`` = no scope).
+        org_ctx: The org context for the current user.
+        allow_none: If ``True`` (default), ``None`` eenheid_id is always
+            allowed.  Set to ``False`` to require an eenheid.
+    """
+    if eenheid_id is None:
+        if allow_none:
+            return
+        raise HTTPException(status_code=403, detail="Organisatie-eenheid is verplicht")
+    if org_ctx.is_admin:
+        return
+    all_visible = set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
+    if eenheid_id not in all_visible:
+        raise HTTPException(
+            status_code=403,
+            detail="Geen toegang tot deze organisatie-eenheid",
+        )
+
+
+async def resolve_resource_eenheid_id(
+    db: AsyncSession,
+    resource_type: str,
+    resource_id: UUID,
+) -> UUID | None:
+    """Resolve the organisatie_eenheid_id for a polymorphic resource.
+
+    Shared helper used by resource permission routes and any code that
+    needs to map a ``(resource_type, resource_id)`` pair to the owning
+    org unit.
+    """
+    if resource_type == "corpus_node":
+        from bouwmeester.models.corpus_node import CorpusNode
+
+        stmt = select(CorpusNode.organisatie_eenheid_id).where(
+            CorpusNode.id == resource_id
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    if resource_type == "opdracht":
+        from bouwmeester.models.opdracht import Opdracht
+
+        stmt = select(Opdracht.opdrachtgever_id).where(Opdracht.id == resource_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    if resource_type == "initiatief":
+        from bouwmeester.models.initiatief import InitiatiefEenheid
+
+        stmt = select(InitiatiefEenheid.eenheid_id).where(
+            InitiatiefEenheid.initiatief_id == resource_id
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    if resource_type == "lead":
+        from bouwmeester.models.initiatief import InitiatiefEenheid
+        from bouwmeester.models.lead import Lead
+
+        stmt = (
+            select(InitiatiefEenheid.eenheid_id)
+            .join(Lead, Lead.initiatief_id == InitiatiefEenheid.initiatief_id)
+            .where(Lead.id == resource_id)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    return None

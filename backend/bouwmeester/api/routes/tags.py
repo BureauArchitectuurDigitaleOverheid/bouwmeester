@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import (
     TagCreate,
@@ -58,6 +59,7 @@ async def create_tag(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("tag:create")),
 ) -> TagResponse:
     """Create a new tag, optionally with a parent_id for hierarchy."""
     repo = TagRepository(db)
@@ -91,6 +93,7 @@ async def update_tag(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("tag:update")),
 ) -> TagResponse:
     """Update a tag's name or parent."""
     repo = TagRepository(db)
@@ -113,6 +116,7 @@ async def delete_tag(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("tag:delete")),
 ) -> None:
     """Delete a tag permanently."""
     repo = TagRepository(db)

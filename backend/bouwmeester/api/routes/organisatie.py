@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import OrgContext, check_org_scope, get_org_context
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidCreate,
@@ -126,8 +128,11 @@ async def create_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("org:manage")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> OrganisatieEenheidResponse:
     """Create a new org unit, optionally under a parent."""
+    check_org_scope(data.parent_id, org_ctx)
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
         require_found(await repo.get(data.parent_id), "Parent eenheid")
@@ -175,8 +180,11 @@ async def update_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("org:manage")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> OrganisatieEenheidResponse:
     """Update an org unit. Detects circular parent references."""
+    check_org_scope(id, org_ctx)
     repo = OrganisatieEenheidRepository(db)
 
     # Cycle detection for parent_id changes
@@ -216,8 +224,11 @@ async def delete_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("org:manage")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     """Delete an org unit. Fails if it has children or members."""
+    check_org_scope(id, org_ctx)
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
     if await repo.has_children(id):

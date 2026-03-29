@@ -9,6 +9,7 @@ from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.repositories.opdracht import OpdrachtRepository
@@ -122,6 +123,8 @@ async def create_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
+    _perm=Depends(require_permission("node:create")),
 ) -> CorpusNodeResponse:
     """Create a new corpus node. Syncs mentions and logs activity."""
     service = NodeService(db)
@@ -183,6 +186,8 @@ async def update_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
+    _perm=Depends(require_permission("node:update")),
 ) -> CorpusNodeResponse:
     """Update a corpus node. Notifies stakeholders of changes."""
     service = NodeService(db)
@@ -222,6 +227,8 @@ async def delete_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
+    _perm=Depends(require_permission("node:delete")),
 ) -> None:
     """Delete a corpus node. Cleans up bijlage files for bron nodes."""
     service = NodeService(db)
@@ -360,6 +367,8 @@ async def add_node_stakeholder(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
+    _perm=Depends(require_permission("resource_permission:manage")),
 ) -> NodeStakeholderResponse:
     """Add a person as stakeholder on a node with a role."""
     service = NodeService(db)
@@ -408,6 +417,8 @@ async def update_node_stakeholder(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
+    _perm=Depends(require_permission("resource_permission:manage")),
 ) -> NodeStakeholderResponse:
     """Update a stakeholder's role on a node."""
     repo = ResourcePermissionRepository(db)
@@ -466,6 +477,8 @@ async def remove_node_stakeholder(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
+    _perm=Depends(require_permission("resource_permission:manage")),
 ) -> None:
     """Remove a stakeholder from a node."""
     repo = ResourcePermissionRepository(db)
@@ -530,6 +543,8 @@ async def add_tag_to_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
+    _perm=Depends(require_permission("tag:create")),
 ) -> NodeTagResponse:
     """Add a tag to a node.
 
@@ -577,6 +592,8 @@ async def remove_tag_from_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
+    _perm=Depends(require_permission("tag:delete")),
 ) -> None:
     """Remove a tag from a node."""
     from bouwmeester.repositories.tag import TagRepository
@@ -647,6 +664,8 @@ async def update_node_bron_detail(
     data: BronUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
+    _perm=Depends(require_permission("node:update")),
 ) -> BronResponse:
     """Update bron-specific detail fields for a bron node."""
     from sqlalchemy import select

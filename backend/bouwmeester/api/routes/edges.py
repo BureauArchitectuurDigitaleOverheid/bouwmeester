@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import OrgContext, get_org_context
+from bouwmeester.core.org_context import OrgContext, check_org_scope, get_org_context
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.schema.edge import EdgeCreate, EdgeResponse, EdgeUpdate, EdgeWithNodes
@@ -59,11 +60,19 @@ async def create_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("edge:create")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> EdgeResponse:
     """Create a directed edge between two nodes. Returns 409 if duplicate."""
     # Validate against edge schema rules
     from_node = await db.get(CorpusNode, data.from_node_id)
     to_node = await db.get(CorpusNode, data.to_node_id)
+
+    # Org scope: ensure user can access both nodes
+    if from_node:
+        check_org_scope(from_node.organisatie_eenheid_id, org_ctx)
+    if to_node:
+        check_org_scope(to_node.organisatie_eenheid_id, org_ctx)
     if from_node and to_node:
         error = await EdgeSchemaService(db).validate_edge(
             from_node.node_type, to_node.node_type, data.edge_type_id
@@ -131,13 +140,15 @@ async def update_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("edge:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> EdgeResponse:
     """Update edge weight, description, or type."""
     repo = EdgeRepository(db)
 
     # If edge_type_id is changing, validate against schema rules
     if data.edge_type_id is not None:
-        existing = await repo.get(id)
+        existing = await repo.get(id, org_ctx=org_ctx)
         if existing and data.edge_type_id != existing.edge_type_id:
             from_node = await db.get(CorpusNode, existing.from_node_id)
             to_node = await db.get(CorpusNode, existing.to_node_id)
@@ -171,10 +182,12 @@ async def delete_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("edge:delete")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     """Delete an edge permanently."""
     repo = EdgeRepository(db)
-    edge = await repo.get(id)
+    edge = await repo.get(id, org_ctx=org_ctx)
     edge_details: dict = {}
     if edge:
         from_node = await db.get(CorpusNode, edge.from_node_id)
