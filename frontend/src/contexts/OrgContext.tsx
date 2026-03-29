@@ -34,13 +34,15 @@ export function OrgContextProvider({ children }: { children: ReactNode }) {
   const value = useMemo<OrgContextValue>(() => {
     const ownEenheden = person?.organisatie_eenheden ?? [];
     const managedEenheden = person?.managed_eenheden ?? [];
-    const backendVisibleIds = person?.visible_eenheid_ids ?? [];
+    const backendVisibleIds = person?.visible_eenheid_ids;
 
     // Use backend-provided visible_eenheid_ids which include the full
     // parent chain, managed sub-trees, and shared access grants.
     // "*" means admin with full visibility.
+    // Only fall back to own+managed when the field is absent (undefined),
+    // not when the backend explicitly returns an empty list.
     const visibleEenheidIds =
-      backendVisibleIds.length > 0
+      backendVisibleIds !== undefined
         ? backendVisibleIds
         : [
             ...new Set([

@@ -24,6 +24,7 @@ from bouwmeester.core.auth import (
 )
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import build_org_context
 from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.core.whitelist import is_email_allowed
@@ -352,8 +353,6 @@ async def auth_status(
             visible_eenheid_ids_list: list[str] = []
             org_ctx = None
             if person_id:
-                from bouwmeester.core.org_context import build_org_context
-
                 person_for_org = await db.get(Person, UUID(person_id))
                 if person_for_org:
                     org_ctx = await build_org_context(

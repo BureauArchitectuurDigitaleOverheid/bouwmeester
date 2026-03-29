@@ -67,12 +67,12 @@ async def create_edge(
     # Validate against edge schema rules
     from_node = await db.get(CorpusNode, data.from_node_id)
     to_node = await db.get(CorpusNode, data.to_node_id)
+    if not from_node or not to_node:
+        raise HTTPException(status_code=422, detail="from_node or to_node not found")
 
     # Org scope: ensure user can access both nodes
-    if from_node:
-        check_org_scope(from_node.organisatie_eenheid_id, org_ctx)
-    if to_node:
-        check_org_scope(to_node.organisatie_eenheid_id, org_ctx)
+    check_org_scope(from_node.organisatie_eenheid_id, org_ctx)
+    check_org_scope(to_node.organisatie_eenheid_id, org_ctx)
     if from_node and to_node:
         error = await EdgeSchemaService(db).validate_edge(
             from_node.node_type, to_node.node_type, data.edge_type_id
@@ -193,22 +193,20 @@ async def delete_edge(
 ) -> None:
     """Delete an edge permanently."""
     repo = EdgeRepository(db)
-    edge = await repo.get(id)
-    edge_details: dict = {}
-    if edge:
-        from_node = await db.get(CorpusNode, edge.from_node_id)
-        to_node = await db.get(CorpusNode, edge.to_node_id)
-        if from_node:
-            check_org_scope(from_node.organisatie_eenheid_id, org_ctx)
-        if to_node:
-            check_org_scope(to_node.organisatie_eenheid_id, org_ctx)
-        edge_details = {
-            "from_node_id": str(edge.from_node_id),
-            "from_node_title": from_node.title if from_node else None,
-            "to_node_id": str(edge.to_node_id),
-            "to_node_title": to_node.title if to_node else None,
-            "edge_type": edge.edge_type_id,
-        }
+    edge = require_found(await repo.get(id), "Edge")
+    from_node = await db.get(CorpusNode, edge.from_node_id)
+    to_node = await db.get(CorpusNode, edge.to_node_id)
+    if from_node:
+        check_org_scope(from_node.organisatie_eenheid_id, org_ctx)
+    if to_node:
+        check_org_scope(to_node.organisatie_eenheid_id, org_ctx)
+    edge_details = {
+        "from_node_id": str(edge.from_node_id),
+        "from_node_title": from_node.title if from_node else None,
+        "to_node_id": str(edge.to_node_id),
+        "to_node_title": to_node.title if to_node else None,
+        "edge_type": edge.edge_type_id,
+    }
     require_deleted(await repo.delete(id), "Edge")
     await log_activity(
         db,

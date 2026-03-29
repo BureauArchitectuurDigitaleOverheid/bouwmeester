@@ -308,10 +308,14 @@ async def check_resource_org_scope(
 ) -> None:
     """Resolve the org unit for a resource and check org scope in one step.
 
-    Convenience wrapper around :func:`resolve_resource_eenheid_id` +
-    :func:`check_org_scope` to keep route code DRY.
+    Raises 404 if the resource does not exist, 403 if the resource's
+    eenheid is outside the caller's visible scope.
     """
-    eenheid_id = await resolve_resource_eenheid_id(db, resource_type, resource_id)
+    found, eenheid_id = await resolve_resource_eenheid_id(
+        db, resource_type, resource_id
+    )
+    if not found:
+        raise HTTPException(status_code=404, detail=f"{resource_type} not found")
     check_org_scope(eenheid_id, org_ctx)
 
 
@@ -319,12 +323,12 @@ async def resolve_resource_eenheid_id(
     db: AsyncSession,
     resource_type: str,
     resource_id: UUID,
-) -> UUID | None:
+) -> tuple[bool, UUID | None]:
     """Resolve the organisatie_eenheid_id for a polymorphic resource.
 
-    Shared helper used by resource permission routes and any code that
-    needs to map a ``(resource_type, resource_id)`` pair to the owning
-    org unit.
+    Returns ``(found, eenheid_id)`` — *found* is ``False`` when the
+    resource does not exist (distinguishing from a resource that exists
+    but has no eenheid assigned).
     """
     if resource_type == "corpus_node":
         from bouwmeester.models.corpus_node import CorpusNode
@@ -333,21 +337,24 @@ async def resolve_resource_eenheid_id(
             CorpusNode.id == resource_id
         )
         result = await db.execute(stmt)
-        return result.scalar_one_or_none()
+        row = result.one_or_none()
+        return (True, row[0]) if row is not None else (False, None)
 
     if resource_type == "opdracht":
         from bouwmeester.models.opdracht import Opdracht
 
         stmt = select(Opdracht.opdrachtgever_id).where(Opdracht.id == resource_id)
         result = await db.execute(stmt)
-        return result.scalar_one_or_none()
+        row = result.one_or_none()
+        return (True, row[0]) if row is not None else (False, None)
 
     if resource_type == "task":
         from bouwmeester.models.task import Task
 
         stmt = select(Task.organisatie_eenheid_id).where(Task.id == resource_id)
         result = await db.execute(stmt)
-        return result.scalar_one_or_none()
+        row = result.one_or_none()
+        return (True, row[0]) if row is not None else (False, None)
 
     if resource_type == "initiatief":
         from bouwmeester.models.initiatief import InitiatiefEenheid
@@ -356,7 +363,11 @@ async def resolve_resource_eenheid_id(
             InitiatiefEenheid.initiatief_id == resource_id
         )
         result = await db.execute(stmt)
-        return result.scalars().first()
+        first = result.scalars().first()
+        # Initiatieven may not have an eenheid row at all — treat
+        # that as "found with no eenheid" rather than "not found",
+        # because the initiatief itself may still exist.
+        return (True, first)
 
     if resource_type == "lead":
         from bouwmeester.models.initiatief import InitiatiefEenheid
@@ -368,6 +379,7 @@ async def resolve_resource_eenheid_id(
             .where(Lead.id == resource_id)
         )
         result = await db.execute(stmt)
-        return result.scalars().first()
+        first = result.scalars().first()
+        return (True, first)
 
-    return None
+    return (False, None)
