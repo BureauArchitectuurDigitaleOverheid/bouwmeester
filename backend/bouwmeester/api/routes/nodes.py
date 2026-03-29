@@ -127,7 +127,6 @@ async def create_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
     _perm=Depends(require_permission("node:create")),
 ) -> CorpusNodeResponse:
     """Create a new corpus node. Syncs mentions and logs activity."""

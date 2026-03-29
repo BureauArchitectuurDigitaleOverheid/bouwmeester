@@ -32,6 +32,7 @@ class OrgContext:
 
     person_id: UUID | None = None
     own_eenheid_ids: list[UUID] = field(default_factory=list)
+    managed_eenheid_ids: list[UUID] = field(default_factory=list)
     visible_eenheid_ids: list[UUID] = field(default_factory=list)
     shared_eenheid_ids: list[UUID] = field(default_factory=list)
     shared_node_ids: list[UUID] = field(default_factory=list)
@@ -168,6 +169,7 @@ async def build_org_context(
     return OrgContext(
         person_id=person.id,
         own_eenheid_ids=own_ids,
+        managed_eenheid_ids=managed_ids,
         visible_eenheid_ids=list(all_visible),
         shared_eenheid_ids=shared_eenheid_ids,
         shared_node_ids=shared_node_ids,

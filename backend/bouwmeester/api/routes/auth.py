@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -33,7 +32,6 @@ from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
-from bouwmeester.models.role import PersonRole
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.access_request import (
     AccessRequestCreate,
@@ -349,42 +347,17 @@ async def auth_status(
                     elif latest_req == "denied":
                         placement_denied = True
 
-                # Managed eenheden (via unit_manager or ministry_admin role)
-                today = date.today()
-                mgr_role_stmt = select(
-                    PersonRole.organisatie_eenheid_id,
-                ).where(
-                    PersonRole.person_id == pid,
-                    PersonRole.role_id.in_(["unit_manager", "ministry_admin"]),
-                    PersonRole.organisatie_eenheid_id.isnot(None),
-                    PersonRole.start_datum <= today,
-                    (PersonRole.eind_datum.is_(None))
-                    | (PersonRole.eind_datum >= today),
-                )
-                mgr_role_result = await db.execute(mgr_role_stmt)
-                managed_ids = set(mgr_role_result.scalars().all())
-
-                if managed_ids:
-                    managed_detail_stmt = select(
-                        OrganisatieEenheid.id,
-                        OrganisatieEenheid.naam,
-                        OrganisatieEenheid.type,
-                    ).where(OrganisatieEenheid.id.in_(managed_ids))
-                    managed_detail_result = await db.execute(managed_detail_stmt)
-                    managed_eenheden_list = [
-                        {"id": str(r.id), "naam": r.naam, "type": r.type}
-                        for r in managed_detail_result.all()
-                    ]
-
-            # Resolve visible eenheid IDs for org scope
+            # Build org context once — derives managed eenheden and
+            # visible eenheid IDs without duplicate queries.
             visible_eenheid_ids_list: list[str] = []
+            org_ctx = None
             if person_id:
                 from bouwmeester.core.org_context import build_org_context
 
-                pid_uuid_org = UUID(person_id)
-                person_for_org = await db.get(Person, pid_uuid_org)
+                person_for_org = await db.get(Person, UUID(person_id))
                 if person_for_org:
                     org_ctx = await build_org_context(db, person_for_org)
+
                     if org_ctx.is_admin:
                         visible_eenheid_ids_list = ["*"]
                     else:
@@ -393,6 +366,19 @@ async def auth_status(
                             for eid in set(
                                 org_ctx.visible_eenheid_ids + org_ctx.shared_eenheid_ids
                             )
+                        ]
+
+                    # Managed eenheden details (from org context)
+                    if org_ctx.managed_eenheid_ids:
+                        managed_detail_stmt = select(
+                            OrganisatieEenheid.id,
+                            OrganisatieEenheid.naam,
+                            OrganisatieEenheid.type,
+                        ).where(OrganisatieEenheid.id.in_(org_ctx.managed_eenheid_ids))
+                        managed_detail_result = await db.execute(managed_detail_stmt)
+                        managed_eenheden_list = [
+                            {"id": str(r.id), "naam": r.naam, "type": r.type}
+                            for r in managed_detail_result.all()
                         ]
 
             # Resolve RBAC roles and permissions
