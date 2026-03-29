@@ -63,7 +63,6 @@ from bouwmeester.models.role import (  # noqa: F401
 from bouwmeester.models.shared_access import SharedAccess  # noqa: F401
 from bouwmeester.models.tag import LeadTag, NodeTag, Tag  # noqa: F401
 from bouwmeester.models.task import Task  # noqa: F401
-from bouwmeester.models.team import Team, TeamMember  # noqa: F401
 from bouwmeester.models.webauthn_credential import WebAuthnCredential  # noqa: F401
 from bouwmeester.models.whitelist_email import WhitelistEmail  # noqa: F401
 
@@ -125,8 +124,6 @@ __all__ = [
     "SuggestedEdge",
     "Tag",
     "Task",
-    "Team",
-    "TeamMember",
     "WebAuthnCredential",
     "WhitelistEmail",
 ]

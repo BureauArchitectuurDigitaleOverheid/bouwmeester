@@ -29,6 +29,11 @@ class InitiatiefMemberCreate(BaseModel):
 
 class InitiatiefEenheidCreate(BaseModel):
     eenheid_id: UUID
+    rol: str = "contributor"
+
+
+class InitiatiefEenheidUpdate(BaseModel):
+    rol: str
 
 
 class InitiatiefMemberResponse(BaseModel):
@@ -45,6 +50,7 @@ class InitiatiefEenheidResponse(BaseModel):
     initiatief_id: UUID
     eenheid_id: UUID
     eenheid_naam: str = ""
+    rol: str = "contributor"
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

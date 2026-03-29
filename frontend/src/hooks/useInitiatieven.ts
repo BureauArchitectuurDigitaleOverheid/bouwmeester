@@ -10,6 +10,7 @@ import {
   updateInitiatiefMemberRole,
   addInitiatiefEenheid,
   removeInitiatiefEenheid,
+  updateInitiatiefEenheidRol,
 } from '@/api/initiatieven';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { InitiatiefCreate, InitiatiefUpdate } from '@/types';
@@ -138,6 +139,24 @@ export function useRemoveInitiatiefEenheid() {
       initiatiefId: string;
       eenheidId: string;
     }) => removeInitiatiefEenheid(initiatiefId, eenheidId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.initiatieven.all });
+    },
+  });
+}
+
+export function useUpdateInitiatiefEenheidRol() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      initiatiefId,
+      eenheidId,
+      rol,
+    }: {
+      initiatiefId: string;
+      eenheidId: string;
+      rol: string;
+    }) => updateInitiatiefEenheidRol(initiatiefId, eenheidId, rol),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.initiatieven.all });
     },

@@ -22,6 +22,7 @@ interface AuthPerson {
   placement_denied: boolean;
   roles?: { role_id: string; role_naam: string | null; organisatie_eenheid_id: string | null; eenheid_naam: string | null }[];
   permissions?: string[];
+  scoped_permissions?: Record<string, string[]>;
   visible_eenheid_ids?: string[];
 }
 
@@ -73,6 +74,7 @@ async function fetchAuthStatus(): Promise<AuthState> {
           placement_denied: data.person.placement_denied ?? false,
           roles: data.person.roles ?? [],
           permissions: data.person.permissions ?? [],
+          scoped_permissions: data.person.scoped_permissions ?? {},
           visible_eenheid_ids: data.person.visible_eenheid_ids ?? [],
         }
       : null,

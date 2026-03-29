@@ -15,6 +15,7 @@ import {
   useUpdateInitiatiefMemberRole,
   useAddInitiatiefEenheid,
   useRemoveInitiatiefEenheid,
+  useUpdateInitiatiefEenheidRol,
 } from '@/hooks/useInitiatieven';
 import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
@@ -49,6 +50,7 @@ export function InitiatiefDetailModal({
   const updateRoleMutation = useUpdateInitiatiefMemberRole();
   const addEenheidMutation = useAddInitiatiefEenheid();
   const removeEenheidMutation = useRemoveInitiatiefEenheid();
+  const updateEenheidRolMutation = useUpdateInitiatiefEenheidRol();
 
   const isEigenaar = useMemo(() => {
     if (!detail) return false;
@@ -363,15 +365,42 @@ export function InitiatiefDetailModal({
                       <span className="text-sm text-text truncate">
                         {eenheid.eenheid_naam}
                       </span>
-                      {isEigenaar && (
-                        <button
-                          onClick={() => handleRemoveEenheid(eenheid.eenheid_id)}
-                          className="shrink-0 p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 transition-colors"
-                          title="Verwijderen"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isEigenaar ? (
+                          <select
+                            value={eenheid.rol}
+                            onChange={(e) =>
+                              updateEenheidRolMutation.mutate({
+                                initiatiefId: detail.id,
+                                eenheidId: eenheid.eenheid_id,
+                                rol: e.target.value,
+                              })
+                            }
+                            className="text-xs border border-border rounded px-1.5 py-0.5 bg-white"
+                          >
+                            <option value="eigenaar">Eigenaar</option>
+                            <option value="contributor">Bijdrager</option>
+                            <option value="viewer">Lezer</option>
+                          </select>
+                        ) : (
+                          <span className="text-xs text-text-secondary bg-gray-100 rounded px-1.5 py-0.5">
+                            {eenheid.rol === 'eigenaar'
+                              ? 'Eigenaar'
+                              : eenheid.rol === 'contributor'
+                                ? 'Bijdrager'
+                                : 'Lezer'}
+                          </span>
+                        )}
+                        {isEigenaar && (
+                          <button
+                            onClick={() => handleRemoveEenheid(eenheid.eenheid_id)}
+                            className="p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 transition-colors"
+                            title="Verwijderen"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>

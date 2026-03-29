@@ -1732,6 +1732,7 @@ export interface InitiatiefEenheid {
   initiatief_id: string;
   eenheid_id: string;
   eenheid_naam: string;
+  rol: string;
   created_at: string;
 }
 

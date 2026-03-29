@@ -67,9 +67,11 @@ export async function updateInitiatiefMemberRole(
 export async function addInitiatiefEenheid(
   initiatiefId: string,
   eenheidId: string,
+  rol: string = 'contributor',
 ): Promise<InitiatiefEenheid> {
   return apiPost<InitiatiefEenheid>(`/api/initiatieven/${initiatiefId}/eenheden`, {
     eenheid_id: eenheidId,
+    rol,
   });
 }
 
@@ -78,4 +80,15 @@ export async function removeInitiatiefEenheid(
   eenheidId: string,
 ): Promise<void> {
   return apiDelete(`/api/initiatieven/${initiatiefId}/eenheden/${eenheidId}`);
+}
+
+export async function updateInitiatiefEenheidRol(
+  initiatiefId: string,
+  eenheidId: string,
+  rol: string,
+): Promise<InitiatiefEenheid> {
+  return apiPut<InitiatiefEenheid>(
+    `/api/initiatieven/${initiatiefId}/eenheden/${eenheidId}`,
+    { rol },
+  );
 }

@@ -52,10 +52,6 @@ RESOURCE_ROLE_PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "contactpersoon": {"lead:read"},
         "betrokken": {"lead:read"},
     },
-    "team": {
-        "coordinator": {"people:read"},
-        "lid": set(),
-    },
     "opdracht": {
         "eigenaar": {
             "opdracht:read",

@@ -385,6 +385,7 @@ async def auth_status(
             # Resolve RBAC roles and permissions
             roles_list: list[dict] = []
             permissions_list: list[str] = []
+            scoped_permissions_dict: dict[str, list[str]] = {}
             if person_id:
                 from bouwmeester.repositories.role import (
                     PersonRoleRepository,
@@ -398,6 +399,11 @@ async def auth_status(
                         perm_ctx = await build_permission_context(db, person_for_perm)
                 if perm_ctx is not None:
                     permissions_list = sorted(perm_ctx.effective_permissions)
+                    if not perm_ctx.is_super_admin:
+                        scoped_permissions_dict = {
+                            str(eid): sorted(perms)
+                            for eid, perms in perm_ctx.scoped_permissions.items()
+                        }
 
                     pr_repo = PersonRoleRepository(db)
                     assignments = await pr_repo.list_for_person(pid_uuid)
@@ -434,6 +440,7 @@ async def auth_status(
                 "roles": roles_list,
                 "permissions": permissions_list,
                 "visible_eenheid_ids": visible_eenheid_ids_list,
+                "scoped_permissions": scoped_permissions_dict,
             }
         except Exception:
             logger.exception(

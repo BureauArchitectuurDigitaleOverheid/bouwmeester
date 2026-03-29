@@ -60,6 +60,11 @@ class InitiatiefEenheid(Base):
         ForeignKey("organisatie_eenheid.id", ondelete="CASCADE"),
         primary_key=True,
     )
+    rol: Mapped[str] = mapped_column(
+        default="contributor",
+        server_default="contributor",
+        comment="eigenaar|contributor|viewer",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
