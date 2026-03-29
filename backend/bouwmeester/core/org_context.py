@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from uuid import UUID
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +32,7 @@ class OrgContext:
 
     person_id: UUID | None = None
     own_eenheid_ids: list[UUID] = field(default_factory=list)
+    managed_eenheid_ids: list[UUID] = field(default_factory=list)
     visible_eenheid_ids: list[UUID] = field(default_factory=list)
     shared_eenheid_ids: list[UUID] = field(default_factory=list)
     shared_node_ids: list[UUID] = field(default_factory=list)
@@ -87,11 +88,15 @@ async def _get_managed_eenheid_ids(
     db: AsyncSession,
     person_id: UUID,
 ) -> list[UUID]:
-    """Return eenheid IDs where the person has a unit_manager role assignment."""
+    """Return eenheid IDs where the person manages the sub-tree.
+
+    Includes both unit_manager and ministry_admin roles, since both
+    grant visibility over the eenheid and its descendants.
+    """
     today = date.today()
     stmt = select(PersonRole.organisatie_eenheid_id).where(
         PersonRole.person_id == person_id,
-        PersonRole.role_id == "unit_manager",
+        PersonRole.role_id.in_(["unit_manager", "ministry_admin"]),
         PersonRole.organisatie_eenheid_id.isnot(None),
         PersonRole.start_datum <= today,
         or_(
@@ -128,6 +133,8 @@ async def _walk_children(
 async def build_org_context(
     db: AsyncSession,
     person: Person,
+    *,
+    perm_ctx=None,
 ) -> OrgContext:
     """Build an OrgContext for the given person.
 
@@ -135,10 +142,15 @@ async def build_org_context(
     - Own memberships (active plaatsingen)
     - Parent chain (walking up from each own eenheid)
     - Managed sub-trees (walking down from eenheden where person is manager)
+
+    Pass an existing *perm_ctx* (a ``PermissionContext``) to avoid a
+    redundant ``build_permission_context`` call when the caller already
+    has one.
     """
     from bouwmeester.core.permissions import build_permission_context
 
-    perm_ctx = await build_permission_context(db, person)
+    if perm_ctx is None:
+        perm_ctx = await build_permission_context(db, person)
     if perm_ctx.is_super_admin:
         return OrgContext(
             person_id=person.id,
@@ -164,6 +176,7 @@ async def build_org_context(
     return OrgContext(
         person_id=person.id,
         own_eenheid_ids=own_ids,
+        managed_eenheid_ids=managed_ids,
         visible_eenheid_ids=list(all_visible),
         shared_eenheid_ids=shared_eenheid_ids,
         shared_node_ids=shared_node_ids,
@@ -249,3 +262,124 @@ def org_filter_sql_clause(column: str, ctx: OrgContext | None) -> str:
     if not all_visible:
         return f" AND {column} IS NULL"
     return f" AND ({column} IS NULL OR {column} = ANY(:visible_eenheid_ids))"
+
+
+# ---------------------------------------------------------------------------
+# Write-side scope enforcement
+# ---------------------------------------------------------------------------
+
+
+def check_org_scope(
+    eenheid_id: UUID | None,
+    org_ctx: OrgContext,
+    *,
+    allow_none: bool = True,
+) -> None:
+    """Raise 403 if *eenheid_id* is outside the user's visible org scope.
+
+    Call this in write endpoints before creating or mutating a resource
+    that belongs to an organisatie-eenheid.
+
+    Args:
+        eenheid_id: The organisatie-eenheid to check (``None`` = no scope).
+        org_ctx: The org context for the current user.
+        allow_none: If ``True`` (default), ``None`` eenheid_id is always
+            allowed.  Set to ``False`` to require an eenheid.
+    """
+    if eenheid_id is None:
+        if allow_none:
+            return
+        raise HTTPException(status_code=403, detail="Organisatie-eenheid is verplicht")
+    if org_ctx.is_admin:
+        return
+    all_visible = set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
+    if eenheid_id not in all_visible:
+        raise HTTPException(
+            status_code=403,
+            detail="Geen toegang tot deze organisatie-eenheid",
+        )
+
+
+async def check_resource_org_scope(
+    db: AsyncSession,
+    resource_type: str,
+    resource_id: UUID,
+    org_ctx: OrgContext,
+) -> None:
+    """Resolve the org unit for a resource and check org scope in one step.
+
+    Raises 404 if the resource does not exist, 403 if the resource's
+    eenheid is outside the caller's visible scope.
+    """
+    found, eenheid_id = await resolve_resource_eenheid_id(
+        db, resource_type, resource_id
+    )
+    if not found:
+        raise HTTPException(status_code=404, detail=f"{resource_type} not found")
+    check_org_scope(eenheid_id, org_ctx)
+
+
+async def resolve_resource_eenheid_id(
+    db: AsyncSession,
+    resource_type: str,
+    resource_id: UUID,
+) -> tuple[bool, UUID | None]:
+    """Resolve the organisatie_eenheid_id for a polymorphic resource.
+
+    Returns ``(found, eenheid_id)`` — *found* is ``False`` when the
+    resource does not exist (distinguishing from a resource that exists
+    but has no eenheid assigned).
+    """
+    if resource_type == "corpus_node":
+        from bouwmeester.models.corpus_node import CorpusNode
+
+        stmt = select(CorpusNode.organisatie_eenheid_id).where(
+            CorpusNode.id == resource_id
+        )
+        result = await db.execute(stmt)
+        row = result.one_or_none()
+        return (True, row[0]) if row is not None else (False, None)
+
+    if resource_type == "opdracht":
+        from bouwmeester.models.opdracht import Opdracht
+
+        stmt = select(Opdracht.opdrachtgever_id).where(Opdracht.id == resource_id)
+        result = await db.execute(stmt)
+        row = result.one_or_none()
+        return (True, row[0]) if row is not None else (False, None)
+
+    if resource_type == "task":
+        from bouwmeester.models.task import Task
+
+        stmt = select(Task.organisatie_eenheid_id).where(Task.id == resource_id)
+        result = await db.execute(stmt)
+        row = result.one_or_none()
+        return (True, row[0]) if row is not None else (False, None)
+
+    if resource_type == "initiatief":
+        from bouwmeester.models.initiatief import InitiatiefEenheid
+
+        stmt = select(InitiatiefEenheid.eenheid_id).where(
+            InitiatiefEenheid.initiatief_id == resource_id
+        )
+        result = await db.execute(stmt)
+        first = result.scalars().first()
+        # Initiatieven may not have an eenheid row at all — treat
+        # that as "found with no eenheid" rather than "not found",
+        # because the initiatief itself may still exist.
+        return (True, first)
+
+    if resource_type == "lead":
+        from bouwmeester.models.initiatief import InitiatiefEenheid
+        from bouwmeester.models.lead import Lead
+
+        stmt = (
+            select(InitiatiefEenheid.eenheid_id)
+            .join(Lead, Lead.initiatief_id == InitiatiefEenheid.initiatief_id)
+            .where(Lead.id == resource_id)
+        )
+        result = await db.execute(stmt)
+        first = result.scalars().first()
+        return (True, first)
+
+    return (False, None)

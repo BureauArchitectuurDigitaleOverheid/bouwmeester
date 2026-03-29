@@ -8,7 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import OrgContext, get_org_context
+from bouwmeester.core.org_context import (
+    OrgContext,
+    check_org_scope,
+    check_resource_org_scope,
+    get_org_context,
+)
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.inbox import InboxResponse
@@ -83,8 +89,11 @@ async def create_task(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("task:create")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> TaskResponse:
     """Create a task linked to a node. Notifies assignee and team manager."""
+    check_org_scope(data.organisatie_eenheid_id, org_ctx)
     repo = TaskRepository(db)
     task = await repo.create(data)
 
@@ -222,8 +231,11 @@ async def reorder_subtasks(
     data: ReorderRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("task:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """Reorder subtasks of a parent task."""
+    await check_resource_org_scope(db, "task", id, org_ctx)
     repo = TaskRepository(db)
     require_found(await repo.get(id), "Task")
     try:
@@ -240,8 +252,13 @@ async def update_task(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("task:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> TaskResponse:
     """Update a task. Notifies on assignee change, completion, or org unit change."""
+    await check_resource_org_scope(db, "task", id, org_ctx)
+    if data.organisatie_eenheid_id is not None:
+        check_org_scope(data.organisatie_eenheid_id, org_ctx)
     repo = TaskRepository(db)
 
     # Capture old state before update
@@ -325,8 +342,11 @@ async def delete_task(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("task:delete")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     """Delete a task permanently."""
+    await check_resource_org_scope(db, "task", id, org_ctx)
     repo = TaskRepository(db)
     task = await repo.get(id)
     task_title = task.title if task else None

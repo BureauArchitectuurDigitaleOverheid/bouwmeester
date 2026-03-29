@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -25,6 +24,7 @@ from bouwmeester.core.auth import (
 )
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import build_org_context
 from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.core.whitelist import is_email_allowed
@@ -33,7 +33,6 @@ from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
-from bouwmeester.models.role import PersonRole
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.access_request import (
     AccessRequestCreate,
@@ -349,32 +348,39 @@ async def auth_status(
                     elif latest_req == "denied":
                         placement_denied = True
 
-                # Managed eenheden (via unit_manager role assignment)
-                today = date.today()
-                mgr_role_stmt = select(
-                    PersonRole.organisatie_eenheid_id,
-                ).where(
-                    PersonRole.person_id == pid,
-                    PersonRole.role_id == "unit_manager",
-                    PersonRole.organisatie_eenheid_id.isnot(None),
-                    PersonRole.start_datum <= today,
-                    (PersonRole.eind_datum.is_(None))
-                    | (PersonRole.eind_datum >= today),
-                )
-                mgr_role_result = await db.execute(mgr_role_stmt)
-                managed_ids = set(mgr_role_result.scalars().all())
+            # Build org context once — derives managed eenheden and
+            # visible eenheid IDs without duplicate queries.
+            visible_eenheid_ids_list: list[str] = []
+            org_ctx = None
+            if person_id:
+                person_for_org = await db.get(Person, UUID(person_id))
+                if person_for_org:
+                    org_ctx = await build_org_context(
+                        db, person_for_org, perm_ctx=perm_ctx
+                    )
 
-                if managed_ids:
-                    managed_detail_stmt = select(
-                        OrganisatieEenheid.id,
-                        OrganisatieEenheid.naam,
-                        OrganisatieEenheid.type,
-                    ).where(OrganisatieEenheid.id.in_(managed_ids))
-                    managed_detail_result = await db.execute(managed_detail_stmt)
-                    managed_eenheden_list = [
-                        {"id": str(r.id), "naam": r.naam, "type": r.type}
-                        for r in managed_detail_result.all()
-                    ]
+                    if org_ctx.is_admin:
+                        visible_eenheid_ids_list = ["*"]
+                    else:
+                        visible_eenheid_ids_list = [
+                            str(eid)
+                            for eid in set(
+                                org_ctx.visible_eenheid_ids + org_ctx.shared_eenheid_ids
+                            )
+                        ]
+
+                    # Managed eenheden details (from org context)
+                    if org_ctx.managed_eenheid_ids:
+                        managed_detail_stmt = select(
+                            OrganisatieEenheid.id,
+                            OrganisatieEenheid.naam,
+                            OrganisatieEenheid.type,
+                        ).where(OrganisatieEenheid.id.in_(org_ctx.managed_eenheid_ids))
+                        managed_detail_result = await db.execute(managed_detail_stmt)
+                        managed_eenheden_list = [
+                            {"id": str(r.id), "naam": r.naam, "type": r.type}
+                            for r in managed_detail_result.all()
+                        ]
 
             # Resolve RBAC roles and permissions
             roles_list: list[dict] = []
@@ -427,6 +433,7 @@ async def auth_status(
                 "placement_denied": placement_denied,
                 "roles": roles_list,
                 "permissions": permissions_list,
+                "visible_eenheid_ids": visible_eenheid_ids_list,
             }
         except Exception:
             logger.exception(
