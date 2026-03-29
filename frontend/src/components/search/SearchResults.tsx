@@ -87,13 +87,15 @@ export function useResultNavigation(onNavigated?: () => void) {
 interface FilterChipsProps {
   activeTypes: SearchResultType[];
   onToggle: (type: SearchResultType) => void;
+  allowedTypes?: SearchResultType[];
   className?: string;
 }
 
-export function FilterChips({ activeTypes, onToggle, className = '' }: FilterChipsProps) {
+export function FilterChips({ activeTypes, onToggle, allowedTypes, className = '' }: FilterChipsProps) {
+  const visibleTypes = allowedTypes ?? ALL_RESULT_TYPES;
   return (
     <div className={`flex flex-wrap gap-1.5 ${className}`}>
-      {ALL_RESULT_TYPES.map((type) => {
+      {visibleTypes.map((type) => {
         const isActive = activeTypes.length === 0 || activeTypes.includes(type);
         return (
           <button

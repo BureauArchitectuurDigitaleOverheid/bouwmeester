@@ -237,6 +237,7 @@ class SearchRepository:
         description: str | None = None,
         exclude_node_id: str | None = None,
         limit: int = 5,
+        org_ctx: OrgContext | None = None,
     ) -> list[dict]:
         """Find nodes with similar titles using trigram similarity + FTS.
 
@@ -249,6 +250,18 @@ class SearchRepository:
         if exclude_node_id:
             exclude_clause = "AND id != :exclude_id"
             params["exclude_id"] = exclude_node_id
+
+        org_clause = org_filter_sql_clause("organisatie_eenheid_id", org_ctx)
+        if (
+            org_ctx is not None
+            and org_ctx.is_authenticated
+            and not org_ctx.is_admin
+            and org_ctx.visible_eenheid_ids
+        ):
+            all_visible = list(
+                set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
+            )
+            params["visible_eenheid_ids"] = [str(eid) for eid in all_visible]
 
         # Composite score: trigram similarity on title + optional FTS on description
         sql = f"""
@@ -271,7 +284,7 @@ class SearchRepository:
                 ) AS combined_score
             FROM corpus_node
             WHERE similarity(title, :title) > 0.15
-            {exclude_clause}
+            {exclude_clause}{org_clause}
             ORDER BY combined_score DESC
             LIMIT :limit
         """
