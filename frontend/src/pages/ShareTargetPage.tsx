@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Camera, Loader2, Share2 } from 'lucide-react';
+import { Camera, Loader2, Lock, Share2 } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { LeadIntakeDialog } from '@/components/leads/LeadIntakeDialog';
 import { useParseLeadIntake } from '@/hooks/useLeads';
+import { usePermissions } from '@/hooks/usePermissions';
 import type { LeadParseResult } from '@/types';
 
 interface SharedData {
@@ -63,10 +64,12 @@ export function ShareTargetPage() {
   const [error, setError] = useState<string | null>(null);
 
   const parseMutation = useParseLeadIntake();
+  const { hasPermission } = usePermissions();
+  const canCreateLeads = hasPermission('lead:read');
 
   // Read shared data from cache on mount
   useEffect(() => {
-    if (!received) return;
+    if (!received || !canCreateLeads) return;
     readSharedData().then((data) => {
       if (data && data.files.length > 0) {
         setSharedData(data);
@@ -101,6 +104,26 @@ export function ShareTargetPage() {
     sharedData?.previews.forEach(URL.revokeObjectURL);
     navigate('/leads');
   };
+
+  // No lead permission — show access denied
+  if (received && !canCreateLeads) {
+    return (
+      <div className="max-w-md mx-auto py-20 text-center space-y-6">
+        <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto">
+          <Lock className="h-8 w-8 text-amber-600" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-text mb-2">Geen toegang</h2>
+          <p className="text-sm text-text-secondary">
+            Je hebt geen rechten om leads aan te maken. Neem contact op met een beheerder.
+          </p>
+        </div>
+        <Button variant="secondary" onClick={() => navigate('/')}>
+          Naar startpagina
+        </Button>
+      </div>
+    );
+  }
 
   // Not a share — show instructions
   if (!received) {

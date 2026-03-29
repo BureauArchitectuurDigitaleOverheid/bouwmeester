@@ -108,31 +108,36 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     }
   }, [open, broughtById, currentPerson, leadDate]);
 
+  // Apply a parse result to the form fields
+  const applyParseResult = useCallback((result: LeadParseResult) => {
+    setParseResult(result);
+    setTitle(result.title ?? '');
+    setOrganization(result.organization ?? '');
+    setDescription(result.description ?? '');
+    setSelectedTags(result.suggested_tags ?? []);
+    setContactName(result.contact_name ?? '');
+    setContactEmail(result.contact_email ?? '');
+    setContactPhone(result.contact_phone ?? '');
+    const today = new Date().toISOString().split('T')[0];
+    const parsedDate = result.original_date && /^\d{4}-\d{2}-\d{2}$/.test(result.original_date)
+      ? result.original_date
+      : today;
+    setLeadDate(parsedDate);
+    if (result.addressed_to && people) {
+      const addr = result.addressed_to.toLowerCase();
+      if (currentPerson && currentPerson.naam.toLowerCase().includes(addr)) {
+        setBroughtById(currentPerson.id);
+      } else {
+        const match = people.find(p => p.naam.toLowerCase().startsWith(addr));
+        if (match) setBroughtById(match.id);
+      }
+    }
+  }, [people, currentPerson]);
+
   // Apply shared parse result (from share target) — skip input step
   useEffect(() => {
     if (open && sharedParseResult && step === 'input') {
-      setParseResult(sharedParseResult);
-      setTitle(sharedParseResult.title ?? '');
-      setOrganization(sharedParseResult.organization ?? '');
-      setDescription(sharedParseResult.description ?? '');
-      setSelectedTags(sharedParseResult.suggested_tags ?? []);
-      setContactName(sharedParseResult.contact_name ?? '');
-      setContactEmail(sharedParseResult.contact_email ?? '');
-      setContactPhone(sharedParseResult.contact_phone ?? '');
-      const today = new Date().toISOString().split('T')[0];
-      const parsedDate = sharedParseResult.original_date && /^\d{4}-\d{2}-\d{2}$/.test(sharedParseResult.original_date)
-        ? sharedParseResult.original_date
-        : today;
-      setLeadDate(parsedDate);
-      if (sharedParseResult.addressed_to && people) {
-        const addr = sharedParseResult.addressed_to.toLowerCase();
-        if (currentPerson && currentPerson.naam.toLowerCase().includes(addr)) {
-          setBroughtById(currentPerson.id);
-        } else {
-          const match = people?.find(p => p.naam.toLowerCase().startsWith(addr));
-          if (match) setBroughtById(match.id);
-        }
-      }
+      applyParseResult(sharedParseResult);
       if (sharedFiles) setFiles(sharedFiles);
       setStep('confirm');
     }
@@ -251,32 +256,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     setStep('parsing');
     try {
       const result = await parseLead.mutateAsync({ rawText: rawText.trim() || undefined, files: files.length > 0 ? files : undefined });
-      setParseResult(result);
-      setTitle(result.title ?? '');
-      setOrganization(result.organization ?? '');
-      setDescription(result.description ?? '');
-      setSelectedTags(result.suggested_tags ?? []);
-      setContactName(result.contact_name ?? '');
-      setContactEmail(result.contact_email ?? '');
-      setContactPhone(result.contact_phone ?? '');
-      const today = new Date().toISOString().split('T')[0];
-      const parsedDate = result.original_date && /^\d{4}-\d{2}-\d{2}$/.test(result.original_date)
-        ? result.original_date
-        : today;
-      setLeadDate(parsedDate);
-      if (result.addressed_to && people) {
-        const addr = result.addressed_to.toLowerCase();
-        // Prioritize the current person (if "Anne" matches "Anne Schuth" who is logged in)
-        if (currentPerson && currentPerson.naam.toLowerCase().includes(addr)) {
-          setBroughtById(currentPerson.id);
-        } else {
-          // Fall back to first match in people list
-          const match = people.find(p =>
-            p.naam.toLowerCase().startsWith(addr),
-          );
-          if (match) setBroughtById(match.id);
-        }
-      }
+      applyParseResult(result);
       setStep('confirm');
     } catch {
       // If parsing fails, go straight to confirm with empty suggestions
