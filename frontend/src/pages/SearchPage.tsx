@@ -1,17 +1,25 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Search as SearchIcon } from 'lucide-react';
 import { useSearch } from '@/hooks/useSearch';
 import {
+  ALL_RESULT_TYPES,
   FilterChips,
   SearchResultsList,
   useResultNavigation,
 } from '@/components/search/SearchResults';
-import type { SearchResultType } from '@/types';
+import { usePermissions } from '@/hooks/usePermissions';
+import { SEARCH_TYPE_PERMISSIONS, type SearchResultType } from '@/types';
 
 export function SearchPage() {
   const [query, setQuery] = useState('');
   const [activeTypes, setActiveTypes] = useState<SearchResultType[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { hasPermission } = usePermissions();
+
+  const allowedTypes = useMemo(
+    () => ALL_RESULT_TYPES.filter((t) => hasPermission(SEARCH_TYPE_PERMISSIONS[t])),
+    [hasPermission],
+  );
 
   const filterTypes = activeTypes.length > 0 ? activeTypes : undefined;
   const { data, isLoading, isFetched } = useSearch(query, filterTypes);
@@ -69,7 +77,7 @@ export function SearchPage() {
       </div>
 
       {/* Filter chips */}
-      <FilterChips activeTypes={activeTypes} onToggle={toggleType} className="gap-2" />
+      <FilterChips activeTypes={activeTypes} onToggle={toggleType} allowedTypes={allowedTypes} className="gap-2" />
 
       {/* Results */}
       <SearchResultsList
