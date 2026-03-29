@@ -87,11 +87,15 @@ async def _get_managed_eenheid_ids(
     db: AsyncSession,
     person_id: UUID,
 ) -> list[UUID]:
-    """Return eenheid IDs where the person has a unit_manager role assignment."""
+    """Return eenheid IDs where the person manages the sub-tree.
+
+    Includes both unit_manager and ministry_admin roles, since both
+    grant visibility over the eenheid and its descendants.
+    """
     today = date.today()
     stmt = select(PersonRole.organisatie_eenheid_id).where(
         PersonRole.person_id == person_id,
-        PersonRole.role_id == "unit_manager",
+        PersonRole.role_id.in_(["unit_manager", "ministry_admin"]),
         PersonRole.organisatie_eenheid_id.isnot(None),
         PersonRole.start_datum <= today,
         or_(

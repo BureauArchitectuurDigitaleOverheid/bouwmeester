@@ -2,6 +2,9 @@ import { useState, useMemo } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight, Shield } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePeople } from '@/hooks/usePeople';
+import { useAuth } from '@/contexts/AuthContext';
+import { useOrgContext } from '@/contexts/OrgContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { isPersonOnline, formatRelativeTime } from '@/utils/people';
 import { formatFunctie } from '@/types';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
@@ -25,10 +28,12 @@ function AssignmentRow({
   assignment,
   onRevoke,
   revoking,
+  canRevoke,
 }: {
   assignment: PersonRoleAssignment;
   onRevoke: (id: string) => void;
   revoking: boolean;
+  canRevoke: boolean;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -49,7 +54,7 @@ function AssignmentRow({
           : '-'}
       </td>
       <td className="px-4 py-2">
-        {confirmDelete ? (
+        {!canRevoke ? null : confirmDelete ? (
           <div className="flex items-center gap-1">
             <button
               onClick={() => {
@@ -87,6 +92,10 @@ function PersonRolesPanel({
 }: {
   personId: string;
 }) {
+  const { person: authPerson } = useAuth();
+  const { visibleEenheidIds } = useOrgContext();
+  const isSelf = authPerson?.id === personId;
+  const isAdmin = authPerson?.is_admin ?? false;
   const { data: assignments, isLoading } = usePersonRoleAssignments(personId);
   const { data: roles } = useRoles();
   const { data: orgUnits } = useOrganisatieFlat();
@@ -101,6 +110,27 @@ function PersonRolesPanel({
 
   const selectedRole = roles?.find((r) => r.id === selectedRoleId);
   const isSystemLevel = selectedRole?.level === 'system';
+
+  // Determine the caller's max role rank for filtering
+  const myMaxRank = useMemo(() => {
+    if (isAdmin) return 999;
+    const myRoleIds = authPerson?.roles?.map((r) => r.role_id) ?? [];
+    return Math.max(0, ...(roles ?? []).filter((r) => myRoleIds.includes(r.id)).map((r) => r.rank));
+  }, [isAdmin, authPerson?.roles, roles]);
+
+  // Filter org units to only those within the user's visible scope
+  const scopedOrgUnits = useMemo(() => {
+    if (!orgUnits) return [];
+    if (isAdmin || visibleEenheidIds.includes('*')) return orgUnits;
+    return orgUnits.filter((u) => visibleEenheidIds.includes(u.id));
+  }, [orgUnits, visibleEenheidIds, isAdmin]);
+
+  // Filter roles to those the user can assign (rank < myMaxRank)
+  const assignableRoles = useMemo(() => {
+    if (!roles) return [];
+    if (isAdmin) return roles;
+    return roles.filter((r) => r.rank < myMaxRank);
+  }, [roles, myMaxRank, isAdmin]);
 
   const handleAssign = (e: React.FormEvent) => {
     e.preventDefault();
@@ -169,14 +199,21 @@ function PersonRolesPanel({
             </tr>
           </thead>
           <tbody>
-            {assignments.map((a) => (
-              <AssignmentRow
-                key={a.id}
-                assignment={a}
-                onRevoke={handleRevoke}
-                revoking={revokeRole.isPending}
-              />
-            ))}
+            {assignments.map((a) => {
+              const roleRank = roles?.find((r) => r.id === a.role_id)?.rank ?? 0;
+              const canRevoke =
+                !(isSelf && a.role_id === 'super_admin') &&
+                (isAdmin || roleRank < myMaxRank);
+              return (
+                <AssignmentRow
+                  key={a.id}
+                  assignment={a}
+                  onRevoke={handleRevoke}
+                  revoking={revokeRole.isPending}
+                  canRevoke={canRevoke}
+                />
+              );
+            })}
           </tbody>
         </table>
       ) : (
@@ -219,7 +256,7 @@ function PersonRolesPanel({
                 required
               >
                 <option value="">Kies een rol...</option>
-                {roles?.map((role) => (
+                {assignableRoles.map((role) => (
                   <option key={role.id} value={role.id}>
                     {role.naam}
                     {role.description ? ` - ${role.description}` : ''}
@@ -241,7 +278,7 @@ function PersonRolesPanel({
                   required={!!selectedRoleId && !isSystemLevel}
                 >
                   <option value="">Kies een eenheid...</option>
-                  {orgUnits?.map((unit) => (
+                  {scopedOrgUnits.map((unit) => (
                     <option key={unit.id} value={unit.id}>
                       {unit.naam}
                     </option>
@@ -415,6 +452,8 @@ function useResourceOptions(resourceType: string) {
 }
 
 function PersonResourcePermissionsSection({ personId }: { personId: string }) {
+  const { hasPermission } = usePermissions();
+  const canManageRp = hasPermission('resource_permission:manage');
   const { data: perms } = usePersonResourcePermissions(personId);
   const removeRp = useRemovePersonResourcePermission(personId);
   const queryClient = useQueryClient();
@@ -510,7 +549,7 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
         </div>
       )}
 
-      {!showForm ? (
+      {!canManageRp ? null : !showForm ? (
         <div className="px-4 py-1.5">
           <button
             onClick={() => setShowForm(true)}
@@ -621,6 +660,7 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
 }
 
 export function RoleManager() {
+  const { person: authPerson } = useAuth();
   const { data: people, isLoading: loadingPeople } = usePeople();
   const { data: roles, isLoading: loadingRoles } = useRoles();
   const [expandedPersonId, setExpandedPersonId] = useState<string | null>(null);
@@ -706,6 +746,7 @@ export function RoleManager() {
                   lastSeenAt={person.last_seen_at}
                   isAgent={person.is_agent}
                   isExpanded={isExpanded}
+                  isSelf={authPerson?.id === person.id}
                   onToggle={() =>
                     setExpandedPersonId(isExpanded ? null : person.id)
                   }
@@ -739,6 +780,7 @@ function PersonRow({
   lastSeenAt,
   isAgent,
   isExpanded,
+  isSelf,
   onToggle,
 }: {
   personId: string;
@@ -748,6 +790,7 @@ function PersonRow({
   lastSeenAt?: string | null;
   isAgent?: boolean;
   isExpanded: boolean;
+  isSelf: boolean;
   onToggle: () => void;
 }) {
   const online = isPersonOnline({ last_seen_at: lastSeenAt, is_agent: isAgent });
@@ -765,7 +808,12 @@ function PersonRow({
             <ChevronRight className="h-4 w-4" />
           )}
         </td>
-        <td className="px-4 py-2.5 text-text">{naam}</td>
+        <td className="px-4 py-2.5 text-text">
+          {naam}
+          {isSelf && (
+            <span className="ml-1.5 text-xs text-text-secondary">(jij)</span>
+          )}
+        </td>
         <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
           {email || '-'}
         </td>

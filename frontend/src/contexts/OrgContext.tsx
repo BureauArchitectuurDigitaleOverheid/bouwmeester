@@ -34,18 +34,20 @@ export function OrgContextProvider({ children }: { children: ReactNode }) {
   const value = useMemo<OrgContextValue>(() => {
     const ownEenheden = person?.organisatie_eenheden ?? [];
     const managedEenheden = person?.managed_eenheden ?? [];
+    const backendVisibleIds = person?.visible_eenheid_ids ?? [];
 
-    // Visible IDs: own + managed (parent chain is computed server-side in the
-    // backend OrgContext; here we provide a flat list for simple client-side checks).
-    // TODO: The backend auth status endpoint should be extended with a full
-    // visible_eenheid_ids list (section B7 of the plan) for complete parity
-    // with the server-side OrgContext. For now, own + managed is sufficient.
-    const visibleEenheidIds = [
-      ...new Set([
-        ...ownEenheden.map((e) => e.id),
-        ...managedEenheden.map((e) => e.id),
-      ]),
-    ];
+    // Use backend-provided visible_eenheid_ids which include the full
+    // parent chain, managed sub-trees, and shared access grants.
+    // "*" means admin with full visibility.
+    const visibleEenheidIds =
+      backendVisibleIds.length > 0
+        ? backendVisibleIds
+        : [
+            ...new Set([
+              ...ownEenheden.map((e) => e.id),
+              ...managedEenheden.map((e) => e.id),
+            ]),
+          ];
 
     return {
       ownEenheden,

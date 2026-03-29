@@ -228,6 +228,13 @@ async def revoke_role(
     if assignment is None:
         raise HTTPException(404, "Assignment not found")
 
+    # Guard: cannot revoke your own super_admin role
+    if assignment.role_id == "super_admin" and assignment.person_id == _perm.person_id:
+        raise HTTPException(
+            400,
+            "Je kunt je eigen systeembeheerder-rol niet intrekken",
+        )
+
     # Scope enforcement: same rules as assign_role
     if not _perm.is_super_admin:
         role_repo = RoleRepository(db)

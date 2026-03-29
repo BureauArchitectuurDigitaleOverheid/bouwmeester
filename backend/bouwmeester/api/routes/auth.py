@@ -349,13 +349,13 @@ async def auth_status(
                     elif latest_req == "denied":
                         placement_denied = True
 
-                # Managed eenheden (via unit_manager role assignment)
+                # Managed eenheden (via unit_manager or ministry_admin role)
                 today = date.today()
                 mgr_role_stmt = select(
                     PersonRole.organisatie_eenheid_id,
                 ).where(
                     PersonRole.person_id == pid,
-                    PersonRole.role_id == "unit_manager",
+                    PersonRole.role_id.in_(["unit_manager", "ministry_admin"]),
                     PersonRole.organisatie_eenheid_id.isnot(None),
                     PersonRole.start_datum <= today,
                     (PersonRole.eind_datum.is_(None))
@@ -375,6 +375,25 @@ async def auth_status(
                         {"id": str(r.id), "naam": r.naam, "type": r.type}
                         for r in managed_detail_result.all()
                     ]
+
+            # Resolve visible eenheid IDs for org scope
+            visible_eenheid_ids_list: list[str] = []
+            if person_id:
+                from bouwmeester.core.org_context import build_org_context
+
+                pid_uuid_org = UUID(person_id)
+                person_for_org = await db.get(Person, pid_uuid_org)
+                if person_for_org:
+                    org_ctx = await build_org_context(db, person_for_org)
+                    if org_ctx.is_admin:
+                        visible_eenheid_ids_list = ["*"]
+                    else:
+                        visible_eenheid_ids_list = [
+                            str(eid)
+                            for eid in set(
+                                org_ctx.visible_eenheid_ids + org_ctx.shared_eenheid_ids
+                            )
+                        ]
 
             # Resolve RBAC roles and permissions
             roles_list: list[dict] = []
@@ -427,6 +446,7 @@ async def auth_status(
                 "placement_denied": placement_denied,
                 "roles": roles_list,
                 "permissions": permissions_list,
+                "visible_eenheid_ids": visible_eenheid_ids_list,
             }
         except Exception:
             logger.exception(

@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import (
     PermissionContext,
     check_resource_permission,
@@ -53,16 +54,66 @@ def _validate_resource_type(resource_type: str) -> None:
         )
 
 
+async def _get_resource_eenheid_id(
+    db: AsyncSession,
+    resource_type: str,
+    resource_id: UUID,
+) -> UUID | None:
+    """Resolve the organisatie_eenheid_id for a polymorphic resource."""
+    if resource_type == "corpus_node":
+        from bouwmeester.models.corpus_node import CorpusNode
+
+        stmt = select(CorpusNode.organisatie_eenheid_id).where(
+            CorpusNode.id == resource_id
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    if resource_type == "opdracht":
+        from bouwmeester.models.opdracht import Opdracht
+
+        stmt = select(Opdracht.opdrachtgever_id).where(Opdracht.id == resource_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    if resource_type == "initiatief":
+        from bouwmeester.models.initiatief import InitiatiefEenheid
+
+        stmt = select(InitiatiefEenheid.eenheid_id).where(
+            InitiatiefEenheid.initiatief_id == resource_id
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    if resource_type == "lead":
+        from bouwmeester.models.initiatief import InitiatiefEenheid
+        from bouwmeester.models.lead import Lead
+
+        stmt = (
+            select(InitiatiefEenheid.eenheid_id)
+            .join(Lead, Lead.initiatief_id == InitiatiefEenheid.initiatief_id)
+            .where(Lead.id == resource_id)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    return None
+
+
 async def _require_manage_permission(
     perm: PermissionContext,
     db: AsyncSession,
     resource_type: str,
     resource_id: UUID,
+    org_ctx: OrgContext | None = None,
 ) -> None:
-    """Check that the caller can manage permissions on the given resource."""
+    """Check that the caller can manage permissions on the given resource.
+
+    Checks both RBAC permissions and org scope: the resource must belong
+    to an eenheid within the caller's visible scope.
+    """
     if perm.is_super_admin:
         return
-    has_rbac = perm.has_permission("resource_permission:manage")
     has_resource = await check_resource_permission(
         db,
         perm.person_id,  # type: ignore[arg-type]
@@ -70,8 +121,23 @@ async def _require_manage_permission(
         resource_id,
         "resource_permission:manage",
     )
-    if not has_rbac and not has_resource:
+    if has_resource:
+        return
+
+    has_rbac = perm.has_permission("resource_permission:manage")
+    if not has_rbac:
         raise HTTPException(403, "Insufficient permissions")
+
+    # RBAC grants the permission, but check org scope: the resource
+    # must belong to an eenheid the caller can see.
+    eenheid_id = await _get_resource_eenheid_id(db, resource_type, resource_id)
+    if eenheid_id is not None and org_ctx is not None:
+        if (
+            not org_ctx.is_admin
+            and eenheid_id not in org_ctx.visible_eenheid_ids
+            and eenheid_id not in org_ctx.shared_eenheid_ids
+        ):
+            raise HTTPException(403, "Resource valt buiten je organisatiescope")
 
 
 def _to_response(rp: ResourcePermission) -> ResourcePermissionResponse:
@@ -158,13 +224,14 @@ async def list_resource_permissions(
     resource_type: str,
     resource_id: UUID,
     perm: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
     """List people and roles on a resource."""
     _validate_resource_type(resource_type)
     if not perm.is_authenticated:
         raise HTTPException(401, "Not authenticated")
-    await _require_manage_permission(perm, db, resource_type, resource_id)
+    await _require_manage_permission(perm, db, resource_type, resource_id, org_ctx)
 
     repo = ResourcePermissionRepository(db)
     perms = await repo.list_for_resource(resource_type, resource_id)
@@ -180,13 +247,14 @@ async def add_resource_permission(
     resource_id: UUID,
     data: ResourcePermissionCreate,
     perm: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
     """Add a person to a resource with a role."""
     _validate_resource_type(resource_type)
     if not perm.is_authenticated:
         raise HTTPException(401, "Not authenticated")
-    await _require_manage_permission(perm, db, resource_type, resource_id)
+    await _require_manage_permission(perm, db, resource_type, resource_id, org_ctx)
 
     repo = ResourcePermissionRepository(db)
     try:
@@ -226,6 +294,7 @@ async def update_resource_permission(
     rp_id: UUID,
     data: ResourcePermissionUpdate,
     perm: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
     """Change a resource permission's role."""
@@ -236,7 +305,9 @@ async def update_resource_permission(
     rp = await repo.get_with_person(rp_id)
     if rp is None:
         raise HTTPException(404, "Permission not found")
-    await _require_manage_permission(perm, db, rp.resource_type, rp.resource_id)
+    await _require_manage_permission(
+        perm, db, rp.resource_type, rp.resource_id, org_ctx
+    )
 
     rp.rol = data.rol
     await db.flush()
@@ -248,6 +319,7 @@ async def update_resource_permission(
 async def delete_resource_permission(
     rp_id: UUID,
     perm: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a resource permission."""
@@ -258,7 +330,9 @@ async def delete_resource_permission(
     rp = await repo.get_with_person(rp_id)
     if rp is None:
         raise HTTPException(404, "Permission not found")
-    await _require_manage_permission(perm, db, rp.resource_type, rp.resource_id)
+    await _require_manage_permission(
+        perm, db, rp.resource_type, rp.resource_id, org_ctx
+    )
 
     await log_activity(
         db,
