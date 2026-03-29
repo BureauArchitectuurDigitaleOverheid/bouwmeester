@@ -4,8 +4,11 @@ import uuid
 from datetime import date, timedelta
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.auth import get_optional_user
+from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import build_permission_context
 from bouwmeester.models.eenheid_module import EenheidModule
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam
@@ -42,9 +45,28 @@ async def _make_org(
     return org
 
 
+def _make_app_and_client(db_session, person):
+    from bouwmeester.core.app import create_app
+
+    app = create_app()
+
+    async def _override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_optional_user] = lambda: person
+
+    client = AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"Authorization": "Bearer test-module"},
+    )
+    return app, client
+
+
 @pytest.fixture
 async def module_setup(db_session: AsyncSession):
-    """Create org hierarchy: parent → child, editor in child, super_admin."""
+    """Create org hierarchy: parent -> child, editor in child, super_admin."""
     parent = await _make_org(db_session, "Ministerie Test")
     child = await _make_org(db_session, "Directie Test", parent_id=parent.id)
 
@@ -85,6 +107,11 @@ async def module_setup(db_session: AsyncSession):
     }
 
 
+# ---------------------------------------------------------------------------
+# Permission context tests
+# ---------------------------------------------------------------------------
+
+
 async def test_no_overrides_all_permissions_granted(module_setup):
     """Without any module overrides, editor gets all editor permissions."""
     s = module_setup
@@ -104,7 +131,6 @@ async def test_disable_module_removes_permissions(module_setup):
     s = module_setup
     db = s["db"]
 
-    # Disable initiatieven for the child eenheid
     db.add(
         EenheidModule(
             organisatie_eenheid_id=s["child"].id,
@@ -117,12 +143,10 @@ async def test_disable_module_removes_permissions(module_setup):
     perm_ctx = await build_permission_context(db, s["editor"])
     child_perms = perm_ctx.scoped_permissions.get(s["child"].id, set())
 
-    # Initiatief permissions should be removed
     assert "initiatief:read" not in child_perms
     assert "initiatief:update" not in child_perms
     assert "initiatief:create" not in child_perms
 
-    # Other permissions should remain
     assert "lead:read" in child_perms
     assert "node:read" in child_perms
 
@@ -132,7 +156,6 @@ async def test_parent_disable_inherits_to_child(module_setup):
     s = module_setup
     db = s["db"]
 
-    # Disable leads on the PARENT
     db.add(
         EenheidModule(
             organisatie_eenheid_id=s["parent"].id,
@@ -145,11 +168,9 @@ async def test_parent_disable_inherits_to_child(module_setup):
     perm_ctx = await build_permission_context(db, s["editor"])
     child_perms = perm_ctx.scoped_permissions.get(s["child"].id, set())
 
-    # Lead permissions should be removed (inherited from parent)
     assert "lead:read" not in child_perms
     assert "lead:create" not in child_perms
 
-    # Non-disabled modules still work
     assert "node:read" in child_perms
     assert "initiatief:read" in child_perms
 
@@ -170,7 +191,6 @@ async def test_super_admin_unaffected_by_module_disables(module_setup):
 
     perm_ctx = await build_permission_context(db, s["admin"])
 
-    # Super admin should still have all permissions
     assert perm_ctx.is_super_admin
     assert perm_ctx.has_permission("initiatief:read")
     assert perm_ctx.has_permission("initiatief:update")
@@ -192,9 +212,155 @@ async def test_effective_permissions_updated_after_disable(module_setup):
 
     perm_ctx = await build_permission_context(db, s["editor"])
 
-    # The editor only has one eenheid, so effective should also lack opdracht:*
     assert "opdracht:read" not in perm_ctx.effective_permissions
     assert "opdracht:create" not in perm_ctx.effective_permissions
-
-    # Other permissions still in effective set
     assert "node:read" in perm_ctx.effective_permissions
+
+
+async def test_multi_eenheid_user_partial_disable(module_setup):
+    """User in two eenheden: disabled in A, enabled in B keeps effective perms."""
+    s = module_setup
+    db = s["db"]
+
+    # Create second eenheid without initiatieven disable
+    org_b = await _make_org(db, "Directie B", parent_id=s["parent"].id)
+    db.add(
+        PersonOrganisatieEenheid(
+            person_id=s["editor"].id,
+            organisatie_eenheid_id=org_b.id,
+            start_datum=date.today(),
+        )
+    )
+    db.add(
+        PersonRole(
+            person_id=s["editor"].id,
+            role_id="editor",
+            organisatie_eenheid_id=org_b.id,
+            start_datum=date.today() - timedelta(days=1),
+        )
+    )
+
+    # Disable initiatieven in child (A) only
+    db.add(
+        EenheidModule(
+            organisatie_eenheid_id=s["child"].id,
+            module="initiatieven",
+            enabled=False,
+        )
+    )
+    await db.flush()
+
+    perm_ctx = await build_permission_context(db, s["editor"])
+
+    # Child eenheid: no initiatief perms
+    child_perms = perm_ctx.scoped_permissions.get(s["child"].id, set())
+    assert "initiatief:read" not in child_perms
+
+    # Org B: still has initiatief perms
+    org_b_perms = perm_ctx.scoped_permissions.get(org_b.id, set())
+    assert "initiatief:read" in org_b_perms
+
+    # Effective permissions: still has it (union includes org B)
+    assert "initiatief:read" in perm_ctx.effective_permissions
+
+
+# ---------------------------------------------------------------------------
+# API endpoint tests
+# ---------------------------------------------------------------------------
+
+
+async def test_get_eenheid_modules_returns_config(module_setup):
+    """GET /api/eenheid-modules/{id} returns all modules with correct state."""
+    s = module_setup
+    app, client = _make_app_and_client(s["db"], s["admin"])
+
+    async with client:
+        resp = await client.get(f"/api/eenheid-modules/{s['child'].id}")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    modules = {m["module"]: m for m in data["modules"]}
+
+    assert len(modules) == 5
+    assert all(m["enabled"] for m in modules.values())
+    assert all(m["inherited_from"] is None for m in modules.values())
+
+    app.dependency_overrides.clear()
+
+
+async def test_put_disable_module(module_setup):
+    """PUT /api/eenheid-modules/{id} disables a module."""
+    s = module_setup
+    app, client = _make_app_and_client(s["db"], s["admin"])
+
+    async with client:
+        resp = await client.put(
+            f"/api/eenheid-modules/{s['child'].id}",
+            json={"module": "leads", "enabled": False},
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    modules = {m["module"]: m for m in data["modules"]}
+    assert modules["leads"]["enabled"] is False
+
+    app.dependency_overrides.clear()
+
+
+async def test_get_eenheid_modules_shows_inherited(module_setup):
+    """Inherited disables show inherited_from in the response."""
+    s = module_setup
+    db = s["db"]
+
+    db.add(
+        EenheidModule(
+            organisatie_eenheid_id=s["parent"].id,
+            module="opdrachten",
+            enabled=False,
+        )
+    )
+    await db.flush()
+
+    app, client = _make_app_and_client(db, s["admin"])
+
+    async with client:
+        resp = await client.get(f"/api/eenheid-modules/{s['child'].id}")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    modules = {m["module"]: m for m in data["modules"]}
+
+    assert modules["opdrachten"]["enabled"] is False
+    assert modules["opdrachten"]["inherited_from"] == str(s["parent"].id)
+    assert modules["opdrachten"]["inherited_from_naam"] == "Ministerie Test"
+
+    app.dependency_overrides.clear()
+
+
+async def test_get_nonexistent_eenheid_returns_404(module_setup):
+    """GET with non-existent eenheid_id returns 404."""
+    s = module_setup
+    app, client = _make_app_and_client(s["db"], s["admin"])
+
+    async with client:
+        resp = await client.get(f"/api/eenheid-modules/{uuid.uuid4()}")
+
+    assert resp.status_code == 404
+
+    app.dependency_overrides.clear()
+
+
+async def test_put_invalid_module_returns_422(module_setup):
+    """PUT with invalid module key returns 422."""
+    s = module_setup
+    app, client = _make_app_and_client(s["db"], s["admin"])
+
+    async with client:
+        resp = await client.put(
+            f"/api/eenheid-modules/{s['child'].id}",
+            json={"module": "invalid_module", "enabled": False},
+        )
+
+    assert resp.status_code == 422
+
+    app.dependency_overrides.clear()

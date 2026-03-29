@@ -3,16 +3,9 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import {
   useEenheidModules,
+  useAvailableModules,
   useUpdateEenheidModule,
 } from '@/hooks/useEenheidModules';
-
-const MODULE_LABELS: Record<string, string> = {
-  corpus: 'Corpus',
-  initiatieven: 'Initiatieven',
-  leads: 'Leads',
-  opdrachten: 'Opdrachten',
-  taken: 'Taken',
-};
 
 const MODULE_DESCRIPTIONS: Record<string, string> = {
   corpus: 'Beleidsdossiers, doelen, instrumenten en hun relaties',
@@ -24,6 +17,7 @@ const MODULE_DESCRIPTIONS: Record<string, string> = {
 
 export function EenheidModuleManager() {
   const { data: allEenheden = [], isLoading: eenhedenLoading } = useOrganisatieFlat();
+  const { data: moduleLabels } = useAvailableModules();
   const [selectedEenheidId, setSelectedEenheidId] = useState<string>('');
   const { data: moduleConfig, isLoading: modulesLoading } = useEenheidModules(
     selectedEenheidId || undefined,
@@ -37,11 +31,15 @@ export function EenheidModuleManager() {
 
   const handleToggle = async (module: string, currentEnabled: boolean) => {
     if (!selectedEenheidId) return;
-    await updateMutation.mutateAsync({
-      eenheidId: selectedEenheidId,
-      module,
-      enabled: !currentEnabled,
-    });
+    try {
+      await updateMutation.mutateAsync({
+        eenheidId: selectedEenheidId,
+        module,
+        enabled: !currentEnabled,
+      });
+    } catch {
+      // React Query handles the error state; mutation.isError will be true
+    }
   };
 
   return (
@@ -76,11 +74,17 @@ export function EenheidModuleManager() {
 
       {selectedEenheidId && modulesLoading && <LoadingSpinner className="py-8" />}
 
+      {updateMutation.isError && (
+        <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+          Kon module-instelling niet opslaan. Probeer het opnieuw.
+        </p>
+      )}
+
       {selectedEenheidId && moduleConfig && (
         <div className="rounded-xl border border-border divide-y divide-border">
           {moduleConfig.modules.map((mod) => {
             const isInherited = mod.inherited_from !== null && !mod.enabled;
-            const label = MODULE_LABELS[mod.module] ?? mod.module;
+            const label = moduleLabels?.[mod.module] ?? mod.module;
             const description = MODULE_DESCRIPTIONS[mod.module] ?? '';
 
             return (

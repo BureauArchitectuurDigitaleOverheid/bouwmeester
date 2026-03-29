@@ -163,25 +163,26 @@ async def build_permission_context(
         disabled_map = await em_repo.get_all_disabled_modules_bulk(
             list(scoped_permissions.keys())
         )
-        # Build permission-category → permission-id mapping
-        perm_category_cache: dict[str, set[str]] | None = None
-        for eenheid_id, disabled_modules in disabled_map.items():
-            if not disabled_modules:
-                continue
-            if perm_category_cache is None:
-                from bouwmeester.models.role import Permission as PermModel
+        has_any_disabled = any(disabled_map.values())
 
-                cat_stmt = select(PermModel.id, PermModel.category)
-                cat_result = await db.execute(cat_stmt)
-                perm_category_cache = {}
-                for pid, cat in cat_result.all():
-                    perm_category_cache.setdefault(cat, set()).add(pid)
+        if has_any_disabled:
+            # Build category → permission-id mapping (one query, reused)
+            from bouwmeester.models.role import Permission as PermModel
 
-            denied_perms: set[str] = set()
-            for mod in disabled_modules:
-                for cat in MODULE_PERMISSION_CATEGORIES.get(mod, []):
-                    denied_perms |= perm_category_cache.get(cat, set())
-            scoped_permissions[eenheid_id] -= denied_perms
+            cat_stmt = select(PermModel.id, PermModel.category)
+            cat_result = await db.execute(cat_stmt)
+            perm_by_category: dict[str, set[str]] = {}
+            for pid, cat in cat_result.all():
+                perm_by_category.setdefault(cat, set()).add(pid)
+
+            for eenheid_id, disabled_modules in disabled_map.items():
+                if not disabled_modules:
+                    continue
+                denied_perms: set[str] = set()
+                for mod in disabled_modules:
+                    for cat in MODULE_PERMISSION_CATEGORIES.get(mod, []):
+                        denied_perms |= perm_by_category.get(cat, set())
+                scoped_permissions[eenheid_id] -= denied_perms
 
     # System-level permissions (apply to all eenheden)
     system_perms: set[str] = set()

@@ -10,71 +10,85 @@ from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.schema.eenheid_module import VALID_MODULES
 
 
+async def _walk_ancestors(
+    db: AsyncSession, eenheid_ids: list[UUID]
+) -> dict[UUID, list[UUID]]:
+    """For each eenheid, return its ordered ancestor chain (parent, grandparent, ...).
+
+    Uses batched queries — O(depth) queries regardless of eenheid count.
+    """
+    # First pass: batch-collect the full parent mapping for all reachable nodes
+    parent_map: dict[UUID, UUID | None] = {}
+    to_visit = set(eenheid_ids)
+
+    while to_visit:
+        # Only fetch nodes we haven't seen yet
+        unknown = to_visit - parent_map.keys()
+        if not unknown:
+            break
+        stmt = select(OrganisatieEenheid.id, OrganisatieEenheid.parent_id).where(
+            OrganisatieEenheid.id.in_(unknown)
+        )
+        result = await db.execute(stmt)
+        next_visit: set[UUID] = set()
+        for eid, pid in result.all():
+            parent_map[eid] = pid
+            if pid is not None and pid not in parent_map:
+                next_visit.add(pid)
+        to_visit = next_visit
+
+    # Second pass: walk the cached parent_map to build per-eenheid chains
+    chains: dict[UUID, list[UUID]] = {}
+    for eid in eenheid_ids:
+        chain: list[UUID] = []
+        current = eid
+        visited: set[UUID] = set()
+        while True:
+            pid = parent_map.get(current)
+            if pid is None or pid in visited:
+                break
+            chain.append(pid)
+            visited.add(pid)
+            current = pid
+        chains[eid] = chain
+
+    return chains
+
+
 class EenheidModuleRepository:
     def __init__(self, db: AsyncSession):
         self.session = db
-
-    async def get_disabled_modules(
-        self, eenheid_id: UUID, include_ancestors: bool = True
-    ) -> dict[str, UUID | None]:
-        """Return disabled modules for an eenheid, including inherited disables.
-
-        Returns dict of {module_key: disabled_by_eenheid_id} where
-        disabled_by_eenheid_id is the eenheid that set the disable
-        (None should not occur, but kept for safety).
-        """
-        eenheid_ids = [eenheid_id]
-        if include_ancestors:
-            ancestors = await self._walk_parents([eenheid_id])
-            eenheid_ids.extend(ancestors)
-
-        stmt = select(EenheidModule).where(
-            EenheidModule.organisatie_eenheid_id.in_(eenheid_ids),
-            EenheidModule.enabled.is_(False),
-        )
-        result = await self.session.execute(stmt)
-        rows = result.scalars().all()
-
-        disabled: dict[str, UUID] = {}
-        for row in rows:
-            if row.module not in disabled:
-                disabled[row.module] = row.organisatie_eenheid_id
-        return disabled
 
     async def get_all_disabled_modules_bulk(
         self, eenheid_ids: list[UUID]
     ) -> dict[UUID, set[str]]:
         """For multiple eenheden, return disabled module sets (with ancestors).
 
-        Used by build_permission_context for batch processing.
+        Uses batched queries — O(depth) for the ancestor walk, then 1 query
+        for all disabled modules.
         """
         if not eenheid_ids:
             return {}
 
-        # Collect all ancestor IDs for all eenheden
-        all_ids = set(eenheid_ids)
-        ancestors = await self._walk_parents(list(all_ids))
-        all_ids |= ancestors
+        # Batch ancestor walk
+        ancestor_map = await _walk_ancestors(self.session, eenheid_ids)
 
-        # Fetch all disabled modules for all relevant eenheden
-        stmt = select(EenheidModule).where(
+        # Collect all relevant IDs (self + ancestors) in one set
+        all_ids: set[UUID] = set(eenheid_ids)
+        for chain in ancestor_map.values():
+            all_ids.update(chain)
+
+        # Single query for all disabled modules
+        stmt = select(EenheidModule.organisatie_eenheid_id, EenheidModule.module).where(
             EenheidModule.organisatie_eenheid_id.in_(all_ids),
             EenheidModule.enabled.is_(False),
         )
         result = await self.session.execute(stmt)
-        rows = result.scalars().all()
+        disabled_by_eenheid: dict[UUID, set[str]] = {}
+        for eid, mod in result.all():
+            disabled_by_eenheid.setdefault(eid, set()).add(mod)
 
-        # Build disabled set per source eenheid
-        disabled_by_eenheid: dict[UUID, set[str]] = {eid: set() for eid in all_ids}
-        for row in rows:
-            disabled_by_eenheid.setdefault(row.organisatie_eenheid_id, set()).add(
-                row.module
-            )
-
-        # Build ancestor chain for each target eenheid
-        ancestor_map = await self._get_ancestor_chains(eenheid_ids)
-
-        # For each target eenheid, union disabled from self + ancestors
+        # For each target, union disabled from self + ancestors
         result_map: dict[UUID, set[str]] = {}
         for eid in eenheid_ids:
             disabled: set[str] = set()
@@ -97,6 +111,10 @@ class EenheidModuleRepository:
         self, eenheid_id: UUID, module: str, enabled: bool
     ) -> EenheidModule:
         """Set a module toggle for an eenheid (upsert)."""
+        if module not in VALID_MODULES:
+            msg = f"Invalid module '{module}'"
+            raise ValueError(msg)
+
         stmt = select(EenheidModule).where(
             EenheidModule.organisatie_eenheid_id == eenheid_id,
             EenheidModule.module == module,
@@ -137,25 +155,57 @@ class EenheidModuleRepository:
 
         Returns a list of dicts with module, enabled, inherited_from,
         inherited_from_naam for all valid modules.
+        Uses batched queries via _walk_ancestors.
         """
-        # Get own toggles
+        # Own toggles
         own_toggles: dict[str, bool] = {}
-        own_rows = await self.list_for_eenheid(eenheid_id)
-        for row in own_rows:
+        for row in await self.list_for_eenheid(eenheid_id):
             own_toggles[row.module] = row.enabled
 
-        # Get ancestor disables with names
-        ancestors = await self._get_ancestor_chain_with_names(eenheid_id)
+        # Ancestor chain with names (batched walk + single name query)
+        ancestor_map = await _walk_ancestors(self.session, [eenheid_id])
+        ancestor_ids = ancestor_map.get(eenheid_id, [])
+
+        # Fetch ancestor names in one query
+        ancestor_names: dict[UUID, str] = {}
+        if ancestor_ids:
+            name_stmt = select(OrganisatieEenheid.id, OrganisatieEenheid.naam).where(
+                OrganisatieEenheid.id.in_(ancestor_ids)
+            )
+            for aid, naam in (await self.session.execute(name_stmt)).all():
+                ancestor_names[aid] = naam
+
+        # Fetch all ancestor disabled modules in one query
         ancestor_disables: dict[str, tuple[str, str]] = {}
-        for anc_id, anc_naam in ancestors:
-            anc_stmt = select(EenheidModule).where(
-                EenheidModule.organisatie_eenheid_id == anc_id,
+        if ancestor_ids:
+            anc_stmt = select(
+                EenheidModule.organisatie_eenheid_id, EenheidModule.module
+            ).where(
+                EenheidModule.organisatie_eenheid_id.in_(ancestor_ids),
                 EenheidModule.enabled.is_(False),
             )
-            anc_result = await self.session.execute(anc_stmt)
-            for row in anc_result.scalars().all():
-                if row.module not in ancestor_disables:
-                    ancestor_disables[row.module] = (str(anc_id), anc_naam)
+            anc_rows = (await self.session.execute(anc_stmt)).all()
+
+            # Walk ancestor_ids in order (closest first) so closest parent wins
+            disabled_sources: dict[str, UUID] = {}
+            for anc_eid, mod in anc_rows:
+                if mod not in disabled_sources:
+                    disabled_sources[mod] = anc_eid
+            # But we want closest ancestor — rebuild using chain order
+            disabled_sources_ordered: dict[str, UUID] = {}
+            anc_disabled_set: dict[UUID, set[str]] = {}
+            for aeid, mod in anc_rows:
+                anc_disabled_set.setdefault(aeid, set()).add(mod)
+            for anc_id in ancestor_ids:  # ordered closest-first
+                for mod in anc_disabled_set.get(anc_id, set()):
+                    if mod not in disabled_sources_ordered:
+                        disabled_sources_ordered[mod] = anc_id
+
+            for mod, anc_id in disabled_sources_ordered.items():
+                ancestor_disables[mod] = (
+                    str(anc_id),
+                    ancestor_names.get(anc_id, ""),
+                )
 
         configs = []
         for module in sorted(VALID_MODULES):
@@ -181,77 +231,3 @@ class EenheidModuleRepository:
             )
 
         return configs
-
-    async def _walk_parents(self, eenheid_ids: list[UUID]) -> set[UUID]:
-        """Walk up parent chain, collecting all ancestor IDs."""
-        collected: set[UUID] = set()
-        to_visit = set(eenheid_ids)
-
-        while to_visit:
-            stmt = select(OrganisatieEenheid.id, OrganisatieEenheid.parent_id).where(
-                OrganisatieEenheid.id.in_(to_visit)
-            )
-            result = await self.session.execute(stmt)
-            rows = result.all()
-
-            next_visit: set[UUID] = set()
-            for row in rows:
-                if row.parent_id is not None and row.parent_id not in collected:
-                    collected.add(row.parent_id)
-                    next_visit.add(row.parent_id)
-
-            to_visit = next_visit
-
-        return collected
-
-    async def _get_ancestor_chains(
-        self, eenheid_ids: list[UUID]
-    ) -> dict[UUID, list[UUID]]:
-        """For each eenheid, return ordered list of ancestor IDs."""
-        result: dict[UUID, list[UUID]] = {eid: [] for eid in eenheid_ids}
-
-        for eid in eenheid_ids:
-            current = eid
-            visited: set[UUID] = set()
-            while True:
-                stmt = select(OrganisatieEenheid.parent_id).where(
-                    OrganisatieEenheid.id == current
-                )
-                res = await self.session.execute(stmt)
-                parent_id = res.scalar_one_or_none()
-                if parent_id is None or parent_id in visited:
-                    break
-                result[eid].append(parent_id)
-                visited.add(parent_id)
-                current = parent_id
-
-        return result
-
-    async def _get_ancestor_chain_with_names(
-        self, eenheid_id: UUID
-    ) -> list[tuple[UUID, str]]:
-        """Walk up from eenheid, returning [(ancestor_id, naam), ...]."""
-        chain: list[tuple[UUID, str]] = []
-        current = eenheid_id
-        visited: set[UUID] = set()
-
-        while True:
-            stmt = select(
-                OrganisatieEenheid.parent_id,
-            ).where(OrganisatieEenheid.id == current)
-            result = await self.session.execute(stmt)
-            parent_id = result.scalar_one_or_none()
-            if parent_id is None or parent_id in visited:
-                break
-
-            name_stmt = select(OrganisatieEenheid.naam).where(
-                OrganisatieEenheid.id == parent_id
-            )
-            name_result = await self.session.execute(name_stmt)
-            naam = name_result.scalar_one_or_none() or ""
-
-            chain.append((parent_id, naam))
-            visited.add(parent_id)
-            current = parent_id
-
-        return chain
