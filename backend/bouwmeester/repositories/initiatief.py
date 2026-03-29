@@ -13,7 +13,11 @@ from bouwmeester.models.initiatief import (
 )
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
-from bouwmeester.schema.initiatief import InitiatiefCreate, InitiatiefUpdate
+from bouwmeester.schema.initiatief import (
+    EENHEID_ROL_RANK,
+    InitiatiefCreate,
+    InitiatiefUpdate,
+)
 
 
 class InitiatiefRepository(BaseRepository[Initiatief]):
@@ -138,13 +142,30 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         return True
 
     async def add_eenheid(
-        self, initiatief_id: UUID, eenheid_id: UUID
+        self, initiatief_id: UUID, eenheid_id: UUID, rol: str = "contributor"
     ) -> InitiatiefEenheid:
         link = InitiatiefEenheid(
             initiatief_id=initiatief_id,
             eenheid_id=eenheid_id,
+            rol=rol,
         )
         self.session.add(link)
+        await self.session.flush()
+        await self.session.refresh(link, attribute_names=["eenheid"])
+        return link
+
+    async def update_eenheid_rol(
+        self, initiatief_id: UUID, eenheid_id: UUID, rol: str
+    ) -> InitiatiefEenheid | None:
+        stmt = select(InitiatiefEenheid).where(
+            InitiatiefEenheid.initiatief_id == initiatief_id,
+            InitiatiefEenheid.eenheid_id == eenheid_id,
+        )
+        result = await self.session.execute(stmt)
+        link = result.scalar_one_or_none()
+        if link is None:
+            return None
+        link.rol = rol
         await self.session.flush()
         await self.session.refresh(link, attribute_names=["eenheid"])
         return link
@@ -225,3 +246,42 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_eenheid_access_level(
+        self, initiatief_id: UUID, person_id: UUID
+    ) -> str | None:
+        """Get the highest access level a person has via eenheid membership.
+
+        Returns the highest-privilege role (eigenaar > contributor > viewer)
+        among all eenheden the person belongs to that are linked to this
+        initiatief, or None if no eenheid match.
+        """
+        from datetime import date
+
+        from bouwmeester.models.person_organisatie import (
+            PersonOrganisatieEenheid,
+        )
+
+        today = date.today()
+        stmt = (
+            select(InitiatiefEenheid.rol)
+            .join(
+                PersonOrganisatieEenheid,
+                PersonOrganisatieEenheid.organisatie_eenheid_id
+                == InitiatiefEenheid.eenheid_id,
+            )
+            .where(
+                InitiatiefEenheid.initiatief_id == initiatief_id,
+                PersonOrganisatieEenheid.person_id == person_id,
+                PersonOrganisatieEenheid.start_datum <= today,
+                or_(
+                    PersonOrganisatieEenheid.eind_datum.is_(None),
+                    PersonOrganisatieEenheid.eind_datum >= today,
+                ),
+            )
+        )
+        result = await self.session.execute(stmt)
+        roles = result.scalars().all()
+        if not roles:
+            return None
+        return max(roles, key=lambda r: EENHEID_ROL_RANK.get(r, 0))

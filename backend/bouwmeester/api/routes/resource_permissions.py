@@ -45,7 +45,6 @@ VALID_RESOURCE_TYPES = {
     "corpus_node",
     "initiatief",
     "lead",
-    "team",
     "opdracht",
 }
 
@@ -110,13 +109,11 @@ async def _resolve_resource_names(
     from bouwmeester.models.initiatief import Initiatief
     from bouwmeester.models.lead import Lead
     from bouwmeester.models.opdracht import Opdracht
-    from bouwmeester.models.team import Team
 
     table_map: dict[str, tuple] = {
         "corpus_node": (CorpusNode, CorpusNode.title),
         "initiatief": (Initiatief, Initiatief.naam),
         "lead": (Lead, Lead.title),
-        "team": (Team, Team.naam),
         "opdracht": (Opdracht, Opdracht.titel),
     }
 

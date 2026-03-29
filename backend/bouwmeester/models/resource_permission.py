@@ -1,8 +1,8 @@
 """ResourcePermission model - unified resource-level access control.
 
 Replaces the domain-specific junction tables (NodeStakeholder,
-InitiatiefMember, LeadContact, TeamMember) with a single polymorphic
-table that links a person to any resource with a role.
+InitiatiefMember, LeadContact) with a single polymorphic table that
+links a person to any resource with a role.
 """
 
 import uuid
@@ -42,7 +42,7 @@ class ResourcePermission(Base):
     )
     resource_type: Mapped[str] = mapped_column(
         nullable=False,
-        comment="corpus_node|initiatief|lead|team|opdracht",
+        comment="corpus_node|initiatief|lead|opdracht",
     )
     resource_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

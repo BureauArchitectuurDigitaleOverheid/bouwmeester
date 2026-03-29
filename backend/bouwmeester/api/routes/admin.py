@@ -641,8 +641,6 @@ _ALL_MODEL_TABLES = [
     "organisatie_eenheid_naam",
     "activity",
     "absence",
-    "team_member",
-    "team",
     "mattermost_link_code",
     "mattermost_user",
     "person",

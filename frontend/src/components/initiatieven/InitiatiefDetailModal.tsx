@@ -15,12 +15,11 @@ import {
   useUpdateInitiatiefMemberRole,
   useAddInitiatiefEenheid,
   useRemoveInitiatiefEenheid,
+  useUpdateInitiatiefEenheidRol,
 } from '@/hooks/useInitiatieven';
 import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
-import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
-import { usePermissions } from '@/hooks/usePermissions';
-import { INITIATIEF_COLORS } from '@/types';
+import { INITIATIEF_COLORS, INITIATIEF_ROL_LABELS } from '@/types';
 import type { InitiatiefUpdate } from '@/types';
 
 interface InitiatiefDetailModalProps {
@@ -35,8 +34,6 @@ export function InitiatiefDetailModal({
   onClose,
 }: InitiatiefDetailModalProps) {
   const { data: detail, isLoading } = useInitiatief(open ? initiatiefId : undefined);
-  const { currentPerson } = useCurrentPerson();
-  const { hasPermission } = usePermissions();
 
   const [editing, setEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -49,19 +46,12 @@ export function InitiatiefDetailModal({
   const updateRoleMutation = useUpdateInitiatiefMemberRole();
   const addEenheidMutation = useAddInitiatiefEenheid();
   const removeEenheidMutation = useRemoveInitiatiefEenheid();
+  const updateEenheidRolMutation = useUpdateInitiatiefEenheidRol();
 
-  const isEigenaar = useMemo(() => {
-    if (!detail) return false;
-    // Admin or people:manage permission can always edit
-    if (hasPermission('people:manage')) return true;
-    // In dev mode (no OIDC), treat as admin
-    if (!currentPerson) return true;
-    // Creator is eigenaar, or person with eigenaar role
-    if (detail.created_by_id === currentPerson.id) return true;
-    return detail.members.some(
-      (m) => m.person_id === currentPerson.id && m.rol === 'eigenaar',
-    );
-  }, [detail, currentPerson, hasPermission]);
+  // Backend-resolved access level — single source of truth
+  const accessLevel = detail?.access_level ?? null;
+  const isEigenaar = accessLevel === 'eigenaar';
+  const canEdit = accessLevel === 'eigenaar' || accessLevel === 'contributor';
 
   const eigenaarCount = useMemo(
     () => detail?.members.filter((m) => m.rol === 'eigenaar').length ?? 0,
@@ -172,6 +162,15 @@ export function InitiatiefDetailModal({
     });
   };
 
+  const handleUpdateEenheidRol = async (eenheidId: string, rol: string) => {
+    if (!detail) return;
+    await updateEenheidRolMutation.mutateAsync({
+      initiatiefId: detail.id,
+      eenheidId,
+      rol,
+    });
+  };
+
   const footer = (
     <>
       {isEigenaar && !editing && (
@@ -185,15 +184,17 @@ export function InitiatiefDetailModal({
             Verwijderen
           </Button>
           <div className="flex-1" />
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Pencil className="h-3.5 w-3.5" />}
-            onClick={startEditing}
-          >
-            Bewerken
-          </Button>
         </>
+      )}
+      {canEdit && !editing && (
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Pencil className="h-3.5 w-3.5" />}
+          onClick={startEditing}
+        >
+          Bewerken
+        </Button>
       )}
       {editing && (
         <>
@@ -274,7 +275,7 @@ export function InitiatiefDetailModal({
                           {member.person_naam}
                         </span>
                         <Badge variant={member.rol === 'eigenaar' ? 'purple' : 'gray'}>
-                          {member.rol === 'eigenaar' ? 'Eigenaar' : 'Contributor'}
+                          {INITIATIEF_ROL_LABELS[member.rol] ?? member.rol}
                         </Badge>
                       </div>
                       {isEigenaar && (
@@ -284,9 +285,9 @@ export function InitiatiefDetailModal({
                               <button
                                 onClick={() => handleDemoteToContributor(member.person_id)}
                                 className="px-2 py-0.5 rounded text-xs text-text-secondary hover:bg-gray-100 hover:text-gray-700 transition-colors"
-                                title="Maak contributor"
+                                title="Maak bijdrager"
                               >
-                                Maak contributor
+                                Maak bijdrager
                               </button>
                             )
                           ) : (
@@ -363,15 +364,32 @@ export function InitiatiefDetailModal({
                       <span className="text-sm text-text truncate">
                         {eenheid.eenheid_naam}
                       </span>
-                      {isEigenaar && (
-                        <button
-                          onClick={() => handleRemoveEenheid(eenheid.eenheid_id)}
-                          className="shrink-0 p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 transition-colors"
-                          title="Verwijderen"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isEigenaar ? (
+                          <select
+                            value={eenheid.rol}
+                            onChange={(e) => handleUpdateEenheidRol(eenheid.eenheid_id, e.target.value)}
+                            className="text-xs border border-border rounded px-1.5 py-0.5 bg-white"
+                          >
+                            {Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-xs text-text-secondary bg-gray-100 rounded px-1.5 py-0.5">
+                            {INITIATIEF_ROL_LABELS[eenheid.rol] ?? eenheid.rol}
+                          </span>
+                        )}
+                        {isEigenaar && (
+                          <button
+                            onClick={() => handleRemoveEenheid(eenheid.eenheid_id)}
+                            className="p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 transition-colors"
+                            title="Verwijderen"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
