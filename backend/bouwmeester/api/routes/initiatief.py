@@ -163,7 +163,7 @@ async def get_initiatief(
     # Fetch all resource permissions for this initiatief
 
     rp_repo = ResourcePermissionRepository(db)
-    all_perms = await rp_repo.list_for_resource("initiatief", id)
+    all_perms = await rp_repo.list_for_resource("initiatief", id, include_eenheid=True)
 
     # Split into person-scoped (members) and eenheid-scoped
     members = [

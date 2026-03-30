@@ -1,10 +1,12 @@
 """Repository for unified resource permission operations."""
 
+from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, union
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
 
@@ -13,20 +15,28 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
     model = ResourcePermission
 
     async def list_for_resource(
-        self, resource_type: str, resource_id: UUID
+        self,
+        resource_type: str,
+        resource_id: UUID,
+        include_eenheid: bool = False,
     ) -> list[ResourcePermission]:
+        """List permissions for a resource.
+
+        By default only loads the person relationship. Pass
+        include_eenheid=True to also load the eenheid relationship
+        (needed for initiatief detail views that show both).
+        """
         stmt = (
             select(ResourcePermission)
             .where(
                 ResourcePermission.resource_type == resource_type,
                 ResourcePermission.resource_id == resource_id,
             )
-            .options(
-                selectinload(ResourcePermission.person),
-                selectinload(ResourcePermission.eenheid),
-            )
+            .options(selectinload(ResourcePermission.person))
             .order_by(ResourcePermission.rol, ResourcePermission.created_at)
         )
+        if include_eenheid:
+            stmt = stmt.options(selectinload(ResourcePermission.eenheid))
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -60,23 +70,14 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
         self, person_id: UUID, resource_type: str, resource_id: UUID
     ) -> set[str]:
         """Return all roles a person has on a resource (direct + via eenheid)."""
-        from datetime import date
+        today = date.today()
 
-        from sqlalchemy import or_
-
-        from bouwmeester.models.person_organisatie import (
-            PersonOrganisatieEenheid,
-        )
-
-        # Direct person-scoped permissions
         direct_stmt = select(ResourcePermission.rol).where(
             ResourcePermission.person_id == person_id,
             ResourcePermission.resource_type == resource_type,
             ResourcePermission.resource_id == resource_id,
         )
 
-        # Eenheid-scoped permissions via PersonOrganisatieEenheid
-        today = date.today()
         eenheid_stmt = (
             select(ResourcePermission.rol)
             .join(
@@ -97,9 +98,9 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
             )
         )
 
-        direct_result = await self.session.execute(direct_stmt)
-        eenheid_result = await self.session.execute(eenheid_stmt)
-        return set(direct_result.scalars().all()) | set(eenheid_result.scalars().all())
+        combined = union(direct_stmt, eenheid_stmt)
+        result = await self.session.execute(combined)
+        return set(result.scalars().all())
 
     async def list_for_person(self, person_id: UUID) -> list[ResourcePermission]:
         """Return all resource permissions for a person."""
