@@ -48,7 +48,7 @@ async def _resolve_access_level(
     Collects levels from all sources and returns the maximum:
     - Super admin / system RBAC permissions
     - Direct membership via ResourcePermission
-    - Eenheid membership via InitiatiefEenheid.rol
+    - Eenheid membership via resource_permission (eenheid-scoped)
     """
     if not user:
         return "eigenaar"  # dev mode, no OIDC
