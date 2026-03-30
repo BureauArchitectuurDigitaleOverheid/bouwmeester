@@ -61,6 +61,16 @@ class InitiatiefEenheidResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class InitiatiefEenheidWithNameResponse(BaseModel):
+    initiatief_id: UUID
+    initiatief_naam: str = ""
+    eenheid_id: UUID
+    rol: str = "contributor"
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class InitiatiefResponse(BaseModel):
     id: UUID
     naam: str

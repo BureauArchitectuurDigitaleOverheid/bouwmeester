@@ -52,6 +52,17 @@ export function usePersonRoleAssignments(personId: string | null) {
   });
 }
 
+export function useEenheidRoleAssignments(eenheidId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.admin.eenheidRoleAssignments(eenheidId),
+    queryFn: () =>
+      apiGet<PersonRoleAssignment[]>(
+        `/api/roles/eenheid/${eenheidId}/assignments`,
+      ),
+    enabled: !!eenheidId,
+  });
+}
+
 export function useAssignRole() {
   return useMutationWithError({
     mutationFn: (data: AssignRoleInput) =>

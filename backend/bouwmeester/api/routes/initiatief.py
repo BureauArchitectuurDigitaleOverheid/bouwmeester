@@ -25,6 +25,7 @@ from bouwmeester.schema.initiatief import (
     InitiatiefEenheidCreate,
     InitiatiefEenheidResponse,
     InitiatiefEenheidUpdate,
+    InitiatiefEenheidWithNameResponse,
     InitiatiefMemberCreate,
     InitiatiefMemberResponse,
     InitiatiefResponse,
@@ -158,8 +159,12 @@ async def get_initiatief(
         ResourcePermissionRepository,
     )
 
+    # Fetch all resource permissions for this initiatief
+
     rp_repo = ResourcePermissionRepository(db)
-    rp_members = await rp_repo.list_for_resource("initiatief", id)
+    all_perms = await rp_repo.list_for_resource("initiatief", id)
+
+    # Split into person-scoped (members) and eenheid-scoped
     members = [
         InitiatiefMemberResponse(
             initiatief_id=rp.resource_id,
@@ -168,19 +173,20 @@ async def get_initiatief(
             rol=rp.rol,
             created_at=rp.created_at,
         )
-        for rp in rp_members
+        for rp in all_perms
+        if rp.person_id is not None
     ]
-    eenheden = []
-    for e in initiatief.eenheden:
-        eenheden.append(
-            InitiatiefEenheidResponse(
-                initiatief_id=e.initiatief_id,
-                eenheid_id=e.eenheid_id,
-                eenheid_naam=e.eenheid.naam if e.eenheid else "",
-                rol=e.rol,
-                created_at=e.created_at,
-            )
+    eenheden = [
+        InitiatiefEenheidResponse(
+            initiatief_id=rp.resource_id,
+            eenheid_id=rp.organisatie_eenheid_id,
+            eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
+            rol=rp.rol,
+            created_at=rp.created_at,
         )
+        for rp in all_perms
+        if rp.organisatie_eenheid_id is not None
+    ]
     resp = InitiatiefDetailResponse.model_validate(initiatief)
     resp.members = members
     resp.eenheden = eenheden
@@ -398,7 +404,7 @@ async def add_eenheid(
     repo = InitiatiefRepository(db)
     require_found(await repo.get_by_id(id), "Initiatief")
     await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
-    link = await repo.add_eenheid(id, data.eenheid_id, data.rol)
+    rp = await repo.add_eenheid(id, data.eenheid_id, data.rol)
 
     await log_activity(
         db,
@@ -413,11 +419,11 @@ async def add_eenheid(
     )
 
     return InitiatiefEenheidResponse(
-        initiatief_id=link.initiatief_id,
-        eenheid_id=link.eenheid_id,
-        eenheid_naam=link.eenheid.naam if link.eenheid else "",
-        rol=link.rol,
-        created_at=link.created_at,
+        initiatief_id=rp.resource_id,
+        eenheid_id=rp.organisatie_eenheid_id,
+        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
+        rol=rp.rol,
+        created_at=rp.created_at,
     )
 
 
@@ -464,8 +470,8 @@ async def update_eenheid_rol(
     """Update an eenheid's role on this initiatief."""
     repo = InitiatiefRepository(db)
     await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
-    link = await repo.update_eenheid_rol(id, eenheid_id, data.rol)
-    if link is None:
+    rp = await repo.update_eenheid_rol(id, eenheid_id, data.rol)
+    if rp is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Eenheid niet gevonden",
@@ -484,9 +490,44 @@ async def update_eenheid_rol(
     )
 
     return InitiatiefEenheidResponse(
-        initiatief_id=link.initiatief_id,
-        eenheid_id=link.eenheid_id,
-        eenheid_naam=link.eenheid.naam if link.eenheid else "",
-        rol=link.rol,
-        created_at=link.created_at,
+        initiatief_id=rp.resource_id,
+        eenheid_id=rp.organisatie_eenheid_id,
+        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
+        rol=rp.rol,
+        created_at=rp.created_at,
     )
+
+
+# ---------------------------------------------------------------------------
+# Eenheid → initiatieven (reverse lookup)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/by-eenheid/{eenheid_id}",
+    response_model=list[InitiatiefEenheidWithNameResponse],
+)
+async def list_initiatieven_for_eenheid(
+    eenheid_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(get_permission_context),
+) -> list[InitiatiefEenheidWithNameResponse]:
+    """List all initiatieven linked to an eenheid via resource_permission."""
+    from bouwmeester.models.initiatief import Initiatief
+
+    repo = InitiatiefRepository(db)
+    perms = await repo.list_for_eenheid(eenheid_id)
+
+    results = []
+    for rp in perms:
+        initiatief = await db.get(Initiatief, rp.resource_id)
+        results.append(
+            InitiatiefEenheidWithNameResponse(
+                initiatief_id=rp.resource_id,
+                initiatief_naam=initiatief.naam if initiatief else "",
+                eenheid_id=rp.organisatie_eenheid_id,
+                rol=rp.rol,
+                created_at=rp.created_at,
+            )
+        )
+    return results

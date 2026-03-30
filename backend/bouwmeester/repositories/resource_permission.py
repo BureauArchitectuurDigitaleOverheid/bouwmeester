@@ -21,7 +21,10 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
                 ResourcePermission.resource_type == resource_type,
                 ResourcePermission.resource_id == resource_id,
             )
-            .options(selectinload(ResourcePermission.person))
+            .options(
+                selectinload(ResourcePermission.person),
+                selectinload(ResourcePermission.eenheid),
+            )
             .order_by(ResourcePermission.rol, ResourcePermission.created_at)
         )
         result = await self.session.execute(stmt)
@@ -56,14 +59,47 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
     async def get_roles_for_person_resource(
         self, person_id: UUID, resource_type: str, resource_id: UUID
     ) -> set[str]:
-        """Return all roles a person has on a specific resource."""
-        stmt = select(ResourcePermission.rol).where(
+        """Return all roles a person has on a resource (direct + via eenheid)."""
+        from datetime import date
+
+        from sqlalchemy import or_
+
+        from bouwmeester.models.person_organisatie import (
+            PersonOrganisatieEenheid,
+        )
+
+        # Direct person-scoped permissions
+        direct_stmt = select(ResourcePermission.rol).where(
             ResourcePermission.person_id == person_id,
             ResourcePermission.resource_type == resource_type,
             ResourcePermission.resource_id == resource_id,
         )
-        result = await self.session.execute(stmt)
-        return set(result.scalars().all())
+
+        # Eenheid-scoped permissions via PersonOrganisatieEenheid
+        today = date.today()
+        eenheid_stmt = (
+            select(ResourcePermission.rol)
+            .join(
+                PersonOrganisatieEenheid,
+                PersonOrganisatieEenheid.organisatie_eenheid_id
+                == ResourcePermission.organisatie_eenheid_id,
+            )
+            .where(
+                ResourcePermission.resource_type == resource_type,
+                ResourcePermission.resource_id == resource_id,
+                ResourcePermission.organisatie_eenheid_id.isnot(None),
+                PersonOrganisatieEenheid.person_id == person_id,
+                PersonOrganisatieEenheid.start_datum <= today,
+                or_(
+                    PersonOrganisatieEenheid.eind_datum.is_(None),
+                    PersonOrganisatieEenheid.eind_datum >= today,
+                ),
+            )
+        )
+
+        direct_result = await self.session.execute(direct_stmt)
+        eenheid_result = await self.session.execute(eenheid_stmt)
+        return set(direct_result.scalars().all()) | set(eenheid_result.scalars().all())
 
     async def list_for_person(self, person_id: UUID) -> list[ResourcePermission]:
         """Return all resource permissions for a person."""
@@ -73,6 +109,19 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
             .options(selectinload(ResourcePermission.person))
             .order_by(ResourcePermission.resource_type, ResourcePermission.rol)
         )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_for_eenheid(
+        self, eenheid_id: UUID, resource_type: str | None = None
+    ) -> list[ResourcePermission]:
+        """Return all resource permissions for an eenheid."""
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.organisatie_eenheid_id == eenheid_id,
+        )
+        if resource_type:
+            stmt = stmt.where(ResourcePermission.resource_type == resource_type)
+        stmt = stmt.order_by(ResourcePermission.resource_type, ResourcePermission.rol)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
