@@ -402,10 +402,18 @@ async def add_eenheid(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InitiatiefEenheidResponse:
+    from sqlalchemy.exc import IntegrityError
+
     repo = InitiatiefRepository(db)
     require_found(await repo.get_by_id(id), "Initiatief")
     await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
-    rp = await repo.add_eenheid(id, data.eenheid_id, data.rol)
+    try:
+        rp = await repo.add_eenheid(id, data.eenheid_id, data.rol)
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Eenheid is al gekoppeld aan dit initiatief",
+        )
 
     await log_activity(
         db,
