@@ -75,15 +75,15 @@ export function AdminPage() {
   if (hasPermission('people:assign_role')) {
     tabs.push({ id: 'users', label: 'Gebruikers' });
   }
+  if (hasPermission('feature_toggle:manage')) {
+    tabs.push({ id: 'eenheden', label: 'Eenheden' });
+  }
   if (hasPermission('org:manage')) {
     tabs.push({ id: 'sharing', label: 'Delen' });
   }
   if (hasPermission('config:manage')) {
     tabs.push({ id: 'config', label: 'Omgevingsvariabelen' });
     tabs.push({ id: 'schema', label: 'Relatieschema' });
-  }
-  if (hasPermission('feature_toggle:manage')) {
-    tabs.push({ id: 'eenheden', label: 'Eenheden' });
   }
   if (hasPermission('database:backup')) {
     tabs.push({ id: 'database', label: 'Database' });
