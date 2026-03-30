@@ -156,16 +156,28 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
 
   const handleAddInitiatief = async (initiatiefId: string) => {
     if (!initiatiefId) return;
-    await addEenheidMutation.mutateAsync({ initiatiefId, eenheidId });
-    setAddValue('');
+    try {
+      await addEenheidMutation.mutateAsync({ initiatiefId, eenheidId });
+      setAddValue('');
+    } catch {
+      // mutation.isError handles UI
+    }
   };
 
   const handleRemoveInitiatief = async (initiatiefId: string) => {
-    await removeEenheidMutation.mutateAsync({ initiatiefId, eenheidId });
+    try {
+      await removeEenheidMutation.mutateAsync({ initiatiefId, eenheidId });
+    } catch {
+      // mutation.isError handles UI
+    }
   };
 
   const handleRolChange = async (initiatiefId: string, rol: string) => {
-    await updateRolMutation.mutateAsync({ initiatiefId, eenheidId, rol });
+    try {
+      await updateRolMutation.mutateAsync({ initiatiefId, eenheidId, rol });
+    } catch {
+      // mutation.isError handles UI
+    }
   };
 
   const handleModuleToggle = async (module: string, currentEnabled: boolean) => {
@@ -190,6 +202,12 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
         </h4>
 
         {initiativeLoading && <LoadingSpinner className="py-4" />}
+
+        {(addEenheidMutation.isError || removeEenheidMutation.isError || updateRolMutation.isError) && (
+          <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 mb-3">
+            Kon initiatief-koppeling niet bijwerken.
+          </p>
+        )}
 
         {!initiativeLoading && initiatieven && initiatieven.length > 0 && (
           <ul className="divide-y divide-border rounded-lg border border-border bg-white mb-3">

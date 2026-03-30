@@ -357,26 +357,29 @@ async def resolve_resource_eenheid_id(
         return (True, row[0]) if row is not None else (False, None)
 
     if resource_type == "initiatief":
-        from bouwmeester.models.initiatief import InitiatiefEenheid
+        from bouwmeester.models.resource_permission import ResourcePermission
 
-        stmt = select(InitiatiefEenheid.eenheid_id).where(
-            InitiatiefEenheid.initiatief_id == resource_id
+        stmt = select(ResourcePermission.organisatie_eenheid_id).where(
+            ResourcePermission.resource_type == "initiatief",
+            ResourcePermission.resource_id == resource_id,
+            ResourcePermission.organisatie_eenheid_id.isnot(None),
         )
         result = await db.execute(stmt)
         first = result.scalars().first()
-        # Initiatieven may not have an eenheid row at all — treat
-        # that as "found with no eenheid" rather than "not found",
-        # because the initiatief itself may still exist.
         return (True, first)
 
     if resource_type == "lead":
-        from bouwmeester.models.initiatief import InitiatiefEenheid
         from bouwmeester.models.lead import Lead
+        from bouwmeester.models.resource_permission import ResourcePermission
 
         stmt = (
-            select(InitiatiefEenheid.eenheid_id)
-            .join(Lead, Lead.initiatief_id == InitiatiefEenheid.initiatief_id)
-            .where(Lead.id == resource_id)
+            select(ResourcePermission.organisatie_eenheid_id)
+            .join(Lead, Lead.initiatief_id == ResourcePermission.resource_id)
+            .where(
+                Lead.id == resource_id,
+                ResourcePermission.resource_type == "initiatief",
+                ResourcePermission.organisatie_eenheid_id.isnot(None),
+            )
         )
         result = await db.execute(stmt)
         first = result.scalars().first()

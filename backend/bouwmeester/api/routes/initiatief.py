@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
@@ -518,16 +519,24 @@ async def list_initiatieven_for_eenheid(
     repo = InitiatiefRepository(db)
     perms = await repo.list_for_eenheid(eenheid_id)
 
-    results = []
-    for rp in perms:
-        initiatief = await db.get(Initiatief, rp.resource_id)
-        results.append(
-            InitiatiefEenheidWithNameResponse(
-                initiatief_id=rp.resource_id,
-                initiatief_naam=initiatief.naam if initiatief else "",
-                eenheid_id=rp.organisatie_eenheid_id,
-                rol=rp.rol,
-                created_at=rp.created_at,
-            )
+    if not perms:
+        return []
+
+    # Batch load initiatief names (avoid N+1)
+    initiatief_ids = [rp.resource_id for rp in perms]
+    name_stmt = select(Initiatief.id, Initiatief.naam).where(
+        Initiatief.id.in_(initiatief_ids)
+    )
+    name_result = await db.execute(name_stmt)
+    names = dict(name_result.all())
+
+    return [
+        InitiatiefEenheidWithNameResponse(
+            initiatief_id=rp.resource_id,
+            initiatief_naam=names.get(rp.resource_id, ""),
+            eenheid_id=rp.organisatie_eenheid_id,
+            rol=rp.rol,
+            created_at=rp.created_at,
         )
-    return results
+        for rp in perms
+    ]
