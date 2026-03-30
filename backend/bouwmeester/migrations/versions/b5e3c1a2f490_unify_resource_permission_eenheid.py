@@ -76,6 +76,7 @@ def upgrade() -> None:
             rol,
             created_at
         FROM initiatief_eenheid
+        ON CONFLICT DO NOTHING
     """)
 
     # 7. Drop initiatief_eenheid table
