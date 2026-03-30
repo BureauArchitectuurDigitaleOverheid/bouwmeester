@@ -37,7 +37,6 @@ export function AdminPage() {
     'database:backup',
     'people:assign_role',
     'org:manage',
-    'feature_toggle:manage',
   );
 
   const defaultTab: Tab = canAdmin ? 'whitelist' : 'placements';
@@ -75,7 +74,7 @@ export function AdminPage() {
   if (hasPermission('people:assign_role')) {
     tabs.push({ id: 'users', label: 'Gebruikers' });
   }
-  if (hasPermission('feature_toggle:manage')) {
+  if (hasPermission('org:manage')) {
     tabs.push({ id: 'eenheden', label: 'Eenheden' });
   }
   if (hasPermission('org:manage')) {
