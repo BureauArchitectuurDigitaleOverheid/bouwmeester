@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, RefreshCw } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useOpdrachten, useOpdrachtenSummary } from '@/hooks/useOpdrachten';
 import { useExterneOrganisaties } from '@/hooks/useExterneOrganisaties';
 import { usePeople } from '@/hooks/usePeople';
 import { useNodes } from '@/hooks/useNodes';
+import { useTriggerFccSync, useFccSchema } from '@/hooks/useFcc';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -68,6 +69,9 @@ export function OpdrachtenPage() {
   const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
 
+  const fccSync = useTriggerFccSync();
+  const { data: fccSchema } = useFccSchema();
+  const fccEnabled = Object.keys(fccSchema?.entity_sets ?? {}).length > 0;
   const { data: opdrachten = [], isLoading } = useOpdrachten(apiFilters);
   const { data: summary } = useOpdrachtenSummary(apiFilters);
   const { data: externeOrgs = [] } = useExterneOrganisaties();
@@ -179,6 +183,16 @@ export function OpdrachtenPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {fccEnabled && (
+            <Button
+              variant="secondary"
+              icon={<RefreshCw className={`h-4 w-4 ${fccSync.isPending ? 'animate-spin' : ''}`} />}
+              onClick={() => fccSync.mutate()}
+              disabled={fccSync.isPending}
+            >
+              <span className="hidden sm:inline">FCC Sync</span>
+            </Button>
+          )}
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => openOpdrachtCreate()}>
             <span className="hidden sm:inline">Nieuwe opdracht</span>
           </Button>

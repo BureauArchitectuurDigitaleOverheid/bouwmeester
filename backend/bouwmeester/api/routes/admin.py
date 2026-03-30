@@ -367,6 +367,37 @@ _DEFAULT_CONFIG = [
         "description": "Kanaal-ID voor broadcast-notificaties",
         "is_secret": False,
     },
+    # FCC (Fortes Change Cloud) integration
+    {
+        "key": "FCC_ODATA_URL",
+        "value": "",
+        "description": "Fortes Change Cloud OData feed-URL",
+        "is_secret": False,
+    },
+    {
+        "key": "FCC_API_KEY",
+        "value": "",
+        "description": "FCC API-sleutel",
+        "is_secret": True,
+    },
+    {
+        "key": "FCC_SYNC_ENABLED",
+        "value": "false",
+        "description": "FCC synchronisatie aan/uit",
+        "is_secret": False,
+    },
+    {
+        "key": "FCC_PUSH_ENABLED",
+        "value": "false",
+        "description": "FCC push (schrijven naar FCC) aan/uit",
+        "is_secret": False,
+    },
+    {
+        "key": "FCC_PROJECT_ENTITY",
+        "value": "Portfolio_item",
+        "description": "OData entiteitnaam voor projecten in FCC",
+        "is_secret": False,
+    },
 ]
 
 

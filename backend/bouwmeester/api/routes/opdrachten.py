@@ -197,6 +197,11 @@ async def update_opdracht(
         await ns.notify_opdracht_status_changed(opdracht, old_status, actor_id=actor)
         await OpdrachtTaskService(db).on_status_changed(opdracht, old_status)
 
+    # Auto-flag FCC-linked opdrachten for push
+    if opdracht.fcc_id and opdracht.sync_direction != "inbound":
+        opdracht.sync_status = "pending_push"
+        await db.flush()
+
     return OpdrachtResponse.model_validate(opdracht)
 
 

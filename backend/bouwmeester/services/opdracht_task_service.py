@@ -154,6 +154,14 @@ class OpdrachtTaskService:
             )
             return False
 
+        if not opdracht.instrument_id:
+            logger.info(
+                "Skipping task '%s' for opdracht %s: no instrument linked",
+                work_type,
+                opdracht.id,
+            )
+            return False
+
         task = Task(
             node_id=opdracht.instrument_id,
             opdracht_id=opdracht.id,

@@ -14,6 +14,7 @@ from bouwmeester.api.routes.eenheid_modules import router as eenheid_modules_rou
 from bouwmeester.api.routes.externe_organisaties import (
     router as externe_organisaties_router,
 )
+from bouwmeester.api.routes.fcc import router as fcc_router
 from bouwmeester.api.routes.graph import router as graph_router
 from bouwmeester.api.routes.import_export import router as import_export_router
 from bouwmeester.api.routes.initiatief import router as initiatieven_router
@@ -50,6 +51,7 @@ api_router.include_router(edge_schema_router)
 api_router.include_router(edge_types_router)
 api_router.include_router(eenheid_modules_router)
 api_router.include_router(edges_router)
+api_router.include_router(fcc_router)
 api_router.include_router(externe_organisaties_router)
 api_router.include_router(graph_router)
 api_router.include_router(initiatieven_router)

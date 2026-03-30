@@ -23,11 +23,14 @@ import {
   OPDRACHT_TYPE_COLORS,
   KOSTENSOORT_LABELS,
   NODE_TYPE_COLORS,
+  SYNC_STATUS_LABELS,
+  SYNC_STATUS_COLORS,
   OpdrachtType,
   OpdrachtStatus,
   Kostensoort,
   TaskStatus,
   type NodeType,
+  type SyncStatus,
 } from '@/types';
 import { formatCurrency, calculateUtilization } from '@/utils/format';
 
@@ -147,7 +150,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
               </div>
             )}
 
-            {/* Type + status badges */}
+            {/* Type + status + sync badges */}
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant={OPDRACHT_TYPE_COLORS[opdracht.type as OpdrachtType] || 'gray'}>
                 {OPDRACHT_TYPE_LABELS[opdracht.type as OpdrachtType] || opdracht.type}
@@ -155,6 +158,11 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
               <Badge variant={OPDRACHT_STATUS_COLORS[opdracht.status as OpdrachtStatus] || 'gray'}>
                 {OPDRACHT_STATUS_LABELS[opdracht.status as OpdrachtStatus] || opdracht.status}
               </Badge>
+              {opdracht.sync_status && (
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${SYNC_STATUS_COLORS[opdracht.sync_status as SyncStatus] || 'bg-gray-100 text-gray-800'}`}>
+                  FCC: {SYNC_STATUS_LABELS[opdracht.sync_status as SyncStatus] || opdracht.sync_status}
+                </span>
+              )}
             </div>
 
             {/* Description */}
@@ -372,7 +380,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
       <TaskCreateForm
         open={showTaskCreate}
         onClose={() => setShowTaskCreate(false)}
-        nodeId={opdracht?.instrument_id}
+        nodeId={opdracht?.instrument_id ?? undefined}
         opdrachtId={opdrachtId ?? undefined}
       />
 

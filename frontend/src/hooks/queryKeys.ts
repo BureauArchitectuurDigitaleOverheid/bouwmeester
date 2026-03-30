@@ -101,6 +101,13 @@ export const queryKeys = {
     reviewQueue: () => ['parlementair-review-queue'] as const,
   },
 
+  // --- FCC ---
+  fcc: {
+    syncLogs: (opdrachtId?: string) => ['fcc', 'sync-logs', opdrachtId] as const,
+    schema: () => ['fcc', 'schema'] as const,
+    conflicts: () => ['fcc', 'conflicts'] as const,
+  },
+
   // --- Admin ---
   admin: {
     whitelist: () => ['admin', 'whitelist'] as const,

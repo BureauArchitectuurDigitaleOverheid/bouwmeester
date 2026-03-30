@@ -79,7 +79,7 @@ class OpdrachtBase(BaseModel):
     kostensoort: Kostensoort | None = None
     volgend_jaar_benodigd: Decimal | None = Field(None, ge=0)
     volgend_jaar_aangevraagd: Decimal | None = Field(None, ge=0)
-    instrument_id: UUID
+    instrument_id: UUID | None = None
     opdrachtnemer_id: UUID | None = None
     opdrachtgever_id: UUID | None = None
     verantwoordelijke_id: UUID | None = None
@@ -115,14 +115,8 @@ class OpdrachtUpdate(BaseModel):
     referentie: str | None = Field(None, max_length=200)
     startdatum: date | None = None
     einddatum: date | None = None
-
-    @field_validator("instrument_id")
-    @classmethod
-    def instrument_id_not_null(cls, v: UUID | None) -> UUID | None:
-        """Reject explicit null — instrument_id is required at the DB level."""
-        if v is None:
-            raise ValueError("instrument_id mag niet null zijn")
-        return v
+    # FCC sync (for conflict resolution)
+    sync_status: str | None = None
 
     @field_validator("begrotingsjaar")
     @classmethod
@@ -166,7 +160,7 @@ class OpdrachtResponse(BaseModel):
     kostensoort: str | None = None
     volgend_jaar_benodigd: Decimal | None = None
     volgend_jaar_aangevraagd: Decimal | None = None
-    instrument_id: UUID
+    instrument_id: UUID | None = None
     instrument: OpdrachtInstrumentSummary | None = None
     opdrachtnemer_id: UUID | None = None
     opdrachtnemer: ExterneOrganisatieResponse | None = None
@@ -180,6 +174,11 @@ class OpdrachtResponse(BaseModel):
     referentie: str | None = None
     startdatum: date | None = None
     einddatum: date | None = None
+    # FCC sync fields
+    fcc_id: str | None = None
+    sync_status: str | None = None
+    sync_direction: str | None = None
+    last_synced_at: datetime | None = None
     node_koppelingen: list[OpdrachtNodeResponse] = []
     created_at: datetime
     updated_at: datetime | None = None

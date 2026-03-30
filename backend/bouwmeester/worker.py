@@ -123,6 +123,48 @@ async def _opdracht_task_loop(settings) -> None:  # type: ignore[no-untyped-def]
         await asyncio.sleep(settings.OPDRACHT_TASK_INTERVAL_SECONDS)
 
 
+async def _fcc_sync_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Bidirectional sync with Fortes Change Cloud."""
+    while True:
+        try:
+            async with async_session() as session:
+                from sqlalchemy import select
+
+                from bouwmeester.core.encryption import decrypt_value
+                from bouwmeester.models.app_config import AppConfig
+
+                result = await session.execute(
+                    select(AppConfig).where(AppConfig.key == "FCC_SYNC_ENABLED")
+                )
+                entry = result.scalar_one_or_none()
+                if not entry or decrypt_value(entry.value) != "true":
+                    await asyncio.sleep(settings.FCC_POLL_INTERVAL_SECONDS)
+                    continue
+
+                from bouwmeester.services.fcc_import_service import FccImportService
+
+                import_service = FccImportService(session)
+                pull_count = await import_service.poll_and_import()
+
+                push_count = 0
+                if await import_service.is_push_enabled():
+                    from bouwmeester.services.fcc_export_service import (
+                        FccExportService,
+                    )
+
+                    export_service = FccExportService(session)
+                    push_count = await export_service.push_pending()
+
+                await session.commit()
+                logger.info(
+                    f"FCC sync cycle complete: {pull_count} pulled, {push_count} pushed"
+                )
+        except Exception:
+            logger.exception("Error in FCC sync cycle")
+
+        await asyncio.sleep(settings.FCC_POLL_INTERVAL_SECONDS)
+
+
 async def main() -> None:
     settings = get_settings()
     logger.info(
@@ -134,6 +176,7 @@ async def main() -> None:
         asyncio.create_task(_parlementair_loop(settings)),
         asyncio.create_task(_mattermost_link_loop(settings)),
         asyncio.create_task(_opdracht_task_loop(settings)),
+        asyncio.create_task(_fcc_sync_loop(settings)),
     ]
     await asyncio.gather(*tasks)
 

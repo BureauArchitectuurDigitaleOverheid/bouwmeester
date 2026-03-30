@@ -71,6 +71,13 @@ from bouwmeester.schema.externe_organisatie import (
     ExterneOrganisatieResponse,
     ExterneOrganisatieUpdate,
 )
+from bouwmeester.schema.fcc import (
+    FccConflictResolution,
+    FccConflictResolveRequest,
+    FccSchemaResponse,
+    FccSyncLogResponse,
+    FccSyncTriggerResponse,
+)
 from bouwmeester.schema.graph import (
     GraphNeighborsResponse,
     GraphSearchParams,
@@ -329,6 +336,12 @@ __all__ = [
     "TaskStatus",
     "TaskSubtaskSummary",
     "TaskUpdate",
+    # fcc
+    "FccConflictResolveRequest",
+    "FccConflictResolution",
+    "FccSchemaResponse",
+    "FccSyncLogResponse",
+    "FccSyncTriggerResponse",
     # opdracht
     "FinancieelJaar",
     "FinancieelOverzicht",
