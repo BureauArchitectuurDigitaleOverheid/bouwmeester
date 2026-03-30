@@ -37,6 +37,9 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
         )
         if include_eenheid:
             stmt = stmt.options(selectinload(ResourcePermission.eenheid))
+        else:
+            # Only return person-scoped rows unless eenheid explicitly requested
+            stmt = stmt.where(ResourcePermission.person_id.isnot(None))
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

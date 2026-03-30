@@ -14,6 +14,7 @@ _VALID_ROLES: set[str] = {
     "adviseur",
     "indiener",
     "contributor",
+    "viewer",
     "opdrachtgever",
     "contactpersoon",
     "coordinator",
