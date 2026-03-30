@@ -1,4 +1,4 @@
-"""Initiatief and InitiatiefEenheid models."""
+"""Initiatief model."""
 
 import uuid
 from datetime import datetime
@@ -36,41 +36,7 @@ class Initiatief(Base):
 
     # Relationships
     created_by: Mapped["Person"] = relationship("Person", foreign_keys=[created_by_id])  # noqa: F821
-    eenheden: Mapped[list["InitiatiefEenheid"]] = relationship(
-        "InitiatiefEenheid",
-        back_populates="initiatief",
-        cascade="all, delete-orphan",
-    )
     leads: Mapped[list["Lead"]] = relationship(  # noqa: F821
         "Lead",
         back_populates="initiatief",
     )
-
-
-class InitiatiefEenheid(Base):
-    __tablename__ = "initiatief_eenheid"
-
-    initiatief_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("initiatief.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    eenheid_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("organisatie_eenheid.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    rol: Mapped[str] = mapped_column(
-        default="contributor",
-        server_default="contributor",
-        comment="eigenaar|contributor|viewer",
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-
-    # Relationships
-    initiatief: Mapped["Initiatief"] = relationship(
-        "Initiatief", back_populates="eenheden"
-    )
-    eenheid: Mapped["OrganisatieEenheid"] = relationship("OrganisatieEenheid")  # noqa: F821

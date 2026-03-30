@@ -73,7 +73,6 @@ export function Sidebar({ mobile }: SidebarProps) {
       'database:backup',
       'people:assign_role',
       'org:manage',
-      'feature_toggle:manage',
     );
     const isManager = (authPerson?.managed_eenheden?.length ?? 0) > 0;
     if (hasPermission('audit:read')) {

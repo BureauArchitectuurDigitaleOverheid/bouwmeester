@@ -14,6 +14,7 @@ _VALID_ROLES: set[str] = {
     "adviseur",
     "indiener",
     "contributor",
+    "viewer",
     "opdrachtgever",
     "contactpersoon",
     "coordinator",
@@ -49,7 +50,7 @@ class ResourcePermissionUpdate(BaseModel):
 
 class ResourcePermissionResponse(BaseModel):
     id: UUID
-    person_id: UUID
+    person_id: UUID | None = None
     person: PersonResponse | None = None
     resource_type: str
     resource_id: UUID

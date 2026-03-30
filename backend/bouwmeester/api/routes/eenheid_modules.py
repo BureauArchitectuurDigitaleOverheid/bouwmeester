@@ -29,7 +29,7 @@ router = APIRouter(prefix="/eenheid-modules", tags=["eenheid-modules"])
 )
 async def get_eenheid_modules(
     eenheid_id: UUID,
-    _perm=Depends(require_permission("feature_toggle:manage")),
+    _perm=Depends(require_permission("org:manage")),
     db: AsyncSession = Depends(get_db),
 ) -> EenheidModulesResponse:
     """Get module config for an eenheid, including inherited state."""
@@ -50,7 +50,7 @@ async def update_eenheid_module(
     eenheid_id: UUID,
     data: EenheidModuleUpdate,
     current_user: OptionalUser,
-    _perm=Depends(require_permission("feature_toggle:manage")),
+    _perm=Depends(require_permission("org:manage")),
     db: AsyncSession = Depends(get_db),
 ) -> EenheidModulesResponse:
     """Toggle a module on/off for an eenheid."""
@@ -88,7 +88,7 @@ async def update_eenheid_module(
     response_model=dict[str, str],
 )
 async def get_available_modules(
-    _perm=Depends(require_permission("feature_toggle:manage")),
+    _perm=Depends(require_permission("org:manage")),
 ) -> dict[str, str]:
     """Return the list of toggleable modules with labels."""
     return {k: MODULE_LABELS[k] for k in sorted(VALID_MODULES)}
