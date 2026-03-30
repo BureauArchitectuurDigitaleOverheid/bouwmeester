@@ -63,6 +63,7 @@ async def _init_webauthn_session(
     session["person_name"] = person.naam
     session["person_sub"] = person.oidc_subject or ""
     session["is_admin"] = perm_ctx.is_super_admin
+    session["needs_onboarding"] = not person.functie
     session["_rotate"] = True
 
 
@@ -264,7 +265,7 @@ async def authenticate_options(
     options = generate_authentication_options(
         rp_id=settings.WEBAUTHN_RP_ID,
         allow_credentials=allow_credentials,
-        user_verification=UserVerificationRequirement.REQUIRED,
+        user_verification=UserVerificationRequirement.PREFERRED,
         timeout=60000,
     )
 
@@ -337,7 +338,7 @@ async def authenticate_verify(
             expected_origin=settings.WEBAUTHN_ORIGIN,
             credential_public_key=matched_credential.public_key,
             credential_current_sign_count=matched_credential.sign_count,
-            require_user_verification=True,
+            require_user_verification=False,
         )
     except Exception as e:
         raise HTTPException(
