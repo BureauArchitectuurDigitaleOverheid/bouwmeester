@@ -50,7 +50,7 @@ class ResourcePermissionUpdate(BaseModel):
 
 class ResourcePermissionResponse(BaseModel):
     id: UUID
-    person_id: UUID
+    person_id: UUID | None = None
     person: PersonResponse | None = None
     resource_type: str
     resource_id: UUID
