@@ -124,8 +124,9 @@ export function useAddInitiatiefEenheid() {
       initiatiefId: string;
       eenheidId: string;
     }) => addInitiatiefEenheid(initiatiefId, eenheidId),
-    onSuccess: () => {
+    onSuccess: (_data, { eenheidId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.initiatieven.all });
+      qc.invalidateQueries({ queryKey: ['initiatieven-for-eenheid', eenheidId] });
     },
   });
 }
@@ -140,8 +141,9 @@ export function useRemoveInitiatiefEenheid() {
       initiatiefId: string;
       eenheidId: string;
     }) => removeInitiatiefEenheid(initiatiefId, eenheidId),
-    onSuccess: () => {
+    onSuccess: (_data, { eenheidId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.initiatieven.all });
+      qc.invalidateQueries({ queryKey: ['initiatieven-for-eenheid', eenheidId] });
     },
   });
 }
@@ -158,8 +160,9 @@ export function useUpdateInitiatiefEenheidRol() {
       eenheidId: string;
       rol: string;
     }) => updateInitiatiefEenheidRol(initiatiefId, eenheidId, rol),
-    onSuccess: () => {
+    onSuccess: (_data, { eenheidId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.initiatieven.all });
+      qc.invalidateQueries({ queryKey: ['initiatieven-for-eenheid', eenheidId] });
     },
   });
 }

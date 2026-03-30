@@ -1,9 +1,15 @@
 import { useState, useMemo } from 'react';
-import { ChevronRight, ChevronDown, Search, Blocks, Lightbulb } from 'lucide-react';
+import { ChevronRight, ChevronDown, Search, Blocks, Lightbulb, X } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { Badge } from '@/components/common/Badge';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
-import { useInitiatievenForEenheid } from '@/hooks/useInitiatieven';
+import {
+  useInitiatieven,
+  useInitiatievenForEenheid,
+  useAddInitiatiefEenheid,
+  useRemoveInitiatiefEenheid,
+  useUpdateInitiatiefEenheidRol,
+} from '@/hooks/useInitiatieven';
 import {
   useEenheidModules,
   useAvailableModules,
@@ -130,11 +136,39 @@ function EenheidRow({
 
 function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
   const { data: initiatieven, isLoading: initiativeLoading } = useInitiatievenForEenheid(eenheidId);
+  const { data: allInitiatieven } = useInitiatieven();
   const { data: moduleConfig, isLoading: modulesLoading } = useEenheidModules(eenheidId);
   const { data: moduleLabels } = useAvailableModules();
   const updateModuleMutation = useUpdateEenheidModule();
+  const addEenheidMutation = useAddInitiatiefEenheid();
+  const removeEenheidMutation = useRemoveInitiatiefEenheid();
+  const updateRolMutation = useUpdateInitiatiefEenheidRol();
 
-  const handleToggle = async (module: string, currentEnabled: boolean) => {
+  const [addValue, setAddValue] = useState('');
+
+  const availableInitiatieven = useMemo(() => {
+    if (!allInitiatieven || !initiatieven) return [];
+    const linkedIds = new Set(initiatieven.map((i) => i.initiatief_id));
+    return allInitiatieven
+      .filter((i) => !linkedIds.has(i.id))
+      .map((i) => ({ value: i.id, label: i.naam }));
+  }, [allInitiatieven, initiatieven]);
+
+  const handleAddInitiatief = async (initiatiefId: string) => {
+    if (!initiatiefId) return;
+    await addEenheidMutation.mutateAsync({ initiatiefId, eenheidId });
+    setAddValue('');
+  };
+
+  const handleRemoveInitiatief = async (initiatiefId: string) => {
+    await removeEenheidMutation.mutateAsync({ initiatiefId, eenheidId });
+  };
+
+  const handleRolChange = async (initiatiefId: string, rol: string) => {
+    await updateRolMutation.mutateAsync({ initiatiefId, eenheidId, rol });
+  };
+
+  const handleModuleToggle = async (module: string, currentEnabled: boolean) => {
     try {
       await updateModuleMutation.mutateAsync({
         eenheidId,
@@ -157,34 +191,52 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
 
         {initiativeLoading && <LoadingSpinner className="py-4" />}
 
-        {!initiativeLoading && initiatieven && initiatieven.length === 0 && (
-          <p className="text-sm text-text-secondary">Geen gekoppelde initiatieven.</p>
+        {!initiativeLoading && initiatieven && initiatieven.length > 0 && (
+          <ul className="divide-y divide-border rounded-lg border border-border bg-white mb-3">
+            {initiatieven.map((link) => (
+              <li key={link.initiatief_id} className="flex items-center justify-between px-3 py-2">
+                <span className="text-sm text-text truncate">{link.initiatief_naam}</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <select
+                    value={link.rol}
+                    onChange={(e) => handleRolChange(link.initiatief_id, e.target.value)}
+                    className="text-xs border border-border rounded px-1.5 py-0.5 bg-white"
+                  >
+                    {Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => handleRemoveInitiatief(link.initiatief_id)}
+                    className="p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 transition-colors"
+                    title="Ontkoppelen"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
 
-        {!initiativeLoading && initiatieven && initiatieven.length > 0 && (
-          <div className="rounded-lg border border-border bg-white overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs font-medium text-text-secondary uppercase tracking-wider bg-gray-50">
-                  <th className="px-3 py-2">Initiatief</th>
-                  <th className="px-3 py-2">Rol</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {initiatieven.map((link) => (
-                  <tr key={link.initiatief_id}>
-                    <td className="px-3 py-2 text-text">{link.initiatief_naam}</td>
-                    <td className="px-3 py-2">
-                      <Badge variant={link.rol === 'eigenaar' ? 'purple' : link.rol === 'contributor' ? 'blue' : 'gray'}>
-                        {INITIATIEF_ROL_LABELS[link.rol] ?? link.rol}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        {!initiativeLoading && initiatieven && initiatieven.length === 0 && (
+          <p className="text-sm text-text-secondary mb-3">Geen gekoppelde initiatieven.</p>
         )}
+
+        <div className="flex items-start gap-2">
+          <div className="flex-1 max-w-xs">
+            <CreatableSelect
+              value={addValue}
+              onChange={(val) => {
+                setAddValue(val);
+                if (val) handleAddInitiatief(val);
+              }}
+              options={availableInitiatieven}
+              placeholder="Initiatief toevoegen..."
+              emptyMessage="Geen initiatieven gevonden"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Modules */}
@@ -233,7 +285,7 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
                       role="switch"
                       aria-checked={mod.enabled}
                       disabled={isInherited || updateModuleMutation.isPending}
-                      onClick={() => handleToggle(mod.module, mod.enabled)}
+                      onClick={() => handleModuleToggle(mod.module, mod.enabled)}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:ring-offset-2 ${
                         mod.enabled ? 'bg-primary-600' : 'bg-gray-200'
                       } ${isInherited ? 'opacity-50 cursor-not-allowed' : ''}`}
