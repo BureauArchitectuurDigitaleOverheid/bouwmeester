@@ -100,11 +100,13 @@ async def get_pending_onboarding_features(
     db: AsyncSession,
     person_id: uuid.UUID,
     session_dismissed: set[str] | None = None,
+    *,
+    skip_enabled_check: bool = False,
 ) -> list[dict]:
     """Return the list of onboarding features that still need attention.
 
     Features are skipped when:
-    - not enabled (check_enabled returns False)
+    - not enabled (check_enabled returns False) -- unless skip_enabled_check
     - already completed (check_complete returns True)
     - dismissed in this session (session_dismissed)
     - permanently dismissed (onboarding_dismissal table)
@@ -122,8 +124,8 @@ async def get_pending_onboarding_features(
 
     pending: list[dict] = []
     for feature in sorted(ONBOARDING_FEATURES, key=lambda f: f.order):
-        # Skip disabled features.
-        if feature.check_enabled is not None:
+        # Skip disabled features (unless in dev mode).
+        if not skip_enabled_check and feature.check_enabled is not None:
             if not await feature.check_enabled(db, person_id):
                 continue
 

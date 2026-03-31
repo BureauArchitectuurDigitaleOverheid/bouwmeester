@@ -582,18 +582,24 @@ async def get_onboarding_features_for_person(
     request: Request,
     person_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> list[dict]:
     """Return pending onboarding features for a given person.
 
     In production this is handled via /auth/status (session-based).
     This endpoint exists so dev mode (no OIDC) can also query features.
+    When OIDC is not configured, enabled-checks are skipped so all
+    features can be tested locally.
     """
     person = await db.get(Person, person_id)
     if person is None:
         raise HTTPException(status_code=404, detail="Persoon niet gevonden")
 
+    dev_mode = not bool(settings.OIDC_ISSUER)
     session_dismissed = set(request.session.get("onboarding_dismissed", []))
-    return await get_pending_onboarding_features(db, person_id, session_dismissed)
+    return await get_pending_onboarding_features(
+        db, person_id, session_dismissed, skip_enabled_check=dev_mode
+    )
 
 
 # ---------------------------------------------------------------------------
