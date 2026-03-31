@@ -10,7 +10,7 @@ export function GlobalDropOverlay({ visible }: GlobalDropOverlayProps) {
 
   if (!visible) return null;
 
-  let message = 'Laat los om een bestand te verwerken';
+  let message = 'Laat los om een bestand of e-mail te verwerken';
   if (location.pathname.startsWith('/leads')) {
     message = 'Laat los om een nieuwe lead aan te maken';
   } else if (location.pathname.startsWith('/corpus')) {

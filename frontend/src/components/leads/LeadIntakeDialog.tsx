@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { Upload, X, FileText, Sparkles } from 'lucide-react';
+import { Upload, X, FileText, Sparkles, Mail } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -8,6 +8,8 @@ import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { useCreateLead, useParseLeadIntake, useCheckDuplicates } from '@/hooks/useLeads';
 import { addTagToLead as addTagToLeadApi, uploadLeadAttachment as uploadLeadAttachmentApi, addLeadContact as addLeadContactApi } from '@/api/leads';
 import { useTags } from '@/hooks/useTags';
+import { isEmailFile, parseEmailFile, emailToRawText } from '@/utils/emailParser';
+import type { ParsedEmail } from '@/utils/emailParser';
 import { usePeople } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { createPerson } from '@/api/people';
@@ -37,6 +39,8 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const [dragActive, setDragActive] = useState(false);
   const [initiatiefId, setInitiatiefId] = useState('');
   const [parseResult, setParseResult] = useState<LeadParseResult | null>(null);
+  const [parsedEmail, setParsedEmail] = useState<ParsedEmail | null>(null);
+  const [emailParsing, setEmailParsing] = useState(false);
 
   // Editable fields after parse
   const [title, setTitle] = useState('');
@@ -147,6 +151,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   }, [open, sharedParseResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill files from global drop (stay on input step so user can add text / click parse)
+  // For email files (.eml/.msg): parse client-side, pre-fill rawText + attachments
   const prevInitialFilesRef = useRef<File[] | undefined>(undefined);
   useEffect(() => {
     if (!open) {
@@ -155,7 +160,28 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     }
     if (initialFiles && initialFiles.length > 0 && initialFiles !== prevInitialFilesRef.current && !sharedParseResult && step === 'input') {
       prevInitialFilesRef.current = initialFiles;
-      setFiles(initialFiles);
+
+      const emailFile = initialFiles.find(isEmailFile);
+      if (emailFile) {
+        setEmailParsing(true);
+        parseEmailFile(emailFile)
+          .then((email) => {
+            setParsedEmail(email);
+            setRawText(emailToRawText(email));
+            // Use email attachments + any non-email files that were dropped alongside
+            const nonEmailFiles = initialFiles.filter(f => !isEmailFile(f));
+            setFiles([...email.attachments, ...nonEmailFiles]);
+            if (email.senderName) setContactName(email.senderName);
+            if (email.senderEmail) setContactEmail(email.senderEmail);
+          })
+          .catch(() => {
+            // Parsing failed - fall back to treating as regular file
+            setFiles(initialFiles);
+          })
+          .finally(() => setEmailParsing(false));
+      } else {
+        setFiles(initialFiles);
+      }
     }
   }, [open, initialFiles]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -198,6 +224,8 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     setRawText('');
     setFiles([]);
     setParseResult(null);
+    setParsedEmail(null);
+    setEmailParsing(false);
     setTitle('');
     setOrganization('');
     setDescription('');
@@ -221,6 +249,27 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   };
 
   const addFiles = useCallback((newFiles: File[]) => {
+    const emailFile = newFiles.find(isEmailFile);
+    if (emailFile) {
+      // Parse email client-side and pre-fill form
+      setEmailParsing(true);
+      parseEmailFile(emailFile)
+        .then((email) => {
+          setParsedEmail(email);
+          setRawText(emailToRawText(email));
+          const nonEmailFiles = newFiles.filter(f => !isEmailFile(f));
+          setFiles((prev) => [...prev, ...email.attachments, ...nonEmailFiles]);
+          if (email.senderName) setContactName(email.senderName);
+          if (email.senderEmail) setContactEmail(email.senderEmail);
+        })
+        .catch(() => {
+          // Parsing failed - treat as regular files
+          setFiles((prev) => [...prev, ...newFiles]);
+        })
+        .finally(() => setEmailParsing(false));
+      return;
+    }
+
     const valid: File[] = [];
     const rejected: string[] = [];
     for (const f of newFiles) {
@@ -401,6 +450,23 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
             </div>
           )}
 
+          {emailParsing && (
+            <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
+              <LoadingSpinner className="h-4 w-4" />
+              E-mail wordt gelezen...
+            </div>
+          )}
+
+          {parsedEmail && !emailParsing && (
+            <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">
+              <Mail className="h-4 w-4 shrink-0" />
+              <span className="truncate">
+                E-mail van {parsedEmail.senderName || parsedEmail.senderEmail}
+                {parsedEmail.subject ? `: ${parsedEmail.subject}` : ''}
+              </span>
+            </div>
+          )}
+
           <div
             onPaste={handlePaste}
             onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
@@ -415,7 +481,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
             <textarea
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
-              placeholder="Plak tekst, screenshot, of sleep een bestand hierheen..."
+              placeholder="Plak tekst, screenshot, of sleep een bestand of e-mail hierheen..."
               className="w-full rounded-xl px-4 py-3 text-sm min-h-[160px] resize-y focus:outline-none bg-transparent"
               rows={6}
               autoFocus
