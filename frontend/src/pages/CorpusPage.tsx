@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, LayoutGrid, GitFork, Grid3x3, Search } from 'lucide-react';
 import { Button } from '@/components/common/Button';
@@ -16,6 +16,7 @@ import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useGraphView } from '@/hooks/useGraph';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useGlobalFileDropContext } from '@/contexts/GlobalFileDropContext';
 
 type ViewMode = 'list' | 'graph' | 'matrix';
 
@@ -29,6 +30,17 @@ const ALL_NODE_TYPES = Object.values(NodeType);
 
 export function CorpusPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const { pendingFiles, clearPendingFiles } = useGlobalFileDropContext();
+  const createFileRef = useRef<File | undefined>(undefined);
+
+  // Open create form when files are dropped/pasted on this page
+  useEffect(() => {
+    if (pendingFiles.length > 0) {
+      createFileRef.current = pendingFiles[0];
+      clearPendingFiles();
+      setShowCreateForm(true);
+    }
+  }, [pendingFiles, clearPendingFiles]);
   const [searchParams, setSearchParams] = useSearchParams();
   const viewParam = searchParams.get('view');
   const viewMode: ViewMode = viewParam === 'graph' ? 'graph' : viewParam === 'matrix' ? 'matrix' : 'list';
@@ -247,7 +259,8 @@ export function CorpusPage() {
       {/* Create form modal */}
       <NodeCreateForm
         open={showCreateForm}
-        onClose={() => setShowCreateForm(false)}
+        onClose={() => { setShowCreateForm(false); createFileRef.current = undefined; }}
+        initialBijlageFile={createFileRef.current}
       />
     </div>
   );

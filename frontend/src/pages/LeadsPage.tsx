@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Columns3, LayoutGrid, GitFork, Clock, Search, X, Settings } from 'lucide-react';
 import { Button } from '@/components/common/Button';
@@ -23,6 +23,7 @@ import {
   INITIATIEF_COLORS,
 } from '@/types';
 import type { InitiatiefCreate } from '@/types';
+import { useGlobalFileDropContext } from '@/contexts/GlobalFileDropContext';
 
 type LeadViewMode = 'kanban' | 'list' | 'graph' | 'timeline';
 
@@ -61,6 +62,17 @@ export function LeadsPage() {
           : 'kanban';
 
   const [showIntake, setShowIntake] = useState(false);
+  const { pendingFiles, clearPendingFiles } = useGlobalFileDropContext();
+  const intakeFilesRef = useRef<File[]>([]);
+
+  // Open intake dialog when files are dropped/pasted on this page
+  useEffect(() => {
+    if (pendingFiles.length > 0) {
+      intakeFilesRef.current = pendingFiles;
+      clearPendingFiles();
+      setShowIntake(true);
+    }
+  }, [pendingFiles, clearPendingFiles]);
   const [showCreateInitiatief, setShowCreateInitiatief] = useState(false);
   const [editInitiatiefId, setEditInitiatiefId] = useState<string | null>(null);
 
@@ -321,7 +333,12 @@ export function LeadsPage() {
         />
       ) : null}
 
-      <LeadIntakeDialog open={showIntake} onClose={() => setShowIntake(false)} defaultInitiatiefId={selectedInitiatiefId} />
+      <LeadIntakeDialog
+        open={showIntake}
+        onClose={() => { setShowIntake(false); intakeFilesRef.current = []; }}
+        defaultInitiatiefId={selectedInitiatiefId}
+        initialFiles={intakeFilesRef.current.length > 0 ? intakeFilesRef.current : undefined}
+      />
 
       {/* Create initiatief modal */}
       {showCreateInitiatief && (
