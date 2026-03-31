@@ -510,7 +510,8 @@ async def complete_onboarding(
     an org placement directly, a placement *request* is created which must
     be approved by the team manager or an admin.
     """
-    # Resolve person: from auth (production) or body.person_id (dev mode).
+    # Resolve person: from auth session (production) or body (dev mode).
+    # In production, body.person_id is ignored — only the session is trusted.
     dev_mode = not bool(settings.OIDC_ISSUER)
     person_db_id = request.session.get("person_db_id")
     if person_db_id:
