@@ -8,12 +8,19 @@ interface OrgEenheid {
   type: string | null;
 }
 
+export interface OnboardingFeature {
+  key: string;
+  label: string;
+  dismissible: boolean;
+}
+
 interface AuthPerson {
   sub: string;
   email: string;
   name: string;
   id: string | null;
   needs_onboarding: boolean;
+  onboarding_features: OnboardingFeature[];
   is_admin: boolean;
   organisatie_eenheden: OrgEenheid[];
   managed_eenheden: OrgEenheid[];
@@ -67,6 +74,7 @@ async function fetchAuthStatus(): Promise<AuthState> {
           name: data.person.name ?? '',
           id: data.person.id ?? null,
           needs_onboarding: data.person.needs_onboarding ?? false,
+          onboarding_features: data.person.onboarding_features ?? [],
           is_admin: data.person.is_admin ?? false,
           organisatie_eenheden: data.person.organisatie_eenheden ?? [],
           managed_eenheden: data.person.managed_eenheden ?? [],

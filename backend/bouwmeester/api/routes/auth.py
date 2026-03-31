@@ -24,11 +24,13 @@ from bouwmeester.core.auth import (
 )
 from bouwmeester.core.config import Settings, get_settings
 from bouwmeester.core.database import get_db
+from bouwmeester.core.onboarding import get_feature, get_pending_onboarding_features
 from bouwmeester.core.org_context import build_org_context
 from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.core.whitelist import is_email_allowed
 from bouwmeester.models.access_request import AccessRequest
+from bouwmeester.models.onboarding_dismissal import OnboardingDismissal
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
@@ -39,6 +41,7 @@ from bouwmeester.schema.access_request import (
     AccessRequestStatusResponse,
 )
 from bouwmeester.schema.person import (
+    OnboardingDismissRequest,
     OnboardingRequest,
     PersonDetailResponse,
 )
@@ -179,16 +182,6 @@ async def logout(
 # ---------------------------------------------------------------------------
 
 
-def _check_needs_onboarding(person: Person) -> bool:
-    """Return True if the person has not yet completed the onboarding form.
-
-    Onboarding is considered complete once the person has a functie set.
-    Whether they have an active org placement is tracked separately via
-    ``needs_placement`` / ``has_pending_placement``.
-    """
-    return not person.functie
-
-
 # ---------------------------------------------------------------------------
 # GET /status -- check auth status (used by frontend on load)
 # ---------------------------------------------------------------------------
@@ -265,7 +258,7 @@ async def auth_status(
             # Use cached values from session to avoid DB queries on every
             # page load.
             person_id = request.session.get("person_db_id")
-            needs_onboarding = request.session.get("needs_onboarding")
+            onboarding_features = request.session.get("onboarding_features")
 
             is_admin = request.session.get("is_admin")
             perm_ctx = None  # reused below for roles/permissions
@@ -274,14 +267,18 @@ async def auth_status(
             if person_id is None and sub and email:
                 person = await get_or_create_person(db, sub=sub, email=email, name=name)
                 person_id = str(person.id)
-                needs_onboarding = _check_needs_onboarding(person)
+
+                session_dismissed = set(request.session.get("onboarding_dismissed", []))
+                onboarding_features = await get_pending_onboarding_features(
+                    db, person.id, session_dismissed
+                )
 
                 perm_ctx = await build_permission_context(db, person)
                 is_admin = perm_ctx.is_super_admin
 
                 # Cache in session.
                 request.session["person_db_id"] = person_id
-                request.session["needs_onboarding"] = needs_onboarding
+                request.session["onboarding_features"] = onboarding_features
                 request.session["is_admin"] = is_admin
             elif person_id is not None:
                 # Re-fetch is_admin from RBAC periodically so admin-role
@@ -427,12 +424,18 @@ async def auth_status(
                         for a in assignments
                     ]
 
+            # Derive needs_onboarding for backward compat: True when profile
+            # step is still pending (first feature in the list).
+            features = onboarding_features or []
+            needs_onboarding = bool(features and features[0].get("key") == "profile")
+
             result["person"] = {
                 "sub": sub,
                 "email": email,
                 "name": name,
                 "id": person_id,
-                "needs_onboarding": bool(needs_onboarding),
+                "needs_onboarding": needs_onboarding,
+                "onboarding_features": features,
                 "is_admin": bool(is_admin),
                 "organisatie_eenheden": org_eenheden,
                 "managed_eenheden": managed_eenheden_list,
@@ -453,7 +456,7 @@ async def auth_status(
             )
             # Clear stale session cache so next request retries cleanly.
             request.session.pop("person_db_id", None)
-            request.session.pop("needs_onboarding", None)
+            request.session.pop("onboarding_features", None)
             request.session.pop("is_admin", None)
             # Degrade gracefully instead of returning 500 — the frontend
             # will see authenticated=False and redirect to login.
@@ -549,13 +552,56 @@ async def complete_onboarding(
     await db.flush()
 
     # Invalidate the session cache so /status re-checks from DB.
-    request.session.pop("needs_onboarding", None)
+    request.session.pop("onboarding_features", None)
     request.session.pop("person_db_id", None)
 
     # Re-fetch with eager loading so emails/phones are included in response
     repo = PersonRepository(db)
     person = await repo.get(current_user.id)
     return PersonDetailResponse.model_validate(person)
+
+
+# ---------------------------------------------------------------------------
+# POST /onboarding/dismiss -- dismiss an onboarding feature step
+# ---------------------------------------------------------------------------
+
+
+@router.post("/onboarding/dismiss")
+async def dismiss_onboarding_feature(
+    request: Request,
+    body: OnboardingDismissRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Dismiss an onboarding feature step (temporarily or permanently)."""
+    feature = get_feature(body.feature_key)
+    if feature is None or not feature.dismissible:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Ongeldige of niet-overslaan-bare onboarding stap",
+        )
+
+    if body.permanent:
+        # Persist in database -- idempotent via ON CONFLICT DO NOTHING.
+        dismissal = OnboardingDismissal(
+            person_id=current_user.id,
+            feature_key=body.feature_key,
+        )
+        db.add(dismissal)
+        try:
+            await db.flush()
+        except IntegrityError:
+            await db.rollback()
+    else:
+        # Session-only dismiss -- disappears on next login.
+        dismissed = set(request.session.get("onboarding_dismissed", []))
+        dismissed.add(body.feature_key)
+        request.session["onboarding_dismissed"] = list(dismissed)
+
+    # Invalidate cached features so /status recomputes.
+    request.session.pop("onboarding_features", None)
+
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

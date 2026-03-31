@@ -30,7 +30,7 @@ import { DocsPage } from '@/pages/DocsPage';
 import { InstellingenPage } from '@/pages/InstellingenPage';
 import { LeadsPage } from '@/pages/LeadsPage';
 import { ShareTargetPage } from '@/pages/ShareTargetPage';
-import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
+import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
 import { ReloadPrompt } from '@/components/common/ReloadPrompt';
@@ -91,11 +91,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { oidcConfigured, authenticated, person } = useAuth();
 
-  if (oidcConfigured && authenticated && person?.needs_onboarding) {
-    return <OnboardingModal />;
-  }
+  if (!oidcConfigured || !authenticated || !person) return <>{children}</>;
 
-  return <>{children}</>;
+  const features = person.onboarding_features ?? [];
+  if (features.length === 0) return <>{children}</>;
+
+  return <OnboardingWizard features={features} />;
 }
 
 export default function App() {
