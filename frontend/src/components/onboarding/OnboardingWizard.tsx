@@ -96,7 +96,9 @@ export function OnboardingWizard({
       closeable={false}
       footer={footer}
     >
-      <StepComponent onComplete={handleComplete} />
+      <div className="min-h-[350px]">
+        <StepComponent onComplete={handleComplete} />
+      </div>
     </Modal>
   );
 }
