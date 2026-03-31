@@ -215,6 +215,7 @@ class OnboardingRequest(BaseModel):
 class OnboardingDismissRequest(BaseModel):
     feature_key: str = Field(min_length=1, max_length=50)
     permanent: bool = False
+    person_id: UUID | None = None  # used in dev mode (no OIDC)
 
 
 class PersonOrganisatieCreate(BaseModel):

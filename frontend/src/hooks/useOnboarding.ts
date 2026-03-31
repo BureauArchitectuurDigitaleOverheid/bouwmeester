@@ -5,14 +5,16 @@ import type { OnboardingFeature } from '@/contexts/AuthContext';
 interface DismissParams {
   featureKey: string;
   permanent: boolean;
+  personId?: string;
 }
 
 export function useDismissOnboardingFeature() {
   return useMutation({
-    mutationFn: ({ featureKey, permanent }: DismissParams) =>
+    mutationFn: ({ featureKey, permanent, personId }: DismissParams) =>
       apiPost<{ ok: boolean }>('/api/auth/onboarding/dismiss', {
         feature_key: featureKey,
         permanent,
+        person_id: personId ?? null,
       }),
   });
 }

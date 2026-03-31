@@ -1,8 +1,10 @@
 import { Modal } from '@/components/common/Modal';
 import { useAuth, type OnboardingFeature } from '@/contexts/AuthContext';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useDismissOnboardingFeature } from '@/hooks/useOnboarding';
 import { ProfileStep } from '@/components/onboarding/ProfileStep';
 import { MattermostStep } from '@/components/onboarding/MattermostStep';
+import { useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -13,12 +15,6 @@ interface StepComponentProps {
 const STEP_COMPONENTS: Record<string, React.ComponentType<StepComponentProps>> = {
   profile: ProfileStep,
   mattermost: MattermostStep,
-};
-
-/** Label map for the stepper (fallback to feature.label from backend). */
-const STEP_LABELS: Record<string, string> = {
-  profile: 'Profiel',
-  mattermost: 'Mattermost',
 };
 
 function StepIndicator({
@@ -35,17 +31,14 @@ function StepIndicator({
       {features.map((f, i) => {
         const isDone = i < currentIndex;
         const isCurrent = i === currentIndex;
-        const label = STEP_LABELS[f.key] ?? f.label ?? f.key;
 
         return (
           <div key={f.key} className="flex items-center">
-            {/* Connector line (not before first item) */}
             {i > 0 && (
               <div
                 className={`w-8 h-0.5 ${isDone ? 'bg-primary-500' : 'bg-border'}`}
               />
             )}
-            {/* Circle + label */}
             <div className="flex flex-col items-center">
               <div
                 className={`flex items-center justify-center h-7 w-7 rounded-full text-xs font-semibold transition-colors ${
@@ -63,7 +56,7 @@ function StepIndicator({
                   isCurrent ? 'text-primary-700 font-medium' : 'text-text-secondary'
                 }`}
               >
-                {label}
+                {f.label}
               </span>
             </div>
           </div>
@@ -74,28 +67,38 @@ function StepIndicator({
 }
 
 export function OnboardingWizard({ features }: { features: OnboardingFeature[] }) {
-  const { refreshAuthStatus } = useAuth();
+  const { oidcConfigured, refreshAuthStatus } = useAuth();
+  const { currentPerson } = useCurrentPerson();
+  const queryClient = useQueryClient();
   const dismissMutation = useDismissOnboardingFeature();
 
-  // Always show the first pending feature.
+  const personId = currentPerson?.id ?? undefined;
+
+  const refreshFeatures = async () => {
+    if (oidcConfigured) {
+      await refreshAuthStatus();
+    } else {
+      // Dev mode: invalidate the features query so OnboardingGate re-evaluates.
+      await queryClient.invalidateQueries({ queryKey: ['onboarding-features'] });
+    }
+  };
+
   const current = features[0];
   const StepComponent = STEP_COMPONENTS[current.key];
 
   const handleComplete = async () => {
-    await refreshAuthStatus();
-    // After refresh, if more features remain, OnboardingGate re-renders
-    // the wizard with the updated list. If none remain, the app renders.
+    await refreshFeatures();
   };
 
   const handleDismiss = async (permanent: boolean) => {
     await dismissMutation.mutateAsync({
       featureKey: current.key,
       permanent,
+      personId,
     });
-    await refreshAuthStatus();
+    await refreshFeatures();
   };
 
-  // Build footer for dismissible steps.
   let footer: ReactNode = null;
   if (current.dismissible) {
     footer = (
@@ -119,7 +122,6 @@ export function OnboardingWizard({ features }: { features: OnboardingFeature[] }
   }
 
   if (!StepComponent) {
-    // Unknown feature key -- auto-dismiss to avoid blocking the user.
     handleDismiss(false);
     return null;
   }
@@ -130,7 +132,6 @@ export function OnboardingWizard({ features }: { features: OnboardingFeature[] }
       onClose={() => {}}
       title="Welkom bij Bouwmeester"
       closeable={false}
-      size="lg"
       footer={footer}
     >
       <StepIndicator features={features} currentIndex={0} />

@@ -611,8 +611,8 @@ async def get_onboarding_features_for_person(
 async def dismiss_onboarding_feature(
     request: Request,
     body: OnboardingDismissRequest,
-    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
     """Dismiss an onboarding feature step (temporarily or permanently)."""
     feature = get_feature(body.feature_key)
@@ -622,10 +622,23 @@ async def dismiss_onboarding_feature(
             detail="Ongeldige of niet-overslaan-bare onboarding stap",
         )
 
+    # Resolve person_id: from auth session (production) or body (dev mode).
+    person_id: UUID | None = None
+    person_db_id = request.session.get("person_db_id")
+    if person_db_id:
+        person_id = UUID(person_db_id)
+    elif body.person_id and not bool(settings.OIDC_ISSUER):
+        person_id = body.person_id
+
     if body.permanent:
+        if person_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Kan persoon niet bepalen voor permanente dismiss",
+            )
         # Persist in database -- idempotent via ON CONFLICT DO NOTHING.
         dismissal = OnboardingDismissal(
-            person_id=current_user.id,
+            person_id=person_id,
             feature_key=body.feature_key,
         )
         db.add(dismissal)
@@ -633,11 +646,11 @@ async def dismiss_onboarding_feature(
             await db.flush()
         except IntegrityError:
             await db.rollback()
-    else:
-        # Session-only dismiss -- disappears on next login.
-        dismissed = set(request.session.get("onboarding_dismissed", []))
-        dismissed.add(body.feature_key)
-        request.session["onboarding_dismissed"] = list(dismissed)
+
+    # Always store in session too (for immediate effect).
+    dismissed = set(request.session.get("onboarding_dismissed", []))
+    dismissed.add(body.feature_key)
+    request.session["onboarding_dismissed"] = list(dismissed)
 
     # Invalidate cached features so /status recomputes.
     request.session.pop("onboarding_features", None)
