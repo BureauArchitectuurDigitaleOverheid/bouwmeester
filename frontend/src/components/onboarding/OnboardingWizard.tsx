@@ -28,8 +28,8 @@ export function OnboardingWizard({ features }: { features: OnboardingFeature[] }
     if (oidcConfigured) {
       await refreshAuthStatus();
     } else {
-      // Dev mode: invalidate the features query so OnboardingGate re-evaluates.
-      await queryClient.invalidateQueries({ queryKey: ['onboarding-features'] });
+      // Dev mode: force refetch the features query so OnboardingGate re-evaluates.
+      await queryClient.refetchQueries({ queryKey: ['onboarding-features'] });
     }
   };
 
