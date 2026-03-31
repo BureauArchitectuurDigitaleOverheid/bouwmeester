@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createContext, useState, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGlobalFileDrop } from '@/hooks/useGlobalFileDrop';
 
@@ -86,8 +86,4 @@ export function GlobalFileDropProvider({ children }: { children: React.ReactNode
   );
 }
 
-export function useGlobalFileDropContext() {
-  const ctx = useContext(GlobalFileDropContext);
-  if (!ctx) throw new Error('useGlobalFileDropContext must be used within GlobalFileDropProvider');
-  return ctx;
-}
+export { GlobalFileDropContext };

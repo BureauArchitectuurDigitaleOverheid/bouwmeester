@@ -16,7 +16,7 @@ import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useGraphView } from '@/hooks/useGraph';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useGlobalFileDropContext } from '@/contexts/GlobalFileDropContext';
+import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 
 type ViewMode = 'list' | 'graph' | 'matrix';
 

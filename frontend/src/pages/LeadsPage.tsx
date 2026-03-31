@@ -23,7 +23,7 @@ import {
   INITIATIEF_COLORS,
 } from '@/types';
 import type { InitiatiefCreate } from '@/types';
-import { useGlobalFileDropContext } from '@/contexts/GlobalFileDropContext';
+import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 
 type LeadViewMode = 'kanban' | 'list' | 'graph' | 'timeline';
 

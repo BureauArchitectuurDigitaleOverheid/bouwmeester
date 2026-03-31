@@ -28,6 +28,8 @@ interface LeadIntakeDialogProps {
 
 type Step = 'input' | 'parsing' | 'confirm';
 
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB, matches backend limit
+
 export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedParseResult, sharedFiles, initialFiles }: LeadIntakeDialogProps) {
   const [step, setStep] = useState<Step>('input');
   const [rawText, setRawText] = useState('');
@@ -217,8 +219,6 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     reset();
     onClose();
   };
-
-  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB, matches backend limit
 
   const addFiles = useCallback((newFiles: File[]) => {
     const valid: File[] = [];

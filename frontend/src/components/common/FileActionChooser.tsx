@@ -1,7 +1,7 @@
 import { FileText, Users, BookOpen } from 'lucide-react';
 import { Modal } from './Modal';
 import { Button } from './Button';
-import { useGlobalFileDropContext } from '@/contexts/GlobalFileDropContext';
+import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 
 export function FileActionChooser() {
   const { chooserFiles, showChooser, setShowChooser, chooseAction, discardChooserFiles } =

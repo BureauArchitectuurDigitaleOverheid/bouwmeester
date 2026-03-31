@@ -12,7 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { GlobalDropOverlay } from '@/components/common/GlobalDropOverlay';
 import { FileActionChooser } from '@/components/common/FileActionChooser';
-import { useGlobalFileDropContext } from '@/contexts/GlobalFileDropContext';
+import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 
 function PlacementBanner() {
   const { person } = useAuth();
