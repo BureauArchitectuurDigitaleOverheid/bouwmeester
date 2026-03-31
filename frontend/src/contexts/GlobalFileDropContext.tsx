@@ -1,6 +1,7 @@
 import { createContext, useState, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGlobalFileDrop } from '@/hooks/useGlobalFileDrop';
+import { isEmailFile } from '@/utils/emailParser';
 
 type FileSubscriber = (files: File[]) => void;
 
@@ -46,13 +47,21 @@ export function GlobalFileDropProvider({ children }: { children: React.ReactNode
     const pathname = locationRef.current.pathname;
     const isContextPage = pathname.startsWith('/leads') || pathname.startsWith('/corpus') || pathname.startsWith('/nodes/');
 
+    // Email files (.eml/.msg) always route to leads, regardless of current page
+    const hasEmail = files.some(isEmailFile);
+    if (hasEmail && !pathname.startsWith('/leads')) {
+      deferredFilesRef.current = files;
+      navigate('/leads');
+      return;
+    }
+
     if (isContextPage && subscribersRef.current.size > 0) {
       subscribersRef.current.forEach(cb => cb(files));
     } else if (!isContextPage) {
       setChooserFiles(files);
       setShowChooser(true);
     }
-  }, []);
+  }, [navigate]);
 
   const discardChooserFiles = useCallback(() => {
     setChooserFiles([]);
