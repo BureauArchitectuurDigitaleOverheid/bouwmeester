@@ -4,14 +4,14 @@ import { Button } from './Button';
 import { useGlobalFileDropContext } from '@/contexts/GlobalFileDropContext';
 
 export function FileActionChooser() {
-  const { pendingFiles, showChooser, setShowChooser, chooseAction, clearPendingFiles } =
+  const { pendingFiles, showChooser, setShowChooser, chooseAction, claimPendingFiles } =
     useGlobalFileDropContext();
 
   if (!showChooser || pendingFiles.length === 0) return null;
 
   const handleClose = () => {
     setShowChooser(false);
-    clearPendingFiles();
+    claimPendingFiles(); // discard files
   };
 
   return (

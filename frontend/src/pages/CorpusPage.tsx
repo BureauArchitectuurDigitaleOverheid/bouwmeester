@@ -30,17 +30,17 @@ const ALL_NODE_TYPES = Object.values(NodeType);
 
 export function CorpusPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const { pendingFiles, clearPendingFiles } = useGlobalFileDropContext();
+  const { pendingFiles, claimPendingFiles } = useGlobalFileDropContext();
   const createFileRef = useRef<File | undefined>(undefined);
 
   // Open create form when files are dropped/pasted on this page
   useEffect(() => {
     if (pendingFiles.length > 0) {
-      createFileRef.current = pendingFiles[0];
-      clearPendingFiles();
+      const claimed = claimPendingFiles();
+      createFileRef.current = claimed[0];
       setShowCreateForm(true);
     }
-  }, [pendingFiles, clearPendingFiles]);
+  }, [pendingFiles, claimPendingFiles]);
   const [searchParams, setSearchParams] = useSearchParams();
   const viewParam = searchParams.get('view');
   const viewMode: ViewMode = viewParam === 'graph' ? 'graph' : viewParam === 'matrix' ? 'matrix' : 'list';

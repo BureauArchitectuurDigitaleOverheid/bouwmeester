@@ -25,7 +25,7 @@ export function useGlobalFileDrop({ onFiles, enabled = true }: UseGlobalFileDrop
 
   const handleDragLeave = useCallback((e: DragEvent) => {
     e.preventDefault();
-    dragCounter.current--;
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
     if (dragCounter.current === 0) {
       setIsDragging(false);
     }

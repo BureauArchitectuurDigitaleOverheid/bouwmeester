@@ -62,17 +62,16 @@ export function LeadsPage() {
           : 'kanban';
 
   const [showIntake, setShowIntake] = useState(false);
-  const { pendingFiles, clearPendingFiles } = useGlobalFileDropContext();
+  const { pendingFiles, claimPendingFiles } = useGlobalFileDropContext();
   const intakeFilesRef = useRef<File[]>([]);
 
   // Open intake dialog when files are dropped/pasted on this page
   useEffect(() => {
     if (pendingFiles.length > 0) {
-      intakeFilesRef.current = pendingFiles;
-      clearPendingFiles();
+      intakeFilesRef.current = claimPendingFiles();
       setShowIntake(true);
     }
-  }, [pendingFiles, clearPendingFiles]);
+  }, [pendingFiles, claimPendingFiles]);
   const [showCreateInitiatief, setShowCreateInitiatief] = useState(false);
   const [editInitiatiefId, setEditInitiatiefId] = useState<string | null>(null);
 

@@ -125,7 +125,7 @@ export default function App() {
             <OrgContextProvider>
             <VocabularyProvider>
             <BrowserRouter>
-              <GlobalFileDropProvider>
+            <GlobalFileDropProvider>
               <ChatProvider>
               <TaskDetailProvider>
               <NodeDetailProvider>
@@ -161,7 +161,7 @@ export default function App() {
               </NodeDetailProvider>
               </TaskDetailProvider>
             </ChatProvider>
-              </GlobalFileDropProvider>
+            </GlobalFileDropProvider>
             </BrowserRouter>
             </VocabularyProvider>
             </OrgContextProvider>

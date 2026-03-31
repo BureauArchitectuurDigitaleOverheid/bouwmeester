@@ -145,11 +145,16 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   }, [open, sharedParseResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill files from global drop (stay on input step so user can add text / click parse)
+  const appliedInitialFilesRef = useRef<File[] | undefined>(undefined);
   useEffect(() => {
-    if (open && initialFiles && initialFiles.length > 0 && !sharedParseResult && step === 'input') {
+    if (open && initialFiles && initialFiles.length > 0 && initialFiles !== appliedInitialFilesRef.current && !sharedParseResult && step === 'input') {
+      appliedInitialFilesRef.current = initialFiles;
       setFiles(initialFiles);
     }
-  }, [open, initialFiles]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!open) {
+      appliedInitialFilesRef.current = undefined;
+    }
+  }, [open, initialFiles, sharedParseResult, step]);
 
   // Try to match VLAM's contact_name against existing people
   useEffect(() => {

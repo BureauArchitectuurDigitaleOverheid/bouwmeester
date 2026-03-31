@@ -5,7 +5,7 @@ import { useGlobalFileDrop } from '@/hooks/useGlobalFileDrop';
 interface GlobalFileDropContextType {
   isDragging: boolean;
   pendingFiles: File[];
-  clearPendingFiles: () => void;
+  claimPendingFiles: () => File[];
   showChooser: boolean;
   setShowChooser: (show: boolean) => void;
   chooseAction: (action: 'lead' | 'bron') => void;
@@ -20,10 +20,13 @@ export function GlobalFileDropProvider({ children }: { children: React.ReactNode
   const [showChooser, setShowChooser] = useState(false);
   const locationRef = useRef(location);
   locationRef.current = location;
+  // Ref mirrors state so claimPendingFiles can read + clear atomically
+  const pendingFilesRef = useRef<File[]>([]);
 
   const handleFiles = useCallback((files: File[]) => {
     const pathname = locationRef.current.pathname;
 
+    pendingFilesRef.current = files;
     setPendingFiles(files);
 
     if (pathname.startsWith('/leads')) {
@@ -35,8 +38,12 @@ export function GlobalFileDropProvider({ children }: { children: React.ReactNode
     }
   }, []);
 
-  const clearPendingFiles = useCallback(() => {
+  // Atomic claim: returns files and clears in one call to avoid race conditions
+  const claimPendingFiles = useCallback(() => {
+    const files = pendingFilesRef.current;
+    pendingFilesRef.current = [];
     setPendingFiles([]);
+    return files;
   }, []);
 
   const chooseAction = useCallback((action: 'lead' | 'bron') => {
@@ -57,7 +64,7 @@ export function GlobalFileDropProvider({ children }: { children: React.ReactNode
       value={{
         isDragging,
         pendingFiles,
-        clearPendingFiles,
+        claimPendingFiles,
         showChooser,
         setShowChooser,
         chooseAction,
