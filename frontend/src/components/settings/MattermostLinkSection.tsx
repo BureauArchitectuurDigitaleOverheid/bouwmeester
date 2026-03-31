@@ -12,7 +12,7 @@ import { queryKeys } from '@/hooks/queryKeys';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 
-export function MattermostLinkSection() {
+export function MattermostLinkSection({ compact = false }: { compact?: boolean }) {
   const { person: authPerson } = useAuth();
   const { currentPerson } = useCurrentPerson();
   const queryClient = useQueryClient();
@@ -55,18 +55,20 @@ export function MattermostLinkSection() {
   };
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-6">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-blue-100">
-          <MessageSquare className="h-5 w-5 text-blue-700" />
+    <div className={compact ? '' : 'rounded-xl border border-border bg-surface p-6'}>
+      {!compact && (
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-blue-100">
+            <MessageSquare className="h-5 w-5 text-blue-700" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-text">Mattermost koppeling</h2>
+            <p className="text-sm text-text-secondary">
+              Koppel je account om Bouwmeester-notificaties in Mattermost te ontvangen.
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-base font-semibold text-text">Mattermost koppeling</h2>
-          <p className="text-sm text-text-secondary">
-            Koppel je account om Bouwmeester-notificaties in Mattermost te ontvangen.
-          </p>
-        </div>
-      </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center gap-2 text-sm text-text-secondary py-4">

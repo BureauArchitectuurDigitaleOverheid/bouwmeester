@@ -212,6 +212,11 @@ class OnboardingRequest(BaseModel):
     dienstverband: Dienstverband = "in_dienst"
 
 
+class OnboardingDismissRequest(BaseModel):
+    feature_key: str = Field(min_length=1, max_length=50)
+    permanent: bool = False
+
+
 class PersonOrganisatieCreate(BaseModel):
     organisatie_eenheid_id: UUID
     dienstverband: Dienstverband = "in_dienst"

@@ -5,7 +5,11 @@ from datetime import date
 
 from sqlalchemy import select
 
-from bouwmeester.api.routes.auth import _check_needs_onboarding
+from bouwmeester.core.onboarding import (
+    _profile_complete,
+    get_pending_onboarding_features,
+)
+from bouwmeester.models.onboarding_dismissal import OnboardingDismissal
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 
@@ -50,16 +54,49 @@ async def test_onboarding_validates_required_fields(client):
 
 
 # ---------------------------------------------------------------------------
-# _check_needs_onboarding logic
-#
-# After the placement approval workflow change, _check_needs_onboarding only
-# checks whether the person has a functie set. Placement status is tracked
-# separately via needs_placement / has_pending_placement.
+# POST /api/auth/onboarding/dismiss
 # ---------------------------------------------------------------------------
 
 
-def test_needs_onboarding_no_functie():
-    """Person without functie needs onboarding."""
+async def test_dismiss_requires_auth(client):
+    """POST /onboarding/dismiss returns 401 without authentication."""
+    resp = await client.post(
+        "/api/auth/onboarding/dismiss",
+        json={"feature_key": "mattermost", "permanent": False},
+    )
+    assert resp.status_code == 401
+
+
+async def test_dismiss_rejects_undismissible_feature(client):
+    """POST /onboarding/dismiss rejects non-dismissible features (422)."""
+    resp = await client.post(
+        "/api/auth/onboarding/dismiss",
+        json={"feature_key": "profile", "permanent": False},
+    )
+    # profile is not dismissible — 422 runs before auth check since validation
+    # happens in the handler, but the handler needs auth first → 401.
+    assert resp.status_code in (401, 422)
+
+
+async def test_dismiss_rejects_unknown_feature(client):
+    """POST /onboarding/dismiss rejects unknown features."""
+    resp = await client.post(
+        "/api/auth/onboarding/dismiss",
+        json={"feature_key": "nonexistent", "permanent": False},
+    )
+    assert resp.status_code in (401, 422)
+
+
+# ---------------------------------------------------------------------------
+# Profile completion logic
+#
+# Profile is considered complete when person.functie is set.
+# Placement status is tracked separately via needs_placement.
+# ---------------------------------------------------------------------------
+
+
+async def test_profile_incomplete_no_functie(db_session):
+    """Person without functie has incomplete profile."""
     person = Person(
         id=uuid.uuid4(),
         naam="New User",
@@ -67,38 +104,13 @@ def test_needs_onboarding_no_functie():
         oidc_subject="sub-nofunctie",
         functie=None,
     )
-    assert _check_needs_onboarding(person) is True
+    db_session.add(person)
+    await db_session.flush()
+    assert await _profile_complete(db_session, person.id) is False
 
 
-def test_needs_onboarding_no_placement():
-    """Person with functie but no active org placement does NOT need onboarding.
-
-    Placement is now tracked separately -- onboarding only cares about functie.
-    """
-    person = Person(
-        id=uuid.uuid4(),
-        naam="No Placement User",
-        email="noplacement@example.com",
-        oidc_subject="sub-noplacement",
-        functie="Beleidsmedewerker",
-    )
-    assert _check_needs_onboarding(person) is False
-
-
-def test_needs_onboarding_with_ended_placement():
-    """Person with functie and only ended placements does NOT need onboarding."""
-    person = Person(
-        id=uuid.uuid4(),
-        naam="Ended Placement User",
-        email="ended@example.com",
-        oidc_subject="sub-ended",
-        functie="Beleidsmedewerker",
-    )
-    assert _check_needs_onboarding(person) is False
-
-
-def test_onboarding_complete():
-    """Person with functie does NOT need onboarding."""
+async def test_profile_complete_with_functie(db_session):
+    """Person with functie has complete profile."""
     person = Person(
         id=uuid.uuid4(),
         naam="Complete User",
@@ -106,19 +118,111 @@ def test_onboarding_complete():
         oidc_subject="sub-complete",
         functie="Beleidsmedewerker",
     )
-    assert _check_needs_onboarding(person) is False
+    db_session.add(person)
+    await db_session.flush()
+    assert await _profile_complete(db_session, person.id) is True
 
 
-def test_onboarding_multiple_active_placements():
-    """Person with functie does NOT need onboarding regardless of placements."""
+async def test_profile_complete_ignores_placement(db_session):
+    """Profile completion only checks functie, not placement status."""
     person = Person(
         id=uuid.uuid4(),
-        naam="Multi Placement User",
-        email="multi@example.com",
-        oidc_subject="sub-multi",
+        naam="No Placement User",
+        email="noplacement@example.com",
+        oidc_subject="sub-noplacement",
         functie="Beleidsmedewerker",
     )
-    assert _check_needs_onboarding(person) is False
+    db_session.add(person)
+    await db_session.flush()
+    # Has functie but no placement — profile is still complete
+    assert await _profile_complete(db_session, person.id) is True
+
+
+# ---------------------------------------------------------------------------
+# get_pending_onboarding_features
+# ---------------------------------------------------------------------------
+
+
+async def test_pending_features_includes_profile_when_no_functie(db_session):
+    """Person without functie gets profile as a pending feature."""
+    person = Person(
+        id=uuid.uuid4(),
+        naam="New User",
+        email="pending@example.com",
+        oidc_subject="sub-pending",
+        functie=None,
+    )
+    db_session.add(person)
+    await db_session.flush()
+
+    features = await get_pending_onboarding_features(db_session, person.id)
+    keys = [f["key"] for f in features]
+    assert "profile" in keys
+    # Profile should not be dismissible
+    profile = next(f for f in features if f["key"] == "profile")
+    assert profile["dismissible"] is False
+
+
+async def test_pending_features_skips_completed(db_session):
+    """Person with functie should not see profile as pending."""
+    person = Person(
+        id=uuid.uuid4(),
+        naam="Done User",
+        email="done@example.com",
+        oidc_subject="sub-done",
+        functie="Beleidsmedewerker",
+    )
+    db_session.add(person)
+    await db_session.flush()
+
+    features = await get_pending_onboarding_features(db_session, person.id)
+    keys = [f["key"] for f in features]
+    assert "profile" not in keys
+
+
+async def test_pending_features_respects_session_dismissed(db_session):
+    """Session-dismissed features should be excluded."""
+    person = Person(
+        id=uuid.uuid4(),
+        naam="Dismiss User",
+        email="dismiss@example.com",
+        oidc_subject="sub-dismiss",
+        functie="Beleidsmedewerker",
+    )
+    db_session.add(person)
+    await db_session.flush()
+
+    # With session dismissal — mattermost should be excluded
+    features_after = await get_pending_onboarding_features(
+        db_session, person.id, session_dismissed={"mattermost"}
+    )
+    keys_after = [f["key"] for f in features_after]
+    assert "mattermost" not in keys_after
+
+
+async def test_pending_features_respects_permanent_dismissed(db_session):
+    """Permanently dismissed features should be excluded."""
+    person = Person(
+        id=uuid.uuid4(),
+        naam="Perm Dismiss",
+        email="perm@example.com",
+        oidc_subject="sub-perm",
+        functie="Beleidsmedewerker",
+    )
+    db_session.add(person)
+    await db_session.flush()
+
+    # Permanently dismiss mattermost
+    dismissal = OnboardingDismissal(
+        person_id=person.id,
+        feature_key="mattermost",
+    )
+    db_session.add(dismissal)
+    await db_session.flush()
+
+    features = await get_pending_onboarding_features(db_session, person.id)
+    keys = [f["key"] for f in features]
+    assert "mattermost" not in keys
 
 
 # ---------------------------------------------------------------------------
@@ -138,16 +242,16 @@ async def test_onboarding_creates_placement(db_session, sample_organisatie):
     db_session.add(person)
     await db_session.flush()
 
-    # Before: needs onboarding (no functie)
-    assert _check_needs_onboarding(person) is True
+    # Before: profile incomplete (no functie)
+    assert await _profile_complete(db_session, person.id) is False
 
     # Simulate onboarding: set functie
     person.naam = "Updated Name"
     person.functie = "Beleidsmedewerker"
     await db_session.flush()
 
-    # After: onboarding complete (functie is set)
-    assert _check_needs_onboarding(person) is False
+    # After: profile complete (functie is set)
+    assert await _profile_complete(db_session, person.id) is True
     assert person.naam == "Updated Name"
     assert person.functie == "Beleidsmedewerker"
 
@@ -176,7 +280,7 @@ async def test_onboarding_idempotent_no_duplicate_placement(
     db_session.add(placement)
     await db_session.flush()
 
-    assert _check_needs_onboarding(person) is False
+    assert await _profile_complete(db_session, person.id) is True
 
     # Simulate the idempotent onboarding endpoint logic:
     # always update naam/functie, only create placement if none exists

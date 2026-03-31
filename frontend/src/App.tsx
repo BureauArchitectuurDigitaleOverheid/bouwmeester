@@ -30,7 +30,8 @@ import { DocsPage } from '@/pages/DocsPage';
 import { InstellingenPage } from '@/pages/InstellingenPage';
 import { LeadsPage } from '@/pages/LeadsPage';
 import { ShareTargetPage } from '@/pages/ShareTargetPage';
-import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
+import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
+import { useRef } from 'react';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
 import { ReloadPrompt } from '@/components/common/ReloadPrompt';
@@ -89,13 +90,26 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { oidcConfigured, authenticated, person } = useAuth();
+  const { oidcConfigured, authenticated, person: authPerson } = useAuth();
 
-  if (oidcConfigured && authenticated && person?.needs_onboarding) {
-    return <OnboardingModal />;
+  const features = (oidcConfigured && authenticated)
+    ? (authPerson?.onboarding_features ?? [])
+    : [];
+
+  // Remember the initial total so we can show "stap 2 van 3" correctly
+  // even after earlier steps have been completed.
+  const totalRef = useRef(0);
+  if (features.length > totalRef.current) {
+    totalRef.current = features.length;
+  }
+  const stepNumber = totalRef.current - features.length + 1;
+
+  if (features.length === 0) {
+    totalRef.current = 0;
+    return <>{children}</>;
   }
 
-  return <>{children}</>;
+  return <OnboardingWizard features={features} stepNumber={stepNumber} totalSteps={totalRef.current} />;
 }
 
 export default function App() {

@@ -36,6 +36,7 @@ from bouwmeester.models.mention import Mention  # noqa: F401
 from bouwmeester.models.node_status import CorpusNodeStatus  # noqa: F401
 from bouwmeester.models.node_title import CorpusNodeTitle  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
+from bouwmeester.models.onboarding_dismissal import OnboardingDismissal  # noqa: F401
 from bouwmeester.models.opdracht import Opdracht, OpdrachtNode  # noqa: F401
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam  # noqa: F401
 from bouwmeester.models.org_parent import OrganisatieEenheidParent  # noqa: F401
@@ -101,6 +102,7 @@ __all__ = [
     "ParlementairItem",
     "NodeTag",
     "Notification",
+    "OnboardingDismissal",
     "Opdracht",
     "OpdrachtNode",
     "OrgPlacementRequest",
