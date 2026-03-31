@@ -41,8 +41,8 @@ function StepIndicator({
                 <div className={`w-10 h-0.5 ${isDone ? 'bg-primary-500' : 'bg-border'}`} />
               </div>
             )}
-            {/* Step column: circle on top, label below, all centered */}
-            <div className="flex flex-col items-center px-1">
+            {/* Step column: fixed width so spacing is symmetric */}
+            <div className="flex flex-col items-center" style={{ width: 80 }}>
               <div
                 className={`flex items-center justify-center h-8 w-8 shrink-0 rounded-full text-xs font-semibold transition-colors ${
                   isDone
