@@ -5,7 +5,7 @@ from datetime import date
 
 from sqlalchemy import select
 
-from bouwmeester.api.routes.auth import _check_needs_onboarding
+from bouwmeester.core.onboarding import _profile_complete
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 
@@ -29,37 +29,22 @@ async def test_auth_status_unauthenticated(client):
 # ---------------------------------------------------------------------------
 
 
-async def test_onboarding_requires_auth(client):
-    """POST /onboarding returns 401 without authentication."""
-    resp = await client.post(
-        "/api/auth/onboarding",
-        json={
-            "naam": "Test User",
-            "functie": "Beleidsmedewerker",
-            "organisatie_eenheid_id": str(uuid.uuid4()),
-        },
-    )
-    assert resp.status_code == 401
-
-
 async def test_onboarding_validates_required_fields(client):
-    """POST /onboarding with empty body returns 401 or 422."""
+    """POST /onboarding with empty body returns 422."""
     resp = await client.post("/api/auth/onboarding", json={})
-    # 401 because auth check runs before body validation
-    assert resp.status_code in (401, 422)
+    assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------------
-# _check_needs_onboarding logic
+# Profile completion logic (replaces old _check_needs_onboarding tests)
 #
-# After the placement approval workflow change, _check_needs_onboarding only
-# checks whether the person has a functie set. Placement status is tracked
-# separately via needs_placement / has_pending_placement.
+# Profile is considered complete when person.functie is set.
+# Placement status is tracked separately via needs_placement.
 # ---------------------------------------------------------------------------
 
 
-def test_needs_onboarding_no_functie():
-    """Person without functie needs onboarding."""
+async def test_profile_incomplete_no_functie(db_session):
+    """Person without functie has incomplete profile."""
     person = Person(
         id=uuid.uuid4(),
         naam="New User",
@@ -67,38 +52,13 @@ def test_needs_onboarding_no_functie():
         oidc_subject="sub-nofunctie",
         functie=None,
     )
-    assert _check_needs_onboarding(person) is True
+    db_session.add(person)
+    await db_session.flush()
+    assert await _profile_complete(db_session, person.id) is False
 
 
-def test_needs_onboarding_no_placement():
-    """Person with functie but no active org placement does NOT need onboarding.
-
-    Placement is now tracked separately -- onboarding only cares about functie.
-    """
-    person = Person(
-        id=uuid.uuid4(),
-        naam="No Placement User",
-        email="noplacement@example.com",
-        oidc_subject="sub-noplacement",
-        functie="Beleidsmedewerker",
-    )
-    assert _check_needs_onboarding(person) is False
-
-
-def test_needs_onboarding_with_ended_placement():
-    """Person with functie and only ended placements does NOT need onboarding."""
-    person = Person(
-        id=uuid.uuid4(),
-        naam="Ended Placement User",
-        email="ended@example.com",
-        oidc_subject="sub-ended",
-        functie="Beleidsmedewerker",
-    )
-    assert _check_needs_onboarding(person) is False
-
-
-def test_onboarding_complete():
-    """Person with functie does NOT need onboarding."""
+async def test_profile_complete_with_functie(db_session):
+    """Person with functie has complete profile."""
     person = Person(
         id=uuid.uuid4(),
         naam="Complete User",
@@ -106,19 +66,24 @@ def test_onboarding_complete():
         oidc_subject="sub-complete",
         functie="Beleidsmedewerker",
     )
-    assert _check_needs_onboarding(person) is False
+    db_session.add(person)
+    await db_session.flush()
+    assert await _profile_complete(db_session, person.id) is True
 
 
-def test_onboarding_multiple_active_placements():
-    """Person with functie does NOT need onboarding regardless of placements."""
+async def test_profile_complete_ignores_placement(db_session):
+    """Profile completion only checks functie, not placement status."""
     person = Person(
         id=uuid.uuid4(),
-        naam="Multi Placement User",
-        email="multi@example.com",
-        oidc_subject="sub-multi",
+        naam="No Placement User",
+        email="noplacement@example.com",
+        oidc_subject="sub-noplacement",
         functie="Beleidsmedewerker",
     )
-    assert _check_needs_onboarding(person) is False
+    db_session.add(person)
+    await db_session.flush()
+    # Has functie but no placement — profile is still complete
+    assert await _profile_complete(db_session, person.id) is True
 
 
 # ---------------------------------------------------------------------------
@@ -138,16 +103,16 @@ async def test_onboarding_creates_placement(db_session, sample_organisatie):
     db_session.add(person)
     await db_session.flush()
 
-    # Before: needs onboarding (no functie)
-    assert _check_needs_onboarding(person) is True
+    # Before: profile incomplete (no functie)
+    assert await _profile_complete(db_session, person.id) is False
 
     # Simulate onboarding: set functie
     person.naam = "Updated Name"
     person.functie = "Beleidsmedewerker"
     await db_session.flush()
 
-    # After: onboarding complete (functie is set)
-    assert _check_needs_onboarding(person) is False
+    # After: profile complete (functie is set)
+    assert await _profile_complete(db_session, person.id) is True
     assert person.naam == "Updated Name"
     assert person.functie == "Beleidsmedewerker"
 
@@ -176,7 +141,7 @@ async def test_onboarding_idempotent_no_duplicate_placement(
     db_session.add(placement)
     await db_session.flush()
 
-    assert _check_needs_onboarding(person) is False
+    assert await _profile_complete(db_session, person.id) is True
 
     # Simulate the idempotent onboarding endpoint logic:
     # always update naam/functie, only create placement if none exists
