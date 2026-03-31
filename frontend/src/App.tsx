@@ -31,6 +31,8 @@ import { InstellingenPage } from '@/pages/InstellingenPage';
 import { LeadsPage } from '@/pages/LeadsPage';
 import { ShareTargetPage } from '@/pages/ShareTargetPage';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useOnboardingFeatures } from '@/hooks/useOnboarding';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
 import { ReloadPrompt } from '@/components/common/ReloadPrompt';
@@ -89,11 +91,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { oidcConfigured, authenticated, person } = useAuth();
+  const { oidcConfigured, person: authPerson } = useAuth();
+  const { currentPerson } = useCurrentPerson();
+  const { data: devFeatures } = useOnboardingFeatures(
+    !oidcConfigured ? (currentPerson?.id ?? undefined) : undefined,
+  );
 
-  if (!oidcConfigured || !authenticated || !person) return <>{children}</>;
+  // In SSO mode, use features from auth/status; in dev mode, fetch them.
+  const features = oidcConfigured
+    ? (authPerson?.onboarding_features ?? [])
+    : (devFeatures ?? []);
 
-  const features = person.onboarding_features ?? [];
   if (features.length === 0) return <>{children}</>;
 
   return <OnboardingWizard features={features} />;
@@ -106,8 +114,8 @@ export default function App() {
       <ReloadPrompt />
       <AuthProvider>
         <AuthGate>
-          <OnboardingGate>
           <CurrentPersonProvider>
+          <OnboardingGate>
             <OrgContextProvider>
             <VocabularyProvider>
             <BrowserRouter>
@@ -149,8 +157,8 @@ export default function App() {
             </BrowserRouter>
             </VocabularyProvider>
             </OrgContextProvider>
-          </CurrentPersonProvider>
           </OnboardingGate>
+          </CurrentPersonProvider>
         </AuthGate>
       </AuthProvider>
       </ToastProvider>

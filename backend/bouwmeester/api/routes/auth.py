@@ -573,6 +573,30 @@ async def complete_onboarding(
 
 
 # ---------------------------------------------------------------------------
+# GET /onboarding/features -- get pending onboarding features for a person
+# ---------------------------------------------------------------------------
+
+
+@router.get("/onboarding/features")
+async def get_onboarding_features_for_person(
+    request: Request,
+    person_id: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Return pending onboarding features for a given person.
+
+    In production this is handled via /auth/status (session-based).
+    This endpoint exists so dev mode (no OIDC) can also query features.
+    """
+    person = await db.get(Person, person_id)
+    if person is None:
+        raise HTTPException(status_code=404, detail="Persoon niet gevonden")
+
+    session_dismissed = set(request.session.get("onboarding_dismissed", []))
+    return await get_pending_onboarding_features(db, person_id, session_dismissed)
+
+
+# ---------------------------------------------------------------------------
 # POST /onboarding/dismiss -- dismiss an onboarding feature step
 # ---------------------------------------------------------------------------
 
