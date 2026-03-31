@@ -42,6 +42,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const [parseResult, setParseResult] = useState<LeadParseResult | null>(null);
   const [parsedEmail, setParsedEmail] = useState<ParsedEmail | null>(null);
   const [emailParsing, setEmailParsing] = useState(false);
+  const emailParsingRef = useRef(false);
 
   // Editable fields after parse
   const [title, setTitle] = useState('');
@@ -155,7 +156,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   // Shared helper: validate file sizes and split email vs regular files.
   // Only the first email file is parsed; additional emails are treated as regular files.
   const processEmailAndFiles = useCallback((incoming: File[], replace: boolean) => {
-    if (emailParsing) return; // guard against concurrent email parses
+    if (emailParsingRef.current) return; // guard against concurrent email parses
 
     const emailFile = incoming.find(isEmailFile);
     const rest = incoming.filter(f => f !== emailFile);
@@ -172,6 +173,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     }
 
     if (emailFile) {
+      emailParsingRef.current = true;
       setEmailParsing(true);
       parseEmailFile(emailFile)
         .then((email) => {
@@ -199,12 +201,15 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
           if (replace) setFiles([emailFile, ...valid]);
           else setFiles((prev) => [...prev, emailFile, ...valid]);
         })
-        .finally(() => setEmailParsing(false));
+        .finally(() => {
+          emailParsingRef.current = false;
+          setEmailParsing(false);
+        });
     } else if (valid.length > 0) {
       if (replace) setFiles(valid);
       else setFiles((prev) => [...prev, ...valid]);
     }
-  }, [emailParsing, showError]);
+  }, [showError]);
 
   // Pre-fill files from global drop (stay on input step so user can add text / click parse)
   const prevInitialFilesRef = useRef<File[] | undefined>(undefined);
@@ -259,6 +264,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     setFiles([]);
     setParseResult(null);
     setParsedEmail(null);
+    emailParsingRef.current = false;
     setEmailParsing(false);
     setTitle('');
     setOrganization('');
