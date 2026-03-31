@@ -36,7 +36,7 @@ function StepIndicator({
           return (
             <div key={f.key} className="flex items-center">
               {i > 0 && (
-                <div className={`w-16 h-0.5 ${isDone ? 'bg-primary-500' : 'bg-border'}`} />
+                <div className={`w-12 mx-2 h-0.5 ${isDone ? 'bg-primary-500' : 'bg-border'}`} />
               )}
               <div
                 className={`flex items-center justify-center h-8 w-8 shrink-0 rounded-full text-xs font-semibold transition-colors ${
@@ -59,7 +59,7 @@ function StepIndicator({
           const isCurrent = i === currentIndex;
           return (
             <div key={f.key} className="flex items-center">
-              {i > 0 && <div className="w-16" />}
+              {i > 0 && <div className="w-12 mx-2" />}
               <span
                 className={`w-8 text-center text-[11px] ${
                   isCurrent ? 'text-primary-700 font-medium' : 'text-text-secondary'
