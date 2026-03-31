@@ -27,21 +27,21 @@ function StepIndicator({
   if (features.length <= 1) return null;
 
   return (
-    <div className="flex items-center justify-center gap-0 mb-6">
+    <div className="flex items-start justify-center gap-0 mb-6">
       {features.map((f, i) => {
         const isDone = i < currentIndex;
         const isCurrent = i === currentIndex;
 
         return (
           <div key={f.key} className="flex items-center">
+            {/* Connector */}
             {i > 0 && (
-              <div
-                className={`w-8 h-0.5 ${isDone ? 'bg-primary-500' : 'bg-border'}`}
-              />
+              <div className={`w-12 h-0.5 mb-5 ${isDone ? 'bg-primary-500' : 'bg-border'}`} />
             )}
-            <div className="flex flex-col items-center">
+            {/* Circle + label stacked */}
+            <div className="flex flex-col items-center w-16">
               <div
-                className={`flex items-center justify-center h-7 w-7 rounded-full text-xs font-semibold transition-colors ${
+                className={`flex items-center justify-center h-8 w-8 rounded-full text-xs font-semibold transition-colors ${
                   isDone
                     ? 'bg-primary-500 text-white'
                     : isCurrent
@@ -52,7 +52,7 @@ function StepIndicator({
                 {isDone ? <Check className="h-4 w-4" /> : i + 1}
               </div>
               <span
-                className={`text-[10px] mt-1 whitespace-nowrap ${
+                className={`text-[11px] mt-1.5 whitespace-nowrap ${
                   isCurrent ? 'text-primary-700 font-medium' : 'text-text-secondary'
                 }`}
               >
