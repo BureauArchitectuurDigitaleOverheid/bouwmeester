@@ -21,6 +21,7 @@ export function MattermostStep({ onComplete }: { onComplete: () => void }) {
 
   return (
     <div>
+      <h3 className="text-base font-semibold text-text mb-1">Koppel Mattermost</h3>
       <p className="text-sm text-text-secondary mb-4">
         Koppel je Mattermost-account om notificaties over taken en dossiers
         direct te ontvangen. Je kunt dit ook later doen via Instellingen.
