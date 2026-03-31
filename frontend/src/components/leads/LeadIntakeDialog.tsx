@@ -10,6 +10,7 @@ import { addTagToLead as addTagToLeadApi, uploadLeadAttachment as uploadLeadAtta
 import { useTags } from '@/hooks/useTags';
 import { isEmailFile, parseEmailFile, emailToRawText } from '@/utils/emailParser';
 import type { ParsedEmail } from '@/utils/emailParser';
+import { useToast } from '@/contexts/ToastContext';
 import { usePeople } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { createPerson } from '@/api/people';
@@ -61,6 +62,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const fileInputRef = useRef<HTMLInputElement>(null);
   const createLead = useCreateLead();
   const parseLead = useParseLeadIntake();
+  const { showError } = useToast();
   const { currentPerson } = useCurrentPerson();
   const { data: initiatieven } = useInitiatieven();
   const createInitiatiefMutation = useCreateInitiatief();
@@ -150,8 +152,61 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     }
   }, [open, sharedParseResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Shared helper: validate file sizes and split email vs regular files.
+  // Only the first email file is parsed; additional emails are treated as regular files.
+  const processEmailAndFiles = useCallback((incoming: File[], replace: boolean) => {
+    if (emailParsing) return; // guard against concurrent email parses
+
+    const emailFile = incoming.find(isEmailFile);
+    const rest = incoming.filter(f => f !== emailFile);
+
+    // Size-check all non-email files (email file itself may be large, but we parse it client-side)
+    const valid: File[] = [];
+    const rejected: string[] = [];
+    for (const f of rest) {
+      if (f.size > MAX_FILE_SIZE) rejected.push(f.name);
+      else valid.push(f);
+    }
+    if (rejected.length > 0) {
+      showError(`Bestanden te groot (max 20 MB): ${rejected.join(', ')}`);
+    }
+
+    if (emailFile) {
+      setEmailParsing(true);
+      parseEmailFile(emailFile)
+        .then((email) => {
+          setParsedEmail(email);
+          setRawText(emailToRawText(email));
+          // Size-check extracted attachments too
+          const validAtts: File[] = [];
+          const rejectedAtts: string[] = [];
+          for (const att of email.attachments) {
+            if (att.size > MAX_FILE_SIZE) rejectedAtts.push(att.name);
+            else validAtts.push(att);
+          }
+          if (rejectedAtts.length > 0) {
+            showError(`Bijlagen te groot (max 20 MB): ${rejectedAtts.join(', ')}`);
+          }
+          const combined = [...validAtts, ...valid];
+          if (replace) setFiles(combined);
+          else setFiles((prev) => [...prev, ...combined]);
+          if (email.senderName) setContactName(email.senderName);
+          if (email.senderEmail) setContactEmail(email.senderEmail);
+        })
+        .catch(() => {
+          showError(`E-mail kon niet worden gelezen: ${emailFile.name}`);
+          // Fall back to treating as regular files
+          if (replace) setFiles([emailFile, ...valid]);
+          else setFiles((prev) => [...prev, emailFile, ...valid]);
+        })
+        .finally(() => setEmailParsing(false));
+    } else if (valid.length > 0) {
+      if (replace) setFiles(valid);
+      else setFiles((prev) => [...prev, ...valid]);
+    }
+  }, [emailParsing, showError]);
+
   // Pre-fill files from global drop (stay on input step so user can add text / click parse)
-  // For email files (.eml/.msg): parse client-side, pre-fill rawText + attachments
   const prevInitialFilesRef = useRef<File[] | undefined>(undefined);
   useEffect(() => {
     if (!open) {
@@ -160,28 +215,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     }
     if (initialFiles && initialFiles.length > 0 && initialFiles !== prevInitialFilesRef.current && !sharedParseResult && step === 'input') {
       prevInitialFilesRef.current = initialFiles;
-
-      const emailFile = initialFiles.find(isEmailFile);
-      if (emailFile) {
-        setEmailParsing(true);
-        parseEmailFile(emailFile)
-          .then((email) => {
-            setParsedEmail(email);
-            setRawText(emailToRawText(email));
-            // Use email attachments + any non-email files that were dropped alongside
-            const nonEmailFiles = initialFiles.filter(f => !isEmailFile(f));
-            setFiles([...email.attachments, ...nonEmailFiles]);
-            if (email.senderName) setContactName(email.senderName);
-            if (email.senderEmail) setContactEmail(email.senderEmail);
-          })
-          .catch(() => {
-            // Parsing failed - fall back to treating as regular file
-            setFiles(initialFiles);
-          })
-          .finally(() => setEmailParsing(false));
-      } else {
-        setFiles(initialFiles);
-      }
+      processEmailAndFiles(initialFiles, true);
     }
   }, [open, initialFiles]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -249,43 +283,8 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   };
 
   const addFiles = useCallback((newFiles: File[]) => {
-    const emailFile = newFiles.find(isEmailFile);
-    if (emailFile) {
-      // Parse email client-side and pre-fill form
-      setEmailParsing(true);
-      parseEmailFile(emailFile)
-        .then((email) => {
-          setParsedEmail(email);
-          setRawText(emailToRawText(email));
-          const nonEmailFiles = newFiles.filter(f => !isEmailFile(f));
-          setFiles((prev) => [...prev, ...email.attachments, ...nonEmailFiles]);
-          if (email.senderName) setContactName(email.senderName);
-          if (email.senderEmail) setContactEmail(email.senderEmail);
-        })
-        .catch(() => {
-          // Parsing failed - treat as regular files
-          setFiles((prev) => [...prev, ...newFiles]);
-        })
-        .finally(() => setEmailParsing(false));
-      return;
-    }
-
-    const valid: File[] = [];
-    const rejected: string[] = [];
-    for (const f of newFiles) {
-      if (f.size > MAX_FILE_SIZE) {
-        rejected.push(f.name);
-      } else {
-        valid.push(f);
-      }
-    }
-    if (rejected.length > 0) {
-      window.alert(`Bestanden te groot (max 20 MB): ${rejected.join(', ')}`);
-    }
-    if (valid.length > 0) {
-      setFiles((prev) => [...prev, ...valid]);
-    }
-  }, []);
+    processEmailAndFiles(newFiles, false);
+  }, [processEmailAndFiles]);
 
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
@@ -463,6 +462,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
               <span className="truncate">
                 E-mail van {parsedEmail.senderName || parsedEmail.senderEmail}
                 {parsedEmail.subject ? `: ${parsedEmail.subject}` : ''}
+                {parsedEmail.date ? ` (${parsedEmail.date})` : ''}
               </span>
             </div>
           )}

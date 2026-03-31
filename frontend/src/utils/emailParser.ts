@@ -13,22 +13,16 @@ export interface ParsedEmail {
   attachments: File[];
 }
 
-const EML_EXTENSIONS = ['.eml'];
-const MSG_EXTENSIONS = ['.msg'];
-
 export function isEmailFile(file: File): boolean {
   const name = file.name.toLowerCase();
-  return (
-    EML_EXTENSIONS.some(ext => name.endsWith(ext)) ||
-    MSG_EXTENSIONS.some(ext => name.endsWith(ext))
-  );
+  return name.endsWith('.eml') || name.endsWith('.msg');
 }
 
-export function isEmlFile(file: File): boolean {
+function isEmlFile(file: File): boolean {
   return file.name.toLowerCase().endsWith('.eml');
 }
 
-export function isMsgFile(file: File): boolean {
+function isMsgFile(file: File): boolean {
   return file.name.toLowerCase().endsWith('.msg');
 }
 
@@ -44,7 +38,7 @@ async function parseEml(file: File): Promise<ParsedEmail> {
   const attachments: File[] = [];
   for (const att of email.attachments) {
     if (att.disposition === 'inline' && !att.filename) continue;
-    const blob = new Blob([att.content], { type: att.mimeType });
+    const blob = new Blob([att.content as BlobPart], { type: att.mimeType });
     attachments.push(new File([blob], att.filename ?? 'bijlage', { type: att.mimeType }));
   }
 
@@ -73,7 +67,7 @@ async function parseMsg(file: File): Promise<ParsedEmail> {
     for (const attField of data.attachments) {
       const att = reader.getAttachment(attField);
       if (!att.fileName) continue;
-      const blob = new Blob([att.content]);
+      const blob = new Blob([att.content as BlobPart]);
       attachments.push(new File([blob], att.fileName));
     }
   }
