@@ -177,9 +177,12 @@ async def logout(
     )
 
 
-# ---------------------------------------------------------------------------
-# Helper: check whether a person still needs onboarding
-# ---------------------------------------------------------------------------
+def _get_session_dismissed(request: Request, person_id: str) -> set[str]:
+    """Return the set of onboarding feature keys dismissed in this session."""
+    all_dismissed = request.session.get("onboarding_dismissed", {})
+    if isinstance(all_dismissed, list):
+        all_dismissed = {}  # migrate old flat-list format
+    return set(all_dismissed.get(person_id, []))
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +271,7 @@ async def auth_status(
                 person = await get_or_create_person(db, sub=sub, email=email, name=name)
                 person_id = str(person.id)
 
-                session_dismissed = set(request.session.get("onboarding_dismissed", []))
+                session_dismissed = _get_session_dismissed(request, person_id)
                 onboarding_features = await get_pending_onboarding_features(
                     db, person.id, session_dismissed
                 )
@@ -297,9 +300,7 @@ async def auth_status(
                 # Re-compute onboarding features when cache was invalidated
                 # (e.g. after onboarding submit or dismiss).
                 if onboarding_features is None:
-                    session_dismissed = set(
-                        request.session.get("onboarding_dismissed", [])
-                    )
+                    session_dismissed = _get_session_dismissed(request, person_id)
                     onboarding_features = await get_pending_onboarding_features(
                         db, UUID(person_id), session_dismissed
                     )
@@ -596,7 +597,7 @@ async def get_onboarding_features_for_person(
         raise HTTPException(status_code=404, detail="Persoon niet gevonden")
 
     dev_mode = not bool(settings.OIDC_ISSUER)
-    session_dismissed = set(request.session.get("onboarding_dismissed", []))
+    session_dismissed = _get_session_dismissed(request, str(person_id))
     return await get_pending_onboarding_features(
         db, person_id, session_dismissed, skip_enabled_check=dev_mode
     )
@@ -647,10 +648,17 @@ async def dismiss_onboarding_feature(
         except IntegrityError:
             await db.rollback()
 
-    # Always store in session too (for immediate effect).
-    dismissed = set(request.session.get("onboarding_dismissed", []))
-    dismissed.add(body.feature_key)
-    request.session["onboarding_dismissed"] = list(dismissed)
+    # Store in session too (for immediate effect).
+    # Keyed by person_id so dev-mode person switching works correctly.
+    pid_str = str(person_id) if person_id else "_anonymous"
+    all_dismissed: dict = request.session.get("onboarding_dismissed", {})
+    # Migrate flat list → dict (backward compat with old session format).
+    if isinstance(all_dismissed, list):
+        all_dismissed = {}
+    person_dismissed = set(all_dismissed.get(pid_str, []))
+    person_dismissed.add(body.feature_key)
+    all_dismissed[pid_str] = list(person_dismissed)
+    request.session["onboarding_dismissed"] = all_dismissed
 
     # Invalidate cached features so /status recomputes.
     request.session.pop("onboarding_features", None)
