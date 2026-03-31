@@ -294,6 +294,17 @@ async def auth_status(
                         request.session["is_admin"] = is_admin
                     request.session["is_admin_checked_at"] = time.time()
 
+                # Re-compute onboarding features when cache was invalidated
+                # (e.g. after onboarding submit or dismiss).
+                if onboarding_features is None:
+                    session_dismissed = set(
+                        request.session.get("onboarding_dismissed", [])
+                    )
+                    onboarding_features = await get_pending_onboarding_features(
+                        db, UUID(person_id), session_dismissed
+                    )
+                    request.session["onboarding_features"] = onboarding_features
+
             # Fetch org eenheid info for the person
             org_eenheden: list[dict] = []
             managed_eenheden_list: list[dict] = []
