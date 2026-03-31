@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     # Age encryption for database backups
     AGE_SECRET_KEY: str = ""  # Age secret key for decryption (set on production)
 
+    @property
+    def is_dev_mode(self) -> bool:
+        """True when OIDC is not configured (local development)."""
+        return not bool(self.OIDC_ISSUER)
+
     @model_validator(mode="after")
     def _derive_database_url(self) -> "Settings":
         """Build DATABASE_URL from ZAD individual env vars if not set."""

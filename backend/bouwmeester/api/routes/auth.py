@@ -512,7 +512,7 @@ async def complete_onboarding(
     """
     # Resolve person: from auth session (production) or body (dev mode).
     # In production, body.person_id is ignored — only the session is trusted.
-    dev_mode = not bool(settings.OIDC_ISSUER)
+    dev_mode = settings.is_dev_mode
     person_db_id = request.session.get("person_db_id")
     if person_db_id:
         person_obj = await db.get(Person, UUID(person_db_id))
@@ -613,7 +613,7 @@ async def get_onboarding_features_for_person(
     if person is None:
         raise HTTPException(status_code=404, detail="Persoon niet gevonden")
 
-    dev_mode = not bool(settings.OIDC_ISSUER)
+    dev_mode = settings.is_dev_mode
     session_dismissed = _get_session_dismissed(request, str(person_id))
     return await get_pending_onboarding_features(
         db, person_id, session_dismissed, skip_enabled_check=dev_mode
@@ -645,7 +645,7 @@ async def dismiss_onboarding_feature(
     person_db_id = request.session.get("person_db_id")
     if person_db_id:
         person_id = UUID(person_db_id)
-    elif body.person_id and not bool(settings.OIDC_ISSUER):
+    elif body.person_id and settings.is_dev_mode:
         person_id = body.person_id
 
     if body.permanent:
