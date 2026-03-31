@@ -27,19 +27,20 @@ function StepIndicator({
   if (features.length <= 1) return null;
 
   return (
-    <div className="mb-6">
-      {/* Circles + connectors */}
-      <div className="flex items-center justify-center">
-        {features.map((f, i) => {
-          const isDone = i < currentIndex;
-          const isCurrent = i === currentIndex;
-          return (
-            <div key={f.key} className="contents">
-              {i > 0 && (
-                <div className={`h-0.5 w-12 ${isDone ? 'bg-primary-500' : 'bg-border'}`} />
-              )}
+    <div className="flex justify-center mb-6">
+      {features.map((f, i) => {
+        const isDone = i < currentIndex;
+        const isCurrent = i === currentIndex;
+        return (
+          <div key={f.key} className="flex items-center">
+            {/* Connector line between steps */}
+            {i > 0 && (
+              <div className={`w-16 h-0.5 ${isDone ? 'bg-primary-500' : 'bg-border'}`} />
+            )}
+            {/* Step: circle + label */}
+            <div className="flex flex-col items-center" style={{ minWidth: 72 }}>
               <div
-                className={`flex items-center justify-center h-8 w-8 shrink-0 rounded-full text-xs font-semibold transition-colors ${
+                className={`relative z-10 flex items-center justify-center h-8 w-8 rounded-full text-xs font-semibold transition-colors ${
                   isDone
                     ? 'bg-primary-500 text-white'
                     : isCurrent
@@ -49,28 +50,17 @@ function StepIndicator({
               >
                 {isDone ? <Check className="h-4 w-4" /> : i + 1}
               </div>
-            </div>
-          );
-        })}
-      </div>
-      {/* Labels */}
-      <div className="flex justify-center mt-1.5">
-        {features.map((f, i) => {
-          const isCurrent = i === currentIndex;
-          return (
-            <div key={f.key} className="flex items-center">
-              {i > 0 && <div className="w-12" />}
               <span
-                className={`w-8 text-center text-[11px] whitespace-nowrap ${
+                className={`text-[11px] mt-1.5 ${
                   isCurrent ? 'text-primary-700 font-medium' : 'text-text-secondary'
                 }`}
               >
                 {f.label}
               </span>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
