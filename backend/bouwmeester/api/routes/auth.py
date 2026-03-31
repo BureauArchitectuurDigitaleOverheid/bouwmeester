@@ -501,8 +501,8 @@ async def me(current_user: CurrentUser) -> PersonDetailResponse:
 async def complete_onboarding(
     request: Request,
     body: OnboardingRequest,
-    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> PersonDetailResponse:
     """Complete the onboarding flow for a newly-created SSO user.
 
@@ -510,6 +510,22 @@ async def complete_onboarding(
     an org placement directly, a placement *request* is created which must
     be approved by the team manager or an admin.
     """
+    # Resolve person: from auth (production) or body.person_id (dev mode).
+    dev_mode = not bool(settings.OIDC_ISSUER)
+    person_db_id = request.session.get("person_db_id")
+    if person_db_id:
+        person_obj = await db.get(Person, UUID(person_db_id))
+    elif dev_mode and body.person_id:
+        person_obj = await db.get(Person, body.person_id)
+    else:
+        person_obj = None
+
+    if person_obj is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Kan persoon niet bepalen",
+        )
+
     # Validate that the org unit exists.
     org_stmt = select(OrganisatieEenheid.id, OrganisatieEenheid.naam).where(
         OrganisatieEenheid.id == body.organisatie_eenheid_id
@@ -523,14 +539,14 @@ async def complete_onboarding(
         )
 
     # Always update naam and functie (allows corrections on re-submit).
-    current_user.naam = body.naam
-    current_user.functie = body.functie
+    person_obj.naam = body.naam
+    person_obj.functie = body.functie
 
     # Create a placement request if the user has no active placement and no
     # pending request for this eenheid yet.
     existing_placement = await db.execute(
         select(PersonOrganisatieEenheid.id).where(
-            PersonOrganisatieEenheid.person_id == current_user.id,
+            PersonOrganisatieEenheid.person_id == person_obj.id,
             PersonOrganisatieEenheid.eind_datum.is_(None),
         )
     )
@@ -538,7 +554,7 @@ async def complete_onboarding(
         # Check for existing pending request
         existing_request = await db.execute(
             select(OrgPlacementRequest.id).where(
-                OrgPlacementRequest.person_id == current_user.id,
+                OrgPlacementRequest.person_id == person_obj.id,
                 OrgPlacementRequest.organisatie_eenheid_id
                 == body.organisatie_eenheid_id,
                 OrgPlacementRequest.status == "pending",
@@ -546,7 +562,7 @@ async def complete_onboarding(
         )
         if existing_request.scalar_one_or_none() is None:
             placement_req = OrgPlacementRequest(
-                person_id=current_user.id,
+                person_id=person_obj.id,
                 organisatie_eenheid_id=body.organisatie_eenheid_id,
                 dienstverband=body.dienstverband,
             )
@@ -569,7 +585,7 @@ async def complete_onboarding(
 
     # Re-fetch with eager loading so emails/phones are included in response
     repo = PersonRepository(db)
-    person = await repo.get(current_user.id)
+    person = await repo.get(person_obj.id)
     return PersonDetailResponse.model_validate(person)
 
 
