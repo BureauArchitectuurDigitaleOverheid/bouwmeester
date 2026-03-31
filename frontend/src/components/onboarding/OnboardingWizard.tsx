@@ -5,7 +5,6 @@ import { useDismissOnboardingFeature } from '@/hooks/useOnboarding';
 import { ProfileStep } from '@/components/onboarding/ProfileStep';
 import { MattermostStep } from '@/components/onboarding/MattermostStep';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 interface StepComponentProps {
@@ -16,58 +15,6 @@ const STEP_COMPONENTS: Record<string, React.ComponentType<StepComponentProps>> =
   profile: ProfileStep,
   mattermost: MattermostStep,
 };
-
-function StepIndicator({
-  features,
-  currentIndex,
-}: {
-  features: OnboardingFeature[];
-  currentIndex: number;
-}) {
-  if (features.length <= 1) return null;
-
-  // Each step is a fixed-width column. The connector sits between columns
-  // and is vertically aligned to the circle (top: 16px = half of h-8).
-  return (
-    <div className="flex justify-center mb-6">
-      {features.map((f, i) => {
-        const isDone = i < currentIndex;
-        const isCurrent = i === currentIndex;
-        return (
-          <div key={f.key} className="flex items-start">
-            {/* Connector between steps, vertically centered on the circles */}
-            {i > 0 && (
-              <div className="flex items-center" style={{ height: 32 }}>
-                <div className={`w-10 h-0.5 ${isDone ? 'bg-primary-500' : 'bg-border'}`} />
-              </div>
-            )}
-            {/* Step column: fixed width so spacing is symmetric */}
-            <div className="flex flex-col items-center" style={{ width: 80 }}>
-              <div
-                className={`flex items-center justify-center h-8 w-8 shrink-0 rounded-full text-xs font-semibold transition-colors ${
-                  isDone
-                    ? 'bg-primary-500 text-white'
-                    : isCurrent
-                      ? 'bg-primary-100 text-primary-700 ring-2 ring-primary-500'
-                      : 'bg-gray-100 text-text-secondary'
-                }`}
-              >
-                {isDone ? <Check className="h-4 w-4" /> : i + 1}
-              </div>
-              <span
-                className={`text-[11px] mt-1.5 ${
-                  isCurrent ? 'text-primary-700 font-medium' : 'text-text-secondary'
-                }`}
-              >
-                {f.label}
-              </span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 export function OnboardingWizard({ features }: { features: OnboardingFeature[] }) {
   const { oidcConfigured, refreshAuthStatus } = useAuth();
@@ -129,15 +76,18 @@ export function OnboardingWizard({ features }: { features: OnboardingFeature[] }
     return null;
   }
 
+  const title = features.length > 1
+    ? `Welkom bij Bouwmeester (stap 1 van ${features.length})`
+    : 'Welkom bij Bouwmeester';
+
   return (
     <Modal
       open
       onClose={() => {}}
-      title="Welkom bij Bouwmeester"
+      title={title}
       closeable={false}
       footer={footer}
     >
-      <StepIndicator features={features} currentIndex={0} />
       <StepComponent onComplete={handleComplete} />
     </Modal>
   );
