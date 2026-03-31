@@ -61,21 +61,20 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
   } = useAutoTagSuggestion();
 
   // Pre-fill from global file drop: switch to bron type and set file + title
-  const appliedBijlageRef = useRef<File | undefined>(undefined);
+  const prevBijlageRef = useRef<File | undefined>(undefined);
   useEffect(() => {
-    if (open && initialBijlageFile && initialBijlageFile !== appliedBijlageRef.current) {
-      appliedBijlageRef.current = initialBijlageFile;
+    if (!open) {
+      prevBijlageRef.current = undefined;
+      return;
+    }
+    if (initialBijlageFile && initialBijlageFile !== prevBijlageRef.current) {
+      prevBijlageRef.current = initialBijlageFile;
       setNodeType(NodeType.BRON);
       setBijlageFile(initialBijlageFile);
-      if (!title) {
-        const name = initialBijlageFile.name.replace(/\.[^/.]+$/, '');
-        setTitle(name);
-      }
+      const name = initialBijlageFile.name.replace(/\.[^/.]+$/, '');
+      if (!title) setTitle(name);
     }
-    if (!open) {
-      appliedBijlageRef.current = undefined;
-    }
-  }, [open, initialBijlageFile, title]);
+  }, [open, initialBijlageFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isBron = nodeType === NodeType.BRON;
 

@@ -4,14 +4,14 @@ import { Button } from './Button';
 import { useGlobalFileDropContext } from '@/contexts/GlobalFileDropContext';
 
 export function FileActionChooser() {
-  const { pendingFiles, showChooser, setShowChooser, chooseAction, claimPendingFiles } =
+  const { chooserFiles, showChooser, setShowChooser, chooseAction, discardChooserFiles } =
     useGlobalFileDropContext();
 
-  if (!showChooser || pendingFiles.length === 0) return null;
+  if (!showChooser || chooserFiles.length === 0) return null;
 
   const handleClose = () => {
     setShowChooser(false);
-    claimPendingFiles(); // discard files
+    discardChooserFiles();
   };
 
   return (
@@ -20,9 +20,9 @@ export function FileActionChooser() {
         <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-text-secondary">
           <FileText className="h-4 w-4 shrink-0" />
           <span className="truncate">
-            {pendingFiles.length === 1
-              ? pendingFiles[0].name
-              : `${pendingFiles.length} bestanden`}
+            {chooserFiles.length === 1
+              ? chooserFiles[0].name
+              : `${chooserFiles.length} bestanden`}
           </span>
         </div>
 

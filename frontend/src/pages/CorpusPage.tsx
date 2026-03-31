@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, LayoutGrid, GitFork, Grid3x3, Search } from 'lucide-react';
 import { Button } from '@/components/common/Button';
@@ -30,17 +30,16 @@ const ALL_NODE_TYPES = Object.values(NodeType);
 
 export function CorpusPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const { pendingFiles, claimPendingFiles } = useGlobalFileDropContext();
-  const createFileRef = useRef<File | undefined>(undefined);
+  const { subscribe } = useGlobalFileDropContext();
+  const [droppedFile, setDroppedFile] = useState<File | undefined>(undefined);
 
-  // Open create form when files are dropped/pasted on this page
+  // Subscribe to global file drops while this page is mounted
   useEffect(() => {
-    if (pendingFiles.length > 0) {
-      const claimed = claimPendingFiles();
-      createFileRef.current = claimed[0];
+    return subscribe((files) => {
+      setDroppedFile(files[0]);
       setShowCreateForm(true);
-    }
-  }, [pendingFiles, claimPendingFiles]);
+    });
+  }, [subscribe]);
   const [searchParams, setSearchParams] = useSearchParams();
   const viewParam = searchParams.get('view');
   const viewMode: ViewMode = viewParam === 'graph' ? 'graph' : viewParam === 'matrix' ? 'matrix' : 'list';
@@ -259,8 +258,8 @@ export function CorpusPage() {
       {/* Create form modal */}
       <NodeCreateForm
         open={showCreateForm}
-        onClose={() => { setShowCreateForm(false); createFileRef.current = undefined; }}
-        initialBijlageFile={createFileRef.current}
+        onClose={() => { setShowCreateForm(false); setDroppedFile(undefined); }}
+        initialBijlageFile={droppedFile}
       />
     </div>
   );

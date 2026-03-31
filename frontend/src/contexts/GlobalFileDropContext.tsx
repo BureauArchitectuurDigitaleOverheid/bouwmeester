@@ -2,13 +2,18 @@ import { createContext, useContext, useState, useCallback, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGlobalFileDrop } from '@/hooks/useGlobalFileDrop';
 
+type FileSubscriber = (files: File[]) => void;
+
 interface GlobalFileDropContextType {
   isDragging: boolean;
-  pendingFiles: File[];
-  claimPendingFiles: () => File[];
   showChooser: boolean;
   setShowChooser: (show: boolean) => void;
   chooseAction: (action: 'lead' | 'bron') => void;
+  /** Subscribe to file drops for the current page. Returns unsubscribe fn. */
+  subscribe: (cb: FileSubscriber) => () => void;
+  /** Files shown in the chooser dialog (only used by FileActionChooser). */
+  chooserFiles: File[];
+  discardChooserFiles: () => void;
 }
 
 const GlobalFileDropContext = createContext<GlobalFileDropContextType | null>(null);
@@ -16,46 +21,51 @@ const GlobalFileDropContext = createContext<GlobalFileDropContextType | null>(nu
 export function GlobalFileDropProvider({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [showChooser, setShowChooser] = useState(false);
+  const [chooserFiles, setChooserFiles] = useState<File[]>([]);
   const locationRef = useRef(location);
   locationRef.current = location;
-  // Ref mirrors state so claimPendingFiles can read + clear atomically
-  const pendingFilesRef = useRef<File[]>([]);
+
+  // Subscribers: page-level components register to receive files directly
+  const subscribersRef = useRef<Set<FileSubscriber>>(new Set());
+  // Files held for delivery after navigation (chooser -> navigate -> page mounts -> subscribes)
+  const deferredFilesRef = useRef<File[] | null>(null);
+
+  const subscribe = useCallback((cb: FileSubscriber) => {
+    subscribersRef.current.add(cb);
+    // Deliver any deferred files from a chooser navigation
+    if (deferredFilesRef.current) {
+      const files = deferredFilesRef.current;
+      deferredFilesRef.current = null;
+      cb(files);
+    }
+    return () => { subscribersRef.current.delete(cb); };
+  }, []);
 
   const handleFiles = useCallback((files: File[]) => {
     const pathname = locationRef.current.pathname;
+    const isContextPage = pathname.startsWith('/leads') || pathname.startsWith('/corpus') || pathname.startsWith('/nodes/');
 
-    pendingFilesRef.current = files;
-    setPendingFiles(files);
-
-    if (pathname.startsWith('/leads')) {
-      // LeadsPage will pick up pendingFiles
-    } else if (pathname.startsWith('/corpus') || pathname.startsWith('/nodes/')) {
-      // CorpusPage will pick up pendingFiles
-    } else {
+    if (isContextPage && subscribersRef.current.size > 0) {
+      subscribersRef.current.forEach(cb => cb(files));
+    } else if (!isContextPage) {
+      setChooserFiles(files);
       setShowChooser(true);
     }
   }, []);
 
-  // Atomic claim: returns files and clears in one call to avoid race conditions
-  const claimPendingFiles = useCallback(() => {
-    const files = pendingFilesRef.current;
-    pendingFilesRef.current = [];
-    setPendingFiles([]);
-    return files;
+  const discardChooserFiles = useCallback(() => {
+    setChooserFiles([]);
   }, []);
 
   const chooseAction = useCallback((action: 'lead' | 'bron') => {
+    const files = chooserFiles;
     setShowChooser(false);
-    if (action === 'lead') {
-      navigate('/leads');
-      // pendingFiles stay in state — LeadsPage picks them up after mount
-    } else {
-      navigate('/corpus');
-      // pendingFiles stay in state — CorpusPage picks them up after mount
-    }
-  }, [navigate]);
+    setChooserFiles([]);
+    // Store files for delivery after the target page mounts and subscribes
+    deferredFilesRef.current = files;
+    navigate(action === 'lead' ? '/leads' : '/corpus');
+  }, [navigate, chooserFiles]);
 
   const { isDragging } = useGlobalFileDrop({ onFiles: handleFiles });
 
@@ -63,11 +73,12 @@ export function GlobalFileDropProvider({ children }: { children: React.ReactNode
     <GlobalFileDropContext.Provider
       value={{
         isDragging,
-        pendingFiles,
-        claimPendingFiles,
         showChooser,
         setShowChooser,
         chooseAction,
+        subscribe,
+        chooserFiles,
+        discardChooserFiles,
       }}
     >
       {children}

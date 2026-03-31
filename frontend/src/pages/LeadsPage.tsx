@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Columns3, LayoutGrid, GitFork, Clock, Search, X, Settings } from 'lucide-react';
 import { Button } from '@/components/common/Button';
@@ -62,16 +62,16 @@ export function LeadsPage() {
           : 'kanban';
 
   const [showIntake, setShowIntake] = useState(false);
-  const { pendingFiles, claimPendingFiles } = useGlobalFileDropContext();
-  const intakeFilesRef = useRef<File[]>([]);
+  const { subscribe } = useGlobalFileDropContext();
+  const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
 
-  // Open intake dialog when files are dropped/pasted on this page
+  // Subscribe to global file drops while this page is mounted
   useEffect(() => {
-    if (pendingFiles.length > 0) {
-      intakeFilesRef.current = claimPendingFiles();
+    return subscribe((files) => {
+      setDroppedFiles(files);
       setShowIntake(true);
-    }
-  }, [pendingFiles, claimPendingFiles]);
+    });
+  }, [subscribe]);
   const [showCreateInitiatief, setShowCreateInitiatief] = useState(false);
   const [editInitiatiefId, setEditInitiatiefId] = useState<string | null>(null);
 
@@ -334,9 +334,9 @@ export function LeadsPage() {
 
       <LeadIntakeDialog
         open={showIntake}
-        onClose={() => { setShowIntake(false); intakeFilesRef.current = []; }}
+        onClose={() => { setShowIntake(false); setDroppedFiles([]); }}
         defaultInitiatiefId={selectedInitiatiefId}
-        initialFiles={intakeFilesRef.current.length > 0 ? intakeFilesRef.current : undefined}
+        initialFiles={droppedFiles.length > 0 ? droppedFiles : undefined}
       />
 
       {/* Create initiatief modal */}
