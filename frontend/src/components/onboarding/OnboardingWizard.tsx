@@ -16,7 +16,15 @@ const STEP_COMPONENTS: Record<string, React.ComponentType<StepComponentProps>> =
   mattermost: MattermostStep,
 };
 
-export function OnboardingWizard({ features }: { features: OnboardingFeature[] }) {
+export function OnboardingWizard({
+  features,
+  stepNumber,
+  totalSteps,
+}: {
+  features: OnboardingFeature[];
+  stepNumber: number;
+  totalSteps: number;
+}) {
   const { oidcConfigured, refreshAuthStatus } = useAuth();
   const { currentPerson } = useCurrentPerson();
   const queryClient = useQueryClient();
@@ -76,8 +84,8 @@ export function OnboardingWizard({ features }: { features: OnboardingFeature[] }
     return null;
   }
 
-  const title = features.length > 1
-    ? `Welkom bij Bouwmeester (stap 1 van ${features.length})`
+  const title = totalSteps > 1
+    ? `Welkom bij Bouwmeester (stap ${stepNumber} van ${totalSteps})`
     : 'Welkom bij Bouwmeester';
 
   return (

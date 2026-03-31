@@ -31,6 +31,7 @@ import { InstellingenPage } from '@/pages/InstellingenPage';
 import { LeadsPage } from '@/pages/LeadsPage';
 import { ShareTargetPage } from '@/pages/ShareTargetPage';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
+import { useRef } from 'react';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useOnboardingFeatures } from '@/hooks/useOnboarding';
 import { LoginPage } from '@/pages/LoginPage';
@@ -102,9 +103,20 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
     ? (authPerson?.onboarding_features ?? [])
     : (devFeatures ?? []);
 
-  if (features.length === 0) return <>{children}</>;
+  // Remember the initial total so we can show "stap 2 van 3" correctly
+  // even after earlier steps have been completed.
+  const totalRef = useRef(0);
+  if (features.length > totalRef.current) {
+    totalRef.current = features.length;
+  }
+  const stepNumber = totalRef.current - features.length + 1;
 
-  return <OnboardingWizard features={features} />;
+  if (features.length === 0) {
+    totalRef.current = 0;
+    return <>{children}</>;
+  }
+
+  return <OnboardingWizard features={features} stepNumber={stepNumber} totalSteps={totalRef.current} />;
 }
 
 export default function App() {
