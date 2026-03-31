@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, ApiError } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { addPersonEmail, addPersonPhone } from '@/api/people';
@@ -22,7 +21,6 @@ interface OnboardingPayload {
   naam: string;
   functie: string;
   organisatie_eenheid_id: string;
-  person_id?: string;
 }
 
 interface ExtraEmail {
@@ -36,11 +34,9 @@ interface ExtraPhone {
 
 export function ProfileStep({ onComplete }: { onComplete: () => void }) {
   const { person } = useAuth();
-  const { currentPerson } = useCurrentPerson();
   const queryClient = useQueryClient();
-  const personId = person?.id ?? currentPerson?.id ?? undefined;
 
-  const [naam, setNaam] = useState(person?.name ?? currentPerson?.naam ?? '');
+  const [naam, setNaam] = useState(person?.name ?? '');
   const [functie, setFunctie] = useState('');
   const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
   const [orgId, setOrgId] = useState('');
@@ -108,7 +104,6 @@ export function ProfileStep({ onComplete }: { onComplete: () => void }) {
       naam: naam.trim(),
       functie: functie.trim(),
       organisatie_eenheid_id: orgId,
-      person_id: personId,
     });
   };
 

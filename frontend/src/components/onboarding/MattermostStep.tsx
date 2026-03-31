@@ -2,13 +2,11 @@ import { useEffect } from 'react';
 import { MattermostLinkSection } from '@/components/settings/MattermostLinkSection';
 import { useMattermostLinkStatus } from '@/hooks/useMattermost';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { Check } from 'lucide-react';
 
 export function MattermostStep({ onComplete }: { onComplete: () => void }) {
   const { person: authPerson } = useAuth();
-  const { currentPerson } = useCurrentPerson();
-  const personId = authPerson?.id ?? currentPerson?.id ?? undefined;
+  const personId = authPerson?.id ?? undefined;
   const hasPersonId = !!personId;
 
   const { data: linkStatus } = useMattermostLinkStatus(true, hasPersonId, personId);

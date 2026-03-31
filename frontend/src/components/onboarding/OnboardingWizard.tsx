@@ -1,10 +1,8 @@
 import { Modal } from '@/components/common/Modal';
 import { useAuth, type OnboardingFeature } from '@/contexts/AuthContext';
-import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useDismissOnboardingFeature } from '@/hooks/useOnboarding';
 import { ProfileStep } from '@/components/onboarding/ProfileStep';
 import { MattermostStep } from '@/components/onboarding/MattermostStep';
-import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 
 interface StepComponentProps {
@@ -25,37 +23,24 @@ export function OnboardingWizard({
   stepNumber: number;
   totalSteps: number;
 }) {
-  const { oidcConfigured, refreshAuthStatus } = useAuth();
-  const { currentPerson } = useCurrentPerson();
-  const queryClient = useQueryClient();
+  const { refreshAuthStatus } = useAuth();
   const dismissMutation = useDismissOnboardingFeature();
   const dismissAttempted = useRef(false);
-
-  const personId = currentPerson?.id ?? undefined;
-
-  const refreshFeatures = useCallback(async () => {
-    if (oidcConfigured) {
-      await refreshAuthStatus();
-    } else {
-      await queryClient.refetchQueries({ queryKey: ['onboarding-features'] });
-    }
-  }, [oidcConfigured, refreshAuthStatus, queryClient]);
 
   const current = features[0];
   const StepComponent = STEP_COMPONENTS[current.key];
 
   const handleComplete = useCallback(async () => {
-    await refreshFeatures();
-  }, [refreshFeatures]);
+    await refreshAuthStatus();
+  }, [refreshAuthStatus]);
 
   const handleDismiss = useCallback(async (permanent: boolean) => {
     await dismissMutation.mutateAsync({
       featureKey: current.key,
       permanent,
-      personId,
     });
-    await refreshFeatures();
-  }, [dismissMutation, current.key, personId, refreshFeatures]);
+    await refreshAuthStatus();
+  }, [dismissMutation, current.key, refreshAuthStatus]);
 
   let footer: ReactNode = null;
   if (current.dismissible) {

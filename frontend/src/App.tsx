@@ -32,8 +32,6 @@ import { LeadsPage } from '@/pages/LeadsPage';
 import { ShareTargetPage } from '@/pages/ShareTargetPage';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { useRef } from 'react';
-import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
-import { useOnboardingFeatures } from '@/hooks/useOnboarding';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
 import { ReloadPrompt } from '@/components/common/ReloadPrompt';
@@ -92,16 +90,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { oidcConfigured, person: authPerson } = useAuth();
-  const { currentPerson } = useCurrentPerson();
-  const { data: devFeatures } = useOnboardingFeatures(
-    !oidcConfigured ? (currentPerson?.id ?? undefined) : undefined,
-  );
+  const { oidcConfigured, authenticated, person: authPerson } = useAuth();
 
-  // In SSO mode, use features from auth/status; in dev mode, fetch them.
-  const features = oidcConfigured
+  const features = (oidcConfigured && authenticated)
     ? (authPerson?.onboarding_features ?? [])
-    : (devFeatures ?? []);
+    : [];
 
   // Remember the initial total so we can show "stap 2 van 3" correctly
   // even after earlier steps have been completed.
@@ -126,8 +119,8 @@ export default function App() {
       <ReloadPrompt />
       <AuthProvider>
         <AuthGate>
-          <CurrentPersonProvider>
           <OnboardingGate>
+          <CurrentPersonProvider>
             <OrgContextProvider>
             <VocabularyProvider>
             <BrowserRouter>
@@ -169,8 +162,8 @@ export default function App() {
             </BrowserRouter>
             </VocabularyProvider>
             </OrgContextProvider>
-          </OnboardingGate>
           </CurrentPersonProvider>
+          </OnboardingGate>
         </AuthGate>
       </AuthProvider>
       </ToastProvider>

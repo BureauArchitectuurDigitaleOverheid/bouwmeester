@@ -210,13 +210,11 @@ class OnboardingRequest(BaseModel):
     functie: str = Field(min_length=1, max_length=200)
     organisatie_eenheid_id: UUID
     dienstverband: Dienstverband = "in_dienst"
-    person_id: UUID | None = None  # used in dev mode (no OIDC)
 
 
 class OnboardingDismissRequest(BaseModel):
     feature_key: str = Field(min_length=1, max_length=50)
     permanent: bool = False
-    person_id: UUID | None = None  # used in dev mode (no OIDC)
 
 
 class PersonOrganisatieCreate(BaseModel):

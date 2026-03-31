@@ -177,12 +177,9 @@ async def logout(
     )
 
 
-def _get_session_dismissed(request: Request, person_id: str) -> set[str]:
+def _get_session_dismissed(request: Request) -> set[str]:
     """Return the set of onboarding feature keys dismissed in this session."""
-    all_dismissed = request.session.get("onboarding_dismissed", {})
-    if isinstance(all_dismissed, list):
-        all_dismissed = {}  # migrate old flat-list format
-    return set(all_dismissed.get(person_id, []))
+    return set(request.session.get("onboarding_dismissed", []))
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +268,7 @@ async def auth_status(
                 person = await get_or_create_person(db, sub=sub, email=email, name=name)
                 person_id = str(person.id)
 
-                session_dismissed = _get_session_dismissed(request, person_id)
+                session_dismissed = _get_session_dismissed(request)
                 onboarding_features = await get_pending_onboarding_features(
                     db, person.id, session_dismissed
                 )
@@ -300,7 +297,7 @@ async def auth_status(
                 # Re-compute onboarding features when cache was invalidated
                 # (e.g. after onboarding submit or dismiss).
                 if onboarding_features is None:
-                    session_dismissed = _get_session_dismissed(request, person_id)
+                    session_dismissed = _get_session_dismissed(request)
                     onboarding_features = await get_pending_onboarding_features(
                         db, UUID(person_id), session_dismissed
                     )
@@ -501,8 +498,8 @@ async def me(current_user: CurrentUser) -> PersonDetailResponse:
 async def complete_onboarding(
     request: Request,
     body: OnboardingRequest,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
 ) -> PersonDetailResponse:
     """Complete the onboarding flow for a newly-created SSO user.
 
@@ -510,26 +507,6 @@ async def complete_onboarding(
     an org placement directly, a placement *request* is created which must
     be approved by the team manager or an admin.
     """
-    # Resolve person: from auth session (production) or body (dev mode).
-    # In production, body.person_id is ignored — only the session is trusted.
-    person_db_id = request.session.get("person_db_id")
-    if person_db_id:
-        person_obj = await db.get(Person, UUID(person_db_id))
-    elif settings.is_dev_mode and body.person_id:
-        person_obj = await db.get(Person, body.person_id)
-    else:
-        # No session and not dev mode — reject unauthenticated request.
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Niet ingelogd",
-        )
-
-    if person_obj is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Kan persoon niet bepalen",
-        )
-
     # Validate that the org unit exists.
     org_stmt = select(OrganisatieEenheid.id, OrganisatieEenheid.naam).where(
         OrganisatieEenheid.id == body.organisatie_eenheid_id
@@ -543,14 +520,14 @@ async def complete_onboarding(
         )
 
     # Always update naam and functie (allows corrections on re-submit).
-    person_obj.naam = body.naam
-    person_obj.functie = body.functie
+    current_user.naam = body.naam
+    current_user.functie = body.functie
 
     # Create a placement request if the user has no active placement and no
     # pending request for this eenheid yet.
     existing_placement = await db.execute(
         select(PersonOrganisatieEenheid.id).where(
-            PersonOrganisatieEenheid.person_id == person_obj.id,
+            PersonOrganisatieEenheid.person_id == current_user.id,
             PersonOrganisatieEenheid.eind_datum.is_(None),
         )
     )
@@ -558,7 +535,7 @@ async def complete_onboarding(
         # Check for existing pending request
         existing_request = await db.execute(
             select(OrgPlacementRequest.id).where(
-                OrgPlacementRequest.person_id == person_obj.id,
+                OrgPlacementRequest.person_id == current_user.id,
                 OrgPlacementRequest.organisatie_eenheid_id
                 == body.organisatie_eenheid_id,
                 OrgPlacementRequest.status == "pending",
@@ -566,7 +543,7 @@ async def complete_onboarding(
         )
         if existing_request.scalar_one_or_none() is None:
             placement_req = OrgPlacementRequest(
-                person_id=person_obj.id,
+                person_id=current_user.id,
                 organisatie_eenheid_id=body.organisatie_eenheid_id,
                 dienstverband=body.dienstverband,
             )
@@ -589,41 +566,8 @@ async def complete_onboarding(
 
     # Re-fetch with eager loading so emails/phones are included in response
     repo = PersonRepository(db)
-    person = await repo.get(person_obj.id)
+    person = await repo.get(current_user.id)
     return PersonDetailResponse.model_validate(person)
-
-
-# ---------------------------------------------------------------------------
-# GET /onboarding/features -- get pending onboarding features for a person
-# ---------------------------------------------------------------------------
-
-
-@router.get("/onboarding/features")
-async def get_onboarding_features_for_person(
-    request: Request,
-    person_id: UUID = Query(...),
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-) -> list[dict]:
-    """Return pending onboarding features for a given person.
-
-    In production this is handled via /auth/status (session-based).
-    This endpoint exists so dev mode (no OIDC) can also query features.
-    """
-    if not settings.is_dev_mode:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Alleen beschikbaar in dev mode",
-        )
-
-    person = await db.get(Person, person_id)
-    if person is None:
-        raise HTTPException(status_code=404, detail="Persoon niet gevonden")
-
-    session_dismissed = _get_session_dismissed(request, str(person_id))
-    return await get_pending_onboarding_features(
-        db, person_id, session_dismissed, skip_enabled_check=True
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -635,8 +579,8 @@ async def get_onboarding_features_for_person(
 async def dismiss_onboarding_feature(
     request: Request,
     body: OnboardingDismissRequest,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
 ) -> dict:
     """Dismiss an onboarding feature step (temporarily or permanently)."""
     feature = get_feature(body.feature_key)
@@ -646,28 +590,10 @@ async def dismiss_onboarding_feature(
             detail="Ongeldige of niet-overslaan-bare onboarding stap",
         )
 
-    # Resolve person_id: from auth session (production) or body (dev mode).
-    person_id: UUID | None = None
-    person_db_id = request.session.get("person_db_id")
-    if person_db_id:
-        person_id = UUID(person_db_id)
-    elif settings.is_dev_mode and body.person_id:
-        person_id = body.person_id
-    elif not settings.is_dev_mode:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Niet ingelogd",
-        )
-
     if body.permanent:
-        if person_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Kan persoon niet bepalen voor permanente dismiss",
-            )
         # Persist in database -- idempotent via ON CONFLICT DO NOTHING.
         dismissal = OnboardingDismissal(
-            person_id=person_id,
+            person_id=current_user.id,
             feature_key=body.feature_key,
         )
         db.add(dismissal)
@@ -677,16 +603,9 @@ async def dismiss_onboarding_feature(
             await db.rollback()
 
     # Store in session too (for immediate effect).
-    # Keyed by person_id so dev-mode person switching works correctly.
-    pid_str = str(person_id) if person_id else "_anonymous"
-    all_dismissed: dict = request.session.get("onboarding_dismissed", {})
-    # Migrate flat list → dict (backward compat with old session format).
-    if isinstance(all_dismissed, list):
-        all_dismissed = {}
-    person_dismissed = set(all_dismissed.get(pid_str, []))
-    person_dismissed.add(body.feature_key)
-    all_dismissed[pid_str] = list(person_dismissed)
-    request.session["onboarding_dismissed"] = all_dismissed
+    dismissed: set[str] = set(request.session.get("onboarding_dismissed", []))
+    dismissed.add(body.feature_key)
+    request.session["onboarding_dismissed"] = list(dismissed)
 
     # Invalidate cached features so /status recomputes.
     request.session.pop("onboarding_features", None)
