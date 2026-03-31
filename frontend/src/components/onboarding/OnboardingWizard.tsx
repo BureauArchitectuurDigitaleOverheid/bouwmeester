@@ -5,7 +5,7 @@ import { useDismissOnboardingFeature } from '@/hooks/useOnboarding';
 import { ProfileStep } from '@/components/onboarding/ProfileStep';
 import { MattermostStep } from '@/components/onboarding/MattermostStep';
 import { useQueryClient } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 interface StepComponentProps {
   onComplete: () => void;
@@ -79,10 +79,13 @@ export function OnboardingWizard({
     );
   }
 
-  if (!StepComponent) {
-    handleDismiss(false);
-    return null;
-  }
+  // Auto-dismiss unknown features to avoid blocking the user.
+  const unknownFeature = !StepComponent;
+  useEffect(() => {
+    if (unknownFeature) handleDismiss(false);
+  }, [unknownFeature]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (unknownFeature) return null;
 
   const title = totalSteps > 1
     ? `Welkom bij Bouwmeester (stap ${stepNumber} van ${totalSteps})`
