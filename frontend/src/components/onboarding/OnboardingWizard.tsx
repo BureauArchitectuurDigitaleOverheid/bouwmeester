@@ -5,7 +5,7 @@ import { useDismissOnboardingFeature } from '@/hooks/useOnboarding';
 import { ProfileStep } from '@/components/onboarding/ProfileStep';
 import { MattermostStep } from '@/components/onboarding/MattermostStep';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 
 interface StepComponentProps {
   onComplete: () => void;
@@ -29,33 +29,33 @@ export function OnboardingWizard({
   const { currentPerson } = useCurrentPerson();
   const queryClient = useQueryClient();
   const dismissMutation = useDismissOnboardingFeature();
+  const dismissAttempted = useRef(false);
 
   const personId = currentPerson?.id ?? undefined;
 
-  const refreshFeatures = async () => {
+  const refreshFeatures = useCallback(async () => {
     if (oidcConfigured) {
       await refreshAuthStatus();
     } else {
-      // Dev mode: force refetch the features query so OnboardingGate re-evaluates.
       await queryClient.refetchQueries({ queryKey: ['onboarding-features'] });
     }
-  };
+  }, [oidcConfigured, refreshAuthStatus, queryClient]);
 
   const current = features[0];
   const StepComponent = STEP_COMPONENTS[current.key];
 
-  const handleComplete = async () => {
+  const handleComplete = useCallback(async () => {
     await refreshFeatures();
-  };
+  }, [refreshFeatures]);
 
-  const handleDismiss = async (permanent: boolean) => {
+  const handleDismiss = useCallback(async (permanent: boolean) => {
     await dismissMutation.mutateAsync({
       featureKey: current.key,
       permanent,
       personId,
     });
     await refreshFeatures();
-  };
+  }, [dismissMutation, current.key, personId, refreshFeatures]);
 
   let footer: ReactNode = null;
   if (current.dismissible) {
@@ -80,10 +80,20 @@ export function OnboardingWizard({
   }
 
   // Auto-dismiss unknown features to avoid blocking the user.
+  // Guard against infinite loops: only attempt once per unknown feature,
+  // and skip while a dismiss is already in flight.
   const unknownFeature = !StepComponent;
   useEffect(() => {
-    if (unknownFeature) handleDismiss(false);
-  }, [unknownFeature]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (unknownFeature && !dismissMutation.isPending && !dismissAttempted.current) {
+      dismissAttempted.current = true;
+      handleDismiss(false);
+    }
+  }, [unknownFeature, dismissMutation.isPending, handleDismiss]);
+
+  // Reset the guard when the feature key changes (moved to a known feature).
+  useEffect(() => {
+    dismissAttempted.current = false;
+  }, [current.key]);
 
   if (unknownFeature) return null;
 

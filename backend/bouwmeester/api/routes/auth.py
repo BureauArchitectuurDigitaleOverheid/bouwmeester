@@ -512,14 +512,17 @@ async def complete_onboarding(
     """
     # Resolve person: from auth session (production) or body (dev mode).
     # In production, body.person_id is ignored — only the session is trusted.
-    dev_mode = settings.is_dev_mode
     person_db_id = request.session.get("person_db_id")
     if person_db_id:
         person_obj = await db.get(Person, UUID(person_db_id))
-    elif dev_mode and body.person_id:
+    elif settings.is_dev_mode and body.person_id:
         person_obj = await db.get(Person, body.person_id)
     else:
-        person_obj = None
+        # No session and not dev mode — reject unauthenticated request.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Niet ingelogd",
+        )
 
     if person_obj is None:
         raise HTTPException(
@@ -606,17 +609,20 @@ async def get_onboarding_features_for_person(
 
     In production this is handled via /auth/status (session-based).
     This endpoint exists so dev mode (no OIDC) can also query features.
-    When OIDC is not configured, enabled-checks are skipped so all
-    features can be tested locally.
     """
+    if not settings.is_dev_mode:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Alleen beschikbaar in dev mode",
+        )
+
     person = await db.get(Person, person_id)
     if person is None:
         raise HTTPException(status_code=404, detail="Persoon niet gevonden")
 
-    dev_mode = settings.is_dev_mode
     session_dismissed = _get_session_dismissed(request, str(person_id))
     return await get_pending_onboarding_features(
-        db, person_id, session_dismissed, skip_enabled_check=dev_mode
+        db, person_id, session_dismissed, skip_enabled_check=True
     )
 
 
@@ -645,8 +651,13 @@ async def dismiss_onboarding_feature(
     person_db_id = request.session.get("person_db_id")
     if person_db_id:
         person_id = UUID(person_db_id)
-    elif body.person_id and settings.is_dev_mode:
+    elif settings.is_dev_mode and body.person_id:
         person_id = body.person_id
+    elif not settings.is_dev_mode:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Niet ingelogd",
+        )
 
     if body.permanent:
         if person_id is None:
