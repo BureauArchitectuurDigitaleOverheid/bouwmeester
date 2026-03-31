@@ -23,6 +23,7 @@ import {
   INITIATIEF_COLORS,
 } from '@/types';
 import type { InitiatiefCreate } from '@/types';
+import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 
 type LeadViewMode = 'kanban' | 'list' | 'graph' | 'timeline';
 
@@ -61,6 +62,16 @@ export function LeadsPage() {
           : 'kanban';
 
   const [showIntake, setShowIntake] = useState(false);
+  const { subscribe } = useGlobalFileDropContext();
+  const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
+
+  // Subscribe to global file drops while this page is mounted
+  useEffect(() => {
+    return subscribe((files) => {
+      setDroppedFiles(files);
+      setShowIntake(true);
+    });
+  }, [subscribe]);
   const [showCreateInitiatief, setShowCreateInitiatief] = useState(false);
   const [editInitiatiefId, setEditInitiatiefId] = useState<string | null>(null);
 
@@ -321,7 +332,12 @@ export function LeadsPage() {
         />
       ) : null}
 
-      <LeadIntakeDialog open={showIntake} onClose={() => setShowIntake(false)} defaultInitiatiefId={selectedInitiatiefId} />
+      <LeadIntakeDialog
+        open={showIntake}
+        onClose={() => { setShowIntake(false); setDroppedFiles([]); }}
+        defaultInitiatiefId={selectedInitiatiefId}
+        initialFiles={droppedFiles.length > 0 ? droppedFiles : undefined}
+      />
 
       {/* Create initiatief modal */}
       {showCreateInitiatief && (

@@ -10,6 +10,9 @@ import { useUIStore } from '@/store/ui';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useAuth } from '@/contexts/AuthContext';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
+import { GlobalDropOverlay } from '@/components/common/GlobalDropOverlay';
+import { FileActionChooser } from '@/components/common/FileActionChooser';
+import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 
 function PlacementBanner() {
   const { person } = useAuth();
@@ -53,6 +56,7 @@ export function AppLayout() {
   const isMobile = useIsMobile();
   const location = useLocation();
   const { mobileSidebarOpen, setMobileSidebarOpen, chatOpen, chatWidth, searchModalOpen, setSearchModalOpen } = useUIStore();
+  const { isDragging } = useGlobalFileDropContext();
 
   // Close mobile sidebar on Escape
   useEffect(() => {
@@ -117,6 +121,8 @@ export function AppLayout() {
       <ChatPanel />
       <ChatToggleButton />
       <SearchModal open={searchModalOpen} onClose={() => setSearchModalOpen(false)} />
+      <GlobalDropOverlay visible={isDragging} />
+      <FileActionChooser />
     </div>
   );
 }

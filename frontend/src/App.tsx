@@ -10,6 +10,7 @@ import { OpdrachtDetailProvider } from '@/contexts/OpdrachtDetailContext';
 import { OpdrachtCreateProvider } from '@/contexts/OpdrachtCreateContext';
 import { LeadDetailProvider } from '@/contexts/LeadDetailContext';
 import { ChatProvider } from '@/contexts/ChatContext';
+import { GlobalFileDropProvider } from '@/contexts/GlobalFileDropContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { DetailModals } from '@/components/common/DetailModals';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -124,6 +125,7 @@ export default function App() {
             <OrgContextProvider>
             <VocabularyProvider>
             <BrowserRouter>
+            <GlobalFileDropProvider>
               <ChatProvider>
               <TaskDetailProvider>
               <NodeDetailProvider>
@@ -159,6 +161,7 @@ export default function App() {
               </NodeDetailProvider>
               </TaskDetailProvider>
             </ChatProvider>
+            </GlobalFileDropProvider>
             </BrowserRouter>
             </VocabularyProvider>
             </OrgContextProvider>

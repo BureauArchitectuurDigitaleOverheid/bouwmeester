@@ -131,6 +131,7 @@ export function ChatInput() {
       }
       if (files.length > 0) {
         e.preventDefault();
+        e.stopPropagation();
         handleFiles(files);
       }
     },
@@ -150,6 +151,7 @@ export function ChatInput() {
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       setIsDragging(false);
       if (e.dataTransfer.files?.length) {
         handleFiles(e.dataTransfer.files);

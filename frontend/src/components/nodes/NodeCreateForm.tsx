@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
@@ -28,9 +28,10 @@ interface NodeCreateFormProps {
   onClose: () => void;
   defaultNodeType?: NodeType;
   linkToDossierId?: string;
+  initialBijlageFile?: File;
 }
 
-export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId }: NodeCreateFormProps) {
+export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId, initialBijlageFile }: NodeCreateFormProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const nodeTypeOptions = useCreatableNodeTypeOptions();
@@ -58,6 +59,22 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
     showAutoTagDialog, autoTagMatched, autoTagNew,
     checkAndSuggest, closeAutoTagDialog,
   } = useAutoTagSuggestion();
+
+  // Pre-fill from global file drop: switch to bron type and set file + title
+  const prevBijlageRef = useRef<File | undefined>(undefined);
+  useEffect(() => {
+    if (!open) {
+      prevBijlageRef.current = undefined;
+      return;
+    }
+    if (initialBijlageFile && initialBijlageFile !== prevBijlageRef.current) {
+      prevBijlageRef.current = initialBijlageFile;
+      setNodeType(NodeType.BRON);
+      setBijlageFile(initialBijlageFile);
+      const name = initialBijlageFile.name.replace(/\.[^/.]+$/, '');
+      if (!title) setTitle(name);
+    }
+  }, [open, initialBijlageFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isBron = nodeType === NodeType.BRON;
 

@@ -23,11 +23,14 @@ interface LeadIntakeDialogProps {
   defaultInitiatiefId?: string;
   sharedParseResult?: LeadParseResult;
   sharedFiles?: File[];
+  initialFiles?: File[];
 }
 
 type Step = 'input' | 'parsing' | 'confirm';
 
-export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedParseResult, sharedFiles }: LeadIntakeDialogProps) {
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB, matches backend limit
+
+export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedParseResult, sharedFiles, initialFiles }: LeadIntakeDialogProps) {
   const [step, setStep] = useState<Step>('input');
   const [rawText, setRawText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -143,6 +146,19 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     }
   }, [open, sharedParseResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pre-fill files from global drop (stay on input step so user can add text / click parse)
+  const prevInitialFilesRef = useRef<File[] | undefined>(undefined);
+  useEffect(() => {
+    if (!open) {
+      prevInitialFilesRef.current = undefined;
+      return;
+    }
+    if (initialFiles && initialFiles.length > 0 && initialFiles !== prevInitialFilesRef.current && !sharedParseResult && step === 'input') {
+      prevInitialFilesRef.current = initialFiles;
+      setFiles(initialFiles);
+    }
+  }, [open, initialFiles]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Try to match VLAM's contact_name against existing people
   useEffect(() => {
     if (contactName && people) {
@@ -204,8 +220,6 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     onClose();
   };
 
-  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB, matches backend limit
-
   const addFiles = useCallback((newFiles: File[]) => {
     const valid: File[] = [];
     const rejected: string[] = [];
@@ -236,12 +250,14 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
       }
     }
     if (pastedFiles.length > 0) {
+      e.stopPropagation();
       addFiles(pastedFiles);
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragActive(false);
     addFiles(Array.from(e.dataTransfer.files));
   };
