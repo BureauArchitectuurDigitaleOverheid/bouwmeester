@@ -26,18 +26,23 @@ function StepIndicator({
 }) {
   if (features.length <= 1) return null;
 
+  // Each step is a fixed-width column. The connector sits between columns
+  // and is vertically aligned to the circle (top: 16px = half of h-8).
   return (
-    <div className="mb-6">
-      {/* Row 1: circles + connectors — all vertically centered */}
-      <div className="flex items-center justify-center">
-        {features.map((f, i) => {
-          const isDone = i < currentIndex;
-          const isCurrent = i === currentIndex;
-          return (
-            <div key={f.key} className="flex items-center">
-              {i > 0 && (
-                <div className={`w-12 mx-2 h-0.5 ${isDone ? 'bg-primary-500' : 'bg-border'}`} />
-              )}
+    <div className="flex justify-center mb-6">
+      {features.map((f, i) => {
+        const isDone = i < currentIndex;
+        const isCurrent = i === currentIndex;
+        return (
+          <div key={f.key} className="flex items-start">
+            {/* Connector between steps, vertically centered on the circles */}
+            {i > 0 && (
+              <div className="flex items-center" style={{ height: 32 }}>
+                <div className={`w-10 h-0.5 ${isDone ? 'bg-primary-500' : 'bg-border'}`} />
+              </div>
+            )}
+            {/* Step column: circle on top, label below, all centered */}
+            <div className="flex flex-col items-center px-1">
               <div
                 className={`flex items-center justify-center h-8 w-8 shrink-0 rounded-full text-xs font-semibold transition-colors ${
                   isDone
@@ -49,29 +54,17 @@ function StepIndicator({
               >
                 {isDone ? <Check className="h-4 w-4" /> : i + 1}
               </div>
-            </div>
-          );
-        })}
-      </div>
-      {/* Row 2: labels — mirrored spacing so they sit under their circles */}
-      <div className="flex items-center justify-center mt-1.5">
-        {features.map((f, i) => {
-          const isCurrent = i === currentIndex;
-          return (
-            <div key={f.key} className="flex items-center">
-              {i > 0 && <div className="w-12 mx-2" />}
               <span
-                className={`w-8 text-center text-[11px] ${
+                className={`text-[11px] mt-1.5 ${
                   isCurrent ? 'text-primary-700 font-medium' : 'text-text-secondary'
                 }`}
-                style={{ minWidth: 72 }}
               >
                 {f.label}
               </span>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
