@@ -60,18 +60,18 @@ export function OnboardingWizard({
   let footer: ReactNode = null;
   if (current.dismissible) {
     footer = (
-      <div className="flex items-center gap-3 w-full">
+      <div className="flex items-center justify-between w-full">
         <button
           onClick={() => handleDismiss(false)}
           disabled={dismissMutation.isPending}
-          className="text-sm text-text-secondary hover:text-text transition-colors disabled:opacity-50"
+          className="px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:text-text hover:bg-gray-50 transition-colors disabled:opacity-50"
         >
           Later
         </button>
         <button
           onClick={() => handleDismiss(true)}
           disabled={dismissMutation.isPending}
-          className="text-sm text-text-secondary hover:text-text transition-colors disabled:opacity-50"
+          className="text-xs text-text-secondary/60 hover:text-text-secondary underline transition-colors disabled:opacity-50"
         >
           Niet meer tonen
         </button>
