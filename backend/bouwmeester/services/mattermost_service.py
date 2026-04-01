@@ -197,12 +197,24 @@ class MattermostService:
             if not username:
                 return None
 
+            # Try bot's own teams first, fall back to any team on the server.
+            # Bot accounts are often not explicitly added to a team.
+            team_name: str | None = None
             teams_resp = await client.get("/api/v4/users/me/teams")
             teams_resp.raise_for_status()
             teams = teams_resp.json()
-            if not teams:
-                return None
-            team_name = teams[0].get("name")
+            if teams:
+                team_name = teams[0].get("name")
+
+            if not team_name:
+                all_teams_resp = await client.get(
+                    "/api/v4/teams", params={"per_page": 1}
+                )
+                all_teams_resp.raise_for_status()
+                all_teams = all_teams_resp.json()
+                if all_teams:
+                    team_name = all_teams[0].get("name")
+
             if not team_name:
                 return None
 
