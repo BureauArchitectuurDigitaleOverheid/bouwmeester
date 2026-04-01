@@ -105,38 +105,46 @@ export function MattermostLinkSection({ compact = false }: { compact?: boolean }
           {isCodeActive ? (
             <div className="space-y-3">
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                <p className="text-sm text-blue-800 mb-2">
-                  Kopieer onderstaand bericht en plak het in een DM naar{' '}
-                  <strong>@bouwmeester</strong> in Mattermost.
-                  {linkStatus?.bot_dm_url && (
-                    <>
-                      {' '}
-                      <a
-                        href={linkStatus.bot_dm_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-0.5 font-semibold text-blue-700 underline hover:text-blue-900"
-                      >
-                        Open het gesprek met de bot
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </>
-                  )}
-                </p>
-                <div className="rounded-md bg-white border border-blue-200 px-3 py-2 text-sm text-blue-900">
-                  Hoi! Koppel mij alsjeblieft aan Bouwmeester: <strong className="font-mono">{linkCode!.code}</strong>
-                </div>
-                <button
-                  onClick={handleCopyCode}
-                  className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-blue-200 text-blue-700 text-sm hover:bg-blue-100 transition-colors"
-                >
-                  {copied ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                  {copied ? 'Gekopieerd!' : 'Kopieer bericht'}
-                </button>
+                {linkStatus?.bot_dm_url ? (
+                  <>
+                    <p className="text-sm text-blue-800 mb-3">
+                      Klik op de knop hieronder om een gesprek met de bot te openen in
+                      Mattermost. Het koppelbericht staat al klaar - je hoeft het alleen
+                      nog te versturen.
+                    </p>
+                    <a
+                      href={`${linkStatus.bot_dm_url}?prefilled_message=${encodeURIComponent(`Hoi! Koppel mij alsjeblieft aan Bouwmeester: ${linkCode!.code}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Open gesprek met @bouwmeester
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-blue-800 mb-2">
+                      Kopieer het bericht en stuur het als DM naar{' '}
+                      <strong>@bouwmeester</strong> in Mattermost:
+                    </p>
+                    <div className="rounded-md bg-white border border-blue-200 px-3 py-2 text-sm text-blue-900">
+                      Hoi! Koppel mij alsjeblieft aan Bouwmeester: <strong className="font-mono">{linkCode!.code}</strong>
+                    </div>
+                    <button
+                      onClick={handleCopyCode}
+                      className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-blue-200 text-blue-700 text-sm hover:bg-blue-100 transition-colors"
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                      {copied ? 'Gekopieerd!' : 'Kopieer bericht'}
+                    </button>
+                  </>
+                )}
                 <p className="text-xs text-blue-600 mt-2">
                   Code verloopt om {new Date(linkCode!.expires_at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
                 </p>
