@@ -6,6 +6,7 @@ import { queryKeys } from '@/hooks/queryKeys';
 export interface MattermostLinkStatus {
   linked: boolean;
   mattermost_username: string | null;
+  bot_dm_url: string | null;
 }
 
 export interface MattermostLinkCode {

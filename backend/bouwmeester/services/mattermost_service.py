@@ -187,6 +187,31 @@ class MattermostService:
             logger.exception("Failed to get bot user ID")
             return None
 
+    async def get_bot_dm_url(self) -> str | None:
+        """Build a browser URL for DMing the bot: {base}/{team}/messages/@{username}."""
+        client = await self._get_client()
+        try:
+            me_resp = await client.get("/api/v4/users/me")
+            me_resp.raise_for_status()
+            username = me_resp.json().get("username")
+            if not username:
+                return None
+
+            teams_resp = await client.get("/api/v4/users/me/teams")
+            teams_resp.raise_for_status()
+            teams = teams_resp.json()
+            if not teams:
+                return None
+            team_name = teams[0].get("name")
+            if not team_name:
+                return None
+
+            base_url = self._cfg("MATTERMOST_URL").rstrip("/")
+            return f"{base_url}/{team_name}/messages/@{username}"
+        except httpx.HTTPError:
+            logger.exception("Failed to build bot DM URL")
+            return None
+
     async def send_dm(
         self,
         person_id: UUID,

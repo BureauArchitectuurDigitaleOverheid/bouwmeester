@@ -156,14 +156,23 @@ async def get_link_status(
     db: AsyncSession = Depends(get_db),
 ) -> MattermostLinkStatusResponse:
     """Check whether the current user is linked to Mattermost."""
+    from bouwmeester.services.mattermost_service import MattermostService
+
     repo = MattermostUserRepository(db)
     mapping = await repo.get_by_person_id(person_id)
+
+    service = MattermostService(db)
+    bot_dm_url = None
+    if await service.is_enabled():
+        bot_dm_url = await service.get_bot_dm_url()
+
     if mapping:
         return MattermostLinkStatusResponse(
             linked=True,
             mattermost_username=mapping.mattermost_username,
+            bot_dm_url=bot_dm_url,
         )
-    return MattermostLinkStatusResponse(linked=False)
+    return MattermostLinkStatusResponse(linked=False, bot_dm_url=bot_dm_url)
 
 
 @router.delete("/link")
