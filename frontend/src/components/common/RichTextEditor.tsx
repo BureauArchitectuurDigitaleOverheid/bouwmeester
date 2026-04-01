@@ -353,17 +353,60 @@ const HashtagMention = Mention.extend({
   },
 });
 
-// ─── Helper: parse TipTap JSON or plain text ───────────────────────────────
+// ─── Helper: parse TipTap JSON, markdown, or plain text ─────────────────────
 
-function parseContent(value: string): object {
+import { micromark } from 'micromark';
+
+/** Simple heuristic: does the text contain markdown-like formatting? */
+function looksLikeMarkdown(text: string): boolean {
+  return /\*\*[^*]+\*\*|\*[^*]+\*|^#{1,3}\s|^[-*]\s/m.test(text);
+}
+
+interface TipTapNode {
+  type: string;
+  content?: TipTapNode[];
+  text?: string;
+  marks?: { type: string }[];
+}
+
+/**
+ * Extract plain text from a TipTap doc that only has paragraphs with unmarked
+ * text nodes.  Returns null if the doc uses any rich features (marks, mentions).
+ */
+function extractPlainText(doc: TipTapNode): string | null {
+  const lines: string[] = [];
+  for (const node of doc.content ?? []) {
+    if (node.type !== 'paragraph') return null;
+    let line = '';
+    for (const child of node.content ?? []) {
+      if (child.type !== 'text' || (child.marks && child.marks.length > 0)) return null;
+      line += child.text ?? '';
+    }
+    lines.push(line);
+  }
+  return lines.join('\n');
+}
+
+function parseContent(value: string): object | string {
   if (!value) {
     return { type: 'doc', content: [{ type: 'paragraph' }] };
   }
   try {
     const parsed = JSON.parse(value);
-    if (parsed && parsed.type === 'doc') return parsed;
+    if (parsed && parsed.type === 'doc') {
+      // Check for legacy data: TipTap JSON with raw markdown in text nodes.
+      // Convert to HTML so TipTap re-parses it with proper marks.
+      const plain = extractPlainText(parsed as TipTapNode);
+      if (plain !== null && looksLikeMarkdown(plain)) {
+        return micromark(plain);
+      }
+      return parsed;
+    }
   } catch {
-    // plain text fallback
+    // not JSON — check for markdown below
+  }
+  if (looksLikeMarkdown(value)) {
+    return micromark(value);
   }
   return {
     type: 'doc',
@@ -436,8 +479,11 @@ export function RichTextEditor({
     const currentJson = JSON.stringify(editor.getJSON());
     if (value !== currentJson) {
       const newContent = parseContent(value);
-      const newJson = JSON.stringify(newContent);
-      if (newJson !== currentJson) {
+      // When newContent is an HTML string (from markdown), always apply it —
+      // JSON.stringify comparison doesn't make sense for HTML.
+      const shouldApply = typeof newContent === 'string'
+        || JSON.stringify(newContent) !== currentJson;
+      if (shouldApply) {
         skipUpdate.current = true;
         editor.commands.setContent(newContent);
       }
