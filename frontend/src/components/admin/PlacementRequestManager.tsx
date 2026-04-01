@@ -1,13 +1,16 @@
 import { useState } from 'react';
-import { Check, X } from 'lucide-react';
+import { Check, Pencil, X } from 'lucide-react';
 import { usePendingPlacements, useApprovePlacement, useDenyPlacement } from '@/hooks/useOrgPlacements';
 import { DIENSTVERBAND_LABELS } from '@/types';
+import { PlacementEditModal } from './PlacementEditModal';
+import type { OrgPlacementRequest } from '@/api/orgPlacements';
 
 export function PlacementRequestManager() {
   const { data: requests, isLoading } = usePendingPlacements();
   const approveRequest = useApprovePlacement();
   const denyRequest = useDenyPlacement();
   const [confirmDenyId, setConfirmDenyId] = useState<string | null>(null);
+  const [editingRequest, setEditingRequest] = useState<OrgPlacementRequest | null>(null);
 
   const handleApprove = (id: string) => {
     approveRequest.mutate(id);
@@ -26,7 +29,7 @@ export function PlacementRequestManager() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-secondary">
-        Nieuwe medewerkers die zich aanmelden kiezen een team. Hieronder kun je hun plaatsingsverzoek goedkeuren of afwijzen.
+        Nieuwe medewerkers die zich aanmelden kiezen een team. Hieronder kun je hun teamverzoek goedkeuren of afwijzen.
       </p>
 
       <div className="border border-border rounded-xl overflow-x-auto">
@@ -44,7 +47,18 @@ export function PlacementRequestManager() {
             {requests?.map((req) => (
               <tr key={req.id} className="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-2.5 text-text font-medium">{req.person_naam}</td>
-                <td className="px-4 py-2.5 text-text">{req.eenheid_naam}</td>
+                <td className="px-4 py-2.5 text-text">
+                  <span className="inline-flex items-center gap-1.5">
+                    {req.eenheid_naam}
+                    <button
+                      onClick={() => setEditingRequest(req)}
+                      className="p-0.5 rounded hover:bg-gray-100 text-text-secondary hover:text-text transition-colors"
+                      title="Team wijzigen"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                </td>
                 <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
                   {DIENSTVERBAND_LABELS[req.dienstverband] || req.dienstverband}
                 </td>
@@ -98,13 +112,19 @@ export function PlacementRequestManager() {
             {(!requests || requests.length === 0) && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-text-secondary">
-                  Geen openstaande plaatsingsverzoeken
+                  Geen openstaande teamverzoeken
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      <PlacementEditModal
+        open={!!editingRequest}
+        onClose={() => setEditingRequest(null)}
+        request={editingRequest}
+      />
     </div>
   );
 }

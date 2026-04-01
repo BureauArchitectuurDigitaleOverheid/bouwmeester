@@ -17,10 +17,19 @@ export function useMyPlacementRequests() {
   });
 }
 
+export function useUpdatePlacement() {
+  return useMutationWithError({
+    mutationFn: ({ id, data }: { id: string; data: api.UpdatePlacementRequest }) =>
+      api.updatePlacement(id, data),
+    errorMessage: 'Fout bij wijzigen teamverzoek',
+    invalidateKeys: [queryKeys.orgPlacements.all],
+  });
+}
+
 export function useApprovePlacement() {
   return useMutationWithError({
     mutationFn: (id: string) => api.approvePlacement(id),
-    errorMessage: 'Fout bij goedkeuren plaatsingsverzoek',
+    errorMessage: 'Fout bij goedkeuren teamverzoek',
     invalidateKeys: [queryKeys.orgPlacements.all],
   });
 }
@@ -28,7 +37,7 @@ export function useApprovePlacement() {
 export function useDenyPlacement() {
   return useMutationWithError({
     mutationFn: (id: string) => api.denyPlacement(id),
-    errorMessage: 'Fout bij afwijzen plaatsingsverzoek',
+    errorMessage: 'Fout bij afwijzen teamverzoek',
     invalidateKeys: [queryKeys.orgPlacements.all],
   });
 }

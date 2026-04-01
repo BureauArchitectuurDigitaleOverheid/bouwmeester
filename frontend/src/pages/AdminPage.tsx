@@ -69,7 +69,7 @@ export function AdminPage() {
     tabs.push({ id: 'requests', label: 'Verzoeken' });
   }
   if (hasPermission('people:manage') || isManager) {
-    tabs.push({ id: 'placements', label: 'Plaatsingsverzoeken' });
+    tabs.push({ id: 'placements', label: 'Teamverzoeken' });
   }
   if (hasPermission('people:assign_role')) {
     tabs.push({ id: 'users', label: 'Gebruikers' });

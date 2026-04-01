@@ -26,7 +26,7 @@ function PlacementBanner() {
       <>
         <div className="bg-red-50 border-b border-red-200 px-4 py-2.5 flex items-center justify-center gap-2 text-sm text-red-800">
           <XCircle className="h-4 w-4 shrink-0" />
-          <span>Je plaatsingsverzoek is afgewezen.</span>
+          <span>Je teamverzoek is afgewezen.</span>
           <button
             onClick={() => setShowReRequest(true)}
             className="underline font-medium hover:text-red-900"
@@ -44,7 +44,7 @@ function PlacementBanner() {
     return (
       <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2 text-sm text-amber-800">
         <Clock className="h-4 w-4 shrink-0" />
-        <span>Je plaatsingsverzoek wordt beoordeeld door een manager.</span>
+        <span>Je teamverzoek wordt beoordeeld door een manager.</span>
       </div>
     );
   }

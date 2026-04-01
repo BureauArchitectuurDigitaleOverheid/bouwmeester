@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './client';
+import { apiGet, apiPatch, apiPost } from './client';
 
 export interface OrgPlacementRequest {
   id: string;
@@ -16,6 +16,14 @@ export interface OrgPlacementRequest {
 export interface CreatePlacementRequest {
   organisatie_eenheid_id: string;
   dienstverband?: string;
+}
+
+export interface UpdatePlacementRequest {
+  organisatie_eenheid_id: string;
+}
+
+export function updatePlacement(id: string, data: UpdatePlacementRequest) {
+  return apiPatch<OrgPlacementRequest>(`/api/org-placements/${id}`, data);
 }
 
 export function requestPlacement(data: CreatePlacementRequest) {

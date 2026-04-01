@@ -18,6 +18,7 @@ from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.org_placement import (
     OrgPlacementRequestCreate,
     OrgPlacementRequestResponse,
+    OrgPlacementRequestUpdate,
 )
 from bouwmeester.services.notification_service import NotificationService
 
@@ -152,6 +153,68 @@ async def list_pending(
     return [_to_response(r) for r in requests]
 
 
+@router.patch("/{id}", response_model=OrgPlacementRequestResponse)
+async def update_placement_request(
+    id: UUID,
+    data: OrgPlacementRequestUpdate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
+) -> OrgPlacementRequestResponse:
+    """Update the target eenheid of a pending placement request."""
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    stmt = (
+        select(OrgPlacementRequest)
+        .where(OrgPlacementRequest.id == id)
+        .options(*_load_options())
+    )
+    result = await db.execute(stmt)
+    req = result.scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=404, detail="Verzoek niet gevonden")
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail="Verzoek is al afgehandeld")
+
+    # Validate target eenheid exists
+    target = await db.get(OrganisatieEenheid, data.organisatie_eenheid_id)
+    if target is None:
+        raise HTTPException(status_code=400, detail="Eenheid niet gevonden")
+
+    # Only admins or managers of the current eenheid may update
+    if not org_ctx.is_admin:
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Inloggen vereist")
+        managed_ids = await _get_managed_eenheid_ids(db, current_user.id)
+        if req.organisatie_eenheid_id not in managed_ids:
+            raise HTTPException(status_code=403, detail="Geen bevoegdheid")
+
+    req.organisatie_eenheid_id = data.organisatie_eenheid_id
+    await db.flush()
+    await db.refresh(req, attribute_names=["organisatie_eenheid"])
+
+    # If the changer doesn't manage the new eenheid, notify its manager
+    should_notify = True
+    if not org_ctx.is_admin and current_user is not None:
+        managed_ids = await _get_managed_eenheid_ids(db, current_user.id)
+        if data.organisatie_eenheid_id in managed_ids:
+            should_notify = False
+    elif org_ctx.is_admin:
+        should_notify = False
+
+    if should_notify:
+        notif_svc = NotificationService(db)
+        person_naam = req.person.naam if req.person else ""
+        eenheid_naam = target.naam
+        await notif_svc.notify_placement_request(
+            person_naam=person_naam,
+            eenheid_id=data.organisatie_eenheid_id,
+            eenheid_naam=eenheid_naam,
+        )
+
+    return _to_response(req)
+
+
 @router.post("/{id}/approve", response_model=OrgPlacementRequestResponse)
 async def approve_placement(
     id: UUID,
@@ -201,8 +264,8 @@ async def approve_placement(
         NotificationCreate(
             person_id=req.person_id,
             type="placement_approved",
-            title=f"Plaatsing goedgekeurd: {eenheid_naam}",
-            message=f"Je bent geplaatst bij '{eenheid_naam}'.",
+            title=f"Toegevoegd aan: {eenheid_naam}",
+            message=f"Je bent toegevoegd aan '{eenheid_naam}'.",
         )
     )
 
@@ -249,9 +312,9 @@ async def deny_placement(
         NotificationCreate(
             person_id=req.person_id,
             type="placement_denied",
-            title=f"Plaatsing afgewezen: {eenheid_naam}",
+            title=f"Verzoek afgewezen: {eenheid_naam}",
             message=(
-                f"Je verzoek om geplaatst te worden bij '{eenheid_naam}' "
+                f"Je verzoek om toegevoegd te worden aan '{eenheid_naam}' "
                 f"is afgewezen. Je kunt een nieuw verzoek indienen."
             ),
         )
