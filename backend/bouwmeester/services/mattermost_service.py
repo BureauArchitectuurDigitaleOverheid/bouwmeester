@@ -94,7 +94,7 @@ _NOTIFICATION_COLORS: dict[str, str] = {
 }
 
 # Types that should go to the channel (broadcast) instead of DM.
-_CHANNEL_NOTIFICATION_TYPES = frozenset({"politieke_input_imported", "access_request"})
+_CHANNEL_NOTIFICATION_TYPES = frozenset({"politieke_input_imported"})
 
 # Re-export for backwards compatibility within this module.
 _escape_md = escape_mattermost_md
@@ -317,7 +317,6 @@ class MattermostService:
 
         escaped_title = _escape_md(notification.title)
         escaped_message = _escape_md(plain_message)
-        frontend_url = self._cfg("FRONTEND_URL", "http://localhost:5173")
         attachment: dict = {
             "fallback": escaped_title,
             "color": color,
@@ -326,7 +325,6 @@ class MattermostService:
             "text": escaped_message,
             "fields": fields,
             "footer": "Bouwmeester",
-            "footer_icon": f"{frontend_url}/favicon.ico",
         }
 
         # Add interactive buttons for actionable notification types.
