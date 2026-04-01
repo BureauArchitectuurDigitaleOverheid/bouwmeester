@@ -189,7 +189,7 @@ export function CascadingOrgSelect({
       const newSelections = selections.slice(0, levelIndex);
       newSelections.push(result.id);
       setSelections(newSelections);
-      onChange(result.id);
+      onChange(newSelections.length >= minDepth ? result.id : '');
       return result.id;
     }
     return null;
