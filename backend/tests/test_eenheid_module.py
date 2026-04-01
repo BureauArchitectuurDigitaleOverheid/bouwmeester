@@ -217,6 +217,73 @@ async def test_effective_permissions_updated_after_disable(module_setup):
     assert "node:read" in perm_ctx.effective_permissions
 
 
+async def test_member_without_explicit_role_gets_viewer_permissions(module_setup):
+    """A person placed in an eenheid without explicit PersonRole gets viewer perms."""
+    s = module_setup
+    db = s["db"]
+
+    member = await _make_person(db, "Implicit Viewer")
+    db.add(
+        PersonOrganisatieEenheid(
+            person_id=member.id,
+            organisatie_eenheid_id=s["child"].id,
+            start_datum=date.today(),
+        )
+    )
+    # No PersonRole added — only a placement
+    await db.flush()
+
+    perm_ctx = await build_permission_context(db, member)
+    child_perms = perm_ctx.scoped_permissions.get(s["child"].id, set())
+
+    # Should have viewer-level permissions
+    assert "lead:read" in child_perms
+    assert "node:read" in child_perms
+    assert "initiatief:read" in child_perms
+    assert "opdracht:read" in child_perms
+    assert "task:read" in child_perms
+
+    # Should NOT have editor permissions
+    assert "node:create" not in child_perms
+    assert "lead:create" not in child_perms
+
+    # Effective permissions should include the viewer perms
+    assert "lead:read" in perm_ctx.effective_permissions
+
+
+async def test_member_without_role_respects_module_disables(module_setup):
+    """Implicit viewer perms are still subject to module disables."""
+    s = module_setup
+    db = s["db"]
+
+    member = await _make_person(db, "Module Limited Member")
+    db.add(
+        PersonOrganisatieEenheid(
+            person_id=member.id,
+            organisatie_eenheid_id=s["child"].id,
+            start_datum=date.today(),
+        )
+    )
+    db.add(
+        EenheidModule(
+            organisatie_eenheid_id=s["child"].id,
+            module="leads",
+            enabled=False,
+        )
+    )
+    await db.flush()
+
+    perm_ctx = await build_permission_context(db, member)
+    child_perms = perm_ctx.scoped_permissions.get(s["child"].id, set())
+
+    # Leads module disabled, so no lead:read even with implicit viewer
+    assert "lead:read" not in child_perms
+    assert "lead:read" not in perm_ctx.effective_permissions
+
+    # Other modules still work
+    assert "node:read" in child_perms
+
+
 async def test_multi_eenheid_user_partial_disable(module_setup):
     """User in two eenheden: disabled in A, enabled in B keeps effective perms."""
     s = module_setup

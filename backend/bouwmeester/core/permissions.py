@@ -108,7 +108,12 @@ async def build_permission_context(
     db: AsyncSession,
     person: Person,
 ) -> PermissionContext:
-    """Build a PermissionContext by querying person_role + role_permission."""
+    """Build a PermissionContext by querying person_role + role_permission.
+
+    Members of an eenheid (via PersonOrganisatieEenheid) who have no
+    explicit PersonRole on that eenheid receive an implicit ``viewer``
+    role so they can see modules enabled for their team.
+    """
     pr_repo = PersonRoleRepository(db)
     system_roles, scoped_roles = await pr_repo.get_active_role_ids_for_person(person.id)
 
@@ -127,6 +132,15 @@ async def build_permission_context(
             system_permissions=all_perms,
             is_super_admin=True,
         )
+
+    # Grant implicit viewer role for eenheden the person is a member of
+    # but has no explicit PersonRole on.
+    from bouwmeester.core.org_context import _get_own_eenheid_ids
+
+    member_eenheid_ids = await _get_own_eenheid_ids(db, person.id)
+    for eid in member_eenheid_ids:
+        if eid not in scoped_roles:
+            scoped_roles[eid] = ["viewer"]
 
     # Resolve per-role permissions
     role_repo = RoleRepository(db)
