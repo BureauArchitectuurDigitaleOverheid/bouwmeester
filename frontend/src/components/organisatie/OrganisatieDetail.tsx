@@ -6,7 +6,7 @@ import { Badge } from '@/components/common/Badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { useOrganisatieEenheid, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
-import { ORGANISATIE_TYPE_LABELS, ORGANISATIE_TYPE_BADGE_COLORS, formatFunctie } from '@/types';
+import { formatOrganisatieType, ORGANISATIE_TYPE_BADGE_COLORS, formatFunctie } from '@/types';
 import type { Person, OrganisatieEenheidPersonenGroup } from '@/types';
 
 /** Org types where the manager role is labeled "Coördinator" instead of "Manager". */
@@ -163,7 +163,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
           variant={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}
           className="text-xs px-2 py-0.5"
         >
-          {ORGANISATIE_TYPE_LABELS[group.eenheid.type] || group.eenheid.type}
+          {formatOrganisatieType(group.eenheid.type)}
         </Badge>
         <span className="text-sm font-medium text-text truncate">{group.eenheid.naam}</span>
         <span className="text-xs text-text-secondary">({totalCount})</span>
@@ -264,7 +264,7 @@ export function OrganisatieDetail({
               variant={ORGANISATIE_TYPE_BADGE_COLORS[eenheid.type] || 'gray'}
               dot
             >
-              {ORGANISATIE_TYPE_LABELS[eenheid.type] || eenheid.type}
+              {formatOrganisatieType(eenheid.type)}
             </Badge>
           </div>
           <h2 className="text-xl font-semibold text-text">{eenheid.naam}</h2>

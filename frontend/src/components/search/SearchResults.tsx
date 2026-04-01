@@ -14,7 +14,7 @@ import {
   NODE_TYPE_LABELS,
   NODE_STATUS_LABELS,
   TASK_STATUS_LABELS,
-  ORGANISATIE_TYPE_LABELS,
+  formatOrganisatieType,
   PARLEMENTAIR_TYPE_LABELS,
   LEAD_STAGE_LABELS,
   formatFunctie,
@@ -38,7 +38,6 @@ const SUBTITLE_LABEL_MAPS: Partial<
 > = {
   corpus_node: { ...NODE_TYPE_LABELS, ...NODE_STATUS_LABELS },
   task: TASK_STATUS_LABELS,
-  organisatie_eenheid: ORGANISATIE_TYPE_LABELS,
   parlementair_item: PARLEMENTAIR_TYPE_LABELS,
   lead: LEAD_STAGE_LABELS as Record<string, string>,
 };
@@ -47,6 +46,9 @@ export function formatSubtitle(result: SearchResult): string | undefined {
   if (!result.subtitle) return undefined;
   if (result.result_type === 'person') {
     return formatFunctie(result.subtitle);
+  }
+  if (result.result_type === 'organisatie_eenheid') {
+    return formatOrganisatieType(result.subtitle);
   }
   const map = SUBTITLE_LABEL_MAPS[result.result_type];
   return map?.[result.subtitle] ?? result.subtitle;

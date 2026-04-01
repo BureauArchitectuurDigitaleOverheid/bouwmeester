@@ -3,7 +3,7 @@ import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Badge } from '@/components/common/Badge';
 import type { OrganisatieEenheidTreeNode } from '@/types';
-import { ORGANISATIE_TYPE_LABELS, ORGANISATIE_TYPE_BADGE_COLORS } from '@/types';
+import { formatOrganisatieType, ORGANISATIE_TYPE_BADGE_COLORS } from '@/types';
 
 function getTotalPersonenCount(node: OrganisatieEenheidTreeNode): number {
   return node.personen_count + node.children.reduce((sum, child) => sum + getTotalPersonenCount(child), 0);
@@ -98,7 +98,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0 }
           variant={ORGANISATIE_TYPE_BADGE_COLORS[node.type] || 'gray'}
           className="text-xs px-2 py-0.5 shrink-0"
         >
-          {ORGANISATIE_TYPE_LABELS[node.type] || node.type}
+          {formatOrganisatieType(node.type)}
         </Badge>
 
         {/* Add child button */}

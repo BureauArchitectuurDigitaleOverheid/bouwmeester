@@ -443,6 +443,10 @@ export const ORGANISATIE_TYPE_BADGE_COLORS: Record<string, BadgeVariant> = {
   team: 'green',
 };
 
+export function formatOrganisatieType(type: string): string {
+  return ORGANISATIE_TYPE_LABELS[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export const ORGANISATIE_TYPE_OPTIONS: { value: string; label: string }[] =
   Object.entries(ORGANISATIE_TYPE_LABELS).map(([value, label]) => ({ value, label }));
 

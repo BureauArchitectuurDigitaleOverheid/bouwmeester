@@ -17,7 +17,7 @@ import {
   TaskPriority,
   TASK_STATUS_LABELS,
   TASK_PRIORITY_LABELS,
-  ORGANISATIE_TYPE_LABELS,
+  formatOrganisatieType,
   formatFunctie,
 } from '@/types';
 import type { Task } from '@/types';
@@ -99,7 +99,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
     ...(eenheden ?? []).map((e) => ({
       value: e.id,
       label: e.naam,
-      description: ORGANISATIE_TYPE_LABELS[e.type] ?? e.type,
+      description: formatOrganisatieType(e.type),
     })),
   ], [eenheden]);
 
