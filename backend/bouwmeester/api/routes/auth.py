@@ -508,15 +508,20 @@ async def complete_onboarding(
     be approved by the team manager or an admin.
     """
     # Validate that the org unit exists.
-    org_stmt = select(OrganisatieEenheid.id, OrganisatieEenheid.naam).where(
-        OrganisatieEenheid.id == body.organisatie_eenheid_id
-    )
+    org_stmt = select(
+        OrganisatieEenheid.id, OrganisatieEenheid.naam, OrganisatieEenheid.type
+    ).where(OrganisatieEenheid.id == body.organisatie_eenheid_id)
     org_result = await db.execute(org_stmt)
     org_row = org_result.first()
     if org_row is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Organisatie-eenheid niet gevonden",
+        )
+    if org_row.type == "ministerie":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Selecteer een organisatie-eenheid onder ministerie-niveau",
         )
 
     # Always update naam and functie (allows corrections on re-submit).
