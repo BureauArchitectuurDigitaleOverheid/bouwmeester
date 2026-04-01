@@ -31,8 +31,12 @@ export function OnboardingWizard({
   const StepComponent = STEP_COMPONENTS[current.key];
 
   const handleComplete = useCallback(async () => {
+    await dismissMutation.mutateAsync({
+      featureKey: current.key,
+      permanent: true,
+    });
     await refreshAuthStatus();
-  }, [refreshAuthStatus]);
+  }, [dismissMutation, current.key, refreshAuthStatus]);
 
   const handleDismiss = useCallback(async (permanent: boolean) => {
     await dismissMutation.mutateAsync({
