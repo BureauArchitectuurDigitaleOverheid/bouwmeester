@@ -19,6 +19,7 @@ class MattermostUserResponse(BaseModel):
 class MattermostLinkStatusResponse(BaseModel):
     linked: bool
     mattermost_username: str | None = None
+    bot_dm_url: str | None = None
 
 
 class MattermostLinkCodeResponse(BaseModel):
