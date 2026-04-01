@@ -24,7 +24,7 @@ Bouwmeester importeert automatisch parlementaire stukken: moties, kamervragen, t
 
 ### Opdrachten en budget
 
-Houd bij welke **opdrachten en subsidies** er lopen, wie verantwoordelijk is, en wat het budget is. Zo heb je op een plek overzicht over de financiele kant van je beleidsterrein.
+Houd bij welke **opdrachten en subsidies** er lopen, wie verantwoordelijk is, en wat het budget is. Zo heb je op een plek overzicht over de financiële kant van je beleidsterrein.
 
 ### Zoeken
 

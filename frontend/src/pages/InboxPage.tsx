@@ -8,6 +8,8 @@ import { MessageThread } from '@/components/inbox/MessageThread';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useNotifications, useDashboardStats, useMarkAllNotificationsRead, useMarkNotificationRead } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useDismissOnboardingFeature } from '@/hooks/useOnboarding';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { useEenheidOverview } from '@/hooks/useTasks';
 import { formatCurrencyCompact } from '@/utils/format';
@@ -35,11 +37,19 @@ const PERSON_LEVEL_TYPES = new Set(['afdeling', 'dienst', 'bureau', 'cluster', '
 
 function GettingStartedCard() {
   const navigate = useNavigate();
-  const [dismissed, setDismissed] = useState(
-    () => localStorage.getItem('bm-intro-dismissed') === 'true',
+  const { person, refreshAuthStatus } = useAuth();
+  const dismissMutation = useDismissOnboardingFeature();
+
+  const showIntro = person?.onboarding_features?.some(
+    (f) => f.key === 'intro_handleiding',
   );
 
-  if (dismissed) return null;
+  if (!showIntro) return null;
+
+  const handleDismiss = async () => {
+    await dismissMutation.mutateAsync({ featureKey: 'intro_handleiding', permanent: true });
+    await refreshAuthStatus();
+  };
 
   return (
     <Card className="border-primary-200 bg-primary-50/50">
@@ -61,11 +71,10 @@ function GettingStartedCard() {
           </div>
         </div>
         <button
-          onClick={() => {
-            localStorage.setItem('bm-intro-dismissed', 'true');
-            setDismissed(true);
-          }}
-          className="text-text-secondary hover:text-text p-1 shrink-0"
+          onClick={handleDismiss}
+          disabled={dismissMutation.isPending}
+          aria-label="Verberg introductie"
+          className="text-text-secondary hover:text-text p-1 shrink-0 disabled:opacity-50"
         >
           <X className="h-4 w-4" />
         </button>
@@ -115,7 +124,7 @@ export function InboxPage() {
       <div className="bg-gradient-to-br from-primary-900 to-primary-700 rounded-2xl p-6 text-white">
         <h2 className="text-xl font-bold mb-1">Welkom bij Bouwmeester</h2>
         <p className="text-white/70 text-sm">
-          Beheer uw beleidscorpus, taken en verbindingen op een centrale plek.
+          Je werkplek voor beleid, taken en samenwerking.
         </p>
       </div>
 
