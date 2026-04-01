@@ -10,6 +10,8 @@ interface CascadingOrgSelectProps {
   onChange: (id: string) => void;
   label?: string;
   allowCreate?: boolean;
+  /** Minimum number of levels the user must select before the value is emitted. Default: 1 */
+  minDepth?: number;
 }
 
 /** Default child type when creating under a parent of a given type. */
@@ -72,6 +74,7 @@ export function CascadingOrgSelect({
   onChange,
   label = 'Organisatie-eenheid',
   allowCreate = true,
+  minDepth = 1,
 }: CascadingOrgSelectProps) {
   const { data: tree = [], isLoading } = useOrganisatieTree();
   const [selections, setSelections] = useState<string[]>([]);
@@ -149,11 +152,14 @@ export function CascadingOrgSelect({
       newSelections.push(nodeId);
     }
     setSelections(newSelections);
-    // The deepest selected node is the value
-    onChange(
-      newSelections.length > 0 ? newSelections[newSelections.length - 1] : '',
-    );
+    const deepestId =
+      newSelections.length > 0 ? newSelections[newSelections.length - 1] : '';
+    // Only emit a value when the user has drilled deep enough
+    onChange(newSelections.length >= minDepth ? deepestId : '');
   };
+
+  const showDepthHint =
+    minDepth > 1 && selections.length > 0 && selections.length < minDepth;
 
   const handleCreate = async (
     levelIndex: number,
@@ -239,6 +245,11 @@ export function CascadingOrgSelect({
             />
           );
         })}
+        {showDepthHint && (
+          <p className="text-xs text-amber-600 mt-1">
+            Kies een specifiekere organisatie-eenheid
+          </p>
+        )}
       </div>
     </div>
   );

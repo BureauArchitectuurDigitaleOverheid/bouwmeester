@@ -130,12 +130,12 @@ export function ProfileStep({ onComplete }: { onComplete: () => void }) {
           value={functie}
           onChange={setFunctie}
           options={functieOptions}
-          placeholder="Selecteer of maak functie..."
+          placeholder="Typ om functie te zoeken of aan te maken..."
           onCreate={handleCreateFunctie}
           createLabel="Nieuwe functie aanmaken"
         />
 
-        <CascadingOrgSelect value={orgId} onChange={setOrgId} />
+        <CascadingOrgSelect value={orgId} onChange={setOrgId} minDepth={2} />
 
         {/* Extra email addresses */}
         <div>

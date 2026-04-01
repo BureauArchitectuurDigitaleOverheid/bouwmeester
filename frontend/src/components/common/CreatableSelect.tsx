@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, Plus, X } from 'lucide-react';
+import { ChevronDown, Plus, Search, X } from 'lucide-react';
 
 export interface SelectOption {
   value: string;
@@ -58,6 +58,7 @@ export function CreatableSelect({
   const [query, setQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [isCreating, setIsCreating] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -83,6 +84,7 @@ export function CreatableSelect({
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
         setQuery('');
+        setIsFocused(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -166,11 +168,26 @@ export function CreatableSelect({
     if (!isOpen) setIsOpen(true);
   };
 
+  const handleInputFocus = () => {
+    if (disabled) return;
+    setIsFocused(true);
+    if (!isOpen) setIsOpen(true);
+    // Select text so user can immediately type to replace
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+
+  const handleInputBlur = () => {
+    setIsFocused(false);
+  };
+
   const handleToggle = () => {
     if (disabled) return;
-    setIsOpen(!isOpen);
-    if (!isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 0);
+    if (searchable) {
+      // For searchable selects, focus the always-visible input
+      inputRef.current?.focus();
+      if (!isOpen) setIsOpen(true);
+    } else {
+      setIsOpen(!isOpen);
     }
   };
 
@@ -198,18 +215,25 @@ export function CreatableSelect({
               : 'border-border hover:border-border-hover focus-within:ring-2 focus-within:ring-primary-500/20 focus-within:border-primary-500'
           } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          {isOpen && searchable ? (
-            <input
-              ref={inputRef}
-              id={selectId}
-              type="text"
-              value={query}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              className="flex-1 min-w-0 outline-none ring-0 border-none bg-transparent text-text placeholder:text-text-secondary/50 focus:outline-none focus:ring-0"
-              placeholder={closedDisplayText || placeholder}
-              autoFocus
-            />
+          {searchable ? (
+            <>
+              {!hasDisplay && !isFocused && (
+                <Search className="h-3.5 w-3.5 text-text-secondary/50 shrink-0" />
+              )}
+              <input
+                ref={inputRef}
+                id={selectId}
+                type="text"
+                value={isFocused || isOpen ? query : closedDisplayText}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
+                className="flex-1 min-w-0 outline-none ring-0 border-none bg-transparent text-text placeholder:text-text-secondary/50 focus:outline-none focus:ring-0"
+                placeholder={placeholder}
+                disabled={disabled}
+              />
+            </>
           ) : (
             <span className={`flex-1 truncate ${hasDisplay ? 'text-text' : 'text-text-secondary/50'}`}>
               {closedDisplayText || placeholder}
