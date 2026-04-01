@@ -570,8 +570,8 @@ class NotificationService:
             data = NotificationCreate(
                 person_id=manager_id,
                 type="placement_request",
-                title=f"Plaatsingsverzoek: {person_naam}",
-                message=(f"{person_naam} wil geplaatst worden bij '{eenheid_naam}'."),
+                title=f"Teamverzoek: {person_naam}",
+                message=(f"{person_naam} wil toegevoegd worden aan '{eenheid_naam}'."),
             )
             notification = await self.repo.create(data)
             self._send_to_mattermost(notification)
@@ -587,9 +587,9 @@ class NotificationService:
                 data = NotificationCreate(
                     person_id=admin.id,
                     type="placement_request",
-                    title=f"Plaatsingsverzoek: {person_naam}",
+                    title=f"Teamverzoek: {person_naam}",
                     message=(
-                        f"{person_naam} wil geplaatst worden bij '{eenheid_naam}'."
+                        f"{person_naam} wil toegevoegd worden aan '{eenheid_naam}'."
                     ),
                 )
                 notification = await self.repo.create(data)

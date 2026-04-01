@@ -275,7 +275,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 <div>
                   <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
                     <Building2 className="h-3 w-3" />
-                    Plaatsingen
+                    Teams
                   </p>
                   <div className="space-y-1">
                     {placements.map((p) => (
@@ -297,7 +297,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                                   });
                                 }}
                                 className="text-text-secondary hover:text-amber-600 transition-colors"
-                                title="Plaatsing beëindigen"
+                                title="Team-indeling beëindigen"
                               >
                                 <CheckCircle2 className="h-3 w-3" />
                               </button>
@@ -334,7 +334,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                                   setConfirmDeleteId(p.id);
                                 }}
                                 className="text-text-secondary hover:text-red-600 transition-colors"
-                                title="Plaatsing verwijderen"
+                                title="Team-indeling verwijderen"
                               >
                                 <X className="h-3 w-3" />
                               </button>
@@ -349,7 +349,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
 
               {/* No tasks and no nodes */}
               {summary.open_task_count === 0 && summary.done_task_count === 0 && summary.stakeholder_nodes.length === 0 && (!placements || placements.length === 0) && (
-                <p className="text-text-secondary">Geen taken, dossiers of plaatsingen.</p>
+                <p className="text-text-secondary">Geen taken, dossiers of teams.</p>
               )}
             </div>
           ) : null}

@@ -18,6 +18,10 @@ class OrgPlacementRequestCreate(BaseModel):
     dienstverband: str = "in_dienst"
 
 
+class OrgPlacementRequestUpdate(BaseModel):
+    organisatie_eenheid_id: UUID
+
+
 class OrgPlacementRequestDecision(BaseModel):
     status: PlacementStatus
 

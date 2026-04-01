@@ -18,6 +18,7 @@ from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.org_placement import (
     OrgPlacementRequestCreate,
     OrgPlacementRequestResponse,
+    OrgPlacementRequestUpdate,
 )
 from bouwmeester.services.notification_service import NotificationService
 
@@ -152,6 +153,42 @@ async def list_pending(
     return [_to_response(r) for r in requests]
 
 
+@router.patch("/{id}", response_model=OrgPlacementRequestResponse)
+async def update_placement_request(
+    id: UUID,
+    data: OrgPlacementRequestUpdate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
+) -> OrgPlacementRequestResponse:
+    """Update the target eenheid of a pending placement request."""
+    stmt = (
+        select(OrgPlacementRequest)
+        .where(OrgPlacementRequest.id == id)
+        .options(*_load_options())
+    )
+    result = await db.execute(stmt)
+    req = result.scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=404, detail="Verzoek niet gevonden")
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail="Verzoek is al afgehandeld")
+
+    # Only admins or managers of the current eenheid may update
+    if not org_ctx.is_admin:
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Inloggen vereist")
+        managed_ids = await _get_managed_eenheid_ids(db, current_user.id)
+        if req.organisatie_eenheid_id not in managed_ids:
+            raise HTTPException(status_code=403, detail="Geen bevoegdheid")
+
+    req.organisatie_eenheid_id = data.organisatie_eenheid_id
+    await db.flush()
+    await db.refresh(req, attribute_names=["organisatie_eenheid"])
+
+    return _to_response(req)
+
+
 @router.post("/{id}/approve", response_model=OrgPlacementRequestResponse)
 async def approve_placement(
     id: UUID,
@@ -201,8 +238,8 @@ async def approve_placement(
         NotificationCreate(
             person_id=req.person_id,
             type="placement_approved",
-            title=f"Plaatsing goedgekeurd: {eenheid_naam}",
-            message=f"Je bent geplaatst bij '{eenheid_naam}'.",
+            title=f"Toegevoegd aan: {eenheid_naam}",
+            message=f"Je bent toegevoegd aan '{eenheid_naam}'.",
         )
     )
 
@@ -249,9 +286,9 @@ async def deny_placement(
         NotificationCreate(
             person_id=req.person_id,
             type="placement_denied",
-            title=f"Plaatsing afgewezen: {eenheid_naam}",
+            title=f"Verzoek afgewezen: {eenheid_naam}",
             message=(
-                f"Je verzoek om geplaatst te worden bij '{eenheid_naam}' "
+                f"Je verzoek om toegevoegd te worden aan '{eenheid_naam}' "
                 f"is afgewezen. Je kunt een nieuw verzoek indienen."
             ),
         )

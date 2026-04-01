@@ -412,7 +412,7 @@ async def add_person_organisatie(
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=409,
-            detail="Persoon heeft al een actieve plaatsing bij deze eenheid",
+            detail="Persoon is al ingedeeld bij deze eenheid",
         )
 
     placement = PersonOrganisatieEenheid(

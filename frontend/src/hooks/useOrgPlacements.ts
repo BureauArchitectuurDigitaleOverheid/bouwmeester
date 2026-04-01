@@ -17,6 +17,15 @@ export function useMyPlacementRequests() {
   });
 }
 
+export function useUpdatePlacement() {
+  return useMutationWithError({
+    mutationFn: ({ id, data }: { id: string; data: api.UpdatePlacementRequest }) =>
+      api.updatePlacement(id, data),
+    errorMessage: 'Fout bij wijzigen plaatsingsverzoek',
+    invalidateKeys: [queryKeys.orgPlacements.all],
+  });
+}
+
 export function useApprovePlacement() {
   return useMutationWithError({
     mutationFn: (id: string) => api.approvePlacement(id),

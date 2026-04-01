@@ -83,7 +83,7 @@ export function useAddPersonOrganisatie() {
       personId: string;
       data: { organisatie_eenheid_id: string; dienstverband?: string; start_datum: string };
     }) => addPersonOrganisatie(personId, data),
-    errorMessage: 'Fout bij toevoegen plaatsing',
+    errorMessage: 'Fout bij toevoegen team-indeling',
     invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
   });
 }
@@ -99,7 +99,7 @@ export function useUpdatePersonOrganisatie() {
       placementId: string;
       data: { dienstverband?: string; eind_datum?: string | null };
     }) => updatePersonOrganisatie(personId, placementId, data),
-    errorMessage: 'Fout bij bijwerken plaatsing',
+    errorMessage: 'Fout bij bijwerken team-indeling',
     invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
   });
 }
@@ -113,7 +113,7 @@ export function useRemovePersonOrganisatie() {
       personId: string;
       placementId: string;
     }) => removePersonOrganisatie(personId, placementId),
-    errorMessage: 'Fout bij verwijderen plaatsing',
+    errorMessage: 'Fout bij verwijderen team-indeling',
     invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
   });
 }
