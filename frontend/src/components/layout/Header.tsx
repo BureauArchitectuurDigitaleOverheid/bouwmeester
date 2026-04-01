@@ -23,7 +23,7 @@ const pageTitles: Record<string, string> = {
   '/instellingen': 'Instellingen',
   '/auditlog': 'Auditlog',
   '/search': 'Zoeken',
-  '/docs': 'Documentatie',
+  '/docs': 'Handleiding',
   '/leads': 'Leads',
   '/share-target': 'Nieuwe lead',
 };
