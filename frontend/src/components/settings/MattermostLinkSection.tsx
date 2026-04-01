@@ -106,21 +106,22 @@ export function MattermostLinkSection({ compact = false }: { compact?: boolean }
             <div className="space-y-3">
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
                 <p className="text-sm text-blue-800 mb-2">
-                  Kopieer het bericht en stuur het als DM naar{' '}
-                  {linkStatus?.bot_dm_url ? (
-                    <a
-                      href={linkStatus.bot_dm_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-0.5 font-semibold text-blue-700 underline hover:text-blue-900"
-                    >
-                      @bouwmeester
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ) : (
-                    <strong>@bouwmeester</strong>
-                  )}{' '}
-                  in Mattermost:
+                  Kopieer onderstaand bericht en plak het in een DM naar{' '}
+                  <strong>@bouwmeester</strong> in Mattermost.
+                  {linkStatus?.bot_dm_url && (
+                    <>
+                      {' '}
+                      <a
+                        href={linkStatus.bot_dm_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-0.5 font-semibold text-blue-700 underline hover:text-blue-900"
+                      >
+                        Open het gesprek met de bot
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </>
+                  )}
                 </p>
                 <div className="rounded-md bg-white border border-blue-200 px-3 py-2 text-sm text-blue-900">
                   Hoi! Koppel mij alsjeblieft aan Bouwmeester: <strong className="font-mono">{linkCode!.code}</strong>
