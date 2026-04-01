@@ -10,7 +10,7 @@ import { SubeenheidCard } from '@/components/eenheid/SubeenheidCard';
 import { useOrganisatieFlat, useManagedEenheden } from '@/hooks/useOrganisatie';
 import { useEenheidOverview } from '@/hooks/useTasks';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
-import { ORGANISATIE_TYPE_LABELS } from '@/types';
+import { formatOrganisatieType } from '@/types';
 
 export function EenheidOverzichtPage() {
   const { currentPerson } = useCurrentPerson();
@@ -25,7 +25,7 @@ export function EenheidOverzichtPage() {
       (eenheden ?? []).map((e) => ({
         value: e.id,
         label: e.naam,
-        description: ORGANISATIE_TYPE_LABELS[e.type] ?? e.type,
+        description: formatOrganisatieType(e.type),
       })),
     [eenheden],
   );

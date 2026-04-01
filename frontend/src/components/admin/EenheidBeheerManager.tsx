@@ -15,7 +15,7 @@ import {
   useAvailableModules,
   useUpdateEenheidModule,
 } from '@/hooks/useEenheidModules';
-import { ORGANISATIE_TYPE_LABELS, INITIATIEF_ROL_LABELS } from '@/types';
+import { formatOrganisatieType, INITIATIEF_ROL_LABELS } from '@/types';
 
 const MODULE_DESCRIPTIONS: Record<string, string> = {
   corpus: 'Beleidsdossiers, doelen, instrumenten en hun relaties',
@@ -103,7 +103,7 @@ function EenheidRow({
   isExpanded: boolean;
   onToggle: () => void;
 }) {
-  const typeLabel = ORGANISATIE_TYPE_LABELS[eenheid.type] ?? eenheid.type;
+  const typeLabel = formatOrganisatieType(eenheid.type);
 
   return (
     <>

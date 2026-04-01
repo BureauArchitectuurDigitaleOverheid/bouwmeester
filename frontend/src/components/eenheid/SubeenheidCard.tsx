@@ -1,6 +1,6 @@
 import { Building2, AlertTriangle } from 'lucide-react';
 import { Card } from '@/components/common/Card';
-import { ORGANISATIE_TYPE_LABELS } from '@/types';
+import { formatOrganisatieType } from '@/types';
 import type { EenheidSubeenheidStats } from '@/types';
 
 interface SubeenheidCardProps {
@@ -18,7 +18,7 @@ export function SubeenheidCard({ sub, onSelect }: SubeenheidCardProps) {
             <div>
               <p className="font-medium text-text">{sub.eenheid_naam}</p>
               <p className="text-xs text-text-secondary">
-                {ORGANISATIE_TYPE_LABELS[sub.eenheid_type] ?? sub.eenheid_type}
+                {formatOrganisatieType(sub.eenheid_type)}
               </p>
             </div>
           </div>

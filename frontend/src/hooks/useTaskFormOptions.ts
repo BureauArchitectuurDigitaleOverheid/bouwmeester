@@ -4,7 +4,7 @@ import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
-import { ORGANISATIE_TYPE_LABELS, NodeType, formatFunctie } from '@/types';
+import { formatOrganisatieType, NodeType, formatFunctie } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 import { buildPersonOptions } from '@/utils/personOptions';
 
@@ -42,7 +42,7 @@ export function useTaskFormOptions() {
     ...(eenheden ?? []).map((e) => ({
       value: e.id,
       label: e.naam,
-      description: ORGANISATIE_TYPE_LABELS[e.type] ?? e.type,
+      description: formatOrganisatieType(e.type),
     })),
   ], [eenheden]);
 

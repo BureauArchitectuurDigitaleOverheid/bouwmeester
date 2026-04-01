@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useOrganisatieTree, useCreateOrganisatieEenheid } from '@/hooks/useOrganisatie';
-import { ORGANISATIE_TYPE_LABELS } from '@/types';
+import { formatOrganisatieType } from '@/types';
 import type { OrganisatieEenheidTreeNode } from '@/types';
 import { CreatableSelect } from './CreatableSelect';
 import type { SelectOption } from './CreatableSelect';
@@ -112,7 +112,7 @@ export function CascadingOrgSelect({
     for (const sel of selections) {
       const typeLabel =
         currentNodes.length > 0
-          ? ORGANISATIE_TYPE_LABELS[currentNodes[0].type] || ''
+          ? formatOrganisatieType(currentNodes[0].type)
           : '';
       const parentType =
         currentNodes.length > 0 ? currentNodes[0].type : null;
@@ -131,7 +131,7 @@ export function CascadingOrgSelect({
     if (currentNodes.length > 0 || (allowCreate && selections.length > 0)) {
       const typeLabel =
         currentNodes.length > 0
-          ? ORGANISATIE_TYPE_LABELS[currentNodes[0].type] || ''
+          ? formatOrganisatieType(currentNodes[0].type)
           : '';
       const parentType =
         currentNodes.length > 0 ? currentNodes[0].type : null;
@@ -222,7 +222,7 @@ export function CascadingOrgSelect({
           const selectOptions: SelectOption[] = level.options.map((node) => ({
             value: node.id,
             label: node.naam,
-            description: ORGANISATIE_TYPE_LABELS[node.type],
+            description: formatOrganisatieType(node.type),
           }));
 
           const placeholder = level.type

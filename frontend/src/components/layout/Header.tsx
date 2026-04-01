@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { VOCABULARY_LABELS, type VocabularyId } from '@/vocabulary';
 import { NotificationBell } from '@/components/common/NotificationBell';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
-import { ORGANISATIE_TYPE_LABELS, formatFunctie } from '@/types';
+import { formatOrganisatieType, formatFunctie } from '@/types';
 import { useUIStore } from '@/store/ui';
 
 const pageTitles: Record<string, string> = {
@@ -56,7 +56,7 @@ export function Header() {
   const eenheidTitle = (() => {
     const first = managedEenheden?.[0];
     if (first) {
-      const label = ORGANISATIE_TYPE_LABELS[first.type] ?? first.type;
+      const label = formatOrganisatieType(first.type);
       return `${label} Overzicht`;
     }
     return 'Eenheid Overzicht';

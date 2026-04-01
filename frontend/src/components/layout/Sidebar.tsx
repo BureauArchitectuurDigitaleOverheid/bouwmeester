@@ -24,7 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
-import { ORGANISATIE_TYPE_LABELS } from '@/types';
+import { formatOrganisatieType } from '@/types';
 
 interface SidebarProps {
   mobile?: boolean;
@@ -42,7 +42,7 @@ export function Sidebar({ mobile }: SidebarProps) {
 
   const eenheidLabel = useMemo(() => {
     const first = managedEenheden?.[0];
-    if (first) return ORGANISATIE_TYPE_LABELS[first.type] ?? 'Eenheid';
+    if (first) return formatOrganisatieType(first.type);
     return 'Eenheid';
   }, [managedEenheden]);
 

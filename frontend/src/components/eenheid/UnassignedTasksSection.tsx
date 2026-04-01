@@ -11,7 +11,7 @@ import { isOverdue as checkOverdue, formatDateShort } from '@/utils/dates';
 import {
   TASK_PRIORITY_LABELS,
   TASK_PRIORITY_COLORS,
-  ORGANISATIE_TYPE_LABELS,
+  formatOrganisatieType,
 } from '@/types';
 import type { Task, Person, OrganisatieEenheidPersonenGroup } from '@/types';
 import { formatFunctie } from '@/types';
@@ -69,7 +69,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
       ...filtered.map((e) => ({
         value: e.id,
         label: e.naam,
-        description: ORGANISATIE_TYPE_LABELS[e.type] ?? e.type,
+        description: formatOrganisatieType(e.type),
       })),
     ];
   }, [eenheden, selectedEenheidId]);
