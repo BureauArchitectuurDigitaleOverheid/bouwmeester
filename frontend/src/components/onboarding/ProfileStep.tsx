@@ -9,9 +9,16 @@ import { FUNCTIE_LABELS, PHONE_LABELS } from '@/types';
 import type { Person } from '@/types';
 import { Mail, Phone, Plus, X } from 'lucide-react';
 
-const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS).map(
-  ([value, label]) => ({ value, label }),
-);
+const EXCLUDED_ONBOARDING_FUNCTIES = new Set([
+  'minister',
+  'staatssecretaris',
+  'secretaris_generaal',
+  'plaatsvervangend_secretaris_generaal',
+]);
+
+const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS)
+  .filter(([value]) => !EXCLUDED_ONBOARDING_FUNCTIES.has(value))
+  .map(([value, label]) => ({ value, label }));
 
 const PHONE_LABEL_OPTIONS = Object.entries(PHONE_LABELS).map(
   ([value, label]) => ({ value, label }),
