@@ -4,12 +4,13 @@ import { X } from 'lucide-react';
 interface Toast {
   id: number;
   message: string;
-  variant: 'error' | 'success';
+  variant: 'error' | 'success' | 'warning';
 }
 
 interface ToastContextValue {
   showError: (message: string) => void;
   showSuccess: (message: string) => void;
+  showWarning: (message: string) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -24,18 +25,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => [...prev, { id, message, variant }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 5000);
+    }, variant === 'warning' ? 8000 : 5000);
   }, []);
 
   const showError = useCallback((message: string) => addToast(message, 'error'), [addToast]);
   const showSuccess = useCallback((message: string) => addToast(message, 'success'), [addToast]);
+  const showWarning = useCallback((message: string) => addToast(message, 'warning'), [addToast]);
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
   return (
-    <ToastContext.Provider value={{ showError, showSuccess }}>
+    <ToastContext.Provider value={{ showError, showSuccess, showWarning }}>
       {children}
       {toasts.length > 0 && (
         <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
@@ -45,7 +47,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm shadow-lg animate-in slide-in-from-right ${
                 toast.variant === 'error'
                   ? 'bg-red-50 text-red-800 border border-red-200'
-                  : 'bg-green-50 text-green-800 border border-green-200'
+                  : toast.variant === 'warning'
+                    ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                    : 'bg-green-50 text-green-800 border border-green-200'
               }`}
             >
               <span className="flex-1">{toast.message}</span>

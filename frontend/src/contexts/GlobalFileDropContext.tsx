@@ -2,6 +2,7 @@ import { createContext, useState, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGlobalFileDrop } from '@/hooks/useGlobalFileDrop';
 import { isEmailFile } from '@/utils/emailParser';
+import { useToast } from '@/contexts/ToastContext';
 
 type FileSubscriber = (files: File[]) => void;
 
@@ -22,6 +23,7 @@ const GlobalFileDropContext = createContext<GlobalFileDropContextType | null>(nu
 export function GlobalFileDropProvider({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { showWarning } = useToast();
   const [showChooser, setShowChooser] = useState(false);
   const [chooserFiles, setChooserFiles] = useState<File[]>([]);
   const locationRef = useRef(location);
@@ -63,6 +65,13 @@ export function GlobalFileDropProvider({ children }: { children: React.ReactNode
     }
   }, [navigate]);
 
+  const handleEmptyFileDrop = useCallback(() => {
+    showWarning(
+      'Je Outlook-versie ondersteunt geen directe e-mail drag-and-drop naar de browser. '
+      + 'Sleep de e-mail eerst naar je bureaublad en sleep het .eml-bestand dan hierheen.'
+    );
+  }, [showWarning]);
+
   const discardChooserFiles = useCallback(() => {
     setChooserFiles([]);
   }, []);
@@ -76,7 +85,10 @@ export function GlobalFileDropProvider({ children }: { children: React.ReactNode
     navigate(action === 'lead' ? '/leads' : '/corpus');
   }, [navigate, chooserFiles]);
 
-  const { isDragging } = useGlobalFileDrop({ onFiles: handleFiles });
+  const { isDragging } = useGlobalFileDrop({
+    onFiles: handleFiles,
+    onEmptyFileDrop: handleEmptyFileDrop,
+  });
 
   return (
     <GlobalFileDropContext.Provider
