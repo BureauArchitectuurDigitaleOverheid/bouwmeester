@@ -572,7 +572,7 @@ _READ_TOOLS: dict[str, dict] = {
                     "stage": {
                         "type": "string",
                         "description": (
-                            "Filter op stage: verkennen,"
+                            "Filter op stage: inbox, verkennen,"
                             " eerste_gesprek, interne_check,"
                             " follow_up, in_the_pocket, koelkast"
                         ),
@@ -871,10 +871,10 @@ _WRITE_TOOLS: dict[str, dict] = {
                     "stage": {
                         "type": "string",
                         "description": (
-                            "Stage: verkennen, eerste_gesprek,"
+                            "Stage: inbox, verkennen, eerste_gesprek,"
                             " interne_check, follow_up,"
                             " in_the_pocket, koelkast"
-                            " (standaard: verkennen)"
+                            " (standaard: inbox)"
                         ),
                     },
                     "assignee_id": {
@@ -964,7 +964,7 @@ _WRITE_TOOLS: dict[str, dict] = {
                     "stage": {
                         "type": "string",
                         "description": (
-                            "Nieuwe stage: verkennen,"
+                            "Nieuwe stage: inbox, verkennen,"
                             " eerste_gesprek, interne_check,"
                             " follow_up, in_the_pocket, koelkast"
                         ),

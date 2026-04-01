@@ -51,7 +51,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagSearch, setTagSearch] = useState('');
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
-  const [stage, setStage] = useState<LeadStage>(LeadStage.VERKENNEN);
+  const [stage, setStage] = useState<LeadStage>(LeadStage.INBOX);
   const [contactName, setContactName] = useState('');
   const [contactPersonId, setContactPersonId] = useState<string>('');
   const [contactEmail, setContactEmail] = useState('');
@@ -272,7 +272,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     setSelectedTags([]);
     setTagSearch('');
     setTagDropdownOpen(false);
-    setStage(LeadStage.VERKENNEN);
+    setStage(LeadStage.INBOX);
     setContactName('');
     setContactPersonId('');
     setContactEmail('');

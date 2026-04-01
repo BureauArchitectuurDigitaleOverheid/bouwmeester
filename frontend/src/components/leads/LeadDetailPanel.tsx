@@ -467,6 +467,17 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 ),
               },
               {
+                label: 'Binnengebracht door',
+                value: lead.brought_by ? (
+                  <span className="inline-flex items-center gap-1.5 text-text">
+                    <User className="h-4 w-4 text-text-secondary" />
+                    {lead.brought_by.naam}
+                  </span>
+                ) : (
+                  <span className="text-text-secondary">Onbekend</span>
+                ),
+              },
+              {
                 label: 'Initiatief',
                 value: lead.initiatief ? (
                   <span

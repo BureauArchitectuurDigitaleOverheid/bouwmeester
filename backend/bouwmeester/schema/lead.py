@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class LeadStage(enum.StrEnum):
+    inbox = "inbox"
     verkennen = "verkennen"
     eerste_gesprek = "eerste_gesprek"
     interne_check = "interne_check"
@@ -35,7 +36,7 @@ class LeadBase(BaseModel):
     description: str | None = Field(None, max_length=10000)
     organization: str | None = Field(None, max_length=500)
     externe_organisatie_id: UUID | None = None
-    stage: LeadStage = LeadStage.verkennen
+    stage: LeadStage = LeadStage.inbox
     assignee_id: UUID | None = None
     brought_by_id: UUID | None = None
     next_action: str | None = Field(None, max_length=5000)
@@ -226,6 +227,7 @@ class LeadMetricsResponse(BaseModel):
     total: int
     by_stage: dict[str, int]
     stale_count: int
+    inbox_count: int = 0
 
 
 # ---------------------------------------------------------------------------

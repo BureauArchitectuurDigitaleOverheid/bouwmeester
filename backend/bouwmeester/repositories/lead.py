@@ -105,7 +105,7 @@ class LeadRepository(BaseRepository[Lead]):
             if next_action_filter == "overdue":
                 stmt = stmt.where(
                     Lead.next_action_date < today,
-                    Lead.stage.notin_(["in_the_pocket", "koelkast"]),
+                    Lead.stage.notin_(["inbox", "in_the_pocket", "koelkast"]),
                 )
             elif next_action_filter == "today":
                 stmt = stmt.where(Lead.next_action_date == today)
@@ -458,20 +458,26 @@ class LeadRepository(BaseRepository[Lead]):
         stage_result = await self.session.execute(stage_stmt)
         by_stage = {row[0]: row[1] for row in stage_result.all()}
 
-        # Stale count: next_action_date < today and not in terminal stages
+        # Stale count: next_action_date < today and not in terminal/inbox stages
         stale_stmt = (
             select(func.count())
             .select_from(Lead)
             .where(
                 Lead.next_action_date < date.today(),
-                Lead.stage.notin_(["in_the_pocket", "koelkast"]),
+                Lead.stage.notin_(["inbox", "in_the_pocket", "koelkast"]),
             )
         )
         stale_stmt = apply_initiatief_filter(stale_stmt, Lead.initiatief_id, init_ctx)
         stale_count = (await self.session.execute(stale_stmt)).scalar_one()
 
+        # Inbox count
+        inbox_stmt = select(func.count()).select_from(Lead).where(Lead.stage == "inbox")
+        inbox_stmt = apply_initiatief_filter(inbox_stmt, Lead.initiatief_id, init_ctx)
+        inbox_count = (await self.session.execute(inbox_stmt)).scalar_one()
+
         return {
             "total": total,
             "by_stage": by_stage,
             "stale_count": stale_count,
+            "inbox_count": inbox_count,
         }

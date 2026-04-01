@@ -44,6 +44,10 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
           <span className="truncate max-w-[120px]">{lead.assignee.naam}</span>
         )}
 
+        {lead.brought_by && (
+          <span className="truncate max-w-[120px] italic">via {lead.brought_by.naam}</span>
+        )}
+
         {lead.next_action_date && (
           <span
             className={`inline-flex items-center gap-0.5 ${

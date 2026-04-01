@@ -37,9 +37,9 @@ class Lead(Base):
         nullable=True,
     )
     stage: Mapped[str] = mapped_column(
-        default="verkennen",
-        server_default="verkennen",
-        comment="verkennen|eerste_gesprek|interne_check|follow_up|in_the_pocket|koelkast",
+        default="inbox",
+        server_default="inbox",
+        comment="inbox|verkennen|eerste_gesprek|interne_check|follow_up|in_the_pocket|koelkast",
     )
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
