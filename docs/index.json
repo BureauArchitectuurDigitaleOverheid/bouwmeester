@@ -1,5 +1,6 @@
 [
-  { "id": "theoretisch", "label": "Theoretisch" },
-  { "id": "functioneel", "label": "Functioneel" },
-  { "id": "technisch", "label": "Technisch" }
+  { "id": "introductie", "label": "Wat is Bouwmeester?" },
+  { "id": "functioneel", "label": "Gebruikershandleiding" },
+  { "id": "theoretisch", "label": "Achtergrond" },
+  { "id": "technisch", "label": "Voor ontwikkelaars" }
 ]

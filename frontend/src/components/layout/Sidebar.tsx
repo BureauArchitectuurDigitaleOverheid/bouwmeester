@@ -57,7 +57,7 @@ export function Sidebar({ mobile }: SidebarProps) {
       { to: '/leads', icon: Funnel, label: 'Leads', permission: 'lead:read' },
       { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken', permission: 'node:read' },
       { to: '/search', icon: Search, label: 'Zoeken' },
-      { to: '/docs', icon: BookOpen, label: 'Documentatie' },
+      { to: '/docs', icon: BookOpen, label: 'Handleiding' },
     ];
     return items.filter((item) => !item.permission || hasPermission(item.permission));
   }, [eenheidLabel, hasPermission]);

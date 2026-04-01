@@ -34,6 +34,7 @@ class OnboardingFeature:
     dismissible: bool
     check_complete: CheckFn
     check_enabled: CheckFn | None = field(default=None)
+    blocking: bool = field(default=True)
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +53,11 @@ async def _mattermost_complete(db: AsyncSession, person_id: uuid.UUID) -> bool:
         select(MattermostUser.id).where(MattermostUser.person_id == person_id)
     )
     return result.scalar_one_or_none() is not None
+
+
+async def _intro_handleiding_complete(_db: AsyncSession, _person_id: uuid.UUID) -> bool:
+    """Informational — never auto-completes; must be dismissed."""
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +92,14 @@ ONBOARDING_FEATURES: list[OnboardingFeature] = [
         dismissible=True,
         check_complete=_mattermost_complete,
         check_enabled=_mattermost_enabled,
+    ),
+    OnboardingFeature(
+        key="intro_handleiding",
+        label="Introductie",
+        order=100,
+        dismissible=True,
+        check_complete=_intro_handleiding_complete,
+        blocking=False,
     ),
 ]
 
@@ -140,6 +154,7 @@ async def get_pending_onboarding_features(
                 "key": feature.key,
                 "label": feature.label,
                 "dismissible": feature.dismissible,
+                "blocking": feature.blocking,
             }
         )
 

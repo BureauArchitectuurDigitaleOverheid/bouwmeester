@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Inbox, CheckSquare, CheckCheck, Network, TrendingUp, Users, Euro } from 'lucide-react';
+import { Inbox, CheckSquare, CheckCheck, Network, TrendingUp, Users, Euro, X, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
@@ -8,6 +8,8 @@ import { MessageThread } from '@/components/inbox/MessageThread';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useNotifications, useDashboardStats, useMarkAllNotificationsRead, useMarkNotificationRead } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useDismissOnboardingFeature } from '@/hooks/useOnboarding';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { useEenheidOverview } from '@/hooks/useTasks';
 import { formatCurrencyCompact } from '@/utils/format';
@@ -32,6 +34,54 @@ const NOTIFICATION_TYPE_MAP: Record<string, string> = {
 };
 
 const PERSON_LEVEL_TYPES = new Set(['afdeling', 'dienst', 'bureau', 'cluster', 'team']);
+
+function GettingStartedCard() {
+  const navigate = useNavigate();
+  const { person, refreshAuthStatus } = useAuth();
+  const dismissMutation = useDismissOnboardingFeature();
+
+  const showIntro = person?.onboarding_features?.some(
+    (f) => f.key === 'intro_handleiding',
+  );
+
+  if (!showIntro) return null;
+
+  const handleDismiss = async () => {
+    await dismissMutation.mutateAsync({ featureKey: 'intro_handleiding', permanent: true });
+    await refreshAuthStatus();
+  };
+
+  return (
+    <Card className="border-primary-200 bg-primary-50/50">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3 flex-1">
+          <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-primary-100 text-primary-700 shrink-0">
+            <BookOpen className="h-5 w-5" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-text mb-1">
+              Nieuw hier?
+            </h3>
+            <p className="text-sm text-text-secondary mb-3">
+              Lees de introductie om te ontdekken wat je met Bouwmeester kunt doen en hoe je snel op weg komt.
+            </p>
+            <Button variant="primary" size="sm" onClick={() => navigate('/docs?tab=introductie')}>
+              Ontdek Bouwmeester
+            </Button>
+          </div>
+        </div>
+        <button
+          onClick={handleDismiss}
+          disabled={dismissMutation.isPending}
+          aria-label="Verberg introductie"
+          className="text-text-secondary hover:text-text p-1 shrink-0 disabled:opacity-50"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </Card>
+  );
+}
 
 export function InboxPage() {
   const navigate = useNavigate();
@@ -74,9 +124,12 @@ export function InboxPage() {
       <div className="bg-gradient-to-br from-primary-900 to-primary-700 rounded-2xl p-6 text-white">
         <h2 className="text-xl font-bold mb-1">Welkom bij Bouwmeester</h2>
         <p className="text-white/70 text-sm">
-          Beheer uw beleidscorpus, taken en verbindingen op een centrale plek.
+          Je werkplek voor beleid, taken en samenwerking.
         </p>
       </div>
+
+      {/* Getting started card for new users */}
+      <GettingStartedCard />
 
       {/* Quick stats */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

@@ -93,9 +93,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { oidcConfigured, authenticated, person: authPerson } = useAuth();
 
-  const features = (oidcConfigured && authenticated)
+  const allFeatures = (oidcConfigured && authenticated)
     ? (authPerson?.onboarding_features ?? [])
     : [];
+
+  // Only blocking features trigger the wizard modal.
+  const features = allFeatures.filter((f) => f.blocking !== false);
 
   // Remember the initial total so we can show "stap 2 van 3" correctly
   // even after earlier steps have been completed.

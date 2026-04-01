@@ -12,6 +12,7 @@ export interface OnboardingFeature {
   key: string;
   label: string;
   dismissible: boolean;
+  blocking: boolean;
 }
 
 interface AuthPerson {
