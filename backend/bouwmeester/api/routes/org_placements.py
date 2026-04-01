@@ -162,6 +162,8 @@ async def update_placement_request(
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> OrgPlacementRequestResponse:
     """Update the target eenheid of a pending placement request."""
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
     stmt = (
         select(OrgPlacementRequest)
         .where(OrgPlacementRequest.id == id)
@@ -174,6 +176,11 @@ async def update_placement_request(
     if req.status != "pending":
         raise HTTPException(status_code=400, detail="Verzoek is al afgehandeld")
 
+    # Validate target eenheid exists
+    target = await db.get(OrganisatieEenheid, data.organisatie_eenheid_id)
+    if target is None:
+        raise HTTPException(status_code=400, detail="Eenheid niet gevonden")
+
     # Only admins or managers of the current eenheid may update
     if not org_ctx.is_admin:
         if current_user is None:
@@ -185,6 +192,25 @@ async def update_placement_request(
     req.organisatie_eenheid_id = data.organisatie_eenheid_id
     await db.flush()
     await db.refresh(req, attribute_names=["organisatie_eenheid"])
+
+    # If the changer doesn't manage the new eenheid, notify its manager
+    should_notify = True
+    if not org_ctx.is_admin and current_user is not None:
+        managed_ids = await _get_managed_eenheid_ids(db, current_user.id)
+        if data.organisatie_eenheid_id in managed_ids:
+            should_notify = False
+    elif org_ctx.is_admin:
+        should_notify = False
+
+    if should_notify:
+        notif_svc = NotificationService(db)
+        person_naam = req.person.naam if req.person else ""
+        eenheid_naam = target.naam
+        await notif_svc.notify_placement_request(
+            person_naam=person_naam,
+            eenheid_id=data.organisatie_eenheid_id,
+            eenheid_naam=eenheid_naam,
+        )
 
     return _to_response(req)
 
