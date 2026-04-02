@@ -166,6 +166,11 @@ class Settings(BaseSettings):
 
         if not self.FRONTEND_URL:
             self.FRONTEND_URL = "http://localhost:5173"
+
+        # Ensure FRONTEND_URL is in CORS_ORIGINS so the browser can reach
+        # the backend from whichever component hosts the frontend.
+        if self.FRONTEND_URL and self.FRONTEND_URL not in self.CORS_ORIGINS:
+            self.CORS_ORIGINS = [*self.CORS_ORIGINS, self.FRONTEND_URL]
         # Derive BACKEND_URL from PUBLIC_HOST (which is the backend's URL on ZAD).
         if not self.BACKEND_URL and self.PUBLIC_HOST:
             self.BACKEND_URL = self.PUBLIC_HOST.rstrip("/")
