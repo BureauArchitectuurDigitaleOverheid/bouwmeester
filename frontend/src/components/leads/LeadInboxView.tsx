@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { Inbox, UserPlus, Snowflake, ChevronDown } from 'lucide-react';
+import { Inbox, UserPlus, Snowflake, ChevronDown, Users, Paperclip, Calendar } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Button } from '@/components/common/Button';
@@ -10,7 +10,7 @@ import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { usePeople } from '@/hooks/usePeople';
 import { LeadStage } from '@/types';
 import type { Lead, LeadFilters } from '@/types';
-import { timeAgo } from '@/utils/dates';
+import { timeAgo, formatDateShort } from '@/utils/dates';
 
 interface LeadInboxViewProps {
   searchQuery?: string;
@@ -251,30 +251,62 @@ export function LeadInboxView({
                       <span className="text-sm font-medium text-text truncate">
                         {lead.title}
                       </span>
-                      {lead.tags.length > 0 && (
-                        <div className="hidden sm:flex gap-1 shrink-0">
-                          {lead.tags.slice(0, 2).map((tag) => (
-                            <span
-                              key={tag}
-                              className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-text-secondary"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5 text-xs text-text-secondary">
+
+                    {lead.description && (
+                      <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">
+                        {lead.description}
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-1 text-xs text-text-secondary">
                       {lead.brought_by && (
                         <span>via {lead.brought_by.naam}</span>
                       )}
                       {lead.organization && (
-                        <span className="truncate">
+                        <span className="truncate max-w-[200px]">
                           {lead.externe_organisatie?.naam ?? lead.organization}
+                        </span>
+                      )}
+                      {lead.contact_names.length > 0 && (
+                        <span className="inline-flex items-center gap-0.5" title={lead.contact_names.join(', ')}>
+                          <Users className="h-3 w-3" />
+                          {lead.contact_names[0]}
+                          {lead.contact_names.length > 1 && (
+                            <span>+{lead.contact_names.length - 1}</span>
+                          )}
+                        </span>
+                      )}
+                      {lead.next_action_date && (
+                        <span className="inline-flex items-center gap-0.5">
+                          <Calendar className="h-3 w-3" />
+                          {formatDateShort(lead.next_action_date)}
+                        </span>
+                      )}
+                      {lead.attachment_count > 0 && (
+                        <span className="inline-flex items-center gap-0.5">
+                          <Paperclip className="h-3 w-3" />
+                          {lead.attachment_count}
                         </span>
                       )}
                       <span>{timeAgo(lead.created_at)}</span>
                     </div>
+
+                    {lead.tags.length > 0 && (
+                      <div className="flex gap-1 flex-wrap mt-1">
+                        {lead.tags.slice(0, 4).map((tag) => (
+                          <span
+                            key={tag}
+                            className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-text-secondary truncate max-w-[200px]"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                        {lead.tags.length > 4 && (
+                          <span className="text-[10px] text-text-secondary">+{lead.tags.length - 4}</span>
+                        )}
+                      </div>
+                    )}
                   </button>
 
                   {/* Actions - visible on hover and focus-within */}
