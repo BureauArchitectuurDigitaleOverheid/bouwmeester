@@ -45,6 +45,24 @@ function looksLikeMarkdown(text: string): boolean {
   return /\*\*[^*]+\*\*|\*[^*]+\*|^#{1,3}\s|^[-*]\s/m.test(text);
 }
 
+/**
+ * Extract plain text from a TipTap doc that only has paragraphs with unmarked
+ * text nodes.  Returns null if the doc uses any rich features (marks, mentions).
+ */
+function extractPlainText(doc: TipTapNode): string | null {
+  const lines: string[] = [];
+  for (const node of doc.content ?? []) {
+    if (node.type !== 'paragraph') return null;
+    let line = '';
+    for (const child of node.content ?? []) {
+      if (child.type !== 'text' || (child.marks && child.marks.length > 0)) return null;
+      line += child.text ?? '';
+    }
+    lines.push(line);
+  }
+  return lines.join('\n');
+}
+
 function isTipTapJson(value: string): TipTapNode | null {
   try {
     const parsed = JSON.parse(value);
@@ -72,6 +90,13 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
     }
     // Plain text fallback — auto-linkify URLs
     return <p className="text-sm text-text-secondary whitespace-pre-wrap">{linkifyText(content)}</p>;
+  }
+
+  // Handle legacy data: TipTap JSON where markdown syntax was stored as plain
+  // text (before the editor learned to convert markdown on input).
+  const plainText = extractPlainText(doc);
+  if (plainText !== null && looksLikeMarkdown(plainText)) {
+    return <div className="text-sm text-text-secondary"><MarkdownRenderer content={plainText} /></div>;
   }
 
   const handlers: MentionHandlers = { openTaskDetail, openNodeDetail, navigate };
