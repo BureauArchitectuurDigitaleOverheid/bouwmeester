@@ -63,6 +63,7 @@ class BronBijlageResponse(BaseModel):
     bestandsnaam: str
     content_type: str
     bestandsgrootte: int
+    bestand_beschikbaar: bool = True
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

@@ -111,7 +111,13 @@ async def get_bijlage_info(
     bijlage = result.scalar_one_or_none()
     if bijlage is None:
         return None
-    return BronBijlageResponse.model_validate(bijlage)
+    response = BronBijlageResponse.model_validate(bijlage)
+    try:
+        path = safe_resolve_or_400(BIJLAGEN_ROOT, bijlage.pad)
+        response.bestand_beschikbaar = path.exists()
+    except Exception:
+        response.bestand_beschikbaar = False
+    return response
 
 
 @router.get("/download")
@@ -135,7 +141,7 @@ async def download_bijlage(
     return FileResponse(
         path=str(file_path),
         filename=sanitize_download_filename(bijlage.bestandsnaam),
-        media_type="application/octet-stream",
+        media_type=bijlage.content_type or "application/octet-stream",
     )
 
 

@@ -347,6 +347,16 @@ async def get_lead(
 
     response = LeadDetailResponse.model_validate(lead)
     response.contacts = contacts
+
+    # Mark attachments whose files no longer exist on disk.
+    pad_by_id = {a.id: a.pad for a in lead.attachments}
+    for att in response.attachments:
+        try:
+            path = safe_resolve_or_400(LEADS_BIJLAGEN_ROOT, pad_by_id[att.id])
+            att.bestand_beschikbaar = path.exists()
+        except Exception:
+            att.bestand_beschikbaar = False
+
     return response
 
 
@@ -971,7 +981,7 @@ async def download_attachment(
     return FileResponse(
         path=str(file_path),
         filename=sanitize_download_filename(attachment.bestandsnaam),
-        media_type="application/octet-stream",
+        media_type=attachment.content_type or "application/octet-stream",
     )
 
 
