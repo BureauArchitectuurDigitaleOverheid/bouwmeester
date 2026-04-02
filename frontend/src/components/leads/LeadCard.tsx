@@ -27,17 +27,17 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
       )}
 
       {lead.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1 overflow-hidden max-h-[3.25rem]">
           {lead.tags.slice(0, 3).map((tag) => (
             <span
               key={tag}
-              className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-text-secondary"
+              className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-text-secondary truncate max-w-full"
             >
               {tag}
             </span>
           ))}
           {lead.tags.length > 3 && (
-            <span className="text-[10px] text-text-secondary">+{lead.tags.length - 3}</span>
+            <span className="text-[10px] text-text-secondary shrink-0">+{lead.tags.length - 3}</span>
           )}
         </div>
       )}
