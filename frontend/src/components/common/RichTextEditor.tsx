@@ -177,7 +177,7 @@ function createSuggestionConfig(
 
           popup = document.createElement('div');
           popup.style.position = 'absolute';
-          popup.style.zIndex = '50';
+          popup.style.zIndex = '9999';
           popup.appendChild(component.element);
           document.body.appendChild(popup);
 
@@ -283,6 +283,8 @@ const PersonMention = Mention.extend({
     class: 'mention-person',
   },
   suggestion: {
+    char: '@',
+    allowedPrefixes: null,
     ...createSuggestionConfig(fetchPeopleAndOrgs),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     command: ({ editor, range, props }: { editor: Editor; range: { from: number; to: number }; props: any }) => {
@@ -328,6 +330,7 @@ const HashtagMention = Mention.extend({
   },
   suggestion: {
     char: '#',
+    allowedPrefixes: null,
     ...createSuggestionConfig(fetchMentionables),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     command: ({ editor, range, props }: { editor: Editor; range: { from: number; to: number }; props: any }) => {

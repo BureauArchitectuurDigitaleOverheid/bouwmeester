@@ -20,6 +20,7 @@ import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
+import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { createPerson } from '@/api/people';
 import { Badge } from '@/components/common/Badge';
@@ -207,10 +208,24 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
     deleteLead.mutate(lead.id, { onSuccess: onClose });
   };
 
+  const isActivityEmpty = (() => {
+    if (!activityContent) return true;
+    try {
+      const doc = JSON.parse(activityContent);
+      if (doc?.type !== 'doc') return !activityContent.trim();
+      const hasContent = doc.content?.some((node: { type: string; content?: unknown[] }) =>
+        node.content && node.content.length > 0,
+      );
+      return !hasContent;
+    } catch {
+      return !activityContent.trim();
+    }
+  })();
+
   const handleAddActivity = () => {
-    if (!lead || !activityContent.trim()) return;
+    if (!lead || isActivityEmpty) return;
     const data: LeadActivityCreate = {
-      content: activityContent.trim(),
+      content: activityContent,
       activity_type: activityType,
     };
     createActivity.mutate(
@@ -733,11 +748,10 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           >
             {/* Add activity form */}
             <div className="space-y-2 mb-4">
-              <textarea
+              <RichTextEditor
                 value={activityContent}
-                onChange={(e) => setActivityContent(e.target.value)}
-                placeholder="Voeg een notitie of activiteit toe..."
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400 min-h-[60px] resize-y"
+                onChange={setActivityContent}
+                placeholder="Voeg een notitie of activiteit toe... Gebruik @ voor personen, # voor nodes/taken"
                 rows={2}
               />
               <div className="flex items-center gap-2">
@@ -755,7 +769,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 <Button
                   size="sm"
                   onClick={handleAddActivity}
-                  disabled={!activityContent.trim()}
+                  disabled={isActivityEmpty}
                   loading={createActivity.isPending}
                 >
                   Toevoegen
@@ -781,7 +795,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                         </Badge>
                         <span>{timeAgo(activity.created_at)}</span>
                       </div>
-                      <p className="text-sm text-text mt-0.5 whitespace-pre-wrap">{activity.content}</p>
+                      <div className="mt-0.5">
+                        <RichTextDisplay content={activity.content} fallback="" />
+                      </div>
                     </div>
                   </div>
                 ))}

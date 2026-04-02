@@ -166,7 +166,7 @@ function renderNode(node: TipTapNode, key: number, handlers: MentionHandlers): R
               handlers.openTaskDetail(id);
             }
           }}
-          className={`inline rounded px-1 py-0.5 font-medium text-sm transition-colors ${
+          className={`inline text-left rounded px-1 py-0.5 font-medium text-sm transition-colors ${
             isClickable
               ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer'
               : 'bg-slate-100 text-slate-700 cursor-default'
