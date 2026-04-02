@@ -105,7 +105,7 @@ class LeadRepository(BaseRepository[Lead]):
             if next_action_filter == "overdue":
                 stmt = stmt.where(
                     Lead.next_action_date < today,
-                    Lead.stage.notin_(["in_the_pocket", "koelkast"]),
+                    Lead.stage.notin_(["inbox", "in_the_pocket", "koelkast"]),
                 )
             elif next_action_filter == "today":
                 stmt = stmt.where(Lead.next_action_date == today)
@@ -214,6 +214,31 @@ class LeadRepository(BaseRepository[Lead]):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_contact_names_batch(
+        self, lead_ids: list[UUID]
+    ) -> dict[UUID, list[str]]:
+        """Get contact person names for multiple leads in one query."""
+        from bouwmeester.models.person import Person
+        from bouwmeester.models.resource_permission import ResourcePermission
+
+        if not lead_ids:
+            return {}
+        stmt = (
+            select(ResourcePermission.resource_id, Person.naam)
+            .join(Person, ResourcePermission.person_id == Person.id)
+            .where(
+                ResourcePermission.resource_type == "lead",
+                ResourcePermission.resource_id.in_(lead_ids),
+                ResourcePermission.role == "contactpersoon",
+            )
+            .order_by(Person.naam)
+        )
+        result = await self.session.execute(stmt)
+        contact_map: dict[UUID, list[str]] = {}
+        for resource_id, naam in result.all():
+            contact_map.setdefault(resource_id, []).append(naam)
+        return contact_map
 
     async def delete(self, id: UUID) -> bool:
         lead = await self.session.get(Lead, id)
@@ -458,13 +483,13 @@ class LeadRepository(BaseRepository[Lead]):
         stage_result = await self.session.execute(stage_stmt)
         by_stage = {row[0]: row[1] for row in stage_result.all()}
 
-        # Stale count: next_action_date < today and not in terminal stages
+        # Stale count: next_action_date < today and not in terminal/inbox stages
         stale_stmt = (
             select(func.count())
             .select_from(Lead)
             .where(
                 Lead.next_action_date < date.today(),
-                Lead.stage.notin_(["in_the_pocket", "koelkast"]),
+                Lead.stage.notin_(["inbox", "in_the_pocket", "koelkast"]),
             )
         )
         stale_stmt = apply_initiatief_filter(stale_stmt, Lead.initiatief_id, init_ctx)

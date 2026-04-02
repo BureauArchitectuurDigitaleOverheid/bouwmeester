@@ -1506,6 +1506,7 @@ export interface FinancieelOverzicht {
 
 // Lead Stage enum and labels
 export enum LeadStage {
+  INBOX = 'inbox',
   VERKENNEN = 'verkennen',
   EERSTE_GESPREK = 'eerste_gesprek',
   INTERNE_CHECK = 'interne_check',
@@ -1515,6 +1516,7 @@ export enum LeadStage {
 }
 
 export const LEAD_STAGE_LABELS: Record<LeadStage, string> = {
+  [LeadStage.INBOX]: 'Inbox',
   [LeadStage.VERKENNEN]: 'Verkennen',
   [LeadStage.EERSTE_GESPREK]: 'Eerste gesprek',
   [LeadStage.INTERNE_CHECK]: 'Interne check',
@@ -1524,6 +1526,7 @@ export const LEAD_STAGE_LABELS: Record<LeadStage, string> = {
 };
 
 export const LEAD_STAGE_COLORS: Record<LeadStage, string> = {
+  [LeadStage.INBOX]: 'bg-indigo-100 text-indigo-800',
   [LeadStage.VERKENNEN]: 'bg-blue-100 text-blue-800',
   [LeadStage.EERSTE_GESPREK]: 'bg-yellow-100 text-yellow-800',
   [LeadStage.INTERNE_CHECK]: 'bg-orange-100 text-orange-800',
@@ -1533,6 +1536,7 @@ export const LEAD_STAGE_COLORS: Record<LeadStage, string> = {
 };
 
 export const LEAD_STAGE_ORDER: LeadStage[] = [
+  LeadStage.INBOX,
   LeadStage.VERKENNEN,
   LeadStage.EERSTE_GESPREK,
   LeadStage.INTERNE_CHECK,
@@ -1630,6 +1634,7 @@ export interface Lead {
   sort_order: number;
   raw_intake_text: string | null;
   attachment_count: number;
+  contact_names: string[];
   created_at: string;
   updated_at: string | null;
 }

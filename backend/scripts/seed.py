@@ -4689,31 +4689,9 @@ async def seed(db: AsyncSession) -> None:
     )
     await db.flush()
 
-    # Collect person IDs that are managers — they get unit_manager,
-    # so we skip lower functie-based roles for them.
+    # Collect person IDs that are managers — they already got unit_manager
+    # roles via org_repo.update(), so we skip lower functie-based roles for them.
     manager_person_ids = {mgr.id for _, mgr in manager_assignments if not mgr.is_agent}
-
-    # Assign manager roles first (unit_manager on their managed eenheid).
-    mgr_seen: set[tuple] = set()
-    mgr_role_count = 0
-    for unit, manager in manager_assignments:
-        if manager.is_agent:
-            continue
-        key = (manager.id, unit.id)
-        if key in mgr_seen:
-            continue
-        mgr_seen.add(key)
-        db.add(
-            PersonRole(
-                person_id=manager.id,
-                role_id="unit_manager",
-                organisatie_eenheid_id=unit.id,
-                granted_by_id=first_person.id,
-                start_datum=date.today(),
-            )
-        )
-        mgr_role_count += 1
-    await db.flush()
 
     # Assign functie-based roles for non-managers
     functie_role_map = {
@@ -4767,7 +4745,7 @@ async def seed(db: AsyncSession) -> None:
         functie_role_count += 1
     await db.flush()
     print(
-        f"  Rollen: {mgr_role_count} managers + "
+        f"  Rollen: {len(manager_person_ids)} managers + "
         f"{functie_role_count} functie-rollen + 1 admin"
     )
 

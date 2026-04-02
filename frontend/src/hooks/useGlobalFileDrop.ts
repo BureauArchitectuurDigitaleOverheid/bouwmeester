@@ -27,13 +27,14 @@ export function useGlobalFileDrop({ onFiles, onEmptyFileDrop, enabled = true }: 
   }, []);
 
   const handleDragOver = useCallback((e: DragEvent) => {
+    // Only intercept file drags — non-file drags (e.g. kanban card moves)
+    // must pass through unmodified so their drop events fire correctly.
+    if (!e.dataTransfer?.types.includes('Files')) return;
     e.preventDefault();
     // Prevent Outlook from deleting the original email after drop.
     // Without this, Chrome defaults to "move" which Outlook interprets as
     // "move the email to Deleted Items".
-    if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = 'copy';
-    }
+    e.dataTransfer.dropEffect = 'copy';
   }, []);
 
   const handleDragLeave = useCallback((e: DragEvent) => {
@@ -46,8 +47,10 @@ export function useGlobalFileDrop({ onFiles, onEmptyFileDrop, enabled = true }: 
   }, []);
 
   const handleDrop = useCallback((e: DragEvent) => {
+    // Only intercept file drags — non-file drags (e.g. kanban card moves)
+    // must pass through so React onDrop handlers fire correctly.
+    if (!hadFilesType.current) return;
     e.preventDefault();
-    const wasFilesDrag = hadFilesType.current;
     dragCounter.current = 0;
     hadFilesType.current = false;
     setIsDragging(false);
@@ -55,7 +58,7 @@ export function useGlobalFileDrop({ onFiles, onEmptyFileDrop, enabled = true }: 
     const files = e.dataTransfer?.files;
     if (files && files.length > 0) {
       onFilesRef.current(Array.from(files));
-    } else if (wasFilesDrag) {
+    } else {
       // The drag advertised "Files" but delivered nothing.
       // This happens with New Outlook (Windows/Mac) and Outlook Mac on Chrome/Firefox.
       onEmptyFileDropRef.current?.();

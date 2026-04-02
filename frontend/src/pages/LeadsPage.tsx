@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Columns3, LayoutGrid, GitFork, Clock, Search, X, Settings } from 'lucide-react';
+import { Plus, Columns3, LayoutGrid, GitFork, Clock, Search, X, Settings, Inbox } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Modal } from '@/components/common/Modal';
@@ -16,6 +16,7 @@ import { LeadKanbanBoard } from '@/components/leads/LeadKanbanBoard';
 import { LeadListView } from '@/components/leads/LeadListView';
 import { LeadGraphView } from '@/components/leads/LeadGraphView';
 import { LeadTimelineView } from '@/components/leads/LeadTimelineView';
+import { LeadInboxView } from '@/components/leads/LeadInboxView';
 import { LeadIntakeDialog } from '@/components/leads/LeadIntakeDialog';
 import {
   LeadStage,
@@ -25,9 +26,10 @@ import {
 import type { InitiatiefCreate } from '@/types';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 
-type LeadViewMode = 'kanban' | 'list' | 'graph' | 'timeline';
+type LeadViewMode = 'inbox' | 'kanban' | 'list' | 'graph' | 'timeline';
 
 const VIEW_OPTIONS: ViewToggleOption<LeadViewMode>[] = [
+  { value: 'inbox', label: 'Inbox', icon: <Inbox className="h-3.5 w-3.5" /> },
   { value: 'kanban', label: 'Bord', icon: <Columns3 className="h-3.5 w-3.5" /> },
   { value: 'list', label: 'Lijst', icon: <LayoutGrid className="h-3.5 w-3.5" /> },
   { value: 'timeline', label: 'Tijdlijn', icon: <Clock className="h-3.5 w-3.5" /> },
@@ -53,13 +55,15 @@ export function LeadsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const viewParam = searchParams.get('view');
   const viewMode: LeadViewMode =
-    viewParam === 'list'
-      ? 'list'
-      : viewParam === 'graph'
-        ? 'graph'
-        : viewParam === 'timeline'
-          ? 'timeline'
-          : 'kanban';
+    viewParam === 'kanban'
+      ? 'kanban'
+      : viewParam === 'list'
+        ? 'list'
+        : viewParam === 'graph'
+          ? 'graph'
+          : viewParam === 'timeline'
+            ? 'timeline'
+            : 'inbox';
 
   const [showIntake, setShowIntake] = useState(false);
   const { subscribe } = useGlobalFileDropContext();
@@ -146,10 +150,11 @@ export function LeadsPage() {
     setCreateForm({ naam: '', beschrijving: '', kleur: INITIATIEF_COLORS[0] });
   };
 
-  // Filters applicable per view: kanban+list support all; timeline lacks tag/next_action; graph only has stage
-  const supportsAssignee = viewMode !== 'graph';
+  // Filters applicable per view: inbox uses only search; kanban+list support all; timeline lacks tag/next_action; graph only has stage
+  const supportsAssignee = viewMode !== 'graph' && viewMode !== 'inbox';
   const supportsTag = viewMode === 'kanban' || viewMode === 'list';
   const supportsNextAction = viewMode === 'kanban' || viewMode === 'list';
+  const supportsStage = viewMode !== 'inbox';
 
   const hasActiveFilters = filterAssignee || filterTag || nextActionFilter || filterStage;
 
@@ -276,16 +281,18 @@ export function LeadsPage() {
         )}
 
         {/* Stage */}
-        <div className="w-full sm:w-40">
-          <CreatableSelect
-            value={filterStage}
-            onChange={setFilterStage}
-            options={STAGE_OPTIONS}
-            placeholder="Alle fases"
-            searchable={false}
-            onClear={filterStage ? () => setFilterStage('') : undefined}
-          />
-        </div>
+        {supportsStage && (
+          <div className="w-full sm:w-40">
+            <CreatableSelect
+              value={filterStage}
+              onChange={setFilterStage}
+              options={STAGE_OPTIONS}
+              placeholder="Alle fases"
+              searchable={false}
+              onClear={filterStage ? () => setFilterStage('') : undefined}
+            />
+          </div>
+        )}
 
         {/* Clear filters */}
         {hasActiveFilters && (
@@ -299,7 +306,12 @@ export function LeadsPage() {
       </div>
 
       {/* View content */}
-      {viewMode === 'kanban' ? (
+      {viewMode === 'inbox' ? (
+        <LeadInboxView
+          searchQuery={searchQuery}
+          initiatiefId={selectedInitiatiefId}
+        />
+      ) : viewMode === 'kanban' ? (
         <LeadKanbanBoard
           searchQuery={searchQuery}
           initiatiefId={selectedInitiatiefId}

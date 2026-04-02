@@ -1,5 +1,6 @@
-import { Paperclip, Calendar } from 'lucide-react';
+import { Paperclip, Calendar, Users } from 'lucide-react';
 import { isOverdue, formatDateShort } from '@/utils/dates';
+import { LeadStage } from '@/types';
 import type { Lead } from '@/types';
 
 interface LeadCardProps {
@@ -9,6 +10,8 @@ interface LeadCardProps {
 
 export function LeadCard({ lead, onClick }: LeadCardProps) {
   const overdue = lead.next_action_date && isOverdue(lead.next_action_date);
+  const isInbox = lead.stage === LeadStage.INBOX;
+  const contacts = lead.contact_names ?? [];
 
   return (
     <button
@@ -40,8 +43,25 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
       )}
 
       <div className="flex items-center gap-2 text-xs text-text-secondary">
-        {lead.assignee && (
-          <span className="truncate max-w-[120px]">{lead.assignee.naam}</span>
+        {isInbox ? (
+          lead.brought_by && (
+            <span className="truncate max-w-[120px]">via {lead.brought_by.naam}</span>
+          )
+        ) : (
+          <>
+            {lead.assignee && (
+              <span className="truncate max-w-[120px]">{lead.assignee.naam}</span>
+            )}
+            {contacts.length > 0 && (
+              <span className="inline-flex items-center gap-0.5" title={contacts.join(', ')}>
+                <Users className="h-3 w-3" />
+                {contacts[0]}
+                {contacts.length > 1 && (
+                  <span className="text-[10px]">+{contacts.length - 1}</span>
+                )}
+              </span>
+            )}
+          </>
         )}
 
         {lead.next_action_date && (

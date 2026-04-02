@@ -15,6 +15,7 @@ import {
 import type { Lead, LeadFilters } from '@/types';
 
 const COLUMN_BORDER_COLORS: Record<LeadStage, string> = {
+  [LeadStage.INBOX]: 'border-t-indigo-400',
   [LeadStage.VERKENNEN]: 'border-t-blue-400',
   [LeadStage.EERSTE_GESPREK]: 'border-t-yellow-400',
   [LeadStage.INTERNE_CHECK]: 'border-t-orange-400',
