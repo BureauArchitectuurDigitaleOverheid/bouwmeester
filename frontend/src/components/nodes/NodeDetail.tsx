@@ -443,26 +443,32 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
               <Card>
                 <h3 className="text-sm font-medium text-text mb-3">Bijlage</h3>
                 {bijlageInfo ? (
-                  <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-gray-50/50">
+                  <div className={`flex items-center justify-between p-3 rounded-lg border border-border bg-gray-50/50 ${!bijlageInfo.bestand_beschikbaar ? 'opacity-50' : ''}`}>
                     <div className="flex items-center gap-2 min-w-0">
                       <FileText className="h-5 w-5 text-text-secondary shrink-0" />
                       <div className="min-w-0">
                         <p className="text-sm text-text truncate">{bijlageInfo.bestandsnaam}</p>
-                        <p className="text-xs text-text-secondary">
-                          {bijlageInfo.bestandsgrootte >= 1024 * 1024
-                            ? `${(bijlageInfo.bestandsgrootte / (1024 * 1024)).toFixed(1)} MB`
-                            : `${(bijlageInfo.bestandsgrootte / 1024).toFixed(1)} KB`}
-                        </p>
+                        {!bijlageInfo.bestand_beschikbaar ? (
+                          <p className="text-xs text-red-500">Bestand niet beschikbaar</p>
+                        ) : (
+                          <p className="text-xs text-text-secondary">
+                            {bijlageInfo.bestandsgrootte >= 1024 * 1024
+                              ? `${(bijlageInfo.bestandsgrootte / (1024 * 1024)).toFixed(1)} MB`
+                              : `${(bijlageInfo.bestandsgrootte / 1024).toFixed(1)} KB`}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <a
-                        href={getBijlageDownloadUrl(nodeId)}
-                        className="p-1.5 rounded-lg text-primary-700 hover:bg-primary-50 transition-colors"
-                        title="Downloaden"
-                      >
-                        <Download className="h-4 w-4" />
-                      </a>
+                      {bijlageInfo.bestand_beschikbaar && (
+                        <a
+                          href={getBijlageDownloadUrl(nodeId)}
+                          className="p-1.5 rounded-lg text-primary-700 hover:bg-primary-50 transition-colors"
+                          title="Downloaden"
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                      )}
                       <button
                         onClick={() => setShowBijlageDeleteConfirm(true)}
                         className="p-1.5 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors"
