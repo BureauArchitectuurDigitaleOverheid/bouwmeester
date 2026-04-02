@@ -119,22 +119,31 @@ export function LeadInboxView({
   const handleBatchClaim = async () => {
     if (!currentPerson) return;
     const ids = [...selectedIds];
-    setSelectedIds(new Set());
-    await Promise.all(
-      ids.map((id) =>
-        updateLead.mutateAsync(
-          { id, data: { assignee_id: currentPerson.id, stage: LeadStage.VERKENNEN } },
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          updateLead.mutateAsync(
+            { id, data: { assignee_id: currentPerson.id, stage: LeadStage.VERKENNEN } },
+          ),
         ),
-      ),
-    );
+      );
+      setSelectedIds(new Set());
+    } catch {
+      // Keep failed items selected so user can retry
+      setSelectedIds(new Set(ids));
+    }
   };
 
   const handleBatchKoelkast = async () => {
     const ids = [...selectedIds];
-    setSelectedIds(new Set());
-    await Promise.all(
-      ids.map((id) => moveLead.mutateAsync({ id, stage: LeadStage.KOELKAST })),
-    );
+    try {
+      await Promise.all(
+        ids.map((id) => moveLead.mutateAsync({ id, stage: LeadStage.KOELKAST })),
+      );
+      setSelectedIds(new Set());
+    } catch {
+      setSelectedIds(new Set(ids));
+    }
   };
 
   const toggleSelect = (id: string) => {
@@ -275,8 +284,8 @@ export function LeadInboxView({
                     </div>
                   </button>
 
-                  {/* Actions - visible on hover */}
-                  <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  {/* Actions - visible on hover and focus-within */}
+                  <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0">
                     <Button
                       size="sm"
                       onClick={() => handleClaim(lead)}
