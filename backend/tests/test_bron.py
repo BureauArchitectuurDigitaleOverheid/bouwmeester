@@ -263,7 +263,7 @@ async def test_download_bijlage(client, bron_node, bijlagen_tmp):
     assert resp.status_code == 200
     assert resp.content == file_content
     assert "attachment" in resp.headers.get("content-disposition", "")
-    assert resp.headers.get("content-type") == "application/octet-stream"
+    assert resp.headers.get("content-type") == "application/pdf"
 
 
 async def test_download_bijlage_not_found(client, bron_node):
