@@ -6,6 +6,7 @@ import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
+import { RichTextFormField } from '@/components/common/RichTextFormField';
 import {
   usePeople,
   usePerson,
@@ -643,16 +644,13 @@ export function PersonEditForm({
                 </p>
               )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">Beschrijving</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Wat doet deze agent?"
-                rows={3}
-                className="w-full rounded-lg border border-border px-3 py-2 text-sm text-text placeholder:text-text-secondary/50 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-              />
-            </div>
+            <RichTextFormField
+              label="Beschrijving"
+              value={description}
+              onChange={setDescription}
+              rows={3}
+              placeholder="Wat doet deze agent?"
+            />
           </>
         )}
         {!isAgent && (

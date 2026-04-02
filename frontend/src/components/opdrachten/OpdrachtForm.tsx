@@ -7,6 +7,7 @@ import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
+import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { buildPersonOptions } from '@/utils/personOptions';
 import { Badge } from '@/components/common/Badge';
 import {
@@ -195,10 +196,12 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
         <input type="text" value={form.titel} onChange={e => setForm(f => ({ ...f, titel: e.target.value }))} required className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-text mb-1">Beschrijving</label>
-        <textarea value={form.beschrijving} onChange={e => setForm(f => ({ ...f, beschrijving: e.target.value }))} rows={3} className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
-      </div>
+      <RichTextFormField
+        label="Beschrijving"
+        value={form.beschrijving}
+        onChange={(value) => setForm(f => ({ ...f, beschrijving: value }))}
+        rows={3}
+      />
 
       {/* Links */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
