@@ -230,7 +230,7 @@ class LeadRepository(BaseRepository[Lead]):
             .where(
                 ResourcePermission.resource_type == "lead",
                 ResourcePermission.resource_id.in_(lead_ids),
-                ResourcePermission.role == "contactpersoon",
+                ResourcePermission.rol == "contactpersoon",
             )
             .order_by(Person.naam)
         )
