@@ -17,6 +17,7 @@ import {
   ZoomIn,
 } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
@@ -129,6 +130,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (!lightboxSrc) return;
@@ -204,8 +206,8 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   };
 
   const handleDelete = () => {
-    if (!lead || !confirm('Weet je zeker dat je deze lead wilt verwijderen?')) return;
-    deleteLead.mutate(lead.id, { onSuccess: onClose });
+    if (!lead) return;
+    setShowDeleteConfirm(true);
   };
 
   const isActivityEmpty = (() => {
@@ -829,6 +831,19 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
         />
       </div>
     )}
+    <ConfirmDialog
+      open={showDeleteConfirm}
+      onClose={() => setShowDeleteConfirm(false)}
+      onConfirm={() => {
+        if (lead) deleteLead.mutate(lead.id, { onSuccess: onClose });
+        setShowDeleteConfirm(false);
+      }}
+      title="Lead verwijderen"
+      confirmLabel="Verwijderen"
+      variant="danger"
+    >
+      Weet je zeker dat je deze lead wilt verwijderen?
+    </ConfirmDialog>
     </>
   );
 }
