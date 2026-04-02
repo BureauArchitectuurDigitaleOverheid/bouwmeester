@@ -228,7 +228,6 @@ class LeadMetricsResponse(BaseModel):
     total: int
     by_stage: dict[str, int]
     stale_count: int
-    inbox_count: int = 0
 
 
 # ---------------------------------------------------------------------------

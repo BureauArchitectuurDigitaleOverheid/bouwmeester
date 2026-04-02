@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Inbox, UserPlus, Snowflake, ChevronDown } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -57,6 +57,19 @@ export function LeadInboxView({
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [assignDropdownId, setAssignDropdownId] = useState<string | null>(null);
+  const assignDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close assign dropdown on click outside
+  useEffect(() => {
+    if (!assignDropdownId) return;
+    const handleClick = (e: MouseEvent) => {
+      if (assignDropdownRef.current && !assignDropdownRef.current.contains(e.target as Node)) {
+        setAssignDropdownId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [assignDropdownId]);
 
   const filteredLeads = useMemo(() => {
     if (!leads) return [];
@@ -103,21 +116,25 @@ export function LeadInboxView({
     moveLead.mutate({ id: leadId, stage: LeadStage.KOELKAST });
   };
 
-  const handleBatchClaim = () => {
+  const handleBatchClaim = async () => {
     if (!currentPerson) return;
-    for (const id of selectedIds) {
-      updateLead.mutate(
-        { id, data: { assignee_id: currentPerson.id, stage: LeadStage.VERKENNEN } },
-      );
-    }
+    const ids = [...selectedIds];
     setSelectedIds(new Set());
+    await Promise.all(
+      ids.map((id) =>
+        updateLead.mutateAsync(
+          { id, data: { assignee_id: currentPerson.id, stage: LeadStage.VERKENNEN } },
+        ),
+      ),
+    );
   };
 
-  const handleBatchKoelkast = () => {
-    for (const id of selectedIds) {
-      moveLead.mutate({ id, stage: LeadStage.KOELKAST });
-    }
+  const handleBatchKoelkast = async () => {
+    const ids = [...selectedIds];
     setSelectedIds(new Set());
+    await Promise.all(
+      ids.map((id) => moveLead.mutateAsync({ id, stage: LeadStage.KOELKAST })),
+    );
   };
 
   const toggleSelect = (id: string) => {
@@ -269,7 +286,7 @@ export function LeadInboxView({
                       Oppakken
                     </Button>
 
-                    <div className="relative">
+                    <div className="relative" ref={assignDropdownId === lead.id ? assignDropdownRef : undefined}>
                       <Button
                         size="sm"
                         variant="secondary"

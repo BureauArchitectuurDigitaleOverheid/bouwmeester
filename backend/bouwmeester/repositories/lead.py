@@ -494,14 +494,8 @@ class LeadRepository(BaseRepository[Lead]):
         stale_stmt = apply_initiatief_filter(stale_stmt, Lead.initiatief_id, init_ctx)
         stale_count = (await self.session.execute(stale_stmt)).scalar_one()
 
-        # Inbox count
-        inbox_stmt = select(func.count()).select_from(Lead).where(Lead.stage == "inbox")
-        inbox_stmt = apply_initiatief_filter(inbox_stmt, Lead.initiatief_id, init_ctx)
-        inbox_count = (await self.session.execute(inbox_stmt)).scalar_one()
-
         return {
             "total": total,
             "by_stage": by_stage,
             "stale_count": stale_count,
-            "inbox_count": inbox_count,
         }
