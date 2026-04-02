@@ -194,6 +194,7 @@ class LeadResponse(BaseModel):
     sort_order: int = 0
     raw_intake_text: str | None = None
     attachment_count: int = 0
+    contact_names: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime | None = None
 

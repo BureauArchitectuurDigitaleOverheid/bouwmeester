@@ -1634,6 +1634,7 @@ export interface Lead {
   sort_order: number;
   raw_intake_text: string | null;
   attachment_count: number;
+  contact_names: string[];
   created_at: string;
   updated_at: string | null;
 }

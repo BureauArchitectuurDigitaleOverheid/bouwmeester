@@ -215,6 +215,30 @@ class LeadRepository(BaseRepository[Lead]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_contact_names_batch(
+        self, lead_ids: list[UUID]
+    ) -> dict[UUID, list[str]]:
+        """Get contact person names for multiple leads in one query."""
+        from bouwmeester.models.person import Person
+        from bouwmeester.models.resource_permission import ResourcePermission
+
+        if not lead_ids:
+            return {}
+        stmt = (
+            select(ResourcePermission.resource_id, Person.naam)
+            .join(Person, ResourcePermission.person_id == Person.id)
+            .where(
+                ResourcePermission.resource_type == "lead",
+                ResourcePermission.resource_id.in_(lead_ids),
+            )
+            .order_by(Person.naam)
+        )
+        result = await self.session.execute(stmt)
+        contact_map: dict[UUID, list[str]] = {}
+        for resource_id, naam in result.all():
+            contact_map.setdefault(resource_id, []).append(naam)
+        return contact_map
+
     async def delete(self, id: UUID) -> bool:
         lead = await self.session.get(Lead, id)
         if lead is None:

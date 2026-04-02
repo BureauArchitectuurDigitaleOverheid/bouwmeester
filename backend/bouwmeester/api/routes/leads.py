@@ -168,7 +168,16 @@ async def list_leads(
         sort_by=sort_by,
         initiatief_id=initiatief_id,
     )
-    return validate_list(LeadResponse, leads)
+    responses = validate_list(LeadResponse, leads)
+
+    # Batch-load contact names for all leads
+    if responses:
+        lead_ids = [r.id for r in responses]
+        contact_map = await repo.get_contact_names_batch(lead_ids)
+        for r in responses:
+            r.contact_names = contact_map.get(r.id, [])
+
+    return responses
 
 
 @router.post("", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
