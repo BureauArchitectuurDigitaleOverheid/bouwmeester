@@ -308,7 +308,6 @@ export function LeadInboxView({
                             onChange={(personId) => handleAssign(lead.id, personId)}
                             options={personOptions}
                             placeholder="Zoek een persoon..."
-                            autoFocus
                           />
                         </div>
                       )}
