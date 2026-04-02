@@ -119,31 +119,24 @@ export function LeadInboxView({
   const handleBatchClaim = async () => {
     if (!currentPerson) return;
     const ids = [...selectedIds];
-    try {
-      await Promise.all(
-        ids.map((id) =>
-          updateLead.mutateAsync(
-            { id, data: { assignee_id: currentPerson.id, stage: LeadStage.VERKENNEN } },
-          ),
+    const results = await Promise.allSettled(
+      ids.map((id) =>
+        updateLead.mutateAsync(
+          { id, data: { assignee_id: currentPerson.id, stage: LeadStage.VERKENNEN } },
         ),
-      );
-      setSelectedIds(new Set());
-    } catch {
-      // Keep failed items selected so user can retry
-      setSelectedIds(new Set(ids));
-    }
+      ),
+    );
+    const failedIds = ids.filter((_, i) => results[i].status === 'rejected');
+    setSelectedIds(new Set(failedIds));
   };
 
   const handleBatchKoelkast = async () => {
     const ids = [...selectedIds];
-    try {
-      await Promise.all(
-        ids.map((id) => moveLead.mutateAsync({ id, stage: LeadStage.KOELKAST })),
-      );
-      setSelectedIds(new Set());
-    } catch {
-      setSelectedIds(new Set(ids));
-    }
+    const results = await Promise.allSettled(
+      ids.map((id) => moveLead.mutateAsync({ id, stage: LeadStage.KOELKAST })),
+    );
+    const failedIds = ids.filter((_, i) => results[i].status === 'rejected');
+    setSelectedIds(new Set(failedIds));
   };
 
   const toggleSelect = (id: string) => {

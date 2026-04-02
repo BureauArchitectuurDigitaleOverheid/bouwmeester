@@ -55,15 +55,15 @@ export function LeadsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const viewParam = searchParams.get('view');
   const viewMode: LeadViewMode =
-    viewParam === 'inbox'
-      ? 'inbox'
+    viewParam === 'kanban'
+      ? 'kanban'
       : viewParam === 'list'
         ? 'list'
         : viewParam === 'graph'
           ? 'graph'
           : viewParam === 'timeline'
             ? 'timeline'
-            : 'kanban';
+            : 'inbox';
 
   const [showIntake, setShowIntake] = useState(false);
   const { subscribe } = useGlobalFileDropContext();
