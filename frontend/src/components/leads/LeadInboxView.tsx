@@ -10,7 +10,7 @@ import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { usePeople } from '@/hooks/usePeople';
 import { LeadStage } from '@/types';
 import type { Lead, LeadFilters } from '@/types';
-import { timeAgo } from '@/utils/dates';
+import { timeAgo, formatDateShort } from '@/utils/dates';
 
 interface LeadInboxViewProps {
   searchQuery?: string;
@@ -268,8 +268,8 @@ export function LeadInboxView({
                           {lead.externe_organisatie?.naam ?? lead.organization}
                         </span>
                       )}
-                      {(lead.contact_names ?? []).length > 0 && (
-                        <span className="inline-flex items-center gap-0.5" title={(lead.contact_names ?? []).join(', ')}>
+                      {lead.contact_names.length > 0 && (
+                        <span className="inline-flex items-center gap-0.5" title={lead.contact_names.join(', ')}>
                           <Users className="h-3 w-3" />
                           {lead.contact_names[0]}
                           {lead.contact_names.length > 1 && (
@@ -280,7 +280,7 @@ export function LeadInboxView({
                       {lead.next_action_date && (
                         <span className="inline-flex items-center gap-0.5">
                           <Calendar className="h-3 w-3" />
-                          {lead.next_action_date}
+                          {formatDateShort(lead.next_action_date)}
                         </span>
                       )}
                       {lead.attachment_count > 0 && (
