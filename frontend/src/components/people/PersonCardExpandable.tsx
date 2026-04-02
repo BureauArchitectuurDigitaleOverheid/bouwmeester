@@ -8,6 +8,7 @@ import { PersonAvatar } from '@/components/people/PersonAvatar';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS } from '@/types';
+import { richTextToPlain } from '@/utils/richtext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDateShort, todayISO } from '@/utils/dates';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
@@ -117,7 +118,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             {person.description && person.is_agent && (
               <span className={clsx('flex items-start gap-1', !expanded && 'truncate')}>
                 <Briefcase className="h-3 w-3 shrink-0 mt-0.5" />
-                <span className={expanded ? 'whitespace-normal' : 'truncate'}>{person.description}</span>
+                <span className={expanded ? 'whitespace-normal' : 'truncate'}>{richTextToPlain(person.description)}</span>
               </span>
             )}
           </div>

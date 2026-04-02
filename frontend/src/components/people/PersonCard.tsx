@@ -2,6 +2,7 @@ import { Mail, Briefcase, Phone } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { PersonAvatar } from '@/components/people/PersonAvatar';
 import { formatFunctie } from '@/types';
+import { richTextToPlain } from '@/utils/richtext';
 import type { Person } from '@/types';
 
 interface PersonCardProps {
@@ -62,7 +63,7 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
               </div>
             )}
             {person.is_agent && person.description && (
-              <p className="text-xs text-text-secondary truncate">{person.description}</p>
+              <p className="text-xs text-text-secondary truncate">{richTextToPlain(person.description)}</p>
             )}
           </div>
         </div>

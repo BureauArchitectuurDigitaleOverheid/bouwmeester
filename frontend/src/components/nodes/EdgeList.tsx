@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { AddEdgeForm } from './AddEdgeForm';
 import { useEdges, useDeleteEdge } from '@/hooks/useEdges';
 import { NODE_TYPE_COLORS } from '@/types';
+import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 
 interface EdgeListProps {
@@ -78,9 +79,9 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
                       </button>
                     )}
                     {edge.description && (
-                      <p className="text-xs text-text-secondary mt-1">
-                        {edge.description}
-                      </p>
+                      <div className="mt-1">
+                        <RichTextDisplay content={edge.description} />
+                      </div>
                     )}
                   </div>
 
