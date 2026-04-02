@@ -131,7 +131,7 @@ export function LeadsPage() {
   const setViewMode = useCallback(
     (mode: LeadViewMode) => {
       setSearchParams((prev) => {
-        if (mode === 'kanban') {
+        if (mode === 'inbox') {
           prev.delete('view');
         } else {
           prev.set('view', mode);
