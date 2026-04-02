@@ -11,6 +11,7 @@ import { usePeople } from '@/hooks/usePeople';
 import { LeadStage } from '@/types';
 import type { Lead, LeadFilters } from '@/types';
 import { timeAgo, formatDateShort } from '@/utils/dates';
+import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 
 interface LeadInboxViewProps {
   searchQuery?: string;
@@ -254,9 +255,9 @@ export function LeadInboxView({
                     </div>
 
                     {lead.description && (
-                      <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">
-                        {lead.description}
-                      </p>
+                      <div className="text-xs text-text-secondary mt-0.5 line-clamp-2">
+                        <RichTextDisplay content={lead.description} fallback="" />
+                      </div>
                     )}
 
                     <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-1 text-xs text-text-secondary">
