@@ -8,6 +8,7 @@ import { DetailSection } from '@/components/common/DetailSection';
 import { RelatedItemsList } from '@/components/common/RelatedItemsList';
 import { DetailModalFooter } from '@/components/common/DetailModalFooter';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { OpdrachtForm } from './OpdrachtForm';
 import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
 import { useOpdracht, useDeleteOpdracht } from '@/hooks/useOpdrachten';
@@ -159,7 +160,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
             {/* Description */}
             {opdracht.beschrijving && (
               <DetailSection title="Beschrijving">
-                <p className="text-sm text-text-secondary">{opdracht.beschrijving}</p>
+                <RichTextDisplay content={opdracht.beschrijving} />
               </DetailSection>
             )}
 

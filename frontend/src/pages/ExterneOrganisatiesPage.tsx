@@ -6,6 +6,7 @@ import {
   useUpdateExterneOrganisatie,
   useDeleteExterneOrganisatie,
 } from '@/hooks/useExterneOrganisaties';
+import { RichTextFormField } from '@/components/common/RichTextFormField';
 import {
   EXTERNE_ORG_TYPE_LABELS,
   EXTERNE_ORG_TYPE_COLORS,
@@ -156,15 +157,12 @@ export function ExterneOrganisatiesPage() {
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">Beschrijving</label>
-              <textarea
-                value={form.beschrijving || ''}
-                onChange={e => setForm(f => ({ ...f, beschrijving: e.target.value || undefined }))}
-                rows={2}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border"
-              />
-            </div>
+            <RichTextFormField
+              label="Beschrijving"
+              value={form.beschrijving || ''}
+              onChange={(value) => setForm(f => ({ ...f, beschrijving: value || undefined }))}
+              rows={2}
+            />
             <div className="flex justify-end gap-3">
               <button type="button" onClick={resetForm} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-gray-50 transition-colors">
                 Annuleren

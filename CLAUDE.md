@@ -86,6 +86,7 @@ frontend/
 - **API helpers**: `apiGet`, `apiPost`, `apiPut`, `apiDelete` in `api/client.ts`
 - **Hooks**: React Query `useQuery`/`useMutation` with `queryKey` invalidation
 - **Components**: `CreatableSelect` for all dropdowns (select + create inline)
+- **Rich text**: ALL description/beschrijving fields MUST use `RichTextFormField` (edit) and `RichTextDisplay` (view) — never use plain `<textarea>` for descriptions
 - **Layout**: `Header.tsx` renders page title from `pageTitles` map — pages should NOT have their own `<h1>`
 - **Sidebar**: Nav items defined in `components/layout/Sidebar.tsx`
 - **Route definitions**: `App.tsx`

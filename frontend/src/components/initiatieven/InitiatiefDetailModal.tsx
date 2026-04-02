@@ -6,6 +6,8 @@ import { Badge } from '@/components/common/Badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { RichTextFormField } from '@/components/common/RichTextFormField';
+import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import {
   useInitiatief,
   useUpdateInitiatief,
@@ -248,9 +250,7 @@ export function InitiatiefDetailModal({
                 <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
                   Beschrijving
                 </h4>
-                <p className="text-sm text-text whitespace-pre-wrap">
-                  {detail.beschrijving}
-                </p>
+                <RichTextDisplay content={detail.beschrijving} />
               </div>
             )}
 
@@ -467,15 +467,12 @@ function EditForm({
           autoFocus
         />
       </div>
-      <div className="space-y-1.5">
-        <label className="block text-sm font-medium text-text">Beschrijving</label>
-        <textarea
-          value={form.beschrijving || ''}
-          onChange={(e) => onChange({ ...form, beschrijving: e.target.value })}
-          className="w-full rounded-xl border border-border px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 resize-none"
-          rows={4}
-        />
-      </div>
+      <RichTextFormField
+        label="Beschrijving"
+        value={form.beschrijving || ''}
+        onChange={(value) => onChange({ ...form, beschrijving: value })}
+        rows={4}
+      />
       <div className="space-y-1.5">
         <label className="block text-sm font-medium text-text">Kleur</label>
         <div className="flex gap-2 flex-wrap">
