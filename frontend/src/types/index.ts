@@ -1038,7 +1038,7 @@ export interface BijlageInfo {
   bestandsnaam: string;
   content_type: string;
   bestandsgrootte: number;
-  bestand_beschikbaar?: boolean;
+  bestand_beschikbaar: boolean;
   created_at: string;
 }
 
@@ -1585,7 +1585,7 @@ export interface LeadAttachment {
   bestandsnaam: string;
   content_type: string;
   bestandsgrootte: number;
-  bestand_beschikbaar?: boolean;
+  bestand_beschikbaar: boolean;
   created_at: string;
 }
 

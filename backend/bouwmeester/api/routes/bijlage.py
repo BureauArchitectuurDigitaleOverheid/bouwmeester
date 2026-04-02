@@ -13,6 +13,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.storage import (
     BRON_ALLOWED_CONTENT_TYPES,
     ensure_bijlagen_dir,
+    file_exists_on_disk,
     read_upload_content,
     safe_resolve_or_400,
     sanitize_download_filename,
@@ -112,11 +113,7 @@ async def get_bijlage_info(
     if bijlage is None:
         return None
     response = BronBijlageResponse.model_validate(bijlage)
-    try:
-        path = safe_resolve_or_400(BIJLAGEN_ROOT, bijlage.pad)
-        response.bestand_beschikbaar = path.exists()
-    except Exception:
-        response.bestand_beschikbaar = False
+    response.bestand_beschikbaar = file_exists_on_disk(BIJLAGEN_ROOT, bijlage.pad)
     return response
 
 

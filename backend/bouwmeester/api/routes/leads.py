@@ -18,6 +18,7 @@ from bouwmeester.core.initiatief_context import (
 )
 from bouwmeester.core.storage import (
     ensure_bijlagen_dir,
+    file_exists_on_disk,
     read_upload_content,
     safe_resolve_or_400,
     sanitize_download_filename,
@@ -351,11 +352,9 @@ async def get_lead(
     # Mark attachments whose files no longer exist on disk.
     pad_by_id = {a.id: a.pad for a in lead.attachments}
     for att in response.attachments:
-        try:
-            path = safe_resolve_or_400(LEADS_BIJLAGEN_ROOT, pad_by_id[att.id])
-            att.bestand_beschikbaar = path.exists()
-        except Exception:
-            att.bestand_beschikbaar = False
+        att.bestand_beschikbaar = file_exists_on_disk(
+            LEADS_BIJLAGEN_ROOT, pad_by_id[att.id]
+        )
 
     return response
 

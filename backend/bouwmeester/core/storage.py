@@ -52,6 +52,18 @@ def safe_resolve_or_400(root: Path, relative: str) -> Path:
         raise HTTPException(status_code=400, detail="Ongeldig pad")
 
 
+def file_exists_on_disk(root: Path, relative: str) -> bool:
+    """Check whether the file at *relative* under *root* exists.
+
+    Returns ``False`` when the path escapes *root* (traversal) or cannot
+    be resolved for any reason, so callers never need their own try/except.
+    """
+    try:
+        return safe_resolve(root, relative).exists()
+    except (ValueError, OSError):
+        return False
+
+
 # Magic-byte signatures for content-type verification.
 _MAGIC_SIGNATURES: dict[bytes, set[str]] = {
     b"%PDF": {"application/pdf"},

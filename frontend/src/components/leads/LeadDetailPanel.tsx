@@ -558,10 +558,10 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               <div className="space-y-1">
                 {lead.attachments.map((att) => (
                   <div key={att.id}>
-                    <div className={`flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-gray-50 ${att.bestand_beschikbaar === false ? 'opacity-50' : ''}`}>
+                    <div className={`flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-gray-50 ${!att.bestand_beschikbaar ? 'opacity-50' : ''}`}>
                       <Paperclip className="h-3.5 w-3.5 text-text-secondary shrink-0" />
                       <span className="flex-1 truncate text-text">{att.bestandsnaam}</span>
-                      {att.bestand_beschikbaar === false ? (
+                      {!att.bestand_beschikbaar ? (
                         <span className="text-xs text-red-500">Bestand niet beschikbaar</span>
                       ) : (
                         <>
@@ -583,7 +583,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    {att.bestand_beschikbaar !== false && att.content_type?.startsWith('image/') && (
+                    {att.bestand_beschikbaar && att.content_type?.startsWith('image/') && (
                       <button
                         onClick={() => setLightboxSrc({
                           src: getLeadAttachmentDownloadUrl(lead.id, att.id),
