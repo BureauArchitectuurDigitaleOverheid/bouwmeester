@@ -4,6 +4,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { useLeads, useMergeLeads, useDeleteLead } from '@/hooks/useLeads';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
@@ -44,6 +45,7 @@ export function LeadListView({
   const [sortBy, setSortBy] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showMergeDialog, setShowMergeDialog] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
   const filters: LeadFilters = {};
   if (initiatiefId) filters.initiatief_id = initiatiefId;
@@ -133,13 +135,7 @@ export function LeadListView({
             size="sm"
             variant="ghost"
             className="text-red-600 hover:text-red-700 hover:bg-red-50"
-            onClick={async () => {
-              if (!confirm(`${selectedIds.size} lead${selectedIds.size !== 1 ? 's' : ''} verwijderen?`)) return;
-              for (const id of selectedIds) {
-                await deleteLead.mutateAsync(id);
-              }
-              setSelectedIds(new Set());
-            }}
+            onClick={() => setShowBulkDeleteConfirm(true)}
           >
             Verwijderen
           </Button>
@@ -323,6 +319,23 @@ export function LeadListView({
           </div>
         </Modal>
       )}
+
+      <ConfirmDialog
+        open={showBulkDeleteConfirm}
+        onClose={() => setShowBulkDeleteConfirm(false)}
+        onConfirm={async () => {
+          for (const id of selectedIds) {
+            await deleteLead.mutateAsync(id);
+          }
+          setSelectedIds(new Set());
+          setShowBulkDeleteConfirm(false);
+        }}
+        title="Leads verwijderen"
+        confirmLabel="Verwijderen"
+        variant="danger"
+      >
+        {selectedIds.size} lead{selectedIds.size !== 1 ? 's' : ''} verwijderen?
+      </ConfirmDialog>
     </div>
   );
 }
