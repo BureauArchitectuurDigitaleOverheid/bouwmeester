@@ -1,7 +1,7 @@
 """add fcc sync fields to opdracht and fcc_sync_log table
 
 Revision ID: d91d47089680
-Revises: da29f7a85818
+Revises: a3b4c5d6e7f8
 Create Date: 2026-03-30 16:54:37.785264
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "d91d47089680"
-down_revision: str | None = "da29f7a85818"
+down_revision: str | None = "a3b4c5d6e7f8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

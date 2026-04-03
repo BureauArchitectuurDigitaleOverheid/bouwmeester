@@ -22,6 +22,8 @@ export function useFccSchema() {
     queryKey: queryKeys.fcc.schema(),
     queryFn: () => getFccSchema(),
     retry: false,
+    // Cache for 5 minutes — FCC config rarely changes
+    staleTime: 5 * 60 * 1000,
     // Silently fail for users without fcc:sync permission
     throwOnError: false,
   });

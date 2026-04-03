@@ -8,8 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.models.fcc_sync_log import FccSyncLog
 from bouwmeester.models.opdracht import Opdracht
+from bouwmeester.services.fcc_sync_log_helper import log_fcc_sync
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +35,18 @@ class FccExportService:
                 if success:
                     count += 1
             except Exception:
-                logger.exception(f"Error pushing opdracht {opdracht.id} to FCC")
+                logger.exception("Error pushing opdracht %s to FCC", opdracht.id)
                 opdracht.sync_status = "error"
-                self._log_sync(
+                log_fcc_sync(
+                    self.session,
                     opdracht_id=opdracht.id,
                     direction="outbound",
                     action="error",
                     error_message=f"Push failed for {opdracht.id}",
                 )
+                await self.session.flush()
 
-        logger.info(f"FCC export: {count} opdrachten pushed")
+        logger.info("FCC export: %d opdrachten pushed", count)
         return count
 
     async def push_single(self, opdracht_id: UUID, *, force: bool = False) -> bool:
@@ -84,19 +86,7 @@ class FccExportService:
                     # Check for conflict: fetch current FCC version
                     current = await client.get_entity(entity_name, opdracht.fcc_id)
                     if current:
-                        fcc_modified = None
-                        if current.get("Laatst_gewijzigd_op"):
-                            try:
-                                from datetime import date
-
-                                d = date.fromisoformat(
-                                    str(current["Laatst_gewijzigd_op"])[:10]
-                                )
-                                fcc_modified = datetime(
-                                    d.year, d.month, d.day, tzinfo=UTC
-                                )
-                            except (ValueError, AttributeError):
-                                pass
+                        fcc_modified = FccImportService._parse_fcc_date(current)
 
                         if (
                             fcc_modified
@@ -106,7 +96,8 @@ class FccExportService:
                             # FCC was modified after our last sync - conflict
                             opdracht.sync_status = "conflict"
                             opdracht.fcc_raw_data = current
-                            self._log_sync(
+                            log_fcc_sync(
+                                self.session,
                                 opdracht_id=opdracht.id,
                                 direction="outbound",
                                 action="conflict",
@@ -142,7 +133,8 @@ class FccExportService:
         opdracht.fcc_modified_at = now
         opdracht.fcc_raw_data = response
 
-        self._log_sync(
+        log_fcc_sync(
+            self.session,
             opdracht_id=opdracht.id,
             direction="outbound",
             action=action,
@@ -169,22 +161,3 @@ class FccExportService:
         if opdracht.referentie:
             data["Project_Nummer"] = opdracht.referentie
         return data
-
-    def _log_sync(
-        self,
-        *,
-        opdracht_id: UUID | None = None,
-        direction: str,
-        action: str,
-        details: dict | None = None,
-        error_message: str | None = None,
-    ) -> None:
-        """Create an FCC sync log entry."""
-        log = FccSyncLog(
-            opdracht_id=opdracht_id,
-            direction=direction,
-            action=action,
-            details=details,
-            error_message=error_message,
-        )
-        self.session.add(log)

@@ -11,8 +11,8 @@ from sqlalchemy.orm import selectinload
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.encryption import decrypt_value
 from bouwmeester.models.app_config import AppConfig
-from bouwmeester.models.fcc_sync_log import FccSyncLog
 from bouwmeester.models.opdracht import Opdracht
+from bouwmeester.services.fcc_sync_log_helper import log_fcc_sync
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +30,14 @@ class FccImportService:
         entry = result.scalar_one_or_none()
         if entry and entry.value:
             return decrypt_value(entry.value)
-        return getattr(self.settings, key, "")
+        # Settings returns typed values (bool for FCC_PUSH_ENABLED etc.),
+        # convert to str for uniform handling.
+        raw = getattr(self.settings, key, "")
+        return str(raw) if not isinstance(raw, str) else raw
 
     async def is_push_enabled(self) -> bool:
         """Check whether push (writing to FCC) is enabled."""
         val = await self._get_config_value("FCC_PUSH_ENABLED")
-        if isinstance(val, bool):
-            return val
         return str(val).lower() == "true"
 
     async def get_client(self):
@@ -81,8 +82,9 @@ class FccImportService:
                             count += 1
                     except Exception:
                         fcc_id = project_data.get("Portfolio_itemKey", "unknown")
-                        logger.exception(f"Error processing FCC project {fcc_id}")
-                        self._log_sync(
+                        logger.exception("Error processing FCC project %s", fcc_id)
+                        log_fcc_sync(
+                            self.session,
                             direction="inbound",
                             action="error",
                             details={"fcc_id": fcc_id},
@@ -90,13 +92,14 @@ class FccImportService:
                         )
         except Exception:
             logger.exception("Error fetching FCC projects")
-            self._log_sync(
+            log_fcc_sync(
+                self.session,
                 direction="inbound",
                 action="error",
                 error_message="Failed to connect to FCC OData API",
             )
 
-        logger.info(f"FCC import: {count} projects imported/updated")
+        logger.info("FCC import: %d projects imported/updated", count)
         return count
 
     async def _process_project(self, data: dict, entity_type: str) -> bool:
@@ -125,7 +128,8 @@ class FccImportService:
             # Skip if we have pending changes to push
             if existing.sync_status == "pending_push":
                 existing.sync_status = "conflict"
-                self._log_sync(
+                log_fcc_sync(
+                    self.session,
                     opdracht_id=existing.id,
                     direction="inbound",
                     action="conflict",
@@ -143,7 +147,8 @@ class FccImportService:
             existing.sync_status = "synced"
             existing.fcc_raw_data = data
 
-            self._log_sync(
+            log_fcc_sync(
+                self.session,
                 opdracht_id=existing.id,
                 direction="inbound",
                 action="updated",
@@ -171,7 +176,8 @@ class FccImportService:
             self.session.add(opdracht)
             await self.session.flush()
 
-            self._log_sync(
+            log_fcc_sync(
+                self.session,
                 opdracht_id=opdracht.id,
                 direction="inbound",
                 action="created",
@@ -246,7 +252,8 @@ class FccImportService:
         opdracht.sync_status = "synced"
         opdracht.fcc_raw_data = data
 
-        self._log_sync(
+        log_fcc_sync(
+            self.session,
             opdracht_id=opdracht.id,
             direction="inbound",
             action="updated",
@@ -268,22 +275,3 @@ class FccImportService:
             return datetime(d.year, d.month, d.day, tzinfo=UTC)
         except (ValueError, AttributeError):
             return None
-
-    def _log_sync(
-        self,
-        *,
-        opdracht_id: UUID | None = None,
-        direction: str,
-        action: str,
-        details: dict | None = None,
-        error_message: str | None = None,
-    ) -> None:
-        """Create an FCC sync log entry."""
-        log = FccSyncLog(
-            opdracht_id=opdracht_id,
-            direction=direction,
-            action=action,
-            details=details,
-            error_message=error_message,
-        )
-        self.session.add(log)

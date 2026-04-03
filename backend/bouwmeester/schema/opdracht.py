@@ -79,7 +79,7 @@ class OpdrachtBase(BaseModel):
     kostensoort: Kostensoort | None = None
     volgend_jaar_benodigd: Decimal | None = Field(None, ge=0)
     volgend_jaar_aangevraagd: Decimal | None = Field(None, ge=0)
-    instrument_id: UUID | None = None
+    instrument_id: UUID
     opdrachtnemer_id: UUID | None = None
     opdrachtgever_id: UUID | None = None
     verantwoordelijke_id: UUID | None = None
@@ -115,8 +115,6 @@ class OpdrachtUpdate(BaseModel):
     referentie: str | None = Field(None, max_length=200)
     startdatum: date | None = None
     einddatum: date | None = None
-    # FCC sync (for conflict resolution)
-    sync_status: str | None = None
 
     @field_validator("begrotingsjaar")
     @classmethod

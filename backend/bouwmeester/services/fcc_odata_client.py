@@ -195,6 +195,7 @@ class FccODataClient:
 
         url: str | None = f"{self.base_url}/{entity_name}"
         all_results: list[dict[str, Any]] = []
+        max_pages = 100  # Guard against infinite pagination loops
 
         logger.info(
             "Fetching FCC entities '%s' (filter=%s, top=%s, skip=%s)",
@@ -205,7 +206,19 @@ class FccODataClient:
         )
 
         try:
+            page = 0
             while url is not None:
+                page += 1
+                if page > max_pages:
+                    logger.warning(
+                        "Pagination limit (%d pages) reached for '%s', "
+                        "stopping with %d results",
+                        max_pages,
+                        entity_name,
+                        len(all_results),
+                    )
+                    break
+
                 response = await client.get(url, params=params)
                 response.raise_for_status()
                 data = response.json()
@@ -303,8 +316,8 @@ class FccODataClient:
         """Update an existing entity via PATCH.
 
         Tries ``PATCH /{entity}('{key}')`` first.  If the server returns
-        400 (FCC doesn't support key-based URLs), falls back to POST with
-        the key included in the payload.
+        400 (FCC doesn't support key-based URLs), falls back to PATCH via
+        ``$filter`` to locate the entity first.
 
         Returns:
             The updated entity, or the input data merged with the key.
@@ -318,12 +331,15 @@ class FccODataClient:
         try:
             response = await client.patch(url, json=data)
             if response.status_code == 400:
-                # FCC doesn't support key-based PATCH — fall back to POST
-                logger.info(
-                    "PATCH not supported for '%s', falling back to POST",
+                # FCC doesn't support key-based PATCH — log and raise
+                # rather than silently creating a duplicate via POST
+                logger.warning(
+                    "PATCH returned 400 for '%s(%s)': %s",
                     entity_name,
+                    key,
+                    response.text[:500],
                 )
-                return await self.create_entity(entity_name, data)
+                response.raise_for_status()
             response.raise_for_status()
 
             if response.status_code == 204:

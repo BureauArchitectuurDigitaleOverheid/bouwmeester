@@ -157,7 +157,9 @@ async def _fcc_sync_loop(settings) -> None:  # type: ignore[no-untyped-def]
 
                 await session.commit()
                 logger.info(
-                    f"FCC sync cycle complete: {pull_count} pulled, {push_count} pushed"
+                    "FCC sync cycle complete: %d pulled, %d pushed",
+                    pull_count,
+                    push_count,
                 )
         except Exception:
             logger.exception("Error in FCC sync cycle")

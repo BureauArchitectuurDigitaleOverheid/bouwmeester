@@ -1475,7 +1475,7 @@ export interface OpdrachtCreate {
   kostensoort?: Kostensoort | null;
   volgend_jaar_benodigd?: number | null;
   volgend_jaar_aangevraagd?: number | null;
-  instrument_id?: string | null;
+  instrument_id: string;
   opdrachtnemer_id?: string | null;
   opdrachtgever_id?: string | null;
   verantwoordelijke_id?: string | null;
