@@ -229,15 +229,12 @@ class FccImportService:
         if ref := data.get("Project_Nummer"):
             opdracht.referentie = ref
 
-        # FCC metadata fields
-        if funnelfase := data.get("Funnelfase"):
-            opdracht.fcc_funnelfase = funnelfase
-        if afdeling := data.get("Afdeling_PDD"):
-            opdracht.fcc_afdeling = afdeling
-        if portfolio := data.get("Portfolio"):
-            opdracht.fcc_portfolio = portfolio
-        if labels := data.get("Labels"):
-            opdracht.fcc_labels = labels
+        # FCC metadata fields — assign unconditionally so cleared FCC values
+        # propagate (empty string becomes None).
+        opdracht.fcc_funnelfase = data.get("Funnelfase") or None
+        opdracht.fcc_afdeling = data.get("Afdeling_PDD") or None
+        opdracht.fcc_portfolio = data.get("Portfolio") or None
+        opdracht.fcc_labels = data.get("Labels") or None
 
     async def _resolve_opdrachtnemer(self, opdracht: Opdracht, data: dict) -> None:
         """Link Uitvoeringsorganisatie to opdrachtnemer via ExterneOrganisatie."""
@@ -250,6 +247,8 @@ class FccImportService:
             repo = ExterneOrganisatieRepository(self.session)
             org = await repo.get_or_create_by_name(uitvoering.strip())
             opdracht.opdrachtnemer_id = org.id
+        else:
+            opdracht.opdrachtnemer_id = None
 
     async def pull_single(self, opdracht_id: UUID) -> bool:
         """Re-pull a single opdracht from FCC (for conflict resolution)."""
@@ -279,6 +278,7 @@ class FccImportService:
             return False
 
         self._apply_fcc_data(opdracht, data)
+        await self._resolve_opdrachtnemer(opdracht, data)
         fcc_modified = self.parse_fcc_date(data)
 
         opdracht.fcc_modified_at = fcc_modified

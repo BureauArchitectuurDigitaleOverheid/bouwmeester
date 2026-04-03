@@ -11,13 +11,24 @@ class ExterneOrganisatieRepository(BaseRepository[ExterneOrganisatie]):
     model = ExterneOrganisatie
 
     async def get_or_create_by_name(self, name: str) -> ExterneOrganisatie:
-        """Find ExterneOrganisatie by afkorting or naam, or create it."""
+        """Find ExterneOrganisatie by afkorting or naam, or create it.
+
+        Prefers an exact afkorting match over a naam match to avoid
+        ambiguity when multiple orgs share a name fragment.
+        """
+        # Try afkorting first (most specific)
         stmt = select(ExterneOrganisatie).where(
             ExterneOrganisatie.afkorting.ilike(name)
-            | ExterneOrganisatie.naam.ilike(name)
         )
         result = await self.session.execute(stmt)
-        existing = result.scalar_one_or_none()
+        existing = result.scalars().first()
+        if existing:
+            return existing
+
+        # Fall back to naam
+        stmt = select(ExterneOrganisatie).where(ExterneOrganisatie.naam.ilike(name))
+        result = await self.session.execute(stmt)
+        existing = result.scalars().first()
         if existing:
             return existing
 
