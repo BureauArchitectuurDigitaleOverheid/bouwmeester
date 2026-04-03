@@ -43,7 +43,7 @@ async def list_opdrachten(
     opdrachtgever_id: UUID | None = None,
     verantwoordelijke_id: UUID | None = None,
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(10_000, ge=1, le=10_000),
     db: AsyncSession = Depends(get_db),
 ) -> list[OpdrachtResponse]:
     repo = OpdrachtRepository(db)

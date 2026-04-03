@@ -10,6 +10,37 @@ from bouwmeester.repositories.base import BaseRepository
 class ExterneOrganisatieRepository(BaseRepository[ExterneOrganisatie]):
     model = ExterneOrganisatie
 
+    async def get_or_create_by_name(self, name: str) -> ExterneOrganisatie:
+        """Find ExterneOrganisatie by afkorting or naam, or create it.
+
+        Prefers an exact afkorting match over a naam match to avoid
+        ambiguity when multiple orgs share a name fragment.
+        """
+        # Try afkorting first (most specific)
+        stmt = select(ExterneOrganisatie).where(
+            ExterneOrganisatie.afkorting.ilike(name)
+        )
+        result = await self.session.execute(stmt)
+        existing = result.scalars().first()
+        if existing:
+            return existing
+
+        # Fall back to naam
+        stmt = select(ExterneOrganisatie).where(ExterneOrganisatie.naam.ilike(name))
+        result = await self.session.execute(stmt)
+        existing = result.scalars().first()
+        if existing:
+            return existing
+
+        new_org = ExterneOrganisatie(
+            naam=name,
+            afkorting=name,
+            type="uitvoeringsorganisatie",
+        )
+        self.session.add(new_org)
+        await self.session.flush()
+        return new_org
+
     async def get_all(
         self,
         skip: int = 0,

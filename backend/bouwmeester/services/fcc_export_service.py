@@ -161,4 +161,8 @@ class FccExportService:
             data["Einddatum_gepland_"] = opdracht.einddatum.isoformat()
         if opdracht.referentie:
             data["Project_Nummer"] = opdracht.referentie
+        if opdracht.opdrachtnemer:
+            data["Uitvoeringsorganisatie"] = (
+                opdracht.opdrachtnemer.afkorting or opdracht.opdrachtnemer.naam
+            )
         return data

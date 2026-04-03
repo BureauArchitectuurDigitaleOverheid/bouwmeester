@@ -21,7 +21,10 @@ import {
   OPDRACHT_STATUS_LABELS,
   OPDRACHT_STATUS_COLORS,
   OPDRACHT_TYPE_COLORS,
+  FCC_TRAFFIC_LIGHT_COLORS,
+  FCC_TRAFFIC_LIGHT_FIELDS,
   NodeType,
+  type FccTrafficLight,
   type OpdrachtFilters,
   OpdrachtType,
   OpdrachtStatus,
@@ -381,9 +384,25 @@ export function OpdrachtenPage() {
                   <td className="px-4 py-3 text-right text-text tabular-nums">{formatCurrency(o.budget)}</td>
                   <td className="px-4 py-3 text-right text-text tabular-nums">{formatCurrency(o.gerealiseerd)}</td>
                   <td className="px-4 py-3">
-                    <Badge variant={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'gray'}>
-                      {OPDRACHT_STATUS_LABELS[o.status as OpdrachtStatus] || o.status}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'gray'}>
+                        {OPDRACHT_STATUS_LABELS[o.status as OpdrachtStatus] || o.status}
+                      </Badge>
+                      {o.fcc_raw_data && (
+                        <div className="flex gap-0.5" title="FCC stoplichten">
+                          {FCC_TRAFFIC_LIGHT_FIELDS.map(({ key, label }) => {
+                            const val = (o.fcc_raw_data as Record<string, unknown>)?.[key] as string | undefined;
+                            return val ? (
+                              <span
+                                key={key}
+                                className={`h-2 w-2 rounded-full ${FCC_TRAFFIC_LIGHT_COLORS[val as FccTrafficLight] || 'bg-gray-300'}`}
+                                title={`${label}: ${val}`}
+                              />
+                            ) : null;
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
