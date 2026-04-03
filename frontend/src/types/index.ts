@@ -1393,6 +1393,24 @@ export interface OpdrachtNodeCreate {
   relatie_type?: string;
 }
 
+export type SyncStatus = 'synced' | 'pending_push' | 'pending_pull' | 'conflict' | 'error';
+
+export const SYNC_STATUS_LABELS: Record<SyncStatus, string> = {
+  synced: 'Gesynchroniseerd',
+  pending_push: 'Wacht op push',
+  pending_pull: 'Wacht op pull',
+  conflict: 'Conflict',
+  error: 'Fout',
+};
+
+export const SYNC_STATUS_COLORS: Record<SyncStatus, string> = {
+  synced: 'bg-green-100 text-green-800',
+  pending_push: 'bg-yellow-100 text-yellow-800',
+  pending_pull: 'bg-blue-100 text-blue-800',
+  conflict: 'bg-red-100 text-red-800',
+  error: 'bg-red-100 text-red-800',
+};
+
 export interface Opdracht {
   id: string;
   type: string;
@@ -1404,7 +1422,7 @@ export interface Opdracht {
   kostensoort?: string | null;
   volgend_jaar_benodigd?: number | null;
   volgend_jaar_aangevraagd?: number | null;
-  instrument_id: string;
+  instrument_id?: string | null;
   instrument?: { id: string; title: string; node_type: string } | null;
   opdrachtnemer_id?: string | null;
   opdrachtnemer?: ExterneOrganisatie | null;
@@ -1418,9 +1436,33 @@ export interface Opdracht {
   referentie?: string | null;
   startdatum?: string | null;
   einddatum?: string | null;
+  // FCC sync fields
+  fcc_id?: string | null;
+  sync_status?: SyncStatus | null;
+  sync_direction?: string | null;
+  last_synced_at?: string | null;
   node_koppelingen?: OpdrachtNodeResponse[];
   created_at: string;
   updated_at?: string | null;
+}
+
+export interface FccSyncLog {
+  id: string;
+  opdracht_id?: string | null;
+  direction: string;
+  action: string;
+  details?: Record<string, unknown> | null;
+  error_message?: string | null;
+  created_at: string;
+}
+
+export interface FccSyncTriggerResponse {
+  pulled: number;
+  pushed: number;
+}
+
+export interface FccSchemaResponse {
+  entity_sets: Record<string, string[]>;
 }
 
 export interface OpdrachtCreate {

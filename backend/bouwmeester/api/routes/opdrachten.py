@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
@@ -166,6 +166,18 @@ async def update_opdracht(
         check_org_scope(data.opdrachtgever_id, org_ctx)
     old = await repo.get(id)
     require_found(old, "Opdracht")
+
+    # Reject setting instrument_id to null on non-FCC opdrachten
+    if (
+        "instrument_id" in data.model_fields_set
+        and data.instrument_id is None
+        and not old.fcc_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="instrument_id mag niet null zijn voor reguliere opdrachten",
+        )
+
     old_status = old.status
     old_verantwoordelijke_id = old.verantwoordelijke_id
 
@@ -196,6 +208,13 @@ async def update_opdracht(
     if opdracht.status != old_status:
         await ns.notify_opdracht_status_changed(opdracht, old_status, actor_id=actor)
         await OpdrachtTaskService(db).on_status_changed(opdracht, old_status)
+
+    # Auto-flag FCC-linked opdrachten for push
+    from bouwmeester.schema.fcc import SyncDirection, SyncStatus
+
+    if opdracht.fcc_id and opdracht.sync_direction != SyncDirection.inbound:
+        opdracht.sync_status = SyncStatus.pending_push
+        await db.flush()
 
     return OpdrachtResponse.model_validate(opdracht)
 

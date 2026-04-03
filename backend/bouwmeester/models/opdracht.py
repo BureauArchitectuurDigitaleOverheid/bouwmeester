@@ -10,6 +10,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -64,6 +65,16 @@ class Opdracht(Base):
             "volgend_jaar_aangevraagd IS NULL OR volgend_jaar_aangevraagd >= 0",
             name="ck_opdracht_volgend_jaar_aangevraagd_nonneg",
         ),
+        CheckConstraint(
+            "sync_status IS NULL OR sync_status IN "
+            "('synced', 'pending_push', 'pending_pull', 'conflict', 'error')",
+            name="ck_opdracht_sync_status",
+        ),
+        CheckConstraint(
+            "sync_direction IS NULL OR sync_direction IN "
+            "('inbound', 'outbound', 'bidirectional')",
+            name="ck_opdracht_sync_direction",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -97,11 +108,11 @@ class Opdracht(Base):
         Numeric(precision=14, scale=2), nullable=True
     )
 
-    # Links
-    instrument_id: Mapped[uuid.UUID] = mapped_column(
+    # Links — nullable for FCC-imported opdrachten that haven't been linked yet
+    instrument_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("corpus_node.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     opdrachtnemer_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -133,6 +144,25 @@ class Opdracht(Base):
     referentie: Mapped[str | None] = mapped_column(nullable=True)
     startdatum: Mapped[date | None] = mapped_column(nullable=True)
     einddatum: Mapped[date | None] = mapped_column(nullable=True)
+
+    # FCC sync tracking
+    fcc_id: Mapped[str | None] = mapped_column(nullable=True, unique=True, index=True)
+    fcc_entity_type: Mapped[str | None] = mapped_column(nullable=True)
+    sync_status: Mapped[str | None] = mapped_column(
+        nullable=True,
+        comment="synced|pending_push|pending_pull|conflict|error",
+    )
+    sync_direction: Mapped[str | None] = mapped_column(
+        nullable=True,
+        comment="inbound|outbound|bidirectional",
+    )
+    fcc_raw_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    fcc_modified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
