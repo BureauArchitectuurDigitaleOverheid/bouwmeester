@@ -393,6 +393,12 @@ _DEFAULT_CONFIG = [
         "is_secret": False,
     },
     {
+        "key": "FCC_USE_MOCK",
+        "value": "false",
+        "description": "Gebruik mock-data i.p.v. echte FCC-koppeling",
+        "is_secret": False,
+    },
+    {
         "key": "FCC_PROJECT_ENTITY",
         "value": "Portfolio_item",
         "description": "OData entiteitnaam voor projecten in FCC",

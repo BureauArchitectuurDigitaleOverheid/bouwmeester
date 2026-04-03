@@ -7,6 +7,20 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 
+class SyncStatus(enum.StrEnum):
+    synced = "synced"
+    pending_push = "pending_push"
+    pending_pull = "pending_pull"
+    conflict = "conflict"
+    error = "error"
+
+
+class SyncDirection(enum.StrEnum):
+    inbound = "inbound"
+    outbound = "outbound"
+    bidirectional = "bidirectional"
+
+
 class FccConflictResolution(enum.StrEnum):
     use_ours = "use_ours"
     use_theirs = "use_theirs"

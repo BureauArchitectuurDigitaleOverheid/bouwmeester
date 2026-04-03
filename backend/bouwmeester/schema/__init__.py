@@ -77,6 +77,8 @@ from bouwmeester.schema.fcc import (
     FccSchemaResponse,
     FccSyncLogResponse,
     FccSyncTriggerResponse,
+    SyncDirection,
+    SyncStatus,
 )
 from bouwmeester.schema.graph import (
     GraphNeighborsResponse,
@@ -342,6 +344,8 @@ __all__ = [
     "FccSchemaResponse",
     "FccSyncLogResponse",
     "FccSyncTriggerResponse",
+    "SyncDirection",
+    "SyncStatus",
     # opdracht
     "FinancieelJaar",
     "FinancieelOverzicht",

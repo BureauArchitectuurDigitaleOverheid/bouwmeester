@@ -12,6 +12,7 @@ from bouwmeester.core.config import get_settings
 from bouwmeester.core.encryption import decrypt_value
 from bouwmeester.models.app_config import AppConfig
 from bouwmeester.models.opdracht import Opdracht
+from bouwmeester.schema.fcc import SyncDirection, SyncStatus
 from bouwmeester.services.fcc_sync_log_helper import log_fcc_sync
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class FccImportService:
         self.session = session
         self.settings = get_settings()
 
-    async def _get_config_value(self, key: str) -> str:
+    async def get_config_value(self, key: str) -> str:
         """Get a config value from AppConfig, falling back to settings."""
         result = await self.session.execute(
             select(AppConfig).where(AppConfig.key == key)
@@ -37,16 +38,24 @@ class FccImportService:
 
     async def is_push_enabled(self) -> bool:
         """Check whether push (writing to FCC) is enabled."""
-        val = await self._get_config_value("FCC_PUSH_ENABLED")
+        val = await self.get_config_value("FCC_PUSH_ENABLED")
         return str(val).lower() == "true"
 
     async def get_client(self):
         """Create an FCC OData client based on configuration.
 
-        Returns None when FCC_ODATA_URL is not configured.
+        Returns the mock client when FCC_USE_MOCK is true (for dev without
+        a real FCC environment). Returns None when neither FCC_ODATA_URL
+        nor FCC_USE_MOCK is configured.
         """
-        url = await self._get_config_value("FCC_ODATA_URL")
-        api_key = await self._get_config_value("FCC_API_KEY")
+        use_mock = await self.get_config_value("FCC_USE_MOCK")
+        if str(use_mock).lower() == "true":
+            from bouwmeester.services.fcc_odata_mock import FccODataMockClient
+
+            return FccODataMockClient()
+
+        url = await self.get_config_value("FCC_ODATA_URL")
+        api_key = await self.get_config_value("FCC_API_KEY")
 
         if not url:
             return None
@@ -62,7 +71,7 @@ class FccImportService:
             return 0
 
         entity_name = (
-            await self._get_config_value("FCC_PROJECT_ENTITY") or "Portfolio_item"
+            await self.get_config_value("FCC_PROJECT_ENTITY") or "Portfolio_item"
         )
         count = 0
 
@@ -109,7 +118,7 @@ class FccImportService:
             return False
 
         # Parse modification date from FCC (Edm.Date, not DateTime)
-        fcc_modified = self._parse_fcc_date(data)
+        fcc_modified = self.parse_fcc_date(data)
 
         # Check for existing opdracht with this fcc_id
         stmt = select(Opdracht).where(Opdracht.fcc_id == fcc_id)
@@ -126,8 +135,8 @@ class FccImportService:
                 return False
 
             # Skip if we have pending changes to push
-            if existing.sync_status == "pending_push":
-                existing.sync_status = "conflict"
+            if existing.sync_status == SyncStatus.pending_push:
+                existing.sync_status = SyncStatus.conflict
                 log_fcc_sync(
                     self.session,
                     opdracht_id=existing.id,
@@ -144,7 +153,7 @@ class FccImportService:
             self._apply_fcc_data(existing, data)
             existing.fcc_modified_at = fcc_modified
             existing.last_synced_at = datetime.now(UTC)
-            existing.sync_status = "synced"
+            existing.sync_status = SyncStatus.synced
             existing.fcc_raw_data = data
 
             log_fcc_sync(
@@ -165,8 +174,8 @@ class FccImportService:
                 begrotingsjaar=datetime.now(UTC).year,
                 fcc_id=fcc_id,
                 fcc_entity_type=entity_type,
-                sync_status="synced",
-                sync_direction="inbound",
+                sync_status=SyncStatus.synced,
+                sync_direction=SyncDirection.inbound,
                 fcc_raw_data=data,
                 fcc_modified_at=fcc_modified,
                 last_synced_at=datetime.now(UTC),
@@ -235,7 +244,7 @@ class FccImportService:
             return False
 
         entity_name = (
-            await self._get_config_value("FCC_PROJECT_ENTITY") or "Portfolio_item"
+            await self.get_config_value("FCC_PROJECT_ENTITY") or "Portfolio_item"
         )
 
         async with client:
@@ -245,11 +254,11 @@ class FccImportService:
             return False
 
         self._apply_fcc_data(opdracht, data)
-        fcc_modified = self._parse_fcc_date(data)
+        fcc_modified = self.parse_fcc_date(data)
 
         opdracht.fcc_modified_at = fcc_modified
         opdracht.last_synced_at = datetime.now(UTC)
-        opdracht.sync_status = "synced"
+        opdracht.sync_status = SyncStatus.synced
         opdracht.fcc_raw_data = data
 
         log_fcc_sync(
@@ -263,7 +272,7 @@ class FccImportService:
         return True
 
     @staticmethod
-    def _parse_fcc_date(data: dict) -> datetime | None:
+    def parse_fcc_date(data: dict) -> datetime | None:
         """Parse Laatst_gewijzigd_op (Edm.Date) into a timezone-aware datetime."""
         raw = data.get("Laatst_gewijzigd_op")
         if not raw:

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.opdracht import Opdracht
+from bouwmeester.schema.fcc import SyncDirection, SyncStatus
 from bouwmeester.services.fcc_sync_log_helper import log_fcc_sync
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class FccExportService:
         """Push all opdrachten with sync_status='pending_push' to FCC."""
         stmt = (
             select(Opdracht)
-            .where(Opdracht.sync_status == "pending_push")
+            .where(Opdracht.sync_status == SyncStatus.pending_push)
             .options(selectinload(Opdracht.node_koppelingen))
         )
         result = await self.session.execute(stmt)
@@ -36,7 +37,7 @@ class FccExportService:
                     count += 1
             except Exception:
                 logger.exception("Error pushing opdracht %s to FCC", opdracht.id)
-                opdracht.sync_status = "error"
+                opdracht.sync_status = SyncStatus.error
                 log_fcc_sync(
                     self.session,
                     opdracht_id=opdracht.id,
@@ -74,7 +75,7 @@ class FccExportService:
             return False
 
         entity_name = (
-            await import_service._get_config_value("FCC_PROJECT_ENTITY")
+            await import_service.get_config_value("FCC_PROJECT_ENTITY")
             or "Portfolio_item"
         )
 
@@ -86,7 +87,7 @@ class FccExportService:
                     # Check for conflict: fetch current FCC version
                     current = await client.get_entity(entity_name, opdracht.fcc_id)
                     if current:
-                        fcc_modified = FccImportService._parse_fcc_date(current)
+                        fcc_modified = FccImportService.parse_fcc_date(current)
 
                         if (
                             fcc_modified
@@ -94,7 +95,7 @@ class FccExportService:
                             and fcc_modified > opdracht.fcc_modified_at
                         ):
                             # FCC was modified after our last sync - conflict
-                            opdracht.sync_status = "conflict"
+                            opdracht.sync_status = SyncStatus.conflict
                             opdracht.fcc_raw_data = current
                             log_fcc_sync(
                                 self.session,
@@ -123,12 +124,12 @@ class FccExportService:
                     response.get("Portfolio_itemKey", response.get("Id", ""))
                 )
                 opdracht.fcc_entity_type = entity_name
-                opdracht.sync_direction = "outbound"
+                opdracht.sync_direction = SyncDirection.outbound
                 action = "created"
 
         # Update sync state
         now = datetime.now(UTC)
-        opdracht.sync_status = "synced"
+        opdracht.sync_status = SyncStatus.synced
         opdracht.last_synced_at = now
         opdracht.fcc_modified_at = now
         opdracht.fcc_raw_data = response

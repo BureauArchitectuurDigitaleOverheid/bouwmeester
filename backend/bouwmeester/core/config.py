@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     FCC_POLL_INTERVAL_SECONDS: int = 3600
     FCC_SYNC_ENABLED: bool = False
     FCC_PUSH_ENABLED: bool = False
+    FCC_USE_MOCK: bool = False
     FCC_PROJECT_ENTITY: str = "Portfolio_item"
 
     # Mattermost integration

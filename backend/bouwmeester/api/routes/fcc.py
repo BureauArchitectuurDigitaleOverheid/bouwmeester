@@ -20,6 +20,7 @@ from bouwmeester.schema.fcc import (
     FccSchemaResponse,
     FccSyncLogResponse,
     FccSyncTriggerResponse,
+    SyncStatus,
 )
 from bouwmeester.schema.opdracht import OpdrachtResponse
 
@@ -107,7 +108,7 @@ async def list_conflicts(
     """List opdrachten with FCC sync conflicts."""
     stmt = (
         select(Opdracht)
-        .where(Opdracht.sync_status == "conflict")
+        .where(Opdracht.sync_status == SyncStatus.conflict)
         .options(selectinload(Opdracht.node_koppelingen))
         .order_by(Opdracht.updated_at.desc())
     )
@@ -134,7 +135,7 @@ async def resolve_conflict(
     repo = OpdrachtRepository(db)
     opdracht = require_found(await repo.get(opdracht_id), "Opdracht")
 
-    if opdracht.sync_status != "conflict":
+    if opdracht.sync_status != SyncStatus.conflict:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Opdracht heeft geen sync conflict",
