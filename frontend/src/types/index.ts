@@ -1411,6 +1411,21 @@ export const SYNC_STATUS_COLORS: Record<SyncStatus, string> = {
   error: 'bg-red-100 text-red-800',
 };
 
+export type FccTrafficLight = 'green' | 'orange' | 'red';
+
+export const FCC_TRAFFIC_LIGHT_COLORS: Record<FccTrafficLight, string> = {
+  green: 'bg-emerald-500',
+  orange: 'bg-orange-400',
+  red: 'bg-red-500',
+};
+
+export const FCC_TRAFFIC_LIGHT_FIELDS: { key: string; label: string }[] = [
+  { key: 'Status_Planning_2', label: 'Planning' },
+  { key: 'Status_Budget', label: 'Budget' },
+  { key: 'Status_Risico_s', label: "Risico's" },
+  { key: 'Status_Doelrealisatie', label: 'Doelrealisatie' },
+];
+
 export interface Opdracht {
   id: string;
   type: string;
@@ -1441,6 +1456,11 @@ export interface Opdracht {
   sync_status?: SyncStatus | null;
   sync_direction?: string | null;
   last_synced_at?: string | null;
+  fcc_funnelfase?: string | null;
+  fcc_afdeling?: string | null;
+  fcc_portfolio?: string | null;
+  fcc_labels?: string | null;
+  fcc_raw_data?: Record<string, unknown> | null;
   node_koppelingen?: OpdrachtNodeResponse[];
   created_at: string;
   updated_at?: string | null;

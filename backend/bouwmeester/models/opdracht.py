@@ -164,6 +164,12 @@ class Opdracht(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # FCC metadata (searchable/filterable)
+    fcc_funnelfase: Mapped[str | None] = mapped_column(nullable=True, index=True)
+    fcc_afdeling: Mapped[str | None] = mapped_column(nullable=True, index=True)
+    fcc_portfolio: Mapped[str | None] = mapped_column(nullable=True)
+    fcc_labels: Mapped[str | None] = mapped_column(nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

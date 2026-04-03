@@ -151,6 +151,7 @@ class FccImportService:
                 return True
 
             self._apply_fcc_data(existing, data)
+            await self._resolve_opdrachtnemer(existing, data)
             existing.fcc_modified_at = fcc_modified
             existing.last_synced_at = datetime.now(UTC)
             existing.sync_status = SyncStatus.synced
@@ -183,6 +184,8 @@ class FccImportService:
             )
             self._apply_fcc_data(opdracht, data)
             self.session.add(opdracht)
+            await self.session.flush()
+            await self._resolve_opdrachtnemer(opdracht, data)
             await self.session.flush()
 
             log_fcc_sync(
@@ -225,6 +228,28 @@ class FccImportService:
                 pass
         if ref := data.get("Project_Nummer"):
             opdracht.referentie = ref
+
+        # FCC metadata fields
+        if funnelfase := data.get("Funnelfase"):
+            opdracht.fcc_funnelfase = funnelfase
+        if afdeling := data.get("Afdeling_PDD"):
+            opdracht.fcc_afdeling = afdeling
+        if portfolio := data.get("Portfolio"):
+            opdracht.fcc_portfolio = portfolio
+        if labels := data.get("Labels"):
+            opdracht.fcc_labels = labels
+
+    async def _resolve_opdrachtnemer(self, opdracht: Opdracht, data: dict) -> None:
+        """Link Uitvoeringsorganisatie to opdrachtnemer via ExterneOrganisatie."""
+        from bouwmeester.repositories.externe_organisatie import (
+            ExterneOrganisatieRepository,
+        )
+
+        uitvoering = data.get("Uitvoeringsorganisatie")
+        if uitvoering and uitvoering.strip():
+            repo = ExterneOrganisatieRepository(self.session)
+            org = await repo.get_or_create_by_name(uitvoering.strip())
+            opdracht.opdrachtnemer_id = org.id
 
     async def pull_single(self, opdracht_id: UUID) -> bool:
         """Re-pull a single opdracht from FCC (for conflict resolution)."""

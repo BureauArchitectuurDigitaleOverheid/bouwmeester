@@ -177,6 +177,11 @@ class OpdrachtResponse(BaseModel):
     sync_status: str | None = None
     sync_direction: str | None = None
     last_synced_at: datetime | None = None
+    fcc_funnelfase: str | None = None
+    fcc_afdeling: str | None = None
+    fcc_portfolio: str | None = None
+    fcc_labels: str | None = None
+    fcc_raw_data: dict | None = None
     node_koppelingen: list[OpdrachtNodeResponse] = []
     created_at: datetime
     updated_at: datetime | None = None

@@ -9,6 +9,7 @@ import { RelatedItemsList } from '@/components/common/RelatedItemsList';
 import { DetailModalFooter } from '@/components/common/DetailModalFooter';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
+import { FccDataSection } from './FccDataSection';
 import { OpdrachtForm } from './OpdrachtForm';
 import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
 import { useOpdracht, useDeleteOpdracht } from '@/hooks/useOpdrachten';
@@ -293,6 +294,17 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                 </dl>
               </div>
             </div>
+
+            {/* FCC data section */}
+            {opdracht.fcc_id && opdracht.fcc_raw_data && (
+              <FccDataSection
+                data={opdracht.fcc_raw_data}
+                funnelfase={opdracht.fcc_funnelfase}
+                afdeling={opdracht.fcc_afdeling}
+                portfolio={opdracht.fcc_portfolio}
+                labels={opdracht.fcc_labels}
+              />
+            )}
 
             {/* Subsidie section */}
             {opdracht.type === 'subsidie' && (opdracht.subsidieregeling || opdracht.beschikking_nummer) && (

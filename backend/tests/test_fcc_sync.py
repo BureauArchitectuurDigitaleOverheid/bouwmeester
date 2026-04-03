@@ -360,3 +360,159 @@ async def test_api_fcc_conflicts_empty(client):
     resp = await client.get("/api/fcc/conflicts")
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Opdrachtnemer resolution
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("_use_mock_client")
+async def test_import_resolves_existing_opdrachtnemer(db_session: AsyncSession):
+    """Import links Uitvoeringsorganisatie to existing ExterneOrganisatie."""
+    from bouwmeester.models.externe_organisatie import ExterneOrganisatie
+
+    # ICTU is seeded in migrations — look it up
+    result = await db_session.execute(
+        select(ExterneOrganisatie).where(ExterneOrganisatie.afkorting == "ICTU")
+    )
+    ictu = result.scalar_one_or_none()
+    if not ictu:
+        ictu = ExterneOrganisatie(
+            naam="ICTU", afkorting="ICTU", type="uitvoeringsorganisatie"
+        )
+        db_session.add(ictu)
+        await db_session.flush()
+
+    service = FccImportService(db_session)
+    await service.poll_and_import()
+    await db_session.flush()
+
+    # Mock item 900001 has Uitvoeringsorganisatie="ICTU"
+    result = await db_session.execute(
+        select(Opdracht).where(Opdracht.fcc_id == "900001")
+    )
+    wallet = result.scalar_one()
+    assert wallet.opdrachtnemer_id == ictu.id
+
+
+@pytest.mark.usefixtures("_use_mock_client")
+async def test_import_auto_creates_unknown_opdrachtnemer(db_session: AsyncSession):
+    """Import auto-creates ExterneOrganisatie for unknown Uitvoeringsorganisatie."""
+    from bouwmeester.models.externe_organisatie import ExterneOrganisatie
+
+    service = FccImportService(db_session)
+    await service.poll_and_import()
+    await db_session.flush()
+
+    # Mock item 900003 has Uitvoeringsorganisatie="KOOP" (not seeded)
+    result = await db_session.execute(
+        select(Opdracht).where(Opdracht.fcc_id == "900003")
+    )
+    overheid_nl = result.scalar_one()
+    assert overheid_nl.opdrachtnemer_id is not None
+
+    org = await db_session.get(ExterneOrganisatie, overheid_nl.opdrachtnemer_id)
+    assert org.afkorting == "KOOP"
+    assert org.type == "uitvoeringsorganisatie"
+
+
+# ---------------------------------------------------------------------------
+# FCC metadata fields
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("_use_mock_client")
+async def test_import_maps_metadata_fields(db_session: AsyncSession):
+    """Import maps Funnelfase, Afdeling_PDD, Portfolio, Labels to opdracht."""
+    service = FccImportService(db_session)
+    await service.poll_and_import()
+    await db_session.flush()
+
+    result = await db_session.execute(
+        select(Opdracht).where(Opdracht.fcc_id == "900001")
+    )
+    opdracht = result.scalar_one()
+
+    assert opdracht.fcc_funnelfase == "GDI Doorontwikkeling"
+    assert opdracht.fcc_afdeling == "Toegang"
+    assert opdracht.fcc_portfolio == "Directie PDD"
+    assert opdracht.fcc_labels == "GDI,Sub-opdracht"
+
+
+@pytest.mark.usefixtures("_use_mock_client")
+async def test_import_maps_metadata_for_item_without_labels(db_session: AsyncSession):
+    """Import handles items without Labels field gracefully."""
+    service = FccImportService(db_session)
+    await service.poll_and_import()
+    await db_session.flush()
+
+    # Mock item 900003 has no Labels field
+    result = await db_session.execute(
+        select(Opdracht).where(Opdracht.fcc_id == "900003")
+    )
+    opdracht = result.scalar_one()
+
+    assert opdracht.fcc_funnelfase == "GDI Doorontwikkeling"
+    assert opdracht.fcc_afdeling == "Informatie"
+    assert opdracht.fcc_labels is None
+
+
+# ---------------------------------------------------------------------------
+# Export with Uitvoeringsorganisatie
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("_use_mock_client")
+async def test_export_includes_uitvoeringsorganisatie(
+    db_session: AsyncSession, sample_fcc_opdracht
+):
+    """Export maps opdrachtnemer back to Uitvoeringsorganisatie."""
+    from bouwmeester.models.externe_organisatie import ExterneOrganisatie
+    from bouwmeester.services.fcc_export_service import FccExportService
+
+    org = ExterneOrganisatie(
+        naam="Test Org", afkorting="TST", type="uitvoeringsorganisatie"
+    )
+    db_session.add(org)
+    await db_session.flush()
+
+    sample_fcc_opdracht.opdrachtnemer_id = org.id
+    await db_session.flush()
+    await db_session.refresh(sample_fcc_opdracht, ["opdrachtnemer"])
+
+    service = FccExportService(db_session)
+    fcc_data = service._map_opdracht_to_fcc(sample_fcc_opdracht)
+
+    assert fcc_data["Uitvoeringsorganisatie"] == "TST"
+
+
+# ---------------------------------------------------------------------------
+# API response includes fcc_raw_data and metadata
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("_use_mock_client")
+async def test_api_opdracht_response_includes_fcc_fields(
+    client, db_session: AsyncSession
+):
+    """GET /api/opdrachten/{id} includes fcc_raw_data and metadata fields."""
+    service = FccImportService(db_session)
+    await service.poll_and_import()
+    await db_session.flush()
+
+    result = await db_session.execute(
+        select(Opdracht).where(Opdracht.fcc_id == "900001")
+    )
+    opdracht = result.scalar_one()
+
+    resp = await client.get(f"/api/opdrachten/{opdracht.id}")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["fcc_funnelfase"] == "GDI Doorontwikkeling"
+    assert data["fcc_afdeling"] == "Toegang"
+    assert data["fcc_portfolio"] == "Directie PDD"
+    assert data["fcc_labels"] == "GDI,Sub-opdracht"
+    assert data["fcc_raw_data"] is not None
+    assert data["fcc_raw_data"]["Uitvoeringsorganisatie"] == "ICTU"
