@@ -4,7 +4,7 @@ import {
   addOpdrachtNodeKoppeling, removeOpdrachtNodeKoppeling, getNodeFinancieel, getNodeOpdrachten,
   addOpdrachtMember, removeOpdrachtMember, updateOpdrachtMemberRole,
   addOpdrachtEenheid, removeOpdrachtEenheid, updateOpdrachtEenheidRol,
-  matchOpdrachtContacts,
+  matchOpdrachtContacts, matchOpdrachtContactsBulk,
 } from '@/api/opdrachten';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
@@ -154,6 +154,14 @@ export function useMatchOpdrachtContacts() {
   return useMutationWithError({
     mutationFn: (opdrachtId: string) => matchOpdrachtContacts(opdrachtId),
     errorMessage: 'Fout bij matchen contacten',
+    invalidateKeys: [queryKeys.opdrachten.all],
+  });
+}
+
+export function useMatchOpdrachtContactsBulk() {
+  return useMutationWithError({
+    mutationFn: (force: boolean) => matchOpdrachtContactsBulk(force),
+    errorMessage: 'Fout bij bulk matchen contacten',
     invalidateKeys: [queryKeys.opdrachten.all],
   });
 }

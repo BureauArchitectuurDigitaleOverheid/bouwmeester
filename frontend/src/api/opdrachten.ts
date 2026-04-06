@@ -126,3 +126,12 @@ export async function matchOpdrachtContacts(
     {},
   );
 }
+
+export async function matchOpdrachtContactsBulk(
+  force: boolean = false,
+): Promise<{ matched: number; skipped: number; total: number }> {
+  return apiPost<{ matched: number; skipped: number; total: number }>(
+    `/api/opdrachten/match-contacts-bulk?force=${force}`,
+    {},
+  );
+}

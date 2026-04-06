@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Search, RefreshCw } from 'lucide-react';
+import { Plus, Search, RefreshCw, Sparkles } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { useOpdrachten, useOpdrachtenSummary } from '@/hooks/useOpdrachten';
+import { useOpdrachten, useOpdrachtenSummary, useMatchOpdrachtContactsBulk } from '@/hooks/useOpdrachten';
 import { useExterneOrganisaties } from '@/hooks/useExterneOrganisaties';
 import { usePeople } from '@/hooks/usePeople';
 import { useNodes } from '@/hooks/useNodes';
@@ -75,6 +75,7 @@ export function OpdrachtenPage() {
   const fccSync = useTriggerFccSync();
   const { data: fccSchema } = useFccSchema();
   const fccEnabled = Object.keys(fccSchema?.entity_sets ?? {}).length > 0;
+  const bulkMatch = useMatchOpdrachtContactsBulk();
   const { data: opdrachten = [], isLoading } = useOpdrachten(apiFilters);
   const { data: summary } = useOpdrachtenSummary(apiFilters);
   const { data: externeOrgs = [] } = useExterneOrganisaties();
@@ -186,6 +187,14 @@ export function OpdrachtenPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <Button
+            variant="secondary"
+            icon={<Sparkles className={`h-4 w-4 ${bulkMatch.isPending ? 'animate-pulse' : ''}`} />}
+            onClick={() => bulkMatch.mutate(true)}
+            disabled={bulkMatch.isPending}
+          >
+            <span className="hidden sm:inline">{bulkMatch.isPending ? 'Matchen...' : 'Contacten matchen'}</span>
+          </Button>
           {fccEnabled && (
             <Button
               variant="secondary"
