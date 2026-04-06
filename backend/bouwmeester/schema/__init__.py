@@ -74,6 +74,7 @@ from bouwmeester.schema.externe_organisatie import (
 from bouwmeester.schema.fcc import (
     FccConflictResolution,
     FccConflictResolveRequest,
+    FccLastSyncResponse,
     FccSchemaResponse,
     FccSyncLogResponse,
     FccSyncTriggerResponse,
@@ -341,6 +342,7 @@ __all__ = [
     # fcc
     "FccConflictResolveRequest",
     "FccConflictResolution",
+    "FccLastSyncResponse",
     "FccSchemaResponse",
     "FccSyncLogResponse",
     "FccSyncTriggerResponse",

@@ -5,7 +5,7 @@ import { useOpdrachten, useOpdrachtenSummary, useMatchOpdrachtContactsBulk } fro
 import { useExterneOrganisaties } from '@/hooks/useExterneOrganisaties';
 import { usePeople } from '@/hooks/usePeople';
 import { useNodes } from '@/hooks/useNodes';
-import { useTriggerFccSync, useFccSchema } from '@/hooks/useFcc';
+import { useTriggerFccSync, useFccSchema, useLastFccSync } from '@/hooks/useFcc';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -32,6 +32,7 @@ import {
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
 import { formatCurrency, formatCurrencyCompact } from '@/utils/format';
+import { timeAgo } from '@/utils/dates';
 
 const MY_OPDRACHTEN_SENTINEL = '__me__';
 
@@ -77,6 +78,7 @@ export function OpdrachtenPage() {
   const fccSync = useTriggerFccSync();
   const { data: fccSchema } = useFccSchema();
   const fccEnabled = Object.keys(fccSchema?.entity_sets ?? {}).length > 0;
+  const { data: lastSync } = useLastFccSync();
   const bulkMatch = useMatchOpdrachtContactsBulk();
   const { data: opdrachten = [], isLoading } = useOpdrachten(apiFilters);
   const { data: summary } = useOpdrachtenSummary(apiFilters);
@@ -187,6 +189,11 @@ export function OpdrachtenPage() {
           <p className="text-sm text-text-secondary">
             Beheer opdrachten, subsidies en bijbehorende budgetten.
           </p>
+          {fccEnabled && lastSync?.last_synced_at && (
+            <p className="text-xs text-text-secondary mt-1">
+              Laatste FCC-import: {timeAgo(lastSync.last_synced_at)}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {hasPermission('opdracht:update') && (

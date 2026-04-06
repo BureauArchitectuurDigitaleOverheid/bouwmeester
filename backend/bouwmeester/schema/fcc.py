@@ -50,3 +50,7 @@ class FccSchemaResponse(BaseModel):
 
 class FccConflictResolveRequest(BaseModel):
     resolution: FccConflictResolution
+
+
+class FccLastSyncResponse(BaseModel):
+    last_synced_at: datetime | None = None

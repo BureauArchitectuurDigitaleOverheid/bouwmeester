@@ -6,6 +6,7 @@ import {
   getFccConflicts,
   resolveFccConflict,
   pushOpdrachtToFcc,
+  getLastFccSync,
 } from '@/api/fcc';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
@@ -42,6 +43,7 @@ export function useTriggerFccSync() {
     errorMessage: 'FCC synchronisatie mislukt',
     invalidateKeys: [
       queryKeys.fcc.syncLogs(),
+      queryKeys.fcc.lastSync(),
       queryKeys.fcc.conflicts(),
       ['opdrachten'],
     ],
@@ -74,5 +76,14 @@ export function usePushOpdrachtToFcc() {
       queryKeys.fcc.syncLogs(),
       ['opdrachten'],
     ],
+  });
+}
+
+export function useLastFccSync() {
+  return useQuery({
+    queryKey: queryKeys.fcc.lastSync(),
+    queryFn: () => getLastFccSync(),
+    retry: false,
+    throwOnError: false,
   });
 }
