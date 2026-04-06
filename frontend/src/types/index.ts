@@ -1426,6 +1426,33 @@ export const FCC_TRAFFIC_LIGHT_FIELDS: { key: string; label: string }[] = [
   { key: 'Status_Doelrealisatie', label: 'Doelrealisatie' },
 ];
 
+export interface OpdrachtMember {
+  opdracht_id: string;
+  person_id: string;
+  person_naam: string;
+  rol: string;
+  source: 'manual' | 'ai';
+  ai_confidence: number | null;
+  ai_reason: string | null;
+  created_at: string;
+}
+
+export interface OpdrachtEenheid {
+  opdracht_id: string;
+  eenheid_id: string;
+  eenheid_naam: string;
+  rol: string;
+  source: 'manual' | 'ai';
+  ai_confidence: number | null;
+  ai_reason: string | null;
+  created_at: string;
+}
+
+export const OPDRACHT_CONTACT_ROL_LABELS: Record<string, string> = {
+  betrokken: 'Betrokken',
+  contactpersoon: 'Contactpersoon',
+  eigenaar: 'Eigenaar',
+};
 export interface Opdracht {
   id: string;
   type: string;
@@ -1462,6 +1489,8 @@ export interface Opdracht {
   fcc_labels?: string | null;
   fcc_raw_data?: Record<string, unknown> | null;
   node_koppelingen?: OpdrachtNodeResponse[];
+  members?: OpdrachtMember[];
+  eenheden?: OpdrachtEenheid[];
   created_at: string;
   updated_at?: string | null;
 }

@@ -147,6 +147,49 @@ class OpdrachtOrgSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# --- Member / eenheid schemas ---
+
+
+class OpdrachtMemberCreate(BaseModel):
+    person_id: UUID
+    rol: str = "betrokken"
+
+
+class OpdrachtMemberResponse(BaseModel):
+    opdracht_id: UUID
+    person_id: UUID
+    person_naam: str
+    rol: str
+    source: str | None = "manual"
+    ai_confidence: float | None = None
+    ai_reason: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OpdrachtEenheidCreate(BaseModel):
+    eenheid_id: UUID
+    rol: str = "betrokken"
+
+
+class OpdrachtEenheidUpdate(BaseModel):
+    rol: str
+
+
+class OpdrachtEenheidResponse(BaseModel):
+    opdracht_id: UUID
+    eenheid_id: UUID
+    eenheid_naam: str
+    rol: str
+    source: str | None = "manual"
+    ai_confidence: float | None = None
+    ai_reason: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class OpdrachtResponse(BaseModel):
     id: UUID
     type: str
@@ -183,6 +226,8 @@ class OpdrachtResponse(BaseModel):
     fcc_labels: str | None = None
     fcc_raw_data: dict | None = None
     node_koppelingen: list[OpdrachtNodeResponse] = []
+    members: list[OpdrachtMemberResponse] = []
+    eenheden: list[OpdrachtEenheidResponse] = []
     created_at: datetime
     updated_at: datetime | None = None
 

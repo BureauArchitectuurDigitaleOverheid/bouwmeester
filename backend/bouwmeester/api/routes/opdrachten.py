@@ -16,9 +16,15 @@ from bouwmeester.core.org_context import (
 )
 from bouwmeester.core.permissions import require_permission
 from bouwmeester.repositories.opdracht import OpdrachtRepository
+from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.schema.opdracht import (
     OpdrachtCreate,
+    OpdrachtEenheidCreate,
+    OpdrachtEenheidResponse,
+    OpdrachtEenheidUpdate,
     OpdrachtenSummary,
+    OpdrachtMemberCreate,
+    OpdrachtMemberResponse,
     OpdrachtNodeCreate,
     OpdrachtNodeResponse,
     OpdrachtResponse,
@@ -94,6 +100,31 @@ async def get_opdrachten_summary(
     )
 
 
+@router.post("/match-contacts-bulk")
+async def match_contacts_bulk(
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:update")),
+) -> dict:
+    """Match contacts for all opdrachten without linked members/eenheden."""
+    from bouwmeester.services.opdracht_matching_service import (
+        OpdrachtMatchingService,
+    )
+
+    svc = OpdrachtMatchingService(db)
+    result = await svc.match_all_unlinked()
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "opdracht.bulk_contacts_matched",
+        details=result,
+    )
+
+    return result
+
+
 @router.post(
     "",
     response_model=OpdrachtResponse,
@@ -145,7 +176,48 @@ async def get_opdracht(
 ) -> OpdrachtResponse:
     repo = OpdrachtRepository(db)
     opdracht = require_found(await repo.get(id), "Opdracht")
-    return OpdrachtResponse.model_validate(opdracht)
+
+    # Fetch resource permissions (members + eenheden)
+    rp_repo = ResourcePermissionRepository(db)
+    all_perms = await rp_repo.list_for_resource("opdracht", id, include_eenheid=True)
+
+    members = [
+        OpdrachtMemberResponse(
+            opdracht_id=rp.resource_id,
+            person_id=rp.person_id,
+            person_naam=rp.person.naam if rp.person else "",
+            rol=rp.rol,
+            source=rp.source,
+            ai_confidence=(
+                float(rp.ai_confidence) if rp.ai_confidence is not None else None
+            ),
+            ai_reason=rp.ai_reason,
+            created_at=rp.created_at,
+        )
+        for rp in all_perms
+        if rp.person_id is not None
+    ]
+    eenheden = [
+        OpdrachtEenheidResponse(
+            opdracht_id=rp.resource_id,
+            eenheid_id=rp.organisatie_eenheid_id,
+            eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
+            rol=rp.rol,
+            source=rp.source,
+            ai_confidence=(
+                float(rp.ai_confidence) if rp.ai_confidence is not None else None
+            ),
+            ai_reason=rp.ai_reason,
+            created_at=rp.created_at,
+        )
+        for rp in all_perms
+        if rp.organisatie_eenheid_id is not None
+    ]
+
+    resp = OpdrachtResponse.model_validate(opdracht)
+    resp.members = members
+    resp.eenheden = eenheden
+    return resp
 
 
 @router.put("/{id}", response_model=OpdrachtResponse)
@@ -237,6 +309,18 @@ async def delete_opdracht(
     instrument_id = opdracht.instrument_id
     titel = opdracht.titel
 
+    # Clean up resource_permission rows (polymorphic FK, no CASCADE)
+    from sqlalchemy import delete as sa_delete
+
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    await db.execute(
+        sa_delete(ResourcePermission).where(
+            ResourcePermission.resource_type == "opdracht",
+            ResourcePermission.resource_id == id,
+        )
+    )
+
     require_deleted(await repo.delete(id), "Opdracht")
 
     await log_activity(
@@ -292,3 +376,334 @@ async def remove_node_koppeling(
     require_deleted(
         await repo.remove_node_koppeling(opdracht_id, koppeling_id), "Koppeling"
     )
+
+
+# ---------------------------------------------------------------------------
+# Member management (contactpersonen)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{id}/members",
+    response_model=OpdrachtMemberResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_member(
+    id: UUID,
+    data: OpdrachtMemberCreate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
+) -> OpdrachtMemberResponse:
+    await check_resource_org_scope(db, "opdracht", id, org_ctx)
+    repo = OpdrachtRepository(db)
+    require_found(await repo.get(id), "Opdracht")
+    from sqlalchemy.exc import IntegrityError
+
+    try:
+        member = await repo.add_member(id, data.person_id, data.rol)
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Persoon is al gekoppeld aan deze opdracht",
+        )
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "opdracht_member.added",
+        details={
+            "opdracht_id": str(id),
+            "person_id": str(data.person_id),
+            "rol": data.rol,
+        },
+    )
+
+    return OpdrachtMemberResponse(
+        opdracht_id=member.resource_id,
+        person_id=member.person_id,
+        person_naam=member.person.naam if member.person else "",
+        rol=member.rol,
+        source=member.source,
+        created_at=member.created_at,
+    )
+
+
+@router.delete(
+    "/{id}/members/{person_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_member(
+    id: UUID,
+    person_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
+) -> None:
+    await check_resource_org_scope(db, "opdracht", id, org_ctx)
+    repo = OpdrachtRepository(db)
+    if not await repo.remove_member(id, person_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contactpersoon niet gevonden",
+        )
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "opdracht_member.removed",
+        details={"opdracht_id": str(id), "person_id": str(person_id)},
+    )
+
+
+@router.put(
+    "/{id}/members/{person_id}",
+    response_model=OpdrachtMemberResponse,
+)
+async def update_member_role(
+    id: UUID,
+    person_id: UUID,
+    data: OpdrachtMemberCreate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
+) -> OpdrachtMemberResponse:
+    await check_resource_org_scope(db, "opdracht", id, org_ctx)
+    repo = OpdrachtRepository(db)
+    member = await repo.update_member_role(id, person_id, data.rol)
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contactpersoon niet gevonden",
+        )
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "opdracht_member.updated",
+        details={
+            "opdracht_id": str(id),
+            "person_id": str(person_id),
+            "rol": data.rol,
+        },
+    )
+
+    return OpdrachtMemberResponse(
+        opdracht_id=member.resource_id,
+        person_id=member.person_id,
+        person_naam=member.person.naam if member.person else "",
+        rol=member.rol,
+        source=member.source,
+        created_at=member.created_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Eenheid management (organisatie-eenheden)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{id}/eenheden",
+    response_model=OpdrachtEenheidResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_eenheid(
+    id: UUID,
+    data: OpdrachtEenheidCreate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
+) -> OpdrachtEenheidResponse:
+    await check_resource_org_scope(db, "opdracht", id, org_ctx)
+    repo = OpdrachtRepository(db)
+    require_found(await repo.get(id), "Opdracht")
+    from sqlalchemy.exc import IntegrityError
+
+    try:
+        rp = await repo.add_eenheid(id, data.eenheid_id, data.rol)
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Eenheid is al gekoppeld aan deze opdracht",
+        )
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "opdracht_eenheid.added",
+        details={
+            "opdracht_id": str(id),
+            "eenheid_id": str(data.eenheid_id),
+            "rol": data.rol,
+        },
+    )
+
+    return OpdrachtEenheidResponse(
+        opdracht_id=rp.resource_id,
+        eenheid_id=rp.organisatie_eenheid_id,
+        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
+        rol=rp.rol,
+        source=rp.source,
+        created_at=rp.created_at,
+    )
+
+
+@router.delete(
+    "/{id}/eenheden/{eenheid_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_eenheid(
+    id: UUID,
+    eenheid_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
+) -> None:
+    await check_resource_org_scope(db, "opdracht", id, org_ctx)
+    repo = OpdrachtRepository(db)
+    if not await repo.remove_eenheid(id, eenheid_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Eenheid niet gevonden",
+        )
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "opdracht_eenheid.removed",
+        details={"opdracht_id": str(id), "eenheid_id": str(eenheid_id)},
+    )
+
+
+@router.put(
+    "/{id}/eenheden/{eenheid_id}",
+    response_model=OpdrachtEenheidResponse,
+)
+async def update_eenheid_rol(
+    id: UUID,
+    eenheid_id: UUID,
+    data: OpdrachtEenheidUpdate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
+) -> OpdrachtEenheidResponse:
+    await check_resource_org_scope(db, "opdracht", id, org_ctx)
+    repo = OpdrachtRepository(db)
+    rp = await repo.update_eenheid_rol(id, eenheid_id, data.rol)
+    if rp is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Eenheid niet gevonden",
+        )
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "opdracht_eenheid.updated",
+        details={
+            "opdracht_id": str(id),
+            "eenheid_id": str(eenheid_id),
+            "rol": data.rol,
+        },
+    )
+
+    return OpdrachtEenheidResponse(
+        opdracht_id=rp.resource_id,
+        eenheid_id=rp.organisatie_eenheid_id,
+        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
+        rol=rp.rol,
+        source=rp.source,
+        created_at=rp.created_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# LLM matching (contacten matchen via Vlam)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{id}/match-contacts",
+    response_model=list[OpdrachtMemberResponse | OpdrachtEenheidResponse],
+)
+async def match_contacts(
+    id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
+) -> list[OpdrachtMemberResponse | OpdrachtEenheidResponse]:
+    """Trigger LLM-based matching of persons/eenheden to this opdracht."""
+    await check_resource_org_scope(db, "opdracht", id, org_ctx)
+    repo = OpdrachtRepository(db)
+    opdracht = require_found(await repo.get(id), "Opdracht")
+
+    from bouwmeester.services.opdracht_matching_service import (
+        OpdrachtMatchingService,
+    )
+
+    svc = OpdrachtMatchingService(db)
+    created_rps = await svc.suggest_and_link(opdracht)
+
+    results: list[OpdrachtMemberResponse | OpdrachtEenheidResponse] = []
+    for rp in created_rps:
+        if rp.person_id is not None:
+            results.append(
+                OpdrachtMemberResponse(
+                    opdracht_id=rp.resource_id,
+                    person_id=rp.person_id,
+                    person_naam=rp.person.naam if rp.person else "",
+                    rol=rp.rol,
+                    source=rp.source,
+                    ai_confidence=(
+                        float(rp.ai_confidence)
+                        if rp.ai_confidence is not None
+                        else None
+                    ),
+                    ai_reason=rp.ai_reason,
+                    created_at=rp.created_at,
+                )
+            )
+        elif rp.organisatie_eenheid_id is not None:
+            results.append(
+                OpdrachtEenheidResponse(
+                    opdracht_id=rp.resource_id,
+                    eenheid_id=rp.organisatie_eenheid_id,
+                    eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
+                    rol=rp.rol,
+                    source=rp.source,
+                    ai_confidence=(
+                        float(rp.ai_confidence)
+                        if rp.ai_confidence is not None
+                        else None
+                    ),
+                    ai_reason=rp.ai_reason,
+                    created_at=rp.created_at,
+                )
+            )
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "opdracht.contacts_matched",
+        details={
+            "opdracht_id": str(id),
+            "matches_created": len(results),
+        },
+    )
+
+    return results

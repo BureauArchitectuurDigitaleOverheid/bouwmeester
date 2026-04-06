@@ -285,6 +285,75 @@ def build_lead_intake_prompt(
     )
 
 
+MAX_CANDIDATES_IN_PROMPT = 30
+
+
+def build_match_opdracht_contacts_prompt(
+    opdracht_titel: str,
+    opdracht_beschrijving: str | None,
+    fcc_contact_fields: dict[str, str],
+    fcc_afdeling: str | None,
+    kandidaat_personen: list[dict],
+    kandidaat_eenheden: list[dict],
+) -> str:
+    """Build a prompt to match persons and org units to an opdracht."""
+    opdracht_info = f"TITEL: {opdracht_titel}"
+    if opdracht_beschrijving:
+        opdracht_info += (
+            f"\nBESCHRIJVING: {opdracht_beschrijving[:MAX_DESCRIPTION_IN_PROMPT]}"
+        )
+    if fcc_afdeling:
+        opdracht_info += f"\nAFDELING: {fcc_afdeling}"
+
+    fcc_text = ""
+    if fcc_contact_fields:
+        fcc_parts = [f"  {k}: {v}" for k, v in fcc_contact_fields.items() if v]
+        if fcc_parts:
+            fcc_text = "\nCONTACTVELDEN UIT BRONSYSTEEM:\n" + "\n".join(fcc_parts)
+
+    personen_json = json.dumps(
+        kandidaat_personen[:MAX_CANDIDATES_IN_PROMPT], ensure_ascii=False
+    )
+    eenheden_json = json.dumps(
+        kandidaat_eenheden[:MAX_CANDIDATES_IN_PROMPT], ensure_ascii=False
+    )
+
+    return (
+        "Je bent een medewerker van het ministerie van BZK."
+        " Je taak is om te bepalen welke personen en organisatie-eenheden"
+        " betrokken zijn bij een opdracht, op basis van de beschikbare"
+        " informatie.\n\n"
+        f"OPDRACHT:\n{opdracht_info}\n"
+        f"{fcc_text}\n\n"
+        f"KANDIDAAT-PERSONEN:\n{personen_json}\n\n"
+        f"KANDIDAAT-EENHEDEN:\n{eenheden_json}\n\n"
+        "Instructies:\n"
+        "- Match personen op basis van naamovereenkomst met contactvelden,"
+        " of op basis van hun functie/eenheid en de opdracht-inhoud\n"
+        "- Match eenheden op basis van naamovereenkomst met de afdeling,"
+        " of op basis van de opdracht-inhoud\n"
+        "- Geef per match een confidence score (0.0-1.0)\n"
+        "- Geef een korte reden in het Nederlands\n"
+        "- Stel een rol voor: 'contactpersoon', 'betrokken', of 'eigenaar'\n"
+        "- Geef ALLEEN matches met confidence >= 0.5\n"
+        "- Als er geen goede matches zijn, geef een lege lijst\n\n"
+        "Geef je analyse als JSON"
+        " (en ALLEEN JSON, geen andere tekst):\n"
+        "{\n"
+        '  "matches": [\n'
+        "    {\n"
+        '      "target_id": "uuid van de persoon of eenheid",\n'
+        '      "link_type": "person" of "organisatie_eenheid",\n'
+        '      "confidence": 0.85,\n'
+        '      "reason": "Naam komt overeen met contactpersoon opdrachtgever",\n'
+        '      "suggested_rol": "contactpersoon",\n'
+        '      "source_field": "Contactpersoon_opdrachtgever" of null\n'
+        "    }\n"
+        "  ]\n"
+        "}"
+    )
+
+
 CHAT_SYSTEM_PROMPT = (
     "Je bent de Bouwmeester-assistent, een AI-hulpmiddel voor beleidsmedewerkers"
     " van het ministerie van BZK (Binnenlandse Zaken en Koninkrijksrelaties)."

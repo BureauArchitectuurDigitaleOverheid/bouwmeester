@@ -51,7 +51,22 @@ async def trigger_sync(
         export_service = FccExportService(db)
         push_count = await export_service.push_pending()
 
-    return FccSyncTriggerResponse(pulled=pull_count, pushed=push_count)
+    # After import, match contacts for newly imported opdrachten
+    contacts_matched = 0
+    if pull_count > 0:
+        from bouwmeester.services.opdracht_matching_service import (
+            OpdrachtMatchingService,
+        )
+
+        svc = OpdrachtMatchingService(db)
+        result = await svc.match_all_unlinked()
+        contacts_matched = result["matched"]
+
+    return FccSyncTriggerResponse(
+        pulled=pull_count,
+        pushed=push_count,
+        contacts_matched=contacts_matched,
+    )
 
 
 @router.get(

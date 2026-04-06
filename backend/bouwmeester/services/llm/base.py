@@ -45,6 +45,19 @@ class EdgeRelevanceResult(BaseModel):
     reason: str
 
 
+class OpdrachtContactMatch(BaseModel):
+    target_id: str
+    link_type: str  # "person" | "organisatie_eenheid"
+    confidence: float
+    reason: str
+    suggested_rol: str
+    source_field: str | None = None
+
+
+class OpdrachtContactMatchResult(BaseModel):
+    matches: list[OpdrachtContactMatch]
+
+
 class GapAnalysisResult(BaseModel):
     narrative: str
     recommendations: list[str]
@@ -184,6 +197,41 @@ class BaseLLMService(ABC):
                 suggested_edge_type="gerelateerd_aan",
                 reason="Scoring mislukt",
             )
+
+    async def match_opdracht_contacts(
+        self,
+        opdracht_titel: str,
+        opdracht_beschrijving: str | None,
+        fcc_contact_fields: dict[str, str],
+        fcc_afdeling: str | None,
+        kandidaat_personen: list[dict],
+        kandidaat_eenheden: list[dict],
+    ) -> OpdrachtContactMatchResult:
+        """Match persons and org units to an opdracht using LLM analysis."""
+        from bouwmeester.services.llm.prompts import (
+            build_match_opdracht_contacts_prompt,
+        )
+
+        prompt = build_match_opdracht_contacts_prompt(
+            opdracht_titel=opdracht_titel,
+            opdracht_beschrijving=opdracht_beschrijving,
+            fcc_contact_fields=fcc_contact_fields,
+            fcc_afdeling=fcc_afdeling,
+            kandidaat_personen=kandidaat_personen,
+            kandidaat_eenheden=kandidaat_eenheden,
+        )
+        try:
+            text = await self._complete(prompt, max_tokens=2048)
+            result = self._parse_json(text)
+            matches = [
+                OpdrachtContactMatch(**m)
+                for m in result.get("matches", [])
+                if m.get("confidence", 0) >= 0.5
+            ]
+            return OpdrachtContactMatchResult(matches=matches)
+        except Exception:
+            logger.exception("Fout bij LLM opdracht contact matching")
+            return OpdrachtContactMatchResult(matches=[])
 
     async def generate_gap_analysis(
         self,

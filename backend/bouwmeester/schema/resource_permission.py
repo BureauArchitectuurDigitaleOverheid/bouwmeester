@@ -55,6 +55,9 @@ class ResourcePermissionResponse(BaseModel):
     resource_type: str
     resource_id: UUID
     rol: str
+    source: str | None = "manual"
+    ai_confidence: float | None = None
+    ai_reason: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

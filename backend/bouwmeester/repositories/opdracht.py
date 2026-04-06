@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.opdracht import Opdracht, OpdrachtNode
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.opdracht import (
     OpdrachtCreate,
@@ -251,3 +252,123 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         return {
             row.instrument_id: (row.budget, row.gerealiseerd) for row in result.all()
         }
+
+    # -----------------------------------------------------------------------
+    # Member (person-scoped) management via ResourcePermission
+    # -----------------------------------------------------------------------
+
+    async def add_member(
+        self,
+        opdracht_id: UUID,
+        person_id: UUID,
+        rol: str = "betrokken",
+        source: str = "manual",
+        ai_confidence: float | None = None,
+        ai_reason: str | None = None,
+    ) -> ResourcePermission:
+        rp = ResourcePermission(
+            person_id=person_id,
+            resource_type="opdracht",
+            resource_id=opdracht_id,
+            rol=rol,
+            source=source,
+            ai_confidence=ai_confidence,
+            ai_reason=ai_reason,
+        )
+        self.session.add(rp)
+        await self.session.flush()
+        await self.session.refresh(rp, attribute_names=["person"])
+        return rp
+
+    async def update_member_role(
+        self, opdracht_id: UUID, person_id: UUID, rol: str
+    ) -> ResourcePermission | None:
+        stmt = (
+            select(ResourcePermission)
+            .where(
+                ResourcePermission.resource_type == "opdracht",
+                ResourcePermission.resource_id == opdracht_id,
+                ResourcePermission.person_id == person_id,
+            )
+            .options(selectinload(ResourcePermission.person))
+        )
+        result = await self.session.execute(stmt)
+        rp = result.scalar_one_or_none()
+        if rp is None:
+            return None
+        rp.rol = rol
+        await self.session.flush()
+        await self.session.refresh(rp, attribute_names=["person"])
+        return rp
+
+    async def remove_member(self, opdracht_id: UUID, person_id: UUID) -> bool:
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "opdracht",
+            ResourcePermission.resource_id == opdracht_id,
+            ResourcePermission.person_id == person_id,
+        )
+        result = await self.session.execute(stmt)
+        rp = result.scalar_one_or_none()
+        if rp is None:
+            return False
+        await self.session.delete(rp)
+        await self.session.flush()
+        return True
+
+    # -----------------------------------------------------------------------
+    # Eenheid (org-unit-scoped) management via ResourcePermission
+    # -----------------------------------------------------------------------
+
+    async def add_eenheid(
+        self,
+        opdracht_id: UUID,
+        eenheid_id: UUID,
+        rol: str = "betrokken",
+        source: str = "manual",
+        ai_confidence: float | None = None,
+        ai_reason: str | None = None,
+    ) -> ResourcePermission:
+        rp = ResourcePermission(
+            organisatie_eenheid_id=eenheid_id,
+            resource_type="opdracht",
+            resource_id=opdracht_id,
+            rol=rol,
+            source=source,
+            ai_confidence=ai_confidence,
+            ai_reason=ai_reason,
+        )
+        self.session.add(rp)
+        await self.session.flush()
+        await self.session.refresh(rp, attribute_names=["eenheid"])
+        return rp
+
+    async def update_eenheid_rol(
+        self, opdracht_id: UUID, eenheid_id: UUID, rol: str
+    ) -> ResourcePermission | None:
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "opdracht",
+            ResourcePermission.resource_id == opdracht_id,
+            ResourcePermission.organisatie_eenheid_id == eenheid_id,
+        )
+        result = await self.session.execute(stmt)
+        rp = result.scalar_one_or_none()
+        if rp is None:
+            return None
+        rp.rol = rol
+        await self.session.flush()
+        await self.session.refresh(rp, attribute_names=["eenheid"])
+        return rp
+
+    async def remove_eenheid(self, opdracht_id: UUID, eenheid_id: UUID) -> bool:
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == "opdracht",
+            ResourcePermission.resource_id == opdracht_id,
+            ResourcePermission.organisatie_eenheid_id == eenheid_id,
+        )
+        result = await self.session.execute(stmt)
+        rp = result.scalar_one_or_none()
+        if rp is None:
+            return False
+        await self.session.delete(rp)
+        await self.session.flush()
+        return True
