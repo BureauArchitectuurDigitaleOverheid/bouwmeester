@@ -32,7 +32,7 @@ class OpdrachtMatchingService:
         person_stmt = (
             select(Person)
             .where(Person.is_agent.is_(False))
-            .options(selectinload(Person.organisatie_eenheden))
+            .options(selectinload(Person.organisatie_plaatsingen))
         )
         person_result = await self.db.execute(person_stmt)
         all_persons = list(person_result.scalars().all())
@@ -40,9 +40,9 @@ class OpdrachtMatchingService:
         kandidaat_personen = []
         for p in all_persons:
             eenheid_namen = [
-                e.naam
-                for e in (p.organisatie_eenheden or [])
-                if hasattr(e, "naam") and e.naam
+                placement.organisatie_eenheid.naam
+                for placement in (p.organisatie_plaatsingen or [])
+                if placement.organisatie_eenheid and placement.organisatie_eenheid.naam
             ]
             kandidaat_personen.append(
                 {

@@ -106,6 +106,7 @@ export const queryKeys = {
     syncLogs: (opdrachtId?: string) => ['fcc', 'sync-logs', opdrachtId] as const,
     schema: () => ['fcc', 'schema'] as const,
     conflicts: () => ['fcc', 'conflicts'] as const,
+    lastSync: () => ['fcc', 'last-sync'] as const,
   },
 
   // --- Admin ---

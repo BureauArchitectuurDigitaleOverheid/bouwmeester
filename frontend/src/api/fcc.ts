@@ -36,3 +36,7 @@ export async function resolveFccConflict(
 export async function pushOpdrachtToFcc(opdrachtId: string): Promise<Opdracht> {
   return apiPost<Opdracht>(`/api/fcc/opdrachten/${opdrachtId}/push`);
 }
+
+export async function getLastFccSync(): Promise<{ last_synced_at: string | null }> {
+  return apiGet<{ last_synced_at: string | null }>('/api/fcc/sync/last');
+}

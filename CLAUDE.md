@@ -28,6 +28,7 @@ Run `just` to see all available commands. Key ones:
 | `just typecheck` | Frontend TypeScript check |
 | `just lint` | Backend lint (ruff) |
 | `just logs` | Follow all service logs |
+| `zad logs` | Follow Zad deployment logs (production) |
 | `just db-shell` | Open psql shell |
 | `just worker-logs` | Follow worker service logs |
 | `just import-parlementair` | Manually trigger parlementair import via API |

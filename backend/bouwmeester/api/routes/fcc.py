@@ -17,6 +17,7 @@ from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.schema.fcc import (
     FccConflictResolution,
     FccConflictResolveRequest,
+    FccLastSyncResponse,
     FccSchemaResponse,
     FccSyncLogResponse,
     FccSyncTriggerResponse,
@@ -27,6 +28,22 @@ from bouwmeester.schema.opdracht import OpdrachtResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/fcc", tags=["fcc"])
+
+
+@router.get(
+    "/sync/last",
+    response_model=FccLastSyncResponse,
+)
+async def get_last_sync(
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("fcc:sync")),
+) -> FccLastSyncResponse:
+    """Get the timestamp of the most recent FCC sync."""
+    stmt = select(FccSyncLog).order_by(FccSyncLog.created_at.desc()).limit(1)
+    result = await db.execute(stmt)
+    log = result.scalar_one_or_none()
+    return FccLastSyncResponse(last_synced_at=log.created_at if log else None)
 
 
 @router.post(
