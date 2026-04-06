@@ -193,7 +193,7 @@ export function OpdrachtenPage() {
             onClick={() => bulkMatch.mutate(true)}
             disabled={bulkMatch.isPending}
           >
-            <span className="hidden sm:inline">{bulkMatch.isPending ? 'Matchen...' : 'Contacten matchen'}</span>
+            <span className="hidden sm:inline">{bulkMatch.isPending ? 'Matchen...' : 'Contacten & eenheden matchen'}</span>
           </Button>
           {fccEnabled && (
             <Button
