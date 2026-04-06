@@ -29,7 +29,6 @@ class FccConflictResolution(enum.StrEnum):
 class FccSyncTriggerResponse(BaseModel):
     pulled: int
     pushed: int
-    contacts_matched: int = 0
 
 
 class FccSyncLogResponse(BaseModel):
