@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.services.llm.base import DataSensitivity
@@ -32,7 +33,11 @@ class OpdrachtMatchingService:
         person_stmt = (
             select(Person)
             .where(Person.is_agent.is_(False))
-            .options(selectinload(Person.organisatie_plaatsingen))
+            .options(
+                selectinload(Person.organisatie_plaatsingen).selectinload(
+                    PersonOrganisatieEenheid.organisatie_eenheid
+                )
+            )
         )
         person_result = await self.db.execute(person_stmt)
         all_persons = list(person_result.scalars().all())
