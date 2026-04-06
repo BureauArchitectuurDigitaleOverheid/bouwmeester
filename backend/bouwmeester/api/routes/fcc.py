@@ -51,32 +51,6 @@ async def trigger_sync(
         export_service = FccExportService(db)
         push_count = await export_service.push_pending()
 
-    # Schedule contact matching in background (non-blocking)
-    if pull_count > 0:
-        import asyncio
-
-        from bouwmeester.core.database import async_session
-
-        async def _background_match() -> None:
-            try:
-                async with async_session() as match_db:
-                    from bouwmeester.services.opdracht_matching_service import (
-                        OpdrachtMatchingService,
-                    )
-
-                    svc = OpdrachtMatchingService(match_db)
-                    result = await svc.match_all_unlinked()
-                    await match_db.commit()
-                    logger.info(
-                        "Background contact matching: %d matched, %d skipped",
-                        result["matched"],
-                        result["skipped"],
-                    )
-            except Exception:
-                logger.exception("Error in background contact matching")
-
-        asyncio.create_task(_background_match())
-
     return FccSyncTriggerResponse(pulled=pull_count, pushed=push_count)
 
 

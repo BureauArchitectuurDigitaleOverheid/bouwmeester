@@ -311,11 +311,38 @@ def build_match_opdracht_contacts_prompt(
         if fcc_parts:
             fcc_text = "\nCONTACTVELDEN UIT BRONSYSTEEM:\n" + "\n".join(fcc_parts)
 
+    # Sort candidates: prioritize those whose name appears in contact fields or
+    # afdeling, so that truncation (MAX_CANDIDATES_IN_PROMPT) keeps the most
+    # relevant candidates rather than relying on arbitrary DB ordering.
+    search_terms = [v.lower() for v in fcc_contact_fields.values() if v]
+    if fcc_afdeling:
+        search_terms.append(fcc_afdeling.lower())
+
+    def _person_relevance(p: dict) -> int:
+        naam = p.get("naam", "").lower()
+        eenheid = p.get("eenheid", "").lower()
+        for term in search_terms:
+            if naam in term or term in naam:
+                return 0
+            if eenheid and (eenheid in term or term in eenheid):
+                return 1
+        return 2
+
+    def _eenheid_relevance(e: dict) -> int:
+        naam = e.get("naam", "").lower()
+        for term in search_terms:
+            if naam in term or term in naam:
+                return 0
+        return 1
+
+    sorted_personen = sorted(kandidaat_personen, key=_person_relevance)
+    sorted_eenheden = sorted(kandidaat_eenheden, key=_eenheid_relevance)
+
     personen_json = json.dumps(
-        kandidaat_personen[:MAX_CANDIDATES_IN_PROMPT], ensure_ascii=False
+        sorted_personen[:MAX_CANDIDATES_IN_PROMPT], ensure_ascii=False
     )
     eenheden_json = json.dumps(
-        kandidaat_eenheden[:MAX_CANDIDATES_IN_PROMPT], ensure_ascii=False
+        sorted_eenheden[:MAX_CANDIDATES_IN_PROMPT], ensure_ascii=False
     )
 
     return (

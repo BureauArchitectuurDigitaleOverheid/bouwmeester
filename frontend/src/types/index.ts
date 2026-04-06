@@ -1453,6 +1453,7 @@ export const OPDRACHT_CONTACT_ROL_LABELS: Record<string, string> = {
   contactpersoon: 'Contactpersoon',
   eigenaar: 'Eigenaar',
 };
+
 export interface Opdracht {
   id: string;
   type: string;

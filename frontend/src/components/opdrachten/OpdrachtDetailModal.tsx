@@ -455,7 +455,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <button
-                          onClick={() => { onClose(); navigate('/people'); }}
+                          onClick={() => { onClose(); navigate(`/people?highlight=${member.person_id}`); }}
                           className="text-sm text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium truncate"
                         >
                           {member.person_naam}
@@ -525,7 +525,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <button
-                          onClick={() => { onClose(); navigate('/organisatie'); }}
+                          onClick={() => { onClose(); navigate(`/organisatie?highlight=${eenheid.eenheid_id}`); }}
                           className="text-sm text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium truncate"
                         >
                           {eenheid.eenheid_naam}

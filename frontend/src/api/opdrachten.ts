@@ -81,7 +81,7 @@ export async function updateOpdrachtMemberRole(
 ): Promise<OpdrachtMember> {
   return apiPut<OpdrachtMember>(
     `/api/opdrachten/${opdrachtId}/members/${personId}`,
-    { person_id: personId, rol },
+    { rol },
   );
 }
 

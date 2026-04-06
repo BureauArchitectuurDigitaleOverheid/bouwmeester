@@ -21,33 +21,10 @@ class OpdrachtMatchingService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def suggest_and_link(self, opdracht: Opdracht) -> list[ResourcePermission]:
-        """Match persons/eenheden to an opdracht via LLM and create links."""
-        from bouwmeester.services.llm.factory import get_llm_service_for
-
-        llm = await get_llm_service_for(DataSensitivity.CONFIDENTIAL, self.db)
-        if llm is None:
-            logger.warning("Geen LLM-provider beschikbaar voor CONFIDENTIAL data")
-            return []
-
-        # Gather context from opdracht
-        fcc_contact_fields: dict[str, str] = {}
-        fcc_afdeling: str | None = None
-        fcc_raw = getattr(opdracht, "fcc_raw_data", None)
-        if fcc_raw and isinstance(fcc_raw, dict):
-            for key in (
-                "Contact_opdrachtnemer",
-                "Contactpersoon_opdrachtgever",
-                "Eigenaar",
-            ):
-                val = fcc_raw.get(key)
-                if val and str(val).strip() and str(val).strip().lower() != "ntb":
-                    fcc_contact_fields[key] = str(val).strip()
-            fcc_afdeling = getattr(opdracht, "fcc_afdeling", None) or fcc_raw.get(
-                "Afdeling_PDD"
-            )
-
-        # Fetch candidate persons
+    async def _fetch_candidates(
+        self,
+    ) -> tuple[list[Person], list[dict], list[OrganisatieEenheid], list[dict]]:
+        """Fetch all candidate persons and eenheden (once, for reuse)."""
         person_stmt = (
             select(Person)
             .where(Person.is_agent.is_(False))
@@ -74,7 +51,6 @@ class OpdrachtMatchingService:
                 }
             )
 
-        # Fetch candidate eenheden
         eenheid_stmt = select(OrganisatieEenheid).options(
             selectinload(OrganisatieEenheid.parent_records)
         )
@@ -91,6 +67,53 @@ class OpdrachtMatchingService:
                 }
             )
 
+        return all_persons, kandidaat_personen, all_eenheden, kandidaat_eenheden
+
+    async def suggest_and_link(
+        self,
+        opdracht: Opdracht,
+        all_persons: list[Person] | None = None,
+        kandidaat_personen: list[dict] | None = None,
+        all_eenheden: list[OrganisatieEenheid] | None = None,
+        kandidaat_eenheden: list[dict] | None = None,
+    ) -> list[ResourcePermission]:
+        """Match persons/eenheden to an opdracht via LLM and create links.
+
+        Accepts pre-fetched candidates to avoid redundant queries in bulk mode.
+        """
+        from bouwmeester.services.llm.factory import get_llm_service_for
+
+        llm = await get_llm_service_for(DataSensitivity.CONFIDENTIAL, self.db)
+        if llm is None:
+            logger.warning("Geen LLM-provider beschikbaar voor CONFIDENTIAL data")
+            return []
+
+        # Gather context from opdracht
+        fcc_contact_fields: dict[str, str] = {}
+        fcc_afdeling: str | None = None
+        fcc_raw = getattr(opdracht, "fcc_raw_data", None)
+        if fcc_raw and isinstance(fcc_raw, dict):
+            for key in (
+                "Contact_opdrachtnemer",
+                "Contactpersoon_opdrachtgever",
+                "Eigenaar",
+            ):
+                val = fcc_raw.get(key)
+                if val and str(val).strip() and str(val).strip().lower() != "ntb":
+                    fcc_contact_fields[key] = str(val).strip()
+            fcc_afdeling = getattr(opdracht, "fcc_afdeling", None) or fcc_raw.get(
+                "Afdeling_PDD"
+            )
+
+        # Fetch candidates if not provided (single-opdracht mode)
+        if all_persons is None or kandidaat_personen is None:
+            (
+                all_persons,
+                kandidaat_personen,
+                all_eenheden,
+                kandidaat_eenheden,
+            ) = await self._fetch_candidates()
+
         # Skip if nothing to match against
         if not kandidaat_personen and not kandidaat_eenheden:
             return []
@@ -102,7 +125,7 @@ class OpdrachtMatchingService:
             fcc_contact_fields=fcc_contact_fields,
             fcc_afdeling=fcc_afdeling,
             kandidaat_personen=kandidaat_personen,
-            kandidaat_eenheden=kandidaat_eenheden,
+            kandidaat_eenheden=kandidaat_eenheden or [],
         )
 
         if not match_result.matches:
@@ -127,7 +150,7 @@ class OpdrachtMatchingService:
 
         # Valid IDs for quick lookup
         valid_person_ids = {p.id for p in all_persons}
-        valid_eenheid_ids = {e.id for e in all_eenheden}
+        valid_eenheid_ids = {e.id for e in (all_eenheden or [])}
 
         repo = OpdrachtRepository(self.db)
         created: list[ResourcePermission] = []
@@ -182,7 +205,6 @@ class OpdrachtMatchingService:
 
         Returns {"matched": N, "skipped": M, "total": T}.
         """
-        # Find opdrachten without any resource_permission links
         from sqlalchemy import and_, exists
 
         has_link = exists().where(
@@ -195,19 +217,34 @@ class OpdrachtMatchingService:
         result = await self.db.execute(stmt)
         opdrachten = list(result.scalars().all())
 
+        if not opdrachten:
+            return {"matched": 0, "skipped": 0, "total": 0}
+
+        # Fetch candidates once for all opdrachten
+        (
+            all_persons,
+            kandidaat_personen,
+            all_eenheden,
+            kandidaat_eenheden,
+        ) = await self._fetch_candidates()
+
         matched = 0
         skipped = 0
         for opdracht in opdrachten:
             try:
-                created = await self.suggest_and_link(opdracht)
+                created = await self.suggest_and_link(
+                    opdracht,
+                    all_persons=all_persons,
+                    kandidaat_personen=kandidaat_personen,
+                    all_eenheden=all_eenheden,
+                    kandidaat_eenheden=kandidaat_eenheden,
+                )
                 if created:
                     matched += 1
                 else:
                     skipped += 1
             except Exception:
-                logger.exception(
-                    "Fout bij matchen opdracht %s", opdracht.id
-                )
+                logger.exception("Fout bij matchen opdracht %s", opdracht.id)
                 skipped += 1
 
         logger.info(

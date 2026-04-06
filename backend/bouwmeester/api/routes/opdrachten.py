@@ -25,6 +25,7 @@ from bouwmeester.schema.opdracht import (
     OpdrachtenSummary,
     OpdrachtMemberCreate,
     OpdrachtMemberResponse,
+    OpdrachtMemberUpdate,
     OpdrachtNodeCreate,
     OpdrachtNodeResponse,
     OpdrachtResponse,
@@ -215,9 +216,7 @@ async def get_opdracht(
     ]
 
     resp = OpdrachtResponse.model_validate(opdracht)
-    resp.members = members
-    resp.eenheden = eenheden
-    return resp
+    return resp.model_copy(update={"members": members, "eenheden": eenheden})
 
 
 @router.put("/{id}", response_model=OpdrachtResponse)
@@ -467,7 +466,7 @@ async def remove_member(
 async def update_member_role(
     id: UUID,
     person_id: UUID,
-    data: OpdrachtMemberCreate,
+    data: OpdrachtMemberUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     _perm=Depends(require_permission("opdracht:update")),

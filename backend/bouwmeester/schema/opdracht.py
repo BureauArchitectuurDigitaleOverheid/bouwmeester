@@ -155,6 +155,10 @@ class OpdrachtMemberCreate(BaseModel):
     rol: str = "betrokken"
 
 
+class OpdrachtMemberUpdate(BaseModel):
+    rol: str
+
+
 class OpdrachtMemberResponse(BaseModel):
     opdracht_id: UUID
     person_id: UUID
