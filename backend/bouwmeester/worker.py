@@ -161,6 +161,25 @@ async def _fcc_sync_loop(settings) -> None:  # type: ignore[no-untyped-def]
                     pull_count,
                     push_count,
                 )
+
+                # Match contacts for newly imported opdrachten
+                if pull_count > 0:
+                    try:
+                        async with async_session() as match_session:
+                            from bouwmeester.services.opdracht_matching_service import (
+                                OpdrachtMatchingService,
+                            )
+
+                            svc = OpdrachtMatchingService(match_session)
+                            result = await svc.match_all_unlinked()
+                            await match_session.commit()
+                            logger.info(
+                                "Contact matching: %d matched, %d skipped",
+                                result["matched"],
+                                result["skipped"],
+                            )
+                    except Exception:
+                        logger.exception("Error in contact matching after FCC sync")
         except Exception:
             logger.exception("Error in FCC sync cycle")
 

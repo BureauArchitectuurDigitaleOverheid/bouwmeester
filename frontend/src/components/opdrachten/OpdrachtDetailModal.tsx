@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Trash2, Link as LinkIcon, CheckSquare, Plus, ClipboardList, CheckCircle2, Circle, Clock } from 'lucide-react';
+import { Pencil, Trash2, Link as LinkIcon, CheckSquare, Plus, ClipboardList, CheckCircle2, Circle, Clock, Users, Building2, X, Sparkles } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
@@ -10,10 +10,18 @@ import { DetailModalFooter } from '@/components/common/DetailModalFooter';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { FccDataSection } from './FccDataSection';
+import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { OpdrachtForm } from './OpdrachtForm';
 import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
-import { useOpdracht, useDeleteOpdracht } from '@/hooks/useOpdrachten';
+import {
+  useOpdracht, useDeleteOpdracht,
+  useAddOpdrachtMember, useRemoveOpdrachtMember, useUpdateOpdrachtMemberRole,
+  useAddOpdrachtEenheid, useRemoveOpdrachtEenheid, useUpdateOpdrachtEenheidRol,
+  useMatchOpdrachtContacts,
+} from '@/hooks/useOpdrachten';
 import { useTasksByOpdracht } from '@/hooks/useTasks';
+import { usePeople } from '@/hooks/usePeople';
+import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
@@ -22,6 +30,7 @@ import {
   OPDRACHT_STATUS_LABELS,
   OPDRACHT_STATUS_COLORS,
   OPDRACHT_TYPE_COLORS,
+  OPDRACHT_CONTACT_ROL_LABELS,
   KOSTENSOORT_LABELS,
   NODE_TYPE_COLORS,
   SYNC_STATUS_LABELS,
@@ -54,6 +63,36 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
   const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [addMemberValue, setAddMemberValue] = useState('');
+  const [addEenheidValue, setAddEenheidValue] = useState('');
+
+  // Member/eenheid hooks
+  const { data: allPeople = [] } = usePeople();
+  const { data: allEenheden = [] } = useOrganisatieFlat();
+  const addMemberMutation = useAddOpdrachtMember();
+  const removeMemberMutation = useRemoveOpdrachtMember();
+  const updateMemberRoleMutation = useUpdateOpdrachtMemberRole();
+  const addEenheidMutation = useAddOpdrachtEenheid();
+  const removeEenheidMutation = useRemoveOpdrachtEenheid();
+  const updateEenheidRolMutation = useUpdateOpdrachtEenheidRol();
+  const matchContactsMutation = useMatchOpdrachtContacts();
+
+  const members = opdracht?.members ?? [];
+  const eenheden = opdracht?.eenheden ?? [];
+
+  const availablePeopleOptions = useMemo(() => {
+    const memberIds = new Set(members.map((m) => m.person_id));
+    return allPeople
+      .filter((p) => !memberIds.has(p.id) && !p.is_agent)
+      .map((p) => ({ value: p.id, label: p.naam }));
+  }, [allPeople, members]);
+
+  const availableEenheidOptions = useMemo(() => {
+    const linkedIds = new Set(eenheden.map((e) => e.eenheid_id));
+    return allEenheden
+      .filter((e) => !linkedIds.has(e.id))
+      .map((e) => ({ value: e.id, label: e.naam }));
+  }, [allEenheden, eenheden]);
 
   if (!open) return null;
 
@@ -91,6 +130,43 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
   };
 
   const accentColor = opdracht ? OPDRACHT_TYPE_COLORS[opdracht.type as OpdrachtType] : undefined;
+
+  const handleAddMember = async (personId: string) => {
+    if (!opdrachtId || !personId) return;
+    await addMemberMutation.mutateAsync({ opdrachtId, personId });
+    setAddMemberValue('');
+  };
+
+  const handleRemoveMember = async (personId: string) => {
+    if (!opdrachtId) return;
+    await removeMemberMutation.mutateAsync({ opdrachtId, personId });
+  };
+
+  const handleUpdateMemberRole = async (personId: string, rol: string) => {
+    if (!opdrachtId) return;
+    await updateMemberRoleMutation.mutateAsync({ opdrachtId, personId, rol });
+  };
+
+  const handleAddEenheid = async (eenheidId: string) => {
+    if (!opdrachtId || !eenheidId) return;
+    await addEenheidMutation.mutateAsync({ opdrachtId, eenheidId });
+    setAddEenheidValue('');
+  };
+
+  const handleRemoveEenheid = async (eenheidId: string) => {
+    if (!opdrachtId) return;
+    await removeEenheidMutation.mutateAsync({ opdrachtId, eenheidId });
+  };
+
+  const handleUpdateEenheidRol = async (eenheidId: string, rol: string) => {
+    if (!opdrachtId) return;
+    await updateEenheidRolMutation.mutateAsync({ opdrachtId, eenheidId, rol });
+  };
+
+  const handleMatchContacts = async () => {
+    if (!opdrachtId) return;
+    await matchContactsMutation.mutateAsync(opdrachtId);
+  };
 
   return (
     <>
@@ -351,6 +427,157 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                 />
               </DetailSection>
             )}
+
+            {/* Contactpersonen */}
+            <DetailSection
+              title="Contactpersonen"
+              icon={<Users className="h-3.5 w-3.5" />}
+              count={members.length}
+              separated
+              action={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Sparkles className="h-3.5 w-3.5" />}
+                  onClick={handleMatchContacts}
+                  disabled={matchContactsMutation.isPending}
+                >
+                  {matchContactsMutation.isPending ? 'Matchen...' : 'Matchen'}
+                </Button>
+              }
+            >
+              {members.length > 0 && (
+                <ul className="divide-y divide-border rounded-xl border border-border mb-3">
+                  {members.map((member) => (
+                    <li
+                      key={member.person_id}
+                      className="flex items-center justify-between px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <button
+                          onClick={() => { onClose(); navigate(`/people?highlight=${member.person_id}`); }}
+                          className="text-sm text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium truncate"
+                        >
+                          {member.person_naam}
+                        </button>
+                        {member.source === 'ai' && (
+                          <span
+                            className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5"
+                            title={member.ai_reason ? `${member.ai_reason} (${Math.round((member.ai_confidence ?? 0) * 100)}%)` : 'Door AI gematcht'}
+                          >
+                            <Sparkles className="h-2.5 w-2.5" />
+                            AI
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <select
+                          value={member.rol}
+                          onChange={(e) => handleUpdateMemberRole(member.person_id, e.target.value)}
+                          className="text-xs border border-border rounded px-1.5 py-0.5 bg-white"
+                        >
+                          {Object.entries(OPDRACHT_CONTACT_ROL_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => handleRemoveMember(member.person_id)}
+                          className="p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 transition-colors"
+                          title="Verwijderen"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <CreatableSelect
+                    value={addMemberValue}
+                    onChange={(val) => {
+                      setAddMemberValue(val);
+                      if (val) handleAddMember(val);
+                    }}
+                    options={availablePeopleOptions}
+                    placeholder="Contactpersoon toevoegen..."
+                    emptyMessage="Geen personen gevonden"
+                  />
+                </div>
+              </div>
+            </DetailSection>
+
+            {/* Organisatie-eenheden */}
+            <DetailSection
+              title="Organisatie-eenheden"
+              icon={<Building2 className="h-3.5 w-3.5" />}
+              count={eenheden.length}
+              separated
+            >
+              {eenheden.length > 0 && (
+                <ul className="divide-y divide-border rounded-xl border border-border mb-3">
+                  {eenheden.map((eenheid) => (
+                    <li
+                      key={eenheid.eenheid_id}
+                      className="flex items-center justify-between px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <button
+                          onClick={() => { onClose(); navigate(`/organisatie?highlight=${eenheid.eenheid_id}`); }}
+                          className="text-sm text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium truncate"
+                        >
+                          {eenheid.eenheid_naam}
+                        </button>
+                        {eenheid.source === 'ai' && (
+                          <span
+                            className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5"
+                            title={eenheid.ai_reason ? `${eenheid.ai_reason} (${Math.round((eenheid.ai_confidence ?? 0) * 100)}%)` : 'Door AI gematcht'}
+                          >
+                            <Sparkles className="h-2.5 w-2.5" />
+                            AI
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <select
+                          value={eenheid.rol}
+                          onChange={(e) => handleUpdateEenheidRol(eenheid.eenheid_id, e.target.value)}
+                          className="text-xs border border-border rounded px-1.5 py-0.5 bg-white"
+                        >
+                          {Object.entries(OPDRACHT_CONTACT_ROL_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => handleRemoveEenheid(eenheid.eenheid_id)}
+                          className="p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 transition-colors"
+                          title="Verwijderen"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <CreatableSelect
+                    value={addEenheidValue}
+                    onChange={(val) => {
+                      setAddEenheidValue(val);
+                      if (val) handleAddEenheid(val);
+                    }}
+                    options={availableEenheidOptions}
+                    placeholder="Eenheid toevoegen..."
+                    emptyMessage="Geen eenheden gevonden"
+                  />
+                </div>
+              </div>
+            </DetailSection>
 
             {/* Tasks */}
             <DetailSection

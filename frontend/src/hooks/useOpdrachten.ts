@@ -1,5 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { getOpdrachten, getOpdrachtenSummary, getOpdracht, createOpdracht, updateOpdracht, deleteOpdracht, addOpdrachtNodeKoppeling, removeOpdrachtNodeKoppeling, getNodeFinancieel, getNodeOpdrachten } from '@/api/opdrachten';
+import {
+  getOpdrachten, getOpdrachtenSummary, getOpdracht, createOpdracht, updateOpdracht, deleteOpdracht,
+  addOpdrachtNodeKoppeling, removeOpdrachtNodeKoppeling, getNodeFinancieel, getNodeOpdrachten,
+  addOpdrachtMember, removeOpdrachtMember, updateOpdrachtMemberRole,
+  addOpdrachtEenheid, removeOpdrachtEenheid, updateOpdrachtEenheidRol,
+  matchOpdrachtContacts, matchOpdrachtContactsBulk,
+} from '@/api/opdrachten';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { OpdrachtCreate, OpdrachtUpdate, OpdrachtNodeCreate, OpdrachtFilters, OpdrachtenSummary } from '@/types';
@@ -81,5 +87,81 @@ export function useNodeOpdrachten(nodeId: string | undefined) {
     queryKey: queryKeys.financieel.opdrachten(nodeId),
     queryFn: () => getNodeOpdrachten(nodeId!),
     enabled: !!nodeId,
+  });
+}
+
+// --- Member (contactpersonen) ---
+
+export function useAddOpdrachtMember() {
+  return useMutationWithError({
+    mutationFn: ({ opdrachtId, personId, rol }: { opdrachtId: string; personId: string; rol?: string }) =>
+      addOpdrachtMember(opdrachtId, personId, rol),
+    errorMessage: 'Fout bij toevoegen contactpersoon',
+    invalidateKeys: [queryKeys.opdrachten.all],
+  });
+}
+
+export function useRemoveOpdrachtMember() {
+  return useMutationWithError({
+    mutationFn: ({ opdrachtId, personId }: { opdrachtId: string; personId: string }) =>
+      removeOpdrachtMember(opdrachtId, personId),
+    errorMessage: 'Fout bij verwijderen contactpersoon',
+    invalidateKeys: [queryKeys.opdrachten.all],
+  });
+}
+
+export function useUpdateOpdrachtMemberRole() {
+  return useMutationWithError({
+    mutationFn: ({ opdrachtId, personId, rol }: { opdrachtId: string; personId: string; rol: string }) =>
+      updateOpdrachtMemberRole(opdrachtId, personId, rol),
+    errorMessage: 'Fout bij wijzigen rol',
+    invalidateKeys: [queryKeys.opdrachten.all],
+  });
+}
+
+// --- Eenheid (organisatie-eenheden) ---
+
+export function useAddOpdrachtEenheid() {
+  return useMutationWithError({
+    mutationFn: ({ opdrachtId, eenheidId, rol }: { opdrachtId: string; eenheidId: string; rol?: string }) =>
+      addOpdrachtEenheid(opdrachtId, eenheidId, rol),
+    errorMessage: 'Fout bij toevoegen eenheid',
+    invalidateKeys: [queryKeys.opdrachten.all],
+  });
+}
+
+export function useRemoveOpdrachtEenheid() {
+  return useMutationWithError({
+    mutationFn: ({ opdrachtId, eenheidId }: { opdrachtId: string; eenheidId: string }) =>
+      removeOpdrachtEenheid(opdrachtId, eenheidId),
+    errorMessage: 'Fout bij verwijderen eenheid',
+    invalidateKeys: [queryKeys.opdrachten.all],
+  });
+}
+
+export function useUpdateOpdrachtEenheidRol() {
+  return useMutationWithError({
+    mutationFn: ({ opdrachtId, eenheidId, rol }: { opdrachtId: string; eenheidId: string; rol: string }) =>
+      updateOpdrachtEenheidRol(opdrachtId, eenheidId, rol),
+    errorMessage: 'Fout bij wijzigen eenheid-rol',
+    invalidateKeys: [queryKeys.opdrachten.all],
+  });
+}
+
+// --- LLM matching ---
+
+export function useMatchOpdrachtContacts() {
+  return useMutationWithError({
+    mutationFn: (opdrachtId: string) => matchOpdrachtContacts(opdrachtId),
+    errorMessage: 'Fout bij matchen contacten',
+    invalidateKeys: [queryKeys.opdrachten.all],
+  });
+}
+
+export function useMatchOpdrachtContactsBulk() {
+  return useMutationWithError({
+    mutationFn: (force: boolean) => matchOpdrachtContactsBulk(force),
+    errorMessage: 'Fout bij bulk matchen contacten',
+    invalidateKeys: [queryKeys.opdrachten.all],
   });
 }

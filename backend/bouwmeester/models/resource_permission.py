@@ -11,6 +11,8 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Numeric,
+    Text,
     UniqueConstraint,
     func,
     text,
@@ -39,6 +41,10 @@ class ResourcePermission(Base):
             " OR "
             "(person_id IS NULL AND organisatie_eenheid_id IS NOT NULL)",
             name="ck_resource_permission_scope",
+        ),
+        CheckConstraint(
+            "source IN ('manual', 'ai')",
+            name="ck_resource_permission_source",
         ),
     )
 
@@ -72,6 +78,17 @@ class ResourcePermission(Base):
         nullable=False,
         comment="eigenaar|betrokken|adviseur|indiener|contributor|viewer|contactpersoon|opdrachtgever",
     )
+    # AI matching metadata (nullable — only set for AI-generated links)
+    source: Mapped[str | None] = mapped_column(
+        nullable=True,
+        server_default="manual",
+        comment="manual|ai",
+    )
+    ai_confidence: Mapped[float | None] = mapped_column(
+        Numeric(precision=3, scale=2), nullable=True
+    )
+    ai_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
