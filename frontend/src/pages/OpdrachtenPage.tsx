@@ -9,6 +9,7 @@ import { useTriggerFccSync, useFccSchema } from '@/hooks/useFcc';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { MultiSelect } from '@/components/common/MultiSelect';
@@ -46,6 +47,7 @@ export function OpdrachtenPage() {
   const { openOpdrachtDetail } = useOpdrachtDetail();
   const { openOpdrachtCreate } = useOpdrachtCreate();
   const { currentPerson } = useCurrentPerson();
+  const { hasPermission } = usePermissions();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // API-level filters (sent to backend), seeded from URL params
@@ -187,14 +189,16 @@ export function OpdrachtenPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <Button
-            variant="secondary"
-            icon={<Sparkles className={`h-4 w-4 ${bulkMatch.isPending ? 'animate-pulse' : ''}`} />}
-            onClick={() => bulkMatch.mutate(true)}
-            disabled={bulkMatch.isPending}
-          >
-            <span className="hidden sm:inline">{bulkMatch.isPending ? 'Matchen...' : 'Contacten & eenheden matchen'}</span>
-          </Button>
+          {hasPermission('opdracht:update') && (
+            <Button
+              variant="secondary"
+              icon={<Sparkles className={`h-4 w-4 ${bulkMatch.isPending ? 'animate-pulse' : ''}`} />}
+              onClick={() => bulkMatch.mutate(true)}
+              disabled={bulkMatch.isPending}
+            >
+              <span className="hidden sm:inline">{bulkMatch.isPending ? 'Matchen...' : 'Contacten & eenheden matchen'}</span>
+            </Button>
+          )}
           {fccEnabled && (
             <Button
               variant="secondary"
