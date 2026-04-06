@@ -199,7 +199,7 @@ export function OpdrachtenPage() {
               <span className="hidden sm:inline">{bulkMatch.isPending ? 'Matchen...' : 'Contacten & eenheden matchen'}</span>
             </Button>
           )}
-          {fccEnabled && (
+          {fccEnabled && hasPermission('fcc:sync') && (
             <Button
               variant="secondary"
               icon={<RefreshCw className={`h-4 w-4 ${fccSync.isPending ? 'animate-spin' : ''}`} />}
