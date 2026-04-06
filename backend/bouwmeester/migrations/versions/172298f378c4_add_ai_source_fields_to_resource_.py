@@ -37,9 +37,17 @@ def upgrade() -> None:
         "resource_permission",
         sa.Column("ai_reason", sa.Text(), nullable=True),
     )
+    op.create_check_constraint(
+        "ck_resource_permission_source",
+        "resource_permission",
+        "source IN ('manual', 'ai')",
+    )
 
 
 def downgrade() -> None:
+    op.drop_constraint(
+        "ck_resource_permission_source", "resource_permission", type_="check"
+    )
     op.drop_column("resource_permission", "ai_reason")
     op.drop_column("resource_permission", "ai_confidence")
     op.drop_column("resource_permission", "source")

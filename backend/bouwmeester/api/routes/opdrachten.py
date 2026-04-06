@@ -3,6 +3,8 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import delete as sa_delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
@@ -15,6 +17,7 @@ from bouwmeester.core.org_context import (
     get_org_context,
 )
 from bouwmeester.core.permissions import require_permission
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.schema.opdracht import (
@@ -33,6 +36,7 @@ from bouwmeester.schema.opdracht import (
 )
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.notification_service import NotificationService
+from bouwmeester.services.opdracht_matching_service import OpdrachtMatchingService
 from bouwmeester.services.opdracht_task_service import OpdrachtTaskService
 from bouwmeester.utils.financieel import calculate_uitnutting
 
@@ -104,16 +108,20 @@ async def get_opdrachten_summary(
 @router.post("/match-contacts-bulk")
 async def match_contacts_bulk(
     current_user: OptionalUser,
+    force: bool = Query(
+        False,
+        description="Hermatchen voor alle opdrachten, ook met bestaande koppelingen",
+    ),
     db: AsyncSession = Depends(get_db),
     _perm=Depends(require_permission("opdracht:update")),
 ) -> dict:
-    """Match contacts for all opdrachten without linked members/eenheden."""
-    from bouwmeester.services.opdracht_matching_service import (
-        OpdrachtMatchingService,
-    )
+    """Match contacts for opdrachten without linked members/eenheden.
 
+    Pass ?force=true to re-match all opdrachten (including those that
+    already have links).
+    """
     svc = OpdrachtMatchingService(db)
-    result = await svc.match_all_unlinked()
+    result = await svc.match_all_unlinked(force=force)
 
     await log_activity(
         db,
@@ -309,10 +317,6 @@ async def delete_opdracht(
     titel = opdracht.titel
 
     # Clean up resource_permission rows (polymorphic FK, no CASCADE)
-    from sqlalchemy import delete as sa_delete
-
-    from bouwmeester.models.resource_permission import ResourcePermission
-
     await db.execute(
         sa_delete(ResourcePermission).where(
             ResourcePermission.resource_type == "opdracht",
@@ -398,14 +402,13 @@ async def add_member(
     await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
     require_found(await repo.get(id), "Opdracht")
-    from sqlalchemy.exc import IntegrityError
 
     try:
         member = await repo.add_member(id, data.person_id, data.rol)
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Persoon is al gekoppeld aan deze opdracht",
+            detail="Persoon is al gekoppeld aan deze opdracht met deze rol",
         )
 
     await log_activity(
@@ -524,14 +527,13 @@ async def add_eenheid(
     await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
     require_found(await repo.get(id), "Opdracht")
-    from sqlalchemy.exc import IntegrityError
 
     try:
         rp = await repo.add_eenheid(id, data.eenheid_id, data.rol)
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Eenheid is al gekoppeld aan deze opdracht",
+            detail="Eenheid is al gekoppeld aan deze opdracht met deze rol",
         )
 
     await log_activity(
@@ -649,10 +651,6 @@ async def match_contacts(
     await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
     opdracht = require_found(await repo.get(id), "Opdracht")
-
-    from bouwmeester.services.opdracht_matching_service import (
-        OpdrachtMatchingService,
-    )
 
     svc = OpdrachtMatchingService(db)
     created_rps = await svc.suggest_and_link(opdracht)

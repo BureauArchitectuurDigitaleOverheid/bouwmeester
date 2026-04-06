@@ -1,5 +1,6 @@
 """Service for LLM-based matching of persons/eenheden to opdrachten."""
 
+import asyncio
 import logging
 from uuid import UUID
 
@@ -15,6 +16,9 @@ from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.services.llm.base import DataSensitivity
 
 logger = logging.getLogger(__name__)
+
+# Module-level lock to prevent concurrent bulk matching operations
+_bulk_matching_lock = asyncio.Lock()
 
 
 class OpdrachtMatchingService:
@@ -35,19 +39,17 @@ class OpdrachtMatchingService:
 
         kandidaat_personen = []
         for p in all_persons:
-            eenheid_naam = ""
-            if p.organisatie_eenheden:
-                eenheid_naam = (
-                    p.organisatie_eenheden[0].naam
-                    if hasattr(p.organisatie_eenheden[0], "naam")
-                    else ""
-                )
+            eenheid_namen = [
+                e.naam
+                for e in (p.organisatie_eenheden or [])
+                if hasattr(e, "naam") and e.naam
+            ]
             kandidaat_personen.append(
                 {
                     "id": str(p.id),
                     "naam": p.naam,
                     "functie": p.functie or "",
-                    "eenheid": eenheid_naam,
+                    "eenheid": ", ".join(eenheid_namen),
                 }
             )
 
@@ -200,20 +202,35 @@ class OpdrachtMatchingService:
         )
         return created
 
-    async def match_all_unlinked(self) -> dict[str, int]:
-        """Match contacts for all opdrachten that have no members yet.
+    async def match_all_unlinked(self, force: bool = False) -> dict[str, int]:
+        """Match contacts for opdrachten that have no members yet.
+
+        Pass force=True to re-match all opdrachten (including those with
+        existing links - existing links are preserved, only new ones added).
 
         Returns {"matched": N, "skipped": M, "total": T}.
         """
-        from sqlalchemy import and_, exists
+        if _bulk_matching_lock.locked():
+            logger.warning("Bulk matching al bezig, overgeslagen")
+            return {"matched": 0, "skipped": 0, "total": 0, "status": "already_running"}
 
-        has_link = exists().where(
-            and_(
-                ResourcePermission.resource_type == "opdracht",
-                ResourcePermission.resource_id == Opdracht.id,
+        async with _bulk_matching_lock:
+            return await self._do_match_all(force=force)
+
+    async def _do_match_all(self, force: bool = False) -> dict[str, int]:
+        if force:
+            stmt = select(Opdracht).order_by(Opdracht.created_at)
+        else:
+            from sqlalchemy import and_, exists
+
+            has_link = exists().where(
+                and_(
+                    ResourcePermission.resource_type == "opdracht",
+                    ResourcePermission.resource_id == Opdracht.id,
+                )
             )
-        )
-        stmt = select(Opdracht).where(~has_link).order_by(Opdracht.created_at)
+            stmt = select(Opdracht).where(~has_link).order_by(Opdracht.created_at)
+
         result = await self.db.execute(stmt)
         opdrachten = list(result.scalars().all())
 

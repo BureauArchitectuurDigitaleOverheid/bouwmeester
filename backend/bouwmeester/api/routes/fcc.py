@@ -38,7 +38,7 @@ async def trigger_sync(
     db: AsyncSession = Depends(get_db),
     _perm=Depends(require_permission("fcc:sync")),
 ) -> FccSyncTriggerResponse:
-    """Trigger a manual FCC sync cycle (pull, and push if enabled)."""
+    """Trigger a manual FCC sync cycle (pull, push if enabled, then match contacts)."""
     from bouwmeester.services.fcc_import_service import FccImportService
 
     import_service = FccImportService(db)
@@ -51,7 +51,19 @@ async def trigger_sync(
         export_service = FccExportService(db)
         push_count = await export_service.push_pending()
 
-    return FccSyncTriggerResponse(pulled=pull_count, pushed=push_count)
+    contacts_matched = 0
+    if pull_count > 0:
+        from bouwmeester.services.opdracht_matching_service import (
+            OpdrachtMatchingService,
+        )
+
+        svc = OpdrachtMatchingService(db)
+        match_result = await svc.match_all_unlinked()
+        contacts_matched = match_result["matched"]
+
+    return FccSyncTriggerResponse(
+        pulled=pull_count, pushed=push_count, contacts_matched=contacts_matched
+    )
 
 
 @router.get(

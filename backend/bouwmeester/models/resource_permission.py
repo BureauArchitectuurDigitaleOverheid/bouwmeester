@@ -42,6 +42,10 @@ class ResourcePermission(Base):
             "(person_id IS NULL AND organisatie_eenheid_id IS NOT NULL)",
             name="ck_resource_permission_scope",
         ),
+        CheckConstraint(
+            "source IN ('manual', 'ai')",
+            name="ck_resource_permission_source",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
