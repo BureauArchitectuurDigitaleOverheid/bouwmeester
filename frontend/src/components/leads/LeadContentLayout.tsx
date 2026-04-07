@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, type ReactNode } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { User, Calendar, X } from 'lucide-react';
 import { InlineEditableField } from '@/components/common/InlineEditableField';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
@@ -48,6 +48,7 @@ export interface LeadContentLayoutProps {
   onNextActionChange?: (value: string | null) => Promise<void>;
   onNextActionDateChange?: (value: string | null) => Promise<void>;
   onTagsChange?: (tags: string[]) => Promise<void>;
+  onCreatedAtChange?: (value: string | null) => Promise<void>;
 
   // Context-specific sections
   rightColumnChildren?: ReactNode;
@@ -145,24 +146,18 @@ function TagsEditor({
   }, [onChange, tags]);
 
   // Close dropdown on click outside
-  const handleClickOutside = useCallback((e: MouseEvent) => {
-    if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-      setEditing(false);
-      setDropdownOpen(false);
-      setSearch('');
-    }
-  }, []);
-
-  // Attach/detach click outside listener
-  const prevEditing = useRef(false);
-  if (editing !== prevEditing.current) {
-    if (editing) {
-      document.addEventListener('mousedown', handleClickOutside);
-    } else {
-      document.removeEventListener('mousedown', handleClickOutside);
-    }
-    prevEditing.current = editing;
-  }
+  useEffect(() => {
+    if (!editing) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setEditing(false);
+        setDropdownOpen(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [editing]);
 
   if (!onChange) {
     if (tags.length === 0) return null;
@@ -281,6 +276,7 @@ export function LeadContentLayout({
   onNextActionChange,
   onNextActionDateChange,
   onTagsChange,
+  onCreatedAtChange,
   rightColumnChildren,
   bottomChildren,
 }: LeadContentLayoutProps) {
@@ -493,16 +489,36 @@ export function LeadContentLayout({
             <TagsEditor tags={tags} onChange={onTagsChange} />
           </div>
 
-          {/* Created at (always read-only) */}
-          {createdAt && (
+          {/* Created at */}
+          {(onCreatedAtChange || createdAt) && (
             <div className="text-sm">
-              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
-                Aangemaakt
-              </h4>
-              <span className="inline-flex items-center gap-1.5 text-text-secondary">
-                <Calendar className="h-4 w-4" />
-                {formatDateLong(createdAt)}
-              </span>
+              {onCreatedAtChange ? (
+                <InlineEditableField
+                  type="date"
+                  label="Datum"
+                  value={createdAt}
+                  onSave={onCreatedAtChange}
+                  displayValue={
+                    createdAt ? (
+                      <span className="inline-flex items-center gap-1.5 text-text-secondary">
+                        <Calendar className="h-4 w-4" />
+                        {formatDateLong(createdAt)}
+                      </span>
+                    ) : undefined
+                  }
+                  placeholder="Kies een datum..."
+                />
+              ) : (
+                <>
+                  <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
+                    Aangemaakt
+                  </h4>
+                  <span className="inline-flex items-center gap-1.5 text-text-secondary">
+                    <Calendar className="h-4 w-4" />
+                    {formatDateLong(createdAt!)}
+                  </span>
+                </>
+              )}
             </div>
           )}
         </div>

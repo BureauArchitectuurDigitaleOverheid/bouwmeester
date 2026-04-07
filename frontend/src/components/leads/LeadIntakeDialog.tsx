@@ -626,6 +626,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
             onBroughtByChange={async (v) => setBroughtById(v ?? '')}
             onInitiatiefChange={async (v) => setInitiatiefId(v ?? '')}
             onTagsChange={async (tags) => setSelectedTags(tags)}
+            onCreatedAtChange={async (v) => setLeadDate(v ?? '')}
             rightColumnChildren={
               <div className="space-y-4">
                 {contacts.map((contact, index) => (

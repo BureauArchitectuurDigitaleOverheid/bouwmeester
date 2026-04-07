@@ -36,6 +36,12 @@ export function InlineEditableField({
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const selectWrapperRef = useRef<HTMLDivElement>(null);
+  const editValueRef = useRef(editValue);
+
+  useEffect(() => {
+    editValueRef.current = editValue;
+  }, [editValue]);
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -80,12 +86,12 @@ export function InlineEditableField({
     }
   }, [editValue, save, cancel, type]);
 
-  // Click outside for richtext
+  // Click outside for richtext — use ref to avoid stale closure over editValue
   useEffect(() => {
     if (!editing || type !== 'richtext') return;
     const handleClickOutside = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        save(editValue);
+        save(editValueRef.current);
       }
     };
     // Slight delay to avoid immediate close on the click that opened editing
@@ -96,7 +102,24 @@ export function InlineEditableField({
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [editing, type, editValue, save]);
+  }, [editing, type, save]);
+
+  // Click outside for select — cancel without saving
+  useEffect(() => {
+    if (!editing || type !== 'select') return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (selectWrapperRef.current && !selectWrapperRef.current.contains(e.target as Node)) {
+        cancel();
+      }
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [editing, type, cancel]);
 
   if (!editing) {
     return (
@@ -127,7 +150,7 @@ export function InlineEditableField({
 
   if (type === 'select') {
     return (
-      <div>
+      <div ref={selectWrapperRef}>
         {label && (
           <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
             {label}
