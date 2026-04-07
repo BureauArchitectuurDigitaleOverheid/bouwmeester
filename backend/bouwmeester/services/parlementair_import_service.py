@@ -853,17 +853,24 @@ class ParlementairImportService:
         if person:
             return person
 
-        # Fallback: match on naam alone (pick first active person)
+        # Fallback: match on naam alone (pick oldest active person)
         stmt_naam = (
             select(Person)
             .where(
                 Person.naam == naam,
                 Person.is_active == True,  # noqa: E712
             )
-            .limit(1)
+            .order_by(Person.created_at.asc())
         )
         result_naam = await self.session.execute(stmt_naam)
-        person = result_naam.scalar_one_or_none()
+        matches = list(result_naam.scalars().all())
+        if len(matches) > 1:
+            logger.warning(
+                "Multiple persons found for naam '%s' — using oldest (id=%s)",
+                naam,
+                matches[0].id,
+            )
+        person = matches[0] if matches else None
 
         if person:
             return person

@@ -109,36 +109,40 @@ async def create_person(
                 detail=f"Er bestaat al een agent met de naam '{data.naam}'",
             )
 
-    # Check for duplicate names (non-agent persons) unless force=true
+    # Check for duplicate names (non-agent persons) unless force=true.
+    # Uses word-start matching: each word in the input must appear at the
+    # start of a word in the stored name (e.g. "Jan Vries" matches
+    # "Jan de Vries" but not "Marjan Smit").
     if not data.is_agent and not force:
-        escaped = escape_like(data.naam)
-        dup_stmt = (
-            select(Person)
-            .options(selectinload(Person.emails))
-            .where(
-                Person.naam.ilike(f"%{escaped}%"),
-                Person.is_active == True,  # noqa: E712
+        words = data.naam.strip().split()
+        if words:
+            dup_stmt = (
+                select(Person)
+                .options(selectinload(Person.emails))
+                .where(
+                    *[Person.naam.op("~*")(rf"\m{escape_like(w)}") for w in words],
+                    Person.is_active == True,  # noqa: E712
+                )
+                .limit(10)
             )
-            .limit(10)
-        )
-        dup_result = await db.execute(dup_stmt)
-        duplicates = list(dup_result.scalars().all())
-        if duplicates:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "message": "Er bestaan al personen met een vergelijkbare naam.",
-                    "duplicates": [
-                        {
-                            "id": str(d.id),
-                            "naam": d.naam,
-                            "email": d.default_email,
-                            "functie": d.functie,
-                        }
-                        for d in duplicates
-                    ],
-                },
-            )
+            dup_result = await db.execute(dup_stmt)
+            duplicates = list(dup_result.scalars().all())
+            if duplicates:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": "Er bestaan al personen met een vergelijkbare naam.",
+                        "duplicates": [
+                            {
+                                "id": str(d.id),
+                                "naam": d.naam,
+                                "email": d.default_email,
+                                "functie": d.functie,
+                            }
+                            for d in duplicates
+                        ],
+                    },
+                )
 
     repo = PersonRepository(db)
     person = await repo.create(data)
@@ -847,30 +851,70 @@ async def merge_persons(
 
     source = require_found(await db.get(Person, data.source_id), "Bronpersoon")
     require_found(await db.get(Person, data.target_id), "Doelpersoon")
+    source_naam = source.naam  # capture before delete
 
-    # Find all tables with a FK to person.id via SQLAlchemy metadata
-    # and update them.
+    # Find all tables with a FK to person.id via SQLAlchemy metadata.
     from sqlalchemy import inspect as sa_inspect
     from sqlalchemy import text as sa_text
 
-    def _get_fk_columns(sync_conn):
+    def _get_fk_info(sync_conn):
+        """Return (table, fk_col, unique_cols_involving_fk) tuples."""
         inspector = sa_inspect(sync_conn)
-        result = []
+        fk_cols: list[tuple[str, str]] = []
         for table_name in inspector.get_table_names():
             for fk in inspector.get_foreign_keys(table_name):
                 referred = fk["referred_table"]
-                cols = fk["referred_columns"]
-                if referred == "person" and cols == ["id"]:
+                if referred == "person" and fk["referred_columns"] == ["id"]:
                     for col in fk["constrained_columns"]:
-                        result.append((table_name, col))
-        return result
+                        fk_cols.append((table_name, col))
+
+        # Build set of (table, fk_col) that participate in a unique constraint
+        unique_sets: dict[tuple[str, str], list[list[str]]] = {}
+        for table_name, fk_col in fk_cols:
+            for uq in inspector.get_unique_constraints(table_name):
+                if fk_col in uq["column_names"]:
+                    key = (table_name, fk_col)
+                    unique_sets.setdefault(key, []).append(uq["column_names"])
+        return fk_cols, unique_sets
 
     conn = await db.connection()
-    fk_updates: list[tuple[str, str]] = await conn.run_sync(
-        lambda sync_conn: _get_fk_columns(sync_conn)
-    )
+    fk_cols, unique_sets = await conn.run_sync(_get_fk_info)
 
-    for table_name, col_name in fk_updates:
+    for table_name, col_name in fk_cols:
+        uq_col_lists = unique_sets.get((table_name, col_name))
+        if uq_col_lists:
+            # Delete source rows that would violate a unique constraint
+            # after the UPDATE (i.e. an equivalent row already exists for target).
+            for uq_cols in uq_col_lists:
+                other_cols = [c for c in uq_cols if c != col_name]
+                if not other_cols:
+                    # Unique on just the person FK: delete source row if target exists
+                    await db.execute(
+                        sa_text(
+                            f'DELETE FROM "{table_name}" '
+                            f'WHERE "{col_name}" = :source '
+                            f"AND EXISTS ("
+                            f'  SELECT 1 FROM "{table_name}" t2 '
+                            f'  WHERE t2."{col_name}" = :target'
+                            f")"
+                        ),
+                        {"source": data.source_id, "target": data.target_id},
+                    )
+                else:
+                    match_clause = " AND ".join(
+                        f's."{c}" = t."{c}"' for c in other_cols
+                    )
+                    await db.execute(
+                        sa_text(
+                            f'DELETE FROM "{table_name}" s '
+                            f"USING {table_name} t "
+                            f'WHERE s."{col_name}" = :source '
+                            f'AND t."{col_name}" = :target '
+                            f"AND {match_clause}"
+                        ),
+                        {"source": data.source_id, "target": data.target_id},
+                    )
+
         await db.execute(
             sa_text(
                 f'UPDATE "{table_name}" SET "{col_name}" = :target '
@@ -891,7 +935,7 @@ async def merge_persons(
         details={
             "source_id": str(data.source_id),
             "target_id": str(data.target_id),
-            "source_naam": source.naam,
+            "source_naam": source_naam,
         },
     )
 

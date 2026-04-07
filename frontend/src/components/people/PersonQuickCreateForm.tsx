@@ -91,7 +91,10 @@ export function PersonQuickCreateForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    doCreate(duplicates.length > 0);
+    // If duplicates are shown, Enter should not bypass the warning — the user
+    // must explicitly click "Toch aanmaken" or select an existing person.
+    if (duplicates.length > 0) return;
+    doCreate(false);
   };
 
   const handleSelectExisting = (personId: string) => {
