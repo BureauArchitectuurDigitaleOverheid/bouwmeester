@@ -11,6 +11,7 @@ import { EdgeSchemaManager } from '@/components/admin/EdgeSchemaManager';
 import { SharingManager } from '@/components/admin/SharingManager';
 import { RoleManager } from '@/components/admin/RoleManager';
 import { EenheidBeheerManager } from '@/components/admin/EenheidBeheerManager';
+import { DuplicateManager } from '@/components/admin/DuplicateManager';
 
 type Tab =
   | 'whitelist'
@@ -21,7 +22,8 @@ type Tab =
   | 'schema'
   | 'users'
   | 'sharing'
-  | 'eenheden';
+  | 'eenheden'
+  | 'duplicates';
 
 export function AdminPage() {
   const { person, oidcConfigured, loading, viewAsNonAdmin } = useAuth();
@@ -73,6 +75,7 @@ export function AdminPage() {
   }
   if (hasPermission('people:assign_role')) {
     tabs.push({ id: 'users', label: 'Gebruikers' });
+    tabs.push({ id: 'duplicates', label: 'Duplicaten' });
   }
   if (hasPermission('org:manage')) {
     tabs.push({ id: 'eenheden', label: 'Eenheden' });
@@ -114,6 +117,7 @@ export function AdminPage() {
           {activeTab === 'requests' && <AccessRequestManager />}
           {activeTab === 'placements' && <PlacementRequestManager />}
           {activeTab === 'users' && <RoleManager />}
+          {activeTab === 'duplicates' && <DuplicateManager />}
           {activeTab === 'database' && <DatabaseBackup />}
           {activeTab === 'config' && <ConfigManager />}
           {activeTab === 'schema' && <EdgeSchemaManager />}

@@ -99,3 +99,26 @@ export async function removePersonPhone(personId: string, phoneId: string): Prom
 export async function setDefaultPhone(personId: string, phoneId: string): Promise<PersonPhone> {
   return apiPost<PersonPhone>(`/api/people/${personId}/phones/${phoneId}/set-default`, {});
 }
+
+// Duplicates & Merge
+export interface DuplicateGroupMember {
+  id: string;
+  naam: string;
+  email?: string | null;
+  functie?: string | null;
+  is_active: boolean;
+  created_at?: string | null;
+}
+
+export interface DuplicateGroup {
+  naam: string;
+  members: DuplicateGroupMember[];
+}
+
+export async function getDuplicatePersons(): Promise<DuplicateGroup[]> {
+  return apiGet<DuplicateGroup[]>('/api/people/duplicates');
+}
+
+export async function mergePersons(sourceId: string, targetId: string): Promise<Person> {
+  return apiPost<Person>('/api/people/merge', { source_id: sourceId, target_id: targetId });
+}

@@ -24,6 +24,8 @@ from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.person import (
     PHONE_LABELS,
     ApiKeyResponse,
+    DuplicateGroup,
+    DuplicateGroupMember,
     PersonCreate,
     PersonCreateResponse,
     PersonDetailResponse,
@@ -826,6 +828,54 @@ async def set_default_phone(
     await db.flush()
     await db.refresh(target)
     return PersonPhoneResponse.model_validate(target)
+
+
+# --- Duplicates ---
+
+
+@router.get("/duplicates", response_model=list[DuplicateGroup])
+async def list_duplicate_persons(
+    admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[DuplicateGroup]:
+    """Detect persons with identical names (admin only).
+
+    Groups active persons by exact lowercased naam. Only returns groups
+    with 2+ members.
+    """
+    stmt = (
+        select(Person)
+        .options(selectinload(Person.emails))
+        .where(Person.is_active == True)  # noqa: E712
+        .order_by(func.lower(Person.naam), Person.created_at.asc())
+    )
+    result = await db.execute(stmt)
+    persons = list(result.scalars().all())
+
+    # Group by lowercased name
+    groups: dict[str, list[Person]] = {}
+    for p in persons:
+        key = p.naam.strip().lower()
+        groups.setdefault(key, []).append(p)
+
+    return [
+        DuplicateGroup(
+            naam=members[0].naam,
+            members=[
+                DuplicateGroupMember(
+                    id=m.id,
+                    naam=m.naam,
+                    email=m.default_email,
+                    functie=m.functie,
+                    is_active=m.is_active,
+                    created_at=m.created_at,
+                )
+                for m in members
+            ],
+        )
+        for members in groups.values()
+        if len(members) >= 2
+    ]
 
 
 # --- Merge ---
