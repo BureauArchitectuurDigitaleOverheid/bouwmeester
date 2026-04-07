@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, ChevronDown, ChevronRight, Shield } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, Shield, Merge } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { usePeople } from '@/hooks/usePeople';
+import { usePeople, useMergePersons } from '@/hooks/usePeople';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrgContext } from '@/contexts/OrgContext';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -665,6 +665,10 @@ export function RoleManager() {
   const { data: roles, isLoading: loadingRoles } = useRoles();
   const [expandedPersonId, setExpandedPersonId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
+  const [showMergeConfirm, setShowMergeConfirm] = useState(false);
+  const merge = useMergePersons();
 
   const filteredPeople = useMemo(() => {
     if (!people) return [];
@@ -677,6 +681,34 @@ export function RoleManager() {
         (p.functie && p.functie.toLowerCase().includes(q)),
     );
   }, [people, searchQuery]);
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        if (mergeTargetId === id) setMergeTargetId(null);
+      } else {
+        next.add(id);
+        if (!mergeTargetId) setMergeTargetId(id);
+      }
+      return next;
+    });
+  };
+
+  const selectedPeople = useMemo(
+    () => (people ?? []).filter((p) => selectedIds.has(p.id)),
+    [people, selectedIds],
+  );
+
+  const handleMerge = async () => {
+    if (!mergeTargetId || selectedIds.size < 2) return;
+    const sourceIds = [...selectedIds].filter((id) => id !== mergeTargetId);
+    await merge.mutateAsync({ sourceIds, targetId: mergeTargetId });
+    setSelectedIds(new Set());
+    setMergeTargetId(null);
+    setShowMergeConfirm(false);
+  };
 
   if (loadingPeople || loadingRoles) {
     return (
@@ -713,12 +745,92 @@ export function RoleManager() {
         className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
       />
 
+      {/* Merge bar */}
+      {selectedIds.size >= 2 && !showMergeConfirm && (
+        <div className="flex items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2.5">
+          <span className="text-sm text-text">
+            {selectedIds.size} personen geselecteerd
+          </span>
+          <button
+            onClick={() => setShowMergeConfirm(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+          >
+            <Merge className="h-3.5 w-3.5" />
+            Samenvoegen
+          </button>
+          <button
+            onClick={() => {
+              setSelectedIds(new Set());
+              setMergeTargetId(null);
+            }}
+            className="text-sm text-text-secondary hover:text-text transition-colors"
+          >
+            Deselecteren
+          </button>
+        </div>
+      )}
+
+      {/* Merge confirmation */}
+      {showMergeConfirm && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3">
+          <p className="text-sm font-medium text-amber-800">
+            Welke persoon wil je behouden? Alle referenties van de andere worden overgeheveld.
+          </p>
+          <div className="space-y-1">
+            {selectedPeople.map((p) => (
+              <label
+                key={p.id}
+                className={`flex items-center gap-2 text-sm px-2 py-1.5 rounded cursor-pointer ${
+                  mergeTargetId === p.id
+                    ? 'bg-white border border-primary-200'
+                    : 'hover:bg-amber-100/50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="merge-target"
+                  checked={mergeTargetId === p.id}
+                  onChange={() => setMergeTargetId(p.id)}
+                  className="accent-primary-600"
+                />
+                <span>
+                  {p.naam}
+                  {p.email && <span className="text-text-secondary ml-1">({p.email})</span>}
+                  {p.functie && <span className="text-text-secondary ml-1">- {formatFunctie(p.functie)}</span>}
+                </span>
+                {mergeTargetId === p.id && (
+                  <span className="ml-auto text-xs text-primary-600 font-medium">behouden</span>
+                )}
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleMerge}
+              disabled={merge.isPending || !mergeTargetId}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+            >
+              <Merge className="h-3.5 w-3.5" />
+              {merge.isPending ? 'Samenvoegen...' : 'Bevestig samenvoegen'}
+            </button>
+            <button
+              onClick={() => setShowMergeConfirm(false)}
+              disabled={merge.isPending}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              Annuleren
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* People list with expandable role panels */}
       <div className="border border-border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-border">
               <th className="w-8 px-3 py-2.5"></th>
+              <th className="w-8 px-1 py-2.5"></th>
               <th className="text-left px-4 py-2.5 font-medium text-text-secondary">
                 Naam
               </th>
@@ -747,6 +859,8 @@ export function RoleManager() {
                   isAgent={person.is_agent}
                   isExpanded={isExpanded}
                   isSelf={authPerson?.id === person.id}
+                  selected={selectedIds.has(person.id)}
+                  onToggleSelect={() => toggleSelected(person.id)}
                   onToggle={() =>
                     setExpandedPersonId(isExpanded ? null : person.id)
                   }
@@ -756,7 +870,7 @@ export function RoleManager() {
             {filteredPeople.length === 0 && (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-4 py-8 text-center text-text-secondary"
                 >
                   {searchQuery
@@ -781,6 +895,8 @@ function PersonRow({
   isAgent,
   isExpanded,
   isSelf,
+  selected,
+  onToggleSelect,
   onToggle,
 }: {
   personId: string;
@@ -791,6 +907,8 @@ function PersonRow({
   isAgent?: boolean;
   isExpanded: boolean;
   isSelf: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onToggle: () => void;
 }) {
   const online = isPersonOnline({ last_seen_at: lastSeenAt, is_agent: isAgent });
@@ -798,29 +916,37 @@ function PersonRow({
   return (
     <>
       <tr
-        onClick={onToggle}
         className="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors cursor-pointer"
       >
-        <td className="px-3 py-2.5 text-text-secondary">
+        <td className="px-3 py-2.5 text-text-secondary" onClick={onToggle}>
           {isExpanded ? (
             <ChevronDown className="h-4 w-4" />
           ) : (
             <ChevronRight className="h-4 w-4" />
           )}
         </td>
-        <td className="px-4 py-2.5 text-text">
+        <td className="px-1 py-2.5">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            onClick={(e) => e.stopPropagation()}
+            className="accent-primary-600 h-3.5 w-3.5"
+          />
+        </td>
+        <td className="px-4 py-2.5 text-text" onClick={onToggle}>
           {naam}
           {isSelf && (
             <span className="ml-1.5 text-xs text-text-secondary">(jij)</span>
           )}
         </td>
-        <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
+        <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell" onClick={onToggle}>
           {email || '-'}
         </td>
-        <td className="px-4 py-2.5 text-text-secondary hidden md:table-cell">
+        <td className="px-4 py-2.5 text-text-secondary hidden md:table-cell" onClick={onToggle}>
           {formatFunctie(functie) || '-'}
         </td>
-        <td className="px-4 py-2.5 text-text-secondary hidden lg:table-cell">
+        <td className="px-4 py-2.5 text-text-secondary hidden lg:table-cell" onClick={onToggle}>
           {online ? (
             <span className="inline-flex items-center gap-1.5 text-green-600">
               <span className="block h-2 w-2 rounded-full bg-green-500" />
@@ -833,7 +959,7 @@ function PersonRow({
       </tr>
       {isExpanded && (
         <tr className="border-b-2 border-primary-200">
-          <td colSpan={5} className="p-0">
+          <td colSpan={6} className="p-0">
             <PersonRolesPanel personId={personId} />
           </td>
         </tr>
