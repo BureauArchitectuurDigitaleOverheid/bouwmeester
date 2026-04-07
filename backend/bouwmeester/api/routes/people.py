@@ -957,7 +957,7 @@ async def merge_persons(
                     await db.execute(
                         sa_text(
                             f'DELETE FROM "{table_name}" s '
-                            f"USING {table_name} t "
+                            f'USING "{table_name}" t '
                             f'WHERE s."{col_name}" = :source '
                             f'AND t."{col_name}" = :target '
                             f"AND {match_clause}"
