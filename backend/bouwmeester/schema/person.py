@@ -207,22 +207,6 @@ class PersonMergeRequest(BaseModel):
     target_id: UUID
 
 
-class DuplicateGroupMember(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    naam: str
-    email: str | None = None
-    functie: str | None = None
-    is_active: bool = True
-    created_at: datetime | None = None
-
-
-class DuplicateGroup(BaseModel):
-    naam: str
-    members: list[DuplicateGroupMember]
-
-
 class DuplicateCheckHit(BaseModel):
     id: UUID
     naam: str

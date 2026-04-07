@@ -112,25 +112,7 @@ export async function checkDuplicates(naam: string): Promise<DuplicateCheckHit[]
   return apiGet<DuplicateCheckHit[]>('/api/people/check-duplicates', { naam });
 }
 
-// Duplicates & Merge
-export interface DuplicateGroupMember {
-  id: string;
-  naam: string;
-  email?: string | null;
-  functie?: string | null;
-  is_active: boolean;
-  created_at?: string | null;
-}
-
-export interface DuplicateGroup {
-  naam: string;
-  members: DuplicateGroupMember[];
-}
-
-export async function getDuplicatePersons(): Promise<DuplicateGroup[]> {
-  return apiGet<DuplicateGroup[]>('/api/people/duplicates');
-}
-
+// Merge
 export async function mergePersons(sourceIds: string[], targetId: string): Promise<Person> {
   return apiPost<Person>('/api/people/merge', { source_ids: sourceIds, target_id: targetId });
 }

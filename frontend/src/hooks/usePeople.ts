@@ -17,7 +17,6 @@ import {
   addPersonPhone,
   removePersonPhone,
   setDefaultPhone,
-  getDuplicatePersons,
   mergePersons,
 } from '@/api/people';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -228,20 +227,13 @@ export function useSetDefaultPhone() {
   });
 }
 
-// Duplicate detection & merge
-
-export function useDuplicatePersons() {
-  return useQuery({
-    queryKey: queryKeys.people.duplicates,
-    queryFn: getDuplicatePersons,
-  });
-}
+// Merge
 
 export function useMergePersons() {
   return useMutationWithError({
     mutationFn: ({ sourceIds, targetId }: { sourceIds: string[]; targetId: string }) =>
       mergePersons(sourceIds, targetId),
     errorMessage: 'Fout bij samenvoegen personen',
-    invalidateKeys: [queryKeys.people.all, queryKeys.people.duplicates],
+    invalidateKeys: [queryKeys.people.all],
   });
 }

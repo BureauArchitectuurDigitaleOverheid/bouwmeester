@@ -46,7 +46,6 @@ export const queryKeys = {
     summary: (id: string | null) => ['people', id, 'summary'] as const,
     organisaties: (personId: string | null, actief: boolean) => ['people', personId, 'organisaties', { actief }] as const,
     search: (query: string) => ['people', 'search', query] as const,
-    duplicates: ['people', 'duplicates'] as const,
   },
 
   // --- Organisatie ---
