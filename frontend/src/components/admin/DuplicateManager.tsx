@@ -7,6 +7,9 @@ function MemberLabel({ member }: { member: DuplicateGroupMember }) {
   return (
     <span>
       {member.naam}
+      {!member.is_active && (
+        <span className="ml-1 text-xs text-red-500 font-medium">(inactief)</span>
+      )}
       {member.email && <span className="text-text-secondary ml-1">({member.email})</span>}
       {member.functie && (
         <span className="text-text-secondary ml-1">- {member.functie}</span>
