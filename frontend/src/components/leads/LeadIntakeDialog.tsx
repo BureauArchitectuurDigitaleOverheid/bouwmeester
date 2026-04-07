@@ -4,10 +4,9 @@ import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
-import { RichTextFormField } from '@/components/common/RichTextFormField';
+import { LeadContentLayout } from '@/components/leads/LeadContentLayout';
 import { useCreateLead, useParseLeadIntake, useCheckDuplicates } from '@/hooks/useLeads';
 import { addTagToLead as addTagToLeadApi, uploadLeadAttachment as uploadLeadAttachmentApi, addLeadContact as addLeadContactApi } from '@/api/leads';
-import { useTags } from '@/hooks/useTags';
 import { isEmailFile, parseEmailFile, emailToRawText } from '@/utils/emailParser';
 import type { ParsedEmail } from '@/utils/emailParser';
 import { useToast } from '@/contexts/ToastContext';
@@ -16,9 +15,8 @@ import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { createPerson } from '@/api/people';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
-import { LeadStage, LEAD_STAGE_ORDER, LEAD_STAGE_LABELS, LEAD_STAGE_COLORS, INITIATIEF_COLORS, formatFunctie } from '@/types';
+import { LeadStage, LEAD_STAGE_LABELS, INITIATIEF_COLORS, formatFunctie } from '@/types';
 import type { LeadParseResult } from '@/types';
-import { buildPersonOptions } from '@/utils/personOptions';
 
 interface LeadIntakeDialogProps {
   open: boolean;
@@ -65,8 +63,6 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const [organization, setOrganization] = useState('');
   const [description, setDescription] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [tagSearch, setTagSearch] = useState('');
-  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
   const [stage, setStage] = useState<LeadStage>(LeadStage.INBOX);
   const [contacts, setContacts] = useState<ContactEntry[]>([emptyContact()]);
   const updateContact = useCallback((index: number, updates: Partial<ContactEntry>) => {
@@ -84,20 +80,8 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const { data: initiatieven } = useInitiatieven();
   const createInitiatiefMutation = useCreateInitiatief();
   const { data: people } = usePeople();
-  const { data: allTags } = useTags();
   const { openLeadDetail } = useLeadDetail();
   const { data: duplicates } = useCheckDuplicates(title, organization || undefined);
-  const tagContainerRef = useRef<HTMLDivElement>(null);
-
-  // Assignee options: current person first (with "(mij)")
-  const assigneeOptions = useMemo(
-    () => buildPersonOptions(people ?? [], currentPerson, (p) => ({
-      value: p.id,
-      label: p.naam,
-      description: formatFunctie(p.functie),
-    })),
-    [people, currentPerson],
-  );
 
   // Contact options: plain alphabetical, no "mij" at top
   const contactOptions = useMemo(
@@ -268,26 +252,6 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     }
   }, [firstContactName, people, updateContact]);
 
-  // Filter tags for search dropdown
-  const filteredTags = useMemo(
-    () =>
-      (allTags ?? [])
-        .filter((t) => !selectedTags.includes(t.name))
-        .filter((t) => (tagSearch ? t.name.toLowerCase().includes(tagSearch.toLowerCase()) : false)),
-    [allTags, selectedTags, tagSearch],
-  );
-
-  // Close tag dropdown on click outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (tagContainerRef.current && !tagContainerRef.current.contains(e.target as Node)) {
-        setTagDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   const reset = useCallback(() => {
     setStep('input');
     setRawText('');
@@ -300,8 +264,6 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     setOrganization('');
     setDescription('');
     setSelectedTags([]);
-    setTagSearch('');
-    setTagDropdownOpen(false);
     setStage(LeadStage.INBOX);
     setContacts([emptyContact()]);
     setAssigneeId('');
@@ -616,287 +578,143 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
             </p>
           )}
 
-          {/* Two-column layout */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-            {/* LEFT COLUMN: Lead info */}
-            <div className="space-y-4">
-              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Lead</h4>
-
-              <div>
-                <label className="block text-sm font-medium text-text mb-1">
-                  Titel <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                  placeholder="Titel van de lead"
-                  autoFocus
-                />
-              </div>
-
-              {duplicates && duplicates.length > 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-sm font-medium text-amber-800 mb-1">
-                    Vergelijkbare leads gevonden:
-                  </p>
-                  <ul className="space-y-1">
-                    {duplicates.map((d) => (
-                      <li key={d.id} className="text-sm">
-                        <button
-                          type="button"
-                          onClick={() => { openLeadDetail(d.id); handleClose(); }}
-                          className="text-primary-600 hover:underline"
-                        >
-                          {d.title}
-                        </button>
-                        <span className="text-text-secondary ml-1">
-                          ({d.organization ?? 'geen organisatie'} - {LEAD_STAGE_LABELS[d.stage as LeadStage]})
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-text mb-1">
-                  Status
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {LEAD_STAGE_ORDER.map((s) => (
+          {duplicates && duplicates.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm font-medium text-amber-800 mb-1">
+                Vergelijkbare leads gevonden:
+              </p>
+              <ul className="space-y-1">
+                {duplicates.map((d) => (
+                  <li key={d.id} className="text-sm">
                     <button
-                      key={s}
                       type="button"
-                      onClick={() => setStage(s)}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                        stage === s
-                          ? `${LEAD_STAGE_COLORS[s]} ring-2 ring-offset-1 ring-current`
-                          : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
-                      }`}
+                      onClick={() => { openLeadDetail(d.id); handleClose(); }}
+                      className="text-primary-600 hover:underline"
                     >
-                      {LEAD_STAGE_LABELS[s]}
+                      {d.title}
                     </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-text mb-1">
-                    Datum
-                  </label>
-                  <input
-                    type="date"
-                    value={leadDate}
-                    onChange={(e) => setLeadDate(e.target.value)}
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-text mb-1">
-                    Organisatie
-                  </label>
-                  <input
-                    type="text"
-                    value={organization}
-                    onChange={(e) => setOrganization(e.target.value)}
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                    placeholder="Naam van de organisatie"
-                  />
-                </div>
-              </div>
-
-              <RichTextFormField
-                label="Beschrijving"
-                value={description}
-                onChange={setDescription}
-                rows={5}
-                placeholder="Korte beschrijving... Gebruik @ voor personen, # voor nodes/taken"
-              />
-
-              <div>
-                <label className="block text-sm font-medium text-text mb-1">
-                  Tags
-                </label>
-
-                {/* Selected tags as removable chips */}
-                {selectedTags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {selectedTags.map((tag) => (
-                      <span
-                        key={tag}
-                        title={tag}
-                        className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 px-2.5 py-0.5 text-xs font-medium"
-                      >
-                        {tag.includes('/') ? tag.split('/').pop() : tag}
-                        <button
-                          type="button"
-                          onClick={() => setSelectedTags((prev) => prev.filter((t) => t !== tag))}
-                          className="hover:text-red-500"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Search input for adding tags */}
-                <div className="relative" ref={tagContainerRef}>
-                  <input
-                    type="text"
-                    value={tagSearch}
-                    onChange={(e) => {
-                      setTagSearch(e.target.value);
-                      setTagDropdownOpen(true);
-                    }}
-                    onFocus={() => { if (tagSearch) setTagDropdownOpen(true); }}
-                    placeholder="Zoek of typ een tag..."
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && tagSearch.trim()) {
-                        e.preventDefault();
-                        if (!selectedTags.includes(tagSearch.trim())) {
-                          setSelectedTags((prev) => [...prev, tagSearch.trim()]);
-                        }
-                        setTagSearch('');
-                        setTagDropdownOpen(false);
-                      }
-                    }}
-                  />
-
-                  {/* Dropdown with matching existing tags */}
-                  {tagDropdownOpen && tagSearch && filteredTags.length > 0 && (
-                    <div className="absolute z-10 mt-1 w-full bg-white border border-border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                      {filteredTags.slice(0, 10).map((tag) => (
-                        <button
-                          key={tag.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedTags((prev) => [...prev, tag.name]);
-                            setTagSearch('');
-                            setTagDropdownOpen(false);
-                          }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors"
-                        >
-                          {tag.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+                    <span className="text-text-secondary ml-1">
+                      ({d.organization ?? 'geen organisatie'} - {LEAD_STAGE_LABELS[d.stage as LeadStage]})
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
-
-            {/* RIGHT COLUMN: People */}
-            <div className="space-y-4">
-              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Personen</h4>
-
-              <CreatableSelect
-                label="Binnengebracht door"
-                value={broughtById}
-                onChange={setBroughtById}
-                options={assigneeOptions}
-                placeholder="Zoek een teamlid..."
-              />
-
-              <CreatableSelect
-                label="Verantwoordelijke"
-                value={assigneeId}
-                onChange={setAssigneeId}
-                options={assigneeOptions}
-                placeholder="Zoek een persoon..."
-                onClear={() => setAssigneeId('')}
-              />
-
-              {contacts.map((contact, index) => (
-                <div key={index} className="space-y-4">
-                  {index > 0 && (
-                    <div className="flex items-center justify-between pt-2 border-t border-border">
-                      <span className="text-xs font-medium text-text-secondary">Extra contactpersoon</span>
-                      <button
-                        type="button"
-                        onClick={() => setContacts(prev => prev.filter((_, i) => i !== index))}
-                        className="p-0.5 text-text-secondary hover:text-red-500 transition-colors"
-                        title="Verwijderen"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
-
-                  <CreatableSelect
-                    label={index === 0 ? "Contactpersoon (extern)" : "Contactpersoon"}
-                    value={contact.personId}
-                    onChange={(val) => {
-                      const person = people?.find((p) => p.id === val);
-                      updateContact(index, { personId: val, name: person?.naam ?? contact.name });
-                    }}
-                    options={contactOptions}
-                    placeholder="Zoek of typ een naam..."
-                    onCreate={async (name) => {
-                      updateContact(index, { name, personId: '' });
-                      return null;
-                    }}
-                    createLabel="Nieuw contact"
-                    displayValue={!contact.personId && contact.name ? contact.name : undefined}
-                    onClear={() => {
-                      updateContact(index, emptyContact());
-                    }}
-                  />
-
-                  {(contact.personId || contact.name) && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-text mb-1">
-                          E-mail
-                        </label>
-                        <input
-                          type="email"
-                          value={contact.email}
-                          onChange={(e) => updateContact(index, { email: e.target.value })}
-                          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                          placeholder="email@organisatie.nl"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-text mb-1">
-                          Telefoon
-                        </label>
-                        <input
-                          type="tel"
-                          value={contact.phone}
-                          onChange={(e) => updateContact(index, { phone: e.target.value })}
-                          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                          placeholder="06-12345678"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {contacts.length < 2 && (
-                <button
-                  type="button"
-                  onClick={() => setContacts(prev => [...prev, emptyContact()])}
-                  className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-primary-600 transition-colors"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Extra contactpersoon toevoegen
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Files + buttons below both columns */}
-          {files.length > 0 && (
-            <p className="text-xs text-text-secondary">
-              {files.length} {files.length === 1 ? 'bijlage' : 'bijlagen'} worden meegestuurd
-            </p>
           )}
+
+          <LeadContentLayout
+            title={title}
+            stage={stage}
+            description={description}
+            organization={organization}
+            assigneeId={assigneeId}
+            assigneeName={assigneeId ? (people?.find(p => p.id === assigneeId)?.naam ?? null) : null}
+            broughtById={broughtById}
+            broughtByName={broughtById ? (people?.find(p => p.id === broughtById)?.naam ?? null) : null}
+            initiatiefId={initiatiefId}
+            initiatiefName={initiatiefId ? (initiatieven?.find(i => i.id === initiatiefId)?.naam ?? null) : null}
+            initiatiefKleur={initiatiefId ? (initiatieven?.find(i => i.id === initiatiefId)?.kleur ?? null) : null}
+            nextAction={null}
+            nextActionDate={null}
+            createdAt={leadDate}
+            tags={selectedTags}
+            onTitleChange={async (v) => setTitle(v ?? '')}
+            onStageChange={async (v) => setStage(v)}
+            onDescriptionChange={async (v) => setDescription(v ?? '')}
+            onOrganizationChange={async (v) => setOrganization(v ?? '')}
+            onAssigneeChange={async (v) => setAssigneeId(v ?? '')}
+            onBroughtByChange={async (v) => setBroughtById(v ?? '')}
+            onInitiatiefChange={async (v) => setInitiatiefId(v ?? '')}
+            onTagsChange={async (tags) => setSelectedTags(tags)}
+            rightColumnChildren={
+              <div className="space-y-4">
+                {contacts.map((contact, index) => (
+                  <div key={index} className="space-y-4">
+                    {index > 0 && (
+                      <div className="flex items-center justify-between pt-2 border-t border-border">
+                        <span className="text-xs font-medium text-text-secondary">Extra contactpersoon</span>
+                        <button
+                          type="button"
+                          onClick={() => setContacts(prev => prev.filter((_, i) => i !== index))}
+                          className="p-0.5 text-text-secondary hover:text-red-500 transition-colors"
+                          title="Verwijderen"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    <CreatableSelect
+                      label={index === 0 ? "Contactpersoon (extern)" : "Contactpersoon"}
+                      value={contact.personId}
+                      onChange={(val) => {
+                        const person = people?.find((p) => p.id === val);
+                        updateContact(index, { personId: val, name: person?.naam ?? contact.name });
+                      }}
+                      options={contactOptions}
+                      placeholder="Zoek of typ een naam..."
+                      onCreate={async (name) => {
+                        updateContact(index, { name, personId: '' });
+                        return null;
+                      }}
+                      createLabel="Nieuw contact"
+                      displayValue={!contact.personId && contact.name ? contact.name : undefined}
+                      onClear={() => {
+                        updateContact(index, emptyContact());
+                      }}
+                    />
+
+                    {(contact.personId || contact.name) && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-text mb-1">
+                            E-mail
+                          </label>
+                          <input
+                            type="email"
+                            value={contact.email}
+                            onChange={(e) => updateContact(index, { email: e.target.value })}
+                            className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+                            placeholder="email@organisatie.nl"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-text mb-1">
+                            Telefoon
+                          </label>
+                          <input
+                            type="tel"
+                            value={contact.phone}
+                            onChange={(e) => updateContact(index, { phone: e.target.value })}
+                            className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
+                            placeholder="06-12345678"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {contacts.length < 2 && (
+                  <button
+                    type="button"
+                    onClick={() => setContacts(prev => [...prev, emptyContact()])}
+                    className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-primary-600 transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Extra contactpersoon toevoegen
+                  </button>
+                )}
+              </div>
+            }
+            bottomChildren={
+              files.length > 0 ? (
+                <p className="text-xs text-text-secondary">
+                  {files.length} {files.length === 1 ? 'bijlage' : 'bijlagen'} worden meegestuurd
+                </p>
+              ) : undefined
+            }
+          />
 
           <div className="flex items-center justify-end gap-2 pt-4">
             <Button variant="ghost" onClick={() => setStep('input')}>
