@@ -17,6 +17,8 @@ import {
   addPersonPhone,
   removePersonPhone,
   setDefaultPhone,
+  getDuplicatePersons,
+  mergePersons,
 } from '@/api/people';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
@@ -41,7 +43,8 @@ export function usePerson(id: string | null) {
 
 export function useCreatePerson() {
   return useMutationWithError({
-    mutationFn: (data: PersonCreate) => createPerson(data),
+    mutationFn: ({ force, ...data }: PersonCreate & { force?: boolean }) =>
+      createPerson(data, force),
     errorMessage: 'Fout bij aanmaken persoon',
     invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
   });
@@ -222,5 +225,23 @@ export function useSetDefaultPhone() {
     }) => setDefaultPhone(personId, phoneId),
     errorMessage: 'Fout bij instellen standaard telefoon',
     invalidateKeys: [queryKeys.people.all],
+  });
+}
+
+// Duplicate detection & merge
+
+export function useDuplicatePersons() {
+  return useQuery({
+    queryKey: queryKeys.people.duplicates,
+    queryFn: getDuplicatePersons,
+  });
+}
+
+export function useMergePersons() {
+  return useMutationWithError({
+    mutationFn: ({ sourceIds, targetId }: { sourceIds: string[]; targetId: string }) =>
+      mergePersons(sourceIds, targetId),
+    errorMessage: 'Fout bij samenvoegen personen',
+    invalidateKeys: [queryKeys.people.all, queryKeys.people.duplicates],
   });
 }

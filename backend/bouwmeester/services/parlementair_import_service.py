@@ -835,14 +835,42 @@ class ParlementairImportService:
         await self.session.flush()
 
     async def _find_or_create_person(self, naam: str, kamer: str) -> Person:
-        """Find a person by name+functie or create a new external person record."""
+        """Find a person by name+functie or create a new external person record.
+
+        First tries exact match on naam+functie. If not found, falls back to
+        matching on naam alone to avoid creating duplicates when the same person
+        was added manually without a functie.
+        """
         functie = f"Kamerlid {kamer}"
+        # Exact match on naam + functie
         stmt = select(Person).where(
             Person.naam == naam,
             Person.functie == functie,
         )
         result = await self.session.execute(stmt)
         person = result.scalar_one_or_none()
+
+        if person:
+            return person
+
+        # Fallback: match on naam alone (pick oldest active person)
+        stmt_naam = (
+            select(Person)
+            .where(
+                Person.naam == naam,
+                Person.is_active == True,  # noqa: E712
+            )
+            .order_by(Person.created_at.asc())
+        )
+        result_naam = await self.session.execute(stmt_naam)
+        matches = list(result_naam.scalars().all())
+        if len(matches) > 1:
+            logger.warning(
+                "Multiple persons found for naam '%s' — using oldest (id=%s)",
+                naam,
+                matches[0].id,
+            )
+        person = matches[0] if matches else None
 
         if person:
             return person

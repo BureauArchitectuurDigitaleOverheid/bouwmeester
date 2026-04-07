@@ -369,7 +369,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 ]}
                 placeholder="Zoek een persoon..."
                 onCreate={async (name) => {
-                  const result = await createPerson({ naam: name });
+                  const result = await createPerson({ naam: name }, true);
                   return result?.id ?? null;
                 }}
                 createLabel="Nieuwe persoon aanmaken"
@@ -659,7 +659,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                       options={contactPersonOptions}
                       placeholder="Zoek of typ een naam..."
                       onCreate={async (name) => {
-                        const newPerson = await createPerson({ naam: name });
+                        const newPerson = await createPerson({ naam: name }, true);
                         return newPerson.id;
                       }}
                       createLabel="Nieuw contact"

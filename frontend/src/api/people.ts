@@ -9,8 +9,12 @@ export async function getPerson(id: string): Promise<Person> {
   return apiGet<Person>(`/api/people/${id}`);
 }
 
-export async function createPerson(data: PersonCreate): Promise<PersonCreateResult> {
-  return apiPost<PersonCreateResult>('/api/people', data);
+export async function createPerson(
+  data: PersonCreate,
+  force = false,
+): Promise<PersonCreateResult> {
+  const params = force ? '?force=true' : '';
+  return apiPost<PersonCreateResult>(`/api/people${params}`, data);
 }
 
 export async function updatePerson(id: string, data: Partial<PersonCreate>): Promise<Person> {
@@ -94,4 +98,39 @@ export async function removePersonPhone(personId: string, phoneId: string): Prom
 
 export async function setDefaultPhone(personId: string, phoneId: string): Promise<PersonPhone> {
   return apiPost<PersonPhone>(`/api/people/${personId}/phones/${phoneId}/set-default`, {});
+}
+
+// Duplicate check (same algorithm as backend create-person guard)
+export interface DuplicateCheckHit {
+  id: string;
+  naam: string;
+  email?: string | null;
+  functie?: string | null;
+}
+
+export async function checkDuplicates(naam: string): Promise<DuplicateCheckHit[]> {
+  return apiGet<DuplicateCheckHit[]>('/api/people/check-duplicates', { naam });
+}
+
+// Duplicates & Merge
+export interface DuplicateGroupMember {
+  id: string;
+  naam: string;
+  email?: string | null;
+  functie?: string | null;
+  is_active: boolean;
+  created_at?: string | null;
+}
+
+export interface DuplicateGroup {
+  naam: string;
+  members: DuplicateGroupMember[];
+}
+
+export async function getDuplicatePersons(): Promise<DuplicateGroup[]> {
+  return apiGet<DuplicateGroup[]>('/api/people/duplicates');
+}
+
+export async function mergePersons(sourceIds: string[], targetId: string): Promise<Person> {
+  return apiPost<Person>('/api/people/merge', { source_ids: sourceIds, target_id: targetId });
 }

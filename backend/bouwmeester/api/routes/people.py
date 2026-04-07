@@ -1,10 +1,12 @@
 """API routes for people."""
 
+import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
@@ -23,11 +25,15 @@ from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.person import (
     PHONE_LABELS,
     ApiKeyResponse,
+    DuplicateCheckHit,
+    DuplicateGroup,
+    DuplicateGroupMember,
     PersonCreate,
     PersonCreateResponse,
     PersonDetailResponse,
     PersonEmailCreate,
     PersonEmailResponse,
+    PersonMergeRequest,
     PersonOrganisatieCreate,
     PersonOrganisatieResponse,
     PersonOrganisatieUpdate,
@@ -42,6 +48,32 @@ from bouwmeester.schema.person import (
 from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/people", tags=["people"])
+
+
+async def _find_name_duplicates(
+    naam: str, db: AsyncSession, limit: int = 10
+) -> list[Person]:
+    """Find active persons whose name matches all words via word-boundary regex.
+
+    Each word in ``naam`` must appear at the start of a word in the stored name
+    (PostgreSQL ``\\m`` anchor).  Used by both the create-person 409 check and
+    the ``/check-duplicates`` endpoint so the algorithm is consistent.
+    """
+    words = naam.strip().split()
+    if not words:
+        return []
+
+    stmt = (
+        select(Person)
+        .options(selectinload(Person.emails))
+        .where(
+            *[Person.naam.op("~*")(rf"\m{re.escape(w)}") for w in words],
+            Person.is_active == True,  # noqa: E712
+        )
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
 
 
 @router.get("", response_model=list[PersonResponse])
@@ -71,11 +103,14 @@ async def create_person(
     data: PersonCreate,
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
+    force: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ) -> PersonCreateResponse:
     """Create a person.
 
     Agents (is_agent=true) get an auto-generated API key (admin only).
+    If a person with the same name already exists, returns 409 with the
+    duplicates unless force=true is passed.
     """
     # Agent creation requires admin privileges (agents bypass email whitelist).
     # In dev mode (no OIDC) current_user is None so all access is open.
@@ -103,6 +138,27 @@ async def create_person(
                 status_code=409,
                 detail=f"Er bestaat al een agent met de naam '{data.naam}'",
             )
+
+    # Check for duplicate names (non-agent persons) unless force=true.
+    if not data.is_agent and not force:
+        duplicates = await _find_name_duplicates(data.naam, db)
+        if duplicates:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Er bestaan al personen met een vergelijkbare naam.",
+                    "duplicates": [
+                        {
+                            "id": str(d.id),
+                            "naam": d.naam,
+                            "email": d.default_email,
+                            "functie": d.functie,
+                        }
+                        for d in duplicates
+                    ],
+                },
+            )
+
     repo = PersonRepository(db)
     person = await repo.create(data)
 
@@ -136,6 +192,29 @@ async def create_person(
         resp.api_key = plaintext_key
         resp.has_api_key = True
     return resp
+
+
+@router.get("/check-duplicates", response_model=list[DuplicateCheckHit])
+async def check_duplicates(
+    current_user: OptionalUser,
+    naam: str = Query(..., min_length=2, max_length=500),
+    db: AsyncSession = Depends(get_db),
+) -> list[DuplicateCheckHit]:
+    """Check if persons with a similar name already exist.
+
+    Uses the same word-boundary matching algorithm as the create-person
+    duplicate guard, so the frontend can preview what the backend would block.
+    """
+    matches = await _find_name_duplicates(naam, db)
+    return [
+        DuplicateCheckHit(
+            id=m.id,
+            naam=m.naam,
+            email=m.default_email,
+            functie=m.functie,
+        )
+        for m in matches
+    ]
 
 
 @router.get("/search", response_model=list[PersonResponse])
@@ -785,3 +864,197 @@ async def set_default_phone(
     await db.flush()
     await db.refresh(target)
     return PersonPhoneResponse.model_validate(target)
+
+
+# --- Duplicates ---
+
+
+@router.get("/duplicates", response_model=list[DuplicateGroup])
+async def list_duplicate_persons(
+    admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[DuplicateGroup]:
+    """Detect persons with identical names (admin only).
+
+    Uses a SQL subquery to find only names that appear 2+ times, then loads
+    details for those persons only (avoids fetching the entire person table).
+    """
+    # Subquery: names with 2+ active persons
+    dup_names_sq = (
+        select(func.lower(func.trim(Person.naam)).label("lower_naam"))
+        .where(Person.is_active == True)  # noqa: E712
+        .group_by(func.lower(func.trim(Person.naam)))
+        .having(func.count() >= 2)
+        .subquery()
+    )
+
+    stmt = (
+        select(Person)
+        .options(selectinload(Person.emails))
+        .where(
+            Person.is_active == True,  # noqa: E712
+            func.lower(func.trim(Person.naam)).in_(select(dup_names_sq.c.lower_naam)),
+        )
+        .order_by(func.lower(Person.naam), Person.created_at.asc())
+    )
+    result = await db.execute(stmt)
+    persons = list(result.scalars().all())
+
+    # Group by lowercased name
+    groups: dict[str, list[Person]] = {}
+    for p in persons:
+        key = p.naam.strip().lower()
+        groups.setdefault(key, []).append(p)
+
+    return [
+        DuplicateGroup(
+            naam=members[0].naam,
+            members=[
+                DuplicateGroupMember(
+                    id=m.id,
+                    naam=m.naam,
+                    email=m.default_email,
+                    functie=m.functie,
+                    is_active=m.is_active,
+                    created_at=m.created_at,
+                )
+                for m in members
+            ],
+        )
+        for members in groups.values()
+    ]
+
+
+# --- Merge ---
+
+
+@router.post("/merge", status_code=status.HTTP_200_OK)
+async def merge_persons(
+    data: PersonMergeRequest,
+    admin: AdminUser,
+    actor_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> PersonDetailResponse:
+    """Merge one or more source persons into a target person (admin only).
+
+    Moves all foreign-key references from each source to target, then deletes
+    the sources.  All operations happen in a single transaction.
+    Returns the updated target person.
+    """
+    if not data.source_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="Minstens een bronpersoon vereist",
+        )
+    if data.target_id in data.source_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="Bron en doel mogen niet hetzelfde zijn",
+        )
+
+    # Lock target row first to prevent concurrent merges.
+    target_row = await db.execute(
+        select(Person).where(Person.id == data.target_id).with_for_update()
+    )
+    require_found(target_row.scalar_one_or_none(), "Doelpersoon")
+
+    # Lock and collect all source persons (sorted by id for consistent lock order).
+    sources: list[Person] = []
+    for source_id in sorted(data.source_ids):
+        row = await db.execute(
+            select(Person).where(Person.id == source_id).with_for_update()
+        )
+        sources.append(require_found(row.scalar_one_or_none(), "Bronpersoon"))
+
+    # Discover FK metadata once.
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text as sa_text
+
+    def _get_fk_info(sync_conn):
+        """Return (table, fk_col, unique_cols_involving_fk) tuples."""
+        inspector = sa_inspect(sync_conn)
+        fk_cols: list[tuple[str, str]] = []
+        for table_name in inspector.get_table_names():
+            for fk in inspector.get_foreign_keys(table_name):
+                referred = fk["referred_table"]
+                if referred == "person" and fk["referred_columns"] == ["id"]:
+                    for col in fk["constrained_columns"]:
+                        fk_cols.append((table_name, col))
+
+        unique_sets: dict[tuple[str, str], list[list[str]]] = {}
+        for table_name, fk_col in fk_cols:
+            for uq in inspector.get_unique_constraints(table_name):
+                if fk_col in uq["column_names"]:
+                    key = (table_name, fk_col)
+                    unique_sets.setdefault(key, []).append(uq["column_names"])
+        return fk_cols, unique_sets
+
+    conn = await db.connection()
+    fk_cols, unique_sets = await conn.run_sync(_get_fk_info)
+
+    # Merge each source into target within this single transaction.
+    for source in sources:
+        source_id = source.id
+
+        for table_name, col_name in fk_cols:
+            uq_col_lists = unique_sets.get((table_name, col_name))
+            if uq_col_lists:
+                for uq_cols in uq_col_lists:
+                    other_cols = [c for c in uq_cols if c != col_name]
+                    if not other_cols:
+                        await db.execute(
+                            sa_text(
+                                f'DELETE FROM "{table_name}" '
+                                f'WHERE "{col_name}" = :source '
+                                f"AND EXISTS ("
+                                f'  SELECT 1 FROM "{table_name}" t2 '
+                                f'  WHERE t2."{col_name}" = :target'
+                                f")"
+                            ),
+                            {"source": source_id, "target": data.target_id},
+                        )
+                    else:
+                        match_clause = " AND ".join(
+                            f's."{c}" = t."{c}"' for c in other_cols
+                        )
+                        await db.execute(
+                            sa_text(
+                                f'DELETE FROM "{table_name}" s '
+                                f'USING "{table_name}" t '
+                                f'WHERE s."{col_name}" = :source '
+                                f'AND t."{col_name}" = :target '
+                                f"AND {match_clause}"
+                            ),
+                            {"source": source_id, "target": data.target_id},
+                        )
+
+            await db.execute(
+                sa_text(
+                    f'UPDATE "{table_name}" SET "{col_name}" = :target '
+                    f'WHERE "{col_name}" = :source'
+                ),
+                {"target": data.target_id, "source": source_id},
+            )
+
+        await db.delete(source)
+
+    await db.flush()
+
+    # Log one activity per merge with all source info.
+    await log_activity(
+        db,
+        admin,
+        actor_id,
+        "person.merged",
+        details={
+            "source_ids": [str(s.id) for s in sources],
+            "source_namen": [s.naam for s in sources],
+            "target_id": str(data.target_id),
+        },
+    )
+
+    repo = PersonRepository(db)
+    target_person = require_found(await repo.get(data.target_id), "Doelpersoon")
+    resp = PersonDetailResponse.model_validate(target_person)
+    resp.has_api_key = target_person.api_key_hash is not None
+    return resp

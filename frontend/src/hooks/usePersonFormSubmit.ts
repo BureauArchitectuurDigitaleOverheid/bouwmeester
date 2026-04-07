@@ -47,7 +47,7 @@ export function usePersonFormSubmit(
         break;
 
       case 'create':
-        createPersonMutation.mutate(params.data, {
+        createPersonMutation.mutate({ ...params.data, force: true }, {
           onSuccess: (person) => {
             if (params.orgEenheidId) {
               addPlacementMutation.mutate(

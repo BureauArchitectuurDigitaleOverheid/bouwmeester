@@ -32,7 +32,7 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
 
   const handleCreatePerson = useCallback(
     async (name: string): Promise<string | null> => {
-      const result = await createPerson.mutateAsync({ naam: name });
+      const result = await createPerson.mutateAsync({ naam: name, force: true });
       return result?.id ?? null;
     },
     [createPerson],
