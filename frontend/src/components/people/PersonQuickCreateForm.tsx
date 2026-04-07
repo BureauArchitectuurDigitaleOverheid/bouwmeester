@@ -3,15 +3,9 @@ import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { useCreatePerson } from '@/hooks/usePeople';
-import { searchPeople } from '@/api/people';
+import { checkDuplicates } from '@/api/people';
+import type { DuplicateCheckHit } from '@/api/people';
 import { useDebounce } from '@/hooks/useDebounce';
-
-interface DuplicateHit {
-  id: string;
-  naam: string;
-  email?: string | null;
-  functie?: string | null;
-}
 
 interface PersonQuickCreateFormProps {
   open: boolean;
@@ -28,7 +22,7 @@ export function PersonQuickCreateForm({
 }: PersonQuickCreateFormProps) {
   const [naam, setNaam] = useState(initialName);
   const [email, setEmail] = useState('');
-  const [duplicates, setDuplicates] = useState<DuplicateHit[]>([]);
+  const [duplicates, setDuplicates] = useState<DuplicateCheckHit[]>([]);
   const [searching, setSearching] = useState(false);
   const createPerson = useCreatePerson();
 
@@ -42,7 +36,7 @@ export function PersonQuickCreateForm({
     }
   }, [open, initialName]);
 
-  // Search for existing persons when name changes
+  // Check for duplicates using the same algorithm as the backend create guard
   useEffect(() => {
     if (!debouncedNaam || debouncedNaam.length < 2) {
       setDuplicates([]);
@@ -50,17 +44,10 @@ export function PersonQuickCreateForm({
     }
     let cancelled = false;
     setSearching(true);
-    searchPeople(debouncedNaam, 5)
+    checkDuplicates(debouncedNaam)
       .then((results) => {
         if (!cancelled) {
-          setDuplicates(
-            results.map((p) => ({
-              id: p.id,
-              naam: p.naam,
-              email: p.default_email ?? p.email,
-              functie: p.functie,
-            })),
-          );
+          setDuplicates(results);
           setSearching(false);
         }
       })

@@ -239,8 +239,8 @@ export function useDuplicatePersons() {
 
 export function useMergePersons() {
   return useMutationWithError({
-    mutationFn: ({ sourceId, targetId }: { sourceId: string; targetId: string }) =>
-      mergePersons(sourceId, targetId),
+    mutationFn: ({ sourceIds, targetId }: { sourceIds: string[]; targetId: string }) =>
+      mergePersons(sourceIds, targetId),
     errorMessage: 'Fout bij samenvoegen personen',
     invalidateKeys: [queryKeys.people.all, queryKeys.people.duplicates],
   });

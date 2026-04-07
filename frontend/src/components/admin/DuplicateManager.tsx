@@ -23,15 +23,18 @@ function DuplicateGroupRow({
   onMerged: () => void;
 }) {
   const [targetId, setTargetId] = useState<string>(members[0].id);
+  const [confirming, setConfirming] = useState(false);
   const merge = useMergePersons();
 
   const handleMerge = async () => {
-    const sources = members.filter((m) => m.id !== targetId);
-    for (const source of sources) {
-      await merge.mutateAsync({ sourceId: source.id, targetId });
-    }
+    const sourceIds = members.filter((m) => m.id !== targetId).map((m) => m.id);
+    await merge.mutateAsync({ sourceIds, targetId });
+    setConfirming(false);
     onMerged();
   };
+
+  const sourceCount = members.length - 1;
+  const targetNaam = members.find((m) => m.id === targetId)?.naam ?? '';
 
   return (
     <div className="border border-border rounded-lg p-4 space-y-3">
@@ -63,14 +66,42 @@ function DuplicateGroupRow({
           </label>
         ))}
       </div>
-      <button
-        onClick={handleMerge}
-        disabled={merge.isPending}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
-      >
-        <Merge className="h-3.5 w-3.5" />
-        {merge.isPending ? 'Samenvoegen...' : 'Samenvoegen'}
-      </button>
+
+      {confirming ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2">
+          <p className="text-sm text-amber-800">
+            {sourceCount} {sourceCount === 1 ? 'persoon wordt' : 'personen worden'} samengevoegd
+            in &ldquo;{targetNaam}&rdquo;. Alle referenties worden overgeheveld en de{' '}
+            {sourceCount === 1 ? 'bronpersoon wordt' : 'bronpersonen worden'} permanent
+            verwijderd. Dit kan niet ongedaan worden.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleMerge}
+              disabled={merge.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+            >
+              <Merge className="h-3.5 w-3.5" />
+              {merge.isPending ? 'Samenvoegen...' : 'Ja, samenvoegen'}
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={merge.isPending}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              Annuleren
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setConfirming(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+        >
+          <Merge className="h-3.5 w-3.5" />
+          Samenvoegen
+        </button>
+      )}
     </div>
   );
 }

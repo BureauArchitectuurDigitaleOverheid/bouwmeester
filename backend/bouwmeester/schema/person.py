@@ -203,7 +203,7 @@ class PersonSummaryResponse(BaseModel):
 
 
 class PersonMergeRequest(BaseModel):
-    source_id: UUID
+    source_ids: list[UUID]
     target_id: UUID
 
 
@@ -221,6 +221,13 @@ class DuplicateGroupMember(BaseModel):
 class DuplicateGroup(BaseModel):
     naam: str
     members: list[DuplicateGroupMember]
+
+
+class DuplicateCheckHit(BaseModel):
+    id: UUID
+    naam: str
+    email: str | None = None
+    functie: str | None = None
 
 
 Dienstverband = Literal["in_dienst", "ingehuurd", "extern"]

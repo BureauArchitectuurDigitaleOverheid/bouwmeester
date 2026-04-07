@@ -100,6 +100,18 @@ export async function setDefaultPhone(personId: string, phoneId: string): Promis
   return apiPost<PersonPhone>(`/api/people/${personId}/phones/${phoneId}/set-default`, {});
 }
 
+// Duplicate check (same algorithm as backend create-person guard)
+export interface DuplicateCheckHit {
+  id: string;
+  naam: string;
+  email?: string | null;
+  functie?: string | null;
+}
+
+export async function checkDuplicates(naam: string): Promise<DuplicateCheckHit[]> {
+  return apiGet<DuplicateCheckHit[]>('/api/people/check-duplicates', { naam });
+}
+
 // Duplicates & Merge
 export interface DuplicateGroupMember {
   id: string;
@@ -119,6 +131,6 @@ export async function getDuplicatePersons(): Promise<DuplicateGroup[]> {
   return apiGet<DuplicateGroup[]>('/api/people/duplicates');
 }
 
-export async function mergePersons(sourceId: string, targetId: string): Promise<Person> {
-  return apiPost<Person>('/api/people/merge', { source_id: sourceId, target_id: targetId });
+export async function mergePersons(sourceIds: string[], targetId: string): Promise<Person> {
+  return apiPost<Person>('/api/people/merge', { source_ids: sourceIds, target_id: targetId });
 }
