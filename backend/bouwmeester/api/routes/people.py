@@ -879,10 +879,10 @@ async def list_duplicate_persons(
     Uses a SQL subquery to find only names that appear 2+ times, then loads
     details for those persons only (avoids fetching the entire person table).
     """
-    # Subquery: names with 2+ active persons
+    # Subquery: names with 2+ persons (including inactive, so admins can
+    # spot and merge deactivated duplicates too).
     dup_names_sq = (
         select(func.lower(func.trim(Person.naam)).label("lower_naam"))
-        .where(Person.is_active == True)  # noqa: E712
         .group_by(func.lower(func.trim(Person.naam)))
         .having(func.count() >= 2)
         .subquery()
@@ -892,7 +892,6 @@ async def list_duplicate_persons(
         select(Person)
         .options(selectinload(Person.emails))
         .where(
-            Person.is_active == True,  # noqa: E712
             func.lower(func.trim(Person.naam)).in_(select(dup_names_sq.c.lower_naam)),
         )
         .order_by(func.lower(Person.naam), Person.created_at.asc())
