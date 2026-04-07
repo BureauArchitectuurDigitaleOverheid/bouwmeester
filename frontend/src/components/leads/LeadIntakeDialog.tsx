@@ -404,10 +404,13 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
             if (byEmail) personId = byEmail.id;
           }
           if (!personId) {
-            const newPerson = await createPerson({
-              naam: contactName.trim(),
-              email: contactEmail.trim() || undefined,
-            });
+            const newPerson = await createPerson(
+              {
+                naam: contactName.trim(),
+                email: contactEmail.trim() || undefined,
+              },
+              true,
+            );
             personId = newPerson.id;
           }
           await addLeadContactApi(lead.id, personId, 'contactpersoon');

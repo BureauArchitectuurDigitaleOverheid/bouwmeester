@@ -41,7 +41,8 @@ export function usePerson(id: string | null) {
 
 export function useCreatePerson() {
   return useMutationWithError({
-    mutationFn: (data: PersonCreate) => createPerson(data),
+    mutationFn: ({ force, ...data }: PersonCreate & { force?: boolean }) =>
+      createPerson(data, force),
     errorMessage: 'Fout bij aanmaken persoon',
     invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
   });

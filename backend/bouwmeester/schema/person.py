@@ -202,6 +202,11 @@ class PersonSummaryResponse(BaseModel):
     stakeholder_nodes: list[PersonStakeholderNode]
 
 
+class PersonMergeRequest(BaseModel):
+    source_id: UUID
+    target_id: UUID
+
+
 Dienstverband = Literal["in_dienst", "ingehuurd", "extern"]
 
 

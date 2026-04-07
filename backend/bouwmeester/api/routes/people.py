@@ -5,12 +5,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
 from bouwmeester.core.auth import AdminUser, OptionalUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.query_utils import normalize_email
+from bouwmeester.core.query_utils import escape_like, normalize_email
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
@@ -28,6 +29,7 @@ from bouwmeester.schema.person import (
     PersonDetailResponse,
     PersonEmailCreate,
     PersonEmailResponse,
+    PersonMergeRequest,
     PersonOrganisatieCreate,
     PersonOrganisatieResponse,
     PersonOrganisatieUpdate,
@@ -71,11 +73,14 @@ async def create_person(
     data: PersonCreate,
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
+    force: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ) -> PersonCreateResponse:
     """Create a person.
 
     Agents (is_agent=true) get an auto-generated API key (admin only).
+    If a person with the same name already exists, returns 409 with the
+    duplicates unless force=true is passed.
     """
     # Agent creation requires admin privileges (agents bypass email whitelist).
     # In dev mode (no OIDC) current_user is None so all access is open.
@@ -103,6 +108,38 @@ async def create_person(
                 status_code=409,
                 detail=f"Er bestaat al een agent met de naam '{data.naam}'",
             )
+
+    # Check for duplicate names (non-agent persons) unless force=true
+    if not data.is_agent and not force:
+        escaped = escape_like(data.naam)
+        dup_stmt = (
+            select(Person)
+            .options(selectinload(Person.emails))
+            .where(
+                Person.naam.ilike(f"%{escaped}%"),
+                Person.is_active == True,  # noqa: E712
+            )
+            .limit(10)
+        )
+        dup_result = await db.execute(dup_stmt)
+        duplicates = list(dup_result.scalars().all())
+        if duplicates:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Er bestaan al personen met een vergelijkbare naam.",
+                    "duplicates": [
+                        {
+                            "id": str(d.id),
+                            "naam": d.naam,
+                            "email": d.default_email,
+                            "functie": d.functie,
+                        }
+                        for d in duplicates
+                    ],
+                },
+            )
+
     repo = PersonRepository(db)
     person = await repo.create(data)
 
@@ -785,3 +822,81 @@ async def set_default_phone(
     await db.flush()
     await db.refresh(target)
     return PersonPhoneResponse.model_validate(target)
+
+
+# --- Merge ---
+
+
+@router.post("/merge", status_code=status.HTTP_200_OK)
+async def merge_persons(
+    data: PersonMergeRequest,
+    admin: AdminUser,
+    actor_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> PersonDetailResponse:
+    """Merge source person into target person (admin only).
+
+    Moves all foreign-key references from source to target, then deletes source.
+    Returns the updated target person.
+    """
+    if data.source_id == data.target_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Bron en doel mogen niet hetzelfde zijn",
+        )
+
+    source = require_found(await db.get(Person, data.source_id), "Bronpersoon")
+    require_found(await db.get(Person, data.target_id), "Doelpersoon")
+
+    # Find all tables with a FK to person.id via SQLAlchemy metadata
+    # and update them.
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text as sa_text
+
+    def _get_fk_columns(sync_conn):
+        inspector = sa_inspect(sync_conn)
+        result = []
+        for table_name in inspector.get_table_names():
+            for fk in inspector.get_foreign_keys(table_name):
+                referred = fk["referred_table"]
+                cols = fk["referred_columns"]
+                if referred == "person" and cols == ["id"]:
+                    for col in fk["constrained_columns"]:
+                        result.append((table_name, col))
+        return result
+
+    conn = await db.connection()
+    fk_updates: list[tuple[str, str]] = await conn.run_sync(
+        lambda sync_conn: _get_fk_columns(sync_conn)
+    )
+
+    for table_name, col_name in fk_updates:
+        await db.execute(
+            sa_text(
+                f'UPDATE "{table_name}" SET "{col_name}" = :target '
+                f'WHERE "{col_name}" = :source'
+            ),
+            {"target": data.target_id, "source": data.source_id},
+        )
+
+    # Delete the source person (now orphaned)
+    await db.delete(source)
+    await db.flush()
+
+    await log_activity(
+        db,
+        admin,
+        actor_id,
+        "person.merged",
+        details={
+            "source_id": str(data.source_id),
+            "target_id": str(data.target_id),
+            "source_naam": source.naam,
+        },
+    )
+
+    repo = PersonRepository(db)
+    target_person = require_found(await repo.get(data.target_id), "Doelpersoon")
+    resp = PersonDetailResponse.model_validate(target_person)
+    resp.has_api_key = target_person.api_key_hash is not None
+    return resp

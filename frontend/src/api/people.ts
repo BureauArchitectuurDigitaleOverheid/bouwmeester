@@ -9,8 +9,12 @@ export async function getPerson(id: string): Promise<Person> {
   return apiGet<Person>(`/api/people/${id}`);
 }
 
-export async function createPerson(data: PersonCreate): Promise<PersonCreateResult> {
-  return apiPost<PersonCreateResult>('/api/people', data);
+export async function createPerson(
+  data: PersonCreate,
+  force = false,
+): Promise<PersonCreateResult> {
+  const params = force ? '?force=true' : '';
+  return apiPost<PersonCreateResult>(`/api/people${params}`, data);
 }
 
 export async function updatePerson(id: string, data: Partial<PersonCreate>): Promise<Person> {
