@@ -312,7 +312,15 @@ export function LeadContentLayout({
           type="text"
           value={title}
           onSave={async (v) => { if (v) await onTitleChange(v); }}
-          displayValue={<span className="text-lg font-semibold text-text">{title}</span>}
+          displayValue={
+            title ? (
+              <span className="text-lg font-semibold text-text">{title}</span>
+            ) : (
+              <span className="text-lg italic text-text-secondary border-b border-dashed border-gray-300 pb-0.5">
+                Titel van de lead
+              </span>
+            )
+          }
           placeholder="Titel van de lead"
         />
       ) : (

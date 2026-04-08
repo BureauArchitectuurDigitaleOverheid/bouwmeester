@@ -645,32 +645,36 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                       </div>
                     )}
 
-                    <CreatableSelect
-                      label={index === 0 ? "Contactpersoon (extern)" : "Contactpersoon"}
-                      value={contact.personId}
-                      onChange={(val) => {
-                        const person = people?.find((p) => p.id === val);
-                        updateContact(index, { personId: val, name: person?.naam ?? contact.name });
-                      }}
-                      options={contactOptions}
-                      placeholder="Zoek of typ een naam..."
-                      onCreate={async (name) => {
-                        updateContact(index, { name, personId: '' });
-                        return null;
-                      }}
-                      createLabel="Nieuw contact"
-                      displayValue={!contact.personId && contact.name ? contact.name : undefined}
-                      onClear={() => {
-                        updateContact(index, emptyContact());
-                      }}
-                    />
+                    <div>
+                      <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
+                        {index === 0 ? "Contactpersoon (extern)" : "Contactpersoon"}
+                      </h4>
+                      <CreatableSelect
+                        value={contact.personId}
+                        onChange={(val) => {
+                          const person = people?.find((p) => p.id === val);
+                          updateContact(index, { personId: val, name: person?.naam ?? contact.name });
+                        }}
+                        options={contactOptions}
+                        placeholder="Zoek of typ een naam..."
+                        onCreate={async (name) => {
+                          updateContact(index, { name, personId: '' });
+                          return null;
+                        }}
+                        createLabel="Nieuw contact"
+                        displayValue={!contact.personId && contact.name ? contact.name : undefined}
+                        onClear={() => {
+                          updateContact(index, emptyContact());
+                        }}
+                      />
+                    </div>
 
                     {(contact.personId || contact.name) && (
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-sm font-medium text-text mb-1">
+                          <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
                             E-mail
-                          </label>
+                          </h4>
                           <input
                             type="email"
                             value={contact.email}
@@ -680,9 +684,9 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-text mb-1">
+                          <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
                             Telefoon
-                          </label>
+                          </h4>
                           <input
                             type="tel"
                             value={contact.phone}
