@@ -1,7 +1,7 @@
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 
 interface RichTextFormFieldProps {
-  label: string;
+  label?: string;
   value: string;
   onChange: (value: string) => void;
   rows?: number;
@@ -19,7 +19,7 @@ export function RichTextFormField({
 }: RichTextFormFieldProps) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-text">{label}</label>
+      {label && <label className="block text-sm font-medium text-text">{label}</label>}
       <RichTextEditor
         value={value}
         onChange={onChange}
