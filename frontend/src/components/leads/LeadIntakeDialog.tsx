@@ -64,7 +64,9 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const [description, setDescription] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [stage, setStage] = useState<LeadStage>(LeadStage.INBOX);
-  const [contacts, setContacts] = useState<ContactEntry[]>([emptyContact()]);
+  const [contacts, setContacts] = useState<ContactEntry[]>([]);
+  const [addingContact, setAddingContact] = useState(false);
+  const [newContact, setNewContact] = useState<ContactEntry>(emptyContact());
   const updateContact = useCallback((index: number, updates: Partial<ContactEntry>) => {
     setContacts(prev => prev.map((c, i) => i === index ? { ...c, ...updates } : c));
   }, []);
@@ -198,6 +200,13 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
           else setFiles((prev) => [...prev, ...combined]);
           if (email.senderName || email.senderEmail) {
             setContacts(prev => {
+              if (prev.length === 0) {
+                return [{
+                  ...emptyContact(),
+                  name: email.senderName || '',
+                  email: email.senderEmail || '',
+                }];
+              }
               const updated = [...prev];
               updated[0] = {
                 ...updated[0],
@@ -265,7 +274,9 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     setDescription('');
     setSelectedTags([]);
     setStage(LeadStage.INBOX);
-    setContacts([emptyContact()]);
+    setContacts([]);
+    setAddingContact(false);
+    setNewContact(emptyContact());
     setAssigneeId('');
     setBroughtById(currentPerson?.id ?? '');
     setLeadDate(new Date().toISOString().split('T')[0]);
@@ -628,86 +639,114 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
             onTagsChange={async (tags) => setSelectedTags(tags)}
             onCreatedAtChange={async (v) => setLeadDate(v ?? '')}
             rightColumnChildren={
-              <div className="space-y-4">
-                {contacts.map((contact, index) => (
-                  <div key={index} className="space-y-4">
-                    {index > 0 && (
-                      <div className="flex items-center justify-between pt-2 border-t border-border">
-                        <span className="text-xs font-medium text-text-secondary">Extra contactpersoon</span>
+              <div>
+                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
+                  Contactpersonen
+                </h4>
+
+                {/* Existing contacts */}
+                {contacts.length > 0 && (
+                  <div className="space-y-2 mb-2">
+                    {contacts.map((contact, index) => (
+                      <div key={index} className="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-text truncate">
+                            {contact.personId
+                              ? (people?.find(p => p.id === contact.personId)?.naam ?? contact.name)
+                              : contact.name || 'Naamloos'}
+                          </div>
+                          {(contact.email || contact.phone) && (
+                            <div className="text-xs text-text-secondary truncate">
+                              {[contact.email, contact.phone].filter(Boolean).join(' · ')}
+                            </div>
+                          )}
+                        </div>
                         <button
                           type="button"
                           onClick={() => setContacts(prev => prev.filter((_, i) => i !== index))}
-                          className="p-0.5 text-text-secondary hover:text-red-500 transition-colors"
+                          className="p-0.5 text-text-secondary hover:text-red-500 transition-colors shrink-0 mt-0.5"
                           title="Verwijderen"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                    )}
+                    ))}
+                  </div>
+                )}
 
-                    <div>
-                      <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
-                        {index === 0 ? "Contactpersoon (extern)" : "Contactpersoon"}
-                      </h4>
-                      <CreatableSelect
-                        value={contact.personId}
-                        onChange={(val) => {
-                          const person = people?.find((p) => p.id === val);
-                          updateContact(index, { personId: val, name: person?.naam ?? contact.name });
-                        }}
-                        options={contactOptions}
-                        placeholder="Zoek of typ een naam..."
-                        onCreate={async (name) => {
-                          updateContact(index, { name, personId: '' });
-                          return null;
-                        }}
-                        createLabel="Nieuw contact"
-                        displayValue={!contact.personId && contact.name ? contact.name : undefined}
-                        onClear={() => {
-                          updateContact(index, emptyContact());
-                        }}
-                      />
-                    </div>
-
-                    {(contact.personId || contact.name) && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
-                            E-mail
-                          </h4>
-                          <input
-                            type="email"
-                            value={contact.email}
-                            onChange={(e) => updateContact(index, { email: e.target.value })}
-                            className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                            placeholder="email@organisatie.nl"
-                          />
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
-                            Telefoon
-                          </h4>
-                          <input
-                            type="tel"
-                            value={contact.phone}
-                            onChange={(e) => updateContact(index, { phone: e.target.value })}
-                            className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                            placeholder="06-12345678"
-                          />
-                        </div>
+                {/* Add contact form */}
+                {addingContact ? (
+                  <div className="space-y-3 rounded-lg border border-border p-3">
+                    <CreatableSelect
+                      value={newContact.personId}
+                      onChange={(val) => {
+                        const person = people?.find((p) => p.id === val);
+                        setNewContact(prev => ({
+                          ...prev,
+                          personId: val,
+                          name: person?.naam ?? prev.name,
+                        }));
+                      }}
+                      options={contactOptions}
+                      placeholder="Zoek of typ een naam..."
+                      onCreate={async (name) => {
+                        setNewContact(prev => ({ ...prev, name, personId: '' }));
+                        return null;
+                      }}
+                      createLabel="Nieuw contact"
+                      displayValue={!newContact.personId && newContact.name ? newContact.name : undefined}
+                      onClear={() => setNewContact(emptyContact())}
+                    />
+                    {(newContact.personId || newContact.name) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="email"
+                          value={newContact.email}
+                          onChange={(e) => setNewContact(prev => ({ ...prev, email: e.target.value }))}
+                          className="rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-primary-400"
+                          placeholder="E-mail"
+                        />
+                        <input
+                          type="tel"
+                          value={newContact.phone}
+                          onChange={(e) => setNewContact(prev => ({ ...prev, phone: e.target.value }))}
+                          className="rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-primary-400"
+                          placeholder="Telefoon"
+                        />
                       </div>
                     )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newContact.personId || newContact.name) {
+                            setContacts(prev => [...prev, newContact]);
+                            setNewContact(emptyContact());
+                            setAddingContact(false);
+                          }
+                        }}
+                        disabled={!newContact.personId && !newContact.name}
+                        className="text-sm font-medium text-primary-600 hover:text-primary-700 disabled:text-text-secondary disabled:cursor-not-allowed"
+                      >
+                        Toevoegen
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setAddingContact(false); setNewContact(emptyContact()); }}
+                        className="text-sm text-text-secondary hover:text-text"
+                      >
+                        Annuleren
+                      </button>
+                    </div>
                   </div>
-                ))}
-
-                {contacts.length < 2 && (
+                ) : (
                   <button
                     type="button"
-                    onClick={() => setContacts(prev => [...prev, emptyContact()])}
-                    className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-primary-600 transition-colors"
+                    onClick={() => setAddingContact(true)}
+                    className="inline-flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary-600 transition-colors"
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    Extra contactpersoon toevoegen
+                    Contactpersoon toevoegen
                   </button>
                 )}
               </div>
