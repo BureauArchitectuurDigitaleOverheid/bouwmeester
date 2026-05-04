@@ -4,7 +4,6 @@ import StarterKit from '@tiptap/starter-kit';
 import Mention from '@tiptap/extension-mention';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
-import { DOMParser as ProseMirrorDOMParser } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import { apiGet } from '@/api/client';
 import { formatFunctie, titleCase } from '@/types';
@@ -427,12 +426,12 @@ function parseContent(value: string): object | string {
  * ("1. foo\n2. bar" or "- foo\n- bar"), convert it to real `ol`/`ul`
  * nodes instead of a sequence of bare paragraphs.
  *
+ * If the clipboard already carries `text/html`, defer to ProseMirror's
+ * default rich-paste path, which already produces proper lists.
  * Returns true to signal the paste was handled.
  */
 function insertListyTextOnPaste(view: EditorView, event: ClipboardEvent): boolean {
   if (!event.clipboardData) return false;
-  // Honour rich content (HTML) — only step in for plain text pastes,
-  // and only when the user is doing a normal paste (not paste-as-plain).
   if (event.clipboardData.types.includes('text/html')) return false;
   const text = event.clipboardData.getData('text/plain');
   if (!text) return false;
@@ -440,12 +439,7 @@ function insertListyTextOnPaste(view: EditorView, event: ClipboardEvent): boolea
   const html = listyTextToHtml(text);
   if (!html) return false;
 
-  const container = document.createElement('div');
-  container.innerHTML = html;
-  const slice = ProseMirrorDOMParser.fromSchema(view.state.schema).parseSlice(container);
-  view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
-  event.preventDefault();
-  return true;
+  return view.pasteHTML(html, event);
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────
