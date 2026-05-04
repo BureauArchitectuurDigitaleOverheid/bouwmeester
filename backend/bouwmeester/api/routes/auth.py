@@ -583,16 +583,14 @@ async def complete_onboarding(
 @router.post("/onboarding/refresh")
 async def refresh_onboarding_features(
     request: Request,
-    current_user: CurrentUser,
+    _current_user: CurrentUser,
 ) -> dict:
     """Invalidate the session cache so /status recomputes pending features.
 
-    Used by the onboarding wizard after a step's underlying data changes
-    out-of-band (e.g. the Mattermost link is created via webhook). The
-    completion checks then drop the step from pending without needing a
-    dismiss call.
+    Called by the onboarding wizard once a step's underlying data has been
+    saved (profile.functie, MattermostUser row, etc.). The check_complete
+    functions then drop the step from pending on the next /status call.
     """
-    del current_user  # auth-only; nothing else to do
     request.session.pop("onboarding_features", None)
     return {"ok": True}
 
