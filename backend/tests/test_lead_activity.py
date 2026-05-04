@@ -138,6 +138,5 @@ async def test_mentioned_assignee_only_gets_one_notification(
         .all()
     )
 
-    # Only the lead_activity_added notification (no extra 'mention')
     assert len(notifs) == 1
     assert notifs[0].type == "lead_activity_added"

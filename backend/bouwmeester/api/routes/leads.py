@@ -203,6 +203,7 @@ async def create_lead(
             type="lead_assigned",
             title=f"Je bent toegewezen aan lead: {lead.title}",
             message=f"Je bent toegewezen aan lead: {lead.title}",
+            related_lead_id=lead.id,
         )
         await notif_svc.send(notification_data)
 
@@ -394,6 +395,7 @@ async def update_lead(
                 type="lead_assigned",
                 title=f"Je bent toegewezen aan lead: {lead.title}",
                 message=f"Je bent toegewezen aan lead: {lead.title}",
+                related_lead_id=lead.id,
             )
             await notif_svc.send(notification_data)
 
@@ -406,6 +408,7 @@ async def update_lead(
                 type="lead_stage_changed",
                 title=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
                 message=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
+                related_lead_id=lead.id,
             )
             await notif_svc.send(notification_data)
 
@@ -485,6 +488,7 @@ async def move_lead(
             type="lead_stage_changed",
             title=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
             message=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
+            related_lead_id=lead.id,
         )
         await notif_svc.send(notification_data)
 
@@ -553,6 +557,7 @@ async def add_activity(
             type="lead_activity_added",
             title=f"Nieuwe notitie op lead '{lead.title}'",
             message=f"Nieuwe notitie op lead '{lead.title}'",
+            related_lead_id=lead.id,
         )
         await notif_svc.send(notification_data)
 
@@ -642,6 +647,7 @@ async def add_contact(
             type="lead_contact_added",
             title=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
             message=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
+            related_lead_id=lead_id,
         )
         await notif_svc.send(notification_data)
 
