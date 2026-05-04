@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.opdracht import Opdracht, OpdrachtNode
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
@@ -89,13 +90,10 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         opdrachtnemer_id: UUID | None = None,
         opdrachtgever_id: UUID | None = None,
         verantwoordelijke_id: UUID | None = None,
+        org_ctx: OrgContext | None = None,
     ) -> list[Opdracht]:
-        stmt = (
-            select(Opdracht)
-            .options(selectinload(Opdracht.node_koppelingen))
-            .offset(skip)
-            .limit(limit)
-        )
+        stmt = select(Opdracht).options(selectinload(Opdracht.node_koppelingen))
+        stmt = apply_org_filter(stmt, Opdracht.opdrachtgever_id, org_ctx)
         if begrotingsjaar is not None:
             stmt = stmt.where(Opdracht.begrotingsjaar == begrotingsjaar)
         if type is not None:
@@ -110,7 +108,11 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
             stmt = stmt.where(Opdracht.opdrachtgever_id == opdrachtgever_id)
         if verantwoordelijke_id is not None:
             stmt = stmt.where(Opdracht.verantwoordelijke_id == verantwoordelijke_id)
-        stmt = stmt.order_by(Opdracht.begrotingsjaar.desc(), Opdracht.titel)
+        stmt = (
+            stmt.order_by(Opdracht.begrotingsjaar.desc(), Opdracht.titel)
+            .offset(skip)
+            .limit(limit)
+        )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -181,6 +183,7 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         opdrachtnemer_id: UUID | None = None,
         opdrachtgever_id: UUID | None = None,
         verantwoordelijke_id: UUID | None = None,
+        org_ctx: OrgContext | None = None,
     ) -> dict:
         """Aggregate count, total budget, total gerealiseerd."""
         stmt = select(
@@ -190,6 +193,7 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
                 "totaal_gerealiseerd"
             ),
         )
+        stmt = apply_org_filter(stmt, Opdracht.opdrachtgever_id, org_ctx)
         if begrotingsjaar is not None:
             stmt = stmt.where(Opdracht.begrotingsjaar == begrotingsjaar)
         if type is not None:
