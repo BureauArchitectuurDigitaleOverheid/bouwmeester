@@ -88,6 +88,17 @@ async def test_dismiss_rejects_unknown_feature(client):
 
 
 # ---------------------------------------------------------------------------
+# POST /api/auth/onboarding/refresh
+# ---------------------------------------------------------------------------
+
+
+async def test_refresh_requires_auth(client):
+    """POST /onboarding/refresh returns 401 without authentication."""
+    resp = await client.post("/api/auth/onboarding/refresh", json={})
+    assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
 # Profile completion logic
 #
 # Profile is considered complete when person.functie is set.
@@ -326,3 +337,138 @@ async def test_onboarding_rejects_invalid_org_id(db_session):
     stmt = select(OrganisatieEenheid.id).where(OrganisatieEenheid.id == fake_org_id)
     result = await db_session.execute(stmt)
     assert result.scalar_one_or_none() is None, "Fake org ID should not exist"
+
+
+async def test_new_placement_request_supersedes_pending_for_other_eenheid(
+    db_session, sample_organisatie, child_organisatie
+):
+    """A new placement request for a different eenheid removes the old pending one."""
+    from bouwmeester.models.org_placement_request import OrgPlacementRequest
+
+    person = Person(
+        id=uuid.uuid4(),
+        naam="Switching User",
+        email="switch@example.com",
+        oidc_subject="sub-switch",
+        functie="Beleidsmedewerker",
+    )
+    db_session.add(person)
+    await db_session.flush()
+
+    # First request: pending for the parent eenheid
+    first = OrgPlacementRequest(
+        person_id=person.id,
+        organisatie_eenheid_id=sample_organisatie.id,
+        dienstverband="in_dienst",
+    )
+    db_session.add(first)
+    await db_session.flush()
+
+    # Apply the same logic the endpoint uses: drop pending requests for
+    # other eenheden when the user submits a new one.
+    pending = (
+        (
+            await db_session.execute(
+                select(OrgPlacementRequest).where(
+                    OrgPlacementRequest.person_id == person.id,
+                    OrgPlacementRequest.status == "pending",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    same_eenheid = False
+    for req in pending:
+        if req.organisatie_eenheid_id == child_organisatie.id:
+            same_eenheid = True
+        else:
+            await db_session.delete(req)
+    await db_session.flush()
+    assert same_eenheid is False
+
+    new_req = OrgPlacementRequest(
+        person_id=person.id,
+        organisatie_eenheid_id=child_organisatie.id,
+        dienstverband="in_dienst",
+    )
+    db_session.add(new_req)
+    await db_session.flush()
+
+    # Only the new pending request remains
+    remaining = (
+        (
+            await db_session.execute(
+                select(OrgPlacementRequest).where(
+                    OrgPlacementRequest.person_id == person.id,
+                    OrgPlacementRequest.status == "pending",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(remaining) == 1
+    assert remaining[0].organisatie_eenheid_id == child_organisatie.id
+
+
+async def test_repeated_request_for_same_eenheid_stays_idempotent(
+    db_session, sample_organisatie
+):
+    """Re-submitting the same eenheid does not delete the existing request."""
+    from bouwmeester.models.org_placement_request import OrgPlacementRequest
+
+    person = Person(
+        id=uuid.uuid4(),
+        naam="Same Eenheid User",
+        email="sameeenheid@example.com",
+        oidc_subject="sub-sameeenheid",
+        functie="Beleidsmedewerker",
+    )
+    db_session.add(person)
+    await db_session.flush()
+
+    first = OrgPlacementRequest(
+        person_id=person.id,
+        organisatie_eenheid_id=sample_organisatie.id,
+        dienstverband="in_dienst",
+    )
+    db_session.add(first)
+    await db_session.flush()
+    first_id = first.id
+
+    pending = (
+        (
+            await db_session.execute(
+                select(OrgPlacementRequest).where(
+                    OrgPlacementRequest.person_id == person.id,
+                    OrgPlacementRequest.status == "pending",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    same_eenheid = any(
+        r.organisatie_eenheid_id == sample_organisatie.id for r in pending
+    )
+    for req in pending:
+        if req.organisatie_eenheid_id != sample_organisatie.id:
+            await db_session.delete(req)
+    await db_session.flush()
+    assert same_eenheid is True
+
+    remaining = (
+        (
+            await db_session.execute(
+                select(OrgPlacementRequest).where(
+                    OrgPlacementRequest.person_id == person.id,
+                    OrgPlacementRequest.status == "pending",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(remaining) == 1
+    assert remaining[0].id == first_id

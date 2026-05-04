@@ -528,8 +528,10 @@ async def complete_onboarding(
     current_user.naam = body.naam
     current_user.functie = body.functie
 
-    # Create a placement request if the user has no active placement and no
-    # pending request for this eenheid yet.
+    # Create a placement request if the user has no active placement.
+    # If pending requests exist for other eenheden, withdraw them first --
+    # a person can only request one team at a time, and the wizard is the
+    # latest expression of intent.
     existing_placement = await db.execute(
         select(PersonOrganisatieEenheid.id).where(
             PersonOrganisatieEenheid.person_id == current_user.id,
@@ -537,16 +539,23 @@ async def complete_onboarding(
         )
     )
     if existing_placement.scalar_one_or_none() is None:
-        # Check for existing pending request
-        existing_request = await db.execute(
-            select(OrgPlacementRequest.id).where(
+        # Idempotent: a pending request for this same eenheid means the
+        # user re-submitted; do nothing. For other eenheden, drop them.
+        existing_pending = await db.execute(
+            select(OrgPlacementRequest).where(
                 OrgPlacementRequest.person_id == current_user.id,
-                OrgPlacementRequest.organisatie_eenheid_id
-                == body.organisatie_eenheid_id,
                 OrgPlacementRequest.status == "pending",
             )
         )
-        if existing_request.scalar_one_or_none() is None:
+        same_eenheid = False
+        for req in existing_pending.scalars().all():
+            if req.organisatie_eenheid_id == body.organisatie_eenheid_id:
+                same_eenheid = True
+            else:
+                await db.delete(req)
+        await db.flush()
+
+        if not same_eenheid:
             placement_req = OrgPlacementRequest(
                 person_id=current_user.id,
                 organisatie_eenheid_id=body.organisatie_eenheid_id,
@@ -573,6 +582,26 @@ async def complete_onboarding(
     repo = PersonRepository(db)
     person = await repo.get(current_user.id)
     return PersonDetailResponse.model_validate(person)
+
+
+# ---------------------------------------------------------------------------
+# POST /onboarding/refresh -- invalidate the cached onboarding feature list
+# ---------------------------------------------------------------------------
+
+
+@router.post("/onboarding/refresh")
+async def refresh_onboarding_features(
+    request: Request,
+    _current_user: CurrentUser,
+) -> dict:
+    """Invalidate the session cache so /status recomputes pending features.
+
+    Called by the onboarding wizard once a step's underlying data has been
+    saved (profile.functie, MattermostUser row, etc.). The check_complete
+    functions then drop the step from pending on the next /status call.
+    """
+    request.session.pop("onboarding_features", None)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

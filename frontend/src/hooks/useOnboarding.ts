@@ -15,3 +15,9 @@ export function useDismissOnboardingFeature() {
       }),
   });
 }
+
+export function useRefreshOnboardingFeatures() {
+  return useMutation({
+    mutationFn: () => apiPost<{ ok: boolean }>('/api/auth/onboarding/refresh', {}),
+  });
+}
