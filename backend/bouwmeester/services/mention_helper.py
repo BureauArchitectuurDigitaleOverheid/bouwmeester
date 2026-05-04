@@ -21,6 +21,7 @@ async def sync_and_notify_mentions(
     sender_id: UUID | None = None,
     source_node_id: UUID | None = None,
     source_task_id: UUID | None = None,
+    source_lead_id: UUID | None = None,
     exclude_person_id: UUID | None = None,
 ) -> None:
     """Sync mentions from content and send notifications to mentioned persons.
@@ -60,6 +61,7 @@ async def sync_and_notify_mentions(
                         entity_title,
                         source_node_id=source_node_id,
                         source_task_id=source_task_id,
+                        source_lead_id=source_lead_id,
                         sender_id=sender_id,
                     )
     except Exception:

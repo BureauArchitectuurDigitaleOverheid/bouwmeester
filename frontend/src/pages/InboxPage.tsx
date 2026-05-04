@@ -110,6 +110,7 @@ export function InboxPage() {
     description: n.message,
     node_id: n.related_node_id,
     task_id: n.related_task_id,
+    lead_id: n.related_lead_id,
     sender_name: n.sender_name,
     reply_count: n.reply_count,
     created_at: n.created_at,

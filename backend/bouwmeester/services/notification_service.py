@@ -513,6 +513,7 @@ class NotificationService:
         source_title: str,
         source_node_id: UUID | None = None,
         source_task_id: UUID | None = None,
+        source_lead_id: UUID | None = None,
         sender_id: UUID | None = None,
     ) -> Notification:
         """Notify a person they were @mentioned."""
@@ -524,6 +525,7 @@ class NotificationService:
             sender_id=sender_id,
             related_node_id=source_node_id,
             related_task_id=source_task_id,
+            related_lead_id=source_lead_id,
         )
         notification = await self.repo.create(data)
         self._send_to_mattermost(notification)

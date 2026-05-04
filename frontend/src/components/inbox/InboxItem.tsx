@@ -4,6 +4,7 @@ import { Badge } from '@/components/common/Badge';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
+import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { formatDateTimeShort } from '@/utils/dates';
 import { NOTIFICATION_TYPE_LABELS, INBOX_TYPE_COLORS } from '@/types';
 import type { InboxItem as InboxItemType } from '@/types';
@@ -25,6 +26,7 @@ const typeIcons: Record<string, React.ReactNode> = {
 export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps) {
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
+  const { openLeadDetail } = useLeadDetail();
 
   const handleClick = () => {
     if (!item.read && onMarkRead) {
@@ -36,10 +38,12 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
       openTaskDetail(item.task_id);
     } else if (item.node_id) {
       openNodeDetail(item.node_id);
+    } else if (item.lead_id) {
+      openLeadDetail(item.lead_id);
     }
   };
 
-  const isClickable = item.type === 'message' || !!item.task_id || !!item.node_id;
+  const isClickable = item.type === 'message' || !!item.task_id || !!item.node_id || !!item.lead_id;
 
   return (
     <Card hoverable={isClickable} onClick={handleClick}>

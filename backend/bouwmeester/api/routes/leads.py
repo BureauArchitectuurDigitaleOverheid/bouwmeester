@@ -556,7 +556,6 @@ async def add_activity(
         )
         await notif_svc.send(notification_data)
 
-    # Notify @mentioned persons (skip assignee, already notified above)
     await sync_and_notify_mentions(
         db,
         "lead_activity",
@@ -564,6 +563,7 @@ async def add_activity(
         data.content,
         f"lead '{lead.title}'",
         sender_id=author_id,
+        source_lead_id=lead_id,
         exclude_person_id=lead.assignee_id,
     )
 

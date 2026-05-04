@@ -809,6 +809,7 @@ export interface InboxItem {
   source?: string;
   node_id?: string;
   task_id?: string;
+  lead_id?: string;
   sender_name?: string;
   reply_count?: number;
   created_at: string;
@@ -1212,6 +1213,7 @@ export interface Notification {
   is_read: boolean;
   related_node_id?: string;
   related_task_id?: string;
+  related_lead_id?: string;
   parent_id?: string;
   thread_id?: string;
   reply_count: number;
