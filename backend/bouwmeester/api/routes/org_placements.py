@@ -75,18 +75,21 @@ async def request_placement(
     if current_user is None:
         raise HTTPException(status_code=401, detail="Inloggen vereist")
 
-    # Prevent duplicate pending requests for the same eenheid
-    existing_stmt = select(OrgPlacementRequest).where(
+    # A person can only request one team at a time. Reject if a pending
+    # request for this same eenheid already exists; withdraw any pending
+    # requests for other eenheden so the new one supersedes them.
+    pending_stmt = select(OrgPlacementRequest).where(
         OrgPlacementRequest.person_id == current_user.id,
-        OrgPlacementRequest.organisatie_eenheid_id == data.organisatie_eenheid_id,
         OrgPlacementRequest.status == "pending",
     )
-    existing = (await db.execute(existing_stmt)).scalar_one_or_none()
-    if existing is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="Er staat al een verzoek open voor deze eenheid",
-        )
+    for existing in (await db.execute(pending_stmt)).scalars().all():
+        if existing.organisatie_eenheid_id == data.organisatie_eenheid_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Er staat al een verzoek open voor deze eenheid",
+            )
+        await db.delete(existing)
+    await db.flush()
 
     req = OrgPlacementRequest(
         person_id=current_user.id,
