@@ -90,6 +90,7 @@ export function useUpdateAppConfig() {
 export interface VersionInfo {
   git_sha: string;
   build_time: string;
+  repo_url: string;
 }
 
 export function useVersionInfo() {

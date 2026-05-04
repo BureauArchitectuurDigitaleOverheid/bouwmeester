@@ -8,6 +8,13 @@ RUN npm install
 COPY . .
 # Copy docs for the in-app documentation page (CI places docs/ in the context)
 COPY doc[s] /docs/
+
+# VITE_* vars are baked into the bundle at build time. CI injects them; for
+# local builds they default to empty and the version panel shows a placeholder.
+ARG GIT_SHA=""
+ARG BUILD_TIME=""
+ENV VITE_GIT_SHA=$GIT_SHA
+ENV VITE_BUILD_TIME=$BUILD_TIME
 RUN npm run build
 
 
