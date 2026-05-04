@@ -4,11 +4,13 @@ import StarterKit from '@tiptap/starter-kit';
 import Mention from '@tiptap/extension-mention';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
+import type { EditorView } from '@tiptap/pm/view';
 import { apiGet } from '@/api/client';
 import { formatFunctie, titleCase } from '@/types';
 import type { Person, OrganisatieEenheid, MentionSearchResult } from '@/types';
 import type { SuggestionProps, SuggestionKeyDownProps } from '@tiptap/suggestion';
 import { ReactRenderer } from '@tiptap/react';
+import { listyTextToHtml } from './richTextPaste';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -417,6 +419,29 @@ function parseContent(value: string): object | string {
   };
 }
 
+// ─── Paste handler: rescue list structure from plain text ──────────────────
+
+/**
+ * When the user pastes plain text that visually represents a list
+ * ("1. foo\n2. bar" or "- foo\n- bar"), convert it to real `ol`/`ul`
+ * nodes instead of a sequence of bare paragraphs.
+ *
+ * If the clipboard already carries `text/html`, defer to ProseMirror's
+ * default rich-paste path, which already produces proper lists.
+ * Returns true to signal the paste was handled.
+ */
+function insertListyTextOnPaste(view: EditorView, event: ClipboardEvent): boolean {
+  if (!event.clipboardData) return false;
+  if (event.clipboardData.types.includes('text/html')) return false;
+  const text = event.clipboardData.getData('text/plain');
+  if (!text) return false;
+
+  const html = listyTextToHtml(text);
+  if (!html) return false;
+
+  return view.pasteHTML(html, event);
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function RichTextEditor({
@@ -450,6 +475,9 @@ export function RichTextEditor({
       PersonMention,
       HashtagMention,
     ],
+    editorProps: {
+      handlePaste: (view, event) => insertListyTextOnPaste(view, event),
+    },
     content: initialContent.current,
     editable: !readOnly,
     onUpdate: ({ editor }) => {
