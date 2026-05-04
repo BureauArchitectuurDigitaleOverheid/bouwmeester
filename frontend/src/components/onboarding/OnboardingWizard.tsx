@@ -31,12 +31,17 @@ export function OnboardingWizard({
   const StepComponent = STEP_COMPONENTS[current.key];
 
   const handleComplete = useCallback(async () => {
-    await dismissMutation.mutateAsync({
-      featureKey: current.key,
-      permanent: true,
-    });
+    // Non-dismissible features (profile) clear by saving their underlying
+    // data; the backend's check_complete drops them from pending. Calling
+    // /dismiss for them returns 422.
+    if (current.dismissible) {
+      await dismissMutation.mutateAsync({
+        featureKey: current.key,
+        permanent: true,
+      });
+    }
     await refreshAuthStatus();
-  }, [dismissMutation, current.key, refreshAuthStatus]);
+  }, [dismissMutation, current.key, current.dismissible, refreshAuthStatus]);
 
   const handleDismiss = useCallback(async (permanent: boolean) => {
     await dismissMutation.mutateAsync({
