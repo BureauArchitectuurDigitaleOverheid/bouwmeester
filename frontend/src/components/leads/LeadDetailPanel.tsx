@@ -23,6 +23,7 @@ import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
+import { LinkLeadNodeModal } from './LinkLeadNodeModal';
 import { createPerson } from '@/api/people';
 import { Badge } from '@/components/common/Badge';
 import { DetailSection } from '@/components/common/DetailSection';
@@ -36,7 +37,6 @@ import {
   useCreateLeadActivity,
   useAddLeadContact,
   useRemoveLeadContact,
-  useLinkLeadNode,
   useUnlinkLeadNode,
   useUploadLeadAttachment,
   useDeleteLeadAttachment,
@@ -46,7 +46,6 @@ import {
 } from '@/hooks/useLeads';
 import { usePeople } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
-import { useNodes } from '@/hooks/useNodes';
 import { getLeadAttachmentDownloadUrl } from '@/api/leads';
 import { isOverdue, formatDateLong, timeAgo } from '@/utils/dates';
 import {
@@ -81,7 +80,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const { data: people } = usePeople();
   const { data: initiatieven } = useInitiatieven();
   const createInitiatief = useCreateInitiatief();
-  const { data: nodes } = useNodes();
 
   const contactPersonOptions = useMemo(
     () => (people ?? [])
@@ -96,7 +94,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const createActivity = useCreateLeadActivity();
   const addContact = useAddLeadContact();
   const removeContact = useRemoveLeadContact();
-  const linkNode = useLinkLeadNode();
   const unlinkNode = useUnlinkLeadNode();
   const uploadAttachment = useUploadLeadAttachment();
   const deleteAttachment = useDeleteLeadAttachment();
@@ -124,9 +121,8 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const [contactPersonId, setContactPersonId] = useState('');
   const [contactRol, setContactRol] = useState('contactpersoon');
 
-  // Node link form
+  // Node link modal
   const [showLinkNode, setShowLinkNode] = useState(false);
-  const [linkNodeId, setLinkNodeId] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
@@ -250,19 +246,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           setShowAddContact(false);
           setContactPersonId('');
           setContactRol('contactpersoon');
-        },
-      },
-    );
-  };
-
-  const handleLinkNode = () => {
-    if (!lead || !linkNodeId) return;
-    linkNode.mutate(
-      { leadId: lead.id, nodeId: linkNodeId },
-      {
-        onSuccess: () => {
-          setShowLinkNode(false);
-          setLinkNodeId('');
         },
       },
     );
@@ -722,29 +705,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             ) : (
               <p className="text-sm text-text-secondary">Geen gelinkte nodes</p>
             )}
-
-            {showLinkNode && (
-              <div className="flex items-center gap-2 mt-2">
-                <div className="flex-1">
-                  <CreatableSelect
-                    value={linkNodeId}
-                    onChange={setLinkNodeId}
-                    options={nodes?.map((n) => ({
-                      value: n.id,
-                      label: n.title,
-                      description: n.node_type?.replace(/_/g, ' ') ?? undefined,
-                    })) ?? []}
-                    placeholder="Zoek een node..."
-                  />
-                </div>
-                <Button size="sm" onClick={handleLinkNode} disabled={!linkNodeId}>
-                  Koppelen
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setShowLinkNode(false)}>
-                  Annuleren
-                </Button>
-              </div>
-            )}
           </DetailSection>
 
           {/* Activiteiten */}
@@ -844,6 +804,12 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
     >
       Weet je zeker dat je deze lead wilt verwijderen?
     </ConfirmDialog>
+    {showLinkNode && lead && (
+      <LinkLeadNodeModal
+        leadId={lead.id}
+        onClose={() => setShowLinkNode(false)}
+      />
+    )}
     </>
   );
 }
