@@ -3,9 +3,10 @@ import { useState, useCallback, useMemo } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useNodes, useCreateNode } from '@/hooks/useNodes';
 import { usePeople, useCreatePerson } from '@/hooks/usePeople';
-import { useLinkLeadNode, useAddLeadContact } from '@/hooks/useLeads';
+import { useLead, useLinkLeadNode, useAddLeadContact } from '@/hooks/useLeads';
 import { useToast } from '@/contexts/ToastContext';
 import { NodeType, NODE_TYPE_LABELS, LEAD_CONTACT_ROL_LABELS } from '@/types';
 
@@ -13,14 +14,29 @@ const CONTACT_ROLLEN: SelectOption[] = Object.entries(LEAD_CONTACT_ROL_LABELS).m
   ([value, label]) => ({ value, label }),
 );
 
+const NEW_NODE_TYPE_OPTIONS: SelectOption[] = [
+  NodeType.NOTITIE,
+  NodeType.DOSSIER,
+  NodeType.DOEL,
+  NodeType.PROBLEEM,
+  NodeType.INSTRUMENT,
+  NodeType.MAATREGEL,
+  NodeType.BELEIDSKADER,
+  NodeType.BELEIDSOPTIE,
+  NodeType.EFFECT,
+  NodeType.OVERIG,
+].map((value) => ({ value, label: NODE_TYPE_LABELS[value] }));
+
 interface Props {
   leadId: string | null;
-  existingContactPersonIds: string[];
   onClose: () => void;
 }
 
-export function LinkLeadNodeModal({ leadId, existingContactPersonIds, onClose }: Props) {
-  const { data: nodes = [] } = useNodes();
+export function LinkLeadNodeModal({ leadId, onClose }: Props) {
+  const { data: lead } = useLead(leadId);
+  const [nodeQuery, setNodeQuery] = useState('');
+  const debouncedNodeQuery = useDebounce(nodeQuery, 200);
+  const { data: nodes = [] } = useNodes(undefined, debouncedNodeQuery);
   const { data: people = [] } = usePeople();
   const createNode = useCreateNode();
   const createPerson = useCreatePerson();
@@ -29,8 +45,14 @@ export function LinkLeadNodeModal({ leadId, existingContactPersonIds, onClose }:
   const { showError } = useToast();
 
   const [nodeId, setNodeId] = useState('');
+  const [newNodeType, setNewNodeType] = useState<NodeType>(NodeType.NOTITIE);
   const [personId, setPersonId] = useState('');
   const [rol, setRol] = useState('contactpersoon');
+
+  const existingContactPersonIds = useMemo(
+    () => new Set((lead?.contacts ?? []).map((c) => c.person_id)),
+    [lead],
+  );
 
   const nodeOptions: SelectOption[] = useMemo(
     () =>
@@ -56,10 +78,10 @@ export function LinkLeadNodeModal({ leadId, existingContactPersonIds, onClose }:
 
   const handleCreateNode = useCallback(
     async (text: string): Promise<string | null> => {
-      const node = await createNode.mutateAsync({ title: text, node_type: NodeType.NOTITIE });
+      const node = await createNode.mutateAsync({ title: text, node_type: newNodeType });
       return node.id;
     },
-    [createNode],
+    [createNode, newNodeType],
   );
 
   const handleCreatePerson = useCallback(
@@ -72,8 +94,10 @@ export function LinkLeadNodeModal({ leadId, existingContactPersonIds, onClose }:
 
   const resetAndClose = useCallback(() => {
     setNodeId('');
+    setNewNodeType(NodeType.NOTITIE);
     setPersonId('');
     setRol('contactpersoon');
+    setNodeQuery('');
     onClose();
   }, [onClose]);
 
@@ -81,17 +105,20 @@ export function LinkLeadNodeModal({ leadId, existingContactPersonIds, onClose }:
     if (!leadId || !nodeId) return;
     try {
       await linkNode.mutateAsync({ leadId, nodeId });
-      if (personId && !existingContactPersonIds.includes(personId)) {
-        try {
-          await addContact.mutateAsync({ leadId, personId, rol });
-        } catch {
-          showError('Node gekoppeld, maar contactpersoon kon niet worden toegevoegd');
-        }
-      }
-      resetAndClose();
     } catch {
-      // useMutationWithError already shows a toast
+      // useMutationWithError already shows a toast; keep modal open for retry
+      return;
     }
+    if (personId && !existingContactPersonIds.has(personId)) {
+      try {
+        await addContact.mutateAsync({ leadId, personId, rol });
+      } catch {
+        showError('Node gekoppeld, maar contactpersoon kon niet worden toegevoegd');
+        // Keep modal open so the user sees the partial result and can retry the contact
+        return;
+      }
+    }
+    resetAndClose();
   }, [
     leadId,
     nodeId,
@@ -132,9 +159,21 @@ export function LinkLeadNodeModal({ leadId, existingContactPersonIds, onClose }:
           options={nodeOptions}
           placeholder="Zoek of maak een node..."
           onCreate={handleCreateNode}
-          createLabel="Nieuwe notitie aanmaken"
+          createLabel={`Nieuwe ${NODE_TYPE_LABELS[newNodeType].toLowerCase()} aanmaken`}
+          onQueryChange={setNodeQuery}
+          filterLocally={false}
           required
         />
+        {!nodeId && (
+          <CreatableSelect
+            label="Type bij nieuwe node"
+            value={newNodeType}
+            onChange={(v) => setNewNodeType(v as NodeType)}
+            options={NEW_NODE_TYPE_OPTIONS}
+            placeholder="Selecteer een type..."
+            searchable={false}
+          />
+        )}
         <div className="border-t border-border pt-4 space-y-3">
           <p className="text-xs text-text-secondary">
             Optioneel: voeg ook een contactpersoon toe aan deze lead.

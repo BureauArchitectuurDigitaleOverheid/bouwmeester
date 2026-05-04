@@ -807,7 +807,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
     {showLinkNode && lead && (
       <LinkLeadNodeModal
         leadId={lead.id}
-        existingContactPersonIds={lead.contacts.map((c) => c.person_id)}
         onClose={() => setShowLinkNode(false)}
       />
     )}
