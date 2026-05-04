@@ -733,3 +733,25 @@ async def reset_database(
         message=f"Database gereset: {len(tables_to_clear)} tabellen gewist, "
         f"{admin_created} admin-accounts aangemaakt.",
     )
+
+
+# ---------------------------------------------------------------------------
+# Build / deploy info
+# ---------------------------------------------------------------------------
+
+# Process-level constants — these env vars are injected at Docker build time
+# and never change during the container's lifetime, so we read them once.
+_VERSION_INFO = {
+    "git_sha": os.environ.get("GIT_SHA", ""),
+    "build_time": os.environ.get("BUILD_TIME", ""),
+    "repo_url": os.environ.get(
+        "REPO_URL",
+        "https://github.com/BureauArchitectuurDigitaleOverheid/bouwmeester",
+    ),
+}
+
+
+@router.get("/version")
+async def version_info(admin: AdminUser) -> dict[str, str]:
+    """Return backend git SHA, build time, and repo URL (admin only)."""
+    return _VERSION_INFO
