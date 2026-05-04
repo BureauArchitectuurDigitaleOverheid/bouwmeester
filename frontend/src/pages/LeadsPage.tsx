@@ -170,7 +170,7 @@ export function LeadsPage() {
     <div className="space-y-4">
       {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           {/* Initiative pills */}
           {initiatieven?.map((ini) => (
             <button

@@ -233,85 +233,87 @@ export function LeadInboxView({
               {items.map((lead) => (
                 <div
                   key={lead.id}
-                  className="group flex items-center gap-3 rounded-xl border border-border bg-white px-4 py-3 hover:border-primary-200 hover:shadow-sm transition-all"
+                  className="group flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-xl border border-border bg-white px-3 sm:px-4 py-3 hover:border-primary-200 hover:shadow-sm transition-all"
                 >
-                  {/* Checkbox */}
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(lead.id)}
-                    onChange={() => toggleSelect(lead.id)}
-                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 shrink-0"
-                  />
+                  <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+                    {/* Checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(lead.id)}
+                      onChange={() => toggleSelect(lead.id)}
+                      className="h-4 w-4 mt-0.5 sm:mt-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500 shrink-0"
+                    />
 
-                  {/* Main content - clickable */}
-                  <button
-                    onClick={() => openLeadDetail(lead.id)}
-                    className="flex-1 min-w-0 text-left"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-text truncate">
-                        {lead.title}
-                      </span>
-                    </div>
-
-                    {lead.description && (
-                      <div className="text-xs text-text-secondary mt-0.5">
-                        <RichTextDisplay content={lead.description} fallback="" />
+                    {/* Main content - clickable */}
+                    <button
+                      onClick={() => openLeadDetail(lead.id)}
+                      className="flex-1 min-w-0 text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-text truncate block w-full">
+                          {lead.title}
+                        </span>
                       </div>
-                    )}
 
-                    <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-1 text-xs text-text-secondary">
-                      {lead.brought_by && (
-                        <span>via {lead.brought_by.naam}</span>
+                      {lead.description && (
+                        <div className="text-xs text-text-secondary mt-0.5 max-h-8 overflow-hidden break-words">
+                          <RichTextDisplay content={lead.description} fallback="" />
+                        </div>
                       )}
-                      {lead.organization && (
-                        <span className="truncate max-w-[200px]">
-                          {lead.externe_organisatie?.naam ?? lead.organization}
-                        </span>
-                      )}
-                      {lead.contact_names.length > 0 && (
-                        <span className="inline-flex items-center gap-0.5" title={lead.contact_names.join(', ')}>
-                          <Users className="h-3 w-3" />
-                          {lead.contact_names[0]}
-                          {lead.contact_names.length > 1 && (
-                            <span>+{lead.contact_names.length - 1}</span>
-                          )}
-                        </span>
-                      )}
-                      {lead.next_action_date && (
-                        <span className="inline-flex items-center gap-0.5">
-                          <Calendar className="h-3 w-3" />
-                          {formatDateShort(lead.next_action_date)}
-                        </span>
-                      )}
-                      {lead.attachment_count > 0 && (
-                        <span className="inline-flex items-center gap-0.5">
-                          <Paperclip className="h-3 w-3" />
-                          {lead.attachment_count}
-                        </span>
-                      )}
-                      <span>{timeAgo(lead.created_at)}</span>
-                    </div>
 
-                    {lead.tags.length > 0 && (
-                      <div className="flex gap-1 flex-wrap mt-1">
-                        {lead.tags.slice(0, 4).map((tag) => (
-                          <span
-                            key={tag}
-                            className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-text-secondary truncate max-w-[200px]"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                        {lead.tags.length > 4 && (
-                          <span className="text-[10px] text-text-secondary">+{lead.tags.length - 4}</span>
+                      <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-1 text-xs text-text-secondary">
+                        {lead.brought_by && (
+                          <span className="truncate max-w-[160px]">via {lead.brought_by.naam}</span>
                         )}
+                        {lead.organization && (
+                          <span className="truncate max-w-[160px]">
+                            {lead.externe_organisatie?.naam ?? lead.organization}
+                          </span>
+                        )}
+                        {lead.contact_names.length > 0 && (
+                          <span className="inline-flex items-center gap-0.5 truncate max-w-[160px]" title={lead.contact_names.join(', ')}>
+                            <Users className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{lead.contact_names[0]}</span>
+                            {lead.contact_names.length > 1 && (
+                              <span className="shrink-0">+{lead.contact_names.length - 1}</span>
+                            )}
+                          </span>
+                        )}
+                        {lead.next_action_date && (
+                          <span className="inline-flex items-center gap-0.5">
+                            <Calendar className="h-3 w-3" />
+                            {formatDateShort(lead.next_action_date)}
+                          </span>
+                        )}
+                        {lead.attachment_count > 0 && (
+                          <span className="inline-flex items-center gap-0.5">
+                            <Paperclip className="h-3 w-3" />
+                            {lead.attachment_count}
+                          </span>
+                        )}
+                        <span>{timeAgo(lead.created_at)}</span>
                       </div>
-                    )}
-                  </button>
 
-                  {/* Actions - visible on hover and focus-within */}
-                  <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0">
+                      {lead.tags.length > 0 && (
+                        <div className="flex gap-1 flex-wrap mt-1">
+                          {lead.tags.slice(0, 4).map((tag) => (
+                            <span
+                              key={tag}
+                              className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-text-secondary truncate max-w-[160px]"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          {lead.tags.length > 4 && (
+                            <span className="text-[10px] text-text-secondary">+{lead.tags.length - 4}</span>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Actions - always visible on mobile, hover-revealed on desktop */}
+                  <div className="flex items-center gap-1.5 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity shrink-0 ml-7 sm:ml-0">
                     <Button
                       size="sm"
                       onClick={() => handleClaim(lead)}
