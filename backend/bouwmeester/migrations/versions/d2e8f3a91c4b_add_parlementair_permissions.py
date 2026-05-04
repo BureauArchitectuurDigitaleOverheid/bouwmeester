@@ -35,7 +35,10 @@ _NEW_PERMISSIONS = [
 
 _ROLE_GRANTS = {
     "super_admin": [p[0] for p in _NEW_PERMISSIONS],
-    "platform_admin": ["parlementair:read", "parlementair:import"],
+    # platform_admin is infra-only (geen content-permissies in c44e4533e993)
+    # — bewust geen parlementair:read of :review.  :import zou analoog aan
+    # import_export:import zijn, maar ook dat overlaten aan ministry_admin
+    # houdt de rol consistent infra-only.
     "ministry_admin": [
         "parlementair:read",
         "parlementair:review",
