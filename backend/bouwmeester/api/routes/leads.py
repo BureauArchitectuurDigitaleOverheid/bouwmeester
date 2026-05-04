@@ -54,6 +54,7 @@ from bouwmeester.schema.lead import (
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse, TagCreate
 from bouwmeester.services.activity_service import log_activity
+from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/leads", tags=["leads"])
@@ -555,6 +556,17 @@ async def add_activity(
         )
         await notif_svc.send(notification_data)
 
+    # Notify @mentioned persons (skip assignee, already notified above)
+    await sync_and_notify_mentions(
+        db,
+        "lead_activity",
+        activity.id,
+        data.content,
+        f"lead '{lead.title}'",
+        sender_id=author_id,
+        exclude_person_id=lead.assignee_id,
+    )
+
     await log_activity(
         db,
         current_user,
@@ -563,7 +575,7 @@ async def add_activity(
         details={
             "lead_id": str(lead_id),
             "lead_title": lead.title,
-            "activity_type": data.type,
+            "activity_type": data.activity_type.value,
         },
     )
 
