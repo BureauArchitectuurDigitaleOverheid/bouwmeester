@@ -42,7 +42,7 @@ export function LinkLeadNodeModal({ leadId, onClose }: Props) {
   const createPerson = useCreatePerson();
   const linkNode = useLinkLeadNode();
   const addContact = useAddLeadContact();
-  const { showError } = useToast();
+  const { showError, showWarning } = useToast();
 
   const [nodeId, setNodeId] = useState('');
   const [newNodeType, setNewNodeType] = useState<NodeType>(NodeType.NOTITIE);
@@ -67,13 +67,13 @@ export function LinkLeadNodeModal({ leadId, onClose }: Props) {
   const personOptions: SelectOption[] = useMemo(
     () =>
       people
-        .filter((p) => p.is_active)
+        .filter((p) => p.is_active && !existingContactPersonIds.has(p.id))
         .map((p) => ({
           value: p.id,
           label: p.naam,
           description: p.functie ?? undefined,
         })),
-    [people],
+    [people, existingContactPersonIds],
   );
 
   const handleCreateNode = useCallback(
@@ -109,13 +109,17 @@ export function LinkLeadNodeModal({ leadId, onClose }: Props) {
       // useMutationWithError already shows a toast; keep modal open for retry
       return;
     }
-    if (personId && !existingContactPersonIds.has(personId)) {
-      try {
-        await addContact.mutateAsync({ leadId, personId, rol });
-      } catch {
-        showError('Node gekoppeld, maar contactpersoon kon niet worden toegevoegd');
-        // Keep modal open so the user sees the partial result and can retry the contact
-        return;
+    if (personId) {
+      if (existingContactPersonIds.has(personId)) {
+        showWarning('Persoon was al gekoppeld als contactpersoon');
+      } else {
+        try {
+          await addContact.mutateAsync({ leadId, personId, rol });
+        } catch {
+          showError('Node gekoppeld, maar contactpersoon kon niet worden toegevoegd');
+          // Keep modal open so the user sees the partial result and can retry the contact
+          return;
+        }
       }
     }
     resetAndClose();
@@ -129,6 +133,7 @@ export function LinkLeadNodeModal({ leadId, onClose }: Props) {
     addContact,
     resetAndClose,
     showError,
+    showWarning,
   ]);
 
   const submitting = linkNode.isPending || addContact.isPending;
