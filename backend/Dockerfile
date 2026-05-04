@@ -36,6 +36,11 @@ USER 1001
 # Activate venv via PATH — entrypoint uses python/alembic/uvicorn directly
 ENV PATH="/app/.venv/bin:$PATH"
 
+ARG GIT_SHA=""
+ARG BUILD_TIME=""
+ENV GIT_SHA=$GIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
+
 EXPOSE 8080
 
 ENTRYPOINT ["sh", "/app/entrypoint.sh"]

@@ -733,3 +733,17 @@ async def reset_database(
         message=f"Database gereset: {len(tables_to_clear)} tabellen gewist, "
         f"{admin_created} admin-accounts aangemaakt.",
     )
+
+
+# ---------------------------------------------------------------------------
+# Build / deploy info
+# ---------------------------------------------------------------------------
+
+
+@router.get("/version")
+async def version_info(admin: AdminUser) -> dict[str, str]:
+    """Return git SHA and build time injected at Docker build."""
+    return {
+        "git_sha": os.environ.get("GIT_SHA", ""),
+        "build_time": os.environ.get("BUILD_TIME", ""),
+    }

@@ -82,3 +82,20 @@ export function useUpdateAppConfig() {
     invalidateKeys: [queryKeys.admin.config()],
   });
 }
+
+// ---------------------------------------------------------------------------
+// Build / deploy info
+// ---------------------------------------------------------------------------
+
+export interface VersionInfo {
+  git_sha: string;
+  build_time: string;
+}
+
+export function useVersionInfo() {
+  return useQuery({
+    queryKey: queryKeys.admin.version(),
+    queryFn: () => apiGet<VersionInfo>('/api/admin/version'),
+    staleTime: 5 * 60 * 1000,
+  });
+}
