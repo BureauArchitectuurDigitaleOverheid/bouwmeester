@@ -5,6 +5,7 @@ import { useNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNo
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
+import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { timeAgo } from '@/utils/dates';
 import type { Notification } from '@/types';
 import { richTextToPlain } from '@/utils/richtext';
@@ -132,6 +133,7 @@ export function NotificationBell() {
   const navigate = useNavigate();
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
+  const { openLeadDetail } = useLeadDetail();
   const { currentPerson } = useCurrentPerson();
 
   useBrowserNotifications();
@@ -215,6 +217,10 @@ export function NotificationBell() {
                       setOpen(false);
                     } else if (notification.related_node_id) {
                       openNodeDetail(notification.related_node_id);
+                      if (!notification.is_read) markRead.mutate(notification.id);
+                      setOpen(false);
+                    } else if (notification.related_lead_id) {
+                      openLeadDetail(notification.related_lead_id);
                       if (!notification.is_read) markRead.mutate(notification.id);
                       setOpen(false);
                     }

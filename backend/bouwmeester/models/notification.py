@@ -12,6 +12,7 @@ from bouwmeester.core.database import Base
 
 if TYPE_CHECKING:
     from bouwmeester.models.corpus_node import CorpusNode
+    from bouwmeester.models.lead import Lead
     from bouwmeester.models.person import Person
     from bouwmeester.models.task import Task
 
@@ -46,6 +47,11 @@ class Notification(Base):
         ForeignKey("task.id", ondelete="SET NULL"),
         nullable=True,
     )
+    related_lead_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("lead.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     sender_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("person.id", ondelete="SET NULL"),
@@ -72,6 +78,7 @@ class Notification(Base):
     )
     related_node: Mapped[Optional["CorpusNode"]] = relationship("CorpusNode")
     related_task: Mapped[Optional["Task"]] = relationship("Task")
+    related_lead: Mapped[Optional["Lead"]] = relationship("Lead")
     replies: Mapped[list["Notification"]] = relationship(
         "Notification",
         foreign_keys=[parent_id],

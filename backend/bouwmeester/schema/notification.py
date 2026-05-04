@@ -43,6 +43,7 @@ class NotificationBase(BaseModel):
     sender_id: UUID | None = None
     related_node_id: UUID | None = None
     related_task_id: UUID | None = None
+    related_lead_id: UUID | None = None
     parent_id: UUID | None = None
     thread_id: UUID | None = None
 

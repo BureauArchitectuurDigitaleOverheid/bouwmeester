@@ -54,6 +54,7 @@ from bouwmeester.schema.lead import (
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse, TagCreate
 from bouwmeester.services.activity_service import log_activity
+from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/leads", tags=["leads"])
@@ -202,6 +203,7 @@ async def create_lead(
             type="lead_assigned",
             title=f"Je bent toegewezen aan lead: {lead.title}",
             message=f"Je bent toegewezen aan lead: {lead.title}",
+            related_lead_id=lead.id,
         )
         await notif_svc.send(notification_data)
 
@@ -393,6 +395,7 @@ async def update_lead(
                 type="lead_assigned",
                 title=f"Je bent toegewezen aan lead: {lead.title}",
                 message=f"Je bent toegewezen aan lead: {lead.title}",
+                related_lead_id=lead.id,
             )
             await notif_svc.send(notification_data)
 
@@ -405,6 +408,7 @@ async def update_lead(
                 type="lead_stage_changed",
                 title=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
                 message=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
+                related_lead_id=lead.id,
             )
             await notif_svc.send(notification_data)
 
@@ -484,6 +488,7 @@ async def move_lead(
             type="lead_stage_changed",
             title=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
             message=f"Lead '{lead.title}' is verplaatst naar {lead.stage}",
+            related_lead_id=lead.id,
         )
         await notif_svc.send(notification_data)
 
@@ -552,8 +557,20 @@ async def add_activity(
             type="lead_activity_added",
             title=f"Nieuwe notitie op lead '{lead.title}'",
             message=f"Nieuwe notitie op lead '{lead.title}'",
+            related_lead_id=lead.id,
         )
         await notif_svc.send(notification_data)
+
+    await sync_and_notify_mentions(
+        db,
+        "lead_activity",
+        activity.id,
+        data.content,
+        f"lead '{lead.title}'",
+        sender_id=author_id,
+        source_lead_id=lead_id,
+        exclude_person_id=lead.assignee_id,
+    )
 
     await log_activity(
         db,
@@ -563,7 +580,7 @@ async def add_activity(
         details={
             "lead_id": str(lead_id),
             "lead_title": lead.title,
-            "activity_type": data.type,
+            "activity_type": data.activity_type.value,
         },
     )
 
@@ -630,6 +647,7 @@ async def add_contact(
             type="lead_contact_added",
             title=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
             message=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
+            related_lead_id=lead_id,
         )
         await notif_svc.send(notification_data)
 
