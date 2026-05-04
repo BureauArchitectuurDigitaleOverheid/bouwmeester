@@ -88,6 +88,17 @@ async def test_dismiss_rejects_unknown_feature(client):
 
 
 # ---------------------------------------------------------------------------
+# POST /api/auth/onboarding/refresh
+# ---------------------------------------------------------------------------
+
+
+async def test_refresh_requires_auth(client):
+    """POST /onboarding/refresh returns 401 without authentication."""
+    resp = await client.post("/api/auth/onboarding/refresh", json={})
+    assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
 # Profile completion logic
 #
 # Profile is considered complete when person.functie is set.

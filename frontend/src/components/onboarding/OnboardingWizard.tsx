@@ -1,6 +1,9 @@
 import { Modal } from '@/components/common/Modal';
 import { useAuth, type OnboardingFeature } from '@/contexts/AuthContext';
-import { useDismissOnboardingFeature } from '@/hooks/useOnboarding';
+import {
+  useDismissOnboardingFeature,
+  useRefreshOnboardingFeatures,
+} from '@/hooks/useOnboarding';
 import { ProfileStep } from '@/components/onboarding/ProfileStep';
 import { MattermostStep } from '@/components/onboarding/MattermostStep';
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
@@ -25,23 +28,19 @@ export function OnboardingWizard({
 }) {
   const { refreshAuthStatus } = useAuth();
   const dismissMutation = useDismissOnboardingFeature();
+  const refreshMutation = useRefreshOnboardingFeatures();
   const dismissAttempted = useRef(false);
 
   const current = features[0];
   const StepComponent = STEP_COMPONENTS[current.key];
 
   const handleComplete = useCallback(async () => {
-    // Non-dismissible features (profile) clear by saving their underlying
-    // data; the backend's check_complete drops them from pending. Calling
-    // /dismiss for them returns 422.
-    if (current.dismissible) {
-      await dismissMutation.mutateAsync({
-        featureKey: current.key,
-        permanent: true,
-      });
-    }
+    // A step is "complete" when its underlying data exists; the backend's
+    // check_complete drops it from pending on the next /status call. We
+    // pop the session cache first so the recomputation actually runs.
+    await refreshMutation.mutateAsync();
     await refreshAuthStatus();
-  }, [dismissMutation, current.key, current.dismissible, refreshAuthStatus]);
+  }, [refreshMutation, refreshAuthStatus]);
 
   const handleDismiss = useCallback(async (permanent: boolean) => {
     await dismissMutation.mutateAsync({

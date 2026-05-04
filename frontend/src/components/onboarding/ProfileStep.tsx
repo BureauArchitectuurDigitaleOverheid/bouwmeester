@@ -69,22 +69,26 @@ export function ProfileStep({ onComplete }: { onComplete: () => void }) {
       }
       const results = await Promise.allSettled(promises);
       const failed = results.filter((r) => r.status === 'rejected');
-      if (failed.length > 0) {
-        setWarnings(
-          failed.map((r) => {
-            const reason = (r as PromiseRejectedResult).reason;
-            if (reason instanceof ApiError && reason.body && typeof reason.body === 'object' && 'detail' in reason.body) {
-              return String((reason.body as { detail: string }).detail);
-            }
-            return 'Kon contactgegeven niet opslaan';
-          }),
-        );
+      const warningMessages = failed.map((r) => {
+        const reason = (r as PromiseRejectedResult).reason;
+        if (reason instanceof ApiError && reason.body && typeof reason.body === 'object' && 'detail' in reason.body) {
+          return String((reason.body as { detail: string }).detail);
+        }
+        return 'Kon contactgegeven niet opslaan';
+      });
+      if (warningMessages.length > 0) {
+        setWarnings(warningMessages);
       }
-      return result;
+      return { result, hasWarnings: warningMessages.length > 0 };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ hasWarnings }) => {
       await queryClient.invalidateQueries({ queryKey: ['people'] });
-      await onComplete();
+      // The profile itself was saved (naam + functie + placement request).
+      // Hold the wizard open so the user sees which extras failed; they
+      // can click Doorgaan to continue.
+      if (!hasWarnings) {
+        await onComplete();
+      }
     },
     onError: (err) => {
       if (err instanceof ApiError && err.body && typeof err.body === 'object' && 'detail' in err.body) {
@@ -240,21 +244,32 @@ export function ProfileStep({ onComplete }: { onComplete: () => void }) {
 
         {error && <p className="text-sm text-red-600">{error}</p>}
         {warnings.length > 0 && (
-          <div className="text-sm text-amber-600">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 space-y-1">
+            <p className="font-medium">Je profiel is opgeslagen, maar niet alle contactgegevens konden worden toegevoegd:</p>
             {warnings.map((w, i) => (
-              <p key={i}>{w}</p>
+              <p key={i}>- {w}</p>
             ))}
+            <p className="text-xs text-amber-700 pt-1">Je kunt deze later toevoegen via Instellingen.</p>
           </div>
         )}
 
         <div className="flex justify-end pt-2">
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit || mutation.isPending}
-            className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {mutation.isPending ? 'Bezig...' : 'Profiel voltooien'}
-          </button>
+          {warnings.length > 0 ? (
+            <button
+              onClick={onComplete}
+              className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors"
+            >
+              Doorgaan
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={!canSubmit || mutation.isPending}
+              className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {mutation.isPending ? 'Bezig...' : 'Profiel voltooien'}
+            </button>
+          )}
         </div>
       </div>
     </div>
