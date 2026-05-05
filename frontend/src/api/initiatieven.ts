@@ -5,7 +5,11 @@ import type {
   InitiatiefDetail,
   InitiatiefEenheid,
   InitiatiefMember,
+  InitiatiefSettingsUpdate,
   InitiatiefUpdate,
+  InitiatiefUpdatePost,
+  InitiatiefUpdatePostCreate,
+  InitiatiefUpdatePostEdit,
 } from '@/types';
 
 export async function getInitiatieven(params?: {
@@ -33,6 +37,73 @@ export async function updateInitiatief(
 
 export async function deleteInitiatief(id: string): Promise<void> {
   return apiDelete(`/api/initiatieven/${id}`);
+}
+
+export async function updateInitiatiefSettings(
+  id: string,
+  data: InitiatiefSettingsUpdate,
+): Promise<Initiatief> {
+  return apiPut<Initiatief>(`/api/initiatieven/${id}/settings`, data);
+}
+
+// ---------------------------------------------------------------------------
+// InitiatiefUpdatePost — internal CRUD for publication posts
+// ---------------------------------------------------------------------------
+
+export async function getInitiatiefUpdates(
+  initiatiefId: string,
+): Promise<InitiatiefUpdatePost[]> {
+  return apiGet<InitiatiefUpdatePost[]>(
+    `/api/initiatieven/${initiatiefId}/updates`,
+  );
+}
+
+export async function createInitiatiefUpdate(
+  initiatiefId: string,
+  data: InitiatiefUpdatePostCreate,
+): Promise<InitiatiefUpdatePost> {
+  return apiPost<InitiatiefUpdatePost>(
+    `/api/initiatieven/${initiatiefId}/updates`,
+    data,
+  );
+}
+
+export async function editInitiatiefUpdate(
+  initiatiefId: string,
+  postId: string,
+  data: InitiatiefUpdatePostEdit,
+): Promise<InitiatiefUpdatePost> {
+  return apiPut<InitiatiefUpdatePost>(
+    `/api/initiatieven/${initiatiefId}/updates/${postId}`,
+    data,
+  );
+}
+
+export async function publishInitiatiefUpdate(
+  initiatiefId: string,
+  postId: string,
+): Promise<InitiatiefUpdatePost> {
+  return apiPost<InitiatiefUpdatePost>(
+    `/api/initiatieven/${initiatiefId}/updates/${postId}/publish`,
+    {},
+  );
+}
+
+export async function unpublishInitiatiefUpdate(
+  initiatiefId: string,
+  postId: string,
+): Promise<InitiatiefUpdatePost> {
+  return apiPost<InitiatiefUpdatePost>(
+    `/api/initiatieven/${initiatiefId}/updates/${postId}/unpublish`,
+    {},
+  );
+}
+
+export async function deleteInitiatiefUpdate(
+  initiatiefId: string,
+  postId: string,
+): Promise<void> {
+  return apiDelete(`/api/initiatieven/${initiatiefId}/updates/${postId}`);
 }
 
 export async function addInitiatiefMember(
