@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.person import Person
@@ -59,6 +60,7 @@ async def list_imports(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:read")),
 ) -> list[ParlementairItemResponse]:
     """List imported parliamentary items. Filter by status, bron, type, or search."""
     repo = ParlementairItemRepository(db)
@@ -78,6 +80,7 @@ async def get_import(
     import_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:read")),
 ) -> ParlementairItemResponse:
     """Get a single parliamentary import item by ID."""
     repo = ParlementairItemRepository(db)
@@ -93,6 +96,7 @@ async def trigger_import(
     item_types: list[str] | None = Query(None, alias="types"),
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:import")),
 ) -> dict:
     """Trigger a manual parliamentary item import poll."""
     from bouwmeester.services.parlementair_import_service import (
@@ -119,6 +123,7 @@ async def reprocess_imports(
     item_type: Literal["motie", "kamervraag", "toezegging"] = Query("toezegging"),
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:import")),
 ) -> dict:
     """Re-process imported items that have no suggested edges.
 
@@ -148,6 +153,7 @@ async def get_review_queue(
     current_user: OptionalUser,
     type_filter: str | None = Query(None, alias="type"),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:read")),
 ) -> list[ParlementairItemResponse]:
     """Get parliamentary items pending review, optionally filtered by type."""
     repo = ParlementairItemRepository(db)
@@ -161,6 +167,7 @@ async def reject_import(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:review")),
 ) -> ParlementairItemResponse:
     """Reject a parliamentary import item (sets status to rejected)."""
     repo = ParlementairItemRepository(db)
@@ -187,6 +194,7 @@ async def reopen_import(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:review")),
 ) -> ParlementairItemResponse:
     """Reopen a rejected or out-of-scope item for review."""
     from bouwmeester.services.parlementair_import_service import (
@@ -237,6 +245,7 @@ async def complete_review(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:review")),
 ) -> ParlementairItemResponse:
     """Complete review: assign eigenaar, create follow-up tasks, mark as reviewed."""
     repo = ParlementairItemRepository(db)
@@ -323,6 +332,7 @@ async def update_suggested_edge(
     body: UpdateSuggestedEdgeRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:review")),
 ) -> SuggestedEdgeResponse:
     """Update a suggested edge (e.g. change its edge type) before approval."""
     repo = SuggestedEdgeRepository(db)
@@ -343,6 +353,7 @@ async def approve_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:review")),
 ) -> SuggestedEdgeResponse:
     """Approve a suggested edge, creating the actual edge in the graph."""
     suggested_edge_repo = SuggestedEdgeRepository(db)
@@ -406,6 +417,7 @@ async def reject_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:review")),
 ) -> SuggestedEdgeResponse:
     """Reject a suggested edge (sets status to rejected)."""
     repo = SuggestedEdgeRepository(db)
@@ -434,6 +446,7 @@ async def reset_suggested_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:review")),
 ) -> SuggestedEdgeResponse:
     """Reset a suggested edge back to pending, undoing approve/reject."""
     repo = SuggestedEdgeRepository(db)
