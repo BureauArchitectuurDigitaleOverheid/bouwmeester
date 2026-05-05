@@ -835,6 +835,7 @@ function UpdatesSection({
             autoFocus
           />
           <RichTextFormField
+            label="Inhoud"
             value={draft.body}
             onChange={(value) => setDraft({ ...draft, body: value })}
             rows={4}
