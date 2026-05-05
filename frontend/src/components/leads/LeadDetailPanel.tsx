@@ -62,6 +62,42 @@ import {
 } from '@/types';
 import type { LeadUpdate, LeadActivityCreate, EngagementType } from '@/types';
 
+/** Stages where a lead can publicly appear; mirrors the backend filter in
+ *  public_initiatief.py — keep in sync. */
+const PUBLIC_VISIBLE_STAGES: LeadStage[] = [
+  LeadStage.EERSTE_GESPREK,
+  LeadStage.INTERNE_CHECK,
+  LeadStage.FOLLOW_UP,
+  LeadStage.IN_THE_POCKET,
+];
+
+interface PublicationStatus {
+  /** Will this lead actually appear on the public page right now? */
+  visible: boolean;
+  /** Human-readable reason when not visible. Null when visible. */
+  reason: string | null;
+}
+
+function publicationStatus(args: {
+  publicVisible: boolean;
+  publicTitle: string | null;
+  stage: LeadStage;
+}): PublicationStatus {
+  if (!args.publicVisible) {
+    return { visible: false, reason: 'Toggle "Publiek tonen" staat uit.' };
+  }
+  if (!args.publicTitle?.trim()) {
+    return { visible: false, reason: 'Publieke titel is leeg.' };
+  }
+  if (!PUBLIC_VISIBLE_STAGES.includes(args.stage)) {
+    return {
+      visible: false,
+      reason: `Lead in stage "${LEAD_STAGE_LABELS[args.stage]}" — alleen actieve stages worden publiek.`,
+    };
+  }
+  return { visible: true, reason: null };
+}
+
 interface LeadDetailPanelProps {
   leadId: string | null;
   open: boolean;
@@ -524,6 +560,11 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           {(() => {
             const linkedInit = initiatieven?.find((i) => i.id === editInitiatiefId);
             if (!linkedInit?.public_page_enabled) return null;
+            const status = publicationStatus({
+              publicVisible: editPublicVisible,
+              publicTitle: editPublicTitle,
+              stage: editStage,
+            });
             return (
               <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
                 <div className="flex items-center justify-between gap-2">
@@ -540,6 +581,11 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                     Publiek tonen
                   </label>
                 </div>
+                {editPublicVisible && !status.visible && (
+                  <div className="rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5 text-xs text-amber-900">
+                    <strong>Nog niet zichtbaar:</strong> {status.reason}
+                  </div>
+                )}
                 <p className="text-xs text-emerald-800/80">
                   Schrijf een externe titel en samenvatting. Alleen die tekst
                   verschijnt op de publieke pagina, nooit het interne titel- of
@@ -715,11 +761,16 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             );
             if (!linkedInit?.public_page_enabled) return null;
             if (!lead.public_visible && !lead.public_title) return null;
+            const status = publicationStatus({
+              publicVisible: lead.public_visible,
+              publicTitle: lead.public_title,
+              stage: lead.stage,
+            });
             return (
               <DetailSection title="Publicatie">
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    {lead.public_visible && lead.public_title ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {status.visible ? (
                       <Badge variant="green">
                         Zichtbaar op /c/{linkedInit.slug}
                       </Badge>
@@ -727,6 +778,11 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                       <Badge variant="gray">Niet zichtbaar</Badge>
                     )}
                   </div>
+                  {!status.visible && status.reason && (
+                    <p className="text-xs text-text-secondary">
+                      {status.reason}
+                    </p>
+                  )}
                   {lead.public_title && (
                     <div className="text-sm">
                       <span className="text-text-secondary">Publieke titel: </span>
