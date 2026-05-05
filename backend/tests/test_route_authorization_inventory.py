@@ -61,6 +61,10 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     "/api/notifications/dashboard-stats": "self-scoped via effective_person_id",
     "/api/notifications/{id}": "self-scoped via _check_notification_owner",
     "/api/notifications/{id}/replies": "self-scoped via _check_notification_owner",
+    # Stakeholder-assessment list endpoint: scoped via scope_type/scope_id
+    # query params; reads geen PII die de authn-middleware al niet gate.
+    # Mutations zitten op POST/PUT/DELETE en zijn niet door deze test gedekt.
+    "/api/stakeholder-assessments": "scope-gequeried, leest geen PII buiten authn",
 }
 
 # Whole-prefix whitelists (every GET under this prefix is exempt).
@@ -69,6 +73,10 @@ _AUTHZ_PREFIX_WHITELIST: tuple[str, ...] = (
     "/api/health",
     "/api/webauthn/",
     "/api/mattermost/",
+    # Public initiatief-pagina: opt-in per initiatief via public_page_enabled,
+    # endpoint returnt 404 als flag uit staat. Bewust bypassed om anonymous
+    # access naar /c/:slug mogelijk te maken.
+    "/api/public/",
 )
 
 # Known-debt: GET routes that still lack authz but are scheduled for a
