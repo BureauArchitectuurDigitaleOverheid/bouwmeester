@@ -594,15 +594,12 @@ function SettingsSection({ initiatief }: { initiatief: InitiatiefDetail }) {
                     /c/{initiatief.slug}
                   </code>
                 )}
-                <span className="text-xs text-text-secondary">
-                  (kan niet meer gewijzigd worden)
-                </span>
               </div>
             ) : (
               <div className="space-y-1.5">
                 <p className="text-xs text-text-secondary">
                   Nog geen slug ingesteld. Kies kleine letters, cijfers en
-                  streepjes (bv. <code>regelrecht</code>). Eenmalig instelbaar.
+                  streepjes (bv. <code>regelrecht</code>).
                 </p>
                 <div className="flex gap-2">
                   <span className="inline-flex items-center px-2 rounded-l-lg border border-r-0 border-border bg-gray-50 text-sm text-text-secondary">
