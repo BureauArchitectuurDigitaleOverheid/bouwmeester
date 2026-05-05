@@ -125,15 +125,31 @@ async def test_create_person_requires_people_manage(
     assert resp.status_code == 403
 
 
-async def test_update_person_requires_people_manage(
+async def test_update_person_requires_people_update(
     people_authz_setup, db_session: AsyncSession
 ):
+    """A user with only people:read cannot update a person."""
     s = people_authz_setup
     async with _make_client(s["app"], db_session, s["person"], {"people:read"}) as ac:
         resp = await ac.put(
             f"/api/people/{s['target'].id}", json={"functie": "iets anders"}
         )
     assert resp.status_code == 403
+
+
+async def test_update_person_allowed_with_people_update(
+    people_authz_setup, db_session: AsyncSession
+):
+    """A user with people:update can update basic person fields."""
+    s = people_authz_setup
+    async with _make_client(
+        s["app"], db_session, s["person"], {"people:read", "people:update"}
+    ) as ac:
+        resp = await ac.put(
+            f"/api/people/{s['target'].id}", json={"functie": "nieuwe functie"}
+        )
+    assert resp.status_code == 200
+    assert resp.json()["functie"] == "nieuwe functie"
 
 
 async def test_delete_person_requires_people_manage(

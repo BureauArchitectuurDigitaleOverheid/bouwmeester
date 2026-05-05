@@ -346,7 +346,7 @@ async def update_person(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonDetailResponse:
     """Update person fields (naam, functie, etc.)."""
     # Changing is_agent requires admin privileges (agents bypass email whitelist).
@@ -486,7 +486,7 @@ async def add_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonOrganisatieResponse:
     """Place a person in an org unit. Returns 409 if already active in that unit."""
     require_found(await db.get(Person, id), "Person")
@@ -556,7 +556,7 @@ async def update_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonOrganisatieResponse:
     """Update an org placement (e.g. set eind_datum to end placement)."""
     stmt = select(PersonOrganisatieEenheid).where(
@@ -606,7 +606,7 @@ async def delete_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    _perm=Depends(require_permission("people:update")),
 ) -> None:
     """Delete an org placement permanently."""
     stmt = select(PersonOrganisatieEenheid).where(
@@ -640,7 +640,7 @@ async def add_person_email(
     data: PersonEmailCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonEmailResponse:
     """Add an email address to a person. First email auto-becomes default."""
     require_found(await db.get(Person, id), "Person")
@@ -693,7 +693,7 @@ async def remove_person_email(
     email_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    _perm=Depends(require_permission("people:update")),
 ) -> None:
     """Remove an email address. Auto-promotes another email to default if needed."""
     stmt = select(PersonEmail).where(
@@ -730,7 +730,7 @@ async def set_default_email(
     email_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonEmailResponse:
     """Set an email as the default for a person."""
     # Verify the target email exists and belongs to this person
@@ -773,7 +773,7 @@ async def add_person_phone(
     data: PersonPhoneCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonPhoneResponse:
     """Add a phone number to a person. First phone auto-becomes default."""
     require_found(await db.get(Person, id), "Person")
@@ -824,7 +824,7 @@ async def remove_person_phone(
     phone_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    _perm=Depends(require_permission("people:update")),
 ) -> None:
     """Remove a phone number. Auto-promotes another to default if needed."""
     stmt = select(PersonPhone).where(
@@ -861,7 +861,7 @@ async def set_default_phone(
     phone_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonPhoneResponse:
     """Set a phone number as the default for a person."""
     # Verify the target phone exists and belongs to this person
