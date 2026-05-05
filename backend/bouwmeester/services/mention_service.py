@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.mention import Mention
 from bouwmeester.models.task import Task
@@ -98,17 +99,30 @@ class MentionService:
     # DMs, org descriptions, and any future private source types are excluded.
     _PUBLIC_SOURCE_TYPES = ["node", "task"]
 
-    async def get_references(self, target_id: UUID) -> list[MentionReference]:
+    async def get_references(
+        self,
+        target_id: UUID,
+        *,
+        org_ctx: OrgContext | None = None,
+    ) -> list[MentionReference]:
         """Get all places where target_id is mentioned, with source titles.
 
         Only includes public source types (nodes, tasks) — private content
         like DMs and org descriptions should not leak as back-references.
+        Filters node/task sources cross-org via ``org_ctx``.
         """
         mentions = await self.repo.get_by_target(
             target_id, allowed_source_types=self._PUBLIC_SOURCE_TYPES
         )
         if not mentions:
             return []
+
+        # Filter mentions to only those whose source node/task is visible
+        # to the caller (cross-org leak prevention).
+        if org_ctx is not None and not org_ctx.is_admin:
+            mentions = await self._filter_mentions_by_org(mentions, org_ctx)
+            if not mentions:
+                return []
 
         # Batch-fetch titles by source type to avoid N+1 queries
         titles = await self._get_source_titles_batch(mentions)
@@ -169,8 +183,50 @@ class MentionService:
 
         return titles
 
+    async def _filter_mentions_by_org(
+        self, mentions: list[Mention], org_ctx: OrgContext
+    ) -> list[Mention]:
+        """Drop mentions whose source node/task is outside the caller's org-scope."""
+        node_ids = {m.source_id for m in mentions if m.source_type == "node"}
+        task_ids = {m.source_id for m in mentions if m.source_type == "task"}
+
+        visible_node_ids: set[UUID] = set()
+        visible_task_ids: set[UUID] = set()
+
+        if node_ids:
+            stmt = apply_org_filter(
+                select(CorpusNode.id).where(CorpusNode.id.in_(node_ids)),
+                CorpusNode.organisatie_eenheid_id,
+                org_ctx,
+            )
+            visible_node_ids = {
+                row[0] for row in (await self.session.execute(stmt)).all()
+            }
+
+        if task_ids:
+            stmt = apply_org_filter(
+                select(Task.id).where(Task.id.in_(task_ids)),
+                Task.organisatie_eenheid_id,
+                org_ctx,
+            )
+            visible_task_ids = {
+                row[0] for row in (await self.session.execute(stmt)).all()
+            }
+
+        return [
+            m
+            for m in mentions
+            if (m.source_type == "node" and m.source_id in visible_node_ids)
+            or (m.source_type == "task" and m.source_id in visible_task_ids)
+        ]
+
     async def search_mentionables(
-        self, query: str, types: list[str] | None = None, limit: int = 10
+        self,
+        query: str,
+        types: list[str] | None = None,
+        limit: int = 10,
+        *,
+        org_ctx: OrgContext | None = None,
     ) -> list[MentionSearchResult]:
         """Search across nodes, tasks, and tags for # mention suggestions."""
         results: list[MentionSearchResult] = []
@@ -178,12 +234,9 @@ class MentionService:
         pattern = f"%{query}%"
 
         if "node" in allowed:
-            stmt = (
-                select(CorpusNode)
-                .where(CorpusNode.title.ilike(pattern))
-                .order_by(CorpusNode.title)
-                .limit(limit)
-            )
+            stmt = select(CorpusNode).where(CorpusNode.title.ilike(pattern))
+            stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
+            stmt = stmt.order_by(CorpusNode.title).limit(limit)
             rows = await self.session.execute(stmt)
             for n in rows.scalars().all():
                 results.append(
@@ -196,12 +249,9 @@ class MentionService:
                 )
 
         if "task" in allowed:
-            stmt = (
-                select(Task)
-                .where(Task.title.ilike(pattern))
-                .order_by(Task.title)
-                .limit(limit)
-            )
+            stmt = select(Task).where(Task.title.ilike(pattern))
+            stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+            stmt = stmt.order_by(Task.title).limit(limit)
             rows = await self.session.execute(stmt)
             for t in rows.scalars().all():
                 results.append(

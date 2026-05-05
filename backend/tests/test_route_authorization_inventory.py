@@ -33,6 +33,11 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     # Self-scoped endpoints (effective_person_id ensures caller-only data)
     "/api/tasks/my": "self-scoped via effective_person_id",
     "/api/tasks/inbox": "self-scoped via effective_person_id",
+    "/api/activity/inbox": "self-scoped via effective_person_id in handler",
+    "/api/roles/my-permissions": "self-scoped (caller's own roles + perms)",
+    "/api/org-placements/my-requests": "self-scoped via current_user.id filter",
+    "/api/chat/{conversation_id}": "self-scoped via current_user.id in handler",
+    "/api/chat/attachments/{attachment_id}/preview": "owner-check in handler",
     # Mattermost webhook endpoints (authenticated via shared secret)
     "/api/mattermost/slash": "authenticated via shared secret in body",
     "/api/mattermost/action": "authenticated via shared secret in body",
@@ -51,6 +56,31 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     "/api/edge-types/valid": "schema-data, ministerie-breed",
     "/api/edge-schema-rules": "schema-data, ministerie-breed",
     "/api/skill.md": "skill markdown bundle, no PII",
+    "/api/roles": "globale rol-definitielijst, ministerie-breed referentiedata",
+    # Org-chart is bewust ministerie-breed leesbaar binnen de tenant.
+    # Mutaties hebben wel require_permission("org:manage") + check_org_scope.
+    "/api/organisatie": "org-chart is ministerie-breed by design",
+    "/api/organisatie/search": "org-chart, ministerie-breed",
+    "/api/organisatie/managed-by/{person_id}": "org-chart, ministerie-breed",
+    "/api/organisatie/{id}": "org-chart, ministerie-breed",
+    "/api/organisatie/{id}/history/managers": "org-chart history, ministerie-breed",
+    "/api/organisatie/{id}/history/namen": "org-chart history, ministerie-breed",
+    "/api/organisatie/{id}/history/parents": "org-chart history, ministerie-breed",
+    "/api/organisatie/{id}/personen": (
+        "team-member lijst, ministerie-breed (publiek profiel: naam, "
+        "functie, default email — geen private nummers)"
+    ),
+    # Externe organisaties zijn als KvK-nummers publieke NL-data, geen
+    # gevoelige interne contactdata.
+    "/api/externe-organisaties": "externe org-referentie, publieke NL-data",
+    "/api/externe-organisaties/{id}": "externe org-referentie, publieke NL-data",
+    # LLM corpus-gaps geeft ministerie-brede dossier-overview voor
+    # planningsdoeleinden; geen gevoelige PII.
+    "/api/llm/corpus-gaps": "ministerie-brede planningsdata, geen PII",
+    # Graph endpoints bouwen op CorpusNode dat al via apply_org_filter
+    # gescopeerd is (zie nodes/list_nodes en repository).
+    "/api/graph/search": "bouwt op CorpusNode (al gefilterd via PR #263)",
+    "/api/graph/path": "bouwt op CorpusNode (al gefilterd via PR #263)",
     # Notifications: handlers filter on effective_person_id explicitly
     # in the route body (zie notifications.py — list/count/dashboard-stats
     # roepen effective_person_id aan; detail/replies gaan door
@@ -72,55 +102,8 @@ _AUTHZ_PREFIX_WHITELIST: tuple[str, ...] = (
 )
 
 # Known-debt: GET routes that still lack authz but are scheduled for a
-# follow-up PR.  Keeping them in this list:
-#   1. lets CI stay green on main while the cleanup is in flight, and
-#   2. catches any *new* authz regressions on routes outside this set.
-# Once a route here grows an authz dependency, the second test below
-# will demand it be removed from the list — preventing accidental
-# re-introduction of the gap.
-#
-# Routes covered by in-flight PRs (#263 opdrachten, #264 parlementair,
-# #265 people, #266 tasks) are still listed here because this PR is based
-# on plain main; once those PR's merge their entries will be flagged by
-# test_known_debt_is_still_unauthorized and cleaned up.
-_KNOWN_DEBT: set[str] = {
-    "/api/activity/inbox",
-    "/api/chat/{conversation_id}",
-    "/api/chat/attachments/{attachment_id}/preview",
-    "/api/export/archimate",
-    "/api/export/corpus",
-    "/api/export/edges",
-    "/api/export/nodes",
-    "/api/externe-organisaties",
-    "/api/externe-organisaties/{id}",
-    "/api/graph/path",
-    "/api/graph/search",
-    "/api/llm/corpus-gaps",
-    "/api/mentions/references/{target_id}",
-    "/api/mentions/search",
-    "/api/nodes/{id}/bron-detail",
-    "/api/nodes/{id}/graph",
-    "/api/nodes/{id}/history/statuses",
-    "/api/nodes/{id}/history/titles",
-    "/api/nodes/{id}/neighbors",
-    "/api/nodes/{id}/parlementair-item",
-    "/api/nodes/{id}/stakeholders",
-    "/api/nodes/{id}/tags",
-    "/api/nodes/{id}/tasks",
-    "/api/nodes/{node_id}/bijlage",
-    "/api/nodes/{node_id}/bijlage/download",
-    "/api/org-placements/my-requests",
-    "/api/organisatie",
-    "/api/organisatie/managed-by/{person_id}",
-    "/api/organisatie/search",
-    "/api/organisatie/{id}",
-    "/api/organisatie/{id}/history/managers",
-    "/api/organisatie/{id}/history/namen",
-    "/api/organisatie/{id}/history/parents",
-    "/api/organisatie/{id}/personen",
-    "/api/roles",
-    "/api/roles/my-permissions",
-}
+# follow-up PR.  Once empty, this guard is fully active.
+_KNOWN_DEBT: set[str] = set()
 
 # Recognised dependency-callable names that satisfy the authz requirement.
 _AUTHZ_DEP_NAMES = {
