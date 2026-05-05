@@ -28,6 +28,7 @@ import { uploadBijlage, deleteBijlage, getBijlageDownloadUrl, updateNodeBronDeta
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useToast } from '@/contexts/ToastContext';
 import { formatDate } from '@/utils/dates';
+import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
 
 type TabId = 'overview' | 'connections' | 'stakeholders' | 'tasks' | 'activity';
 
@@ -805,6 +806,17 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                 description="Er zijn nog geen personen gekoppeld aan deze node."
               />
             )}
+
+            <div className="pt-4 mt-4 border-t border-border">
+              <h4 className="text-sm font-medium text-text mb-2">
+                Belang, houding & invloed
+              </h4>
+              <p className="text-xs text-text-secondary mb-3">
+                Inschatting per stakeholder, los van rol. Aparte assessment voor
+                analyse-doeleinden.
+              </p>
+              <StakeholderTab scopeType="corpus_node" scopeId={nodeId} />
+            </div>
           </div>
         )}
 

@@ -23,6 +23,7 @@ from bouwmeester.models.externe_organisatie import ExterneOrganisatie  # noqa: F
 from bouwmeester.models.fcc_sync_log import FccSyncLog  # noqa: F401
 from bouwmeester.models.http_session import HttpSession  # noqa: F401
 from bouwmeester.models.initiatief import Initiatief  # noqa: F401
+from bouwmeester.models.initiatief_update import InitiatiefUpdatePost  # noqa: F401
 from bouwmeester.models.instrument import Instrument  # noqa: F401
 from bouwmeester.models.lead import Lead  # noqa: F401
 from bouwmeester.models.lead_activity import LeadActivity  # noqa: F401
@@ -61,6 +62,9 @@ from bouwmeester.models.role import (  # noqa: F401
     RolePermission,
 )
 from bouwmeester.models.shared_access import SharedAccess  # noqa: F401
+from bouwmeester.models.stakeholder_assessment import (
+    StakeholderAssessment,  # noqa: F401
+)
 from bouwmeester.models.tag import LeadTag, NodeTag, Tag  # noqa: F401
 from bouwmeester.models.task import Task  # noqa: F401
 from bouwmeester.models.webauthn_credential import WebAuthnCredential  # noqa: F401
@@ -91,6 +95,7 @@ __all__ = [
     "FccSyncLog",
     "HttpSession",
     "Initiatief",
+    "InitiatiefUpdatePost",
     "Instrument",
     "Lead",
     "LeadActivity",
@@ -123,6 +128,7 @@ __all__ = [
     "Role",
     "RolePermission",
     "SharedAccess",
+    "StakeholderAssessment",
     "SuggestedEdge",
     "Tag",
     "Task",

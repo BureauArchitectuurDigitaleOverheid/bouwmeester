@@ -9,6 +9,7 @@ import {
   X,
   Plus,
   Link as LinkIcon,
+  ExternalLink,
   MessageSquare,
   Phone,
   Mail,
@@ -57,8 +58,46 @@ import {
   LEAD_ACTIVITY_TYPE_LABELS,
   INITIATIEF_COLORS,
   LEAD_CONTACT_ROL_LABELS,
+  ENGAGEMENT_TYPE_LABELS,
+  ENGAGEMENT_TYPE_COLORS,
 } from '@/types';
-import type { LeadUpdate, LeadActivityCreate } from '@/types';
+import type { LeadUpdate, LeadActivityCreate, EngagementType } from '@/types';
+
+/** Stages where a lead can publicly appear; mirrors the backend filter in
+ *  public_initiatief.py — keep in sync. */
+const PUBLIC_VISIBLE_STAGES: LeadStage[] = [
+  LeadStage.EERSTE_GESPREK,
+  LeadStage.INTERNE_CHECK,
+  LeadStage.FOLLOW_UP,
+  LeadStage.IN_THE_POCKET,
+];
+
+interface PublicationStatus {
+  /** Will this lead actually appear on the public page right now? */
+  visible: boolean;
+  /** Human-readable reason when not visible. Null when visible. */
+  reason: string | null;
+}
+
+function publicationStatus(args: {
+  publicVisible: boolean;
+  publicTitle: string | null;
+  stage: LeadStage;
+}): PublicationStatus {
+  if (!args.publicVisible) {
+    return { visible: false, reason: 'Toggle "Publiek tonen" staat uit.' };
+  }
+  if (!args.publicTitle?.trim()) {
+    return { visible: false, reason: 'Publieke titel is leeg.' };
+  }
+  if (!PUBLIC_VISIBLE_STAGES.includes(args.stage)) {
+    return {
+      visible: false,
+      reason: `Lead in stage "${LEAD_STAGE_LABELS[args.stage]}" — alleen actieve stages worden publiek.`,
+    };
+  }
+  return { visible: true, reason: null };
+}
 
 interface LeadDetailPanelProps {
   leadId: string | null;
@@ -73,6 +112,7 @@ const ACTIVITY_ICONS: Record<LeadActivityType, React.ReactNode> = {
   [LeadActivityType.MEETING]: <User className="h-3.5 w-3.5" />,
   [LeadActivityType.CALL]: <Phone className="h-3.5 w-3.5" />,
   [LeadActivityType.EMAIL]: <Mail className="h-3.5 w-3.5" />,
+  [LeadActivityType.EVALUATIE]: <FileText className="h-3.5 w-3.5" />,
 };
 
 export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPanelProps) {
@@ -111,10 +151,19 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const [editNextActionDate, setEditNextActionDate] = useState('');
   const [editInitiatiefId, setEditInitiatiefId] = useState('');
   const [editTags, setEditTags] = useState('');
+  const [editEngagementType, setEditEngagementType] = useState<EngagementType | ''>('');
+  const [editScoreStrategisch, setEditScoreStrategisch] = useState<number | ''>('');
+  const [editScorePolitiek, setEditScorePolitiek] = useState<number | ''>('');
+  const [editScorePositie, setEditScorePositie] = useState<number | ''>('');
+  const [editPublicVisible, setEditPublicVisible] = useState(false);
+  const [editPublicTitle, setEditPublicTitle] = useState('');
+  const [editPublicSummary, setEditPublicSummary] = useState('');
 
   // Activity form
   const [activityContent, setActivityContent] = useState('');
   const [activityType, setActivityType] = useState<LeadActivityType>(LeadActivityType.NOTE);
+  const [activityUitkomst, setActivityUitkomst] = useState('');
+  const [activityVervolgacties, setActivityVervolgacties] = useState('');
 
   // Contact add form
   const [showAddContact, setShowAddContact] = useState(false);
@@ -150,6 +199,13 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
     setEditNextActionDate(lead.next_action_date ?? '');
     setEditInitiatiefId(lead.initiatief_id ?? '');
     setEditTags((leadTags ?? []).map((lt) => lt.tag.name).join(', '));
+    setEditEngagementType(lead.engagement_type ?? '');
+    setEditScoreStrategisch(lead.score_strategisch ?? '');
+    setEditScorePolitiek(lead.score_politiek ?? '');
+    setEditScorePositie(lead.score_positie ?? '');
+    setEditPublicVisible(lead.public_visible);
+    setEditPublicTitle(lead.public_title ?? '');
+    setEditPublicSummary(lead.public_summary ?? '');
     setEditing(true);
   };
 
@@ -169,6 +225,13 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       next_action: editNextAction.trim() || null,
       next_action_date: editNextActionDate || null,
       initiatief_id: editInitiatiefId || null,
+      engagement_type: editEngagementType || null,
+      score_strategisch: editScoreStrategisch === '' ? null : editScoreStrategisch,
+      score_politiek: editScorePolitiek === '' ? null : editScorePolitiek,
+      score_positie: editScorePositie === '' ? null : editScorePositie,
+      public_visible: editPublicVisible,
+      public_title: editPublicTitle.trim() || null,
+      public_summary: editPublicSummary.trim() || null,
     };
 
     // Update lead fields
@@ -225,6 +288,14 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
     const data: LeadActivityCreate = {
       content: activityContent,
       activity_type: activityType,
+      uitkomst:
+        activityType === LeadActivityType.EVALUATIE
+          ? activityUitkomst.trim() || null
+          : null,
+      vervolgacties:
+        activityType === LeadActivityType.EVALUATIE
+          ? activityVervolgacties.trim() || null
+          : null,
     };
     createActivity.mutate(
       { leadId: lead.id, data },
@@ -232,6 +303,8 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
         onSuccess: () => {
           setActivityContent('');
           setActivityType(LeadActivityType.NOTE);
+          setActivityUitkomst('');
+          setActivityVervolgacties('');
         },
       },
     );
@@ -416,6 +489,141 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               placeholder="Komma-gescheiden tags"
             />
           </div>
+          {(() => {
+            const selectedInit = initiatieven?.find((i) => i.id === editInitiatiefId);
+            if (!selectedInit?.funnel_enabled) return null;
+            const labelStrategisch =
+              selectedInit.score_strategisch_label || 'Strategisch belang';
+            const labelPolitiek =
+              selectedInit.score_politiek_label || 'Politiek belang';
+            const labelPositie =
+              selectedInit.score_positie_label || 'Positie / omgeving';
+            return (
+              <div className="space-y-3 rounded-lg border border-border p-3 bg-gray-50/50">
+                <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold">
+                  Funnel-afweging
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-text mb-1">
+                    Engagement type
+                  </label>
+                  <select
+                    value={editEngagementType}
+                    onChange={(e) =>
+                      setEditEngagementType(
+                        (e.target.value || '') as EngagementType | '',
+                      )
+                    }
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:border-primary-400"
+                  >
+                    <option value="">—</option>
+                    {(
+                      Object.keys(ENGAGEMENT_TYPE_LABELS) as EngagementType[]
+                    ).map((k) => (
+                      <option key={k} value={k}>
+                        {ENGAGEMENT_TYPE_LABELS[k]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      [labelStrategisch, editScoreStrategisch, setEditScoreStrategisch],
+                      [labelPolitiek, editScorePolitiek, setEditScorePolitiek],
+                      [labelPositie, editScorePositie, setEditScorePositie],
+                    ] as const
+                  ).map(([label, value, setter], idx) => (
+                    <label key={idx} className="flex flex-col gap-0.5">
+                      <span className="text-xs text-text-secondary">{label}</span>
+                      <select
+                        value={value}
+                        onChange={(e) =>
+                          setter(
+                            e.target.value === '' ? '' : Number(e.target.value),
+                          )
+                        }
+                        className="text-sm rounded-lg border border-border px-2 py-1 bg-white"
+                      >
+                        <option value="">—</option>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+          {(() => {
+            const linkedInit = initiatieven?.find((i) => i.id === editInitiatiefId);
+            if (!linkedInit?.public_page_enabled) return null;
+            const status = publicationStatus({
+              publicVisible: editPublicVisible,
+              publicTitle: editPublicTitle,
+              stage: editStage,
+            });
+            return (
+              <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs text-emerald-900 uppercase tracking-wider font-semibold">
+                    Publicatie op /c/{linkedInit.slug}
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-emerald-900 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editPublicVisible}
+                      onChange={(e) => setEditPublicVisible(e.target.checked)}
+                      className="h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    Publiek tonen
+                  </label>
+                </div>
+                {editPublicVisible && !status.visible && (
+                  <div className="rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5 text-xs text-amber-900">
+                    <strong>Nog niet zichtbaar:</strong> {status.reason}
+                  </div>
+                )}
+                <p className="text-xs text-emerald-800/80">
+                  Schrijf een externe titel en samenvatting. Alleen die tekst
+                  verschijnt op de publieke pagina, nooit het interne titel- of
+                  beschrijvingsveld.
+                </p>
+                <div>
+                  <label className="block text-sm font-medium text-text mb-1">
+                    Publieke titel
+                  </label>
+                  <input
+                    type="text"
+                    value={editPublicTitle}
+                    onChange={(e) => setEditPublicTitle(e.target.value)}
+                    placeholder="Bijv. 'Pilot bij Gemeente Utrecht'"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-text mb-1">
+                    Publieke samenvatting
+                  </label>
+                  <textarea
+                    value={editPublicSummary}
+                    onChange={(e) => setEditPublicSummary(e.target.value)}
+                    placeholder="Korte tekst voor buitenstaanders. Geen interne details, geen namen van conflicten."
+                    rows={3}
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400"
+                  />
+                </div>
+                <p className="text-xs text-text-secondary">
+                  Verschijnt alleen als de stage actief is (eerste gesprek, interne
+                  check, follow-up of in the pocket) én "Publiek tonen" aan staat én
+                  de titel ingevuld is.
+                </p>
+              </div>
+            );
+          })()}
           <RichTextFormField
             label="Beschrijving"
             value={editDescription}
@@ -501,6 +709,108 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               },
             ]}
           />
+
+          {/* Funnel-afweging (only when initiatief has funnel_enabled) */}
+          {(() => {
+            const linkedInit = initiatieven?.find(
+              (i) => i.id === lead.initiatief_id,
+            );
+            if (!linkedInit?.funnel_enabled) return null;
+            const hasAny =
+              lead.engagement_type ||
+              lead.score_strategisch != null ||
+              lead.score_politiek != null ||
+              lead.score_positie != null;
+            if (!hasAny) return null;
+            const labels = [
+              [linkedInit.score_strategisch_label || 'Strategisch belang', lead.score_strategisch],
+              [linkedInit.score_politiek_label || 'Politiek belang', lead.score_politiek],
+              [linkedInit.score_positie_label || 'Positie / omgeving', lead.score_positie],
+            ] as const;
+            return (
+              <DetailSection title="Funnel-afweging">
+                <div className="space-y-2">
+                  {lead.engagement_type && (
+                    <div className="text-sm">
+                      <span className="text-text-secondary">Engagement: </span>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ENGAGEMENT_TYPE_COLORS[lead.engagement_type]}`}
+                      >
+                        {ENGAGEMENT_TYPE_LABELS[lead.engagement_type]}
+                      </span>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    {labels.map(([label, value], idx) => (
+                      <div key={idx} className="text-text">
+                        <div className="text-xs text-text-secondary">{label}</div>
+                        <div className="font-medium">
+                          {value != null ? `${value}/5` : '—'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </DetailSection>
+            );
+          })()}
+
+          {/* Publicatie-status */}
+          {(() => {
+            const linkedInit = initiatieven?.find(
+              (i) => i.id === lead.initiatief_id,
+            );
+            if (!linkedInit?.public_page_enabled) return null;
+            if (!lead.public_visible && !lead.public_title) return null;
+            const status = publicationStatus({
+              publicVisible: lead.public_visible,
+              publicTitle: lead.public_title,
+              stage: lead.stage,
+            });
+            return (
+              <DetailSection title="Publicatie">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {status.visible ? (
+                      <a
+                        href={`/c/${linkedInit.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 group"
+                      >
+                        <Badge variant="green">
+                          <span className="inline-flex items-center gap-1 group-hover:underline">
+                            Zichtbaar op /c/{linkedInit.slug}
+                            <ExternalLink className="h-3 w-3" />
+                          </span>
+                        </Badge>
+                      </a>
+                    ) : (
+                      <Badge variant="gray">Niet zichtbaar</Badge>
+                    )}
+                  </div>
+                  {!status.visible && status.reason && (
+                    <p className="text-xs text-text-secondary">
+                      {status.reason}
+                    </p>
+                  )}
+                  {lead.public_title && (
+                    <div className="text-sm">
+                      <span className="text-text-secondary">Publieke titel: </span>
+                      <span className="text-text font-medium">
+                        {lead.public_title}
+                      </span>
+                    </div>
+                  )}
+                  {lead.public_summary && (
+                    <div className="text-sm text-text-secondary whitespace-pre-wrap">
+                      {lead.public_summary}
+                    </div>
+                  )}
+                </div>
+              </DetailSection>
+            );
+          })()}
 
           {/* Tags */}
           {(leadTags ?? []).length > 0 && (
@@ -722,6 +1032,24 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 placeholder="Voeg een notitie of activiteit toe... Gebruik @ voor personen, # voor nodes/taken"
                 rows={2}
               />
+              {activityType === LeadActivityType.EVALUATIE && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <textarea
+                    value={activityUitkomst}
+                    onChange={(e) => setActivityUitkomst(e.target.value)}
+                    placeholder="Uitkomst van de evaluatie..."
+                    rows={2}
+                    className="text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <textarea
+                    value={activityVervolgacties}
+                    onChange={(e) => setActivityVervolgacties(e.target.value)}
+                    placeholder="Vervolgacties / wat moet er nu gebeuren..."
+                    rows={2}
+                    className="text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <div className="w-36">
                   <CreatableSelect
@@ -766,6 +1094,30 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                       <div className="mt-0.5">
                         <RichTextDisplay content={activity.content} fallback="" />
                       </div>
+                      {(activity.uitkomst || activity.vervolgacties) && (
+                        <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {activity.uitkomst && (
+                            <div className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-1.5 text-xs">
+                              <div className="font-semibold text-emerald-800 mb-0.5">
+                                Uitkomst
+                              </div>
+                              <div className="text-text whitespace-pre-wrap">
+                                {activity.uitkomst}
+                              </div>
+                            </div>
+                          )}
+                          {activity.vervolgacties && (
+                            <div className="rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5 text-xs">
+                              <div className="font-semibold text-amber-800 mb-0.5">
+                                Vervolgacties
+                              </div>
+                              <div className="text-text whitespace-pre-wrap">
+                                {activity.vervolgacties}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

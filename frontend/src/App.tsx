@@ -35,6 +35,7 @@ import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { useRef } from 'react';
 import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
+import { PublicInitiatiefPage } from '@/pages/PublicInitiatiefPage';
 import { ReloadPrompt } from '@/components/common/ReloadPrompt';
 
 const queryClient = new QueryClient({
@@ -116,62 +117,71 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   return <OnboardingWizard features={features} stepNumber={stepNumber} totalSteps={totalRef.current} />;
 }
 
+function AuthenticatedApp() {
+  return (
+    <AuthProvider>
+      <AuthGate>
+        <OnboardingGate>
+        <CurrentPersonProvider>
+          <OrgContextProvider>
+          <VocabularyProvider>
+          <GlobalFileDropProvider>
+            <ChatProvider>
+            <TaskDetailProvider>
+            <NodeDetailProvider>
+            <OpdrachtCreateProvider>
+            <OpdrachtDetailProvider>
+            <LeadDetailProvider>
+              <Routes>
+                <Route element={<AppLayout />}>
+                  <Route path="/" element={<InboxPage />} />
+                  <Route path="/corpus" element={<CorpusPage />} />
+                  <Route path="/nodes/:id" element={<NodeDetailPage />} />
+                  <Route path="/tasks" element={<TasksPage />} />
+                  <Route path="/people" element={<PeoplePage />} />
+                  <Route path="/organisatie" element={<OrganisatiePage />} />
+                  <Route path="/eenheid-overzicht" element={<EenheidOverzichtPage />} />
+                  <Route path="/search" element={<SearchPage />} />
+                  <Route path="/parlementair" element={<ParlementairPage />} />
+                  <Route path="/opdrachten" element={<OpdrachtenPage />} />
+                  <Route path="/externe-organisaties" element={<ExterneOrganisatiesPage />} />
+                  <Route path="/admin" element={<AdminPage />} />
+                  <Route path="/auditlog" element={<AuditLogPage />} />
+                  <Route path="/docs" element={<DocsPage />} />
+                  <Route path="/instellingen" element={<InstellingenPage />} />
+                  <Route path="/leads" element={<LeadsPage />} />
+                  <Route path="/share-target" element={<ShareTargetPage />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Route>
+              </Routes>
+              <DetailModals />
+            </LeadDetailProvider>
+            </OpdrachtDetailProvider>
+            </OpdrachtCreateProvider>
+            </NodeDetailProvider>
+            </TaskDetailProvider>
+          </ChatProvider>
+          </GlobalFileDropProvider>
+          </VocabularyProvider>
+          </OrgContextProvider>
+        </CurrentPersonProvider>
+        </OnboardingGate>
+      </AuthGate>
+    </AuthProvider>
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-      <ReloadPrompt />
-      <AuthProvider>
-        <AuthGate>
-          <OnboardingGate>
-          <CurrentPersonProvider>
-            <OrgContextProvider>
-            <VocabularyProvider>
-            <BrowserRouter>
-            <GlobalFileDropProvider>
-              <ChatProvider>
-              <TaskDetailProvider>
-              <NodeDetailProvider>
-              <OpdrachtCreateProvider>
-              <OpdrachtDetailProvider>
-              <LeadDetailProvider>
-                <Routes>
-                  <Route element={<AppLayout />}>
-                    <Route path="/" element={<InboxPage />} />
-                    <Route path="/corpus" element={<CorpusPage />} />
-                    <Route path="/nodes/:id" element={<NodeDetailPage />} />
-                    <Route path="/tasks" element={<TasksPage />} />
-                    <Route path="/people" element={<PeoplePage />} />
-                    <Route path="/organisatie" element={<OrganisatiePage />} />
-                    <Route path="/eenheid-overzicht" element={<EenheidOverzichtPage />} />
-                    <Route path="/search" element={<SearchPage />} />
-                    <Route path="/parlementair" element={<ParlementairPage />} />
-                    <Route path="/opdrachten" element={<OpdrachtenPage />} />
-                    <Route path="/externe-organisaties" element={<ExterneOrganisatiesPage />} />
-                    <Route path="/admin" element={<AdminPage />} />
-                    <Route path="/auditlog" element={<AuditLogPage />} />
-                    <Route path="/docs" element={<DocsPage />} />
-                    <Route path="/instellingen" element={<InstellingenPage />} />
-                    <Route path="/leads" element={<LeadsPage />} />
-                    <Route path="/share-target" element={<ShareTargetPage />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Route>
-                </Routes>
-                <DetailModals />
-              </LeadDetailProvider>
-              </OpdrachtDetailProvider>
-              </OpdrachtCreateProvider>
-              </NodeDetailProvider>
-              </TaskDetailProvider>
-            </ChatProvider>
-            </GlobalFileDropProvider>
-            </BrowserRouter>
-            </VocabularyProvider>
-            </OrgContextProvider>
-          </CurrentPersonProvider>
-          </OnboardingGate>
-        </AuthGate>
-      </AuthProvider>
+        <ReloadPrompt />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/c/:slug" element={<PublicInitiatiefPage />} />
+            <Route path="*" element={<AuthenticatedApp />} />
+          </Routes>
+        </BrowserRouter>
       </ToastProvider>
     </QueryClientProvider>
   );

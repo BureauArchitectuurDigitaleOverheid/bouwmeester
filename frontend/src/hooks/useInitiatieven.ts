@@ -4,6 +4,7 @@ import {
   getInitiatief,
   createInitiatief,
   updateInitiatief,
+  updateInitiatiefSettings,
   deleteInitiatief,
   addInitiatiefMember,
   removeInitiatiefMember,
@@ -12,9 +13,21 @@ import {
   removeInitiatiefEenheid,
   updateInitiatiefEenheidRol,
   getInitiatievenForEenheid,
+  getInitiatiefUpdates,
+  createInitiatiefUpdate,
+  editInitiatiefUpdate,
+  publishInitiatiefUpdate,
+  unpublishInitiatiefUpdate,
+  deleteInitiatiefUpdate,
 } from '@/api/initiatieven';
 import { queryKeys } from '@/hooks/queryKeys';
-import type { InitiatiefCreate, InitiatiefUpdate } from '@/types';
+import type {
+  InitiatiefCreate,
+  InitiatiefSettingsUpdate,
+  InitiatiefUpdate,
+  InitiatiefUpdatePostCreate,
+  InitiatiefUpdatePostEdit,
+} from '@/types';
 
 export function useInitiatieven(params?: { search?: string }) {
   return useQuery({
@@ -172,5 +185,113 @@ export function useInitiatievenForEenheid(eenheidId: string | null) {
     queryKey: ['initiatieven-for-eenheid', eenheidId],
     queryFn: () => getInitiatievenForEenheid(eenheidId!),
     enabled: !!eenheidId,
+  });
+}
+
+export function useUpdateInitiatiefSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: InitiatiefSettingsUpdate }) =>
+      updateInitiatiefSettings(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.initiatieven.all });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// InitiatiefUpdatePost hooks
+// ---------------------------------------------------------------------------
+
+const initiatiefUpdatesKey = (initiatiefId: string | undefined) =>
+  ['initiatief-updates', initiatiefId] as const;
+
+export function useInitiatiefUpdates(initiatiefId: string | undefined) {
+  return useQuery({
+    queryKey: initiatiefUpdatesKey(initiatiefId),
+    queryFn: () => getInitiatiefUpdates(initiatiefId!),
+    enabled: !!initiatiefId,
+  });
+}
+
+export function useCreateInitiatiefUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      initiatiefId,
+      data,
+    }: {
+      initiatiefId: string;
+      data: InitiatiefUpdatePostCreate;
+    }) => createInitiatiefUpdate(initiatiefId, data),
+    onSuccess: (_data, { initiatiefId }) => {
+      qc.invalidateQueries({ queryKey: initiatiefUpdatesKey(initiatiefId) });
+    },
+  });
+}
+
+export function useEditInitiatiefUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      initiatiefId,
+      postId,
+      data,
+    }: {
+      initiatiefId: string;
+      postId: string;
+      data: InitiatiefUpdatePostEdit;
+    }) => editInitiatiefUpdate(initiatiefId, postId, data),
+    onSuccess: (_data, { initiatiefId }) => {
+      qc.invalidateQueries({ queryKey: initiatiefUpdatesKey(initiatiefId) });
+    },
+  });
+}
+
+export function usePublishInitiatiefUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      initiatiefId,
+      postId,
+    }: {
+      initiatiefId: string;
+      postId: string;
+    }) => publishInitiatiefUpdate(initiatiefId, postId),
+    onSuccess: (_data, { initiatiefId }) => {
+      qc.invalidateQueries({ queryKey: initiatiefUpdatesKey(initiatiefId) });
+    },
+  });
+}
+
+export function useUnpublishInitiatiefUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      initiatiefId,
+      postId,
+    }: {
+      initiatiefId: string;
+      postId: string;
+    }) => unpublishInitiatiefUpdate(initiatiefId, postId),
+    onSuccess: (_data, { initiatiefId }) => {
+      qc.invalidateQueries({ queryKey: initiatiefUpdatesKey(initiatiefId) });
+    },
+  });
+}
+
+export function useDeleteInitiatiefUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      initiatiefId,
+      postId,
+    }: {
+      initiatiefId: string;
+      postId: string;
+    }) => deleteInitiatiefUpdate(initiatiefId, postId),
+    onSuccess: (_data, { initiatiefId }) => {
+      qc.invalidateQueries({ queryKey: initiatiefUpdatesKey(initiatiefId) });
+    },
   });
 }

@@ -105,9 +105,12 @@ export function useMoveLead() {
       console.error('Fout bij verplaatsen lead:', error);
       showError('Fout bij verplaatsen lead');
     },
-    onSettled: () => {
+    onSettled: (_data, _error, { id }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.lists() });
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.metrics() });
+      // Detail-cache moet ook ververst zodat zichtbaarheidsstatus en andere
+      // afgeleide UI (bv. publicatie-badge) klopt met nieuwe stage.
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.detail(id) });
     },
   });
 }
@@ -153,8 +156,13 @@ export function useReorderLeads() {
       console.error('Fout bij herordenen leads:', error);
       showError('Fout bij herordenen leads');
     },
-    onSettled: () => {
+    onSettled: (_data, _error, { leadIds }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.lists() });
+      // Invalideer details van alle verplaatste leads zodat afgeleide UI
+      // (publicatie-status, stage-badge) klopt.
+      for (const id of leadIds) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.leads.detail(id) });
+      }
     },
   });
 }

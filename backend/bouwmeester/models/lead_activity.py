@@ -38,11 +38,13 @@ class LeadActivity(Base):
     activity_type: Mapped[str] = mapped_column(
         default="note",
         server_default="note",
-        comment="note|stage_change|meeting|call|email",
+        comment="note|stage_change|meeting|call|email|evaluatie",
     )
     metadata_: Mapped[dict] = mapped_column(
         "metadata", JSON, default=dict, server_default="{}"
     )
+    uitkomst: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vervolgacties: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

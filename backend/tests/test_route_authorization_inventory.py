@@ -99,6 +99,10 @@ _AUTHZ_PREFIX_WHITELIST: tuple[str, ...] = (
     "/api/health",
     "/api/webauthn/",
     "/api/mattermost/",
+    # Public initiatief-pagina: opt-in per initiatief via public_page_enabled,
+    # endpoint returnt 404 als flag uit staat. Bewust bypassed om anonymous
+    # access naar /c/:slug mogelijk te maken.
+    "/api/public/",
 )
 
 # Known-debt: GET routes that still lack authz but are scheduled for a

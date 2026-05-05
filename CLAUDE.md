@@ -133,7 +133,35 @@ ParlementairItem (tracks imported parliamentary items: moties, kamervragen, toez
 ├── SuggestedEdge (proposed edges to corpus nodes, pending review)
 ├── CorpusNode (corpus_node_id, the created politieke_input node)
 └── type discriminator (motie, kamervraag, toezegging, amendement, ...)
+
+Initiatief
+├── Lead (initiatief_id) — funnel-stage tracking
+├── ResourcePermission (eigenaar/contributor/viewer per persoon of eenheid)
+├── InitiatiefUpdatePost (publication posts; published_at IS NULL = concept)
+└── slug (unique URL-segment, eenmalig instelbaar via /settings)
+
+StakeholderAssessment (belang/houding/invloed per persoon op een scope)
+├── scope_type=corpus_node OR initiatief
+├── scope_id (polymorphic FK; access-check in route, geen DB-FK)
+└── unique (person_id, scope_type, scope_id)
 ```
+
+## Initiatief settings & publieke pagina
+
+Per-initiatief feature-toggles (eigenaar-only via `PUT /api/initiatieven/{id}/settings`):
+
+- `funnel_enabled` — toont engagement_type + drie 1-5 scores op leads van dit initiatief
+- `public_page_enabled` — opt-in publieke pagina op `/c/:slug`
+- `score_strategisch_label` / `score_politiek_label` / `score_positie_label` — eigen labels die de defaults overschrijven
+
+Slug-rules in `backend/bouwmeester/core/slug.py`: lowercase, `[a-z0-9-]`, niet leeg, niet in `RESERVED_SLUGS`. Eenmalig instelbaar via UI (immutable na save in v1).
+
+Publieke endpoint `GET /api/public/initiatieven/by-slug/{slug}`:
+- Zit in `_PUBLIC_PREFIXES` van `auth_required.py` — geen auth nodig
+- Returnt 404 als slug niet bestaat OF `public_page_enabled=false` (geen 403 om bestaan niet te lekken)
+- Two-step query (lookup zonder relations, daarna eager-load) om timing-side-channel te beperken
+- Toont alleen naam/beschrijving/kleur + gepubliceerde `InitiatiefUpdatePost` records (`published_at IS NOT NULL`)
+- Frontend route `/c/:slug` in `App.tsx` zit buiten `AuthGate`; `<meta name="robots" content="noindex">` op de pagina, plus blanket `Disallow: /` in `frontend/public/robots.txt`
 
 ## Seed data and PII
 

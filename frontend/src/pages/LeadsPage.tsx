@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Columns3, LayoutGrid, GitFork, Clock, Search, X, Settings, Inbox } from 'lucide-react';
+import { Plus, Columns3, LayoutGrid, GitFork, Clock, Search, X, Settings, Inbox, Globe } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Modal } from '@/components/common/Modal';
@@ -202,6 +202,22 @@ export function LeadsPage() {
               <Settings className="h-3.5 w-3.5" />
             </button>
           )}
+          {(() => {
+            if (!selectedInitiatiefId) return null;
+            const sel = initiatieven?.find((i) => i.id === selectedInitiatiefId);
+            if (!sel?.public_page_enabled || !sel.slug) return null;
+            return (
+              <a
+                href={`/c/${sel.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-full w-7 h-7 flex items-center justify-center text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 transition-colors"
+                title={`Open publieke pagina /c/${sel.slug}`}
+              >
+                <Globe className="h-3.5 w-3.5" />
+              </a>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />

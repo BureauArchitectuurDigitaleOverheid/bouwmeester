@@ -24,6 +24,15 @@ class LeadActivityType(enum.StrEnum):
     meeting = "meeting"
     call = "call"
     email = "email"
+    evaluatie = "evaluatie"
+
+
+class EngagementType(enum.StrEnum):
+    intern_oppakken = "intern_oppakken"
+    voorbereiden_eigen_team = "voorbereiden_eigen_team"
+    betrokken_houden = "betrokken_houden"
+    verkenning = "verkenning"
+    nog_te_bepalen = "nog_te_bepalen"
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +52,13 @@ class LeadBase(BaseModel):
     next_action_date: date | None = None
     raw_intake_text: str | None = Field(None, max_length=50000)
     initiatief_id: UUID | None = None
+    engagement_type: EngagementType | None = None
+    score_strategisch: int | None = Field(None, ge=1, le=5)
+    score_politiek: int | None = Field(None, ge=1, le=5)
+    score_positie: int | None = Field(None, ge=1, le=5)
+    public_visible: bool = False
+    public_title: str | None = Field(None, max_length=300)
+    public_summary: str | None = Field(None, max_length=5000)
 
 
 class LeadCreate(LeadBase):
@@ -61,6 +77,13 @@ class LeadUpdate(BaseModel):
     next_action_date: date | None = None
     raw_intake_text: str | None = Field(None, max_length=50000)
     initiatief_id: UUID | None = None
+    engagement_type: EngagementType | None = None
+    score_strategisch: int | None = Field(None, ge=1, le=5)
+    score_politiek: int | None = Field(None, ge=1, le=5)
+    score_positie: int | None = Field(None, ge=1, le=5)
+    public_visible: bool | None = None
+    public_title: str | None = Field(None, max_length=300)
+    public_summary: str | None = Field(None, max_length=5000)
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -165,6 +188,8 @@ class LeadActivityResponse(BaseModel):
     content: str
     activity_type: LeadActivityType
     metadata_: dict = Field(default_factory=dict)
+    uitkomst: str | None = None
+    vervolgacties: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -194,6 +219,13 @@ class LeadResponse(BaseModel):
     tags: list[str] = Field(default_factory=list)
     sort_order: int = 0
     raw_intake_text: str | None = None
+    engagement_type: EngagementType | None = None
+    score_strategisch: int | None = None
+    score_politiek: int | None = None
+    score_positie: int | None = None
+    public_visible: bool = False
+    public_title: str | None = None
+    public_summary: str | None = None
     attachment_count: int = 0
     contact_names: list[str] = Field(default_factory=list)
     created_at: datetime
@@ -239,6 +271,8 @@ class LeadMetricsResponse(BaseModel):
 class LeadActivityCreate(BaseModel):
     content: str = Field(min_length=1, max_length=50000)
     activity_type: LeadActivityType = LeadActivityType.note
+    uitkomst: str | None = Field(None, max_length=10000)
+    vervolgacties: str | None = Field(None, max_length=10000)
 
 
 class LeadContactCreate(BaseModel):

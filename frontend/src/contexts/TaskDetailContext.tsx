@@ -13,10 +13,19 @@ interface TaskDetailContextValue {
 
 const TaskDetailContext = createContext<TaskDetailContextValue | null>(null);
 
+/** No-op fallback for read-only / public contexts (e.g. /c/:slug page) where
+ *  the provider isn't mounted but a child component (RichTextDisplay) still
+ *  calls the hook. */
+const NOOP_TASK_DETAIL: TaskDetailContextValue = {
+  openTaskDetail: () => {},
+  taskDetailId: null,
+  taskParentLabel: null,
+  closeTaskDetail: () => {},
+  taskOpenSeq: 0,
+};
+
 export function useTaskDetail() {
-  const ctx = useContext(TaskDetailContext);
-  if (!ctx) throw new Error('useTaskDetail must be used within TaskDetailProvider');
-  return ctx;
+  return useContext(TaskDetailContext) ?? NOOP_TASK_DETAIL;
 }
 
 export function TaskDetailProvider({ children }: { children: React.ReactNode }) {

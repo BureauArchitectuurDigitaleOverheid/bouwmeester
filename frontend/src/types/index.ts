@@ -1646,6 +1646,7 @@ export enum LeadActivityType {
   MEETING = 'meeting',
   CALL = 'call',
   EMAIL = 'email',
+  EVALUATIE = 'evaluatie',
 }
 
 export const LEAD_ACTIVITY_TYPE_LABELS: Record<LeadActivityType, string> = {
@@ -1654,6 +1655,7 @@ export const LEAD_ACTIVITY_TYPE_LABELS: Record<LeadActivityType, string> = {
   [LeadActivityType.MEETING]: 'Meeting',
   [LeadActivityType.CALL]: 'Telefoongesprek',
   [LeadActivityType.EMAIL]: 'E-mail',
+  [LeadActivityType.EVALUATIE]: 'Evaluatie',
 };
 
 export interface LeadAssigneeSummary {
@@ -1707,6 +1709,8 @@ export interface LeadActivity {
   content: string;
   activity_type: LeadActivityType;
   metadata_: Record<string, unknown>;
+  uitkomst: string | null;
+  vervolgacties: string | null;
   created_at: string;
 }
 
@@ -1729,6 +1733,13 @@ export interface Lead {
   tags: string[];
   sort_order: number;
   raw_intake_text: string | null;
+  engagement_type: EngagementType | null;
+  score_strategisch: number | null;
+  score_politiek: number | null;
+  score_positie: number | null;
+  public_visible: boolean;
+  public_title: string | null;
+  public_summary: string | null;
   attachment_count: number;
   contact_names: string[];
   created_at: string;
@@ -1754,6 +1765,13 @@ export interface LeadCreate {
   next_action_date?: string | null;
   raw_intake_text?: string | null;
   initiatief_id?: string | null;
+  engagement_type?: EngagementType | null;
+  score_strategisch?: number | null;
+  score_politiek?: number | null;
+  score_positie?: number | null;
+  public_visible?: boolean | null;
+  public_title?: string | null;
+  public_summary?: string | null;
   created_at?: string | null;
 }
 
@@ -1769,11 +1787,20 @@ export interface LeadUpdate {
   next_action_date?: string | null;
   raw_intake_text?: string | null;
   initiatief_id?: string | null;
+  engagement_type?: EngagementType | null;
+  score_strategisch?: number | null;
+  score_politiek?: number | null;
+  score_positie?: number | null;
+  public_visible?: boolean | null;
+  public_title?: string | null;
+  public_summary?: string | null;
 }
 
 export interface LeadActivityCreate {
   content: string;
   activity_type?: LeadActivityType;
+  uitkomst?: string | null;
+  vervolgacties?: string | null;
 }
 
 export interface LeadMetrics {
@@ -1822,8 +1849,14 @@ export interface LeadTimelineResponse {
 export interface Initiatief {
   id: string;
   naam: string;
+  slug: string | null;
   beschrijving: string | null;
   kleur: string | null;
+  funnel_enabled: boolean;
+  public_page_enabled: boolean;
+  score_strategisch_label: string | null;
+  score_politiek_label: string | null;
+  score_positie_label: string | null;
   created_by_id: string | null;
   created_at: string;
   updated_at: string | null;
@@ -1839,6 +1872,141 @@ export interface InitiatiefUpdate {
   naam?: string;
   beschrijving?: string | null;
   kleur?: string | null;
+}
+
+export interface InitiatiefSettingsUpdate {
+  slug?: string | null;
+  funnel_enabled?: boolean;
+  public_page_enabled?: boolean;
+  score_strategisch_label?: string | null;
+  score_politiek_label?: string | null;
+  score_positie_label?: string | null;
+}
+
+export interface InitiatiefUpdatePost {
+  id: string;
+  initiatief_id: string;
+  titel: string;
+  body: string | null;
+  published_at: string | null;
+  published_by_id: string | null;
+  published_by_naam: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface InitiatiefUpdatePostCreate {
+  titel: string;
+  body?: string | null;
+  publish?: boolean;
+}
+
+export interface InitiatiefUpdatePostEdit {
+  titel?: string;
+  body?: string | null;
+}
+
+export interface PublicInitiatiefUpdate {
+  titel: string;
+  body: string | null;
+  published_at: string;
+  published_by_naam: string | null;
+}
+
+export interface PublicCasus {
+  titel: string;
+  samenvatting: string | null;
+}
+
+export interface PublicInitiatief {
+  naam: string;
+  slug: string;
+  beschrijving: string | null;
+  kleur: string | null;
+  updates: PublicInitiatiefUpdate[];
+  casussen: PublicCasus[];
+}
+
+export type EngagementType =
+  | 'intern_oppakken'
+  | 'voorbereiden_eigen_team'
+  | 'betrokken_houden'
+  | 'verkenning'
+  | 'nog_te_bepalen';
+
+export const ENGAGEMENT_TYPE_LABELS: Record<EngagementType, string> = {
+  intern_oppakken: 'Intern oppakken',
+  voorbereiden_eigen_team: 'Voorbereiden eigen team',
+  betrokken_houden: 'Betrokken houden',
+  verkenning: 'Verkenning (spike)',
+  nog_te_bepalen: 'Nog te bepalen',
+};
+
+export const ENGAGEMENT_TYPE_COLORS: Record<EngagementType, string> = {
+  intern_oppakken: 'bg-emerald-100 text-emerald-800',
+  voorbereiden_eigen_team: 'bg-indigo-100 text-indigo-800',
+  betrokken_houden: 'bg-sky-100 text-sky-800',
+  verkenning: 'bg-amber-100 text-amber-800',
+  nog_te_bepalen: 'bg-slate-100 text-slate-800',
+};
+
+export type StakeholderHouding =
+  | 'tegen'
+  | 'kritisch'
+  | 'neutraal'
+  | 'welwillend'
+  | 'voorstander';
+
+export const STAKEHOLDER_HOUDING_LABELS: Record<StakeholderHouding, string> = {
+  tegen: 'Tegen',
+  kritisch: 'Kritisch',
+  neutraal: 'Neutraal',
+  welwillend: 'Welwillend',
+  voorstander: 'Voorstander',
+};
+
+export const STAKEHOLDER_HOUDING_COLORS: Record<StakeholderHouding, string> = {
+  tegen: 'bg-red-100 text-red-800',
+  kritisch: 'bg-orange-100 text-orange-800',
+  neutraal: 'bg-slate-100 text-slate-800',
+  welwillend: 'bg-emerald-100 text-emerald-800',
+  voorstander: 'bg-green-100 text-green-800',
+};
+
+export type StakeholderScopeType = 'corpus_node' | 'initiatief';
+
+export interface StakeholderAssessment {
+  id: string;
+  person_id: string;
+  person_naam: string;
+  scope_type: StakeholderScopeType;
+  scope_id: string;
+  belang: number | null;
+  houding: StakeholderHouding | null;
+  invloed: number | null;
+  notitie: string | null;
+  assessed_by_id: string | null;
+  assessed_by_naam: string | null;
+  assessed_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface StakeholderAssessmentCreate {
+  person_id: string;
+  scope_type: StakeholderScopeType;
+  scope_id: string;
+  belang?: number | null;
+  houding?: StakeholderHouding | null;
+  invloed?: number | null;
+  notitie?: string | null;
+}
+
+export interface StakeholderAssessmentUpdate {
+  belang?: number | null;
+  houding?: StakeholderHouding | null;
+  invloed?: number | null;
+  notitie?: string | null;
 }
 
 export interface InitiatiefMember {
