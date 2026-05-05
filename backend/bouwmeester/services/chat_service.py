@@ -1130,7 +1130,10 @@ async def _execute_read_tool(
             from bouwmeester.repositories.task import TaskRepository
 
             repo = TaskRepository(db)
-            tasks = await repo.get_by_node(UUID(args["node_id"]), limit=20)
+            org_ctx = await _build_chat_org_context(db, person_id)
+            tasks = await repo.get_by_node(
+                UUID(args["node_id"]), limit=20, org_ctx=org_ctx
+            )
             items = [_task_to_dict(t) for t in tasks]
             return _safe_dumps({"tasks": items, "count": len(items)})
 
@@ -1138,7 +1141,10 @@ async def _execute_read_tool(
             from bouwmeester.repositories.task import TaskRepository
 
             repo = TaskRepository(db)
-            tasks = await repo.get_by_assignee(UUID(args["person_id"]), limit=20)
+            org_ctx = await _build_chat_org_context(db, person_id)
+            tasks = await repo.get_by_assignee(
+                UUID(args["person_id"]), limit=20, org_ctx=org_ctx
+            )
             items = [_task_to_dict(t) for t in tasks]
             return _safe_dumps({"tasks": items, "count": len(items)})
 
@@ -1146,8 +1152,9 @@ async def _execute_read_tool(
             from bouwmeester.repositories.task import TaskRepository
 
             repo = TaskRepository(db)
+            org_ctx = await _build_chat_org_context(db, person_id)
             assignee_id = UUID(args["assignee_id"]) if args.get("assignee_id") else None
-            tasks = await repo.get_overdue(assignee_id=assignee_id)
+            tasks = await repo.get_overdue(assignee_id=assignee_id, org_ctx=org_ctx)
             items = [_task_to_dict(t) for t in tasks[:20]]
             return _safe_dumps({"tasks": items, "count": len(items)})
 

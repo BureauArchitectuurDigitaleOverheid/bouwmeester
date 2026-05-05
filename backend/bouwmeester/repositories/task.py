@@ -159,6 +159,8 @@ class TaskRepository(BaseRepository[Task]):
     async def get_overdue(
         self,
         assignee_id: UUID | None = None,
+        *,
+        org_ctx: OrgContext | None = None,
     ) -> list[Task]:
         stmt = (
             select(Task)
@@ -170,6 +172,10 @@ class TaskRepository(BaseRepository[Task]):
         )
         if assignee_id is not None:
             stmt = stmt.where(Task.assignee_id == assignee_id)
+        # Skip org filter when listing the caller's own overdue tasks —
+        # users always see their own tasks regardless of org-scope.
+        if not (org_ctx is not None and org_ctx.person_id == assignee_id):
+            stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
         stmt = stmt.order_by(Task.deadline.asc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -200,6 +206,8 @@ class TaskRepository(BaseRepository[Task]):
     async def get_unassigned(
         self,
         organisatie_eenheid_id: UUID | None = None,
+        *,
+        org_ctx: OrgContext | None = None,
     ) -> list[Task]:
         stmt = (
             select(Task)
@@ -209,19 +217,26 @@ class TaskRepository(BaseRepository[Task]):
             )
             .options(*_task_options())
         )
+        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
         if organisatie_eenheid_id is not None:
             stmt = stmt.where(Task.organisatie_eenheid_id == organisatie_eenheid_id)
         stmt = stmt.order_by(Task.created_at.desc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_subtasks(self, parent_id: UUID) -> list[Task]:
+    async def get_subtasks(
+        self,
+        parent_id: UUID,
+        *,
+        org_ctx: OrgContext | None = None,
+    ) -> list[Task]:
         stmt = (
             select(Task)
             .where(Task.parent_id == parent_id)
             .options(*_task_options())
             .order_by(Task.order.asc().nulls_last(), Task.created_at.asc())
         )
+        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -261,7 +276,11 @@ class TaskRepository(BaseRepository[Task]):
         await self.session.flush()
         return await self.get_subtasks(parent_id)
 
-    async def get_distinct_work_types(self) -> list[str]:
+    async def get_distinct_work_types(
+        self,
+        *,
+        org_ctx: OrgContext | None = None,
+    ) -> list[str]:
         """Return all distinct non-null work_type values, sorted alphabetically."""
         stmt = (
             select(distinct(Task.work_type))
@@ -269,6 +288,7 @@ class TaskRepository(BaseRepository[Task]):
             .where(Task.work_type != "")
             .order_by(Task.work_type)
         )
+        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         return [row[0] for row in result.all()]
 

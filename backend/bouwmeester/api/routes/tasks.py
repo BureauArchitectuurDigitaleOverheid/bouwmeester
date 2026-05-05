@@ -149,7 +149,11 @@ async def get_my_tasks(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ) -> list[TaskResponse]:
-    """Get tasks assigned to the current user (or person_id in dev mode)."""
+    """Get tasks assigned to the current user (or person_id in dev mode).
+
+    No org_ctx filter: a user is always entitled to see tasks assigned to
+    them, even in units they cannot otherwise browse.
+    """
     pid = effective_person_id(current_user, person_id)
     repo = TaskRepository(db)
     tasks = await repo.get_by_assignee(pid, skip=skip, limit=limit)
@@ -162,7 +166,10 @@ async def get_task_inbox(
     person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> InboxResponse:
-    """Get aggregated inbox data for a person (tasks, notifications, deadlines)."""
+    """Get aggregated inbox data for a person (tasks, notifications, deadlines).
+
+    Inbox is always self-scoped (own tasks/notifications), so no org_ctx.
+    """
     pid = effective_person_id(current_user, person_id)
     service = InboxService(db)
     return await service.get_inbox(pid)
@@ -173,10 +180,14 @@ async def get_unassigned_tasks(
     current_user: OptionalUser,
     organisatie_eenheid_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("task:read")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List tasks that have no assignee, optionally filtered by org unit."""
+    if organisatie_eenheid_id is not None:
+        check_org_scope(organisatie_eenheid_id, org_ctx)
     repo = TaskRepository(db)
-    tasks = await repo.get_unassigned(organisatie_eenheid_id)
+    tasks = await repo.get_unassigned(organisatie_eenheid_id, org_ctx=org_ctx)
     return validate_list(TaskResponse, tasks)
 
 
@@ -184,10 +195,12 @@ async def get_unassigned_tasks(
 async def get_work_types(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("task:read")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[str]:
     """Return distinct work_type values for autocomplete."""
     repo = TaskRepository(db)
-    return await repo.get_distinct_work_types()
+    return await repo.get_distinct_work_types(org_ctx=org_ctx)
 
 
 @router.get("/eenheid-overview", response_model=EenheidOverviewResponse)
@@ -195,8 +208,11 @@ async def get_eenheid_overview(
     current_user: OptionalUser,
     organisatie_eenheid_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("task:read")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> EenheidOverviewResponse:
     """Overview of tasks for an organisatie-eenheid."""
+    check_org_scope(organisatie_eenheid_id, org_ctx)
     service = EenheidOverviewService(db)
     return await service.get_overview(organisatie_eenheid_id)
 
@@ -206,8 +222,11 @@ async def get_task(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("task:read")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> TaskResponse:
     """Get a single task by ID, including assignee and node summaries."""
+    await check_resource_org_scope(db, "task", id, org_ctx)
     repo = TaskRepository(db)
     task = require_found(await repo.get(id), "Task")
     return TaskResponse.model_validate(task)
@@ -218,10 +237,13 @@ async def get_task_subtasks(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("task:read")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List subtasks of a parent task."""
+    await check_resource_org_scope(db, "task", id, org_ctx)
     repo = TaskRepository(db)
-    subtasks = await repo.get_subtasks(id)
+    subtasks = await repo.get_subtasks(id, org_ctx=org_ctx)
     return [TaskResponse.model_validate(t) for t in subtasks]
 
 
