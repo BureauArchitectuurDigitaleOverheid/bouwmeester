@@ -168,6 +168,17 @@ Production access is restricted to whitelisted email addresses stored in the `wh
 - When the whitelist table is empty, all emails are allowed (backwards compatible for local dev)
 - Non-whitelisted users can request access via the AccessDeniedPage; admins approve/deny from Beheer > Verzoeken
 
+## Authorization patterns
+
+`AuthRequiredMiddleware` enforces authentication on `/api/*`. **Authorization** (which records a user may see/mutate) is per-route, using these helpers:
+
+- **List endpoints** filter on `org_ctx`: pass `org_ctx: OrgContext = Depends(get_org_context)` to the route and `apply_org_filter(stmt, Model.organisatie_eenheid_id, org_ctx)` in the repo.
+- **Detail endpoints** check scope: `await check_resource_org_scope(db, "<resource_type>", id, org_ctx)`.
+- **Mutations** also need a permission gate: `_perm=Depends(require_permission("<perm>"))` plus `check_org_scope(eenheid_id, org_ctx)` on any incoming `organisatie_eenheid_id`.
+- **Tenant-wide-by-design** endpoints (`tags`, `organisatie`-chart, `edge-types`, `roles`) are intentionally readable by every authenticated user. Whitelist them in `backend/tests/test_route_authorization_inventory.py`.
+
+The inventory test fails CI on any new GET `/api/*` route that lacks an authz dependency, so adding a list-endpoint without `apply_org_filter` is impossible without an explicit whitelist or known-debt entry.
+
 ## Pull requests
 
 - Always branch from the latest remote main: `git fetch origin && git checkout -b <branch> origin/main`
