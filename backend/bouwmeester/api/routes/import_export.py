@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import validate_csv_upload
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.schema.import_export import ImportResult
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.archimate_export_service import (
@@ -28,6 +29,7 @@ async def import_politieke_inputs(
     file: UploadFile,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("import_export:import")),
 ) -> ImportResult:
     """Upload a CSV to bulk-import politieke inputs."""
     content = await validate_csv_upload(file)
@@ -50,6 +52,7 @@ async def import_nodes(
     file: UploadFile,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("import_export:import")),
 ) -> ImportResult:
     """Upload a CSV to bulk-import generic nodes."""
     content = await validate_csv_upload(file)
@@ -72,6 +75,7 @@ async def import_edges(
     file: UploadFile,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("import_export:import")),
 ) -> ImportResult:
     """Upload a CSV to bulk-import edges."""
     content = await validate_csv_upload(file)
@@ -97,6 +101,7 @@ async def export_nodes(
     current_user: OptionalUser,
     node_type: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("import_export:export")),
 ) -> StreamingResponse:
     """Export all nodes as CSV (optionally filtered by node_type)."""
     service = ExportService(db)
@@ -112,6 +117,7 @@ async def export_nodes(
 async def export_edges(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("import_export:export")),
 ) -> StreamingResponse:
     """Export all edges as CSV."""
     service = ExportService(db)
@@ -127,6 +133,7 @@ async def export_edges(
 async def export_corpus(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("import_export:export")),
 ) -> JSONResponse:
     """Export full corpus as JSON (nodes + edges + types)."""
     service = ExportService(db)
@@ -141,6 +148,7 @@ async def export_corpus(
 async def export_archimate(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("import_export:export")),
 ) -> StreamingResponse:
     """Export corpus as ArchiMate Exchange Format XML."""
     service = ArchiMateExportService(db)

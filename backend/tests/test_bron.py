@@ -88,11 +88,15 @@ async def test_get_bron_detail_not_found(client, sample_node):
 
 
 async def test_get_bron_detail_nonexistent(client):
-    """GET /api/nodes/{id}/bron-detail returns null for nonexistent node."""
+    """GET /api/nodes/{id}/bron-detail returns 404 for nonexistent node.
+
+    The org-scope check resolves the parent node first; missing nodes
+    surface as 404 rather than null (consistent with other node detail
+    routes since the authz hardening in #270).
+    """
     fake_id = uuid.uuid4()
     resp = await client.get(f"/api/nodes/{fake_id}/bron-detail")
-    assert resp.status_code == 200
-    assert resp.json() is None
+    assert resp.status_code == 404
 
 
 async def test_update_bron_detail(client, bron_node):
