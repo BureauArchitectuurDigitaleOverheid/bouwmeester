@@ -371,3 +371,31 @@ async def test_get_opdracht_allows_visible(org_visibility_setup):
     resp = await s["client"].get(f"/api/opdrachten/{s['visible_opdracht'].id}")
     assert resp.status_code == 200
     assert resp.json()["id"] == str(s["visible_opdracht"].id)
+
+
+# ---------------------------------------------------------------------------
+# Node-driven opdracht endpoints (instrument-detail leakage)
+# ---------------------------------------------------------------------------
+
+
+async def test_get_node_opdrachten_filters_invisible(org_visibility_setup):
+    """GET /nodes/{instrument}/opdrachten only shows opdrachten in scope."""
+    s = org_visibility_setup
+    resp = await s["client"].get(f"/api/nodes/{s['visible_node'].id}/opdrachten")
+    assert resp.status_code == 200
+    ids = {o["id"] for o in resp.json()}
+    assert str(s["invisible_opdracht"].id) not in ids
+
+
+async def test_get_node_opdrachten_forbids_invisible_node(org_visibility_setup):
+    """An invisible node returns 403 via check_resource_org_scope."""
+    s = org_visibility_setup
+    resp = await s["client"].get(f"/api/nodes/{s['invisible_node'].id}/opdrachten")
+    assert resp.status_code == 403
+
+
+async def test_get_node_financieel_forbids_invisible_node(org_visibility_setup):
+    """Financial overview on an invisible node is forbidden."""
+    s = org_visibility_setup
+    resp = await s["client"].get(f"/api/nodes/{s['invisible_node'].id}/financieel")
+    assert resp.status_code == 403

@@ -109,7 +109,9 @@ async def list_nodes(
     instrument_ids = [r.id for r in responses if r.node_type == "instrument"]
     if instrument_ids:
         opdracht_repo = OpdrachtRepository(db)
-        budget_map = await opdracht_repo.get_budget_summaries(instrument_ids)
+        budget_map = await opdracht_repo.get_budget_summaries(
+            instrument_ids, org_ctx=org_ctx
+        )
         for r in responses:
             if r.node_type == "instrument" and r.id in budget_map:
                 budget, gerealiseerd = budget_map[r.id]
@@ -705,12 +707,15 @@ async def get_node_financieel(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:read")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> FinancieelOverzicht:
     """Get financial overview for a node (aggregated from opdrachten)."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     require_found(await service.get(id), "Node")
     fin_service = FinancieelService(db)
-    return await fin_service.get_financieel_overzicht(id)
+    return await fin_service.get_financieel_overzicht(id, org_ctx=org_ctx)
 
 
 @router.get("/{id}/opdrachten", response_model=list[OpdrachtResponse])
@@ -718,12 +723,15 @@ async def get_node_opdrachten(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:read")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[OpdrachtResponse]:
     """Get opdrachten linked to a node (via instrument_id or OpdrachtNode)."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     require_found(await service.get(id), "Node")
     repo = OpdrachtRepository(db)
-    opdrachten = await repo.get_by_node(id)
+    opdrachten = await repo.get_by_node(id, org_ctx=org_ctx)
     return validate_list(OpdrachtResponse, opdrachten)
 
 
