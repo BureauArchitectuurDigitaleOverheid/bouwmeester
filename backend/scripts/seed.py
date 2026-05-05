@@ -4752,6 +4752,7 @@ async def seed(db: AsyncSession) -> None:
     # =========================================================================
     # INITIATIEVEN
     # =========================================================================
+    from bouwmeester.core.slug import slugify
     from bouwmeester.models.initiatief import Initiatief
     from bouwmeester.models.resource_permission import ResourcePermission
 
@@ -4764,8 +4765,19 @@ async def seed(db: AsyncSession) -> None:
     for naam, kleur, beschrijving in initiatieven_data:
         init = Initiatief(
             naam=naam,
+            slug=slugify(naam) or None,
             kleur=kleur,
             beschrijving=beschrijving,
+            funnel_enabled=naam == "Regelrecht",
+            score_strategisch_label=(
+                "Strategisch belang RR-kernteam" if naam == "Regelrecht" else None
+            ),
+            score_politiek_label=(
+                "Politiek-bestuurlijk belang" if naam == "Regelrecht" else None
+            ),
+            score_positie_label=(
+                "Belang voor positie/omgevingsmgt RR" if naam == "Regelrecht" else None
+            ),
         )
         db.add(init)
         await db.flush()

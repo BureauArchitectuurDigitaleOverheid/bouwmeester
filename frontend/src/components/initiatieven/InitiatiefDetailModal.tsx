@@ -502,6 +502,8 @@ function SettingsSection({ initiatief }: { initiatief: InitiatiefDetail }) {
     score_politiek_label: initiatief.score_politiek_label ?? '',
     score_positie_label: initiatief.score_positie_label ?? '',
   });
+  const [slugDraft, setSlugDraft] = useState(initiatief.slug ?? '');
+  const [slugError, setSlugError] = useState<string | null>(null);
 
   const save = (data: InitiatiefSettingsUpdate) =>
     settingsMutation.mutateAsync({ id: initiatief.id, data });
@@ -558,9 +560,48 @@ function SettingsSection({ initiatief }: { initiatief: InitiatiefDetail }) {
               </span>
             </div>
           ) : (
-            <p className="text-sm text-text-secondary">
-              Geen slug. Naam te kort of geen geldige tekens.
-            </p>
+            <div className="space-y-1.5">
+              <p className="text-xs text-text-secondary">
+                Nog geen slug ingesteld. Kies kleine letters, cijfers en
+                streepjes (bv. <code>regelrecht</code>). Eenmalig instelbaar.
+              </p>
+              <div className="flex gap-2">
+                <span className="inline-flex items-center px-2 rounded-l-lg border border-r-0 border-border bg-gray-50 text-sm text-text-secondary">
+                  /c/
+                </span>
+                <input
+                  type="text"
+                  value={slugDraft}
+                  onChange={(e) => {
+                    setSlugDraft(e.target.value.toLowerCase());
+                    setSlugError(null);
+                  }}
+                  placeholder="regelrecht"
+                  className="flex-1 rounded-r-lg border border-border px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const trimmed = slugDraft.trim();
+                    if (!trimmed) return;
+                    try {
+                      await save({ slug: trimmed });
+                    } catch (err) {
+                      const msg =
+                        err instanceof Error ? err.message : 'Onbekende fout';
+                      setSlugError(msg);
+                    }
+                  }}
+                  disabled={!slugDraft.trim() || settingsMutation.isPending}
+                  className="px-3 py-1 text-sm rounded-lg bg-primary-600 text-white disabled:opacity-50"
+                >
+                  Instellen
+                </button>
+              </div>
+              {slugError && (
+                <p className="text-xs text-red-600">{slugError}</p>
+              )}
+            </div>
           )}
         </div>
 
