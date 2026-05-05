@@ -65,6 +65,8 @@ class StakeholderAssessmentRepository(BaseRepository[StakeholderAssessment]):
         )
         self.session.add(assessment)
         await self.session.flush()
+        # Refresh column attrs (server_default/onupdate) and relations together.
+        await self.session.refresh(assessment)
         await self.session.refresh(
             assessment, attribute_names=["person", "assessed_by"]
         )
@@ -87,6 +89,8 @@ class StakeholderAssessmentRepository(BaseRepository[StakeholderAssessment]):
         if assessed_by_id is not None:
             assessment.assessed_by_id = assessed_by_id
         await self.session.flush()
+        # Refresh column attrs (server_default/onupdate) and relations together.
+        await self.session.refresh(assessment)
         await self.session.refresh(
             assessment, attribute_names=["person", "assessed_by"]
         )

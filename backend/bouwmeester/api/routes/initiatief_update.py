@@ -108,6 +108,7 @@ async def create_update(
 
     db.add(post)
     await db.flush()
+    await db.refresh(post)
     await db.refresh(post, attribute_names=["published_by"])
     return _to_response(post)
 
@@ -131,6 +132,7 @@ async def edit_update(
     for key, value in payload.items():
         setattr(post, key, value)
     await db.flush()
+    await db.refresh(post)
     await db.refresh(post, attribute_names=["published_by"])
     return _to_response(post)
 
@@ -152,6 +154,7 @@ async def publish_update(
     post.published_at = datetime.now(UTC)
     post.published_by_id = current_user.id if current_user else None
     await db.flush()
+    await db.refresh(post)
     await db.refresh(post, attribute_names=["published_by"])
     return _to_response(post)
 
@@ -170,9 +173,11 @@ async def unpublish_update(
     repo = InitiatiefRepository(db)
     await _require_access(repo, initiatief_id, current_user, perm_ctx, "contributor")
     post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
+    # Keep published_by_id as audit trail of last publisher; republishing
+    # overwrites it again.
     post.published_at = None
-    post.published_by_id = None
     await db.flush()
+    await db.refresh(post)
     await db.refresh(post, attribute_names=["published_by"])
     return _to_response(post)
 

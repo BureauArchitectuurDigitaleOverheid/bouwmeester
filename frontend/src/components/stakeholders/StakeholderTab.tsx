@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
@@ -130,14 +130,9 @@ export function StakeholderTab({
                 />
               </div>
               {!readOnly && (
-                <textarea
-                  value={a.notitie ?? ''}
-                  onChange={(e) =>
-                    handleUpdate(a, { notitie: e.target.value || null })
-                  }
-                  placeholder="Notitie (optioneel)"
-                  rows={2}
-                  className="w-full text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                <NoteEditor
+                  value={a.notitie}
+                  onPersist={(value) => handleUpdate(a, { notitie: value })}
                 />
               )}
               {readOnly && a.notitie && (
@@ -247,5 +242,42 @@ function HoudingSelect({
         ))}
       </select>
     </label>
+  );
+}
+
+function NoteEditor({
+  value,
+  onPersist,
+}: {
+  value: string | null;
+  onPersist: (v: string | null) => void;
+}) {
+  // Local draft so typing doesn't fire a PUT per keystroke. Persist on blur.
+  // Sync from server only when not actively editing.
+  const [draft, setDraft] = useState(value ?? '');
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) {
+      setDraft(value ?? '');
+    }
+  }, [value, focused]);
+
+  return (
+    <textarea
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        const next = draft.trim() ? draft : null;
+        if (next !== (value ?? null)) {
+          onPersist(next);
+        }
+      }}
+      placeholder="Notitie (optioneel)"
+      rows={2}
+      className="w-full text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+    />
   );
 }

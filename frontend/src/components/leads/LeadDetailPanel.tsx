@@ -58,6 +58,7 @@ import {
   INITIATIEF_COLORS,
   LEAD_CONTACT_ROL_LABELS,
   ENGAGEMENT_TYPE_LABELS,
+  ENGAGEMENT_TYPE_COLORS,
 } from '@/types';
 import type { LeadUpdate, LeadActivityCreate, EngagementType } from '@/types';
 
@@ -620,7 +621,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                   {lead.engagement_type && (
                     <div className="text-sm">
                       <span className="text-text-secondary">Engagement: </span>
-                      <span className="text-text font-medium">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ENGAGEMENT_TYPE_COLORS[lead.engagement_type]}`}
+                      >
                         {ENGAGEMENT_TYPE_LABELS[lead.engagement_type]}
                       </span>
                     </div>
