@@ -159,6 +159,8 @@ class TaskRepository(BaseRepository[Task]):
     async def get_overdue(
         self,
         assignee_id: UUID | None = None,
+        *,
+        org_ctx: OrgContext | None = None,
     ) -> list[Task]:
         stmt = (
             select(Task)
@@ -170,6 +172,10 @@ class TaskRepository(BaseRepository[Task]):
         )
         if assignee_id is not None:
             stmt = stmt.where(Task.assignee_id == assignee_id)
+        # Skip org filter when listing the caller's own overdue tasks —
+        # users always see their own tasks regardless of org-scope.
+        if not (org_ctx is not None and org_ctx.person_id == assignee_id):
+            stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
         stmt = stmt.order_by(Task.deadline.asc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
