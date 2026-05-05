@@ -51,6 +51,16 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     "/api/edge-types/valid": "schema-data, ministerie-breed",
     "/api/edge-schema-rules": "schema-data, ministerie-breed",
     "/api/skill.md": "skill markdown bundle, no PII",
+    # Notifications: handlers filter on effective_person_id explicitly
+    # in the route body (zie notifications.py — list/count/dashboard-stats
+    # roepen effective_person_id aan; detail/replies gaan door
+    # _check_notification_owner). De inventory test detecteert die
+    # in-body call niet, dus expliciet whitelisten.
+    "/api/notifications": "self-scoped via effective_person_id in handler",
+    "/api/notifications/count": "self-scoped via effective_person_id in handler",
+    "/api/notifications/dashboard-stats": "self-scoped via effective_person_id",
+    "/api/notifications/{id}": "self-scoped via _check_notification_owner",
+    "/api/notifications/{id}/replies": "self-scoped via _check_notification_owner",
 }
 
 # Whole-prefix whitelists (every GET under this prefix is exempt).
@@ -101,11 +111,6 @@ _KNOWN_DEBT: set[str] = {
     "/api/nodes/{id}/tasks",
     "/api/nodes/{node_id}/bijlage",
     "/api/nodes/{node_id}/bijlage/download",
-    "/api/notifications",
-    "/api/notifications/count",
-    "/api/notifications/dashboard-stats",
-    "/api/notifications/{id}",
-    "/api/notifications/{id}/replies",
     "/api/opdrachten",
     "/api/opdrachten/summary",
     "/api/opdrachten/{id}",
