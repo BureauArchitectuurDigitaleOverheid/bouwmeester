@@ -34,22 +34,27 @@ async def get_public_initiatief(
     Returns 404 (not 403) when slug is unknown OR public_page_enabled is
     false. Hiding existence on disabled pages is intentional — leaks no
     information about which initiatieven exist internally.
+
+    Two-step query keeps timing roughly constant between "slug doesn't
+    exist" and "exists but private": both bail before any relation loads.
     """
-    stmt = (
+    lookup = await db.execute(select(Initiatief).where(Initiatief.slug == slug))
+    initiatief = lookup.scalar_one_or_none()
+    if initiatief is None or not initiatief.public_page_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Pagina niet gevonden"
+        )
+
+    detail = await db.execute(
         select(Initiatief)
-        .where(Initiatief.slug == slug)
+        .where(Initiatief.id == initiatief.id)
         .options(
             selectinload(Initiatief.updates).selectinload(
                 InitiatiefUpdatePost.published_by
             )
         )
     )
-    result = await db.execute(stmt)
-    initiatief = result.scalar_one_or_none()
-    if initiatief is None or not initiatief.public_page_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Pagina niet gevonden"
-        )
+    initiatief = detail.scalar_one()
 
     published_updates = sorted(
         (u for u in initiatief.updates if u.published_at is not None),

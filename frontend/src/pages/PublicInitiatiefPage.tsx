@@ -14,6 +14,19 @@ export function PublicInitiatiefPage() {
   const [data, setData] = useState<PublicInitiatief | null>(null);
 
   useEffect(() => {
+    // Voorkom indexering door zoekmachines: een initiatief kan ooit publiek
+    // hebben gestaan en daarna weer worden gedimd; cached search-results
+    // mogen geen interne info blijven serveren.
+    const meta = document.createElement('meta');
+    meta.name = 'robots';
+    meta.content = 'noindex, nofollow, noarchive';
+    document.head.appendChild(meta);
+    return () => {
+      document.head.removeChild(meta);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!slug) {
       setStatus('not-found');
       return;

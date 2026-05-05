@@ -61,10 +61,6 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     "/api/notifications/dashboard-stats": "self-scoped via effective_person_id",
     "/api/notifications/{id}": "self-scoped via _check_notification_owner",
     "/api/notifications/{id}/replies": "self-scoped via _check_notification_owner",
-    # Stakeholder-assessment list endpoint: scoped via scope_type/scope_id
-    # query params; reads geen PII die de authn-middleware al niet gate.
-    # Mutations zitten op POST/PUT/DELETE en zijn niet door deze test gedekt.
-    "/api/stakeholder-assessments": "scope-gequeried, leest geen PII buiten authn",
 }
 
 # Whole-prefix whitelists (every GET under this prefix is exempt).
