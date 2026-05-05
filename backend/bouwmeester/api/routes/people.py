@@ -12,6 +12,8 @@ from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
 from bouwmeester.core.auth import AdminUser, OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import OrgContext, apply_org_filter, get_org_context
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
@@ -80,6 +82,7 @@ async def list_people(
     skip: int = Query(0, ge=0),
     limit: int = Query(1000, ge=1, le=10000),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:read")),
 ) -> list[PersonResponse]:
     """List all people (users and agents)."""
     repo = PersonRepository(db)
@@ -103,6 +106,7 @@ async def create_person(
     actor_id: UUID | None = Query(None),
     force: bool = Query(False),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:manage")),
 ) -> PersonCreateResponse:
     """Create a person.
 
@@ -197,6 +201,7 @@ async def check_duplicates(
     current_user: OptionalUser,
     naam: str = Query(..., min_length=2, max_length=500),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:read")),
 ) -> list[DuplicateCheckHit]:
     """Check if persons with a similar name already exist.
 
@@ -221,6 +226,7 @@ async def search_people(
     q: str = Query("", min_length=0, max_length=500),
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:read")),
 ) -> list[PersonResponse]:
     """Search people by name. Returns all people if query is empty."""
     repo = PersonRepository(db)
@@ -241,66 +247,74 @@ async def get_person_summary(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:read")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> PersonSummaryResponse:
     """Compact summary: task counts, top open tasks, and stakeholder nodes."""
     repo = PersonRepository(db)
     require_found(await repo.get(id), "Person")
 
-    # Task counts
-    open_count_stmt = (
+    # Task counts (also scoped by org-context to avoid leaking task counts
+    # from invisible eenheden)
+    open_count_stmt = apply_org_filter(
         select(func.count())
         .select_from(Task)
-        .where(Task.assignee_id == id, Task.status.in_(["open", "in_progress"]))
+        .where(Task.assignee_id == id, Task.status.in_(["open", "in_progress"])),
+        Task.organisatie_eenheid_id,
+        org_ctx,
     )
-    done_count_stmt = (
+    done_count_stmt = apply_org_filter(
         select(func.count())
         .select_from(Task)
-        .where(Task.assignee_id == id, Task.status == "done")
+        .where(Task.assignee_id == id, Task.status == "done"),
+        Task.organisatie_eenheid_id,
+        org_ctx,
     )
     open_count = (await db.execute(open_count_stmt)).scalar() or 0
     done_count = (await db.execute(done_count_stmt)).scalar() or 0
 
     # Top open tasks (max 5, ordered by priority then deadline)
-    open_tasks_stmt = (
-        select(Task)
-        .where(Task.assignee_id == id, Task.status.in_(["open", "in_progress"]))
-        .order_by(
-            # kritiek=0, hoog=1, normaal=2, laag=3
-            func.array_position(["kritiek", "hoog", "normaal", "laag"], Task.priority),
-            Task.deadline.asc().nullslast(),
-        )
-        .limit(5)
+    open_tasks_stmt = apply_org_filter(
+        select(Task).where(
+            Task.assignee_id == id, Task.status.in_(["open", "in_progress"])
+        ),
+        Task.organisatie_eenheid_id,
+        org_ctx,
     )
+    open_tasks_stmt = open_tasks_stmt.order_by(
+        # kritiek=0, hoog=1, normaal=2, laag=3
+        func.array_position(["kritiek", "hoog", "normaal", "laag"], Task.priority),
+        Task.deadline.asc().nullslast(),
+    ).limit(5)
     open_tasks_result = await db.execute(open_tasks_stmt)
     open_tasks = [
         PersonTaskSummary.model_validate(t) for t in open_tasks_result.scalars().all()
     ]
 
-    # Stakeholder nodes
-    stakeholder_stmt = select(ResourcePermission).where(
-        ResourcePermission.resource_type == "corpus_node",
-        ResourcePermission.person_id == id,
+    # Stakeholder nodes — filter cross-org via the linked CorpusNode's
+    # organisatie_eenheid_id so a viewer only sees stakeholder rows on
+    # nodes inside their visible scope.
+    stakeholder_stmt = (
+        select(ResourcePermission, CorpusNode)
+        .join(CorpusNode, CorpusNode.id == ResourcePermission.resource_id)
+        .where(
+            ResourcePermission.resource_type == "corpus_node",
+            ResourcePermission.person_id == id,
+        )
+    )
+    stakeholder_stmt = apply_org_filter(
+        stakeholder_stmt, CorpusNode.organisatie_eenheid_id, org_ctx
     )
     stakeholder_result = await db.execute(stakeholder_stmt)
-    permissions = list(stakeholder_result.scalars().all())
-
-    stakeholder_nodes = []
-    if permissions:
-        node_ids = [rp.resource_id for rp in permissions]
-        nodes_result = await db.execute(
-            select(CorpusNode).where(CorpusNode.id.in_(node_ids))
+    stakeholder_nodes = [
+        PersonStakeholderNode(
+            node_id=node.id,
+            node_title=node.title,
+            node_type=node.node_type,
+            stakeholder_rol=rp.rol,
         )
-        node_map = {n.id: n for n in nodes_result.scalars().all()}
-        stakeholder_nodes = [
-            PersonStakeholderNode(
-                node_id=node_map[rp.resource_id].id,
-                node_title=node_map[rp.resource_id].title,
-                node_type=node_map[rp.resource_id].node_type,
-                stakeholder_rol=rp.rol,
-            )
-            for rp in permissions
-            if rp.resource_id in node_map
-        ]
+        for rp, node in stakeholder_result.all()
+    ]
 
     return PersonSummaryResponse(
         open_task_count=open_count,
@@ -315,6 +329,7 @@ async def get_person(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:read")),
 ) -> PersonDetailResponse:
     """Get detailed person info including emails, phones, and org placements."""
     repo = PersonRepository(db)
@@ -331,6 +346,7 @@ async def update_person(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonDetailResponse:
     """Update person fields (naam, functie, etc.)."""
     # Changing is_agent requires admin privileges (agents bypass email whitelist).
@@ -370,6 +386,7 @@ async def delete_person(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:manage")),
 ) -> None:
     """Delete a person permanently."""
     repo = PersonRepository(db)
@@ -430,6 +447,7 @@ async def list_person_organisaties(
     current_user: OptionalUser,
     actief: bool = Query(True),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:read")),
 ) -> list[PersonOrganisatieResponse]:
     """List org unit placements for a person. Defaults to active placements only."""
     require_found(await db.get(Person, id), "Person")
@@ -468,6 +486,7 @@ async def add_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonOrganisatieResponse:
     """Place a person in an org unit. Returns 409 if already active in that unit."""
     require_found(await db.get(Person, id), "Person")
@@ -537,6 +556,7 @@ async def update_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonOrganisatieResponse:
     """Update an org placement (e.g. set eind_datum to end placement)."""
     stmt = select(PersonOrganisatieEenheid).where(
@@ -586,6 +606,7 @@ async def delete_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:update")),
 ) -> None:
     """Delete an org placement permanently."""
     stmt = select(PersonOrganisatieEenheid).where(
@@ -619,6 +640,7 @@ async def add_person_email(
     data: PersonEmailCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonEmailResponse:
     """Add an email address to a person. First email auto-becomes default."""
     require_found(await db.get(Person, id), "Person")
@@ -671,6 +693,7 @@ async def remove_person_email(
     email_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:update")),
 ) -> None:
     """Remove an email address. Auto-promotes another email to default if needed."""
     stmt = select(PersonEmail).where(
@@ -707,6 +730,7 @@ async def set_default_email(
     email_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonEmailResponse:
     """Set an email as the default for a person."""
     # Verify the target email exists and belongs to this person
@@ -749,6 +773,7 @@ async def add_person_phone(
     data: PersonPhoneCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonPhoneResponse:
     """Add a phone number to a person. First phone auto-becomes default."""
     require_found(await db.get(Person, id), "Person")
@@ -799,6 +824,7 @@ async def remove_person_phone(
     phone_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:update")),
 ) -> None:
     """Remove a phone number. Auto-promotes another to default if needed."""
     stmt = select(PersonPhone).where(
@@ -835,6 +861,7 @@ async def set_default_phone(
     phone_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:update")),
 ) -> PersonPhoneResponse:
     """Set a phone number as the default for a person."""
     # Verify the target phone exists and belongs to this person

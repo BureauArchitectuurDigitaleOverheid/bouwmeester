@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.opdracht import Opdracht, OpdrachtNode
@@ -20,7 +21,12 @@ class FinancieelService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get_financieel_overzicht(self, node_id: UUID) -> FinancieelOverzicht:
+    async def get_financieel_overzicht(
+        self,
+        node_id: UUID,
+        *,
+        org_ctx: OrgContext | None = None,
+    ) -> FinancieelOverzicht:
         """Get financial overview for a node.
 
         For instrument nodes: aggregate directly linked opdrachten.
@@ -70,6 +76,7 @@ class FinancieelService:
             .group_by(Opdracht.begrotingsjaar)
             .order_by(Opdracht.begrotingsjaar)
         )
+        stmt = apply_org_filter(stmt, Opdracht.opdrachtgever_id, org_ctx)
 
         result = await self.session.execute(stmt)
         per_jaar = [

@@ -6,6 +6,7 @@ organisatie-eenheden (or data without an org assignment).
 
 import uuid
 from datetime import date
+from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -15,6 +16,7 @@ from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
+from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
@@ -127,6 +129,43 @@ async def org_visibility_setup(db_session: AsyncSession, _test_app):
     db_session.add_all([visible_task, invisible_task])
     await db_session.flush()
 
+    # Create opdrachten: one in each org, one without org
+    visible_opdracht = Opdracht(
+        id=uuid.uuid4(),
+        titel="Zichtbare opdracht",
+        type="opdracht",
+        status="actief",
+        begrotingsjaar=2025,
+        instrument_id=visible_node.id,
+        opdrachtgever_id=visible_org.id,
+        budget=Decimal("100000"),
+        gerealiseerd=Decimal("25000"),
+    )
+    invisible_opdracht = Opdracht(
+        id=uuid.uuid4(),
+        titel="Onzichtbare opdracht",
+        type="opdracht",
+        status="actief",
+        begrotingsjaar=2025,
+        instrument_id=invisible_node.id,
+        opdrachtgever_id=invisible_org.id,
+        budget=Decimal("200000"),
+        gerealiseerd=Decimal("50000"),
+    )
+    unassigned_opdracht = Opdracht(
+        id=uuid.uuid4(),
+        titel="Ongeplaatste opdracht",
+        type="opdracht",
+        status="actief",
+        begrotingsjaar=2025,
+        instrument_id=unassigned_node.id,
+        opdrachtgever_id=None,
+        budget=Decimal("50000"),
+        gerealiseerd=Decimal("0"),
+    )
+    db_session.add_all([visible_opdracht, invisible_opdracht, unassigned_opdracht])
+    await db_session.flush()
+
     # Create edge type
     from bouwmeester.models.edge_type import EdgeType
 
@@ -182,6 +221,9 @@ async def org_visibility_setup(db_session: AsyncSession, _test_app):
             "invisible_task": invisible_task,
             "edge_both_visible": edge_both_visible,
             "edge_one_invisible": edge_one_invisible,
+            "visible_opdracht": visible_opdracht,
+            "invisible_opdracht": invisible_opdracht,
+            "unassigned_opdracht": unassigned_opdracht,
         }
 
     app.dependency_overrides.clear()
@@ -250,6 +292,30 @@ async def test_list_tasks_by_node_hides_invisible_org(org_visibility_setup):
     assert len(resp.json()) == 0
 
 
+async def test_get_task_forbidden_for_invisible(org_visibility_setup):
+    """GET /tasks/{id} returns 403 for a task in an invisible org."""
+    s = org_visibility_setup
+    resp = await s["client"].get(f"/api/tasks/{s['invisible_task'].id}")
+    assert resp.status_code == 403
+
+
+async def test_get_task_subtasks_forbidden_for_invisible(org_visibility_setup):
+    """GET /tasks/{id}/subtasks returns 403 for a parent in an invisible org."""
+    s = org_visibility_setup
+    resp = await s["client"].get(f"/api/tasks/{s['invisible_task'].id}/subtasks")
+    assert resp.status_code == 403
+
+
+async def test_eenheid_overview_forbids_invisible_eenheid(org_visibility_setup):
+    """GET /tasks/eenheid-overview rejects an invisible eenheid."""
+    s = org_visibility_setup
+    resp = await s["client"].get(
+        "/api/tasks/eenheid-overview",
+        params={"organisatie_eenheid_id": str(s["invisible_org"].id)},
+    )
+    assert resp.status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # Edge visibility tests
 # ---------------------------------------------------------------------------
@@ -278,3 +344,82 @@ async def test_get_edge_returns_404_for_invisible(org_visibility_setup):
     s = org_visibility_setup
     resp = await s["client"].get(f"/api/edges/{s['edge_one_invisible'].id}")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Opdracht visibility tests
+# ---------------------------------------------------------------------------
+
+
+async def test_list_opdrachten_hides_invisible_org(org_visibility_setup):
+    """Non-admin should not see opdrachten from an invisible org."""
+    s = org_visibility_setup
+    resp = await s["client"].get("/api/opdrachten")
+    assert resp.status_code == 200
+    ids = {o["id"] for o in resp.json()}
+    assert str(s["visible_opdracht"].id) in ids
+    assert str(s["invisible_opdracht"].id) not in ids
+
+
+async def test_list_opdrachten_shows_null_org(org_visibility_setup):
+    """Non-admin should see opdrachten without opdrachtgever_id (NULL)."""
+    s = org_visibility_setup
+    resp = await s["client"].get("/api/opdrachten")
+    assert resp.status_code == 200
+    ids = {o["id"] for o in resp.json()}
+    assert str(s["unassigned_opdracht"].id) in ids
+
+
+async def test_summary_excludes_invisible_org(org_visibility_setup):
+    """Summary aggregates only over opdrachten the user can see."""
+    s = org_visibility_setup
+    resp = await s["client"].get("/api/opdrachten/summary")
+    assert resp.status_code == 200
+    data = resp.json()
+    # visible (100k + 50k null) but not invisible (200k)
+    assert int(data["count"]) == 2
+    assert Decimal(str(data["totaal_budget"])) == Decimal("150000")
+    assert Decimal(str(data["totaal_gerealiseerd"])) == Decimal("25000")
+
+
+async def test_get_opdracht_forbidden_for_invisible(org_visibility_setup):
+    """Non-admin should get 403 for an opdracht in an invisible org."""
+    s = org_visibility_setup
+    resp = await s["client"].get(f"/api/opdrachten/{s['invisible_opdracht'].id}")
+    assert resp.status_code == 403
+
+
+async def test_get_opdracht_allows_visible(org_visibility_setup):
+    """Non-admin should be able to read an opdracht in their org."""
+    s = org_visibility_setup
+    resp = await s["client"].get(f"/api/opdrachten/{s['visible_opdracht'].id}")
+    assert resp.status_code == 200
+    assert resp.json()["id"] == str(s["visible_opdracht"].id)
+
+
+# ---------------------------------------------------------------------------
+# Node-driven opdracht endpoints (instrument-detail leakage)
+# ---------------------------------------------------------------------------
+
+
+async def test_get_node_opdrachten_filters_invisible(org_visibility_setup):
+    """GET /nodes/{instrument}/opdrachten only shows opdrachten in scope."""
+    s = org_visibility_setup
+    resp = await s["client"].get(f"/api/nodes/{s['visible_node'].id}/opdrachten")
+    assert resp.status_code == 200
+    ids = {o["id"] for o in resp.json()}
+    assert str(s["invisible_opdracht"].id) not in ids
+
+
+async def test_get_node_opdrachten_forbids_invisible_node(org_visibility_setup):
+    """An invisible node returns 403 via check_resource_org_scope."""
+    s = org_visibility_setup
+    resp = await s["client"].get(f"/api/nodes/{s['invisible_node'].id}/opdrachten")
+    assert resp.status_code == 403
+
+
+async def test_get_node_financieel_forbids_invisible_node(org_visibility_setup):
+    """Financial overview on an invisible node is forbidden."""
+    s = org_visibility_setup
+    resp = await s["client"].get(f"/api/nodes/{s['invisible_node'].id}/financieel")
+    assert resp.status_code == 403

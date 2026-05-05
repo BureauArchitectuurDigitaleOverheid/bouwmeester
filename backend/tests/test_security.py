@@ -8,6 +8,8 @@ from httpx import ASGITransport, AsyncClient
 
 from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.role import PersonRole
 
 # ---------------------------------------------------------------------------
@@ -44,7 +46,23 @@ async def authed_client(db_session, _test_app, create_person, request):
                 start_datum=date.today(),
             )
         )
+    else:
+        # Non-admin users in production always have at least one placement,
+        # which gives them an implicit viewer role on that eenheid (see
+        # build_permission_context).  Mirror that here so authz checks
+        # for non-admin actions land on a realistic baseline rather than
+        # on a user with literally zero permissions.
+        org = OrganisatieEenheid(id=uuid.uuid4(), naam="Auth-Override-Org", type="team")
+        db_session.add(org)
         await db_session.flush()
+        db_session.add(
+            PersonOrganisatieEenheid(
+                person_id=user.id,
+                organisatie_eenheid_id=org.id,
+                start_datum=date.today(),
+            )
+        )
+    await db_session.flush()
 
     app = _test_app
 
