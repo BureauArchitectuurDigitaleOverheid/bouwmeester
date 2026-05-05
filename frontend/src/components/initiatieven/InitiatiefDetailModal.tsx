@@ -550,7 +550,27 @@ function SettingsSection({ initiatief }: { initiatief: InitiatiefDetail }) {
             Publieke pagina
           </div>
 
-          <div className="space-y-1.5">
+          <ToggleRow
+            icon={<Globe className="h-4 w-4" />}
+            label="Publieke pagina inschakelen"
+            description={
+              publicUrl
+                ? `Pagina bereikbaar via ${publicUrl} voor iedereen met de link.`
+                : 'Stel eerst een slug in om de pagina aan te kunnen zetten.'
+            }
+            enabled={initiatief.public_page_enabled}
+            onToggle={handlePublicToggle}
+            loading={settingsMutation.isPending}
+            disabled={!publicUrl}
+          />
+
+          <div
+            className={`space-y-1.5 ${
+              initiatief.public_page_enabled || !initiatief.slug
+                ? ''
+                : 'opacity-60'
+            }`}
+          >
             <label className="block text-sm font-medium text-text">
               Slug{' '}
               <span className="text-xs text-text-secondary">
@@ -623,20 +643,6 @@ function SettingsSection({ initiatief }: { initiatief: InitiatiefDetail }) {
               </div>
             )}
           </div>
-
-          <ToggleRow
-            icon={<Globe className="h-4 w-4" />}
-            label="Publieke pagina inschakelen"
-            description={
-              publicUrl
-                ? `Pagina bereikbaar via ${publicUrl} voor iedereen met de link.`
-                : 'Geen slug — pagina niet bereikbaar.'
-            }
-            enabled={initiatief.public_page_enabled}
-            onToggle={handlePublicToggle}
-            loading={settingsMutation.isPending}
-            disabled={!publicUrl}
-          />
         </div>
 
         {/* Funnel-afweging */}
