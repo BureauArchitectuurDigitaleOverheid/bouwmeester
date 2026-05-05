@@ -13,10 +13,19 @@ interface NodeDetailContextValue {
 
 const NodeDetailContext = createContext<NodeDetailContextValue | null>(null);
 
+/** No-op fallback for read-only / public contexts (e.g. /c/:slug page) where
+ *  the provider isn't mounted but a child component (RichTextDisplay) still
+ *  calls the hook. Mention buttons become harmless click-throughs. */
+const NOOP_NODE_DETAIL: NodeDetailContextValue = {
+  openNodeDetail: () => {},
+  nodeDetailId: null,
+  nodeParentLabel: null,
+  closeNodeDetail: () => {},
+  nodeOpenSeq: 0,
+};
+
 export function useNodeDetail() {
-  const ctx = useContext(NodeDetailContext);
-  if (!ctx) throw new Error('useNodeDetail must be used within NodeDetailProvider');
-  return ctx;
+  return useContext(NodeDetailContext) ?? NOOP_NODE_DETAIL;
 }
 
 export function NodeDetailProvider({ children }: { children: React.ReactNode }) {
