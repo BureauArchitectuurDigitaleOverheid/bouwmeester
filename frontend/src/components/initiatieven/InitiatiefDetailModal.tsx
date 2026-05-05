@@ -542,143 +542,155 @@ function SettingsSection({ initiatief }: { initiatief: InitiatiefDetail }) {
         </h4>
       </div>
 
-      <div className="space-y-4 rounded-xl border border-border p-4">
-        {/* Slug */}
-        <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-text">
-            Slug{' '}
-            <span className="text-xs text-text-secondary">
-              (publieke URL-segment)
-            </span>
-          </label>
-          {initiatief.slug ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              {initiatief.public_page_enabled ? (
-                <a
-                  href={`/c/${initiatief.slug}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-2 py-1 rounded border border-emerald-200 transition-colors"
-                >
-                  <code>/c/{initiatief.slug}</code>
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              ) : (
-                <code className="text-sm bg-gray-50 px-2 py-1 rounded">
-                  /c/{initiatief.slug}
-                </code>
-              )}
+      <div className="space-y-4">
+        {/* Publieke pagina */}
+        <div className="space-y-3 rounded-xl border border-border p-4">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary uppercase tracking-wider">
+            <Globe className="h-3.5 w-3.5" />
+            Publieke pagina
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-text">
+              Slug{' '}
               <span className="text-xs text-text-secondary">
-                (kan niet meer gewijzigd worden)
+                (publieke URL-segment)
               </span>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <p className="text-xs text-text-secondary">
-                Nog geen slug ingesteld. Kies kleine letters, cijfers en
-                streepjes (bv. <code>regelrecht</code>). Eenmalig instelbaar.
-              </p>
-              <div className="flex gap-2">
-                <span className="inline-flex items-center px-2 rounded-l-lg border border-r-0 border-border bg-gray-50 text-sm text-text-secondary">
-                  /c/
+            </label>
+            {initiatief.slug ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                {initiatief.public_page_enabled ? (
+                  <a
+                    href={`/c/${initiatief.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-2 py-1 rounded border border-emerald-200 transition-colors"
+                  >
+                    <code>/c/{initiatief.slug}</code>
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                ) : (
+                  <code className="text-sm bg-gray-50 px-2 py-1 rounded">
+                    /c/{initiatief.slug}
+                  </code>
+                )}
+                <span className="text-xs text-text-secondary">
+                  (kan niet meer gewijzigd worden)
                 </span>
-                <input
-                  type="text"
-                  value={slugDraft}
-                  onChange={(e) => {
-                    setSlugDraft(e.target.value.toLowerCase());
-                    setSlugError(null);
-                  }}
-                  placeholder="regelrecht"
-                  className="flex-1 rounded-r-lg border border-border px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const trimmed = slugDraft.trim();
-                    if (!trimmed) return;
-                    try {
-                      await save({ slug: trimmed });
-                    } catch (err) {
-                      const msg =
-                        err instanceof Error ? err.message : 'Onbekende fout';
-                      setSlugError(msg);
-                    }
-                  }}
-                  disabled={!slugDraft.trim() || settingsMutation.isPending}
-                  className="px-3 py-1 text-sm rounded-lg bg-primary-600 text-white disabled:opacity-50"
-                >
-                  Instellen
-                </button>
               </div>
-              {slugError && (
-                <p className="text-xs text-red-600">{slugError}</p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Funnel toggle */}
-        <ToggleRow
-          icon={<UserPlus className="h-4 w-4" />}
-          label="Funnel-velden op leads tonen"
-          description="Engagement type + drie scores (strategisch/politiek/positie) op leads in dit initiatief."
-          enabled={initiatief.funnel_enabled}
-          onToggle={() =>
-            save({ funnel_enabled: !initiatief.funnel_enabled })
-          }
-          loading={settingsMutation.isPending}
-        />
-
-        {/* Public page toggle */}
-        <ToggleRow
-          icon={<Globe className="h-4 w-4" />}
-          label="Publieke pagina inschakelen"
-          description={
-            publicUrl
-              ? `Pagina bereikbaar via ${publicUrl} voor iedereen met de link.`
-              : 'Geen slug — pagina niet bereikbaar.'
-          }
-          enabled={initiatief.public_page_enabled}
-          onToggle={handlePublicToggle}
-          loading={settingsMutation.isPending}
-          disabled={!publicUrl}
-        />
-
-        {/* Score labels (only when funnel enabled) */}
-        {initiatief.funnel_enabled && (
-          <div className="space-y-2 pt-2 border-t border-border">
-            <p className="text-xs text-text-secondary">
-              Optionele eigen labels voor de drie funnel-scores. Leeg laten
-              gebruikt de standaard.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {(
-                [
-                  ['score_strategisch_label', 'Strategisch belang'],
-                  ['score_politiek_label', 'Politiek belang'],
-                  ['score_positie_label', 'Positie / omgeving'],
-                ] as const
-              ).map(([key, fallback]) => (
-                <label key={key} className="flex flex-col gap-0.5">
-                  <span className="text-xs text-text-secondary">
-                    {fallback}
+            ) : (
+              <div className="space-y-1.5">
+                <p className="text-xs text-text-secondary">
+                  Nog geen slug ingesteld. Kies kleine letters, cijfers en
+                  streepjes (bv. <code>regelrecht</code>). Eenmalig instelbaar.
+                </p>
+                <div className="flex gap-2">
+                  <span className="inline-flex items-center px-2 rounded-l-lg border border-r-0 border-border bg-gray-50 text-sm text-text-secondary">
+                    /c/
                   </span>
                   <input
                     type="text"
-                    value={scoreLabels[key]}
-                    onChange={(e) =>
-                      setScoreLabels({ ...scoreLabels, [key]: e.target.value })
-                    }
-                    onBlur={persistLabels}
-                    placeholder={fallback}
-                    className="text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                    value={slugDraft}
+                    onChange={(e) => {
+                      setSlugDraft(e.target.value.toLowerCase());
+                      setSlugError(null);
+                    }}
+                    placeholder="regelrecht"
+                    className="flex-1 rounded-r-lg border border-border px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
-                </label>
-              ))}
-            </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const trimmed = slugDraft.trim();
+                      if (!trimmed) return;
+                      try {
+                        await save({ slug: trimmed });
+                      } catch (err) {
+                        const msg =
+                          err instanceof Error ? err.message : 'Onbekende fout';
+                        setSlugError(msg);
+                      }
+                    }}
+                    disabled={!slugDraft.trim() || settingsMutation.isPending}
+                    className="px-3 py-1 text-sm rounded-lg bg-primary-600 text-white disabled:opacity-50"
+                  >
+                    Instellen
+                  </button>
+                </div>
+                {slugError && (
+                  <p className="text-xs text-red-600">{slugError}</p>
+                )}
+              </div>
+            )}
           </div>
-        )}
+
+          <ToggleRow
+            icon={<Globe className="h-4 w-4" />}
+            label="Publieke pagina inschakelen"
+            description={
+              publicUrl
+                ? `Pagina bereikbaar via ${publicUrl} voor iedereen met de link.`
+                : 'Geen slug — pagina niet bereikbaar.'
+            }
+            enabled={initiatief.public_page_enabled}
+            onToggle={handlePublicToggle}
+            loading={settingsMutation.isPending}
+            disabled={!publicUrl}
+          />
+        </div>
+
+        {/* Funnel-afweging */}
+        <div className="space-y-3 rounded-xl border border-border p-4">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary uppercase tracking-wider">
+            <UserPlus className="h-3.5 w-3.5" />
+            Funnel-afweging
+          </div>
+
+          <ToggleRow
+            icon={<UserPlus className="h-4 w-4" />}
+            label="Funnel-velden op leads tonen"
+            description="Engagement type + drie scores (strategisch/politiek/positie) op leads in dit initiatief."
+            enabled={initiatief.funnel_enabled}
+            onToggle={() =>
+              save({ funnel_enabled: !initiatief.funnel_enabled })
+            }
+            loading={settingsMutation.isPending}
+          />
+
+          {initiatief.funnel_enabled && (
+            <div className="space-y-2 pt-2 border-t border-border">
+              <p className="text-xs text-text-secondary">
+                Optionele eigen labels voor de drie funnel-scores. Leeg laten
+                gebruikt de standaard.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {(
+                  [
+                    ['score_strategisch_label', 'Strategisch belang'],
+                    ['score_politiek_label', 'Politiek belang'],
+                    ['score_positie_label', 'Positie / omgeving'],
+                  ] as const
+                ).map(([key, fallback]) => (
+                  <label key={key} className="flex flex-col gap-0.5">
+                    <span className="text-xs text-text-secondary">
+                      {fallback}
+                    </span>
+                    <input
+                      type="text"
+                      value={scoreLabels[key]}
+                      onChange={(e) =>
+                        setScoreLabels({ ...scoreLabels, [key]: e.target.value })
+                      }
+                      onBlur={persistLabels}
+                      placeholder={fallback}
+                      className="text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <ConfirmDialog
