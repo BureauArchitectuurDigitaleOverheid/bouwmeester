@@ -9,6 +9,7 @@ import {
   X,
   Plus,
   Link as LinkIcon,
+  ExternalLink,
   MessageSquare,
   Phone,
   Mail,
@@ -771,9 +772,19 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     {status.visible ? (
-                      <Badge variant="green">
-                        Zichtbaar op /c/{linkedInit.slug}
-                      </Badge>
+                      <a
+                        href={`/c/${linkedInit.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 group"
+                      >
+                        <Badge variant="green">
+                          <span className="inline-flex items-center gap-1 group-hover:underline">
+                            Zichtbaar op /c/{linkedInit.slug}
+                            <ExternalLink className="h-3 w-3" />
+                          </span>
+                        </Badge>
+                      </a>
                     ) : (
                       <Badge variant="gray">Niet zichtbaar</Badge>
                     )}

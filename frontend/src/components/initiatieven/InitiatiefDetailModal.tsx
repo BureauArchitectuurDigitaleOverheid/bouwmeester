@@ -12,6 +12,7 @@ import {
   Globe,
   Eye,
   EyeOff,
+  ExternalLink,
 } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
@@ -551,10 +552,22 @@ function SettingsSection({ initiatief }: { initiatief: InitiatiefDetail }) {
             </span>
           </label>
           {initiatief.slug ? (
-            <div className="flex items-center gap-2">
-              <code className="text-sm bg-gray-50 px-2 py-1 rounded">
-                /c/{initiatief.slug}
-              </code>
+            <div className="flex items-center gap-2 flex-wrap">
+              {initiatief.public_page_enabled ? (
+                <a
+                  href={`/c/${initiatief.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-2 py-1 rounded border border-emerald-200 transition-colors"
+                >
+                  <code>/c/{initiatief.slug}</code>
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                <code className="text-sm bg-gray-50 px-2 py-1 rounded">
+                  /c/{initiatief.slug}
+                </code>
+              )}
               <span className="text-xs text-text-secondary">
                 (kan niet meer gewijzigd worden)
               </span>
