@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.opdracht import Opdracht, OpdrachtNode
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
@@ -89,13 +90,10 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         opdrachtnemer_id: UUID | None = None,
         opdrachtgever_id: UUID | None = None,
         verantwoordelijke_id: UUID | None = None,
+        org_ctx: OrgContext | None = None,
     ) -> list[Opdracht]:
-        stmt = (
-            select(Opdracht)
-            .options(selectinload(Opdracht.node_koppelingen))
-            .offset(skip)
-            .limit(limit)
-        )
+        stmt = select(Opdracht).options(selectinload(Opdracht.node_koppelingen))
+        stmt = apply_org_filter(stmt, Opdracht.opdrachtgever_id, org_ctx)
         if begrotingsjaar is not None:
             stmt = stmt.where(Opdracht.begrotingsjaar == begrotingsjaar)
         if type is not None:
@@ -110,7 +108,11 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
             stmt = stmt.where(Opdracht.opdrachtgever_id == opdrachtgever_id)
         if verantwoordelijke_id is not None:
             stmt = stmt.where(Opdracht.verantwoordelijke_id == verantwoordelijke_id)
-        stmt = stmt.order_by(Opdracht.begrotingsjaar.desc(), Opdracht.titel)
+        stmt = (
+            stmt.order_by(Opdracht.begrotingsjaar.desc(), Opdracht.titel)
+            .offset(skip)
+            .limit(limit)
+        )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -118,19 +120,27 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         self,
         instrument_id: UUID,
         begrotingsjaar: int | None = None,
+        *,
+        org_ctx: OrgContext | None = None,
     ) -> list[Opdracht]:
         stmt = (
             select(Opdracht)
             .where(Opdracht.instrument_id == instrument_id)
             .options(selectinload(Opdracht.node_koppelingen))
         )
+        stmt = apply_org_filter(stmt, Opdracht.opdrachtgever_id, org_ctx)
         if begrotingsjaar is not None:
             stmt = stmt.where(Opdracht.begrotingsjaar == begrotingsjaar)
         stmt = stmt.order_by(Opdracht.begrotingsjaar.desc(), Opdracht.titel)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_by_node(self, node_id: UUID) -> list[Opdracht]:
+    async def get_by_node(
+        self,
+        node_id: UUID,
+        *,
+        org_ctx: OrgContext | None = None,
+    ) -> list[Opdracht]:
         """Get opdrachten linked to a node via instrument_id or OpdrachtNode."""
         direct = select(Opdracht.id).where(Opdracht.instrument_id == node_id)
         via_junction = select(OpdrachtNode.opdracht_id).where(
@@ -143,6 +153,7 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
             .options(selectinload(Opdracht.node_koppelingen))
             .order_by(Opdracht.begrotingsjaar.desc(), Opdracht.titel)
         )
+        stmt = apply_org_filter(stmt, Opdracht.opdrachtgever_id, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -181,6 +192,7 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         opdrachtnemer_id: UUID | None = None,
         opdrachtgever_id: UUID | None = None,
         verantwoordelijke_id: UUID | None = None,
+        org_ctx: OrgContext | None = None,
     ) -> dict:
         """Aggregate count, total budget, total gerealiseerd."""
         stmt = select(
@@ -190,6 +202,7 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
                 "totaal_gerealiseerd"
             ),
         )
+        stmt = apply_org_filter(stmt, Opdracht.opdrachtgever_id, org_ctx)
         if begrotingsjaar is not None:
             stmt = stmt.where(Opdracht.begrotingsjaar == begrotingsjaar)
         if type is not None:
@@ -211,6 +224,8 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
     async def aggregate_by_instrument(
         self,
         instrument_id: UUID,
+        *,
+        org_ctx: OrgContext | None = None,
     ) -> list[dict]:
         """Aggregate budget/gerealiseerd per begrotingsjaar for an instrument."""
         stmt = (
@@ -230,11 +245,15 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
             .group_by(Opdracht.begrotingsjaar)
             .order_by(Opdracht.begrotingsjaar)
         )
+        stmt = apply_org_filter(stmt, Opdracht.opdrachtgever_id, org_ctx)
         result = await self.session.execute(stmt)
         return [dict(row._mapping) for row in result.all()]
 
     async def get_budget_summaries(
-        self, instrument_ids: list[UUID]
+        self,
+        instrument_ids: list[UUID],
+        *,
+        org_ctx: OrgContext | None = None,
     ) -> dict[UUID, tuple[Decimal, Decimal]]:
         """Return {instrument_id: (total_budget, total_gerealiseerd)} for given IDs."""
         if not instrument_ids:
@@ -248,6 +267,7 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
             .where(Opdracht.instrument_id.in_(instrument_ids))
             .group_by(Opdracht.instrument_id)
         )
+        stmt = apply_org_filter(stmt, Opdracht.opdrachtgever_id, org_ctx)
         result = await self.session.execute(stmt)
         return {
             row.instrument_id: (row.budget, row.gerealiseerd) for row in result.all()

@@ -1313,11 +1313,13 @@ async def _execute_read_tool(
             from bouwmeester.repositories.opdracht import OpdrachtRepository
 
             repo = OpdrachtRepository(db)
+            org_ctx = await _build_chat_org_context(db, person_id)
             opdrachten = await repo.get_all(
                 limit=15,
                 begrotingsjaar=args.get("begrotingsjaar"),
                 status=args.get("status"),
                 type=args.get("type"),
+                org_ctx=org_ctx,
             )
             items = [
                 {
@@ -1337,9 +1339,18 @@ async def _execute_read_tool(
             from bouwmeester.repositories.opdracht import OpdrachtRepository
 
             repo = OpdrachtRepository(db)
-            o = await repo.get(UUID(args["opdracht_id"]))
+            org_ctx = await _build_chat_org_context(db, person_id)
+            opdracht_id = UUID(args["opdracht_id"])
+            o = await repo.get(opdracht_id)
             if not o:
                 return _safe_dumps({"error": "Opdracht niet gevonden"})
+            # Respect org-context: hide opdrachten from invisible eenheden.
+            if not org_ctx.is_admin and o.opdrachtgever_id is not None:
+                visible = set(org_ctx.visible_eenheid_ids) | set(
+                    org_ctx.shared_eenheid_ids
+                )
+                if o.opdrachtgever_id not in visible:
+                    return _safe_dumps({"error": "Geen toegang tot deze opdracht"})
             return _safe_dumps(
                 {
                     "id": str(o.id),

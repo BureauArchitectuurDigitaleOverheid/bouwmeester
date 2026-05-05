@@ -56,6 +56,8 @@ async def list_opdrachten(
     skip: int = Query(0, ge=0),
     limit: int = Query(10_000, ge=1, le=10_000),
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:read")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[OpdrachtResponse]:
     repo = OpdrachtRepository(db)
     items = await repo.get_all(
@@ -68,6 +70,7 @@ async def list_opdrachten(
         opdrachtnemer_id=opdrachtnemer_id,
         opdrachtgever_id=opdrachtgever_id,
         verantwoordelijke_id=verantwoordelijke_id,
+        org_ctx=org_ctx,
     )
     return validate_list(OpdrachtResponse, items)
 
@@ -83,6 +86,8 @@ async def get_opdrachten_summary(
     opdrachtgever_id: UUID | None = None,
     verantwoordelijke_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:read")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> OpdrachtenSummary:
     """Server-side aggregation of opdrachten totals (respects active filters)."""
     repo = OpdrachtRepository(db)
@@ -94,6 +99,7 @@ async def get_opdrachten_summary(
         opdrachtnemer_id=opdrachtnemer_id,
         opdrachtgever_id=opdrachtgever_id,
         verantwoordelijke_id=verantwoordelijke_id,
+        org_ctx=org_ctx,
     )
     totaal_budget = data["totaal_budget"]
     totaal_gerealiseerd = data["totaal_gerealiseerd"]
@@ -182,7 +188,10 @@ async def get_opdracht(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("opdracht:read")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> OpdrachtResponse:
+    await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
     opdracht = require_found(await repo.get(id), "Opdracht")
 
