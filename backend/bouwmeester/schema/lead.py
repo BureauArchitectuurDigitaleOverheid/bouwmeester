@@ -56,6 +56,9 @@ class LeadBase(BaseModel):
     score_strategisch: int | None = Field(None, ge=1, le=5)
     score_politiek: int | None = Field(None, ge=1, le=5)
     score_positie: int | None = Field(None, ge=1, le=5)
+    public_visible: bool = False
+    public_title: str | None = Field(None, max_length=300)
+    public_summary: str | None = Field(None, max_length=5000)
 
 
 class LeadCreate(LeadBase):
@@ -78,6 +81,9 @@ class LeadUpdate(BaseModel):
     score_strategisch: int | None = Field(None, ge=1, le=5)
     score_politiek: int | None = Field(None, ge=1, le=5)
     score_positie: int | None = Field(None, ge=1, le=5)
+    public_visible: bool | None = None
+    public_title: str | None = Field(None, max_length=300)
+    public_summary: str | None = Field(None, max_length=5000)
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -217,6 +223,9 @@ class LeadResponse(BaseModel):
     score_strategisch: int | None = None
     score_politiek: int | None = None
     score_positie: int | None = None
+    public_visible: bool = False
+    public_title: str | None = None
+    public_summary: str | None = None
     attachment_count: int = 0
     contact_names: list[str] = Field(default_factory=list)
     created_at: datetime

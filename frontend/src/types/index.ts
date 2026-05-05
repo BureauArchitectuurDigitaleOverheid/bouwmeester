@@ -1737,6 +1737,9 @@ export interface Lead {
   score_strategisch: number | null;
   score_politiek: number | null;
   score_positie: number | null;
+  public_visible: boolean;
+  public_title: string | null;
+  public_summary: string | null;
   attachment_count: number;
   contact_names: string[];
   created_at: string;
@@ -1766,6 +1769,9 @@ export interface LeadCreate {
   score_strategisch?: number | null;
   score_politiek?: number | null;
   score_positie?: number | null;
+  public_visible?: boolean | null;
+  public_title?: string | null;
+  public_summary?: string | null;
   created_at?: string | null;
 }
 
@@ -1785,6 +1791,9 @@ export interface LeadUpdate {
   score_strategisch?: number | null;
   score_politiek?: number | null;
   score_positie?: number | null;
+  public_visible?: boolean | null;
+  public_title?: string | null;
+  public_summary?: string | null;
 }
 
 export interface LeadActivityCreate {
@@ -1904,12 +1913,18 @@ export interface PublicInitiatiefUpdate {
   published_by_naam: string | null;
 }
 
+export interface PublicCasus {
+  titel: string;
+  samenvatting: string | null;
+}
+
 export interface PublicInitiatief {
   naam: string;
   slug: string;
   beschrijving: string | null;
   kleur: string | null;
   updates: PublicInitiatiefUpdate[];
+  casussen: PublicCasus[];
 }
 
 export type EngagementType =

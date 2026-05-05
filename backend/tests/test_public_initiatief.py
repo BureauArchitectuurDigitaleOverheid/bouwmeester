@@ -79,6 +79,7 @@ async def test_public_initiatief_returns_only_safe_fields(client, db_session):
         "beschrijving": "Beschrijving van Publiek RR",
         "kleur": "#3B82F6",
         "updates": [],
+        "casussen": [],
     }
     # Geen interne velden in de response
     for forbidden in (
@@ -137,3 +138,121 @@ async def test_public_initiatief_disable_flips_to_404(client, db_session):
     await db_session.flush()
     resp = await client.get("/api/public/initiatieven/by-slug/toggle")
     assert resp.status_code == 404
+
+
+async def _create_lead(
+    db_session,
+    *,
+    initiatief_id: uuid.UUID,
+    title: str,
+    stage: str = "eerste_gesprek",
+    public_visible: bool = False,
+    public_title: str | None = None,
+    public_summary: str | None = None,
+):
+    from bouwmeester.models.lead import Lead
+
+    lead = Lead(
+        id=uuid.uuid4(),
+        title=title,
+        stage=stage,
+        initiatief_id=initiatief_id,
+        public_visible=public_visible,
+        public_title=public_title,
+        public_summary=public_summary,
+    )
+    db_session.add(lead)
+    await db_session.flush()
+    return lead
+
+
+async def test_casussen_only_visible_when_opted_in(client, db_session):
+    init = await _create_initiatief(
+        db_session, naam="Casus-test", slug="casus-test", public=True
+    )
+    # Lead met public_visible=true en public_title gezet — moet verschijnen
+    await _create_lead(
+        db_session,
+        initiatief_id=init.id,
+        title="INTERN: gemeente Utrecht — pilot stagneert",
+        stage="follow_up",
+        public_visible=True,
+        public_title="Pilot Gemeente Utrecht",
+        public_summary="We werken samen met Utrecht aan een pilot voor X.",
+    )
+    # Lead met public_visible=false — moet onzichtbaar blijven, ook als
+    # public_title gezet is
+    await _create_lead(
+        db_session,
+        initiatief_id=init.id,
+        title="INTERN: amsterdam",
+        public_visible=False,
+        public_title="Amsterdam (mag niet lekken)",
+    )
+    # Lead met public_visible=true maar geen public_title — moet onzichtbaar
+    await _create_lead(
+        db_session,
+        initiatief_id=init.id,
+        title="INTERN: niets ingevuld",
+        public_visible=True,
+        public_title=None,
+    )
+
+    resp = await client.get("/api/public/initiatieven/by-slug/casus-test")
+    assert resp.status_code == 200
+    casussen = resp.json()["casussen"]
+    assert len(casussen) == 1
+    assert casussen[0] == {
+        "titel": "Pilot Gemeente Utrecht",
+        "samenvatting": "We werken samen met Utrecht aan een pilot voor X.",
+    }
+    # Internal title mag nooit lekken
+    body_text = resp.text
+    assert "INTERN" not in body_text
+    assert "mag niet lekken" not in body_text
+
+
+async def test_casussen_hidden_in_inactive_stages(client, db_session):
+    init = await _create_initiatief(
+        db_session, naam="Stages", slug="stages", public=True
+    )
+    for stage in ("inbox", "verkennen", "koelkast"):
+        await _create_lead(
+            db_session,
+            initiatief_id=init.id,
+            title=f"INTERN: {stage}",
+            stage=stage,
+            public_visible=True,
+            public_title=f"Casus in {stage}",
+        )
+    resp = await client.get("/api/public/initiatieven/by-slug/stages")
+    assert resp.status_code == 200
+    assert resp.json()["casussen"] == []
+
+
+async def test_casussen_response_shape_no_extra_lead_fields(client, db_session):
+    init = await _create_initiatief(db_session, naam="Shape", slug="shape", public=True)
+    await _create_lead(
+        db_session,
+        initiatief_id=init.id,
+        title="INTERN",
+        stage="interne_check",
+        public_visible=True,
+        public_title="Mijn casus",
+        public_summary="Korte samenvatting",
+    )
+    resp = await client.get("/api/public/initiatieven/by-slug/shape")
+    casus = resp.json()["casussen"][0]
+    # Strikt: alleen titel + samenvatting
+    assert set(casus.keys()) == {"titel", "samenvatting"}
+    for forbidden in (
+        "id",
+        "initiatief_id",
+        "stage",
+        "title",
+        "description",
+        "assignee_id",
+        "score_strategisch",
+        "engagement_type",
+    ):
+        assert forbidden not in casus

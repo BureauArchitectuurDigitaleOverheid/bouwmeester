@@ -118,6 +118,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const [editScoreStrategisch, setEditScoreStrategisch] = useState<number | ''>('');
   const [editScorePolitiek, setEditScorePolitiek] = useState<number | ''>('');
   const [editScorePositie, setEditScorePositie] = useState<number | ''>('');
+  const [editPublicVisible, setEditPublicVisible] = useState(false);
+  const [editPublicTitle, setEditPublicTitle] = useState('');
+  const [editPublicSummary, setEditPublicSummary] = useState('');
 
   // Activity form
   const [activityContent, setActivityContent] = useState('');
@@ -163,6 +166,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
     setEditScoreStrategisch(lead.score_strategisch ?? '');
     setEditScorePolitiek(lead.score_politiek ?? '');
     setEditScorePositie(lead.score_positie ?? '');
+    setEditPublicVisible(lead.public_visible);
+    setEditPublicTitle(lead.public_title ?? '');
+    setEditPublicSummary(lead.public_summary ?? '');
     setEditing(true);
   };
 
@@ -186,6 +192,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       score_strategisch: editScoreStrategisch === '' ? null : editScoreStrategisch,
       score_politiek: editScorePolitiek === '' ? null : editScorePolitiek,
       score_positie: editScorePositie === '' ? null : editScorePositie,
+      public_visible: editPublicVisible,
+      public_title: editPublicTitle.trim() || null,
+      public_summary: editPublicSummary.trim() || null,
     };
 
     // Update lead fields
@@ -512,6 +521,62 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               </div>
             );
           })()}
+          {(() => {
+            const linkedInit = initiatieven?.find((i) => i.id === editInitiatiefId);
+            if (!linkedInit?.public_page_enabled) return null;
+            return (
+              <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs text-emerald-900 uppercase tracking-wider font-semibold">
+                    Publicatie op /c/{linkedInit.slug}
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-emerald-900 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editPublicVisible}
+                      onChange={(e) => setEditPublicVisible(e.target.checked)}
+                      className="h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    Publiek tonen
+                  </label>
+                </div>
+                <p className="text-xs text-emerald-800/80">
+                  Schrijf een externe titel en samenvatting. Alleen die tekst
+                  verschijnt op de publieke pagina, nooit het interne titel- of
+                  beschrijvingsveld.
+                </p>
+                <div>
+                  <label className="block text-sm font-medium text-text mb-1">
+                    Publieke titel
+                  </label>
+                  <input
+                    type="text"
+                    value={editPublicTitle}
+                    onChange={(e) => setEditPublicTitle(e.target.value)}
+                    placeholder="Bijv. 'Pilot bij Gemeente Utrecht'"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-text mb-1">
+                    Publieke samenvatting
+                  </label>
+                  <textarea
+                    value={editPublicSummary}
+                    onChange={(e) => setEditPublicSummary(e.target.value)}
+                    placeholder="Korte tekst voor buitenstaanders. Geen interne details, geen namen van conflicten."
+                    rows={3}
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400"
+                  />
+                </div>
+                <p className="text-xs text-text-secondary">
+                  Verschijnt alleen als de stage actief is (eerste gesprek, interne
+                  check, follow-up of in the pocket) én "Publiek tonen" aan staat én
+                  de titel ingevuld is.
+                </p>
+              </div>
+            );
+          })()}
           <RichTextFormField
             label="Beschrijving"
             value={editDescription}
@@ -638,6 +703,43 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                       </div>
                     ))}
                   </div>
+                </div>
+              </DetailSection>
+            );
+          })()}
+
+          {/* Publicatie-status */}
+          {(() => {
+            const linkedInit = initiatieven?.find(
+              (i) => i.id === lead.initiatief_id,
+            );
+            if (!linkedInit?.public_page_enabled) return null;
+            if (!lead.public_visible && !lead.public_title) return null;
+            return (
+              <DetailSection title="Publicatie">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    {lead.public_visible && lead.public_title ? (
+                      <Badge variant="green">
+                        Zichtbaar op /c/{linkedInit.slug}
+                      </Badge>
+                    ) : (
+                      <Badge variant="gray">Niet zichtbaar</Badge>
+                    )}
+                  </div>
+                  {lead.public_title && (
+                    <div className="text-sm">
+                      <span className="text-text-secondary">Publieke titel: </span>
+                      <span className="text-text font-medium">
+                        {lead.public_title}
+                      </span>
+                    </div>
+                  )}
+                  {lead.public_summary && (
+                    <div className="text-sm text-text-secondary whitespace-pre-wrap">
+                      {lead.public_summary}
+                    </div>
+                  )}
                 </div>
               </DetailSection>
             );

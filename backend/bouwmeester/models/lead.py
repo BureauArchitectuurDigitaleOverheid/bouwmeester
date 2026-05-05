@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Text, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -67,6 +67,11 @@ class Lead(Base):
     score_strategisch: Mapped[int | None] = mapped_column(nullable=True)
     score_politiek: Mapped[int | None] = mapped_column(nullable=True)
     score_positie: Mapped[int | None] = mapped_column(nullable=True)
+    public_visible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    public_title: Mapped[str | None] = mapped_column(nullable=True)
+    public_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     initiatief_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("initiatief.id", ondelete="CASCADE"),
