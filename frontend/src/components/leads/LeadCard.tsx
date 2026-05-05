@@ -12,6 +12,10 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
   const overdue = lead.next_action_date && isOverdue(lead.next_action_date);
   const isInbox = lead.stage === LeadStage.INBOX;
   const contacts = lead.contact_names ?? [];
+  const hasFunnelScores =
+    lead.score_strategisch != null &&
+    lead.score_politiek != null &&
+    lead.score_positie != null;
 
   return (
     <button
@@ -79,6 +83,15 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
           <span className="inline-flex items-center gap-0.5 ml-auto">
             <Paperclip className="h-3 w-3" />
             {lead.attachment_count}
+          </span>
+        )}
+
+        {hasFunnelScores && (
+          <span
+            className={`tabular-nums text-[10px] text-text-secondary ${lead.attachment_count > 0 ? '' : 'ml-auto'}`}
+            title={`Strategisch ${lead.score_strategisch} · Politiek ${lead.score_politiek} · Positie ${lead.score_positie}`}
+          >
+            {lead.score_strategisch}·{lead.score_politiek}·{lead.score_positie}
           </span>
         )}
       </div>
