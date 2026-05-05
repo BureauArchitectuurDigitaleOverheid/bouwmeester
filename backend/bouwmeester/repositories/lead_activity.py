@@ -24,6 +24,8 @@ class LeadActivityRepository(BaseRepository[LeadActivity]):
             author_id=author_id,
             content=data.content,
             activity_type=data.activity_type,
+            uitkomst=data.uitkomst,
+            vervolgacties=data.vervolgacties,
         )
         self.session.add(activity)
         await self.session.flush()

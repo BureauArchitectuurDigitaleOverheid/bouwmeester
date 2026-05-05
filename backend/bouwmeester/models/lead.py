@@ -57,6 +57,16 @@ class Lead(Base):
     next_action_date: Mapped[date | None] = mapped_column(nullable=True)
     sort_order: Mapped[int] = mapped_column(default=0, server_default="0")
     raw_intake_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    engagement_type: Mapped[str | None] = mapped_column(
+        nullable=True,
+        comment=(
+            "intern_oppakken|voorbereiden_eigen_team|betrokken_houden|"
+            "verkenning|nog_te_bepalen"
+        ),
+    )
+    score_strategisch: Mapped[int | None] = mapped_column(nullable=True)
+    score_politiek: Mapped[int | None] = mapped_column(nullable=True)
+    score_positie: Mapped[int | None] = mapped_column(nullable=True)
     initiatief_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("initiatief.id", ondelete="CASCADE"),

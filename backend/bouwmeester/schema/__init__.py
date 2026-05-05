@@ -98,6 +98,12 @@ from bouwmeester.schema.initiatief import (
     InitiatiefResponse,
     InitiatiefUpdate,
 )
+from bouwmeester.schema.initiatief_update import (
+    InitiatiefUpdatePostCreate,
+    InitiatiefUpdatePostEdit,
+    InitiatiefUpdatePostPublicResponse,
+    InitiatiefUpdatePostResponse,
+)
 from bouwmeester.schema.lead import (
     LeadActivityCreate,
     LeadActivityResponse,
@@ -216,6 +222,13 @@ from bouwmeester.schema.search import (
     SimilarNodesResponse,
 )
 from bouwmeester.schema.shared_access import SharedAccessCreate, SharedAccessResponse
+from bouwmeester.schema.stakeholder_assessment import (
+    StakeholderAssessmentCreate,
+    StakeholderAssessmentResponse,
+    StakeholderAssessmentUpdate,
+    StakeholderHouding,
+    StakeholderScopeType,
+)
 from bouwmeester.schema.tag import (
     LeadTagCreate,
     LeadTagResponse,
@@ -481,6 +494,17 @@ __all__ = [
     # shared_access
     "SharedAccessCreate",
     "SharedAccessResponse",
+    # initiatief_update (publication post)
+    "InitiatiefUpdatePostCreate",
+    "InitiatiefUpdatePostEdit",
+    "InitiatiefUpdatePostPublicResponse",
+    "InitiatiefUpdatePostResponse",
+    # stakeholder_assessment
+    "StakeholderAssessmentCreate",
+    "StakeholderAssessmentResponse",
+    "StakeholderAssessmentUpdate",
+    "StakeholderHouding",
+    "StakeholderScopeType",
     # parlementair_item
     "ParlementairItemResponse",
     "ReviewAction",

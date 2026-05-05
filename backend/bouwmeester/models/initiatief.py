@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Text, UniqueConstraint, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,7 +12,10 @@ from bouwmeester.core.database import Base
 
 class Initiatief(Base):
     __tablename__ = "initiatief"
-    __table_args__ = (UniqueConstraint("naam", name="uq_initiatief_naam"),)
+    __table_args__ = (
+        UniqueConstraint("naam", name="uq_initiatief_naam"),
+        UniqueConstraint("slug", name="uq_initiatief_slug"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -20,8 +23,18 @@ class Initiatief(Base):
         server_default=text("gen_random_uuid()"),
     )
     naam: Mapped[str] = mapped_column(nullable=False)
+    slug: Mapped[str | None] = mapped_column(nullable=True)
     beschrijving: Mapped[str | None] = mapped_column(Text, nullable=True)
     kleur: Mapped[str | None] = mapped_column(nullable=True)
+    funnel_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    public_page_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    score_strategisch_label: Mapped[str | None] = mapped_column(nullable=True)
+    score_politiek_label: Mapped[str | None] = mapped_column(nullable=True)
+    score_positie_label: Mapped[str | None] = mapped_column(nullable=True)
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("person.id", ondelete="SET NULL"),
@@ -39,4 +52,10 @@ class Initiatief(Base):
     leads: Mapped[list["Lead"]] = relationship(  # noqa: F821
         "Lead",
         back_populates="initiatief",
+    )
+    updates: Mapped[list["InitiatiefUpdatePost"]] = relationship(  # noqa: F821
+        "InitiatiefUpdatePost",
+        back_populates="initiatief",
+        cascade="all, delete-orphan",
+        order_by="InitiatiefUpdatePost.created_at.desc()",
     )

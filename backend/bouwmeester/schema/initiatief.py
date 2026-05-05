@@ -27,6 +27,17 @@ class InitiatiefUpdate(BaseModel):
     kleur: str | None = Field(None, max_length=20)
 
 
+class InitiatiefSettingsUpdate(BaseModel):
+    """Settings only mutable by an eigenaar."""
+
+    slug: str | None = Field(None, min_length=1, max_length=80)
+    funnel_enabled: bool | None = None
+    public_page_enabled: bool | None = None
+    score_strategisch_label: str | None = Field(None, max_length=120)
+    score_politiek_label: str | None = Field(None, max_length=120)
+    score_positie_label: str | None = Field(None, max_length=120)
+
+
 class InitiatiefMemberCreate(BaseModel):
     person_id: UUID
     rol: str = "contributor"
@@ -74,8 +85,14 @@ class InitiatiefEenheidWithNameResponse(BaseModel):
 class InitiatiefResponse(BaseModel):
     id: UUID
     naam: str
+    slug: str | None = None
     beschrijving: str | None = None
     kleur: str | None = None
+    funnel_enabled: bool = False
+    public_page_enabled: bool = False
+    score_strategisch_label: str | None = None
+    score_politiek_label: str | None = None
+    score_positie_label: str | None = None
     created_by_id: UUID | None = None
     created_at: datetime
     updated_at: datetime | None = None

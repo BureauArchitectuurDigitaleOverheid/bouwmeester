@@ -30,6 +30,7 @@ from bouwmeester.schema.initiatief import (
     InitiatiefMemberCreate,
     InitiatiefMemberResponse,
     InitiatiefResponse,
+    InitiatiefSettingsUpdate,
     InitiatiefUpdate,
 )
 from bouwmeester.services.activity_service import log_activity
@@ -213,6 +214,33 @@ async def update_initiatief(
         None,
         "initiatief.updated",
         details={"initiatief_id": str(initiatief.id), "naam": initiatief.naam},
+    )
+
+    return InitiatiefResponse.model_validate(initiatief)
+
+
+@router.put("/{id}/settings", response_model=InitiatiefResponse)
+async def update_initiatief_settings(
+    id: UUID,
+    data: InitiatiefSettingsUpdate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
+) -> InitiatiefResponse:
+    """Update settings (slug, toggles, score-labels). Eigenaar only."""
+    repo = InitiatiefRepository(db)
+    await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
+    initiatief = require_found(await repo.update_settings(id, data), "Initiatief")
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "initiatief.settings_updated",
+        details={
+            "initiatief_id": str(initiatief.id),
+            "fields": list(data.model_dump(exclude_unset=True).keys()),
+        },
     )
 
     return InitiatiefResponse.model_validate(initiatief)

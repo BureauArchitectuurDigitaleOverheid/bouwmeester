@@ -7,12 +7,14 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.initiatief_context import InitiatiefContext
 from bouwmeester.core.query_utils import escape_like
+from bouwmeester.core.slug import is_valid_slug, slugify
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.initiatief import (
     EENHEID_ROL_RANK,
     InitiatiefCreate,
+    InitiatiefSettingsUpdate,
     InitiatiefUpdate,
 )
 
@@ -47,11 +49,37 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_slug(self, slug: str) -> Initiatief | None:
+        stmt = select(Initiatief).where(Initiatief.slug == slug)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def _slug_exists(self, slug: str, exclude_id: UUID | None = None) -> bool:
+        stmt = select(Initiatief.id).where(Initiatief.slug == slug)
+        if exclude_id is not None:
+            stmt = stmt.where(Initiatief.id != exclude_id)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    async def _generate_unique_slug(
+        self, naam: str, exclude_id: UUID | None = None
+    ) -> str | None:
+        base = slugify(naam)
+        if not is_valid_slug(base):
+            return None
+        candidate = base
+        suffix = 2
+        while await self._slug_exists(candidate, exclude_id=exclude_id):
+            candidate = f"{base}-{suffix}"
+            suffix += 1
+        return candidate
+
     async def create(
         self, data: InitiatiefCreate, created_by_id: UUID | None = None
     ) -> Initiatief:
         dump = data.model_dump()
         dump["created_by_id"] = created_by_id
+        dump["slug"] = await self._generate_unique_slug(data.naam)
         initiatief = Initiatief(**dump)
         self.session.add(initiatief)
         await self.session.flush()
@@ -74,6 +102,39 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         if initiatief is None:
             return None
         for key, value in data.model_dump(exclude_unset=True).items():
+            setattr(initiatief, key, value)
+        await self.session.flush()
+        await self.session.refresh(initiatief)
+        return initiatief
+
+    async def update_settings(
+        self, id: UUID, data: InitiatiefSettingsUpdate
+    ) -> Initiatief | None:
+        initiatief = await self.session.get(Initiatief, id)
+        if initiatief is None:
+            return None
+        payload = data.model_dump(exclude_unset=True)
+        # If a slug is being assigned/changed, validate uniqueness.
+        if "slug" in payload and payload["slug"] is not None:
+            new_slug = payload["slug"]
+            if not is_valid_slug(new_slug):
+                from fastapi import HTTPException, status
+
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Ongeldige slug. Gebruik alleen kleine letters, cijfers "
+                        "en streepjes. Reservewoorden zijn niet toegestaan."
+                    ),
+                )
+            if await self._slug_exists(new_slug, exclude_id=id):
+                from fastapi import HTTPException, status
+
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Deze slug is al in gebruik",
+                )
+        for key, value in payload.items():
             setattr(initiatief, key, value)
         await self.session.flush()
         await self.session.refresh(initiatief)
