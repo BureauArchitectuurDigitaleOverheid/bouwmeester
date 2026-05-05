@@ -10,6 +10,12 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import (
+    OrgContext,
+    check_resource_org_scope,
+    get_org_context,
+)
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.core.storage import (
     BRON_ALLOWED_CONTENT_TYPES,
     ensure_bijlagen_dir,
@@ -54,8 +60,11 @@ async def upload_bijlage(
     file: UploadFile,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("node:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> BronBijlageResponse:
     """Upload a file attachment to a bron node. Replaces existing attachment."""
+    await check_resource_org_scope(db, "corpus_node", node_id, org_ctx)
     bron = await _get_bron(node_id, db, load_bijlage=True)
 
     content_type = file.content_type or ""
@@ -104,8 +113,10 @@ async def get_bijlage_info(
     node_id: uuid.UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> BronBijlageResponse | None:
     """Get metadata about a bron node's attachment (filename, size, type)."""
+    await check_resource_org_scope(db, "corpus_node", node_id, org_ctx)
     bron = await _get_bron(node_id, db)
 
     result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
@@ -122,8 +133,10 @@ async def download_bijlage(
     node_id: uuid.UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> FileResponse:
     """Download the file attachment of a bron node."""
+    await check_resource_org_scope(db, "corpus_node", node_id, org_ctx)
     bron = await _get_bron(node_id, db)
 
     result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
@@ -147,8 +160,11 @@ async def delete_bijlage(
     node_id: uuid.UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("node:update")),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     """Delete a bron node's file attachment (DB record and file on disk)."""
+    await check_resource_org_scope(db, "corpus_node", node_id, org_ctx)
     bron = await _get_bron(node_id, db)
 
     result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))

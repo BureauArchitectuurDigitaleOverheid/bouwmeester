@@ -295,8 +295,10 @@ async def get_neighbors(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> GraphNeighborsResponse:
     """Get direct neighbors of a node (one hop) with their connecting edges."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     result = await service.get_neighbors(id)
     require_found(result["node"], "Node")
@@ -318,8 +320,10 @@ async def get_graph(
     current_user: OptionalUser,
     depth: int = Query(2, ge=1, le=5),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> GraphViewResponse:
     """Get a multi-hop subgraph around a node (configurable depth 1-5)."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     result = await service.get_graph(id, depth=depth)
     return GraphViewResponse(
@@ -335,14 +339,15 @@ async def get_node_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List all tasks linked to a specific node."""
-    # Verify node exists
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     require_found(await service.get(id), "Node")
 
     task_repo = TaskRepository(db)
-    tasks = await task_repo.get_by_node(id, skip=skip, limit=limit)
+    tasks = await task_repo.get_by_node(id, skip=skip, limit=limit, org_ctx=org_ctx)
     return validate_list(TaskResponse, tasks)
 
 
@@ -351,8 +356,10 @@ async def get_node_stakeholders(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[NodeStakeholderResponse]:
     """List stakeholders (eigenaar/betrokken/adviseur) of a node."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     require_found(await service.get(id), "Node")
 
@@ -530,10 +537,12 @@ async def get_node_tags(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[NodeTagResponse]:
     """List all tags applied to a node."""
     from bouwmeester.repositories.tag import TagRepository
 
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     require_found(await service.get(id), "Node")
 
@@ -631,8 +640,10 @@ async def get_node_title_history(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[NodeTitleRecord]:
     """Get temporal history of title changes for a node."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     require_found(await service.get(id), "Node")
     records = await service.get_title_history(id)
@@ -644,8 +655,10 @@ async def get_node_status_history(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[NodeStatusRecord]:
     """Get temporal history of status changes for a node."""
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     require_found(await service.get(id), "Node")
     records = await service.get_status_history(id)
@@ -657,12 +670,14 @@ async def get_node_bron_detail(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> BronResponse | None:
     """Get bron-specific detail fields for a bron node."""
     from sqlalchemy import select
 
     from bouwmeester.models.bron import Bron
 
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     stmt = select(Bron).where(Bron.id == id)
     result = await db.execute(stmt)
     bron = result.scalar_one_or_none()
@@ -740,6 +755,7 @@ async def get_node_parlementair_item(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> dict | None:
     """Get linked parliamentary item data for a politieke_input node.
 
@@ -750,6 +766,7 @@ async def get_node_parlementair_item(
 
     from bouwmeester.models.parlementair_item import ParlementairItem
 
+    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     stmt = (
         select(ParlementairItem)
         .where(ParlementairItem.corpus_node_id == id)
