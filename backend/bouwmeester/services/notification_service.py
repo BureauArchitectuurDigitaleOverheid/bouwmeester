@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Strong references to in-flight background tasks. asyncio.create_task only
 # holds a weak reference to its task, so without this set the GC can collect
-# the task before it has a chance to run — which silently drops the Mattermost
+# the task before it has a chance to run, which silently drops the Mattermost
 # DM with no exception and no log line.
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
 
