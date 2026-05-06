@@ -74,7 +74,14 @@ const RANK_PERSON_INTERN = 4;
 const RANK_PERSON_EXTERN = 5;
 const RANK_DEFAULT = RANK_LEAD;
 
-const LANE_Y = [40, 240, 440, 640, 840, 1040];
+const LANE_Y: Record<number, number> = {
+  [RANK_ORGANISATION]: 40,
+  [RANK_CORPUS_NODE]: 240,
+  [RANK_LEAD]: 440,
+  [RANK_SAMENWERKINGSVERBAND]: 640,
+  [RANK_PERSON_INTERN]: 840,
+  [RANK_PERSON_EXTERN]: 1040,
+};
 
 function getNodeRank(node: CommunityGraphNode): number {
   if (node.node_type === 'person') {
@@ -323,23 +330,29 @@ const CommunityGraphNodeMemo = memo(CommunityGraphNodeComponent);
 const nodeTypes = { communityNode: CommunityGraphNodeMemo };
 
 // ---- Dagre layout ----
+interface LayoutResult {
+  positions: Map<string, { x: number; y: number }>;
+  ranks: Map<string, number>;
+}
+
 function computeLayout(
   nodes: CommunityGraphNode[],
   edges: CommunityGraphEdge[],
-): Map<string, { x: number; y: number }> {
+): LayoutResult {
   const positions = new Map<string, { x: number; y: number }>();
-  if (nodes.length === 0) return positions;
+  const nodeRankMap = new Map(nodes.map((n) => [n.id, getNodeRank(n)]));
+  if (nodes.length === 0) return { positions, ranks: nodeRankMap };
 
   const nodeIds = new Set(nodes.map((n) => n.id));
-  const nodeRankMap = new Map(nodes.map((n) => [n.id, getNodeRank(n)]));
 
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
+  // We overschrijven dagre's y-output met LANE_Y, dus ranksep en edgesep
+  // hebben geen visuele werking meer. nodesep en align bepalen nog wel
+  // x-positie binnen een lane.
   g.setGraph({
     rankdir: 'TB',
     nodesep: 70,
-    ranksep: 120,
-    edgesep: 20,
     marginx: 40,
     marginy: 40,
     align: 'UL',
@@ -365,7 +378,7 @@ function computeLayout(
     }
   }
 
-  return positions;
+  return { positions, ranks: nodeRankMap };
 }
 
 // ---- Filter bar types ----
@@ -446,8 +459,7 @@ function CommunityGraphInner({
   const { allRfNodes, allRfEdges } = useMemo(() => {
     if (!data?.nodes?.length) return { allRfNodes: [], allRfEdges: [] };
 
-    const positions = computeLayout(data.nodes, data.edges);
-    const nodeRankLookup = new Map(data.nodes.map((n) => [n.id, getNodeRank(n)]));
+    const { positions, ranks: nodeRankLookup } = computeLayout(data.nodes, data.edges);
 
     const allRfNodes: RFNode<CommunityGraphNodeData>[] = data.nodes.map((node) => {
       const pos = positions.get(node.id) ?? { x: 0, y: 0 };
