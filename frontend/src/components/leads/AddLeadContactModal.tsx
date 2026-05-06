@@ -13,9 +13,9 @@ import {
 } from '@/components/leads/contactPersonFields';
 import { LEAD_CONTACT_ROL_LABELS } from '@/types';
 
-const CONTACT_ROLLEN: SelectOption[] = Object.entries(LEAD_CONTACT_ROL_LABELS).map(
-  ([value, label]) => ({ value, label }),
-);
+const DEFAULT_CONTACT_ROLLEN: SelectOption[] = Object.entries(
+  LEAD_CONTACT_ROL_LABELS,
+).map(([value, label]) => ({ value, label }));
 
 interface Props {
   leadId: string | null;
@@ -33,6 +33,22 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
   const [personId, setPersonId] = useState('');
   const [rol, setRol] = useState('contactpersoon');
   const [fields, setFields] = useState<ContactPersonFieldsState>(emptyContactPersonFields);
+  const [extraRollen, setExtraRollen] = useState<SelectOption[]>([]);
+
+  const rolOptions: SelectOption[] = [...DEFAULT_CONTACT_ROLLEN, ...extraRollen];
+
+  const handleCreateRol = async (text: string): Promise<string | null> => {
+    const value = text.trim();
+    if (!value) return null;
+    const slug = value.toLowerCase().replace(/\s+/g, '_');
+    if (rolOptions.some((o) => o.value === slug)) {
+      setRol(slug);
+      return slug;
+    }
+    setExtraRollen((prev) => [...prev, { value: slug, label: value }]);
+    setRol(slug);
+    return slug;
+  };
 
   // Reset alle state bij elke lead-wissel én bij sluiten van de modal,
   // zodat eerder ingevulde "nieuwe contact"-velden niet doorlekken naar
@@ -107,7 +123,7 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
       title={
         mode === 'create' ? 'Nieuwe contactpersoon' : 'Externe contactpersoon toevoegen'
       }
-      size={mode === 'create' ? 'md' : 'sm'}
+      size="md"
       zIndex={60}
       closeable={!isPending}
       footer={
@@ -156,9 +172,10 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
             label="Rol"
             value={rol}
             onChange={setRol}
-            options={CONTACT_ROLLEN}
-            placeholder="Selecteer een rol..."
-            searchable={false}
+            options={rolOptions}
+            placeholder="Selecteer of typ een rol..."
+            onCreate={handleCreateRol}
+            createLabel="Nieuwe rol toevoegen"
           />
         </div>
       ) : (
@@ -172,9 +189,10 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
             label="Rol op deze lead"
             value={rol}
             onChange={setRol}
-            options={CONTACT_ROLLEN}
-            placeholder="Selecteer een rol..."
-            searchable={false}
+            options={rolOptions}
+            placeholder="Selecteer of typ een rol..."
+            onCreate={handleCreateRol}
+            createLabel="Nieuwe rol toevoegen"
           />
         </div>
       )}
