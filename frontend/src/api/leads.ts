@@ -140,8 +140,11 @@ export function getLeadAttachmentDownloadUrl(leadId: string, attachmentId: strin
   return `${BASE_URL}/api/leads/${leadId}/attachments/${attachmentId}/download`;
 }
 
-export async function getCommunityGraph(): Promise<CommunityGraphResponse> {
-  return apiGet<CommunityGraphResponse>('/api/graph/community');
+export async function getCommunityGraph(
+  initiatiefId?: string,
+): Promise<CommunityGraphResponse> {
+  const qs = initiatiefId ? `?initiatief_id=${encodeURIComponent(initiatiefId)}` : '';
+  return apiGet<CommunityGraphResponse>(`/api/graph/community${qs}`);
 }
 
 // --- Lead tags ---

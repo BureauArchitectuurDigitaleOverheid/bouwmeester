@@ -1,5 +1,14 @@
 import { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
-import { Building2, User, UserCircle2, FileText, Lightbulb, Plus, X, Handshake } from 'lucide-react';
+import {
+  Building2,
+  User,
+  UserCircle2,
+  FileText,
+  Lightbulb,
+  Plus,
+  X,
+  Handshake,
+} from 'lucide-react';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import ReactFlow, {
   Background,
@@ -128,7 +137,6 @@ interface CommunityGraphNodeData {
   label: string;
   nodeType: CommunityNodeType;
   stage?: string | null;
-  initiatiefId?: string | null;
   functie?: string | null;
   expertise?: string | null;
   personRole?: 'intern' | 'extern' | null;
@@ -376,6 +384,7 @@ const NODE_TYPE_TOGGLES: NodeTypeToggle[] = [
   { key: 'lead', label: 'Leads', icon: <Lightbulb className="h-3.5 w-3.5" />, activeColor: 'bg-blue-100 text-blue-800' },
   { key: 'person', label: 'Personen', icon: <User className="h-3.5 w-3.5" />, activeColor: 'bg-pink-100 text-pink-800' },
   { key: 'organisation', label: 'Organisaties', icon: <Building2 className="h-3.5 w-3.5" />, activeColor: 'bg-teal-100 text-teal-800' },
+  { key: 'samenwerkingsverband', label: 'Verbanden', icon: <Handshake className="h-3.5 w-3.5" />, activeColor: 'bg-purple-100 text-purple-800' },
   { key: 'corpus_node', label: 'Beleidsnodes', icon: <FileText className="h-3.5 w-3.5" />, activeColor: 'bg-gray-100 text-gray-700' },
 ];
 
@@ -392,7 +401,7 @@ function CommunityGraphInner({
   stageFilter: stageFilterProp = '',
 }: CommunityGraphInnerProps) {
   const isMobile = useIsMobile();
-  const { data, isLoading, error } = useCommunityGraph();
+  const { data, isLoading, error } = useCommunityGraph(initiatiefId || undefined);
   const { openLeadDetail } = useLeadDetail();
   const { openNodeDetail } = useNodeDetail();
 
@@ -422,7 +431,7 @@ function CommunityGraphInner({
 
   // View-specific filter: node type toggles
   const [enabledTypes, setEnabledTypes] = useState<Set<CommunityNodeType>>(
-    new Set(['lead', 'person', 'organisation', 'corpus_node']),
+    new Set(['lead', 'person', 'organisation', 'samenwerkingsverband', 'corpus_node']),
   );
 
   const toggleType = useCallback((type: CommunityNodeType) => {
@@ -468,7 +477,6 @@ function CommunityGraphInner({
           label: node.label,
           nodeType: node.node_type,
           stage: node.stage,
-          initiatiefId: node.initiatief_id,
           functie: node.functie,
           expertise: node.expertise,
           personRole: node.person_role ?? null,
@@ -566,9 +574,8 @@ function CommunityGraphInner({
       const d = node.data as CommunityGraphNodeData;
       const matchesType = enabledTypes.has(d.nodeType);
       const matchesStage = !stageFilterProp || d.nodeType !== 'lead' || d.stage === stageFilterProp;
-      const matchesInitiatief = !initiatiefId || d.nodeType !== 'lead' || d.initiatiefId === initiatiefId;
       const matchesSearch = !q || searchActsAsFocus || d.label.toLowerCase().includes(q);
-      const isVisible = matchesType && matchesStage && matchesInitiatief && matchesSearch;
+      const isVisible = matchesType && matchesStage && matchesSearch;
       if (isVisible) visibleIds.add(node.id);
       const dimmed = isVisible && focusedSet !== null && !focusedSet.has(node.id);
       return { ...node, hidden: !isVisible, data: { ...d, dimmed } };
@@ -597,7 +604,6 @@ function CommunityGraphInner({
     allRfEdges,
     enabledTypes,
     stageFilterProp,
-    initiatiefId,
     searchQueryProp,
     searchFocusId,
     focusedSet,

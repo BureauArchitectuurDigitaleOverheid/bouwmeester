@@ -219,12 +219,14 @@ class GraphRepository:
         self,
         org_ctx: OrgContext | None = None,
         init_ctx: InitiatiefContext | None = None,
+        initiatief_id: UUID | None = None,
     ) -> CommunityGraphResponse:
         """Build a unified graph of leads, persons, organisations and corpus nodes.
 
-        The graph includes all visible leads (filtered by InitiatiefContext)
-        and transitively collects every person, external organisation, and
-        corpus node connected to those leads.
+        The graph starts from leads filtered by ``init_ctx`` (visibility) and,
+        when ``initiatief_id`` is given, narrowed to that single initiatief.
+        It then transitively collects every person, external organisation,
+        samenwerkingsverband and corpus node connected to those leads.
 
         Returns a ``CommunityGraphResponse`` with deduplicated nodes and edges.
         """
@@ -240,6 +242,8 @@ class GraphRepository:
         # -- 1. Visible leads --
         leads_stmt = select(Lead)
         leads_stmt = apply_initiatief_filter(leads_stmt, Lead.initiatief_id, init_ctx)
+        if initiatief_id is not None:
+            leads_stmt = leads_stmt.where(Lead.initiatief_id == initiatief_id)
         leads_result = await self.session.execute(leads_stmt)
         leads = list(leads_result.scalars().all())
 

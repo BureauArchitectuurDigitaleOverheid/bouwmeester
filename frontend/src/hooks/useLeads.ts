@@ -267,10 +267,10 @@ export function useDeleteLeadAttachment() {
   });
 }
 
-export function useCommunityGraph() {
+export function useCommunityGraph(initiatiefId?: string) {
   return useQuery({
-    queryKey: [...queryKeys.leads.all, 'community-graph'],
-    queryFn: getCommunityGraph,
+    queryKey: [...queryKeys.leads.all, 'community-graph', initiatiefId ?? null],
+    queryFn: () => getCommunityGraph(initiatiefId),
   });
 }
 
