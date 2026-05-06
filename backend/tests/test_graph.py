@@ -1,11 +1,16 @@
 """Comprehensive API tests for the graph router."""
 
 import uuid
+from datetime import date
 
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.lead import Lead
+from bouwmeester.models.persoon_samenwerkingsverband import (
+    PersoonSamenwerkingsverband,
+)
 from bouwmeester.models.resource_permission import ResourcePermission
+from bouwmeester.models.samenwerkingsverband import Samenwerkingsverband
 
 # ---------------------------------------------------------------------------
 # Graph search
@@ -339,3 +344,61 @@ async def test_community_graph_contact_edge_label_is_externe_contactpersoon(
     ]
     assert len(contact_edges) == 1
     assert contact_edges[0]["label"] == "externe contactpersoon"
+
+
+async def test_community_graph_renders_samenwerkingsverband(
+    client, db_session, sample_person
+):
+    """Een persoon met actief swv-lidmaatschap krijgt een swv-node + edge."""
+    lead = Lead(
+        id=uuid.uuid4(),
+        title="Lead met swv-lid",
+        stage="verkennen",
+        assignee_id=sample_person.id,
+    )
+    db_session.add(lead)
+
+    swv = Samenwerkingsverband(
+        id=uuid.uuid4(),
+        naam="CRI",
+        type="programma",
+    )
+    db_session.add(swv)
+    await db_session.flush()
+
+    db_session.add(
+        PersoonSamenwerkingsverband(
+            id=uuid.uuid4(),
+            person_id=sample_person.id,
+            samenwerkingsverband_id=swv.id,
+            rol="trekker",
+            start_datum=date.today(),
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.get("/api/graph/community")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    swv_node = next(
+        (n for n in data["nodes"] if n["id"] == f"swv-{swv.id}"),
+        None,
+    )
+    assert swv_node is not None
+    assert swv_node["node_type"] == "samenwerkingsverband"
+    assert swv_node["label"] == "CRI"
+    assert swv_node["samenwerkingsverband_type"] == "programma"
+
+    swv_edge = next(
+        (
+            e
+            for e in data["edges"]
+            if e["source"] == f"person-{sample_person.id}"
+            and e["target"] == f"swv-{swv.id}"
+            and e["edge_type"] == "lid_van_swv"
+        ),
+        None,
+    )
+    assert swv_edge is not None
+    assert swv_edge["label"] == "trekker"

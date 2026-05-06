@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found
@@ -63,7 +64,7 @@ def _to_lid_response(
         person_id=lid.person_id,
         person_naam=lid.person.naam if lid.person else "",
         person_functie=lid.person.functie if lid.person else None,
-        person_expertise=getattr(lid.person, "expertise", None) if lid.person else None,
+        person_expertise=lid.person.expertise if lid.person else None,
         rol=lid.rol,
         start_datum=lid.start_datum,
         eind_datum=lid.eind_datum,
@@ -276,7 +277,18 @@ async def add_lid(
         start_datum=data.start_datum,
     )
     db.add(lid)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        # Race-vangnet: een parallelle add-lid kan tussen onze duplicate-check
+        # en deze flush hebben geinsert. Of de UniqueConstraint
+        # (person_id, samenwerkingsverband_id, start_datum) wordt geraakt
+        # door een eerder beëindigd lidmaatschap met dezelfde startdatum.
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Lidmaatschap bestaat al voor deze combinatie",
+        ) from exc
     await db.refresh(lid, attribute_names=["person"])
 
     await log_activity(
