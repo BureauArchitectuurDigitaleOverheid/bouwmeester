@@ -55,7 +55,6 @@ class StakeholderAssessment(Base):
     scope_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
-        index=True,
     )
     belang: Mapped[int | None] = mapped_column(nullable=True)
     houding: Mapped[str | None] = mapped_column(

@@ -54,8 +54,21 @@ _INDEXES: list[tuple[str, str, list[str]]] = [
 def upgrade() -> None:
     for name, table, columns in _INDEXES:
         op.create_index(name, table, columns, if_not_exists=True)
+    # Drop redundant single-column index now that the composite
+    # (scope_type, scope_id) handles every scope_id lookup we make.
+    op.drop_index(
+        "ix_stakeholder_assessment_scope_id",
+        table_name="stakeholder_assessment",
+        if_exists=True,
+    )
 
 
 def downgrade() -> None:
+    op.create_index(
+        "ix_stakeholder_assessment_scope_id",
+        "stakeholder_assessment",
+        ["scope_id"],
+        if_not_exists=True,
+    )
     for name, table, _columns in reversed(_INDEXES):
         op.drop_index(name, table_name=table, if_exists=True)
