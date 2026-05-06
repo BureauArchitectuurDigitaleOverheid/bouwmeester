@@ -11,9 +11,8 @@ import { useTags } from '@/hooks/useTags';
 import { isEmailFile, parseEmailFile, emailToRawText } from '@/utils/emailParser';
 import type { ParsedEmail } from '@/utils/emailParser';
 import { useToast } from '@/contexts/ToastContext';
-import { usePeople } from '@/hooks/usePeople';
+import { usePeople, useCreatePerson } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
-import { createPerson } from '@/api/people';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { LeadStage, LEAD_STAGE_ORDER, LEAD_STAGE_LABELS, LEAD_STAGE_COLORS, INITIATIEF_COLORS, formatFunctie } from '@/types';
@@ -83,6 +82,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const { currentPerson } = useCurrentPerson();
   const { data: initiatieven } = useInitiatieven();
   const createInitiatiefMutation = useCreateInitiatief();
+  const createPersonMutation = useCreatePerson();
   const { data: people } = usePeople();
   const { data: allTags } = useTags();
   const { openLeadDetail } = useLeadDetail();
@@ -430,14 +430,13 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
               if (byEmail) personId = byEmail.id;
             }
             if (!personId) {
-              const newPerson = await createPerson(
-                {
-                  naam: contact.name.trim(),
-                  email: contact.email.trim() || undefined,
-                },
-                true,
-              );
-              personId = newPerson.id;
+              const newPerson = await createPersonMutation.mutateAsync({
+                naam: contact.name.trim(),
+                email: contact.email.trim() || undefined,
+                force: true,
+              });
+              personId = newPerson?.id ?? null;
+              if (!personId) continue;
             }
             await addLeadContactApi(lead.id, personId, contact.rol);
           } catch {

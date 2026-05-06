@@ -106,7 +106,7 @@ async def create_person(
     actor_id: UUID | None = Query(None),
     force: bool = Query(False),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    _perm=Depends(require_permission("people:create")),
 ) -> PersonCreateResponse:
     """Create a person.
 
