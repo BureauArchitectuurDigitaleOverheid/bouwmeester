@@ -3,7 +3,6 @@ and polling Mattermost for link codes."""
 
 import asyncio
 import logging
-import os
 import time
 import traceback
 from collections import OrderedDict
@@ -12,10 +11,10 @@ from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import async_session
 from bouwmeester.services.worker_health import tick as health_tick
 
-# Force unbuffered stdout/stderr so log lines surface in container logs
-# immediately (without this, Python buffers stdout when not a TTY and
-# operators see nothing until the buffer fills or the process exits).
-os.environ.setdefault("PYTHONUNBUFFERED", "1")
+# Note on stdout buffering: PYTHONUNBUFFERED=1 lives in the Dockerfile and
+# entrypoint.sh runs us with `python -u`. Setting it from inside Python is
+# pointless (the runtime reads the env var at startup, before this module
+# runs).
 
 logging.basicConfig(
     level=logging.INFO,

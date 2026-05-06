@@ -30,10 +30,13 @@ echo "Worker PID=$WORKER_PID"
 # If the worker dies, log it loudly so the cause is visible in container
 # logs instead of failing silently. We don't restart from here — Beheer >
 # Systeem now surfaces the loop status, so the right fix is operator-driven.
+# `kill -0` polling works across shells (busybox sh, dash, bash) where
+# `wait` on a non-direct-child can fail.
 (
-    wait "$WORKER_PID"
-    rc=$?
-    echo "[entrypoint] WORKER EXITED rc=$rc — Mattermost meelezen, FCC sync, parlementair-import en opdracht-taken zijn nu uit. Zie Beheer > Systeem."
+    while kill -0 "$WORKER_PID" 2>/dev/null; do
+        sleep 30
+    done
+    echo "[entrypoint] WORKER PID $WORKER_PID EXITED — Mattermost meelezen, FCC sync, parlementair-import en opdracht-taken zijn nu uit. Zie Beheer > Systeem."
 ) &
 
 echo "Starting uvicorn..."
