@@ -17,26 +17,7 @@ import {
   SAMENWERKINGSVERBAND_TYPE_LABELS,
   type Samenwerkingsverband,
 } from '@/types';
-
-export interface ContactPersonFieldsState {
-  naam: string;
-  email: string;
-  phone: string;
-  functie: string;
-  expertise: string;
-  organisatieEenheidId: string;
-  samenwerkingsverbandIds: Set<string>;
-}
-
-export const emptyContactPersonFields = (): ContactPersonFieldsState => ({
-  naam: '',
-  email: '',
-  phone: '',
-  functie: '',
-  expertise: '',
-  organisatieEenheidId: '',
-  samenwerkingsverbandIds: new Set(),
-});
+import type { ContactPersonFieldsState } from './contactPersonFields';
 
 interface Props {
   state: ContactPersonFieldsState;
@@ -46,6 +27,13 @@ interface Props {
   hideNaam?: boolean;
   /** Disable alle velden (bv. terwijl een mutation pending is). */
   disabled?: boolean;
+  /** Optioneel: gedeelde lijst van extra (lokaal toegevoegde) expertise-
+   *  waarden. Wanneer meerdere instances naast elkaar bestaan (bv. in
+   *  LeadIntakeDialog) zorgt dit dat een nieuwe waarde direct in alle
+   *  rijen verschijnt. Zonder deze props valt het component terug op
+   *  per-instance lokale state. */
+  extraExpertiseValues?: string[];
+  onAddExtraExpertise?: (value: string) => void;
 }
 
 export function NewContactPersonFields({
@@ -53,21 +41,24 @@ export function NewContactPersonFields({
   onChange,
   hideNaam = false,
   disabled = false,
+  extraExpertiseValues,
+  onAddExtraExpertise,
 }: Props) {
   const { data: expertiseValues = [] } = useExpertiseValues();
   const { data: samenwerkingsverbanden = [] } = useSamenwerkingsverbanden({
     actief: true,
   });
-  const [expertiseLocalAdded, setExpertiseLocalAdded] = useState<string[]>([]);
+  const [localAdded, setLocalAdded] = useState<string[]>([]);
+  const sharedAdded = extraExpertiseValues ?? localAdded;
 
   const expertiseOptions: SelectOption[] = useMemo(
     () => [
       ...expertiseValues.map((v) => ({ value: v, label: v })),
-      ...expertiseLocalAdded
+      ...sharedAdded
         .filter((v) => !expertiseValues.includes(v))
         .map((v) => ({ value: v, label: v })),
     ],
-    [expertiseValues, expertiseLocalAdded],
+    [expertiseValues, sharedAdded],
   );
 
   const set = <K extends keyof ContactPersonFieldsState>(
@@ -129,9 +120,13 @@ export function NewContactPersonFields({
           onCreate={async (text) => {
             const value = text.trim();
             if (!value) return null;
-            setExpertiseLocalAdded((prev) =>
-              prev.includes(value) ? prev : [...prev, value],
-            );
+            if (onAddExtraExpertise) {
+              onAddExtraExpertise(value);
+            } else {
+              setLocalAdded((prev) =>
+                prev.includes(value) ? prev : [...prev, value],
+              );
+            }
             set('expertise', value);
             return value;
           }}
@@ -182,7 +177,11 @@ function SwvCheckboxList({
         {samenwerkingsverbanden.map((s) => (
           <label
             key={s.id}
-            className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5"
+            className={`flex items-center gap-2 text-sm rounded px-1 py-0.5 ${
+              disabled
+                ? 'cursor-not-allowed opacity-60'
+                : 'cursor-pointer hover:bg-gray-50'
+            }`}
           >
             <input
               type="checkbox"

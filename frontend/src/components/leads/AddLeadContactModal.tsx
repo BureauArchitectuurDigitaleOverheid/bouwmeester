@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
@@ -6,11 +6,11 @@ import { CreatableSelect, type SelectOption } from '@/components/common/Creatabl
 import { usePeople } from '@/hooks/usePeople';
 import { useAddLeadContact } from '@/hooks/useLeads';
 import { useCreateContactPerson } from '@/hooks/useNewContactPerson';
+import { NewContactPersonFields } from '@/components/leads/NewContactPersonFields';
 import {
-  NewContactPersonFields,
   emptyContactPersonFields,
   type ContactPersonFieldsState,
-} from '@/components/leads/NewContactPersonFields';
+} from '@/components/leads/contactPersonFields';
 import { LEAD_CONTACT_ROL_LABELS } from '@/types';
 
 const CONTACT_ROLLEN: SelectOption[] = Object.entries(LEAD_CONTACT_ROL_LABELS).map(
@@ -33,6 +33,17 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
   const [personId, setPersonId] = useState('');
   const [rol, setRol] = useState('contactpersoon');
   const [fields, setFields] = useState<ContactPersonFieldsState>(emptyContactPersonFields);
+
+  // Reset alle state bij elke lead-wissel én bij sluiten van de modal,
+  // zodat eerder ingevulde "nieuwe contact"-velden niet doorlekken naar
+  // een volgende lead.
+  useEffect(() => {
+    if (!leadId) return;
+    setMode('select');
+    setPersonId('');
+    setRol('contactpersoon');
+    setFields(emptyContactPersonFields());
+  }, [leadId]);
 
   const personOptions: SelectOption[] = people.map((p) => {
     const parts = [p.functie, p.expertise].filter((v): v is string => !!v);

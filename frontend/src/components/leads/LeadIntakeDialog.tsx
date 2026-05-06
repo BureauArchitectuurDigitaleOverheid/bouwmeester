@@ -13,11 +13,11 @@ import type { ParsedEmail } from '@/utils/emailParser';
 import { useToast } from '@/contexts/ToastContext';
 import { usePeople } from '@/hooks/usePeople';
 import { useCreateContactPerson } from '@/hooks/useNewContactPerson';
+import { NewContactPersonFields } from '@/components/leads/NewContactPersonFields';
 import {
-  NewContactPersonFields,
   emptyContactPersonFields,
   type ContactPersonFieldsState,
-} from '@/components/leads/NewContactPersonFields';
+} from '@/components/leads/contactPersonFields';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
@@ -73,6 +73,12 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const [contacts, setContacts] = useState<ContactEntry[]>([emptyContact()]);
   const updateContact = useCallback((index: number, updates: Partial<ContactEntry>) => {
     setContacts(prev => prev.map((c, i) => i === index ? { ...c, ...updates } : c));
+  }, []);
+  // Gedeelde lijst zodat een nieuw-toegevoegde expertise zichtbaar is in
+  // alle openstaande contact-rijen voordat de server-cache ververst.
+  const [extraExpertiseValues, setExtraExpertiseValues] = useState<string[]>([]);
+  const addExtraExpertise = useCallback((value: string) => {
+    setExtraExpertiseValues((prev) => (prev.includes(value) ? prev : [...prev, value]));
   }, []);
   const [assigneeId, setAssigneeId] = useState<string>('');
   const [broughtById, setBroughtById] = useState<string>('');
@@ -313,6 +319,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     setTagDropdownOpen(false);
     setStage(LeadStage.INBOX);
     setContacts([emptyContact()]);
+    setExtraExpertiseValues([]);
     setAssigneeId('');
     setBroughtById(currentPerson?.id ?? '');
     setLeadDate(new Date().toISOString().split('T')[0]);
@@ -880,6 +887,8 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                       state={contact.fields}
                       onChange={(next) => updateContact(index, { fields: next })}
                       hideNaam
+                      extraExpertiseValues={extraExpertiseValues}
+                      onAddExtraExpertise={addExtraExpertise}
                     />
                   )}
                 </div>
