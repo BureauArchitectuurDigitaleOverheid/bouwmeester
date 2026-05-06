@@ -35,6 +35,25 @@ router = APIRouter(
 )
 
 
+def _to_response(
+    verband: Samenwerkingsverband, aantal_leden: int = 0
+) -> SamenwerkingsverbandResponse:
+    """Bouw een SamenwerkingsverbandResponse zonder de leden-relationship aan
+    te raken (vermijdt MissingGreenlet bij lazy-load in async)."""
+    return SamenwerkingsverbandResponse(
+        id=verband.id,
+        naam=verband.naam,
+        type=verband.type,
+        beschrijving=verband.beschrijving,
+        start_datum=verband.start_datum,
+        eind_datum=verband.eind_datum,
+        created_by_id=verband.created_by_id,
+        created_at=verband.created_at,
+        updated_at=verband.updated_at,
+        aantal_leden=aantal_leden,
+    )
+
+
 def _to_lid_response(
     lid: PersoonSamenwerkingsverband,
 ) -> SamenwerkingsverbandLidResponse:
@@ -111,9 +130,7 @@ async def create_samenwerkingsverband(
         },
     )
 
-    resp = SamenwerkingsverbandResponse.model_validate(verband)
-    resp.aantal_leden = 0
-    return resp
+    return _to_response(verband, aantal_leden=0)
 
 
 @router.get(
@@ -157,10 +174,19 @@ async def get_samenwerkingsverband(
     leden_actief = await repo.list_members(id, actief=True)
     aantal = await repo.count_active_members(id)
 
-    resp = SamenwerkingsverbandDetailResponse.model_validate(verband)
-    resp.aantal_leden = aantal
-    resp.leden = [_to_lid_response(lid) for lid in leden_actief]
-    return resp
+    return SamenwerkingsverbandDetailResponse(
+        id=verband.id,
+        naam=verband.naam,
+        type=verband.type,
+        beschrijving=verband.beschrijving,
+        start_datum=verband.start_datum,
+        eind_datum=verband.eind_datum,
+        created_by_id=verband.created_by_id,
+        created_at=verband.created_at,
+        updated_at=verband.updated_at,
+        aantal_leden=aantal,
+        leden=[_to_lid_response(lid) for lid in leden_actief],
+    )
 
 
 @router.put("/{id}", response_model=SamenwerkingsverbandResponse)
@@ -183,8 +209,7 @@ async def update_samenwerkingsverband(
     )
 
     aantal = await repo.count_active_members(id)
-    resp = SamenwerkingsverbandResponse.model_validate(verband)
-    resp.aantal_leden = aantal
+    resp = _to_response(verband, aantal_leden=aantal)
     return resp
 
 
