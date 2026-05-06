@@ -1680,9 +1680,13 @@ export interface LeadExterneOrgSummary {
 export interface LeadAttachment {
   id: string;
   lead_id: string;
-  bestandsnaam: string;
-  content_type: string;
-  bestandsgrootte: number;
+  soort: 'file' | 'link';
+  bestandsnaam: string | null;
+  content_type: string | null;
+  bestandsgrootte: number | null;
+  url: string | null;
+  source: 'upload' | 'mattermost';
+  source_ref: string | null;
   bestand_beschikbaar: boolean;
   created_at: string;
 }

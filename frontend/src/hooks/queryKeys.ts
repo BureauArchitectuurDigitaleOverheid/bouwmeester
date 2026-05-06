@@ -185,6 +185,16 @@ export const queryKeys = {
     lists: () => ['initiatieven', 'list'] as const,
     list: (params?: { search?: string }) => ['initiatieven', 'list', params] as const,
     detail: (id: string | undefined) => ['initiatieven', 'detail', id] as const,
+    mattermostChannels: (id: string | undefined) =>
+      ['initiatieven', 'detail', id, 'mattermost-channels'] as const,
+  },
+
+  // --- Mattermost-channels ---
+  mattermostChannels: {
+    all: ['mattermost-channels'] as const,
+    search: (q: string) => ['mattermost-channels', 'search', q] as const,
+    forLead: (leadId: string | undefined) =>
+      ['leads', 'detail', leadId, 'mattermost-channels'] as const,
   },
 
   // --- Leads ---

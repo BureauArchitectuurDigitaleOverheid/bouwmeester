@@ -1,9 +1,8 @@
 """Persistente Mattermost-websocket voor het meelezen in gekoppelde kanalen.
 
-Skeleton-versie (PR1): connect/auth/heartbeat/reconnect, filter op
-gekoppelde kanalen, schrijf voor elke post een idempotency-record naar
-``mattermost_post_link``. Verwerking (auto-note, suggested-lead) volgt in
-PR2/PR3 via een ``MattermostIngestService``.
+Auth/heartbeat/reconnect, plus recovery via REST na disconnect. Voor de
+verwerking van individuele posts delegeren we naar
+``MattermostIngestService``.
 
 Protocol-referentie: het Mattermost websocket-protocol uit
 `claude-threads/src/platform/mattermost/client.ts`.
@@ -20,16 +19,11 @@ from urllib.parse import urlparse
 import httpx
 import websockets
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import async_session
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
-from bouwmeester.models.mattermost_post_link import MattermostPostLink
-from bouwmeester.repositories.mattermost_channel_link import (
-    MattermostChannelLinkRepository,
-)
-from bouwmeester.repositories.mattermost_user import MattermostUserRepository
+from bouwmeester.services.mattermost_ingest_service import MattermostIngestService
 from bouwmeester.services.mattermost_service import (
     MattermostService,
     _load_mattermost_config,
@@ -63,6 +57,7 @@ class MattermostWebsocketService:
         self._seq = 0
         self._stop = False
         self._bot_user_id: str | None = None
+        self._mm_base_url: str | None = None
 
     async def run(self) -> None:
         """Hoofdloop: connect, auth, lees events, reconnect bij disconnect."""
@@ -84,6 +79,7 @@ class MattermostWebsocketService:
                     await asyncio.sleep(_RECONNECT_BACKOFF_MAX)
                     continue
 
+                self._mm_base_url = http_url.rstrip("/")
                 ws_url = _ws_url_from_http(http_url)
                 logger.info("Mattermost websocket: connect %s", ws_url)
                 async with websockets.connect(
@@ -213,61 +209,13 @@ class MattermostWebsocketService:
                 logger.exception("Fout bij verwerken Mattermost-post %s", post_id)
 
     async def _record_post(self, session: AsyncSession, post: dict) -> None:
-        """Skeleton: leg de post vast in `mattermost_post_link` als het
-        kanaal gekoppeld is. Verdere verwerking volgt in PR2/PR3."""
-        post_id = post["id"]
-        channel_id = post["channel_id"]
-        mm_user_id = post.get("user_id") or None
-        root_id = post.get("root_id") or None
-
-        # Skip: bot's eigen posts (anders feedback-loop).
-        if self._bot_user_id and mm_user_id == self._bot_user_id:
-            return
-
-        link_repo = MattermostChannelLinkRepository(session)
-        channel_link = await link_repo.get_by_channel_id(channel_id)
-        if channel_link is None or channel_link.disabled_at is not None:
-            return
-
-        # Resolve person_id via mattermost_user-mapping (alleen als gekoppeld).
-        person_id = None
-        if mm_user_id:
-            mm_repo = MattermostUserRepository(session)
-            mapping = await mm_repo.get_by_mattermost_user_id(mm_user_id)
-            if mapping is not None:
-                person_id = mapping.person_id
-
-        # Idempotency-check vóór insert vermijdt een IntegrityError-rollback
-        # die in een ge-savepointe testtransactie de hele session sloopt.
-        existing_stmt = select(MattermostPostLink.id).where(
-            MattermostPostLink.post_id == post_id
+        """Verwerk één Mattermost-post via :class:`MattermostIngestService`."""
+        ingest = MattermostIngestService(
+            session,
+            bot_user_id=self._bot_user_id,
+            mm_base_url=self._mm_base_url,
         )
-        existing = (await session.execute(existing_stmt)).scalar_one_or_none()
-        if existing is not None:
-            return
-
-        record = MattermostPostLink(
-            post_id=post_id,
-            channel_id=channel_id,
-            root_id=root_id,
-            scope_type=channel_link.scope_type,
-            scope_id=channel_link.scope_id,
-            mm_user_id=mm_user_id,
-            person_id=person_id,
-        )
-        session.add(record)
-        try:
-            async with session.begin_nested():
-                await session.flush()
-        except IntegrityError:
-            # Race-condition: een andere worker schreef gelijktijdig hetzelfde
-            # post_id. SAVEPOINT-rollback houdt de buitenste transactie heel.
-            return
-
-        # Bump last_seen_post_at zodat recovery na reconnect klopt.
-        create_at = post.get("create_at")
-        if isinstance(create_at, int):
-            await link_repo.update_last_seen(channel_link, create_at)
+        await ingest.ingest_post(post)
 
     async def _recover_missed_posts(self) -> None:
         """Haal posts op die binnenkwamen terwijl we offline waren.

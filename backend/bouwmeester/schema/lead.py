@@ -133,9 +133,13 @@ class LeadExterneOrgSummary(BaseModel):
 class LeadAttachmentResponse(BaseModel):
     id: UUID
     lead_id: UUID
-    bestandsnaam: str
-    content_type: str
-    bestandsgrootte: int
+    soort: str = "file"
+    bestandsnaam: str | None = None
+    content_type: str | None = None
+    bestandsgrootte: int | None = None
+    url: str | None = None
+    source: str = "upload"
+    source_ref: str | None = None
     bestand_beschikbaar: bool = True
     created_at: datetime
 

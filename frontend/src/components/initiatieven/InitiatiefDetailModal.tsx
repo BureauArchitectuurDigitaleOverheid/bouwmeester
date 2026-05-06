@@ -51,6 +51,7 @@ import type {
   InitiatiefUpdatePost,
 } from '@/types';
 import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
+import { MattermostChannelsSection } from '@/components/mattermost/MattermostChannelsSection';
 
 interface InitiatiefDetailModalProps {
   initiatiefId: string;
@@ -465,6 +466,13 @@ export function InitiatiefDetailModal({
                 scopeType="initiatief"
                 scopeId={detail.id}
                 readOnly={!canEdit}
+              />
+            </div>
+
+            {/* Mattermost-kanalen */}
+            <div>
+              <MattermostChannelsSection
+                scope={{ type: 'initiatief', id: detail.id }}
               />
             </div>
 

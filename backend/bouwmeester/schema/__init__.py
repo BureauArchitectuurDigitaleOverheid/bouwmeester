@@ -245,6 +245,7 @@ from bouwmeester.schema.stakeholder_assessment import (
     StakeholderHouding,
     StakeholderScopeType,
 )
+from bouwmeester.schema.suggested_lead import SuggestedLeadResponse
 from bouwmeester.schema.tag import (
     LeadTagCreate,
     LeadTagResponse,
@@ -538,6 +539,8 @@ __all__ = [
     "ParlementairItemResponse",
     "ReviewAction",
     "SuggestedEdgeResponse",
+    # suggested_lead
+    "SuggestedLeadResponse",
     # whitelist / admin
     "AdminToggleRequest",
     "AdminUserResponse",

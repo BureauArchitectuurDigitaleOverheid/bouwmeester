@@ -247,6 +247,9 @@ async def handle_slash_command(
     user_id: str = Form(""),
     text: str = Form(""),
     command: str = Form(""),
+    channel_id: str = Form(""),
+    channel_name: str = Form(""),
+    team_id: str = Form(""),
 ) -> dict:
     """Handle /bouwmeester slash commands from Mattermost."""
     await _verify_webhook_token(token, db)
@@ -258,6 +261,9 @@ async def handle_slash_command(
     return await service.handle_command(
         mattermost_user_id=user_id,
         command_text=text.strip(),
+        channel_id=channel_id or None,
+        channel_name=channel_name or None,
+        team_id=team_id or None,
     )
 
 

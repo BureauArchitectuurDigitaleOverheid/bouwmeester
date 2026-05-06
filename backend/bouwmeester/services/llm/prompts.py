@@ -538,3 +538,106 @@ def build_chat_context_message(context: dict | None) -> str:
         )
 
     return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Mattermost-meelees-prompts
+# ---------------------------------------------------------------------------
+
+
+MAX_RECENT_LEADS_IN_PROMPT = 20
+
+
+def build_classify_mattermost_lead_prompt(
+    *,
+    message: str,
+    initiatief_naam: str,
+    channel_display_name: str,
+    recent_leads: list[dict],
+) -> str:
+    """Bouw een prompt voor het classificeren van een Mattermost-bericht
+    als (potentiële) lead binnen een initiatief.
+
+    ``recent_leads`` is een lijst dicts ``{id, title, stage}`` van leads
+    binnen hetzelfde initiatief, zodat de LLM duplicaten kan voorstellen.
+    """
+    leads_block = ""
+    if recent_leads:
+        items = []
+        for lead in recent_leads[:MAX_RECENT_LEADS_IN_PROMPT]:
+            items.append(
+                f"- id: {lead['id']}, "
+                f'titel: "{lead["title"]}", '
+                f"stage: {lead.get('stage', '?')}"
+            )
+        leads_block = (
+            "\nBESTAANDE LEADS in dit initiatief (kandidaten voor 'koppelen'):\n"
+            + "\n".join(items)
+            + "\n"
+        )
+
+    return (
+        "Je bent een medewerker van team Regelrecht bij het ministerie van BZK.\n"
+        f'Het Mattermost-kanaal "{channel_display_name}" is gekoppeld aan'
+        f' het initiatief "{initiatief_naam}". In dit kanaal worden nieuwe'
+        " leads (organisaties of mensen die geïnteresseerd zijn in onze"
+        " dienstverlening) besproken.\n\n"
+        "Beoordeel of het volgende bericht een nieuwe of bestaande lead"
+        " beschrijft. Een lead is een concreet contactmoment of signaal"
+        " van een externe organisatie/persoon — niet een collega die"
+        " intern iets meldt of een algemene update.\n\n"
+        f"BERICHT:\n{message[:MAX_TEXT_IN_PROMPT]}\n"
+        f"{leads_block}\n"
+        "Antwoord met JSON (en ALLEEN JSON):\n"
+        "{\n"
+        '  "is_lead": true|false,\n'
+        '  "confidence": 0.0-1.0,\n'
+        '  "proposed_title": "korte titel (organisatie of '
+        'onderwerp), max 80 chars",\n'
+        '  "proposed_description": "1-2 zinnen samenvatting wat ze willen",\n'
+        '  "match_existing_lead_id": "uuid van bestaande lead of null",\n'
+        '  "reasoning": "kort waarom je dit denkt (max 1 zin)"\n'
+        "}\n"
+        "Regels:\n"
+        '- Bij twijfel: "is_lead": false. Beter een gemiste suggestie'
+        " dan ruis.\n"
+        '- Triviale berichten ("ok", "👍", "morgen even bellen")'
+        ' krijgen "is_lead": false.\n'
+        "- Als het overduidelijk over een bestaande lead uit de lijst"
+        ' gaat, vul "match_existing_lead_id" met die UUID en houd'
+        ' "is_lead": true.\n'
+        '- Als geen match: "match_existing_lead_id": null.'
+    )
+
+
+def build_is_noise_prompt(message: str) -> str:
+    """Bouw een prompt die ruis-berichten als zodanig markeert.
+
+    Ruis = ack-berichten, korte emoji-replies, "ok", "👍", lege thread-pings.
+    Géén ruis = inhoudelijke updates, vragen, beschrijvingen — ook al zijn
+    ze kort.
+    """
+    return (
+        "Beoordeel of dit Mattermost-bericht ruis is (ack, emoji-only,"
+        " social chit-chat zonder inhoudelijke informatie) of een"
+        " inhoudelijke notitie die op een lead bewaard zou moeten worden."
+        " Bij twijfel: niet-ruis.\n\n"
+        f"BERICHT:\n{message[:2000]}\n\n"
+        "Antwoord met JSON (en ALLEEN JSON):\n"
+        '{"is_noise": true|false}'
+    )
+
+
+def build_summarize_mattermost_thread_prompt(
+    *, message: str, max_words: int = 80
+) -> str:
+    """Bouw een prompt voor het samenvatten van een (lang) MM-bericht."""
+    return (
+        "Vat onderstaand Mattermost-bericht samen in maximaal"
+        f" {max_words} woorden, in het Nederlands. Behoud concrete feiten,"
+        " namen, datums en deadlines. Geen meta-commentaar, geen"
+        " inleiding."
+        f"\n\nBERICHT:\n{message[:MAX_TEXT_IN_PROMPT]}\n\n"
+        "Antwoord met JSON (en ALLEEN JSON):\n"
+        '{"samenvatting": "..."}'
+    )
