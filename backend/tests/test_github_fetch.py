@@ -196,19 +196,28 @@ async def test_500_sets_http_500_error():
 
 
 @pytest.mark.asyncio
-async def test_no_token_returns_false_without_raising():
-    """Zonder GITHUB_TOKEN moet de fetch stilletjes overgeslagen worden."""
+async def test_no_token_returns_false_without_raising(monkeypatch):
+    """Zonder GITHUB_TOKEN moet de fetch stilletjes overgeslagen worden.
+
+    Belangrijk: we dwingen het token af op leeg in de Settings-cache,
+    anders zou de test stilletjes slagen op CI (geen env-token) maar
+    falen op een dev-machine waar de PAT al in ``.env`` staat — en
+    dan zou de fetch echt richting api.github.com gaan.
+    """
+    from bouwmeester.core.config import get_settings as _get_settings
+
+    settings = _get_settings()
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "", raising=False)
+
     link = _make_link()
-    # Geen client meegeven → factory probeert env-token; we forceren leeg.
-    client = GitHubClient(token="")
-    # Niet __aenter__'en; refresh_link_status doet dat zelf en moet
-    # GitHubAuthNotConfiguredError opvangen.
     changed = await refresh_link_status(link, client=None)
     assert changed is False
     assert link.state is None
     assert link.check_error is None
-    # Sanity: client.is_configured = False.
-    assert client.is_configured is False
+
+    # Sanity: een verse client zonder argumenten moet ``is_configured = False``
+    # zien zodra GITHUB_TOKEN leeg is.
+    assert GitHubClient().is_configured is False
 
 
 @pytest.mark.asyncio

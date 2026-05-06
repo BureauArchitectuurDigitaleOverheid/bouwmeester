@@ -149,8 +149,13 @@ def _check_initiatief_access(
 async def _refresh_stale_github_links(links: list[GitHubLink]) -> None:
     """Lazy-on-view refresh: links waarvan de status ouder dan TTL is (of
     nog nooit opgehaald) krijgen een verse fetch binnen één gedeelde
-    httpx-client. Faalt stil als auth ontbreekt of timeouts optreden —
-    de lead-detail-render moet hier nooit op blokkeren.
+    httpx-client. Faalt stil als auth ontbreekt.
+
+    Let op: deze call blokkeert de lead-detail-response tot alle stale
+    fetches klaar zijn, met als bovengrens de per-call timeout uit
+    ``GITHUB_FETCH_TIMEOUT_SECONDS``. Een trage GitHub of veel stale
+    links is dus voelbaar in de detail-render. Voor v1 acceptabel; bij
+    voldoende drukte verschuiven we de fetches naar de worker.
     """
     settings = get_settings()
     ttl = settings.GITHUB_STATUS_TTL_SECONDS

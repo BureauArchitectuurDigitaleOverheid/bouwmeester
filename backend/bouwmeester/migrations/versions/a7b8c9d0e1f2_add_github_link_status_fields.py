@@ -1,7 +1,7 @@
 """add github_link status fields
 
 Revision ID: a7b8c9d0e1f2
-Revises: f1a2b3c4d5e6
+Revises: 1fe90cecedd9
 Create Date: 2026-05-06 22:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "a7b8c9d0e1f2"
-down_revision: str | None = "f1a2b3c4d5e6"
+down_revision: str | None = "1fe90cecedd9"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

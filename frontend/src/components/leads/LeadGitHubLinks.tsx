@@ -104,8 +104,13 @@ function statusTooltip(link: LeadGitHubLink): string {
   const lines: string[] = [];
   const extra = link.state_extra ?? {};
   if (typeof extra.title === 'string') lines.push(extra.title);
-  if (typeof extra.head_ref === 'string')
-    lines.push(`${extra.head_ref} → ${extra.base_ref ?? 'main'}`);
+  if (typeof extra.head_ref === 'string') {
+    if (typeof extra.base_ref === 'string') {
+      lines.push(`${extra.head_ref} → ${extra.base_ref}`);
+    } else {
+      lines.push(extra.head_ref);
+    }
+  }
   if (link.last_checked_at) {
     const when = new Date(link.last_checked_at).toLocaleString('nl-NL');
     lines.push(`Laatst gecheckt: ${when}`);
