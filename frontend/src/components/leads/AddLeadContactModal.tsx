@@ -37,21 +37,25 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
 
   const rolOptions: SelectOption[] = [...DEFAULT_CONTACT_ROLLEN, ...extraRollen];
 
-  const handleCreateRol = async (text: string): Promise<string | null> => {
-    const value = text.trim();
-    if (!value) return null;
-    // Sla de getypte tekst zelf op als rol-waarde. Geen slug-conversie:
-    // ResourcePermission.rol is een vrij stringveld en LeadDetailPanel
-    // toont de raw waarde als fallback. Een slug zou diakriet/haakjes
-    // verminken zonder voordeel.
-    if (rolOptions.some((o) => o.value === value)) {
+  const handleCreateRol = useCallback(
+    async (text: string): Promise<string | null> => {
+      const value = text.trim();
+      if (!value) return null;
+      // Sla de getypte tekst zelf op als rol-waarde. Geen slug-conversie:
+      // ResourcePermission.rol is een vrij stringveld en LeadDetailPanel
+      // toont de raw waarde als fallback. Een slug zou diakriet/haakjes
+      // verminken zonder voordeel.
+      setExtraRollen((prev) =>
+        prev.some((o) => o.value === value) ||
+        DEFAULT_CONTACT_ROLLEN.some((o) => o.value === value)
+          ? prev
+          : [...prev, { value, label: value }],
+      );
       setRol(value);
       return value;
-    }
-    setExtraRollen((prev) => [...prev, { value, label: value }]);
-    setRol(value);
-    return value;
-  };
+    },
+    [],
+  );
 
   // Reset alle state bij elke lead-wissel én bij sluiten van de modal,
   // zodat eerder ingevulde "nieuwe contact"-velden niet doorlekken naar
@@ -62,6 +66,7 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
     setPersonId('');
     setRol('contactpersoon');
     setFields(emptyContactPersonFields());
+    setExtraRollen([]);
   }, [leadId]);
 
   const personOptions: SelectOption[] = people.map((p) => {
@@ -84,6 +89,7 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
     setPersonId('');
     setRol('contactpersoon');
     setFields(emptyContactPersonFields());
+    setExtraRollen([]);
     onClose();
   }, [onClose]);
 
