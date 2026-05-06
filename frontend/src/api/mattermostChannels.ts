@@ -38,7 +38,8 @@ export interface MattermostChannelLinkCreate {
 export interface MattermostChannelLinkUpdate {
   auto_note_enabled?: boolean;
   suggest_leads_enabled?: boolean;
-  reenable?: boolean;
+  /** Alleen ``true`` is geldig; backend rejecteert ``false``. */
+  reenable?: true;
 }
 
 export async function listInitiatiefChannels(

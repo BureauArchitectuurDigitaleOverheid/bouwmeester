@@ -117,6 +117,10 @@ async def _can_manage_link(
         ).scalar_one_or_none()
         if lead is None:
             return False
+        # TODO(post-migratie): drop deze tak zodra alle leads een
+        # ``initiatief_id`` hebben. Tijdens de migratieperiode is een lead
+        # zonder initiatief voor elke authenticated user toegankelijk; dat
+        # spiegelt ``_check_lead_access`` in ``leads.py``.
         if lead.initiatief_id is None:
             return True
         return lead.initiatief_id in init_ctx.visible_initiatief_ids
@@ -303,6 +307,31 @@ async def update_channel_link(
         raise _not_found()
     if not await _can_manage_link(db, link, init_ctx):
         raise _not_found()
+
+    # Reenable mag alleen als de bot daadwerkelijk weer in het kanaal zit
+    # — anders zet je `disabled_at=None` op een dode koppeling en raakt de
+    # UI uit sync met Mattermost.
+    if data.reenable:
+        from bouwmeester.services.mattermost_service import MattermostService
+
+        service = MattermostService(db)
+        try:
+            if not await service.is_enabled():
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Mattermost is niet geconfigureerd",
+                )
+            if not await service.is_bot_member_of_channel(link.channel_id):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Bot is geen lid van dit kanaal. "
+                        "Voeg de bot eerst toe in Mattermost en probeer opnieuw."
+                    ),
+                )
+        finally:
+            await service.close()
+
     updated = await repo.update_settings(
         link,
         auto_note_enabled=data.auto_note_enabled,

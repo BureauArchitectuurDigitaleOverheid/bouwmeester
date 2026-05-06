@@ -49,6 +49,11 @@ _RATE_LIMITS: dict[str, tuple[int, int]] = {
     "verify-link": (10, 60),
     "slash": (30, 60),
     "action": (30, 60),
+    # Aparte bucket per suggested-lead-id — voorkomt dat één gebruiker per
+    # ongeluk zijn ``action``-quota opmaakt door snelle clicks op één
+    # suggestie, en omgekeerd dat brute-force op één suggestie geen
+    # andere acties van dezelfde user blokkeert.
+    "action-suggested-lead": (10, 60),
 }
 
 # Cap total tracked keys per bucket to prevent unbounded memory growth.
@@ -299,8 +304,9 @@ async def handle_action(
     action_name = context.get("action", "")
     suggested_lead_id = context.get("suggested_lead_id")
     if suggested_lead_id:
-        # Per-suggestion rate-limit voorkomt brute-force toggling.
-        _check_rate_limit("action", f"sl:{suggested_lead_id}")
+        # Per-suggestion rate-limit voorkomt brute-force toggling. Aparte
+        # bucket zodat dit niet de per-user ``action``-quota opeet.
+        _check_rate_limit("action-suggested-lead", str(suggested_lead_id))
 
     logger.info(
         "Mattermost action: action=%s mm_user_id=%s post_id=%s trigger_id=%s "

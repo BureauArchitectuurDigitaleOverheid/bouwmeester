@@ -57,12 +57,15 @@ interface InitiatiefDetailModalProps {
   initiatiefId: string;
   open: boolean;
   onClose: () => void;
+  /** z-index van deze modal (default 50). Geneste modals krijgen +10. */
+  zIndex?: number;
 }
 
 export function InitiatiefDetailModal({
   initiatiefId,
   open,
   onClose,
+  zIndex = 50,
 }: InitiatiefDetailModalProps) {
   const { data: detail, isLoading } = useInitiatief(open ? initiatiefId : undefined);
 
@@ -257,6 +260,7 @@ export function InitiatiefDetailModal({
         onClose={handleClose}
         title={detail?.naam || 'Initiatief'}
         size="lg"
+        zIndex={zIndex}
         footer={footer}
         headerIcon={
           detail?.kleur ? (
@@ -473,7 +477,7 @@ export function InitiatiefDetailModal({
             <div>
               <MattermostChannelsSection
                 scope={{ type: 'initiatief', id: detail.id }}
-                parentZIndex={50}
+                parentZIndex={zIndex}
               />
             </div>
 

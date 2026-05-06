@@ -1,6 +1,7 @@
 """Pydantic-schema's voor MattermostChannelLink."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,8 +31,10 @@ class MattermostChannelLinkUpdate(BaseModel):
     auto_note_enabled: bool | None = None
     suggest_leads_enabled: bool | None = None
     # Stuur ``reenable=true`` om een uitgeschakelde koppeling weer aan te
-    # zetten nadat de bot terug is in het kanaal.
-    reenable: bool | None = None
+    # zetten nadat de bot terug is in het kanaal. ``false`` is geen
+    # zinvolle waarde (uitschakelen gebeurt automatisch via WS-events of
+    # via DELETE) — daarom alleen ``true`` of weglaten.
+    reenable: Literal[True] | None = None
 
 
 class MattermostChannelLinkResponse(BaseModel):

@@ -498,6 +498,31 @@ class MattermostService:
         except httpx.HTTPError:
             return mattermost_user_id
 
+    async def is_bot_member_of_channel(self, channel_id: str) -> bool:
+        """Check of de bot momenteel lid is van een kanaal.
+
+        Gebruikt het ``/channels/{id}/members/{bot_user_id}``-endpoint:
+        404 = geen lid, 200 = lid. Returns ``False`` bij elke andere
+        fout — caller behandelt dit als "kan niet bevestigen".
+        """
+        bot_user_id = await self.get_bot_user_id()
+        if not bot_user_id:
+            return False
+        client = await self._get_client()
+        try:
+            resp = await client.get(
+                f"/api/v4/channels/{channel_id}/members/{bot_user_id}"
+            )
+            if resp.status_code == 404:
+                return False
+            resp.raise_for_status()
+            return True
+        except httpx.HTTPError:
+            logger.exception(
+                "Kon bot-membership voor kanaal %s niet checken", channel_id
+            )
+            return False
+
     async def search_channels(self, query: str) -> list[dict]:
         """Zoek kanalen waar de bot in zit, gefilterd op naam.
 

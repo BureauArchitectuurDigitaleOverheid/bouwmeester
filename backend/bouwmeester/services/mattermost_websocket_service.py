@@ -47,6 +47,36 @@ def _ws_url_from_http(http_url: str) -> str:
     return f"{scheme}://{netloc}/api/v4/websocket"
 
 
+async def disable_channel_link(
+    session: AsyncSession, channel_id: str, *, event: str = "manual"
+) -> bool:
+    """Zet ``disabled_at`` op een ``MattermostChannelLink``.
+
+    Module-level zodat tests dit pad kunnen oefenen zonder de hele
+    websocket-loop te mocken. Returns ``True`` als de link bestond en is
+    bijgewerkt, ``False`` als hij niet bestond of al disabled was.
+    """
+    from datetime import UTC, datetime
+
+    from bouwmeester.repositories.mattermost_channel_link import (
+        MattermostChannelLinkRepository,
+    )
+
+    repo = MattermostChannelLinkRepository(session)
+    link = await repo.get_by_channel_id(channel_id)
+    if link is None or link.disabled_at is not None:
+        return False
+    link.disabled_at = datetime.now(UTC)
+    await session.flush()
+    logger.info(
+        "Channel-link %s uitgeschakeld via event=%s op kanaal %s",
+        link.id,
+        event,
+        channel_id,
+    )
+    return True
+
+
 class MattermostWebsocketService:
     """Eén persistente websocket-verbinding voor het meelezen.
 
@@ -225,50 +255,38 @@ class MattermostWebsocketService:
         verwijderde user) en ``channel_id`` in ``broadcast`` of ``data``.
         We schakelen de koppeling alleen uit als het de bot zelf is.
         """
-        data = msg.get("data") or {}
-        broadcast = msg.get("broadcast") or {}
-
-        if event == "user_removed":
-            removed_user_id = data.get("user_id") or broadcast.get("user_id")
-            if not removed_user_id or removed_user_id != self._bot_user_id:
-                return
-            channel_id = data.get("channel_id") or broadcast.get("channel_id")
-        else:  # channel_deleted
-            channel_id = (
-                data.get("channel_id")
-                or broadcast.get("channel_id")
-                or (data.get("channel") or {}).get("id")
-            )
-
+        channel_id = self._channel_lost_channel_id(event, msg)
         if not channel_id:
             return
 
         async with async_session() as session:
             try:
-                from datetime import UTC, datetime
-
-                from bouwmeester.repositories.mattermost_channel_link import (
-                    MattermostChannelLinkRepository,
-                )
-
-                repo = MattermostChannelLinkRepository(session)
-                link = await repo.get_by_channel_id(channel_id)
-                if link is None or link.disabled_at is not None:
-                    return
-                link.disabled_at = datetime.now(UTC)
-                await session.flush()
+                await disable_channel_link(session, channel_id, event=event)
                 await session.commit()
-                logger.info(
-                    "Channel-link %s uitgeschakeld na %s op kanaal %s",
-                    link.id,
-                    event,
-                    channel_id,
-                )
             except Exception:
                 await session.rollback()
                 logger.exception(
                     "Kon channel-link voor %s niet uitschakelen", channel_id
                 )
+
+    def _channel_lost_channel_id(self, event: str, msg: dict) -> str | None:
+        """Pure helper — pikt de juiste channel_id op, mits het de bot
+        zelf is die uit het kanaal is. Geen DB-toegang, makkelijk te
+        testen met dummy event-payloads."""
+        data = msg.get("data") or {}
+        broadcast = msg.get("broadcast") or {}
+        if event == "user_removed":
+            removed_user_id = data.get("user_id") or broadcast.get("user_id")
+            if not removed_user_id or removed_user_id != self._bot_user_id:
+                return None
+            return data.get("channel_id") or broadcast.get("channel_id")
+        if event == "channel_deleted":
+            return (
+                data.get("channel_id")
+                or broadcast.get("channel_id")
+                or (data.get("channel") or {}).get("id")
+            )
+        return None
 
     async def _record_post(self, session: AsyncSession, post: dict) -> None:
         """Verwerk één Mattermost-post via :class:`MattermostIngestService`."""

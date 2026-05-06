@@ -1,0 +1,327 @@
+"""Tests voor de WS-dispatcher: user_removed / channel_deleted → disabled_at."""
+
+import uuid
+
+import pytest
+from sqlalchemy import select
+
+from bouwmeester.models.initiatief import Initiatief
+from bouwmeester.models.mattermost_channel_link import (
+    SCOPE_INITIATIEF,
+    MattermostChannelLink,
+)
+from bouwmeester.services.mattermost_websocket_service import (
+    MattermostWebsocketService,
+    disable_channel_link,
+)
+
+
+def _id() -> str:
+    return uuid.uuid4().hex[:26]
+
+
+@pytest.fixture
+async def linked_channel(db_session):
+    init = Initiatief(id=uuid.uuid4(), naam="Test")
+    db_session.add(init)
+    await db_session.flush()
+    cid = _id()
+    link = MattermostChannelLink(
+        channel_id=cid,
+        channel_name="x",
+        channel_display_name="X",
+        scope_type=SCOPE_INITIATIEF,
+        scope_id=init.id,
+    )
+    db_session.add(link)
+    await db_session.flush()
+    return link
+
+
+# ---------------------------------------------------------------------------
+# disable_channel_link helper
+# ---------------------------------------------------------------------------
+
+
+async def test_disable_channel_link_sets_disabled_at(db_session, linked_channel):
+    ok = await disable_channel_link(db_session, linked_channel.channel_id)
+    assert ok is True
+    await db_session.refresh(linked_channel)
+    assert linked_channel.disabled_at is not None
+
+
+async def test_disable_channel_link_idempotent(db_session, linked_channel):
+    await disable_channel_link(db_session, linked_channel.channel_id)
+    first = linked_channel.disabled_at
+    ok = await disable_channel_link(db_session, linked_channel.channel_id)
+    assert ok is False
+    await db_session.refresh(linked_channel)
+    assert linked_channel.disabled_at == first
+
+
+async def test_disable_channel_link_unknown_channel(db_session):
+    ok = await disable_channel_link(db_session, _id())
+    assert ok is False
+
+
+# ---------------------------------------------------------------------------
+# _channel_lost_channel_id parsing
+# ---------------------------------------------------------------------------
+
+
+def test_channel_lost_user_removed_other_user_ignored():
+    svc = MattermostWebsocketService()
+    svc._bot_user_id = "bot1234567890123456789012a"
+    msg = {
+        "event": "user_removed",
+        "data": {"user_id": "someone_else_____________a", "channel_id": _id()},
+    }
+    assert svc._channel_lost_channel_id("user_removed", msg) is None
+
+
+def test_channel_lost_user_removed_bot_data_payload():
+    svc = MattermostWebsocketService()
+    svc._bot_user_id = "bot1234567890123456789012a"
+    cid = _id()
+    msg = {
+        "event": "user_removed",
+        "data": {"user_id": svc._bot_user_id, "channel_id": cid},
+    }
+    assert svc._channel_lost_channel_id("user_removed", msg) == cid
+
+
+def test_channel_lost_user_removed_bot_broadcast_payload():
+    svc = MattermostWebsocketService()
+    svc._bot_user_id = "bot1234567890123456789012a"
+    cid = _id()
+    msg = {
+        "event": "user_removed",
+        "data": {"user_id": svc._bot_user_id},
+        "broadcast": {"channel_id": cid},
+    }
+    assert svc._channel_lost_channel_id("user_removed", msg) == cid
+
+
+def test_channel_lost_channel_deleted_data_payload():
+    svc = MattermostWebsocketService()
+    cid = _id()
+    msg = {"event": "channel_deleted", "data": {"channel_id": cid}}
+    assert svc._channel_lost_channel_id("channel_deleted", msg) == cid
+
+
+def test_channel_lost_channel_deleted_nested_channel_object():
+    svc = MattermostWebsocketService()
+    cid = _id()
+    msg = {"event": "channel_deleted", "data": {"channel": {"id": cid}}}
+    assert svc._channel_lost_channel_id("channel_deleted", msg) == cid
+
+
+def test_channel_lost_unknown_event():
+    svc = MattermostWebsocketService()
+    assert svc._channel_lost_channel_id("user_typing", {"data": {}}) is None
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: parse + disable
+# ---------------------------------------------------------------------------
+
+
+async def test_user_removed_for_bot_disables_link(db_session, linked_channel):
+    """Combinatie van parsing + DB-write: bot wordt uit kanaal verwijderd
+    → ``disabled_at`` wordt gezet."""
+    svc = MattermostWebsocketService()
+    svc._bot_user_id = "bot1234567890123456789012a"
+    msg = {
+        "event": "user_removed",
+        "data": {
+            "user_id": svc._bot_user_id,
+            "channel_id": linked_channel.channel_id,
+        },
+    }
+    cid = svc._channel_lost_channel_id("user_removed", msg)
+    assert cid == linked_channel.channel_id
+    await disable_channel_link(db_session, cid, event="user_removed")
+    await db_session.refresh(linked_channel)
+    assert linked_channel.disabled_at is not None
+
+
+async def test_user_removed_for_other_user_keeps_link_active(
+    db_session, linked_channel
+):
+    svc = MattermostWebsocketService()
+    svc._bot_user_id = "bot1234567890123456789012a"
+    msg = {
+        "event": "user_removed",
+        "data": {
+            "user_id": "anotherperson12345678901a",
+            "channel_id": linked_channel.channel_id,
+        },
+    }
+    assert svc._channel_lost_channel_id("user_removed", msg) is None
+    await db_session.refresh(linked_channel)
+    assert linked_channel.disabled_at is None
+
+
+# ---------------------------------------------------------------------------
+# Race-test: twee parallel approval-clicks zien het lock
+# ---------------------------------------------------------------------------
+
+
+async def test_double_approval_with_real_lock(_test_engine, create_person):
+    """Echte race-test: twee parallelle sessions klikken op dezelfde knop.
+
+    Eén krijgt de lock en maakt de Lead, de ander wacht en ziet
+    ``status != "pending"``. Resultaat: precies één Lead, één lopende
+    SuggestedLead met ``status="approved_new"``.
+
+    We omzeilen de standaard ``db_session``-fixture (die rolt aan het
+    eind alles terug en deelt één connectie) en gebruiken daadwerkelijk
+    twee concurrent ``AsyncSession``-instanties op dezelfde engine.
+    """
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from bouwmeester.models.lead import Lead
+    from bouwmeester.models.mattermost_user import MattermostUser
+    from bouwmeester.models.resource_permission import ResourcePermission
+    from bouwmeester.models.suggested_lead import SuggestedLead
+    from bouwmeester.services.mattermost_slash_service import MattermostSlashService
+
+    init_id = uuid.uuid4()
+    sug_id = uuid.uuid4()
+    person_id = uuid.uuid4()
+    mm_uid = _id()
+    cid = _id()
+
+    # Setup: één persoon met permission, één SuggestedLead in pending.
+    async with AsyncSession(_test_engine, expire_on_commit=False) as setup:
+        from bouwmeester.models.person import Person
+        from bouwmeester.models.person_email import PersonEmail
+
+        setup.add(Initiatief(id=init_id, naam="Race"))
+        await setup.flush()
+        setup.add(
+            Person(
+                id=person_id,
+                naam="A Race",
+                email="race@example.com",
+                is_active=True,
+            )
+        )
+        await setup.flush()
+        setup.add(
+            PersonEmail(person_id=person_id, email="race@example.com", is_default=True)
+        )
+        setup.add(
+            MattermostUser(
+                person_id=person_id,
+                mattermost_user_id=mm_uid,
+                mattermost_username="a",
+            )
+        )
+        setup.add(
+            ResourcePermission(
+                person_id=person_id,
+                resource_type="initiatief",
+                resource_id=init_id,
+                rol="eigenaar",
+            )
+        )
+        setup.add(
+            SuggestedLead(
+                id=sug_id,
+                source_post_id=_id(),
+                source_channel_id=cid,
+                initiatief_id=init_id,
+                proposed_title="Race lead",
+                raw_text="iets",
+                status="pending",
+            )
+        )
+        await setup.commit()
+
+    async def _click() -> dict:
+        async with AsyncSession(_test_engine, expire_on_commit=False) as s:
+            from unittest.mock import AsyncMock, patch
+
+            with patch(
+                "bouwmeester.services.mattermost_slash_service."
+                "MattermostSlashService._update_thread_post",
+                new=AsyncMock(return_value=None),
+            ):
+                service = MattermostSlashService(s)
+                result = await service.handle_action(
+                    mattermost_user_id=mm_uid,
+                    action="create_lead_from_suggestion",
+                    context={"suggested_lead_id": str(sug_id)},
+                )
+            await s.commit()
+            return result
+
+    try:
+        results = await asyncio.gather(_click(), _click())
+
+        async with AsyncSession(_test_engine, expire_on_commit=False) as verify:
+            leads = (
+                (
+                    await verify.execute(
+                        select(Lead).where(Lead.initiatief_id == init_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            sug = (
+                await verify.execute(
+                    select(SuggestedLead).where(SuggestedLead.id == sug_id)
+                )
+            ).scalar_one()
+
+        # Exact één Lead, ondanks twee parallel clicks.
+        assert len(leads) == 1
+        assert sug.status == "approved_new"
+        assert sug.approved_lead_id == leads[0].id
+        # Eén response is een succesmelding, de ander zegt "al verwerkt".
+        msgs = sorted(r.get("ephemeral_text", "") for r in results)
+        assert "Lead aangemaakt" in msgs[0] or "al verwerkt" in msgs[0]
+        assert "Lead aangemaakt" in msgs[1] or "al verwerkt" in msgs[1]
+        assert any("Lead aangemaakt" in m for m in msgs)
+        assert any("al verwerkt" in m for m in msgs)
+    finally:
+        # Cleanup: verwijder de race-fixture-data zodat andere tests een
+        # schone DB hebben (we hebben buiten de standaard testtransactie
+        # geschreven).
+        async with AsyncSession(_test_engine, expire_on_commit=False) as cleanup:
+            from sqlalchemy import delete
+
+            from bouwmeester.models.lead_activity import LeadActivity
+
+            await cleanup.execute(
+                delete(LeadActivity).where(
+                    LeadActivity.lead_id.in_(
+                        select(Lead.id).where(Lead.initiatief_id == init_id)
+                    )
+                )
+            )
+            await cleanup.execute(delete(Lead).where(Lead.initiatief_id == init_id))
+            await cleanup.execute(
+                delete(SuggestedLead).where(SuggestedLead.id == sug_id)
+            )
+            await cleanup.execute(
+                delete(ResourcePermission).where(
+                    ResourcePermission.person_id == person_id
+                )
+            )
+            await cleanup.execute(
+                delete(MattermostUser).where(MattermostUser.person_id == person_id)
+            )
+            from bouwmeester.models.person import Person
+            from bouwmeester.models.person_email import PersonEmail
+
+            await cleanup.execute(
+                delete(PersonEmail).where(PersonEmail.person_id == person_id)
+            )
+            await cleanup.execute(delete(Person).where(Person.id == person_id))
+            await cleanup.execute(delete(Initiatief).where(Initiatief.id == init_id))
+            await cleanup.commit()
