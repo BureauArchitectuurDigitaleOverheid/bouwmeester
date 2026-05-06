@@ -1,5 +1,19 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronDown, Plus, Search, X } from 'lucide-react';
+import { ApiError } from '@/api/client';
+
+function extractCreateErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 403) {
+      return 'Geen rechten om dit aan te maken.';
+    }
+    const body = err.body as Record<string, unknown> | undefined;
+    if (body && typeof body.detail === 'string') return body.detail;
+    return `Aanmaken niet gelukt (${err.status})`;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return 'Aanmaken niet gelukt';
+}
 
 export interface SelectOption {
   value: string;
@@ -59,6 +73,7 @@ export function CreatableSelect({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [isCreating, setIsCreating] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -109,6 +124,7 @@ export function CreatableSelect({
       onChange(opt.value);
       setIsOpen(false);
       setQuery('');
+      setCreateError(null);
     },
     [onChange],
   );
@@ -116,15 +132,24 @@ export function CreatableSelect({
   const handleCreate = useCallback(async () => {
     if (!onCreate || !query.trim() || isCreating) return;
     setIsCreating(true);
+    setCreateError(null);
     try {
       const newId = await onCreate(query.trim());
       if (newId) {
         onChange(newId);
+        setIsOpen(false);
+        setQuery('');
+      } else {
+        // onCreate returned null without throwing — treat as soft success
+        // (e.g. when the parent wants to keep the typed text without saving yet)
+        setIsOpen(false);
+        setQuery('');
       }
+    } catch (err) {
+      setCreateError(extractCreateErrorMessage(err));
+      // Keep dropdown open and query intact so the user can retry or correct
     } finally {
       setIsCreating(false);
-      setIsOpen(false);
-      setQuery('');
     }
   }, [onCreate, query, onChange, isCreating]);
 
@@ -164,6 +189,7 @@ export function CreatableSelect({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
+    setCreateError(null);
     onQueryChange?.(e.target.value);
     if (!isOpen) setIsOpen(true);
   };
@@ -301,10 +327,19 @@ export function CreatableSelect({
                 </span>
               </li>
             )}
+
+            {createError && (
+              <li className="px-3.5 py-2 text-xs text-red-600 border-t border-border bg-red-50">
+                {createError}
+              </li>
+            )}
           </ul>
         )}
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
+      {!error && createError && !isOpen && (
+        <p className="text-xs text-red-600">{createError}</p>
+      )}
     </div>
   );
 }

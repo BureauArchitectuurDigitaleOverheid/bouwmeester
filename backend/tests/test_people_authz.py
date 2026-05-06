@@ -116,13 +116,31 @@ async def test_get_person_summary_requires_people_read(
     assert resp.status_code == 403
 
 
-async def test_create_person_requires_people_manage(
+async def test_create_person_requires_people_create(
     people_authz_setup, db_session: AsyncSession
 ):
     s = people_authz_setup
     async with _make_client(s["app"], db_session, s["person"], {"people:read"}) as ac:
         resp = await ac.post("/api/people", json={"naam": "Nieuwe Persoon"})
     assert resp.status_code == 403
+
+
+async def test_create_person_allowed_with_people_create(
+    people_authz_setup, db_session: AsyncSession
+):
+    """Editors / unit_managers met people:create kunnen contactpersonen aanmaken."""
+    s = people_authz_setup
+    async with _make_client(
+        s["app"], db_session, s["person"], {"people:read", "people:create"}
+    ) as ac:
+        resp = await ac.post(
+            "/api/people",
+            json={"naam": f"Nieuwe Persoon {uuid.uuid4().hex[:6]}"},
+        )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["naam"].startswith("Nieuwe Persoon")
+    assert "id" in body
 
 
 async def test_update_person_requires_people_update(

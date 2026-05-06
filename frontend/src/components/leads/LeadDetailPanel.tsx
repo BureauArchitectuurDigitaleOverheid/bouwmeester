@@ -25,7 +25,6 @@ import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { LinkLeadNodeModal } from './LinkLeadNodeModal';
-import { createPerson } from '@/api/people';
 import { Badge } from '@/components/common/Badge';
 import { DetailSection } from '@/components/common/DetailSection';
 import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
@@ -45,7 +44,7 @@ import {
   useAddTagToLead,
   useRemoveTagFromLead,
 } from '@/hooks/useLeads';
-import { usePeople } from '@/hooks/usePeople';
+import { usePeople, useCreatePerson } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { getLeadAttachmentDownloadUrl } from '@/api/leads';
 import { isOverdue, formatDateLong, timeAgo } from '@/utils/dates';
@@ -120,6 +119,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const { data: people } = usePeople();
   const { data: initiatieven } = useInitiatieven();
   const createInitiatief = useCreateInitiatief();
+  const createPerson = useCreatePerson();
 
   const contactPersonOptions = useMemo(
     () => (people ?? [])
@@ -425,7 +425,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 ]}
                 placeholder="Zoek een persoon..."
                 onCreate={async (name) => {
-                  const result = await createPerson({ naam: name }, true);
+                  const result = await createPerson.mutateAsync({ naam: name, force: true });
                   return result?.id ?? null;
                 }}
                 createLabel="Nieuwe persoon aanmaken"
@@ -952,8 +952,8 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                       options={contactPersonOptions}
                       placeholder="Zoek of typ een naam..."
                       onCreate={async (name) => {
-                        const newPerson = await createPerson({ naam: name }, true);
-                        return newPerson.id;
+                        const newPerson = await createPerson.mutateAsync({ naam: name, force: true });
+                        return newPerson?.id ?? null;
                       }}
                       createLabel="Nieuw contact"
                     />
