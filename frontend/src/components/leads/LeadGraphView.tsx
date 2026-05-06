@@ -63,18 +63,18 @@ const ORG_COLOR = '#14B8A6';
 const SWV_COLOR = '#8B5CF6';
 const CORPUS_NODE_FALLBACK = '#6B7280';
 
-// ---- Community node type to rank (dagre) ----
-// Externe personen krijgen een eigen onderste laag, los van de interne (assignee/stakeholder)
-// personen, zodat externen en hun verbindingen visueel gescheiden zijn.
-// Samenwerkingsverbanden bovenaan, naast organisaties — beide zijn "context"
-// rond personen.
+// ---- Community node type to rank (swim-lane y) ----
+// Strikte horizontale swim-lanes per node-type, top-down. Y wordt opgelegd
+// via LANE_Y; dagre regelt alleen nog x-positie en cross-minimization.
 const RANK_ORGANISATION = 0;
-const RANK_SAMENWERKINGSVERBAND = 0;
 const RANK_CORPUS_NODE = 1;
 const RANK_LEAD = 2;
-const RANK_PERSON_INTERN = 3;
-const RANK_PERSON_EXTERN = 4;
+const RANK_SAMENWERKINGSVERBAND = 3;
+const RANK_PERSON_INTERN = 4;
+const RANK_PERSON_EXTERN = 5;
 const RANK_DEFAULT = RANK_LEAD;
+
+const LANE_Y = [40, 240, 440, 640, 840, 1040];
 
 function getNodeRank(node: CommunityGraphNode): number {
   if (node.node_type === 'person') {
@@ -337,11 +337,12 @@ function computeLayout(
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({
     rankdir: 'TB',
-    nodesep: 50,
+    nodesep: 70,
     ranksep: 120,
     edgesep: 20,
     marginx: 40,
     marginy: 40,
+    align: 'UL',
   });
 
   for (const node of nodes) {
@@ -350,13 +351,7 @@ function computeLayout(
 
   for (const edge of edges) {
     if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
-      const fromRank = nodeRankMap.get(edge.source) ?? RANK_DEFAULT;
-      const toRank = nodeRankMap.get(edge.target) ?? RANK_DEFAULT;
-      if (fromRank <= toRank) {
-        g.setEdge(edge.source, edge.target);
-      } else {
-        g.setEdge(edge.target, edge.source);
-      }
+      g.setEdge(edge.source, edge.target);
     }
   }
 
@@ -365,7 +360,8 @@ function computeLayout(
   for (const node of nodes) {
     const n = g.node(node.id);
     if (n) {
-      positions.set(node.id, { x: n.x - 100, y: n.y - 40 });
+      const rank = nodeRankMap.get(node.id) ?? RANK_DEFAULT;
+      positions.set(node.id, { x: n.x - 100, y: LANE_Y[rank] ?? LANE_Y[RANK_DEFAULT] });
     }
   }
 
@@ -451,6 +447,7 @@ function CommunityGraphInner({
     if (!data?.nodes?.length) return { allRfNodes: [], allRfEdges: [] };
 
     const positions = computeLayout(data.nodes, data.edges);
+    const nodeRankLookup = new Map(data.nodes.map((n) => [n.id, getNodeRank(n)]));
 
     const allRfNodes: RFNode<CommunityGraphNodeData>[] = data.nodes.map((node) => {
       const pos = positions.get(node.id) ?? { x: 0, y: 0 };
@@ -495,13 +492,17 @@ function CommunityGraphInner({
       const toPos = positions.get(edge.target);
       const goesUpward = fromPos && toPos && fromPos.y > toPos.y;
       const marker = { type: MarkerType.ArrowClosed, width: 14, height: 14, color: style.color };
+      const fromRank = nodeRankLookup.get(edge.source) ?? RANK_DEFAULT;
+      const toRank = nodeRankLookup.get(edge.target) ?? RANK_DEFAULT;
+      const isSameLane = fromRank === toRank;
 
       return {
         id: edge.id,
         source: goesUpward ? edge.target : edge.source,
         target: goesUpward ? edge.source : edge.target,
         label: edge.label ?? style.label,
-        type: 'bezier',
+        type: isSameLane ? 'bezier' : 'smoothstep',
+        ...(isSameLane ? {} : { pathOptions: { offset: 20, borderRadius: 10 } }),
         animated: style.animated ?? false,
         ...(goesUpward ? { markerStart: marker } : { markerEnd: marker }),
         style: {
@@ -696,7 +697,7 @@ function CommunityGraphInner({
           fitViewOptions={{ padding: 0.2, maxZoom: 1.5 }}
           minZoom={0.1}
           maxZoom={3}
-          defaultEdgeOptions={{ type: 'bezier' }}
+          defaultEdgeOptions={{ type: 'smoothstep' }}
           proOptions={{ hideAttribution: true }}
         >
           <Background color="#e2e8f0" gap={20} size={1} />
