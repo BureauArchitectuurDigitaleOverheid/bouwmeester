@@ -4,10 +4,17 @@ and polling Mattermost for link codes."""
 import asyncio
 import logging
 import time
+import traceback
 from collections import OrderedDict
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import async_session
+from bouwmeester.services.worker_health import tick as health_tick
+
+# Note on stdout buffering: PYTHONUNBUFFERED=1 lives in the Dockerfile and
+# entrypoint.sh runs us with `python -u`. Setting it from inside Python is
+# pointless (the runtime reads the env var at startup, before this module
+# runs).
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,8 +23,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _short_error(exc: BaseException) -> str:
+    """One-line summary of an exception for the heartbeat detail field."""
+    tb = traceback.format_exception_only(type(exc), exc)
+    return "".join(tb).strip()[:500]
+
+
 async def _parlementair_loop(settings) -> None:  # type: ignore[no-untyped-def]
     """Poll TK/EK APIs for parliamentary items."""
+    await health_tick("parlementair", status="starting")
     while True:
         try:
             async with async_session() as session:
@@ -28,8 +42,10 @@ async def _parlementair_loop(settings) -> None:  # type: ignore[no-untyped-def]
                 service = ParlementairImportService(session)
                 count = await service.poll_and_import()
                 logger.info(f"Import cycle complete: {count} items imported")
-        except Exception:
+            await health_tick("parlementair", detail=f"{count} items imported")
+        except Exception as exc:
             logger.exception("Error in parlementair import cycle")
+            await health_tick("parlementair", status="error", detail=_short_error(exc))
 
         await asyncio.sleep(settings.TK_POLL_INTERVAL_SECONDS)
 
@@ -45,6 +61,7 @@ async def _mattermost_link_loop(settings) -> None:  # type: ignore[no-untyped-de
     # OrderedDict preserves insertion order for correct eviction.
     seen_post_ids: OrderedDict[str, None] = OrderedDict()
 
+    await health_tick("mattermost_link", status="starting")
     while True:
         mm = None
         try:
@@ -58,6 +75,11 @@ async def _mattermost_link_loop(settings) -> None:  # type: ignore[no-untyped-de
                     if started:
                         logger.info("Mattermost integration disabled, pausing poller")
                         started = False
+                    await health_tick(
+                        "mattermost_link",
+                        status="disabled",
+                        detail="MATTERMOST_ENABLED is false",
+                    )
                     await asyncio.sleep(settings.MATTERMOST_POLL_INTERVAL_SECONDS)
                     continue
 
@@ -91,8 +113,14 @@ async def _mattermost_link_loop(settings) -> None:  # type: ignore[no-untyped-de
                     seen_post_ids.popitem(last=False)
 
                 await session.commit()
-        except Exception:
+            await health_tick(
+                "mattermost_link", detail=f"{len(new_posts)} new dm posts"
+            )
+        except Exception as exc:
             logger.exception("Error in Mattermost link poll cycle")
+            await health_tick(
+                "mattermost_link", status="error", detail=_short_error(exc)
+            )
         finally:
             if mm:
                 await mm.close()
@@ -102,6 +130,7 @@ async def _mattermost_link_loop(settings) -> None:  # type: ignore[no-untyped-de
 
 async def _opdracht_task_loop(settings) -> None:  # type: ignore[no-untyped-def]
     """Daily check for deadline-approaching and budget-preparation tasks."""
+    await health_tick("opdracht_task", status="starting")
     while True:
         try:
             async with async_session() as session:
@@ -117,14 +146,20 @@ async def _opdracht_task_loop(settings) -> None:  # type: ignore[no-untyped-def]
                     f"Opdracht task cycle complete: "
                     f"{deadline_count} deadline, {budget_count} budget tasks"
                 )
-        except Exception:
+            await health_tick(
+                "opdracht_task",
+                detail=f"{deadline_count} deadline, {budget_count} budget",
+            )
+        except Exception as exc:
             logger.exception("Error in opdracht task cycle")
+            await health_tick("opdracht_task", status="error", detail=_short_error(exc))
 
         await asyncio.sleep(settings.OPDRACHT_TASK_INTERVAL_SECONDS)
 
 
 async def _fcc_sync_loop(settings) -> None:  # type: ignore[no-untyped-def]
     """Bidirectional sync with Fortes Change Cloud."""
+    await health_tick("fcc_sync", status="starting")
     while True:
         try:
             async with async_session() as session:
@@ -138,6 +173,11 @@ async def _fcc_sync_loop(settings) -> None:  # type: ignore[no-untyped-def]
                 )
                 entry = result.scalar_one_or_none()
                 if not entry or decrypt_value(entry.value) != "true":
+                    await health_tick(
+                        "fcc_sync",
+                        status="disabled",
+                        detail="FCC_SYNC_ENABLED is false",
+                    )
                     await asyncio.sleep(settings.FCC_POLL_INTERVAL_SECONDS)
                     continue
 
@@ -180,8 +220,13 @@ async def _fcc_sync_loop(settings) -> None:  # type: ignore[no-untyped-def]
                             )
                     except Exception:
                         logger.exception("Error in contact matching after FCC sync")
-        except Exception:
+            await health_tick(
+                "fcc_sync",
+                detail=f"{pull_count} pulled, {push_count} pushed",
+            )
+        except Exception as exc:
             logger.exception("Error in FCC sync cycle")
+            await health_tick("fcc_sync", status="error", detail=_short_error(exc))
 
         await asyncio.sleep(settings.FCC_POLL_INTERVAL_SECONDS)
 
@@ -192,6 +237,7 @@ async def _mattermost_websocket_loop(settings) -> None:  # type: ignore[no-untyp
     Service heeft eigen reconnect/backoff binnen ``run()``. Deze loop vangt
     alleen onverwachte exceptions op en herstart dan na een korte pauze.
     """
+    await health_tick("mattermost_websocket", status="starting")
     while True:
         try:
             from bouwmeester.services.mattermost_websocket_service import (
@@ -200,8 +246,13 @@ async def _mattermost_websocket_loop(settings) -> None:  # type: ignore[no-untyp
 
             service = MattermostWebsocketService()
             await service.run()
-        except Exception:
+            # run() only returns when stop() is called from the outside.
+            await health_tick("mattermost_websocket", status="stopped")
+        except Exception as exc:
             logger.exception("Mattermost websocket loop crashed, restart in 5s")
+            await health_tick(
+                "mattermost_websocket", status="error", detail=_short_error(exc)
+            )
         await asyncio.sleep(5)
 
 

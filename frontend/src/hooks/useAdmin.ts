@@ -100,3 +100,32 @@ export function useVersionInfo() {
     staleTime: 5 * 60 * 1000,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Worker health
+// ---------------------------------------------------------------------------
+
+export type WorkerHealth = 'healthy' | 'stale' | 'down' | 'disabled';
+
+export interface WorkerHeartbeat {
+  loop_name: string;
+  status: string;
+  detail: string | null;
+  last_tick_at: string | null;
+  started_at: string | null;
+  seconds_since_last_tick: number | null;
+  health: WorkerHealth;
+}
+
+export interface WorkerHealthResponse {
+  workers: WorkerHeartbeat[];
+  server_now: string;
+}
+
+export function useWorkerHealth() {
+  return useQuery({
+    queryKey: queryKeys.admin.workers(),
+    queryFn: () => apiGet<WorkerHealthResponse>('/api/admin/workers'),
+    refetchInterval: 15_000,
+  });
+}

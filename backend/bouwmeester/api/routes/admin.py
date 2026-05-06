@@ -21,6 +21,7 @@ from bouwmeester.models.access_request import AccessRequest
 from bouwmeester.models.app_config import AppConfig
 from bouwmeester.models.person import Person
 from bouwmeester.models.whitelist_email import WhitelistEmail
+from bouwmeester.models.worker_heartbeat import WorkerHeartbeat
 from bouwmeester.schema.access_request import (
     AccessRequestResponse,
     AccessRequestReviewRequest,
@@ -37,6 +38,10 @@ from bouwmeester.schema.whitelist import (
     AdminUserResponse,
     WhitelistEmailCreate,
     WhitelistEmailResponse,
+)
+from bouwmeester.schema.worker_health import (
+    WorkerHealthResponse,
+    WorkerHeartbeatResponse,
 )
 from bouwmeester.services.activity_service import ActivityService
 
@@ -755,3 +760,115 @@ _VERSION_INFO = {
 async def version_info(admin: AdminUser) -> dict[str, str]:
     """Return backend git SHA, build time, and repo URL (admin only)."""
     return _VERSION_INFO
+
+
+# ---------------------------------------------------------------------------
+# Worker health
+# ---------------------------------------------------------------------------
+
+# Per-loop expected cadence in seconds. If last_tick_at is older than this
+# we mark the loop "stale"; older than 4× we mark it "down". These numbers
+# err on the side of "noisy when broken" rather than "quiet when broken".
+_WORKER_EXPECTED_CADENCE_SEC = {
+    "parlementair": 900,  # TK_POLL_INTERVAL_SECONDS default 15min
+    "mattermost_link": 60,  # MATTERMOST_POLL_INTERVAL_SECONDS default
+    "mattermost_websocket": 90,  # idle-heartbeat is once per 60s
+    "opdracht_task": 86400,  # daily — give it 4× before declaring down
+    "fcc_sync": 600,  # FCC_POLL_INTERVAL_SECONDS default 10min
+}
+
+# Loop names we expect to see. If a row never appears, the loop never started
+# (worker process probably crashed before `await health_tick("…", "starting")`).
+_EXPECTED_LOOPS = list(_WORKER_EXPECTED_CADENCE_SEC.keys())
+
+
+def _classify_health(status: str, seconds_since: float, expected_cadence: float) -> str:
+    """Map (status, age) to a coarse health bucket for the UI."""
+    if status == "disabled":
+        return "disabled"
+    if seconds_since > expected_cadence * 4:
+        return "down"
+    if seconds_since > expected_cadence:
+        return "stale"
+    if status in ("error", "reconnecting"):
+        return "stale"
+    return "healthy"
+
+
+@router.get("/workers", response_model=WorkerHealthResponse)
+async def workers_health(
+    admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkerHealthResponse:
+    """Return current heartbeat for every background worker loop.
+
+    Surfaced in Beheer > Systeem so operators can see at a glance whether the
+    worker process is alive without trailing container logs.
+    """
+    now = datetime.now(UTC)
+    rows = (
+        (await db.execute(select(WorkerHeartbeat).order_by(WorkerHeartbeat.loop_name)))
+        .scalars()
+        .all()
+    )
+    by_name = {row.loop_name: row for row in rows}
+
+    out: list[WorkerHeartbeatResponse] = []
+    for name in _EXPECTED_LOOPS:
+        cadence = _WORKER_EXPECTED_CADENCE_SEC[name]
+        row = by_name.get(name)
+        if row is None:
+            out.append(
+                WorkerHeartbeatResponse(
+                    loop_name=name,
+                    status="never_started",
+                    detail="No heartbeat row — worker process never reached this loop",
+                    last_tick_at=None,
+                    started_at=None,
+                    seconds_since_last_tick=None,
+                    health="down",
+                )
+            )
+            continue
+        last = row.last_tick_at
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=UTC)
+        seconds_since = (now - last).total_seconds()
+        out.append(
+            WorkerHeartbeatResponse(
+                loop_name=row.loop_name,
+                status=row.status,
+                detail=row.detail,
+                last_tick_at=last,
+                started_at=row.started_at.replace(tzinfo=UTC)
+                if row.started_at.tzinfo is None
+                else row.started_at,
+                seconds_since_last_tick=seconds_since,
+                health=_classify_health(row.status, seconds_since, cadence),
+            )
+        )
+
+    # Surface any unexpected loop names too — future-proofing if someone adds
+    # a loop without updating _EXPECTED_LOOPS.
+    for name, row in by_name.items():
+        if name in _EXPECTED_LOOPS:
+            continue
+        last = row.last_tick_at
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=UTC)
+        seconds_since = (now - last).total_seconds()
+        out.append(
+            WorkerHeartbeatResponse(
+                loop_name=row.loop_name,
+                status=row.status,
+                detail=row.detail,
+                last_tick_at=last,
+                started_at=row.started_at.replace(tzinfo=UTC)
+                if row.started_at.tzinfo is None
+                else row.started_at,
+                seconds_since_last_tick=seconds_since,
+                health=_classify_health(row.status, seconds_since, 300.0),
+            )
+        )
+
+    return WorkerHealthResponse(workers=out, server_now=now)

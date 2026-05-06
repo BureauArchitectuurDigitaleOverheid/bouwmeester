@@ -20,8 +20,24 @@ rm -f /data/bijlagen/chat/.write_test_$$ 2>/dev/null || true
 echo "Running database migrations..."
 alembic upgrade head
 
-echo "Starting parlementair import worker..."
-python -m bouwmeester.worker &
+echo "Starting background worker..."
+# `-u` forces unbuffered stdout/stderr so worker logs surface immediately
+# in container logs, even before the buffer would normally flush.
+python -u -m bouwmeester.worker &
+WORKER_PID=$!
+echo "Worker PID=$WORKER_PID"
+
+# If the worker dies, log it loudly so the cause is visible in container
+# logs instead of failing silently. We don't restart from here — Beheer >
+# Systeem now surfaces the loop status, so the right fix is operator-driven.
+# `kill -0` polling works across shells (busybox sh, dash, bash) where
+# `wait` on a non-direct-child can fail.
+(
+    while kill -0 "$WORKER_PID" 2>/dev/null; do
+        sleep 30
+    done
+    echo "[entrypoint] WORKER PID $WORKER_PID EXITED — Mattermost meelezen, FCC sync, parlementair-import en opdracht-taken zijn nu uit. Zie Beheer > Systeem."
+) &
 
 echo "Starting uvicorn..."
 exec uvicorn bouwmeester.core.app:create_app --factory --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips='127.0.0.1'
