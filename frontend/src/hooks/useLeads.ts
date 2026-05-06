@@ -271,7 +271,10 @@ export function useDeleteLeadAttachment() {
 }
 
 export function useAddLeadGitHubLink() {
-  return useMutationWithError({
+  // Geen useMutationWithError: de form toont een inline error voor 422/409
+  // bij ongeldige of dubbele URL. Een toast er bovenop zou dubbel zijn.
+  const queryClient = useQueryClient();
+  return useMutation({
     mutationFn: ({
       leadId,
       url,
@@ -281,8 +284,9 @@ export function useAddLeadGitHubLink() {
       url: string;
       title?: string | null;
     }) => addLeadGitHubLink(leadId, url, title),
-    errorMessage: 'Fout bij toevoegen GitHub-link',
-    invalidateKeys: [queryKeys.leads.all],
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.all });
+    },
   });
 }
 

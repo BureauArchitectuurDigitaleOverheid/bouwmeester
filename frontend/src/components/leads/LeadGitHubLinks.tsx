@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { DetailSection } from '@/components/common/DetailSection';
+import { ApiError } from '@/api/client';
 import {
   useAddLeadGitHubLink,
   useUpdateLeadGitHubLink,
@@ -86,10 +87,15 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
       setTitle('');
       setShowForm(false);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Kon link niet toevoegen.';
-      if (msg.includes('422')) setError('Geen geldige GitHub-URL.');
-      else if (msg.includes('409')) setError('Deze link is al gekoppeld.');
-      else setError(msg);
+      if (e instanceof ApiError && e.status === 422) {
+        setError('Geen geldige GitHub-URL.');
+      } else if (e instanceof ApiError && e.status === 409) {
+        setError('Deze link is al gekoppeld.');
+      } else if (e instanceof Error) {
+        setError(e.message);
+      } else {
+        setError('Kon link niet toevoegen.');
+      }
     }
   };
 

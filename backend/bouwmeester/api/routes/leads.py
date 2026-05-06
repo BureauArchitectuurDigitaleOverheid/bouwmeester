@@ -1179,9 +1179,7 @@ async def create_github_link(
             detail="Deze GitHub-link is al gekoppeld aan deze lead",
         )
 
-    created_by_id = (
-        UUID(current_user["id"]) if current_user and current_user.get("id") else None
-    )
+    created_by_id = current_user.id if current_user else None
 
     link = await repo.create(
         scope_type=SCOPE_LEAD,
