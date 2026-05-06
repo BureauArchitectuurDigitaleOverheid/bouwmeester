@@ -20,12 +20,19 @@ from bouwmeester.schema.notification import NotificationCreate
 
 logger = logging.getLogger(__name__)
 
+# Strong references to in-flight background tasks. asyncio.create_task only
+# holds a weak reference to its task, so without this set the GC can collect
+# the task before it has a chance to run — which silently drops the Mattermost
+# DM with no exception and no log line.
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
 
 async def _mattermost_send_background(notification_id: UUID) -> None:
     """Send a notification to Mattermost in a background task.
 
     Uses its own DB session so the caller's request is not blocked.
     """
+    logger.info("Mattermost background send starting for %s", notification_id)
     try:
         from bouwmeester.core.database import async_session
         from bouwmeester.services.mattermost_service import MattermostService
@@ -34,10 +41,18 @@ async def _mattermost_send_background(notification_id: UUID) -> None:
             mm = MattermostService(session)
             try:
                 if not await mm.is_enabled():
+                    logger.debug(
+                        "Mattermost disabled, skipping send for %s", notification_id
+                    )
                     return
                 notification = await session.get(Notification, notification_id)
                 if notification:
-                    await mm.send_notification(notification)
+                    sent = await mm.send_notification(notification)
+                    logger.info(
+                        "Mattermost send for %s: %s",
+                        notification_id,
+                        "ok" if sent else "skipped/failed",
+                    )
                 else:
                     logger.warning(
                         "Notification %s not found for Mattermost send",
@@ -82,10 +97,13 @@ class NotificationService:
         def _after_commit(session):  # noqa: ARG001
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(_mattermost_send_background(notification_id))
             except RuntimeError:
                 # No running event loop (e.g. in sync tests) — skip silently.
-                pass
+                return
+            task = loop.create_task(_mattermost_send_background(notification_id))
+            _BACKGROUND_TASKS.add(task)
+            task.add_done_callback(_BACKGROUND_TASKS.discard)
+            logger.debug("Scheduled Mattermost send for %s", notification_id)
 
     async def notify_task_assigned(
         self, task: Task, assignee: Person, actor_id: UUID | None = None
