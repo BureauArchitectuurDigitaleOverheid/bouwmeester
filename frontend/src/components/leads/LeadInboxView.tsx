@@ -256,7 +256,7 @@ export function LeadInboxView({
                       </div>
 
                       {lead.description && (
-                        <div className="text-xs text-text-secondary mt-0.5 max-h-8 overflow-hidden break-words">
+                        <div className="text-xs text-text-secondary mt-1 line-clamp-2 break-words [&_p]:m-0 [&_p]:leading-snug">
                           <RichTextDisplay content={lead.description} fallback="" />
                         </div>
                       )}
