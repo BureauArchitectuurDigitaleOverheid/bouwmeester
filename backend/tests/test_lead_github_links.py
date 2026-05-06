@@ -231,6 +231,49 @@ async def test_created_by_id_is_set_when_authenticated(
         _test_app.dependency_overrides.pop(get_optional_user, None)
 
 
+class _UnconfiguredClient:
+    """Mock van GitHubClient zonder token: __aenter__ raised."""
+
+    async def __aenter__(self):
+        from bouwmeester.core.github_client import GitHubAuthNotConfiguredError
+
+        raise GitHubAuthNotConfiguredError("test: geen token")
+
+    async def __aexit__(self, *_):  # pragma: no cover — niet bereikt
+        return None
+
+
+async def test_refresh_returns_503_without_token(client, sample_lead, monkeypatch):
+    """Zonder GITHUB_TOKEN return de refresh-endpoint 503.
+
+    Anders zou een UI-knop 'Verversen' stilletjes geen verandering
+    opleveren — beter expliciet falen.
+    """
+    create = await client.post(
+        f"/api/leads/{sample_lead.id}/github-links",
+        json={"url": "https://github.com/foo/bar/pull/55"},
+    )
+    link_id = create.json()["id"]
+
+    monkeypatch.setattr(
+        "bouwmeester.api.routes.leads.GitHubClient",
+        lambda: _UnconfiguredClient(),
+    )
+
+    resp = await client.post(
+        f"/api/leads/{sample_lead.id}/github-links/{link_id}/refresh"
+    )
+    assert resp.status_code == 503
+
+
+async def test_refresh_unknown_link_returns_404(client, sample_lead):
+    fake_id = uuid.uuid4()
+    resp = await client.post(
+        f"/api/leads/{sample_lead.id}/github-links/{fake_id}/refresh"
+    )
+    assert resp.status_code == 404
+
+
 async def test_link_for_other_lead_returns_404(client, db_session, sample_lead):
     # Maak een link op sample_lead
     create = await client.post(

@@ -1772,6 +1772,11 @@ export interface LeadGitHubLink {
   repo: string;
   ref: string | null;
   title: string | null;
+  state: string | null;
+  state_extra: Record<string, unknown> | null;
+  last_checked_at: string | null;
+  last_changed_at: string | null;
+  check_error: string | null;
   created_by_id: string | null;
   created_at: string;
 }

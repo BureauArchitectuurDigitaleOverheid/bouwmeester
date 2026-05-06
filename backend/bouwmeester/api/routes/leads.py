@@ -1,7 +1,7 @@
 """API routes for leads (sales/intake funnel)."""
 
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import get_db
+from bouwmeester.core.github_client import GitHubAuthNotConfiguredError, GitHubClient
 from bouwmeester.core.github_url import parse_github_url
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
@@ -63,6 +65,7 @@ from bouwmeester.schema.lead import (
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse, TagCreate
 from bouwmeester.services.activity_service import log_activity
+from bouwmeester.services.github_fetch import refresh_link_status
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
 
@@ -141,6 +144,38 @@ def _check_initiatief_access(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Geen toegang tot dit initiatief",
         )
+
+
+async def _refresh_stale_github_links(links: list[GitHubLink]) -> None:
+    """Lazy-on-view refresh: links waarvan de status ouder dan TTL is (of
+    nog nooit opgehaald) krijgen een verse fetch binnen één gedeelde
+    httpx-client. Faalt stil als auth ontbreekt of timeouts optreden —
+    de lead-detail-render moet hier nooit op blokkeren.
+    """
+    settings = get_settings()
+    ttl = settings.GITHUB_STATUS_TTL_SECONDS
+    now = datetime.now(UTC)
+
+    stale: list[GitHubLink] = []
+    for link in links:
+        if link.link_type != "pull_request":
+            continue  # v1: alleen PR's
+        if link.last_checked_at is None:
+            stale.append(link)
+            continue
+        age = (now - link.last_checked_at).total_seconds()
+        if age >= ttl:
+            stale.append(link)
+
+    if not stale:
+        return
+
+    try:
+        async with GitHubClient() as client:
+            for link in stale:
+                await refresh_link_status(link, client=client)
+    except GitHubAuthNotConfiguredError:
+        return  # geen token → niets om te doen
 
 
 # ---------------------------------------------------------------------------
@@ -364,6 +399,7 @@ async def get_lead(
 
     gh_repo = GitHubLinkRepository(db)
     gh_links = await gh_repo.list_for_scope(SCOPE_LEAD, lead_id)
+    await _refresh_stale_github_links(gh_links)
     response.github_links = [
         GitHubLinkResponse.model_validate(link) for link in gh_links
     ]
@@ -1272,6 +1308,47 @@ async def delete_github_link(
             "owner_repo": owner_repo,
         },
     )
+
+
+@router.post(
+    "/{lead_id}/github-links/{link_id}/refresh",
+    response_model=GitHubLinkResponse,
+)
+async def refresh_github_link(
+    lead_id: UUID,
+    link_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+) -> GitHubLinkResponse:
+    """Forceer een verse status-fetch voor één link. Negeert TTL.
+
+    Bij ontbrekende GITHUB_TOKEN return we 503 zodat de UI weet dat
+    statusfetch hier niet beschikbaar is — anders zou de knop stilletjes
+    niets lijken te doen.
+    """
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, init_ctx)
+
+    repo = GitHubLinkRepository(db)
+    link = await repo.get(link_id)
+    if link is None or link.scope_type != SCOPE_LEAD or link.scope_id != lead_id:
+        raise HTTPException(status_code=404, detail="GitHub-link niet gevonden")
+
+    try:
+        async with GitHubClient() as client:
+            await refresh_link_status(link, client=client)
+    except GitHubAuthNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="GitHub-status-fetch is niet geconfigureerd op de server.",
+        ) from exc
+
+    await db.flush()
+    await db.refresh(link)
+    return GitHubLinkResponse.model_validate(link)
 
 
 # ---------------------------------------------------------------------------

@@ -223,3 +223,13 @@ export async function updateLeadGitHubLink(
 export async function deleteLeadGitHubLink(leadId: string, linkId: string): Promise<void> {
   return apiDelete(`/api/leads/${leadId}/github-links/${linkId}`);
 }
+
+export async function refreshLeadGitHubLink(
+  leadId: string,
+  linkId: string,
+): Promise<LeadGitHubLink> {
+  return apiPost<LeadGitHubLink>(
+    `/api/leads/${leadId}/github-links/${linkId}/refresh`,
+    {},
+  );
+}
