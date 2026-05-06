@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Trash2,
   Pencil,
@@ -25,6 +25,7 @@ import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { LinkLeadNodeModal } from './LinkLeadNodeModal';
+import { AddLeadContactModal } from './AddLeadContactModal';
 import { Badge } from '@/components/common/Badge';
 import { DetailSection } from '@/components/common/DetailSection';
 import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
@@ -36,7 +37,6 @@ import {
   useDeleteLead,
   useCreateLeadActivity,
   useDeleteLeadActivity,
-  useAddLeadContact,
   useRemoveLeadContact,
   useUnlinkLeadNode,
   useUploadLeadAttachment,
@@ -123,20 +123,11 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const createInitiatief = useCreateInitiatief();
   const createPerson = useCreatePerson();
 
-  const contactPersonOptions = useMemo(
-    () => (people ?? [])
-      .filter((p) => p.is_active)
-      .sort((a, b) => a.naam.localeCompare(b.naam))
-      .map((p) => ({ value: p.id, label: p.naam })),
-    [people],
-  );
-
   const updateLead = useUpdateLead();
   const deleteLead = useDeleteLead();
   const createActivity = useCreateLeadActivity();
   const deleteActivity = useDeleteLeadActivity();
   const { person } = useAuth();
-  const addContact = useAddLeadContact();
   const removeContact = useRemoveLeadContact();
   const unlinkNode = useUnlinkLeadNode();
   const uploadAttachment = useUploadLeadAttachment();
@@ -171,8 +162,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
 
   // Contact add form
   const [showAddContact, setShowAddContact] = useState(false);
-  const [contactPersonId, setContactPersonId] = useState('');
-  const [contactRol, setContactRol] = useState('contactpersoon');
 
   // Node link modal
   const [showLinkNode, setShowLinkNode] = useState(false);
@@ -310,20 +299,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           setActivityType(LeadActivityType.NOTE);
           setActivityUitkomst('');
           setActivityVervolgacties('');
-        },
-      },
-    );
-  };
-
-  const handleAddContact = () => {
-    if (!lead || !contactPersonId) return;
-    addContact.mutate(
-      { leadId: lead.id, personId: contactPersonId, rol: contactRol },
-      {
-        onSuccess: () => {
-          setShowAddContact(false);
-          setContactPersonId('');
-          setContactRol('contactpersoon');
         },
       },
     );
@@ -950,40 +925,10 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               <p className="text-sm text-text-secondary">Geen externe contactpersonen</p>
             )}
 
-            {showAddContact && (
-              <div className="space-y-2 mt-2">
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <CreatableSelect
-                      value={contactPersonId}
-                      onChange={setContactPersonId}
-                      options={contactPersonOptions}
-                      placeholder="Zoek of typ een naam..."
-                      onCreate={async (name) => {
-                        const newPerson = await createPerson.mutateAsync({ naam: name, force: true });
-                        return newPerson?.id ?? null;
-                      }}
-                      createLabel="Nieuw contact"
-                    />
-                  </div>
-                  <input
-                    type="text"
-                    value={contactRol}
-                    onChange={(e) => setContactRol(e.target.value)}
-                    placeholder="Rol"
-                    className="w-32 rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:border-primary-400"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" onClick={handleAddContact} disabled={!contactPersonId}>
-                    Toevoegen
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setShowAddContact(false)}>
-                    Annuleren
-                  </Button>
-                </div>
-              </div>
-            )}
+            <AddLeadContactModal
+              leadId={showAddContact ? lead.id : null}
+              onClose={() => setShowAddContact(false)}
+            />
           </DetailSection>
 
           {/* Gelinkte nodes */}

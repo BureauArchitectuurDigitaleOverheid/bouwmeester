@@ -11,7 +11,13 @@ import { useTags } from '@/hooks/useTags';
 import { isEmailFile, parseEmailFile, emailToRawText } from '@/utils/emailParser';
 import type { ParsedEmail } from '@/utils/emailParser';
 import { useToast } from '@/contexts/ToastContext';
-import { usePeople, useCreatePerson } from '@/hooks/usePeople';
+import { usePeople } from '@/hooks/usePeople';
+import { useCreateContactPerson } from '@/hooks/useNewContactPerson';
+import { NewContactPersonFields } from '@/components/leads/NewContactPersonFields';
+import {
+  emptyContactPersonFields,
+  type ContactPersonFieldsState,
+} from '@/components/leads/contactPersonFields';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
@@ -34,17 +40,14 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB, matches backend limit
 
 interface ContactEntry {
   personId: string;
-  name: string;
-  email: string;
-  phone: string;
+  /** Velden voor wanneer er een nieuwe persoon wordt aangemaakt (personId leeg). */
+  fields: ContactPersonFieldsState;
   rol: string;
 }
 
 const emptyContact = (): ContactEntry => ({
   personId: '',
-  name: '',
-  email: '',
-  phone: '',
+  fields: emptyContactPersonFields(),
   rol: 'contactpersoon',
 });
 
@@ -71,6 +74,12 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const updateContact = useCallback((index: number, updates: Partial<ContactEntry>) => {
     setContacts(prev => prev.map((c, i) => i === index ? { ...c, ...updates } : c));
   }, []);
+  // Gedeelde lijst zodat een nieuw-toegevoegde expertise zichtbaar is in
+  // alle openstaande contact-rijen voordat de server-cache ververst.
+  const [extraExpertiseValues, setExtraExpertiseValues] = useState<string[]>([]);
+  const addExtraExpertise = useCallback((value: string) => {
+    setExtraExpertiseValues((prev) => (prev.includes(value) ? prev : [...prev, value]));
+  }, []);
   const [assigneeId, setAssigneeId] = useState<string>('');
   const [broughtById, setBroughtById] = useState<string>('');
   const [leadDate, setLeadDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -82,7 +91,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const { currentPerson } = useCurrentPerson();
   const { data: initiatieven } = useInitiatieven();
   const createInitiatiefMutation = useCreateInitiatief();
-  const createPersonMutation = useCreatePerson();
+  const createContact = useCreateContactPerson();
   const { data: people } = usePeople();
   const { data: allTags } = useTags();
   const { openLeadDetail } = useLeadDetail();
@@ -143,9 +152,12 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     setSelectedTags(result.suggested_tags ?? []);
     setContacts([{
       personId: '',
-      name: result.contact_name ?? '',
-      email: result.contact_email ?? '',
-      phone: result.contact_phone ?? '',
+      fields: {
+        ...emptyContactPersonFields(),
+        naam: result.contact_name ?? '',
+        email: result.contact_email ?? '',
+        phone: result.contact_phone ?? '',
+      },
       rol: 'contactpersoon',
     }]);
     const today = new Date().toISOString().split('T')[0];
@@ -217,8 +229,11 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
               const updated = [...prev];
               updated[0] = {
                 ...updated[0],
-                name: email.senderName || updated[0].name,
-                email: email.senderEmail || updated[0].email,
+                fields: {
+                  ...updated[0].fields,
+                  naam: email.senderName || updated[0].fields.naam,
+                  email: email.senderEmail || updated[0].fields.email,
+                },
               };
               return updated;
             });
@@ -254,7 +269,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   }, [open, initialFiles]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Try to match VLAM's contact_name against existing people
-  const firstContactName = contacts[0]?.name ?? '';
+  const firstContactName = contacts[0]?.fields.naam ?? '';
   useEffect(() => {
     if (firstContactName && people) {
       const match = people.find(
@@ -304,6 +319,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     setTagDropdownOpen(false);
     setStage(LeadStage.INBOX);
     setContacts([emptyContact()]);
+    setExtraExpertiseValues([]);
     setAssigneeId('');
     setBroughtById(currentPerson?.id ?? '');
     setLeadDate(new Date().toISOString().split('T')[0]);
@@ -420,22 +436,31 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
           } catch {
             // Non-critical, don't block lead creation
           }
-        } else if (contact.name.trim()) {
+        } else if (contact.fields.naam.trim()) {
           try {
             let personId: string | null = null;
-            if (contact.email.trim() && people) {
+            // Try to match an existing person by email first to avoid duplicates.
+            const email = contact.fields.email.trim();
+            if (email && people) {
               const byEmail = people.find(
-                (p) => p.email?.toLowerCase() === contact.email.trim().toLowerCase(),
+                (p) => p.email?.toLowerCase() === email.toLowerCase(),
               );
               if (byEmail) personId = byEmail.id;
             }
             if (!personId) {
-              const newPerson = await createPersonMutation.mutateAsync({
-                naam: contact.name.trim(),
-                email: contact.email.trim() || undefined,
-                force: true,
+              const result = await createContact.create({
+                naam: contact.fields.naam,
+                email: contact.fields.email,
+                phone: contact.fields.phone,
+                functie: contact.fields.functie,
+                expertise: contact.fields.expertise,
+                organisatieEenheidId:
+                  contact.fields.organisatieEenheidId || undefined,
+                samenwerkingsverbandIds: Array.from(
+                  contact.fields.samenwerkingsverbandIds,
+                ),
               });
-              personId = newPerson?.id ?? null;
+              personId = result?.personId ?? null;
               if (!personId) continue;
             }
             await addLeadContactApi(lead.id, personId, contact.rol);
@@ -831,48 +856,40 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                     value={contact.personId}
                     onChange={(val) => {
                       const person = people?.find((p) => p.id === val);
-                      updateContact(index, { personId: val, name: person?.naam ?? contact.name });
+                      updateContact(index, {
+                        personId: val,
+                        fields: {
+                          ...contact.fields,
+                          naam: person?.naam ?? contact.fields.naam,
+                        },
+                      });
                     }}
                     options={contactOptions}
                     placeholder="Zoek of typ een naam..."
                     onCreate={async (name) => {
-                      updateContact(index, { name, personId: '' });
+                      updateContact(index, {
+                        personId: '',
+                        fields: { ...contact.fields, naam: name },
+                      });
                       return null;
                     }}
                     createLabel="Nieuw contact"
-                    displayValue={!contact.personId && contact.name ? contact.name : undefined}
+                    displayValue={
+                      !contact.personId && contact.fields.naam ? contact.fields.naam : undefined
+                    }
                     onClear={() => {
                       updateContact(index, emptyContact());
                     }}
                   />
 
-                  {(contact.personId || contact.name) && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-text mb-1">
-                          E-mail
-                        </label>
-                        <input
-                          type="email"
-                          value={contact.email}
-                          onChange={(e) => updateContact(index, { email: e.target.value })}
-                          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                          placeholder="email@organisatie.nl"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-text mb-1">
-                          Telefoon
-                        </label>
-                        <input
-                          type="tel"
-                          value={contact.phone}
-                          onChange={(e) => updateContact(index, { phone: e.target.value })}
-                          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-                          placeholder="06-12345678"
-                        />
-                      </div>
-                    </div>
+                  {!contact.personId && contact.fields.naam && (
+                    <NewContactPersonFields
+                      state={contact.fields}
+                      onChange={(next) => updateContact(index, { fields: next })}
+                      hideNaam
+                      extraExpertiseValues={extraExpertiseValues}
+                      onAddExtraExpertise={addExtraExpertise}
+                    />
                   )}
                 </div>
               ))}
