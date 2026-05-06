@@ -1,4 +1,4 @@
-"""API routes for Samenwerkingsverband (programma/werkgroep/...)."""
+"""API routes for Samenwerkingsverband (programma/werkgroep/stuurgroep/...)."""
 
 from uuid import UUID
 

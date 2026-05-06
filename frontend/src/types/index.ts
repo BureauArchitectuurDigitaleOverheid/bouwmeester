@@ -2120,20 +2120,32 @@ export interface CommunityGraphResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Samenwerkingsverband (programma | werkgroep | opschalingsticket | ...)
+// Samenwerkingsverband (programma | werkgroep | stuurgroep | taskforce | ...)
 // ---------------------------------------------------------------------------
 
 export type SamenwerkingsverbandType =
   | 'programma'
   | 'werkgroep'
   | 'opschalingsticket'
-  | 'ketenproject';
+  | 'ketenproject'
+  | 'stuurgroep'
+  | 'taskforce'
+  | 'innovatiebudget'
+  | 'community_of_practice'
+  | 'pilot'
+  | 'convenant';
 
 export const SAMENWERKINGSVERBAND_TYPE_LABELS: Record<string, string> = {
   programma: 'Programma',
   werkgroep: 'Werkgroep',
   opschalingsticket: 'Opschalingsticket',
   ketenproject: 'Ketenproject',
+  stuurgroep: 'Stuurgroep',
+  taskforce: 'Taskforce',
+  innovatiebudget: 'Innovatiebudget',
+  community_of_practice: 'Community of Practice',
+  pilot: 'Pilot',
+  convenant: 'Convenant',
 };
 
 export const SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS: Record<string, BadgeVariant> = {
@@ -2141,6 +2153,12 @@ export const SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS: Record<string, BadgeVariant
   werkgroep: 'cyan',
   opschalingsticket: 'amber',
   ketenproject: 'emerald',
+  stuurgroep: 'indigo',
+  taskforce: 'red',
+  innovatiebudget: 'green',
+  community_of_practice: 'blue',
+  pilot: 'orange',
+  convenant: 'slate',
 };
 
 export const SAMENWERKINGSVERBAND_TYPE_OPTIONS: { value: string; label: string }[] =

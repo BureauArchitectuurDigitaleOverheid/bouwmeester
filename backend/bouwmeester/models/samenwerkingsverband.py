@@ -1,6 +1,7 @@
-"""Samenwerkingsverband model — ad-hoc samenwerkingsvormen los van de
+"""Samenwerkingsverband model: ad-hoc samenwerkingsvormen los van de
 hierarchische OrganisatieEenheid-boom (programma, werkgroep,
-opschalingsticket, ketenproject)."""
+opschalingsticket, ketenproject, stuurgroep, taskforce, innovatiebudget,
+community_of_practice, pilot, convenant)."""
 
 import uuid
 from datetime import date, datetime
@@ -29,7 +30,10 @@ class Samenwerkingsverband(Base):
     naam: Mapped[str] = mapped_column(nullable=False)
     type: Mapped[str] = mapped_column(
         nullable=False,
-        comment="programma|werkgroep|opschalingsticket|ketenproject",
+        comment=(
+            "programma|werkgroep|opschalingsticket|ketenproject|stuurgroep|"
+            "taskforce|innovatiebudget|community_of_practice|pilot|convenant"
+        ),
     )
     beschrijving: Mapped[str | None] = mapped_column(Text, nullable=True)
     start_datum: Mapped[date | None] = mapped_column(Date, nullable=True)
