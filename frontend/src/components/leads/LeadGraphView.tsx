@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
-import { Building2, User, FileText, Lightbulb, Plus } from 'lucide-react';
+import { Building2, User, UserCircle2, FileText, Lightbulb, Plus, X } from 'lucide-react';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import ReactFlow, {
   Background,
@@ -47,17 +47,30 @@ const LEAD_STAGE_HEX: Record<string, string> = {
   koelkast: '#9CA3AF',
 };
 
-const PERSON_COLOR = '#EC4899';
+const PERSON_INTERN_COLOR = '#EC4899';
+const PERSON_EXTERN_COLOR = '#F97316';
 const ORG_COLOR = '#14B8A6';
 const CORPUS_NODE_FALLBACK = '#6B7280';
 
 // ---- Community node type to rank (dagre) ----
-const COMMUNITY_NODE_RANK: Record<string, number> = {
-  organisation: 0,
-  corpus_node: 1,
-  lead: 2,
-  person: 3,
-};
+// Externe personen krijgen een eigen onderste laag, los van de interne (assignee/stakeholder)
+// personen, zodat externen en hun verbindingen visueel gescheiden zijn.
+const RANK_ORGANISATION = 0;
+const RANK_CORPUS_NODE = 1;
+const RANK_LEAD = 2;
+const RANK_PERSON_INTERN = 3;
+const RANK_PERSON_EXTERN = 4;
+const RANK_DEFAULT = RANK_LEAD;
+
+function getNodeRank(node: CommunityGraphNode): number {
+  if (node.node_type === 'person') {
+    return node.person_role === 'extern' ? RANK_PERSON_EXTERN : RANK_PERSON_INTERN;
+  }
+  if (node.node_type === 'organisation') return RANK_ORGANISATION;
+  if (node.node_type === 'corpus_node') return RANK_CORPUS_NODE;
+  if (node.node_type === 'lead') return RANK_LEAD;
+  return RANK_DEFAULT;
+}
 
 // ---- Edge type styling ----
 interface EdgeStyle {
@@ -99,8 +112,10 @@ interface CommunityGraphNodeData {
   stage?: string | null;
   initiatiefId?: string | null;
   functie?: string | null;
+  personRole?: 'intern' | 'extern' | null;
   orgType?: string | null;
   corpusNodeType?: string | null;
+  dimmed?: boolean;
   onClick?: () => void;
   onAddContact?: () => void;
 }
@@ -109,7 +124,9 @@ function getNodeColor(data: CommunityGraphNodeData): string {
   if (data.nodeType === 'lead') {
     return LEAD_STAGE_HEX[data.stage ?? ''] ?? '#9CA3AF';
   }
-  if (data.nodeType === 'person') return PERSON_COLOR;
+  if (data.nodeType === 'person') {
+    return data.personRole === 'extern' ? PERSON_EXTERN_COLOR : PERSON_INTERN_COLOR;
+  }
   if (data.nodeType === 'organisation') return ORG_COLOR;
   if (data.nodeType === 'corpus_node' && data.corpusNodeType) {
     return NODE_TYPE_HEX_COLORS[data.corpusNodeType as NodeType] ?? CORPUS_NODE_FALLBACK;
@@ -132,11 +149,16 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
       );
     }
     if (data.nodeType === 'person') {
+      const isExtern = data.personRole === 'extern';
+      const PersonIcon = isExtern ? UserCircle2 : User;
+      const roleLabel = isExtern ? 'Extern' : 'Intern';
+      const functieLabel = formatFunctie(data.functie);
+      const label = functieLabel ? `${roleLabel} · ${functieLabel}` : roleLabel;
       return (
         <div className="flex items-center gap-1 mb-1">
-          <User className="h-3 w-3" style={{ color }} />
+          <PersonIcon className="h-3 w-3" style={{ color }} />
           <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
-            {formatFunctie(data.functie) ?? 'Persoon'}
+            {label}
           </span>
         </div>
       );
@@ -177,6 +199,9 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
         cursor: data.onClick ? 'pointer' : 'default',
         overflow: 'hidden',
         position: 'relative',
+        opacity: data.dimmed ? 0.18 : 1,
+        transition: 'opacity 150ms ease',
+        pointerEvents: data.dimmed ? 'none' : 'auto',
       }}
     >
       <div style={{ height: '4px', background: color, borderRadius: '10px 10px 0 0' }} />
@@ -257,7 +282,7 @@ function computeLayout(
   if (nodes.length === 0) return positions;
 
   const nodeIds = new Set(nodes.map((n) => n.id));
-  const nodeTypeMap = new Map(nodes.map((n) => [n.id, n.node_type]));
+  const nodeRankMap = new Map(nodes.map((n) => [n.id, getNodeRank(n)]));
 
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
@@ -276,8 +301,8 @@ function computeLayout(
 
   for (const edge of edges) {
     if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
-      const fromRank = COMMUNITY_NODE_RANK[nodeTypeMap.get(edge.source) ?? ''] ?? 2;
-      const toRank = COMMUNITY_NODE_RANK[nodeTypeMap.get(edge.target) ?? ''] ?? 2;
+      const fromRank = nodeRankMap.get(edge.source) ?? RANK_DEFAULT;
+      const toRank = nodeRankMap.get(edge.target) ?? RANK_DEFAULT;
       if (fromRank <= toRank) {
         g.setEdge(edge.source, edge.target);
       } else {
@@ -349,6 +374,11 @@ function CommunityGraphInner({
   const addContactRef = useRef((leadId: string) => setAddContactLeadId(leadId));
   addContactRef.current = (leadId: string) => setAddContactLeadId(leadId);
 
+  // Focus mode: dim everything outside a 2-hop neighbourhood around one node.
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const setFocusRef = useRef((id: string | null) => setFocusedNodeId(id));
+  setFocusRef.current = (id: string | null) => setFocusedNodeId(id);
+
   // View-specific filter: node type toggles
   const [enabledTypes, setEnabledTypes] = useState<Set<CommunityNodeType>>(
     new Set(['lead', 'person', 'organisation', 'corpus_node']),
@@ -383,6 +413,10 @@ function CommunityGraphInner({
         onAddContact = () => addContactRef.current(rawId);
       } else if (node.node_type === 'corpus_node') {
         onClick = () => openNodeDetailRef.current(rawId);
+      } else if (node.node_type === 'person' || node.node_type === 'organisation') {
+        // Click on a person/organisation focuses the graph on that node's neighbourhood
+        // instead of opening a detail panel (there is no detail panel for these).
+        onClick = () => setFocusRef.current(node.id);
       }
 
       return {
@@ -395,6 +429,7 @@ function CommunityGraphInner({
           stage: node.stage,
           initiatiefId: node.initiatief_id,
           functie: node.functie,
+          personRole: node.person_role ?? null,
           orgType: node.org_type,
           corpusNodeType: node.corpus_node_type,
           onClick,
@@ -433,9 +468,55 @@ function CommunityGraphInner({
     return { allRfNodes, allRfEdges };
   }, [data]);
 
-  // Apply filters (type toggles, stage, initiative, search from props)
+  // A search query that matches a person's name auto-focuses on that person.
+  // For non-person matches the query falls back to the existing hide-by-name behaviour.
+  const searchFocusId = useMemo(() => {
+    const q = searchQueryProp.trim().toLowerCase();
+    if (!q) return null;
+    const matchingPerson = allRfNodes.find((n) => {
+      const d = n.data as CommunityGraphNodeData;
+      return d.nodeType === 'person' && d.label.toLowerCase().includes(q);
+    });
+    return matchingPerson?.id ?? null;
+  }, [allRfNodes, searchQueryProp]);
+
+  // Active focus is either an explicit click-set focus or, if none, a search-driven focus.
+  const activeFocusId = focusedNodeId ?? searchFocusId;
+
+  // BFS over the (undirected) edge graph up to depth=2 from the focused node.
+  const focusedSet = useMemo(() => {
+    if (!activeFocusId) return null;
+    const adjacency = new Map<string, Set<string>>();
+    for (const edge of allRfEdges) {
+      if (!adjacency.has(edge.source)) adjacency.set(edge.source, new Set());
+      if (!adjacency.has(edge.target)) adjacency.set(edge.target, new Set());
+      adjacency.get(edge.source)!.add(edge.target);
+      adjacency.get(edge.target)!.add(edge.source);
+    }
+    const visited = new Set<string>([activeFocusId]);
+    let frontier: string[] = [activeFocusId];
+    for (let depth = 0; depth < 2; depth += 1) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const nb of adjacency.get(id) ?? []) {
+          if (!visited.has(nb)) {
+            visited.add(nb);
+            next.push(nb);
+          }
+        }
+      }
+      frontier = next;
+      if (frontier.length === 0) break;
+    }
+    return visited;
+  }, [activeFocusId, allRfEdges]);
+
+  // Apply filters (type toggles, stage, initiative) and focus dimming.
+  // Search-as-hide only kicks in when the query does not match a person — otherwise
+  // the matching person becomes the focus target and everything stays visible-but-dimmed.
   const { rfNodes, rfEdges } = useMemo(() => {
-    const q = searchQueryProp.toLowerCase();
+    const q = searchQueryProp.trim().toLowerCase();
+    const searchActsAsFocus = searchFocusId !== null;
     const visibleIds = new Set<string>();
 
     const rfNodes = allRfNodes.map((node) => {
@@ -443,19 +524,41 @@ function CommunityGraphInner({
       const matchesType = enabledTypes.has(d.nodeType);
       const matchesStage = !stageFilterProp || d.nodeType !== 'lead' || d.stage === stageFilterProp;
       const matchesInitiatief = !initiatiefId || d.nodeType !== 'lead' || d.initiatiefId === initiatiefId;
-      const matchesSearch = !q || d.label.toLowerCase().includes(q);
+      const matchesSearch = !q || searchActsAsFocus || d.label.toLowerCase().includes(q);
       const isVisible = matchesType && matchesStage && matchesInitiatief && matchesSearch;
       if (isVisible) visibleIds.add(node.id);
-      return { ...node, hidden: !isVisible };
+      const dimmed = isVisible && focusedSet !== null && !focusedSet.has(node.id);
+      return { ...node, hidden: !isVisible, data: { ...d, dimmed } };
     });
 
     const rfEdges = allRfEdges.map((edge) => {
       const bothVisible = visibleIds.has(edge.source) && visibleIds.has(edge.target);
-      return { ...edge, hidden: !bothVisible };
+      const dimmed =
+        bothVisible &&
+        focusedSet !== null &&
+        !(focusedSet.has(edge.source) && focusedSet.has(edge.target));
+      const baseStyle = edge.style ?? {};
+      return {
+        ...edge,
+        hidden: !bothVisible,
+        style: dimmed ? { ...baseStyle, opacity: 0.12 } : { ...baseStyle, opacity: 1 },
+        labelStyle: dimmed
+          ? { ...edge.labelStyle, opacity: 0.2 }
+          : edge.labelStyle,
+      };
     });
 
     return { rfNodes, rfEdges };
-  }, [allRfNodes, allRfEdges, enabledTypes, stageFilterProp, initiatiefId, searchQueryProp]);
+  }, [
+    allRfNodes,
+    allRfEdges,
+    enabledTypes,
+    stageFilterProp,
+    initiatiefId,
+    searchQueryProp,
+    searchFocusId,
+    focusedSet,
+  ]);
 
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
@@ -498,7 +601,7 @@ function CommunityGraphInner({
     <div className="space-y-4">
       <LeadMetricsBar />
 
-      {/* Node type toggles */}
+      {/* Node type toggles + focus indicator */}
       <div className="flex items-center gap-2 flex-wrap">
         {NODE_TYPE_TOGGLES.map((toggle) => {
           const active = enabledTypes.has(toggle.key);
@@ -515,6 +618,16 @@ function CommunityGraphInner({
             </button>
           );
         })}
+        {focusedNodeId && (
+          <button
+            onClick={() => setFocusedNodeId(null)}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium bg-purple-100 text-purple-800 hover:bg-purple-200 transition-colors ml-auto"
+            title="Toon weer alle nodes"
+          >
+            <X className="h-3.5 w-3.5" />
+            Focus opheffen
+          </button>
+        )}
       </div>
 
       {/* Graph canvas */}
@@ -528,6 +641,7 @@ function CommunityGraphInner({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={handleConnect}
+          onPaneClick={() => setFocusedNodeId(null)}
           nodeTypes={nodeTypes}
           fitView
           fitViewOptions={{ padding: 0.2, maxZoom: 1.5 }}

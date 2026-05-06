@@ -814,7 +814,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                 <div key={index} className="space-y-4">
                   {index > 0 && (
                     <div className="flex items-center justify-between pt-2 border-t border-border">
-                      <span className="text-xs font-medium text-text-secondary">Extra contactpersoon</span>
+                      <span className="text-xs font-medium text-text-secondary">Extra externe contactpersoon</span>
                       <button
                         type="button"
                         onClick={() => setContacts(prev => prev.filter((_, i) => i !== index))}
@@ -827,7 +827,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                   )}
 
                   <CreatableSelect
-                    label={index === 0 ? "Contactpersoon (extern)" : "Contactpersoon"}
+                    label={index === 0 ? "Externe contactpersoon" : "Extra externe contactpersoon"}
                     value={contact.personId}
                     onChange={(val) => {
                       const person = people?.find((p) => p.id === val);
@@ -884,7 +884,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                   className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-primary-600 transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  Extra contactpersoon toevoegen
+                  Extra externe contactpersoon toevoegen
                 </button>
               )}
             </div>

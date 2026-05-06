@@ -4,6 +4,8 @@ import uuid
 
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
+from bouwmeester.models.lead import Lead
+from bouwmeester.models.resource_permission import ResourcePermission
 
 # ---------------------------------------------------------------------------
 # Graph search
@@ -200,3 +202,140 @@ async def test_find_path_returns_200(client, sample_node, second_node, sample_ed
     assert "length" in data
     assert data["from_id"] == str(sample_node.id)
     assert data["to_id"] == str(second_node.id)
+
+
+# ---------------------------------------------------------------------------
+# Community graph -- person_role (intern vs extern)
+# ---------------------------------------------------------------------------
+
+
+async def test_community_graph_assignee_is_intern(client, db_session, sample_person):
+    """A lead assignee shows up as person_role='intern' in the community graph."""
+    lead = Lead(
+        id=uuid.uuid4(),
+        title="Lead met assignee",
+        stage="verkennen",
+        assignee_id=sample_person.id,
+    )
+    db_session.add(lead)
+    await db_session.flush()
+
+    resp = await client.get("/api/graph/community")
+    assert resp.status_code == 200
+    data = resp.json()
+    person_node = next(
+        (n for n in data["nodes"] if n["id"] == f"person-{sample_person.id}"),
+        None,
+    )
+    assert person_node is not None
+    assert person_node["person_role"] == "intern"
+
+
+async def test_community_graph_lead_contact_is_extern(
+    client, db_session, sample_person
+):
+    """A lead-contact-only person shows up as person_role='extern'."""
+    lead = Lead(
+        id=uuid.uuid4(),
+        title="Lead met externe contact",
+        stage="verkennen",
+    )
+    db_session.add(lead)
+    await db_session.flush()
+
+    db_session.add(
+        ResourcePermission(
+            id=uuid.uuid4(),
+            resource_type="lead",
+            resource_id=lead.id,
+            person_id=sample_person.id,
+            rol="contactpersoon",
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.get("/api/graph/community")
+    assert resp.status_code == 200
+    data = resp.json()
+    person_node = next(
+        (n for n in data["nodes"] if n["id"] == f"person-{sample_person.id}"),
+        None,
+    )
+    assert person_node is not None
+    assert person_node["person_role"] == "extern"
+
+
+async def test_community_graph_intern_wins_over_extern(
+    client, db_session, sample_person
+):
+    """Iemand die zowel assignee als externe contact is, krijgt 'intern'."""
+    lead_a = Lead(
+        id=uuid.uuid4(),
+        title="Lead A (assignee)",
+        stage="verkennen",
+        assignee_id=sample_person.id,
+    )
+    lead_b = Lead(
+        id=uuid.uuid4(),
+        title="Lead B (externe contact)",
+        stage="verkennen",
+    )
+    db_session.add_all([lead_a, lead_b])
+    await db_session.flush()
+
+    db_session.add(
+        ResourcePermission(
+            id=uuid.uuid4(),
+            resource_type="lead",
+            resource_id=lead_b.id,
+            person_id=sample_person.id,
+            rol="contactpersoon",
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.get("/api/graph/community")
+    assert resp.status_code == 200
+    data = resp.json()
+    person_node = next(
+        (n for n in data["nodes"] if n["id"] == f"person-{sample_person.id}"),
+        None,
+    )
+    assert person_node is not None
+    assert person_node["person_role"] == "intern"
+
+
+async def test_community_graph_contact_edge_label_is_externe_contactpersoon(
+    client, db_session, sample_person
+):
+    """Lead → person contact-edges met rol 'contactpersoon' krijgen het UI-label."""
+    lead = Lead(
+        id=uuid.uuid4(),
+        title="Lead met externe contact",
+        stage="verkennen",
+    )
+    db_session.add(lead)
+    await db_session.flush()
+
+    db_session.add(
+        ResourcePermission(
+            id=uuid.uuid4(),
+            resource_type="lead",
+            resource_id=lead.id,
+            person_id=sample_person.id,
+            rol="contactpersoon",
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.get("/api/graph/community")
+    assert resp.status_code == 200
+    contact_edges = [
+        e
+        for e in resp.json()["edges"]
+        if e["source"] == f"lead-{lead.id}"
+        and e["target"] == f"person-{sample_person.id}"
+        and e["edge_type"] == "contact"
+    ]
+    assert len(contact_edges) == 1
+    assert contact_edges[0]["label"] == "externe contactpersoon"
