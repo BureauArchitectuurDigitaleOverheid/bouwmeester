@@ -30,6 +30,7 @@ class Samenwerkingsverband(Base):
     naam: Mapped[str] = mapped_column(nullable=False)
     type: Mapped[str] = mapped_column(
         nullable=False,
+        index=True,
         comment=(
             "programma|werkgroep|opschalingsticket|ketenproject|stuurgroep|"
             "taskforce|innovatiebudget|community_of_practice|pilot|convenant"
@@ -42,6 +43,7 @@ class Samenwerkingsverband(Base):
         UUID(as_uuid=True),
         ForeignKey("person.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
