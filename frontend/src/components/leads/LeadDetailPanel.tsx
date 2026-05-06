@@ -1104,7 +1104,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                           <button
                             type="button"
                             onClick={() => setActivityToDelete(activity.id)}
-                            className="ml-auto text-text-secondary opacity-0 group-hover:opacity-100 hover:text-red-600 focus:opacity-100 focus:outline-none"
+                            className="ml-auto text-text-secondary sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 hover:text-red-600 focus:outline-none transition-opacity"
                             aria-label="Activiteit verwijderen"
                             title="Verwijderen"
                           >
