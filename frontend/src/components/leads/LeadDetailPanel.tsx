@@ -904,9 +904,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             )}
           </DetailSection>
 
-          {/* Contactpersonen */}
+          {/* Externe contactpersonen */}
           <DetailSection
-            title="Contactpersonen"
+            title="Externe contactpersonen"
             icon={<User className="h-3.5 w-3.5" />}
             count={lead.contacts.length}
             separated
@@ -939,7 +939,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-text-secondary">Geen contactpersonen</p>
+              <p className="text-sm text-text-secondary">Geen externe contactpersonen</p>
             )}
 
             {showAddContact && (

@@ -202,7 +202,7 @@ export function useAddLeadContact() {
       personId: string;
       rol: string;
     }) => addLeadContact(leadId, personId, rol),
-    errorMessage: 'Fout bij toevoegen contactpersoon',
+    errorMessage: 'Fout bij toevoegen externe contactpersoon',
     invalidateKeys: [queryKeys.leads.all],
   });
 }
@@ -211,7 +211,7 @@ export function useRemoveLeadContact() {
   return useMutationWithError({
     mutationFn: ({ leadId, contactId }: { leadId: string; contactId: string }) =>
       removeLeadContact(leadId, contactId),
-    errorMessage: 'Fout bij verwijderen contactpersoon',
+    errorMessage: 'Fout bij verwijderen externe contactpersoon',
     invalidateKeys: [queryKeys.leads.all],
   });
 }

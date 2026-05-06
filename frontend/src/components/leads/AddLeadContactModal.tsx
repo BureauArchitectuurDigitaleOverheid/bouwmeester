@@ -58,7 +58,7 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
     <Modal
       open={!!leadId}
       onClose={resetAndClose}
-      title="Contact toevoegen"
+      title="Externe contactpersoon toevoegen"
       size="sm"
       zIndex={60}
       footer={

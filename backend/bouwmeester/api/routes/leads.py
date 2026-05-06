@@ -642,11 +642,12 @@ async def add_contact(
     actor_id = current_user.id if current_user else None
     if data.person_id != actor_id:
         notif_svc = NotificationService(db)
+        msg = f"Je bent toegevoegd als externe contactpersoon aan lead: {lead.title}"
         notification_data = NotificationCreate(
             person_id=data.person_id,
             type="lead_contact_added",
-            title=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
-            message=f"Je bent toegevoegd als contactpersoon aan lead: {lead.title}",
+            title=msg,
+            message=msg,
             related_lead_id=lead_id,
         )
         await notif_svc.send(notification_data)

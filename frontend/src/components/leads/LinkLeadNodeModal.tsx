@@ -111,12 +111,12 @@ export function LinkLeadNodeModal({ leadId, onClose }: Props) {
     }
     if (personId) {
       if (existingContactPersonIds.has(personId)) {
-        showWarning('Persoon was al gekoppeld als contactpersoon');
+        showWarning('Persoon was al gekoppeld als externe contactpersoon');
       } else {
         try {
           await addContact.mutateAsync({ leadId, personId, rol });
         } catch {
-          showError('Node gekoppeld, maar contactpersoon kon niet worden toegevoegd');
+          showError('Node gekoppeld, maar externe contactpersoon kon niet worden toegevoegd');
           // Keep modal open so the user sees the partial result and can retry the contact
           return;
         }
@@ -181,10 +181,10 @@ export function LinkLeadNodeModal({ leadId, onClose }: Props) {
         )}
         <div className="border-t border-border pt-4 space-y-3">
           <p className="text-xs text-text-secondary">
-            Optioneel: voeg ook een contactpersoon toe aan deze lead.
+            Optioneel: voeg ook een externe contactpersoon toe aan deze lead.
           </p>
           <CreatableSelect
-            label="Contactpersoon"
+            label="Externe contactpersoon"
             value={personId}
             onChange={setPersonId}
             options={personOptions}

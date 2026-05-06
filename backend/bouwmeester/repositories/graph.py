@@ -307,10 +307,16 @@ class GraphRepository:
                 )
 
         # -- 3. Lead → Person (assignee) edges --
+        # Track internal vs external persons for visual distinction in the graph.
+        # Internal = assignee, brought_by, or corpus-stakeholder. External = only
+        # reachable through a lead-contact ResourcePermission.
         person_ids = set[UUID]()
+        internal_person_ids = set[UUID]()
+        external_person_ids = set[UUID]()
         for lead in leads:
             if lead.assignee_id is not None:
                 person_ids.add(lead.assignee_id)
+                internal_person_ids.add(lead.assignee_id)
                 graph_edges.append(
                     CommunityGraphEdge(
                         id=_next_edge_id(),
@@ -320,6 +326,9 @@ class GraphRepository:
                         label="verantwoordelijke",
                     )
                 )
+            if lead.brought_by_id is not None:
+                person_ids.add(lead.brought_by_id)
+                internal_person_ids.add(lead.brought_by_id)
 
         # -- 4. Lead → Person (contacts via ResourcePermission) --
         contacts_stmt = select(ResourcePermission).where(
@@ -329,6 +338,7 @@ class GraphRepository:
         contacts_result = await self.session.execute(contacts_stmt)
         for contact in contacts_result.scalars().all():
             person_ids.add(contact.person_id)
+            external_person_ids.add(contact.person_id)
             graph_edges.append(
                 CommunityGraphEdge(
                     id=_next_edge_id(),
@@ -421,6 +431,7 @@ class GraphRepository:
             stakeholders_result = await self.session.execute(stakeholders_stmt)
             for sh in stakeholders_result.scalars().all():
                 person_ids.add(sh.person_id)
+                internal_person_ids.add(sh.person_id)
                 graph_edges.append(
                     CommunityGraphEdge(
                         id=_next_edge_id(),
@@ -437,11 +448,19 @@ class GraphRepository:
             persons_result = await self.session.execute(persons_stmt)
             for person in persons_result.scalars().all():
                 pid = f"person-{person.id}"
+                # Intern wins over extern when a person is both
+                if person.id in internal_person_ids:
+                    role = "intern"
+                elif person.id in external_person_ids:
+                    role = "extern"
+                else:
+                    role = None
                 graph_nodes[pid] = CommunityGraphNode(
                     id=pid,
                     node_type="person",
                     label=person.naam,
                     functie=person.functie,
+                    person_role=role,
                 )
 
         # -- 9. Person → OrganisatieEenheid (active plaatsingen) --

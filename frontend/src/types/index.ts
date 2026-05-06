@@ -626,7 +626,7 @@ export const STAKEHOLDER_ROL_LABELS: Record<string, string> = {
 };
 
 export const LEAD_CONTACT_ROL_LABELS: Record<string, string> = {
-  contactpersoon: 'Contactpersoon',
+  contactpersoon: 'Externe contactpersoon',
   opdrachtgever: 'Opdrachtgever',
   betrokken: 'Betrokken',
 };
@@ -743,8 +743,8 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
   'lead.deleted': 'Lead verwijderd',
   'lead.moved': 'Lead verplaatst',
   'lead.merged': 'Leads samengevoegd',
-  'lead_contact.added': 'Contactpersoon toegevoegd aan lead',
-  'lead_contact.removed': 'Contactpersoon verwijderd van lead',
+  'lead_contact.added': 'Externe contactpersoon toegevoegd aan lead',
+  'lead_contact.removed': 'Externe contactpersoon verwijderd van lead',
   'lead_node.added': 'Node gekoppeld aan lead',
   'lead_node.removed': 'Node ontkoppeld van lead',
   'lead_tag.added': 'Tag toegevoegd aan lead',
@@ -2062,6 +2062,7 @@ export interface CommunityGraphNode {
   stage?: string | null;
   initiatief_id?: string | null;
   functie?: string | null;
+  person_role?: 'intern' | 'extern' | null;
   org_type?: string | null;
   corpus_node_type?: string | null;
 }
