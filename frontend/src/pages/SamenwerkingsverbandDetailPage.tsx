@@ -119,14 +119,11 @@ export function SamenwerkingsverbandDetailPage() {
   const personOptions: SelectOption[] = people
     .filter((p) => p.is_active && !p.is_agent && !peopleAlIngedeeld.has(p.id))
     .sort((a, b) => a.naam.localeCompare(b.naam))
-    .map((p) => {
-      const parts = [p.functie, p.expertise].filter((v): v is string => !!v);
-      return {
-        value: p.id,
-        label: p.naam,
-        description: parts.length ? parts.join(' · ') : undefined,
-      };
-    });
+    .map((p) => ({
+      value: p.id,
+      label: p.naam,
+      description: p.functie ?? undefined,
+    }));
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -231,7 +228,7 @@ export function SamenwerkingsverbandDetailPage() {
             </div>
             {swv.beschrijving && (
               <div className="pt-2 border-t border-border/60">
-                <RichTextDisplay value={swv.beschrijving} />
+                <RichTextDisplay content={swv.beschrijving} />
               </div>
             )}
           </div>

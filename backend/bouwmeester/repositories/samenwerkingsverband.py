@@ -70,11 +70,7 @@ class SamenwerkingsverbandRepository(BaseRepository[Samenwerkingsverband]):
         return [(row[0], row[1] or 0) for row in result.all()]
 
     async def get(self, id: UUID) -> Samenwerkingsverband | None:
-        stmt = (
-            select(Samenwerkingsverband)
-            .where(Samenwerkingsverband.id == id)
-            .options(selectinload(Samenwerkingsverband.created_by))
-        )
+        stmt = select(Samenwerkingsverband).where(Samenwerkingsverband.id == id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
