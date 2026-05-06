@@ -12,6 +12,7 @@ import {
 import { format, isToday, isYesterday, subDays, subMonths } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { useLeadTimeline } from '@/hooks/useLeads';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
@@ -146,9 +147,9 @@ function EventDescription({ event }: { event: LeadTimelineEvent }) {
 
     case 'note':
       return event.content ? (
-        <p className="mt-2 text-sm text-text-secondary line-clamp-2">
-          {event.content}
-        </p>
+        <div className="mt-2 line-clamp-2 [&_p]:m-0 [&_p]:leading-snug">
+          <RichTextDisplay content={event.content} fallback="" />
+        </div>
       ) : null;
 
     case 'meeting':
@@ -157,15 +158,21 @@ function EventDescription({ event }: { event: LeadTimelineEvent }) {
       return (
         <div className="mt-2 flex items-start gap-2 text-sm text-text-secondary">
           <EventIcon type={event.event_type} />
-          <span className="line-clamp-2">{event.content ?? getActivityLabel(event.event_type)}</span>
+          {event.content ? (
+            <div className="line-clamp-2 flex-1 [&_p]:m-0 [&_p]:leading-snug">
+              <RichTextDisplay content={event.content} fallback="" />
+            </div>
+          ) : (
+            <span className="line-clamp-2">{getActivityLabel(event.event_type)}</span>
+          )}
         </div>
       );
 
     default:
       return event.content ? (
-        <p className="mt-2 text-sm text-text-secondary line-clamp-2">
-          {event.content}
-        </p>
+        <div className="mt-2 line-clamp-2 [&_p]:m-0 [&_p]:leading-snug">
+          <RichTextDisplay content={event.content} fallback="" />
+        </div>
       ) : null;
   }
 }
