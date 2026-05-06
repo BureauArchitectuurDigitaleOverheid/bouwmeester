@@ -39,6 +39,9 @@ from bouwmeester.api.routes.resource_permissions import (
     router as resource_permissions_router,
 )
 from bouwmeester.api.routes.roles import router as roles_router
+from bouwmeester.api.routes.samenwerkingsverband import (
+    router as samenwerkingsverband_router,
+)
 from bouwmeester.api.routes.search import router as search_router
 from bouwmeester.api.routes.sharing import router as sharing_router
 from bouwmeester.api.routes.skill import router as skill_router
@@ -80,6 +83,7 @@ api_router.include_router(people_router)
 api_router.include_router(public_initiatief_router)
 api_router.include_router(resource_permissions_router)
 api_router.include_router(roles_router)
+api_router.include_router(samenwerkingsverband_router)
 api_router.include_router(search_router)
 api_router.include_router(sharing_router)
 api_router.include_router(skill_router)

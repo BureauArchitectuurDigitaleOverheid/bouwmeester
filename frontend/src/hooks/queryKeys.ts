@@ -203,4 +203,16 @@ export const queryKeys = {
     overzicht: (nodeId: string | undefined) => ['financieel', 'overzicht', nodeId] as const,
     opdrachten: (nodeId: string | undefined) => ['financieel', 'opdrachten', nodeId] as const,
   },
+
+  // --- Samenwerkingsverbanden ---
+  samenwerkingsverbanden: {
+    all: ['samenwerkingsverbanden'] as const,
+    list: (filters?: { search?: string; type?: string; actief?: boolean }) =>
+      ['samenwerkingsverbanden', 'list', filters ?? {}] as const,
+    detail: (id: string | null) => ['samenwerkingsverbanden', 'detail', id] as const,
+    leden: (id: string | null, actief: boolean) =>
+      ['samenwerkingsverbanden', 'leden', id, { actief }] as const,
+    forPerson: (personId: string | null, actief: boolean) =>
+      ['samenwerkingsverbanden', 'for-person', personId, { actief }] as const,
+  },
 } as const;

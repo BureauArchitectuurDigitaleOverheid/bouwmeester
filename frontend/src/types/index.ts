@@ -2084,3 +2084,100 @@ export interface CommunityGraphResponse {
   nodes: CommunityGraphNode[];
   edges: CommunityGraphEdge[];
 }
+
+// ---------------------------------------------------------------------------
+// Samenwerkingsverband (programma | werkgroep | opschalingsticket | ...)
+// ---------------------------------------------------------------------------
+
+export type SamenwerkingsverbandType =
+  | 'programma'
+  | 'werkgroep'
+  | 'opschalingsticket'
+  | 'ketenproject';
+
+export const SAMENWERKINGSVERBAND_TYPE_LABELS: Record<string, string> = {
+  programma: 'Programma',
+  werkgroep: 'Werkgroep',
+  opschalingsticket: 'Opschalingsticket',
+  ketenproject: 'Ketenproject',
+};
+
+export const SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS: Record<string, BadgeVariant> = {
+  programma: 'purple',
+  werkgroep: 'cyan',
+  opschalingsticket: 'amber',
+  ketenproject: 'emerald',
+};
+
+export const SAMENWERKINGSVERBAND_TYPE_OPTIONS: { value: string; label: string }[] =
+  Object.entries(SAMENWERKINGSVERBAND_TYPE_LABELS).map(([value, label]) => ({
+    value,
+    label,
+  }));
+
+export interface Samenwerkingsverband {
+  id: string;
+  naam: string;
+  type: string;
+  beschrijving?: string | null;
+  start_datum?: string | null;
+  eind_datum?: string | null;
+  created_by_id?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  aantal_leden: number;
+}
+
+export interface SamenwerkingsverbandCreate {
+  naam: string;
+  type: string;
+  beschrijving?: string;
+  start_datum?: string | null;
+  eind_datum?: string | null;
+}
+
+export interface SamenwerkingsverbandUpdate {
+  naam?: string;
+  type?: string;
+  beschrijving?: string | null;
+  start_datum?: string | null;
+  eind_datum?: string | null;
+}
+
+export interface SamenwerkingsverbandLid {
+  id: string;
+  samenwerkingsverband_id: string;
+  person_id: string;
+  person_naam: string;
+  person_functie?: string | null;
+  person_expertise?: string | null;
+  rol?: string | null;
+  start_datum: string;
+  eind_datum?: string | null;
+  created_at: string;
+}
+
+export interface SamenwerkingsverbandLidCreate {
+  person_id: string;
+  rol?: string | null;
+  start_datum: string;
+}
+
+export interface SamenwerkingsverbandLidUpdate {
+  rol?: string | null;
+  eind_datum?: string | null;
+}
+
+export interface SamenwerkingsverbandDetail extends Samenwerkingsverband {
+  leden: SamenwerkingsverbandLid[];
+}
+
+export interface PersoonLidmaatschap {
+  id: string;
+  samenwerkingsverband_id: string;
+  samenwerkingsverband_naam: string;
+  samenwerkingsverband_type: string;
+  rol?: string | null;
+  start_datum: string;
+  eind_datum?: string | null;
+}

@@ -25,6 +25,8 @@ import { ParlementairPage } from '@/pages/ParlementairPage';
 import { EenheidOverzichtPage } from '@/pages/EenheidOverzichtPage';
 import { OpdrachtenPage } from '@/pages/OpdrachtenPage';
 import { ExterneOrganisatiesPage } from '@/pages/ExterneOrganisatiesPage';
+import { SamenwerkingsverbandenPage } from '@/pages/SamenwerkingsverbandenPage';
+import { SamenwerkingsverbandDetailPage } from '@/pages/SamenwerkingsverbandDetailPage';
 import { AdminPage } from '@/pages/AdminPage';
 import { AuditLogPage } from '@/pages/AuditLogPage';
 import { DocsPage } from '@/pages/DocsPage';
@@ -145,6 +147,8 @@ function AuthenticatedApp() {
                   <Route path="/parlementair" element={<ParlementairPage />} />
                   <Route path="/opdrachten" element={<OpdrachtenPage />} />
                   <Route path="/externe-organisaties" element={<ExterneOrganisatiesPage />} />
+                  <Route path="/samenwerkingsverbanden" element={<SamenwerkingsverbandenPage />} />
+                  <Route path="/samenwerkingsverbanden/:id" element={<SamenwerkingsverbandDetailPage />} />
                   <Route path="/admin" element={<AdminPage />} />
                   <Route path="/auditlog" element={<AuditLogPage />} />
                   <Route path="/docs" element={<DocsPage />} />

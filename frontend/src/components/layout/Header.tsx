@@ -25,6 +25,7 @@ const pageTitles: Record<string, string> = {
   '/search': 'Zoeken',
   '/docs': 'Handleiding',
   '/leads': 'Leads',
+  '/samenwerkingsverbanden': 'Samenwerkingsverbanden',
   '/share-target': 'Nieuwe lead',
 };
 
