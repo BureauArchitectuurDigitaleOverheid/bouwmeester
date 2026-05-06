@@ -109,7 +109,6 @@ export function CreatableSelect({
   // Reset highlight when filtered list changes
   useEffect(() => {
     setHighlightedIndex(0);
-    setCreateError(null);
   }, [query]);
 
   // Scroll highlighted item into view
@@ -125,6 +124,7 @@ export function CreatableSelect({
       onChange(opt.value);
       setIsOpen(false);
       setQuery('');
+      setCreateError(null);
     },
     [onChange],
   );
@@ -189,6 +189,7 @@ export function CreatableSelect({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
+    setCreateError(null);
     onQueryChange?.(e.target.value);
     if (!isOpen) setIsOpen(true);
   };
