@@ -330,18 +330,13 @@ const CommunityGraphNodeMemo = memo(CommunityGraphNodeComponent);
 const nodeTypes = { communityNode: CommunityGraphNodeMemo };
 
 // ---- Dagre layout ----
-interface LayoutResult {
-  positions: Map<string, { x: number; y: number }>;
-  ranks: Map<string, number>;
-}
-
 function computeLayout(
   nodes: CommunityGraphNode[],
   edges: CommunityGraphEdge[],
-): LayoutResult {
+): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
+  if (nodes.length === 0) return positions;
   const nodeRankMap = new Map(nodes.map((n) => [n.id, getNodeRank(n)]));
-  if (nodes.length === 0) return { positions, ranks: nodeRankMap };
 
   const nodeIds = new Set(nodes.map((n) => n.id));
 
@@ -378,7 +373,7 @@ function computeLayout(
     }
   }
 
-  return { positions, ranks: nodeRankMap };
+  return positions;
 }
 
 // ---- Filter bar types ----
@@ -459,7 +454,7 @@ function CommunityGraphInner({
   const { allRfNodes, allRfEdges } = useMemo(() => {
     if (!data?.nodes?.length) return { allRfNodes: [], allRfEdges: [] };
 
-    const { positions, ranks: nodeRankLookup } = computeLayout(data.nodes, data.edges);
+    const positions = computeLayout(data.nodes, data.edges);
 
     const allRfNodes: RFNode<CommunityGraphNodeData>[] = data.nodes.map((node) => {
       const pos = positions.get(node.id) ?? { x: 0, y: 0 };
@@ -503,18 +498,14 @@ function CommunityGraphInner({
       const fromPos = positions.get(edge.source);
       const toPos = positions.get(edge.target);
       const goesUpward = fromPos && toPos && fromPos.y > toPos.y;
-      const marker = { type: MarkerType.ArrowClosed, width: 14, height: 14, color: style.color };
-      const fromRank = nodeRankLookup.get(edge.source) ?? RANK_DEFAULT;
-      const toRank = nodeRankLookup.get(edge.target) ?? RANK_DEFAULT;
-      const isSameLane = fromRank === toRank;
+      const marker = { type: MarkerType.ArrowClosed, width: 16, height: 16, color: style.color };
 
       return {
         id: edge.id,
         source: goesUpward ? edge.target : edge.source,
         target: goesUpward ? edge.source : edge.target,
         label: edge.label ?? style.label,
-        type: isSameLane ? 'bezier' : 'smoothstep',
-        ...(isSameLane ? {} : { pathOptions: { offset: 20, borderRadius: 10 } }),
+        type: 'bezier',
         animated: style.animated ?? false,
         ...(goesUpward ? { markerStart: marker } : { markerEnd: marker }),
         style: {
@@ -709,7 +700,7 @@ function CommunityGraphInner({
           fitViewOptions={{ padding: 0.2, maxZoom: 1.5 }}
           minZoom={0.1}
           maxZoom={3}
-          defaultEdgeOptions={{ type: 'smoothstep' }}
+          defaultEdgeOptions={{ type: 'bezier' }}
           proOptions={{ hideAttribution: true }}
         >
           <Background color="#e2e8f0" gap={20} size={1} />
