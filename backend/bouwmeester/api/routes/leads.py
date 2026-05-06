@@ -26,6 +26,7 @@ from bouwmeester.core.storage import (
     write_upload_to_disk,
 )
 from bouwmeester.models.lead import Lead
+from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.lead_node import LeadNode
 from bouwmeester.repositories.lead import LeadRepository
@@ -602,6 +603,51 @@ async def list_activities(
     repo = LeadActivityRepository(db)
     activities = await repo.get_by_lead(lead_id)
     return validate_list(LeadActivityResponse, activities)
+
+
+@router.delete(
+    "/{lead_id}/activities/{activity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_activity(
+    lead_id: UUID,
+    activity_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+) -> None:
+    """Delete a lead activity. Only the author or an admin may delete."""
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, init_ctx)
+
+    activity = await db.get(LeadActivity, activity_id)
+    if activity is None or activity.lead_id != lead_id:
+        raise HTTPException(status_code=404, detail="Activiteit niet gevonden")
+
+    actor_id = current_user.id if current_user else None
+    if not init_ctx.is_admin and (actor_id is None or activity.author_id != actor_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Alleen de auteur of een beheerder kan deze activiteit verwijderen",
+        )
+
+    activity_type = activity.activity_type
+    await db.delete(activity)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_activity.deleted",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "activity_id": str(activity_id),
+            "activity_type": activity_type,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import {
   reorderLeads,
   getLeadActivities,
   createLeadActivity,
+  deleteLeadActivity,
   addLeadContact,
   removeLeadContact,
   linkLeadNode,
@@ -180,6 +181,15 @@ export function useCreateLeadActivity() {
     mutationFn: ({ leadId, data }: { leadId: string; data: LeadActivityCreate }) =>
       createLeadActivity(leadId, data),
     errorMessage: 'Fout bij toevoegen activiteit',
+    invalidateKeys: [queryKeys.leads.all],
+  });
+}
+
+export function useDeleteLeadActivity() {
+  return useMutationWithError({
+    mutationFn: ({ leadId, activityId }: { leadId: string; activityId: string }) =>
+      deleteLeadActivity(leadId, activityId),
+    errorMessage: 'Fout bij verwijderen activiteit',
     invalidateKeys: [queryKeys.leads.all],
   });
 }

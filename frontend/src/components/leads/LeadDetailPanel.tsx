@@ -35,6 +35,7 @@ import {
   useUpdateLead,
   useDeleteLead,
   useCreateLeadActivity,
+  useDeleteLeadActivity,
   useAddLeadContact,
   useRemoveLeadContact,
   useUnlinkLeadNode,
@@ -44,6 +45,7 @@ import {
   useAddTagToLead,
   useRemoveTagFromLead,
 } from '@/hooks/useLeads';
+import { useAuth } from '@/contexts/AuthContext';
 import { usePeople, useCreatePerson } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { getLeadAttachmentDownloadUrl } from '@/api/leads';
@@ -132,6 +134,8 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const updateLead = useUpdateLead();
   const deleteLead = useDeleteLead();
   const createActivity = useCreateLeadActivity();
+  const deleteActivity = useDeleteLeadActivity();
+  const { person } = useAuth();
   const addContact = useAddLeadContact();
   const removeContact = useRemoveLeadContact();
   const unlinkNode = useUnlinkLeadNode();
@@ -176,6 +180,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [activityToDelete, setActivityToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     if (!lightboxSrc) return;
@@ -1076,8 +1081,13 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             {/* Activity list */}
             {lead.activities.length > 0 ? (
               <div className="space-y-3">
-                {[...lead.activities].reverse().map((activity) => (
-                  <div key={activity.id} className="flex gap-2.5">
+                {[...lead.activities].reverse().map((activity) => {
+                  const canDelete =
+                    !!person &&
+                    (person.is_admin ||
+                      (person.id !== null && activity.author_id === person.id));
+                  return (
+                  <div key={activity.id} className="group flex gap-2.5">
                     <div className="mt-0.5 flex items-center justify-center h-6 w-6 rounded-full bg-gray-100 text-text-secondary shrink-0">
                       {ACTIVITY_ICONS[activity.activity_type]}
                     </div>
@@ -1090,6 +1100,17 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                           {LEAD_ACTIVITY_TYPE_LABELS[activity.activity_type]}
                         </Badge>
                         <span>{timeAgo(activity.created_at)}</span>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => setActivityToDelete(activity.id)}
+                            className="ml-auto text-text-secondary sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 hover:text-red-600 focus:outline-none transition-opacity"
+                            aria-label="Activiteit verwijderen"
+                            title="Verwijderen"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                       <div className="mt-0.5">
                         <RichTextDisplay content={activity.content} fallback="" />
@@ -1120,7 +1141,8 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-text-secondary">Nog geen activiteiten</p>
@@ -1155,6 +1177,21 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       variant="danger"
     >
       Weet je zeker dat je deze lead wilt verwijderen?
+    </ConfirmDialog>
+    <ConfirmDialog
+      open={activityToDelete !== null}
+      onClose={() => setActivityToDelete(null)}
+      onConfirm={() => {
+        if (lead && activityToDelete) {
+          deleteActivity.mutate({ leadId: lead.id, activityId: activityToDelete });
+        }
+        setActivityToDelete(null);
+      }}
+      title="Activiteit verwijderen"
+      confirmLabel="Verwijderen"
+      variant="danger"
+    >
+      Weet je zeker dat je deze activiteit wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.
     </ConfirmDialog>
     {showLinkNode && lead && (
       <LinkLeadNodeModal
