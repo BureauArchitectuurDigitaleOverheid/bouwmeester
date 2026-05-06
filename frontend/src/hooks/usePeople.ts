@@ -10,6 +10,7 @@ import {
   updatePersonOrganisatie,
   removePersonOrganisatie,
   searchPeople,
+  getExpertiseValues,
   rotateApiKey,
   addPersonEmail,
   removePersonEmail,
@@ -126,6 +127,14 @@ export function useSearchPeople(query: string) {
     queryKey: queryKeys.people.search(debouncedQuery),
     queryFn: () => searchPeople(debouncedQuery),
     enabled: debouncedQuery.length >= 2,
+  });
+}
+
+export function useExpertiseValues() {
+  return useQuery({
+    queryKey: queryKeys.people.expertiseValues,
+    queryFn: getExpertiseValues,
+    staleTime: 5 * 60_000,
   });
 }
 

@@ -342,6 +342,8 @@ async def get_lead(
             id=rp.id,
             person_id=rp.person_id,
             person_naam=rp.person.naam if rp.person else "",
+            person_functie=rp.person.functie if rp.person else None,
+            person_expertise=rp.person.expertise if rp.person else None,
             rol=rp.rol,
             created_at=rp.created_at,
         )

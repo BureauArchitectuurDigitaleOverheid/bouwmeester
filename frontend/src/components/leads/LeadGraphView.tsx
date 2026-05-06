@@ -112,6 +112,7 @@ interface CommunityGraphNodeData {
   stage?: string | null;
   initiatiefId?: string | null;
   functie?: string | null;
+  expertise?: string | null;
   personRole?: 'intern' | 'extern' | null;
   orgType?: string | null;
   corpusNodeType?: string | null;
@@ -155,11 +156,18 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
       const functieLabel = formatFunctie(data.functie);
       const label = functieLabel ? `${roleLabel} · ${functieLabel}` : roleLabel;
       return (
-        <div className="flex items-center gap-1 mb-1">
-          <PersonIcon className="h-3 w-3" style={{ color }} />
-          <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
-            {label}
-          </span>
+        <div className="mb-1">
+          <div className="flex items-center gap-1">
+            <PersonIcon className="h-3 w-3" style={{ color }} />
+            <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
+              {label}
+            </span>
+          </div>
+          {data.expertise && (
+            <div style={{ color, fontSize: '9px', fontWeight: 500, marginTop: '1px', opacity: 0.85 }}>
+              {data.expertise}
+            </div>
+          )}
         </div>
       );
     }
@@ -429,6 +437,7 @@ function CommunityGraphInner({
           stage: node.stage,
           initiatiefId: node.initiatief_id,
           functie: node.functie,
+          expertise: node.expertise,
           personRole: node.person_role ?? null,
           orgType: node.org_type,
           corpusNodeType: node.corpus_node_type,

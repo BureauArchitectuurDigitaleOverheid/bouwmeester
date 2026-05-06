@@ -466,6 +466,7 @@ class GraphRepository:
                     node_type="person",
                     label=person.naam,
                     functie=person.functie,
+                    expertise=person.expertise,
                     person_role=role,
                 )
 

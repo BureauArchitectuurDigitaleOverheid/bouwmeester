@@ -24,11 +24,14 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
   const [personId, setPersonId] = useState('');
   const [rol, setRol] = useState('contactpersoon');
 
-  const personOptions: SelectOption[] = people.map((p) => ({
-    value: p.id,
-    label: p.naam,
-    description: p.functie ?? undefined,
-  }));
+  const personOptions: SelectOption[] = people.map((p) => {
+    const parts = [p.functie, p.expertise].filter((v): v is string => !!v);
+    return {
+      value: p.id,
+      label: p.naam,
+      description: parts.length > 0 ? parts.join(' · ') : undefined,
+    };
+  });
 
   const handleCreatePerson = useCallback(
     async (name: string): Promise<string | null> => {
