@@ -41,11 +41,17 @@ _BACKOFF_RESET_AFTER_HEALTHY_SEC = 120.0
 
 
 def _ws_url_from_http(http_url: str) -> str:
-    """Vervang het scheme zodat http(s) → ws(s) en plak `/api/v4/websocket`."""
+    """Vervang het scheme zodat http(s) → ws(s) en plak `/api/v4/websocket`.
+
+    Behoudt het pad uit ``http_url`` — Mattermost achter een reverse-proxy
+    op een sub-pad (bv. ``https://host/chat``) heeft de websocket-endpoint
+    op ``wss://host/chat/api/v4/websocket``. Zonder het pad krijg je een
+    HTTP 404 terug van de proxy.
+    """
     parsed = urlparse(http_url.rstrip("/"))
     scheme = "wss" if parsed.scheme == "https" else "ws"
-    netloc = parsed.netloc
-    return f"{scheme}://{netloc}/api/v4/websocket"
+    base_path = parsed.path.rstrip("/")
+    return f"{scheme}://{parsed.netloc}{base_path}/api/v4/websocket"
 
 
 async def disable_channel_link(
