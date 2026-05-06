@@ -312,7 +312,10 @@ async def update_channel_link(
     # — anders zet je `disabled_at=None` op een dode koppeling en raakt de
     # UI uit sync met Mattermost.
     if data.reenable:
-        from bouwmeester.services.mattermost_service import MattermostService
+        from bouwmeester.services.mattermost_service import (
+            MattermostService,
+            MattermostUnavailableError,
+        )
 
         service = MattermostService(db)
         try:
@@ -321,7 +324,20 @@ async def update_channel_link(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="Mattermost is niet geconfigureerd",
                 )
-            if not await service.is_bot_member_of_channel(link.channel_id):
+            try:
+                is_member = await service.is_bot_member_of_channel(link.channel_id)
+            except MattermostUnavailableError:
+                # Tijdelijke MM-storing — niet interpreteren als "geen lid".
+                # 503 zodat de UI de gebruiker kan vragen het later te
+                # proberen, in plaats van ten onrechte 409 te tonen.
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        "Mattermost is tijdelijk niet bereikbaar. "
+                        "Probeer het zo opnieuw."
+                    ),
+                )
+            if not is_member:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=(

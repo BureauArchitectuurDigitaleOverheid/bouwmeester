@@ -1,7 +1,9 @@
 """Tests voor de WS-dispatcher: user_removed / channel_deleted → disabled_at."""
 
 import uuid
+from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from sqlalchemy import select
 
@@ -9,6 +11,10 @@ from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.mattermost_channel_link import (
     SCOPE_INITIATIEF,
     MattermostChannelLink,
+)
+from bouwmeester.services.mattermost_service import (
+    MattermostService,
+    MattermostUnavailableError,
 )
 from bouwmeester.services.mattermost_websocket_service import (
     MattermostWebsocketService,
@@ -325,3 +331,209 @@ async def test_double_approval_with_real_lock(_test_engine, create_person):
             await cleanup.execute(delete(Person).where(Person.id == person_id))
             await cleanup.execute(delete(Initiatief).where(Initiatief.id == init_id))
             await cleanup.commit()
+
+
+# ---------------------------------------------------------------------------
+# is_bot_member_of_channel: 200 / 404 / error-onderscheid
+# ---------------------------------------------------------------------------
+
+
+def _mock_transport(status_code: int):
+    """Bouw een httpx.AsyncClient die elke request een vaste status returnt."""
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, json={})
+
+    return httpx.AsyncClient(
+        transport=httpx.MockTransport(_handler),
+        base_url="http://mock-mattermost",
+        headers={"Authorization": "Bearer test"},
+    )
+
+
+async def test_is_bot_member_of_channel_returns_true_on_200(db_session):
+    service = MattermostService(db_session)
+    with (
+        patch.object(
+            service,
+            "get_bot_user_id",
+            new=AsyncMock(return_value="bot-id-26-chars-1234567890"),
+        ),
+        patch.object(
+            service, "_get_client", new=AsyncMock(return_value=_mock_transport(200))
+        ),
+    ):
+        assert await service.is_bot_member_of_channel(_id()) is True
+
+
+async def test_is_bot_member_of_channel_returns_false_on_404(db_session):
+    service = MattermostService(db_session)
+    with (
+        patch.object(
+            service,
+            "get_bot_user_id",
+            new=AsyncMock(return_value="bot-id-26-chars-1234567890"),
+        ),
+        patch.object(
+            service, "_get_client", new=AsyncMock(return_value=_mock_transport(404))
+        ),
+    ):
+        assert await service.is_bot_member_of_channel(_id()) is False
+
+
+async def test_is_bot_member_of_channel_raises_on_500(db_session):
+    """500 = MM-server-fout. Caller mag dit niet als 'geen lid' interpreteren."""
+    service = MattermostService(db_session)
+    with (
+        patch.object(
+            service,
+            "get_bot_user_id",
+            new=AsyncMock(return_value="bot-id-26-chars-1234567890"),
+        ),
+        patch.object(
+            service, "_get_client", new=AsyncMock(return_value=_mock_transport(500))
+        ),
+    ):
+        with pytest.raises(MattermostUnavailableError):
+            await service.is_bot_member_of_channel(_id())
+
+
+async def test_is_bot_member_of_channel_raises_on_network_error(db_session):
+    """Netwerk-glitch = onbekend, niet 'geen lid'."""
+    service = MattermostService(db_session)
+
+    def _handler(request):
+        raise httpx.ConnectError("connection refused")
+
+    flaky = httpx.AsyncClient(
+        transport=httpx.MockTransport(_handler),
+        base_url="http://mock-mattermost",
+    )
+    with (
+        patch.object(
+            service,
+            "get_bot_user_id",
+            new=AsyncMock(return_value="bot-id-26-chars-1234567890"),
+        ),
+        patch.object(service, "_get_client", new=AsyncMock(return_value=flaky)),
+    ):
+        with pytest.raises(MattermostUnavailableError):
+            await service.is_bot_member_of_channel(_id())
+
+
+async def test_is_bot_member_of_channel_raises_when_no_bot_user_id(db_session):
+    """Geen bot-user-id beschikbaar = MM niet geconfigureerd / bereikbaar."""
+    service = MattermostService(db_session)
+    with patch.object(service, "get_bot_user_id", new=AsyncMock(return_value=None)):
+        with pytest.raises(MattermostUnavailableError):
+            await service.is_bot_member_of_channel(_id())
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/mattermost-channels/{id} met reenable=true
+# ---------------------------------------------------------------------------
+
+
+async def test_patch_reenable_succeeds_when_bot_is_member(client, linked_channel):
+    """Bot is lid (mock 200) → disabled_at wordt None."""
+    from datetime import UTC, datetime
+
+    # Eerst link uitschakelen.
+    linked_channel.disabled_at = datetime.now(UTC)
+    # Mock zowel is_enabled als is_bot_member_of_channel.
+    with (
+        patch(
+            "bouwmeester.services.mattermost_service.MattermostService.is_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "bouwmeester.services.mattermost_service.MattermostService.is_bot_member_of_channel",
+            new=AsyncMock(return_value=True),
+        ),
+    ):
+        resp = await client.patch(
+            f"/api/mattermost-channels/{linked_channel.id}",
+            json={"reenable": True},
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["disabled_at"] is None
+
+
+async def test_patch_reenable_409_when_bot_not_member(client, linked_channel):
+    """Bot is geen lid (mock 404 → False) → 409 met duidelijke melding."""
+    with (
+        patch(
+            "bouwmeester.services.mattermost_service.MattermostService.is_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "bouwmeester.services.mattermost_service.MattermostService.is_bot_member_of_channel",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
+        resp = await client.patch(
+            f"/api/mattermost-channels/{linked_channel.id}",
+            json={"reenable": True},
+        )
+    assert resp.status_code == 409
+    assert "Voeg de bot eerst toe" in resp.json()["detail"]
+
+
+async def test_patch_reenable_503_on_mm_unavailable(client, linked_channel):
+    """Membership-check werpt MattermostUnavailableError → 503."""
+    with (
+        patch(
+            "bouwmeester.services.mattermost_service.MattermostService.is_enabled",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "bouwmeester.services.mattermost_service.MattermostService.is_bot_member_of_channel",
+            new=AsyncMock(side_effect=MattermostUnavailableError("netwerk")),
+        ),
+    ):
+        resp = await client.patch(
+            f"/api/mattermost-channels/{linked_channel.id}",
+            json={"reenable": True},
+        )
+    assert resp.status_code == 503
+    assert "tijdelijk niet bereikbaar" in resp.json()["detail"]
+
+
+async def test_patch_reenable_503_when_mm_disabled(client, linked_channel):
+    """is_enabled=False → 503 'niet geconfigureerd'."""
+    with patch(
+        "bouwmeester.services.mattermost_service.MattermostService.is_enabled",
+        new=AsyncMock(return_value=False),
+    ):
+        resp = await client.patch(
+            f"/api/mattermost-channels/{linked_channel.id}",
+            json={"reenable": True},
+        )
+    assert resp.status_code == 503
+    assert "niet geconfigureerd" in resp.json()["detail"]
+
+
+async def test_patch_without_reenable_does_not_check_bot(client, linked_channel):
+    """Settings-PATCH zonder reenable mag MM niet aanroepen."""
+    membership = AsyncMock(return_value=False)
+    with (
+        patch(
+            "bouwmeester.services.mattermost_service.MattermostService.is_bot_member_of_channel",
+            new=membership,
+        ),
+    ):
+        resp = await client.patch(
+            f"/api/mattermost-channels/{linked_channel.id}",
+            json={"auto_note_enabled": True},
+        )
+    assert resp.status_code == 200
+    membership.assert_not_called()
+
+
+async def test_patch_reenable_false_rejected_by_pydantic(client, linked_channel):
+    """Literal[True]: alleen ``true`` of weglaten — false geeft 422."""
+    resp = await client.patch(
+        f"/api/mattermost-channels/{linked_channel.id}",
+        json={"reenable": False},
+    )
+    assert resp.status_code == 422

@@ -29,6 +29,13 @@ _mm_config_cache_ts: float = 0.0
 _MM_CONFIG_CACHE_TTL = 60  # seconds
 
 
+class MattermostUnavailableError(RuntimeError):
+    """Raised wanneer een Mattermost-API-call niet uitvoerbaar is door
+    een tijdelijk probleem (netwerk, server-fout, ontbrekende config)
+    en de caller dat niet als "expliciet nee" mag interpreteren.
+    """
+
+
 def clear_mattermost_config_cache() -> None:
     """Clear the Mattermost config cache so the next call rebuilds from DB."""
     global _mm_config_cache, _mm_config_cache_ts  # noqa: PLW0603
@@ -502,26 +509,45 @@ class MattermostService:
         """Check of de bot momenteel lid is van een kanaal.
 
         Gebruikt het ``/channels/{id}/members/{bot_user_id}``-endpoint:
-        404 = geen lid, 200 = lid. Returns ``False`` bij elke andere
-        fout — caller behandelt dit als "kan niet bevestigen".
+        - 200 → lid (``True``)
+        - 404 → expliciet geen lid (``False``)
+        - andere statussen of netwerkfout → ``MattermostUnavailableError``
+          zodat de caller onderscheid kan maken tussen "echt geen lid"
+          en "kan het niet bevestigen". Een soft-fail naar ``False``
+          zou een tijdelijke MM-storing onterecht laten lijken op een
+          weggegooide bot-membership.
         """
         bot_user_id = await self.get_bot_user_id()
         if not bot_user_id:
-            return False
+            raise MattermostUnavailableError(
+                "Bot-user-id niet beschikbaar — Mattermost niet bereikbaar"
+            )
         client = await self._get_client()
         try:
             resp = await client.get(
                 f"/api/v4/channels/{channel_id}/members/{bot_user_id}"
             )
-            if resp.status_code == 404:
-                return False
-            resp.raise_for_status()
-            return True
-        except httpx.HTTPError:
-            logger.exception(
-                "Kon bot-membership voor kanaal %s niet checken", channel_id
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "Mattermost membership-check faalde voor kanaal %s: %s",
+                channel_id,
+                exc,
             )
+            raise MattermostUnavailableError(
+                f"Kon bot-membership voor kanaal {channel_id} niet checken"
+            ) from exc
+        if resp.status_code == 404:
             return False
+        if resp.status_code == 200:
+            return True
+        logger.warning(
+            "Mattermost membership-check gaf onverwachte status %s voor kanaal %s",
+            resp.status_code,
+            channel_id,
+        )
+        raise MattermostUnavailableError(
+            f"Onverwachte status {resp.status_code} bij membership-check"
+        )
 
     async def search_channels(self, query: str) -> list[dict]:
         """Zoek kanalen waar de bot in zit, gefilterd op naam.
