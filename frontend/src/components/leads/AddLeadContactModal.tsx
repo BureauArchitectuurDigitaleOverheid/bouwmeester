@@ -40,14 +40,17 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
   const handleCreateRol = async (text: string): Promise<string | null> => {
     const value = text.trim();
     if (!value) return null;
-    const slug = value.toLowerCase().replace(/\s+/g, '_');
-    if (rolOptions.some((o) => o.value === slug)) {
-      setRol(slug);
-      return slug;
+    // Sla de getypte tekst zelf op als rol-waarde. Geen slug-conversie:
+    // ResourcePermission.rol is een vrij stringveld en LeadDetailPanel
+    // toont de raw waarde als fallback. Een slug zou diakriet/haakjes
+    // verminken zonder voordeel.
+    if (rolOptions.some((o) => o.value === value)) {
+      setRol(value);
+      return value;
     }
-    setExtraRollen((prev) => [...prev, { value: slug, label: value }]);
-    setRol(slug);
-    return slug;
+    setExtraRollen((prev) => [...prev, { value, label: value }]);
+    setRol(value);
+    return value;
   };
 
   // Reset alle state bij elke lead-wissel én bij sluiten van de modal,
