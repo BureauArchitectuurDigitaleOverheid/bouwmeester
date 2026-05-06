@@ -34,6 +34,36 @@ class ParsedGitHubLink:
 _OWNER_RE = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})"
 _REPO_RE = r"[A-Za-z0-9._-]+"
 
+# Speciale eerste-segment-paden op github.com die nooit een gebruikersnaam
+# zijn. Een URL als /orgs/foo/projects/1 wijst niet naar een repo en mag
+# niet als ``other`` met owner=orgs gemarkt worden.
+_RESERVED_OWNER_PATHS = frozenset(
+    {
+        "orgs",
+        "settings",
+        "marketplace",
+        "explore",
+        "topics",
+        "trending",
+        "collections",
+        "events",
+        "pulls",
+        "issues",
+        "notifications",
+        "new",
+        "login",
+        "logout",
+        "join",
+        "search",
+        "sponsors",
+        "about",
+        "contact",
+        "site",
+        "security",
+        "enterprise",
+    }
+)
+
 _PATTERNS: tuple[tuple[GitHubLinkType, re.Pattern[str]], ...] = (
     (
         GitHubLinkType.pull_request,
@@ -97,6 +127,8 @@ def parse_github_url(url: str) -> ParsedGitHubLink | None:
         match = pattern.match(path)
         if match:
             owner = match.group("owner")
+            if owner.lower() in _RESERVED_OWNER_PATHS:
+                return None
             repo = _strip_git_suffix(match.group("repo"))
             ref = match.groupdict().get("ref")
             if ref is not None:
@@ -107,9 +139,12 @@ def parse_github_url(url: str) -> ParsedGitHubLink | None:
 
     other = _OTHER_RE.match(path)
     if other:
+        owner = other.group("owner")
+        if owner.lower() in _RESERVED_OWNER_PATHS:
+            return None
         return ParsedGitHubLink(
             link_type=GitHubLinkType.other,
-            owner=other.group("owner"),
+            owner=owner,
             repo=_strip_git_suffix(other.group("repo")),
             ref=None,
         )

@@ -1,19 +1,18 @@
 """Pydantic-schema's voor GitHubLink."""
 
-import enum
 from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from bouwmeester.core.github_url import GitHubLinkType
 
-class GitHubLinkType(enum.StrEnum):
-    branch = "branch"
-    pull_request = "pull_request"
-    issue = "issue"
-    repo = "repo"
-    workflow_run = "workflow_run"
-    other = "other"
+__all__ = [
+    "GitHubLinkType",
+    "GitHubLinkCreate",
+    "GitHubLinkUpdate",
+    "GitHubLinkResponse",
+]
 
 
 class GitHubLinkCreate(BaseModel):

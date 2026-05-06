@@ -5,6 +5,7 @@ import uuid
 import pytest
 from sqlalchemy import select
 
+from bouwmeester.core.auth import get_optional_user
 from bouwmeester.models.github_link import SCOPE_LEAD, GitHubLink
 from bouwmeester.models.lead import Lead
 
@@ -160,6 +161,74 @@ async def test_delete_lead_cascades_github_links(client, db_session, sample_lead
         .all()
     )
     assert remaining == []
+
+
+async def test_create_on_unknown_lead_returns_404(client):
+    fake_id = uuid.uuid4()
+    resp = await client.post(
+        f"/api/leads/{fake_id}/github-links",
+        json={"url": "https://github.com/foo/bar"},
+    )
+    assert resp.status_code == 404
+
+
+async def test_list_on_unknown_lead_returns_404(client):
+    fake_id = uuid.uuid4()
+    resp = await client.get(f"/api/leads/{fake_id}/github-links")
+    assert resp.status_code == 404
+
+
+async def test_same_url_can_be_linked_to_two_leads(client, db_session, sample_lead):
+    # Eerste lead krijgt de URL.
+    first = await client.post(
+        f"/api/leads/{sample_lead.id}/github-links",
+        json={"url": "https://github.com/foo/bar/pull/100"},
+    )
+    assert first.status_code == 201
+
+    # Tweede lead krijgt dezelfde URL — dat moet ook gewoon kunnen,
+    # de unique constraint is (scope_type, scope_id, url) en niet alleen url.
+    other = Lead(id=uuid.uuid4(), title="Tweede lead", stage="inbox")
+    db_session.add(other)
+    await db_session.flush()
+
+    second = await client.post(
+        f"/api/leads/{other.id}/github-links",
+        json={"url": "https://github.com/foo/bar/pull/100"},
+    )
+    assert second.status_code == 201
+
+
+async def test_created_by_id_is_set_when_authenticated(
+    client, _test_app, db_session, sample_lead, sample_person
+):
+    """Regressie: current_user is een Person-model, geen dict.
+
+    De code moet ``current_user.id`` gebruiken, niet ``current_user["id"]``,
+    anders throwt de POST-route op een echte authenticated user.
+    """
+    _test_app.dependency_overrides[get_optional_user] = lambda: sample_person
+    try:
+        resp = await client.post(
+            f"/api/leads/{sample_lead.id}/github-links",
+            json={"url": "https://github.com/foo/bar/pull/200"},
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["created_by_id"] == str(sample_person.id)
+
+        # En in de DB zit dezelfde waarde.
+        link = (
+            (
+                await db_session.execute(
+                    select(GitHubLink).where(GitHubLink.url.endswith("/200"))
+                )
+            )
+            .scalars()
+            .one()
+        )
+        assert link.created_by_id == sample_person.id
+    finally:
+        _test_app.dependency_overrides.pop(get_optional_user, None)
 
 
 async def test_link_for_other_lead_returns_404(client, db_session, sample_lead):

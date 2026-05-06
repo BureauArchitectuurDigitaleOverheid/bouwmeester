@@ -47,7 +47,6 @@ from bouwmeester.schema.lead import (
     LeadContactResponse,
     LeadCreate,
     LeadDetailResponse,
-    LeadGitHubLinkSummary,
     LeadMergeRequest,
     LeadMetricsResponse,
     LeadMove,
@@ -366,7 +365,7 @@ async def get_lead(
     gh_repo = GitHubLinkRepository(db)
     gh_links = await gh_repo.list_for_scope(SCOPE_LEAD, lead_id)
     response.github_links = [
-        LeadGitHubLinkSummary.model_validate(link) for link in gh_links
+        GitHubLinkResponse.model_validate(link) for link in gh_links
     ]
 
     # Mark file-attachments whose files no longer exist on disk.

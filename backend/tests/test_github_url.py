@@ -120,6 +120,12 @@ def test_parse_github_url_happy_path(url, expected_type, owner, repo, ref):
         "https://example.com/foo/bar",
         "https://github.com/",
         "https://github.com/onlyowner",
+        # Reserved first-path-segments are never an owner.
+        "https://github.com/orgs/foo/projects/1",
+        "https://github.com/settings/profile",
+        "https://github.com/marketplace/actions/checkout",
+        "https://github.com/notifications",
+        "https://github.com/search?q=foo",
     ],
 )
 def test_parse_github_url_invalid(url):

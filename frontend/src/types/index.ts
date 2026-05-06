@@ -1764,12 +1764,15 @@ export type GitHubLinkType =
 
 export interface LeadGitHubLink {
   id: string;
+  scope_type: string;
+  scope_id: string;
   url: string;
   link_type: GitHubLinkType;
   owner: string;
   repo: string;
   ref: string | null;
   title: string | null;
+  created_by_id: string | null;
   created_at: string;
 }
 
