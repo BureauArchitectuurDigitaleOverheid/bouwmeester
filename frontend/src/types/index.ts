@@ -2060,8 +2060,14 @@ export interface LeadParseResult {
 
 // Community Graph types (used by LeadGraphView / CommunityGraph)
 export interface CommunityGraphNode {
-  id: string; // prefixed: "lead-xxx", "person-xxx", "org-xxx", "node-xxx"
-  node_type: 'lead' | 'person' | 'organisation' | 'corpus_node';
+  // prefixed: "lead-xxx", "person-xxx", "oe-xxx", "node-xxx", "swv-xxx"
+  id: string;
+  node_type:
+    | 'lead'
+    | 'person'
+    | 'organisation'
+    | 'corpus_node'
+    | 'samenwerkingsverband';
   label: string;
   stage?: string | null;
   initiatief_id?: string | null;
@@ -2069,6 +2075,7 @@ export interface CommunityGraphNode {
   expertise?: string | null;
   person_role?: 'intern' | 'extern' | null;
   org_type?: string | null;
+  samenwerkingsverband_type?: string | null;
   corpus_node_type?: string | null;
 }
 

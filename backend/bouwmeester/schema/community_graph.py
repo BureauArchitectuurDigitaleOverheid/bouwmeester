@@ -6,8 +6,12 @@ from pydantic import BaseModel, ConfigDict
 class CommunityGraphNode(BaseModel):
     """A node in the community graph (lead, person, organisation, or corpus node)."""
 
-    id: str  # prefixed: "lead-{uuid}", "person-{uuid}", "org-{uuid}", "node-{uuid}"
-    node_type: str  # "lead", "person", "organisation", "corpus_node"
+    # id is prefixed: "lead-{uuid}" | "person-{uuid}" | "oe-{uuid}" |
+    # "node-{uuid}" | "swv-{uuid}"
+    id: str
+    # one of: "lead", "person", "organisation", "corpus_node",
+    # "samenwerkingsverband"
+    node_type: str
     label: str
     # Type-specific metadata
     stage: str | None = None  # for leads
@@ -16,6 +20,7 @@ class CommunityGraphNode(BaseModel):
     expertise: str | None = None  # for persons
     person_role: str | None = None  # "intern" | "extern" — for persons
     org_type: str | None = None  # for organisations
+    samenwerkingsverband_type: str | None = None  # for samenwerkingsverbanden
     corpus_node_type: str | None = None  # for corpus nodes
 
     model_config = ConfigDict(from_attributes=True)

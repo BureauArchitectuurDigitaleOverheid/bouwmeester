@@ -21,7 +21,11 @@ from bouwmeester.models.lead_node import LeadNode
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.persoon_samenwerkingsverband import (
+    PersoonSamenwerkingsverband,
+)
 from bouwmeester.models.resource_permission import ResourcePermission
+from bouwmeester.models.samenwerkingsverband import Samenwerkingsverband
 from bouwmeester.repositories.graph_filters import exclude_unconnected_pi
 from bouwmeester.schema.community_graph import (
     CommunityGraphEdge,
@@ -509,6 +513,46 @@ class GraphRepository:
                             target=f"oe-{pl.organisatie_eenheid_id}",
                             edge_type="lid_van",
                             label="lid van",
+                        )
+                    )
+
+        # -- 10. Person → Samenwerkingsverband (active lidmaatschappen) --
+        if person_ids:
+            today = date.today()
+            swv_lid_stmt = select(PersoonSamenwerkingsverband).where(
+                PersoonSamenwerkingsverband.person_id.in_(person_ids),
+                PersoonSamenwerkingsverband.start_datum <= today,
+                or_(
+                    PersoonSamenwerkingsverband.eind_datum.is_(None),
+                    PersoonSamenwerkingsverband.eind_datum >= today,
+                ),
+            )
+            swv_lid_result = await self.session.execute(swv_lid_stmt)
+            swv_lid_rows = list(swv_lid_result.scalars().all())
+            swv_ids = {lid.samenwerkingsverband_id for lid in swv_lid_rows}
+
+            if swv_ids:
+                swv_stmt = select(Samenwerkingsverband).where(
+                    Samenwerkingsverband.id.in_(swv_ids)
+                )
+                swv_result = await self.session.execute(swv_stmt)
+                for swv in swv_result.scalars().all():
+                    swv_key = f"swv-{swv.id}"
+                    graph_nodes[swv_key] = CommunityGraphNode(
+                        id=swv_key,
+                        node_type="samenwerkingsverband",
+                        label=swv.naam,
+                        samenwerkingsverband_type=swv.type,
+                    )
+
+                for lid in swv_lid_rows:
+                    graph_edges.append(
+                        CommunityGraphEdge(
+                            id=_next_edge_id(),
+                            source=f"person-{lid.person_id}",
+                            target=f"swv-{lid.samenwerkingsverband_id}",
+                            edge_type="lid_van_swv",
+                            label=lid.rol or "lid",
                         )
                     )
 
