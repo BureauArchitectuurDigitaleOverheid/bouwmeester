@@ -214,6 +214,16 @@ from bouwmeester.schema.role import (
     RoleResponse,
     RoleWithPermissionsResponse,
 )
+from bouwmeester.schema.samenwerkingsverband import (
+    PersoonLidmaatschapResponse,
+    SamenwerkingsverbandCreate,
+    SamenwerkingsverbandDetailResponse,
+    SamenwerkingsverbandLidCreate,
+    SamenwerkingsverbandLidResponse,
+    SamenwerkingsverbandLidUpdate,
+    SamenwerkingsverbandResponse,
+    SamenwerkingsverbandUpdate,
+)
 from bouwmeester.schema.search import (
     SearchResponse,
     SearchResult,
@@ -443,6 +453,15 @@ __all__ = [
     "LeadTimelineEvent",
     "LeadTimelineResponse",
     "LeadUpdate",
+    # samenwerkingsverband
+    "PersoonLidmaatschapResponse",
+    "SamenwerkingsverbandCreate",
+    "SamenwerkingsverbandDetailResponse",
+    "SamenwerkingsverbandLidCreate",
+    "SamenwerkingsverbandLidResponse",
+    "SamenwerkingsverbandLidUpdate",
+    "SamenwerkingsverbandResponse",
+    "SamenwerkingsverbandUpdate",
     # search
     "SearchResponse",
     "SearchResult",

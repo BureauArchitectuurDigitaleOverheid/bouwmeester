@@ -17,6 +17,7 @@ import {
   BookOpen,
   Banknote,
   Funnel,
+  Handshake,
 } from 'lucide-react';
 import logoImg from '/logo.png?url';
 import { useUIStore } from '@/store/ui';
@@ -55,6 +56,12 @@ export function Sidebar({ mobile }: SidebarProps) {
       { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel, permission: 'org:read' },
       { to: '/opdrachten', icon: Banknote, label: 'Opdrachten', permission: 'opdracht:read' },
       { to: '/leads', icon: Funnel, label: 'Leads', permission: 'lead:read' },
+      {
+        to: '/samenwerkingsverbanden',
+        icon: Handshake,
+        label: 'Samenwerkingsverbanden',
+        permission: 'samenwerkingsverband:read',
+      },
       { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken', permission: 'node:read' },
       { to: '/search', icon: Search, label: 'Zoeken' },
       { to: '/docs', icon: BookOpen, label: 'Handleiding' },

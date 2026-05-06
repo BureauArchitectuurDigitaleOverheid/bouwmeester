@@ -52,6 +52,9 @@ from bouwmeester.models.person import Person  # noqa: F401
 from bouwmeester.models.person_email import PersonEmail  # noqa: F401
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid  # noqa: F401
 from bouwmeester.models.person_phone import PersonPhone  # noqa: F401
+from bouwmeester.models.persoon_samenwerkingsverband import (  # noqa: F401
+    PersoonSamenwerkingsverband,
+)
 from bouwmeester.models.politieke_input import PolitiekeInput  # noqa: F401
 from bouwmeester.models.probleem import Probleem  # noqa: F401
 from bouwmeester.models.resource_permission import ResourcePermission  # noqa: F401
@@ -61,6 +64,7 @@ from bouwmeester.models.role import (  # noqa: F401
     Role,
     RolePermission,
 )
+from bouwmeester.models.samenwerkingsverband import Samenwerkingsverband  # noqa: F401
 from bouwmeester.models.shared_access import SharedAccess  # noqa: F401
 from bouwmeester.models.stakeholder_assessment import (
     StakeholderAssessment,  # noqa: F401

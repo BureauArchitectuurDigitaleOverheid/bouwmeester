@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { clsx } from 'clsx';
-import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, MessageSquare, Terminal, Building2, X, Phone, Star } from 'lucide-react';
+import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, MessageSquare, Terminal, Building2, X, Phone, Star, Handshake } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { PersonAvatar } from '@/components/people/PersonAvatar';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
+import { useSamenwerkingsverbandenForPerson } from '@/hooks/useSamenwerkingsverbanden';
+import { SAMENWERKINGSVERBAND_TYPE_LABELS, SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS } from '@/types';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS } from '@/types';
 import { richTextToPlain } from '@/utils/richtext';
@@ -45,6 +48,9 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
   const { openNodeDetail } = useNodeDetail();
   const { data: summary, isLoading: summaryLoading } = usePersonSummary(expanded ? person.id : null);
   const { data: placements } = usePersonOrganisaties(expanded ? person.id : null);
+  const { data: lidmaatschappen } = useSamenwerkingsverbandenForPerson(
+    expanded ? person.id : null,
+  );
   const endPlacement = useUpdatePersonOrganisatie();
   const removePlacement = useRemovePersonOrganisatie();
 
@@ -348,8 +354,51 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 </div>
               )}
 
+              {/* Samenwerkingsverbanden */}
+              {lidmaatschappen && lidmaatschappen.length > 0 && (
+                <div>
+                  <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
+                    <Handshake className="h-3 w-3" />
+                    Samenwerkingsverbanden
+                  </p>
+                  <div className="space-y-1">
+                    {lidmaatschappen.map((lid) => (
+                      <div
+                        key={lid.id}
+                        className="flex items-center gap-2 text-text"
+                      >
+                        <Link
+                          to={`/samenwerkingsverbanden/${lid.samenwerkingsverband_id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="truncate hover:text-primary-600 transition-colors"
+                        >
+                          {lid.samenwerkingsverband_naam}
+                        </Link>
+                        <Badge
+                          variant={
+                            SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[
+                              lid.samenwerkingsverband_type
+                            ] ?? 'gray'
+                          }
+                          className="text-[10px] px-1.5 py-0 shrink-0"
+                        >
+                          {SAMENWERKINGSVERBAND_TYPE_LABELS[
+                            lid.samenwerkingsverband_type
+                          ] ?? lid.samenwerkingsverband_type}
+                        </Badge>
+                        {lid.rol && (
+                          <span className="text-[11px] text-text-secondary shrink-0">
+                            — {lid.rol}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* No tasks and no nodes */}
-              {summary.open_task_count === 0 && summary.done_task_count === 0 && summary.stakeholder_nodes.length === 0 && (!placements || placements.length === 0) && (
+              {summary.open_task_count === 0 && summary.done_task_count === 0 && summary.stakeholder_nodes.length === 0 && (!placements || placements.length === 0) && (!lidmaatschappen || lidmaatschappen.length === 0) && (
                 <p className="text-text-secondary">Geen taken, dossiers of teams.</p>
               )}
             </div>

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
-import { Building2, User, UserCircle2, FileText, Lightbulb, Plus, X } from 'lucide-react';
+import { Building2, User, UserCircle2, FileText, Lightbulb, Plus, X, Handshake } from 'lucide-react';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import ReactFlow, {
   Background,
@@ -34,6 +34,7 @@ import {
   NODE_TYPE_HEX_COLORS,
   NodeType,
   formatFunctie,
+  SAMENWERKINGSVERBAND_TYPE_LABELS,
 } from '@/types';
 import type { CommunityGraphNode, CommunityGraphEdge } from '@/types';
 
@@ -50,12 +51,16 @@ const LEAD_STAGE_HEX: Record<string, string> = {
 const PERSON_INTERN_COLOR = '#EC4899';
 const PERSON_EXTERN_COLOR = '#F97316';
 const ORG_COLOR = '#14B8A6';
+const SWV_COLOR = '#8B5CF6';
 const CORPUS_NODE_FALLBACK = '#6B7280';
 
 // ---- Community node type to rank (dagre) ----
 // Externe personen krijgen een eigen onderste laag, los van de interne (assignee/stakeholder)
 // personen, zodat externen en hun verbindingen visueel gescheiden zijn.
+// Samenwerkingsverbanden bovenaan, naast organisaties — beide zijn "context"
+// rond personen.
 const RANK_ORGANISATION = 0;
+const RANK_SAMENWERKINGSVERBAND = 0;
 const RANK_CORPUS_NODE = 1;
 const RANK_LEAD = 2;
 const RANK_PERSON_INTERN = 3;
@@ -67,6 +72,7 @@ function getNodeRank(node: CommunityGraphNode): number {
     return node.person_role === 'extern' ? RANK_PERSON_EXTERN : RANK_PERSON_INTERN;
   }
   if (node.node_type === 'organisation') return RANK_ORGANISATION;
+  if (node.node_type === 'samenwerkingsverband') return RANK_SAMENWERKINGSVERBAND;
   if (node.node_type === 'corpus_node') return RANK_CORPUS_NODE;
   if (node.node_type === 'lead') return RANK_LEAD;
   return RANK_DEFAULT;
@@ -97,6 +103,13 @@ function edgeStyle(edgeType: string): EdgeStyle {
       return { color: '#8B5CF6', strokeDasharray: '2 4', strokeWidth: 1.5, label: edgeType };
     case 'lid_van':
       return { color: '#9CA3AF', strokeWidth: 1, label: 'lid van' };
+    case 'lid_van_swv':
+      return {
+        color: SWV_COLOR,
+        strokeDasharray: '4 3',
+        strokeWidth: 1.25,
+        label: edgeType === 'lid_van_swv' ? 'lid' : edgeType,
+      };
     default:
       // Corpus node edges and anything else
       return { color: '#94a3b8', strokeWidth: 1.5, label: edgeType.replace(/_/g, ' ') };
@@ -104,7 +117,12 @@ function edgeStyle(edgeType: string): EdgeStyle {
 }
 
 // ---- Custom node component ----
-type CommunityNodeType = 'lead' | 'person' | 'organisation' | 'corpus_node';
+type CommunityNodeType =
+  | 'lead'
+  | 'person'
+  | 'organisation'
+  | 'corpus_node'
+  | 'samenwerkingsverband';
 
 interface CommunityGraphNodeData {
   label: string;
@@ -115,6 +133,7 @@ interface CommunityGraphNodeData {
   expertise?: string | null;
   personRole?: 'intern' | 'extern' | null;
   orgType?: string | null;
+  swvType?: string | null;
   corpusNodeType?: string | null;
   dimmed?: boolean;
   onClick?: () => void;
@@ -129,6 +148,7 @@ function getNodeColor(data: CommunityGraphNodeData): string {
     return data.personRole === 'extern' ? PERSON_EXTERN_COLOR : PERSON_INTERN_COLOR;
   }
   if (data.nodeType === 'organisation') return ORG_COLOR;
+  if (data.nodeType === 'samenwerkingsverband') return SWV_COLOR;
   if (data.nodeType === 'corpus_node' && data.corpusNodeType) {
     return NODE_TYPE_HEX_COLORS[data.corpusNodeType as NodeType] ?? CORPUS_NODE_FALLBACK;
   }
@@ -187,6 +207,19 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
           <FileText className="h-3 w-3" style={{ color }} />
           <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
             {data.corpusNodeType?.replace(/_/g, ' ') ?? 'Node'}
+          </span>
+        </div>
+      );
+    }
+    if (data.nodeType === 'samenwerkingsverband') {
+      const typeLabel = data.swvType
+        ? SAMENWERKINGSVERBAND_TYPE_LABELS[data.swvType] ?? data.swvType
+        : 'Verband';
+      return (
+        <div className="flex items-center gap-1 mb-1">
+          <Handshake className="h-3 w-3" style={{ color }} />
+          <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
+            {typeLabel}
           </span>
         </div>
       );
@@ -440,6 +473,7 @@ function CommunityGraphInner({
           expertise: node.expertise,
           personRole: node.person_role ?? null,
           orgType: node.org_type,
+          swvType: node.samenwerkingsverband_type ?? null,
           corpusNodeType: node.corpus_node_type,
           onClick,
           onAddContact,
