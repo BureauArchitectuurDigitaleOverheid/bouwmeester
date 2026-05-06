@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from bouwmeester.schema.github_link import GitHubLinkResponse
+
 
 class LeadStage(enum.StrEnum):
     inbox = "inbox"
@@ -265,6 +267,7 @@ class LeadDetailResponse(LeadResponse):
     attachments: list[LeadAttachmentResponse] = Field(default_factory=list)
     contacts: list[LeadContactResponse] = Field(default_factory=list)
     linked_nodes: list[LeadNodeResponse] = Field(default_factory=list)
+    github_links: list[GitHubLinkResponse] = Field(default_factory=list)
 
 
 class LeadMetricsResponse(BaseModel):

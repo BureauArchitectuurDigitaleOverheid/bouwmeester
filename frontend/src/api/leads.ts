@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete, getCsrfToken, BASE_URL } from './client';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, getCsrfToken, BASE_URL } from './client';
 import type {
   Lead,
   LeadDetail,
@@ -9,6 +9,7 @@ import type {
   LeadMetrics,
   LeadFilters,
   LeadAttachment,
+  LeadGitHubLink,
   LeadParseResult,
   CommunityGraphResponse,
   LeadTimelineResponse,
@@ -194,4 +195,31 @@ export async function parseLeadIntake(rawText?: string, files?: File[]): Promise
     throw new Error(`Parse failed: ${response.status} ${text}`);
   }
   return response.json();
+}
+
+export async function listLeadGitHubLinks(leadId: string): Promise<LeadGitHubLink[]> {
+  return apiGet<LeadGitHubLink[]>(`/api/leads/${leadId}/github-links`);
+}
+
+export async function addLeadGitHubLink(
+  leadId: string,
+  url: string,
+  title?: string | null,
+): Promise<LeadGitHubLink> {
+  return apiPost<LeadGitHubLink>(`/api/leads/${leadId}/github-links`, { url, title });
+}
+
+export async function updateLeadGitHubLink(
+  leadId: string,
+  linkId: string,
+  title: string | null,
+): Promise<LeadGitHubLink> {
+  return apiPatch<LeadGitHubLink>(
+    `/api/leads/${leadId}/github-links/${linkId}`,
+    { title },
+  );
+}
+
+export async function deleteLeadGitHubLink(leadId: string, linkId: string): Promise<void> {
+  return apiDelete(`/api/leads/${leadId}/github-links/${linkId}`);
 }
