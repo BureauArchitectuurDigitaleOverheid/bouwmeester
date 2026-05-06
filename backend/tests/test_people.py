@@ -236,3 +236,52 @@ async def test_delete_org_placement(client, sample_person, sample_organisatie):
     # Verify it's gone
     list_resp = await client.get(f"/api/people/{sample_person.id}/organisaties")
     assert len(list_resp.json()) == 0
+
+
+async def test_create_person_with_expertise(client):
+    """POST /api/people accepts an expertise value."""
+    resp = await client.post(
+        "/api/people",
+        json={
+            "naam": "Wetgever Test",
+            "email": "wetgever@example.com",
+            "expertise": "wetgevingsjurist",
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["expertise"] == "wetgevingsjurist"
+
+
+async def test_update_person_expertise(client, sample_person):
+    """PUT /api/people/{id} can update expertise."""
+    resp = await client.put(
+        f"/api/people/{sample_person.id}",
+        json={"expertise": "BIT-adviseur"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["expertise"] == "BIT-adviseur"
+
+
+async def test_list_expertise_values(client):
+    """GET /api/people/expertise-values returns distinct expertise values, sorted."""
+    # Create three persons: two share an expertise, one has another, one has none
+    for naam, expertise in [
+        ("Een", "wetgevingsjurist"),
+        ("Twee", "wetgevingsjurist"),
+        ("Drie", "BIT-adviseur"),
+        ("Vier", None),
+    ]:
+        payload = {"naam": naam, "email": f"{naam.lower()}@example.com"}
+        if expertise:
+            payload["expertise"] = expertise
+        resp = await client.post("/api/people", json=payload)
+        assert resp.status_code == 201
+
+    resp = await client.get("/api/people/expertise-values")
+    assert resp.status_code == 200
+    values = resp.json()
+    # Distinct, sorted, no nulls
+    assert "wetgevingsjurist" in values
+    assert "BIT-adviseur" in values
+    assert values == sorted(values)
+    assert all(v is not None for v in values)

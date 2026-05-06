@@ -63,6 +63,7 @@ class PersonBase(BaseModel):
     naam: str = Field(min_length=1, max_length=200)
     email: str | None = Field(None, max_length=254)
     functie: str | None = Field(None, max_length=200)
+    expertise: str | None = Field(None, max_length=200)
     description: str | None = Field(None, max_length=5000)
     is_agent: bool = False
 
@@ -75,6 +76,7 @@ class PersonUpdate(BaseModel):
     naam: str | None = Field(None, min_length=1, max_length=200)
     email: str | None = Field(None, max_length=254)
     functie: str | None = Field(None, max_length=200)
+    expertise: str | None = Field(None, max_length=200)
     description: str | None = Field(None, max_length=5000)
     is_agent: bool | None = None
 
@@ -87,6 +89,7 @@ class PersonResponse(PersonBase):
     naam: str
     email: str | None = None
     functie: str | None = None
+    expertise: str | None = None
     description: str | None = None
 
     id: UUID

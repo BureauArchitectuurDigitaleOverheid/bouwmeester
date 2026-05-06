@@ -515,6 +515,7 @@ export interface Person {
   naam: string;
   email?: string;
   functie?: string;
+  expertise?: string | null;
   description?: string;
   is_agent: boolean;
   is_admin: boolean;
@@ -537,6 +538,7 @@ export interface PersonCreate {
   naam: string;
   email?: string;
   functie?: string;
+  expertise?: string;
   description?: string;
   is_agent?: boolean;
 }
@@ -1689,6 +1691,8 @@ export interface LeadContact {
   id: string;
   person_id: string;
   person_naam: string;
+  person_functie?: string | null;
+  person_expertise?: string | null;
   rol: string;
   created_at: string;
 }
@@ -2062,6 +2066,7 @@ export interface CommunityGraphNode {
   stage?: string | null;
   initiatief_id?: string | null;
   functie?: string | null;
+  expertise?: string | null;
   person_role?: 'intern' | 'extern' | null;
   org_type?: string | null;
   corpus_node_type?: string | null;

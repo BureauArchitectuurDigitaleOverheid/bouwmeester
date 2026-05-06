@@ -242,6 +242,21 @@ async def search_people(
     return result
 
 
+@router.get("/expertise-values", response_model=list[str])
+async def list_expertise_values(
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:read")),
+) -> list[str]:
+    """Return distinct expertise values used on existing persons.
+
+    Used as suggestion source for the expertise CreatableSelect on the
+    person edit/create form.
+    """
+    repo = PersonRepository(db)
+    return await repo.list_expertise_values()
+
+
 @router.get("/{id}/summary", response_model=PersonSummaryResponse)
 async def get_person_summary(
     id: UUID,

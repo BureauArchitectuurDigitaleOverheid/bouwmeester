@@ -1,4 +1,4 @@
-import { Mail, Briefcase, Phone } from 'lucide-react';
+import { Mail, Briefcase, Phone, Tag } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { PersonAvatar } from '@/components/people/PersonAvatar';
 import { formatFunctie } from '@/types';
@@ -60,6 +60,12 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
               <div className="flex items-center gap-1.5 text-xs text-text-secondary">
                 <Briefcase className="h-3 w-3 shrink-0" />
                 <span className="truncate">{formatFunctie(person.functie)}</span>
+              </div>
+            )}
+            {person.expertise && (
+              <div className="flex items-center gap-1.5 text-xs text-text-secondary">
+                <Tag className="h-3 w-3 shrink-0" />
+                <span className="truncate">{person.expertise}</span>
               </div>
             )}
             {person.is_agent && person.description && (

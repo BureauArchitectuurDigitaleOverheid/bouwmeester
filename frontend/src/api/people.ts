@@ -68,6 +68,10 @@ export async function searchPeople(q: string, limit = 10): Promise<Person[]> {
   return apiGet<Person[]>('/api/people/search', { q, limit: String(limit) });
 }
 
+export async function getExpertiseValues(): Promise<string[]> {
+  return apiGet<string[]>('/api/people/expertise-values');
+}
+
 // Emails
 export async function addPersonEmail(
   personId: string,

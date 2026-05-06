@@ -58,3 +58,13 @@ class PersonRepository(BaseRepository[Person]):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def list_expertise_values(self) -> list[str]:
+        stmt = (
+            select(Person.expertise)
+            .where(Person.expertise.is_not(None))
+            .distinct()
+            .order_by(Person.expertise)
+        )
+        result = await self.session.execute(stmt)
+        return [v for v in result.scalars().all() if v]

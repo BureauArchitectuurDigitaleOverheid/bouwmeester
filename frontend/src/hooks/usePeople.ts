@@ -10,6 +10,7 @@ import {
   updatePersonOrganisatie,
   removePersonOrganisatie,
   searchPeople,
+  getExpertiseValues,
   rotateApiKey,
   addPersonEmail,
   removePersonEmail,
@@ -45,7 +46,11 @@ export function useCreatePerson() {
     mutationFn: ({ force, ...data }: PersonCreate & { force?: boolean }) =>
       createPerson(data, force),
     errorMessage: 'Fout bij aanmaken persoon',
-    invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
+    invalidateKeys: [
+      queryKeys.people.all,
+      queryKeys.organisatie.all,
+      queryKeys.people.expertiseValues,
+    ],
   });
 }
 
@@ -62,7 +67,11 @@ export function useUpdatePerson() {
     mutationFn: ({ id, data }: { id: string; data: Partial<PersonCreate> }) =>
       updatePerson(id, data),
     errorMessage: 'Fout bij bijwerken persoon',
-    invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
+    invalidateKeys: [
+      queryKeys.people.all,
+      queryKeys.organisatie.all,
+      queryKeys.people.expertiseValues,
+    ],
   });
 }
 
@@ -126,6 +135,14 @@ export function useSearchPeople(query: string) {
     queryKey: queryKeys.people.search(debouncedQuery),
     queryFn: () => searchPeople(debouncedQuery),
     enabled: debouncedQuery.length >= 2,
+  });
+}
+
+export function useExpertiseValues() {
+  return useQuery({
+    queryKey: queryKeys.people.expertiseValues,
+    queryFn: getExpertiseValues,
+    staleTime: 5 * 60_000,
   });
 }
 

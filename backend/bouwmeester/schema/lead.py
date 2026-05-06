@@ -146,6 +146,8 @@ class LeadContactResponse(BaseModel):
     id: UUID
     person_id: UUID
     person_naam: str = ""
+    person_functie: str | None = None
+    person_expertise: str | None = None
     rol: str
     created_at: datetime
 
@@ -157,6 +159,10 @@ class LeadContactResponse(BaseModel):
         if hasattr(data, "person") and data.person:
             if not hasattr(data, "person_naam") or not data.person_naam:
                 data.person_naam = data.person.naam
+            if not getattr(data, "person_functie", None):
+                data.person_functie = data.person.functie
+            if not getattr(data, "person_expertise", None):
+                data.person_expertise = data.person.expertise
         return data
 
 

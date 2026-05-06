@@ -18,6 +18,7 @@ import {
   useAddPersonPhone,
   useRemovePersonPhone,
   useSetDefaultPhone,
+  useExpertiseValues,
 } from '@/hooks/usePeople';
 import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS, formatFunctie } from '@/types';
 import type { Person, PersonFormSubmitParams } from '@/types';
@@ -65,11 +66,14 @@ export function PersonEditForm({
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
   const [functie, setFunctie] = useState('');
+  const [expertise, setExpertise] = useState('');
   const [description, setDescription] = useState('');
   const [orgEenheidId, setOrgEenheidId] = useState('');
   const [dienstverband, setDienstverband] = useState('in_dienst');
   const [emailTouched, setEmailTouched] = useState(false);
   const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
+  const [expertiseLocalAdded, setExpertiseLocalAdded] = useState<string[]>([]);
+  const { data: expertiseValues = [] } = useExpertiseValues();
 
   // Rotated API key one-time display
   const [rotatedApiKey, setRotatedApiKey] = useState<string | null>(null);
@@ -143,6 +147,7 @@ export function PersonEditForm({
         setNaam(editData.naam);
         setEmail(editData.email || '');
         setFunctie(editData.functie || '');
+        setExpertise(editData.expertise || '');
         setDescription(editData.description || '');
         setOrgEenheidId('');
         // Ensure the existing functie value is in options
@@ -164,6 +169,7 @@ export function PersonEditForm({
         }
         setEmail('');
         setFunctie('');
+        setExpertise('');
         setDescription('');
         setOrgEenheidId(defaultOrgEenheidId || '');
         setDienstverband('in_dienst');
@@ -197,6 +203,7 @@ export function PersonEditForm({
           naam: naam.trim(),
           // In edit mode, don't send email — managed via multi-email section
           functie: isAgent ? undefined : (functie || undefined),
+          expertise: isAgent ? undefined : (expertise.trim() || undefined),
           description: isAgent ? (description.trim() || undefined) : undefined,
           is_agent: isAgent,
         },
@@ -215,6 +222,7 @@ export function PersonEditForm({
           naam: naam.trim(),
           email: email.trim() || undefined,
           functie: isAgent ? undefined : (functie || undefined),
+          expertise: isAgent ? undefined : (expertise.trim() || undefined),
           description: isAgent ? (description.trim() || undefined) : undefined,
           is_agent: isAgent,
         },
@@ -240,6 +248,7 @@ export function PersonEditForm({
       setNaam(person.naam);
       setEmail(person.default_email || person.email || '');
       setFunctie(person.functie || '');
+      setExpertise(person.expertise || '');
       // Ensure the functie value is in options
       if (person.functie) {
         setFunctieOptions((prev) =>
@@ -257,6 +266,7 @@ export function PersonEditForm({
     setNaam(text);
     setEmail('');
     setFunctie('');
+    setExpertise('');
     return null; // don't set a value — we switch to create mode
   };
 
@@ -266,6 +276,7 @@ export function PersonEditForm({
     setNaam('');
     setEmail('');
     setFunctie('');
+    setExpertise('');
     setNaamQuery('');
   };
 
@@ -662,6 +673,29 @@ export function PersonEditForm({
             placeholder="Selecteer of maak functie..."
             onCreate={handleCreateFunctie}
             createLabel="Nieuwe functie aanmaken"
+            disabled={!!selectedPerson}
+          />
+        )}
+        {!isAgent && (
+          <CreatableSelect
+            label="Expertise"
+            value={expertise}
+            onChange={setExpertise}
+            options={[
+              ...expertiseValues.map((v) => ({ value: v, label: v })),
+              ...expertiseLocalAdded
+                .filter((v) => !expertiseValues.includes(v))
+                .map((v) => ({ value: v, label: v })),
+            ]}
+            placeholder="Bijv. wetgevingsjurist, BIT-adviseur..."
+            onCreate={async (text) => {
+              const value = text.trim();
+              if (!value) return null;
+              setExpertiseLocalAdded((prev) => (prev.includes(value) ? prev : [...prev, value]));
+              setExpertise(value);
+              return value;
+            }}
+            createLabel="Nieuwe expertise toevoegen"
             disabled={!!selectedPerson}
           />
         )}

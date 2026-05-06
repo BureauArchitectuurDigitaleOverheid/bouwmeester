@@ -13,6 +13,7 @@ class CommunityGraphNode(BaseModel):
     stage: str | None = None  # for leads
     initiatief_id: str | None = None  # for leads
     functie: str | None = None  # for persons
+    expertise: str | None = None  # for persons
     person_role: str | None = None  # "intern" | "extern" — for persons
     org_type: str | None = None  # for organisations
     corpus_node_type: str | None = None  # for corpus nodes
