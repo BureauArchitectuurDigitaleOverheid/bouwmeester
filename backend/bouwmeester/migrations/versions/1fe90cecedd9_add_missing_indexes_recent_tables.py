@@ -1,7 +1,7 @@
 """add missing indexes recent tables
 
 Revision ID: 1fe90cecedd9
-Revises: 2c4d6e8f9a01
+Revises: f1a2b3c4d5e6
 Create Date: 2026-05-06 12:00:00.000000
 
 Sluit de FK- en hot-filter-index gaten die door recente migraties zijn
@@ -16,7 +16,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "1fe90cecedd9"
-down_revision: str | None = "2c4d6e8f9a01"
+down_revision: str | None = "f1a2b3c4d5e6"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -39,6 +39,7 @@ _INDEXES: list[tuple[str, str, list[str]]] = [
         "samenwerkingsverband",
         ["created_by_id"],
     ),
+    ("ix_github_link_created_by_id", "github_link", ["created_by_id"]),
     # Hot filter columns.
     ("ix_samenwerkingsverband_type", "samenwerkingsverband", ["type"]),
     ("ix_lead_engagement_type", "lead", ["engagement_type"]),
