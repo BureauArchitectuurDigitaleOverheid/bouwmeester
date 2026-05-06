@@ -70,9 +70,27 @@ describe('Modal', () => {
       </Modal>,
     );
 
-    // The overlay is the backdrop div
+    // Wait past the 250ms suppression window applied at mount
+    await new Promise((r) => setTimeout(r, 300));
+
     const overlay = container.querySelector('.backdrop-blur-sm');
     if (overlay) await user.click(overlay);
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('ignores overlay clicks within 250ms of opening (drag-and-drop guard)', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const { container } = render(
+      <Modal open={true} onClose={onClose} title="Drop">
+        Content
+      </Modal>,
+    );
+
+    // Click immediately, simulating the synthetic post-drop click from
+    // Outlook on Windows/Citrix.
+    const overlay = container.querySelector('.backdrop-blur-sm');
+    if (overlay) await user.click(overlay);
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
