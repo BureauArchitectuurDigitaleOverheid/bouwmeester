@@ -142,6 +142,12 @@ from bouwmeester.schema.llm import (
     TagSuggestionRequest,
     TagSuggestionResponse,
 )
+from bouwmeester.schema.mattermost_channel_link import (
+    MattermostChannelLinkCreate,
+    MattermostChannelLinkResponse,
+    MattermostChannelLinkUpdate,
+    MattermostChannelSearchResult,
+)
 from bouwmeester.schema.mattermost_user import (
     MattermostLinkCodeResponse,
     MattermostLinkStatusResponse,
@@ -479,6 +485,10 @@ __all__ = [
     "TagTreeResponse",
     "TagUpdate",
     # mattermost
+    "MattermostChannelLinkCreate",
+    "MattermostChannelLinkResponse",
+    "MattermostChannelLinkUpdate",
+    "MattermostChannelSearchResult",
     "MattermostLinkCodeResponse",
     "MattermostLinkStatusResponse",
     "MattermostUserResponse",

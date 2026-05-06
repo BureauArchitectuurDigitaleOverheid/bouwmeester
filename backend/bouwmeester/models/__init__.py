@@ -30,6 +30,10 @@ from bouwmeester.models.lead_activity import LeadActivity  # noqa: F401
 from bouwmeester.models.lead_attachment import LeadAttachment  # noqa: F401
 from bouwmeester.models.lead_node import LeadNode  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
+from bouwmeester.models.mattermost_channel_link import (  # noqa: F401
+    MattermostChannelLink,
+)
+from bouwmeester.models.mattermost_post_link import MattermostPostLink  # noqa: F401
 from bouwmeester.models.mattermost_user import (  # noqa: F401
     MattermostLinkCode,
     MattermostUser,
@@ -69,6 +73,7 @@ from bouwmeester.models.shared_access import SharedAccess  # noqa: F401
 from bouwmeester.models.stakeholder_assessment import (
     StakeholderAssessment,  # noqa: F401
 )
+from bouwmeester.models.suggested_lead import SuggestedLead  # noqa: F401
 from bouwmeester.models.tag import LeadTag, NodeTag, Tag  # noqa: F401
 from bouwmeester.models.task import Task  # noqa: F401
 from bouwmeester.models.webauthn_credential import WebAuthnCredential  # noqa: F401
@@ -107,7 +112,9 @@ __all__ = [
     "LeadNode",
     "LeadTag",
     "Maatregel",
+    "MattermostChannelLink",
     "MattermostLinkCode",
+    "MattermostPostLink",
     "MattermostUser",
     "Mention",
     "ParlementairItem",
@@ -134,6 +141,7 @@ __all__ = [
     "SharedAccess",
     "StakeholderAssessment",
     "SuggestedEdge",
+    "SuggestedLead",
     "Tag",
     "Task",
     "WebAuthnCredential",

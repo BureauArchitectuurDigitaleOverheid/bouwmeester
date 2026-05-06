@@ -186,6 +186,25 @@ async def _fcc_sync_loop(settings) -> None:  # type: ignore[no-untyped-def]
         await asyncio.sleep(settings.FCC_POLL_INTERVAL_SECONDS)
 
 
+async def _mattermost_websocket_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Persistent Mattermost websocket voor het meelezen in gekoppelde kanalen.
+
+    Service heeft eigen reconnect/backoff binnen ``run()``. Deze loop vangt
+    alleen onverwachte exceptions op en herstart dan na een korte pauze.
+    """
+    while True:
+        try:
+            from bouwmeester.services.mattermost_websocket_service import (
+                MattermostWebsocketService,
+            )
+
+            service = MattermostWebsocketService()
+            await service.run()
+        except Exception:
+            logger.exception("Mattermost websocket loop crashed, restart in 5s")
+        await asyncio.sleep(5)
+
+
 async def main() -> None:
     settings = get_settings()
     logger.info(
@@ -196,6 +215,7 @@ async def main() -> None:
     tasks = [
         asyncio.create_task(_parlementair_loop(settings)),
         asyncio.create_task(_mattermost_link_loop(settings)),
+        asyncio.create_task(_mattermost_websocket_loop(settings)),
         asyncio.create_task(_opdracht_task_loop(settings)),
         asyncio.create_task(_fcc_sync_loop(settings)),
     ]

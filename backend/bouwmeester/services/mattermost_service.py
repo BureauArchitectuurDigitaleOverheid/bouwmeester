@@ -486,6 +486,88 @@ class MattermostService:
         except httpx.HTTPError:
             return mattermost_user_id
 
+    async def search_channels(self, query: str) -> list[dict]:
+        """Zoek kanalen waar de bot in zit, gefilterd op naam.
+
+        Returns een lijst van dicts met channel_id, channel_name,
+        channel_display_name, team_id, member_count, is_bot_member.
+
+        We zoeken alleen binnen de kanalen waarvan de bot lid is — pas
+        wanneer de bot toegevoegd wordt aan een kanaal kunnen we daar
+        meelezen.
+        """
+        bot_user_id = await self.get_bot_user_id()
+        if not bot_user_id:
+            return []
+
+        client = await self._get_client()
+        needle = query.strip().lower()
+        if not needle:
+            return []
+
+        try:
+            resp = await client.get(
+                f"/api/v4/users/{bot_user_id}/channels",
+                params={"last_delete_at": 0},
+            )
+            resp.raise_for_status()
+            channels = resp.json()
+        except httpx.HTTPError:
+            logger.exception("Failed to list bot channels")
+            return []
+
+        results: list[dict] = []
+        for ch in channels:
+            ch_type = ch.get("type")
+            # Open kanalen ("O") en private kanalen ("P"). DMs ("D") en
+            # group-DMs ("G") zijn niet relevant voor lead-koppelingen.
+            if ch_type not in ("O", "P"):
+                continue
+            name = ch.get("name", "")
+            display_name = ch.get("display_name", "") or name
+            if needle not in name.lower() and needle not in display_name.lower():
+                continue
+            results.append(
+                {
+                    "channel_id": ch.get("id", ""),
+                    "channel_name": name,
+                    "channel_display_name": display_name,
+                    "team_id": ch.get("team_id"),
+                    "member_count": ch.get("total_msg_count"),
+                    "is_bot_member": True,
+                }
+            )
+            if len(results) >= 25:
+                break
+        return results
+
+    async def get_channel_posts_since(
+        self, channel_id: str, since: int, *, per_page: int = 60
+    ) -> list[dict]:
+        """Haal posts uit een kanaal op vanaf een ms-timestamp.
+
+        Gebruikt voor recovery na websocket-reconnect. Returneert posts
+        in chronologische volgorde (oudste eerst) zodat downstream-logica
+        ze in volgorde kan verwerken.
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.get(
+                f"/api/v4/channels/{channel_id}/posts",
+                params={"since": since, "per_page": per_page},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.HTTPError:
+            logger.exception("Failed to fetch posts for channel %s", channel_id)
+            return []
+
+        order = data.get("order", [])
+        posts_map = data.get("posts", {})
+        # `order` komt nieuw->oud terug. Zet om naar oud->nieuw.
+        posts = [posts_map.get(pid) for pid in reversed(order) if posts_map.get(pid)]
+        return posts
+
     async def close(self) -> None:
         if self._client:
             await self._client.aclose()
