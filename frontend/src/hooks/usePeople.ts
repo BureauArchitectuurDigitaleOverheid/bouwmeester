@@ -46,7 +46,11 @@ export function useCreatePerson() {
     mutationFn: ({ force, ...data }: PersonCreate & { force?: boolean }) =>
       createPerson(data, force),
     errorMessage: 'Fout bij aanmaken persoon',
-    invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
+    invalidateKeys: [
+      queryKeys.people.all,
+      queryKeys.organisatie.all,
+      queryKeys.people.expertiseValues,
+    ],
   });
 }
 
@@ -63,7 +67,11 @@ export function useUpdatePerson() {
     mutationFn: ({ id, data }: { id: string; data: Partial<PersonCreate> }) =>
       updatePerson(id, data),
     errorMessage: 'Fout bij bijwerken persoon',
-    invalidateKeys: [queryKeys.people.all, queryKeys.organisatie.all],
+    invalidateKeys: [
+      queryKeys.people.all,
+      queryKeys.organisatie.all,
+      queryKeys.people.expertiseValues,
+    ],
   });
 }
 
