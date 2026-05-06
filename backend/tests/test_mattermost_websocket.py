@@ -18,8 +18,45 @@ from bouwmeester.services.mattermost_service import (
 )
 from bouwmeester.services.mattermost_websocket_service import (
     MattermostWebsocketService,
+    _ws_url_from_http,
     disable_channel_link,
 )
+
+
+class TestWsUrlFromHttp:
+    """The ws-URL builder must preserve any sub-path on the Mattermost host."""
+
+    def test_root_install(self):
+        assert (
+            _ws_url_from_http("https://mm.example.com")
+            == "wss://mm.example.com/api/v4/websocket"
+        )
+
+    def test_root_install_with_trailing_slash(self):
+        assert (
+            _ws_url_from_http("https://mm.example.com/")
+            == "wss://mm.example.com/api/v4/websocket"
+        )
+
+    def test_subpath_install(self):
+        # Mattermost achter reverse-proxy op /chat — het pad moet meegaan,
+        # anders krijgen we HTTP 404 van de proxy.
+        assert (
+            _ws_url_from_http("https://digilab.overheid.nl/chat")
+            == "wss://digilab.overheid.nl/chat/api/v4/websocket"
+        )
+
+    def test_subpath_install_with_trailing_slash(self):
+        assert (
+            _ws_url_from_http("https://digilab.overheid.nl/chat/")
+            == "wss://digilab.overheid.nl/chat/api/v4/websocket"
+        )
+
+    def test_http_becomes_ws(self):
+        assert (
+            _ws_url_from_http("http://localhost:8065")
+            == "ws://localhost:8065/api/v4/websocket"
+        )
 
 
 def _id() -> str:
