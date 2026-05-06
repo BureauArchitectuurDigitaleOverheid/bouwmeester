@@ -177,3 +177,44 @@ async def test_actief_filter(client):
     namen = {v["naam"] for v in only_inactief.json()}
     assert "Afgesloten" in namen
     assert "Actief" not in namen
+
+
+async def test_list_for_person(client, sample_person):
+    """GET /by-person/{person_id} retourneert alle actieve lidmaatschappen."""
+    today = date.today().isoformat()
+
+    swv_a = (
+        await client.post(
+            "/api/samenwerkingsverbanden",
+            json={"naam": "CRI", "type": "programma"},
+        )
+    ).json()
+    swv_b = (
+        await client.post(
+            "/api/samenwerkingsverbanden",
+            json={"naam": "Werkgroep AI", "type": "werkgroep"},
+        )
+    ).json()
+
+    await client.post(
+        f"/api/samenwerkingsverbanden/{swv_a['id']}/leden",
+        json={
+            "person_id": str(sample_person.id),
+            "rol": "trekker",
+            "start_datum": today,
+        },
+    )
+    await client.post(
+        f"/api/samenwerkingsverbanden/{swv_b['id']}/leden",
+        json={"person_id": str(sample_person.id), "start_datum": today},
+    )
+
+    resp = await client.get(f"/api/samenwerkingsverbanden/by-person/{sample_person.id}")
+    assert resp.status_code == 200
+    items = resp.json()
+    assert len(items) == 2
+    namen = {item["samenwerkingsverband_naam"] for item in items}
+    assert namen == {"CRI", "Werkgroep AI"}
+    cri = next(i for i in items if i["samenwerkingsverband_naam"] == "CRI")
+    assert cri["rol"] == "trekker"
+    assert cri["samenwerkingsverband_type"] == "programma"

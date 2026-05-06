@@ -86,21 +86,7 @@ async def list_samenwerkingsverbanden(
     rows = await repo.get_all(
         skip=skip, limit=limit, search=search, type_filter=type, actief=actief
     )
-    return [
-        SamenwerkingsverbandResponse(
-            id=v.id,
-            naam=v.naam,
-            type=v.type,
-            beschrijving=v.beschrijving,
-            start_datum=v.start_datum,
-            eind_datum=v.eind_datum,
-            created_by_id=v.created_by_id,
-            created_at=v.created_at,
-            updated_at=v.updated_at,
-            aantal_leden=count,
-        )
-        for v, count in rows
-    ]
+    return [_to_response(v, aantal_leden=count) for v, count in rows]
 
 
 @router.post(
@@ -333,6 +319,20 @@ async def update_lid(
     await db.flush()
     await db.refresh(lid, attribute_names=["person"])
 
+    verband = await db.get(Samenwerkingsverband, id)
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "samenwerkingsverband.lid_updated",
+        details={
+            "samenwerkingsverband_id": str(id),
+            "samenwerkingsverband_naam": verband.naam if verband else None,
+            "person_id": str(lid.person_id),
+            "fields": list(data.model_dump(exclude_unset=True).keys()),
+        },
+    )
+
     return _to_lid_response(lid)
 
 
@@ -355,6 +355,7 @@ async def remove_lid(
     )
     lid = require_found((await db.execute(stmt)).scalar_one_or_none(), "Lid")
     person_id = lid.person_id
+    verband = await db.get(Samenwerkingsverband, id)
     await db.delete(lid)
     await db.flush()
 
@@ -365,6 +366,7 @@ async def remove_lid(
         "samenwerkingsverband.lid_removed",
         details={
             "samenwerkingsverband_id": str(id),
+            "samenwerkingsverband_naam": verband.naam if verband else None,
             "person_id": str(person_id),
         },
     )
