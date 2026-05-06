@@ -62,10 +62,12 @@ export function Modal({
   onBack,
 }: ModalProps) {
   const wasOpen = useRef(false);
+  const openedAtRef = useRef(0);
   useEffect(() => {
     if (open && !wasOpen.current) {
       openModalCount++;
       document.body.style.overflow = 'hidden';
+      openedAtRef.current = Date.now();
       wasOpen.current = true;
     } else if (!open && wasOpen.current) {
       openModalCount = Math.max(0, openModalCount - 1);
@@ -99,12 +101,22 @@ export function Modal({
 
   const borderClass = accentColor ? `border-t-[3px] ${ACCENT_BORDER[accentColor]}` : '';
 
+  // Suppress overlay-click for the first 250ms after opening. Without this,
+  // a synthetic mouseup/click that follows a drag-and-drop (notably Outlook
+  // on Windows/Citrix) lands on the freshly-mounted overlay and closes the
+  // modal before the user sees it.
+  const handleOverlayClick = () => {
+    if (!closeable) return;
+    if (Date.now() - openedAtRef.current < 250) return;
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex }}>
       {/* Overlay */}
       <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
-        onClick={closeable ? onClose : undefined}
+        onClick={handleOverlayClick}
       />
 
       {/* Dialog */}
