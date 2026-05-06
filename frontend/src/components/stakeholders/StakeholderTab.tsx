@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import {
   useStakeholderAssessments,
   useCreateStakeholderAssessment,
@@ -136,9 +137,7 @@ export function StakeholderTab({
                 />
               )}
               {readOnly && a.notitie && (
-                <p className="text-sm text-text-secondary whitespace-pre-wrap">
-                  {a.notitie}
-                </p>
+                <RichTextDisplay content={a.notitie} fallback="" />
               )}
             </li>
           ))}

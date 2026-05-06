@@ -4,6 +4,7 @@ import { clsx } from 'clsx';
 import { Button } from '@/components/common/Button';
 import { Badge } from '@/components/common/Badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { useOrganisatieEenheid, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
 import { formatOrganisatieType, ORGANISATIE_TYPE_BADGE_COLORS, formatFunctie } from '@/types';
@@ -273,26 +274,11 @@ export function OrganisatieDetail({
               {eenheid.manager.naam}{eenheid.manager.functie ? ` — ${formatFunctie(eenheid.manager.functie)}` : ''}
             </p>
           )}
-          {eenheid.beschrijving && (() => {
-            // Extract plain text from TipTap JSON, or show as-is for plain text
-            let displayText = eenheid.beschrijving;
-            try {
-              const parsed = JSON.parse(eenheid.beschrijving);
-              if (parsed?.type === 'doc' && Array.isArray(parsed.content)) {
-                displayText = parsed.content
-                  .map((block: { content?: { text?: string }[] }) =>
-                    block.content?.map((c) => c.text ?? '').join('') ?? ''
-                  )
-                  .filter(Boolean)
-                  .join('\n');
-              }
-            } catch {
-              // plain text — use as-is
-            }
-            return displayText ? (
-              <p className="text-sm text-text-secondary mt-1">{displayText}</p>
-            ) : null;
-          })()}
+          {eenheid.beschrijving && (
+            <div className="mt-1">
+              <RichTextDisplay content={eenheid.beschrijving} fallback="" />
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button
