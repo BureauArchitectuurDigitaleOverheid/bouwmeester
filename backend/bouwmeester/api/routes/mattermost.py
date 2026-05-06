@@ -272,7 +272,17 @@ async def handle_action(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Handle interactive button actions from Mattermost."""
+    """Handle interactive button actions from Mattermost.
+
+    **Trust model**: het integration-token (gedeelde geheim) is hier de
+    enige authenticatie. Wie het token kent, kan ``user_id`` van iedere
+    MM-user naïef invullen en als die persoon acties uitvoeren. Het token
+    moet daarom als admin-equivalent worden behandeld en alleen aan de
+    Mattermost-server toevertrouwd. Voor extra audit loggen we hier de
+    door MM doorgestuurde ``post_id`` + ``trigger_id`` zodat een
+    onbekende/onverwachte action achteraf gecorreleerd kan worden met de
+    server-side post-trail van Mattermost.
+    """
     body = await request.json()
 
     # Mattermost sends the integration token at the top level for interactive
@@ -285,14 +295,31 @@ async def handle_action(
     user_id = body.get("user_id", "unknown")
     _check_rate_limit("action", user_id)
 
+    context = body.get("context", {}) or {}
+    action_name = context.get("action", "")
+    suggested_lead_id = context.get("suggested_lead_id")
+    if suggested_lead_id:
+        # Per-suggestion rate-limit voorkomt brute-force toggling.
+        _check_rate_limit("action", f"sl:{suggested_lead_id}")
+
+    logger.info(
+        "Mattermost action: action=%s mm_user_id=%s post_id=%s trigger_id=%s "
+        "channel_id=%s suggested_lead_id=%s",
+        action_name,
+        user_id,
+        body.get("post_id"),
+        body.get("trigger_id"),
+        body.get("channel_id"),
+        suggested_lead_id,
+    )
+
     from bouwmeester.services.mattermost_slash_service import MattermostSlashService
 
     service = MattermostSlashService(db)
-    context = body.get("context", {})
 
     result = await service.handle_action(
         mattermost_user_id=user_id,
-        action=context.get("action", ""),
+        action=action_name,
         context=context,
     )
     await db.commit()

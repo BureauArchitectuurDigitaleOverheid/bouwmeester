@@ -473,6 +473,7 @@ export function InitiatiefDetailModal({
             <div>
               <MattermostChannelsSection
                 scope={{ type: 'initiatief', id: detail.id }}
+                parentZIndex={50}
               />
             </div>
 

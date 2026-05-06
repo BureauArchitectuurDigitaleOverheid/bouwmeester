@@ -124,7 +124,7 @@ class MattermostIngestService:
             and channel_link.suggest_leads_enabled
             and message.strip()
         ):
-            suggested_lead_id = await self._create_suggested_lead(
+            suggested_lead_id, suggest_reason = await self._create_suggested_lead(
                 channel_link_initiatief_id=channel_link.scope_id,
                 channel_display_name=channel_link.channel_display_name,
                 channel_id=channel_id,
@@ -132,7 +132,7 @@ class MattermostIngestService:
                 message=message,
             )
             if suggested_lead_id is None:
-                skipped_reason = "noise"
+                skipped_reason = suggest_reason
         elif channel_link.scope_type == SCOPE_LEAD and not message.strip():
             # Joins, leaves, system-events — nuttig om vast te leggen
             # zodat we de post niet opnieuw zien, maar geen note van maken.
@@ -268,18 +268,24 @@ class MattermostIngestService:
         channel_id: str,
         post: dict,
         message: str,
-    ) -> UUID | None:
+    ) -> tuple[UUID | None, str | None]:
         """Vraag VLAM of dit een lead is en maak — bij ja — een SuggestedLead
         plus een bot-reply met approval-knoppen in de thread.
 
-        Returns ``None`` als het bericht volgens de LLM geen lead is."""
+        Returns ``(uuid_of_None, reason)`` met ``reason`` ∈
+        ``"llm_unavailable" | "no_lead" | "stale_initiatief" | None``.
+        ``reason`` wordt door de caller in ``MattermostPostLink.skipped_reason``
+        bewaard, zodat we onderscheid kunnen maken tussen "VLAM was tijdelijk
+        offline" (reprocessable) en "echt geen lead" (definitief)."""
         from bouwmeester.services.llm import DataSensitivity
         from bouwmeester.services.llm.factory import get_llm_service_for
 
         llm = await get_llm_service_for(DataSensitivity.CONFIDENTIAL, self.session)
         if llm is None:
-            logger.debug("Geen CONFIDENTIAL-LLM beschikbaar — sla suggested-lead over")
-            return None
+            logger.warning(
+                "Geen CONFIDENTIAL-LLM beschikbaar — sla suggested-lead over"
+            )
+            return None, "llm_unavailable"
 
         initiatief = await self.session.get(Initiatief, channel_link_initiatief_id)
         if initiatief is None:
@@ -287,7 +293,7 @@ class MattermostIngestService:
                 "Initiatief %s voor kanaal-koppeling bestaat niet (meer)",
                 channel_link_initiatief_id,
             )
-            return None
+            return None, "stale_initiatief"
 
         recent_leads_stmt = (
             select(Lead.id, Lead.title, Lead.stage)
@@ -307,7 +313,7 @@ class MattermostIngestService:
             recent_leads=recent,
         )
         if not result.is_lead:
-            return None
+            return None, "no_lead"
 
         match_lead_uuid: UUID | None = None
         if result.match_existing_lead_id:
@@ -356,7 +362,7 @@ class MattermostIngestService:
                 "Kon bot-reply voor suggested lead %s niet plaatsen", suggested.id
             )
 
-        return suggested.id
+        return suggested.id, None
 
     async def _post_suggestion_reply(
         self,
@@ -435,17 +441,13 @@ class MattermostIngestService:
                 "footer": "Bouwmeester · suggestie vanuit Mattermost",
                 "actions": actions,
             }
-            client = await service._get_client()
-            payload = {
-                "channel_id": channel_id,
-                "root_id": root_post_id,
-                "message": text,
-                "props": {"attachments": [attachment]},
-            }
-            resp = await client.post("/api/v4/posts", json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            mm_thread_post_id = data.get("id")
+            data = await service.reply_to_post(
+                channel_id,
+                root_post_id,
+                text,
+                props={"attachments": [attachment]},
+            )
+            mm_thread_post_id = (data or {}).get("id")
             if mm_thread_post_id:
                 suggested.mm_thread_post_id = mm_thread_post_id
                 await self.session.flush()

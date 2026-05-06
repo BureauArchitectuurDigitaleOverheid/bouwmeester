@@ -330,9 +330,14 @@ class BaseLLMService(ABC):
                 match_id = match_id.strip() or None
             else:
                 match_id = None
+            try:
+                raw_confidence = float(result.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                raw_confidence = 0.0
+            confidence = max(0.0, min(1.0, raw_confidence))
             return LeadCandidateClassification(
                 is_lead=bool(result.get("is_lead", False)),
-                confidence=float(result.get("confidence") or 0.0),
+                confidence=confidence,
                 proposed_title=str(result.get("proposed_title") or "")[:500],
                 proposed_description=str(result.get("proposed_description") or ""),
                 match_existing_lead_id=match_id,

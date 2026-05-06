@@ -24,9 +24,13 @@ type Scope =
 
 interface Props {
   scope: Scope;
+  /** z-index van de parent-modal (lead/initiatief detail). De picker
+   *  opent met +10 bovenop deze waarde zodat hij niet achter de
+   *  parent-modal verdwijnt. */
+  parentZIndex?: number;
 }
 
-export function MattermostChannelsSection({ scope }: Props) {
+export function MattermostChannelsSection({ scope, parentZIndex }: Props) {
   const initiatiefQuery = useInitiatiefChannels(
     scope.type === 'initiatief' ? scope.id : undefined,
   );
@@ -97,6 +101,7 @@ export function MattermostChannelsSection({ scope }: Props) {
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         scope={scope}
+        zIndex={(parentZIndex ?? 50) + 10}
       />
     </div>
   );
@@ -162,10 +167,12 @@ function ChannelPickerModal({
   open,
   onClose,
   scope,
+  zIndex,
 }: {
   open: boolean;
   onClose: () => void;
   scope: Scope;
+  zIndex: number;
 }) {
   const [q, setQ] = useState('');
   const debounced = useDebounce(q, 250);
@@ -203,7 +210,7 @@ function ChannelPickerModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Kanaal koppelen">
+    <Modal open={open} onClose={onClose} title="Kanaal koppelen" zIndex={zIndex}>
       <div className="space-y-3">
         <p className="text-xs text-text-secondary">
           Zoek een kanaal waar de Bouwmeester-bot al lid van is. Niet

@@ -90,8 +90,21 @@ async def _resolve_lead(
     return lead
 
 
-def _can_manage_link(link: MattermostChannelLink, init_ctx: InitiatiefContext) -> bool:
-    """Mag de huidige user deze koppeling beheren?"""
+async def _can_manage_link(
+    db: AsyncSession,
+    link: MattermostChannelLink,
+    init_ctx: InitiatiefContext,
+) -> bool:
+    """Mag de huidige user deze koppeling beheren?
+
+    Voor initiatief-scope: kanaal-koppeling beheren = het initiatief mogen
+    zien (zelfde drempel als de UI-detailpagina).
+
+    Voor lead-scope: laad de Lead en delegeer naar dezelfde regel als
+    ``_resolve_lead`` — een lead met initiatief is alleen beheerbaar door
+    iemand die dat initiatief mag zien; zonder initiatief is hij voor alle
+    authenticated users toegankelijk (migratiepad).
+    """
     if init_ctx.is_admin:
         return True
     if not init_ctx.is_authenticated:
@@ -99,10 +112,14 @@ def _can_manage_link(link: MattermostChannelLink, init_ctx: InitiatiefContext) -
     if link.scope_type == SCOPE_INITIATIEF:
         return link.scope_id in init_ctx.visible_initiatief_ids
     if link.scope_type == SCOPE_LEAD:
-        # Lead-koppelingen worden via de lead's initiatief geverifieerd —
-        # zonder initiatief is een lead voor iedereen toegankelijk in de
-        # migratieperiode (zie _check_lead_access in leads.py).
-        return True
+        lead = (
+            await db.execute(select(Lead).where(Lead.id == link.scope_id))
+        ).scalar_one_or_none()
+        if lead is None:
+            return False
+        if lead.initiatief_id is None:
+            return True
+        return lead.initiatief_id in init_ctx.visible_initiatief_ids
     return False
 
 
@@ -284,12 +301,13 @@ async def update_channel_link(
     link = await repo.get(link_id)
     if link is None:
         raise _not_found()
-    if not _can_manage_link(link, init_ctx):
+    if not await _can_manage_link(db, link, init_ctx):
         raise _not_found()
     updated = await repo.update_settings(
         link,
         auto_note_enabled=data.auto_note_enabled,
         suggest_leads_enabled=data.suggest_leads_enabled,
+        reenable=data.reenable,
     )
     return MattermostChannelLinkResponse.model_validate(updated)
 
@@ -308,6 +326,6 @@ async def delete_channel_link(
     link = await repo.get(link_id)
     if link is None:
         raise _not_found()
-    if not _can_manage_link(link, init_ctx):
+    if not await _can_manage_link(db, link, init_ctx):
         raise _not_found()
     await repo.delete(link)

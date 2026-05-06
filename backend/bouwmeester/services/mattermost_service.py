@@ -442,23 +442,35 @@ class MattermostService:
             logger.exception("Failed to poll bot DMs")
             return []
 
-    async def reply_to_post(self, channel_id: str, root_id: str, message: str) -> bool:
-        """Reply to a specific post in a channel."""
+    async def reply_to_post(
+        self,
+        channel_id: str,
+        root_id: str,
+        message: str,
+        *,
+        props: dict | None = None,
+    ) -> dict | None:
+        """Plaats een reply in dezelfde thread.
+
+        Geeft de aangemaakte post-data terug (incl. ``id``) of ``None`` bij
+        fout. Backwards compat: callers die alleen op truthy/falsy checken
+        blijven werken.
+        """
         client = await self._get_client()
         try:
-            resp = await client.post(
-                "/api/v4/posts",
-                json={
-                    "channel_id": channel_id,
-                    "root_id": root_id,
-                    "message": message,
-                },
-            )
+            payload: dict = {
+                "channel_id": channel_id,
+                "root_id": root_id,
+                "message": message,
+            }
+            if props:
+                payload["props"] = props
+            resp = await client.post("/api/v4/posts", json=payload)
             resp.raise_for_status()
-            return True
+            return resp.json()
         except httpx.HTTPError:
             logger.exception("Failed to reply to post %s", root_id)
-            return False
+            return None
 
     async def update_post(
         self, post_id: str, message: str, props: dict | None = None

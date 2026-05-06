@@ -435,7 +435,13 @@ class MattermostSlashService:
     async def handle_action(
         self, mattermost_user_id: str, action: str, context: dict
     ) -> dict:
-        """Handle an interactive button click."""
+        """Handle an interactive button click.
+
+        Mattermost interactive response-shape: ``{"ephemeral_text": "..."}``
+        voor in-line feedback aan de klikker, of ``{"update": {...}}`` om
+        de oorspronkelijke post te overschrijven. Dit verschilt van de
+        slash-command-shape (``{"response_type": "ephemeral", "text": ...}``).
+        """
         if action == "complete_task":
             return await self._action_complete_task(mattermost_user_id, context)
         if action == "create_lead_from_suggestion":
@@ -524,15 +530,15 @@ class MattermostSlashService:
         """Klik 'Maak lead aan' onder een MM-suggestie."""
         person_id = await self._resolve_person_id(mattermost_user_id)
         if not person_id:
-            return _ephemeral("Je account is niet gekoppeld.")
+            return _action_msg("Je account is niet gekoppeld.")
 
-        suggested = await self._get_suggestion(context)
+        suggested = await self._lock_suggestion(context)
         if isinstance(suggested, dict):
             return suggested
         if suggested.status != "pending":
-            return _ephemeral("Deze suggestie is al verwerkt.")
+            return _action_msg("Deze suggestie is al verwerkt.")
         if not await self._has_initiatief_access(person_id, suggested.initiatief_id):
-            return _ephemeral("Je hebt geen toegang tot dit initiatief.")
+            return _action_msg("Je hebt geen toegang tot dit initiatief.")
 
         from bouwmeester.models.lead import Lead
 
@@ -565,13 +571,8 @@ class MattermostSlashService:
             )
         )
 
-        suggested.status = "approved_new"
+        self._mark_reviewed(suggested, person_id, status="approved_new")
         suggested.approved_lead_id = lead.id
-        suggested.review_source = "mattermost"
-        suggested.reviewed_by_id = person_id
-        from datetime import UTC, datetime
-
-        suggested.reviewed_at = datetime.now(UTC)
         await self.session.flush()
 
         await self._update_thread_post(
@@ -579,7 +580,7 @@ class MattermostSlashService:
             text=f":white_check_mark: Lead aangemaakt: **{_escape_md(lead.title)}**",
             color="#22C55E",
         )
-        return {"ephemeral_text": "Lead aangemaakt in Bouwmeester."}
+        return _action_msg("Lead aangemaakt in Bouwmeester.")
 
     async def _action_link_lead_to_suggestion(
         self, mattermost_user_id: str, context: dict
@@ -588,17 +589,17 @@ class MattermostSlashService:
         van de suggestie. (Een echte multi-keuze-dialog houden we voor later.)"""
         person_id = await self._resolve_person_id(mattermost_user_id)
         if not person_id:
-            return _ephemeral("Je account is niet gekoppeld.")
+            return _action_msg("Je account is niet gekoppeld.")
 
-        suggested = await self._get_suggestion(context)
+        suggested = await self._lock_suggestion(context)
         if isinstance(suggested, dict):
             return suggested
         if suggested.status != "pending":
-            return _ephemeral("Deze suggestie is al verwerkt.")
+            return _action_msg("Deze suggestie is al verwerkt.")
         if not await self._has_initiatief_access(person_id, suggested.initiatief_id):
-            return _ephemeral("Je hebt geen toegang tot dit initiatief.")
+            return _action_msg("Je hebt geen toegang tot dit initiatief.")
         if suggested.match_existing_lead_id is None:
-            return _ephemeral(
+            return _action_msg(
                 "Geen kandidaat-lead bekend. Maak een nieuwe lead aan of negeer."
             )
 
@@ -607,7 +608,11 @@ class MattermostSlashService:
 
         lead = await self.session.get(Lead, suggested.match_existing_lead_id)
         if lead is None:
-            return _ephemeral("De gekoppelde lead bestaat niet meer.")
+            return _action_msg("De gekoppelde lead bestaat niet meer.")
+        # Verifieer dat de lead nog bij hetzelfde initiatief hoort — voorkomt
+        # cross-initiatief-leak via een geknoeide context of LLM-suggestie.
+        if lead.initiatief_id != suggested.initiatief_id:
+            return _action_msg("Lead hoort niet bij dit initiatief.")
 
         self.session.add(
             LeadActivity(
@@ -623,13 +628,8 @@ class MattermostSlashService:
             )
         )
 
-        suggested.status = "approved_linked"
+        self._mark_reviewed(suggested, person_id, status="approved_linked")
         suggested.approved_lead_id = lead.id
-        suggested.review_source = "mattermost"
-        suggested.reviewed_by_id = person_id
-        from datetime import UTC, datetime
-
-        suggested.reviewed_at = datetime.now(UTC)
         await self.session.flush()
 
         await self._update_thread_post(
@@ -637,26 +637,23 @@ class MattermostSlashService:
             text=f":link: Gekoppeld aan lead **{_escape_md(lead.title)}**",
             color="#3B82F6",
         )
-        return {"ephemeral_text": "Bericht gekoppeld als notitie aan de lead."}
+        return _action_msg("Bericht gekoppeld als notitie aan de lead.")
 
     async def _action_reject_suggestion(
         self, mattermost_user_id: str, context: dict
     ) -> dict:
         person_id = await self._resolve_person_id(mattermost_user_id)
         if not person_id:
-            return _ephemeral("Je account is niet gekoppeld.")
-        suggested = await self._get_suggestion(context)
+            return _action_msg("Je account is niet gekoppeld.")
+        suggested = await self._lock_suggestion(context)
         if isinstance(suggested, dict):
             return suggested
         if suggested.status != "pending":
-            return _ephemeral("Deze suggestie is al verwerkt.")
+            return _action_msg("Deze suggestie is al verwerkt.")
+        if not await self._has_initiatief_access(person_id, suggested.initiatief_id):
+            return _action_msg("Je hebt geen toegang tot dit initiatief.")
 
-        suggested.status = "rejected"
-        suggested.review_source = "mattermost"
-        suggested.reviewed_by_id = person_id
-        from datetime import UTC, datetime
-
-        suggested.reviewed_at = datetime.now(UTC)
+        self._mark_reviewed(suggested, person_id, status="rejected")
         await self.session.flush()
 
         await self._update_thread_post(
@@ -664,21 +661,36 @@ class MattermostSlashService:
             text=":no_entry_sign: Suggestie genegeerd.",
             color="#94A3B8",
         )
-        return {"ephemeral_text": "Suggestie genegeerd."}
+        return _action_msg("Suggestie genegeerd.")
 
-    async def _get_suggestion(self, context: dict):
+    @staticmethod
+    def _mark_reviewed(suggested, person_id: UUID, *, status: str) -> None:
+        from datetime import UTC, datetime
+
+        suggested.status = status
+        suggested.review_source = "mattermost"
+        suggested.reviewed_by_id = person_id
+        suggested.reviewed_at = datetime.now(UTC)
+
+    async def _lock_suggestion(self, context: dict):
+        """Lock-and-load: voorkomt dat twee gelijktijdige knop-clicks tegelijk
+        twee Lead-records aanmaken. ``with_for_update`` blokkeert tot de
+        andere transactie commit/rollback doet, en daarna leest de tweede
+        de bijgewerkte status (pending → approved_*) en valt netjes om in
+        "Deze suggestie is al verwerkt."""
         from bouwmeester.models.suggested_lead import SuggestedLead
 
         sid_str = context.get("suggested_lead_id")
         if not sid_str:
-            return _ephemeral("Geen suggestie-id meegegeven.")
+            return _action_msg("Geen suggestie-id meegegeven.")
         try:
             sid = UUID(sid_str)
         except (ValueError, AttributeError):
-            return _ephemeral("Ongeldig suggestie-id.")
-        suggested = await self.session.get(SuggestedLead, sid)
+            return _action_msg("Ongeldig suggestie-id.")
+        stmt = select(SuggestedLead).where(SuggestedLead.id == sid).with_for_update()
+        suggested = (await self.session.execute(stmt)).scalar_one_or_none()
         if suggested is None:
-            return _ephemeral("Suggestie niet gevonden.")
+            return _action_msg("Suggestie niet gevonden.")
         return suggested
 
     async def _has_initiatief_access(
@@ -702,11 +714,10 @@ class MattermostSlashService:
         try:
             if not await service.is_enabled():
                 return
-            client = await service._get_client()
-            payload = {
-                "id": suggested.mm_thread_post_id,
-                "message": text,
-                "props": {
+            ok = await service.update_post(
+                suggested.mm_thread_post_id,
+                text,
+                props={
                     "attachments": [
                         {
                             "color": color,
@@ -715,15 +726,10 @@ class MattermostSlashService:
                         }
                     ]
                 },
-            }
-            try:
-                resp = await client.put(
-                    f"/api/v4/posts/{suggested.mm_thread_post_id}", json=payload
-                )
-                resp.raise_for_status()
-            except Exception:
-                logger.exception(
-                    "Kon thread-post %s niet updaten",
+            )
+            if not ok:
+                logger.warning(
+                    "Update van thread-post %s gaf geen success terug",
                     suggested.mm_thread_post_id,
                 )
         finally:
@@ -731,5 +737,15 @@ class MattermostSlashService:
 
 
 def _ephemeral(text: str) -> dict:
-    """Build an ephemeral (only visible to requester) response."""
+    """Slash-command response — alleen zichtbaar voor de uitvoerder.
+
+    Mattermost interpreteert ``response_type: ephemeral`` voor
+    slash-commando's. Voor button-action responses verwacht MM een ander
+    veld (``ephemeral_text``); gebruik daarvoor :func:`_action_msg`.
+    """
     return {"response_type": "ephemeral", "text": text}
+
+
+def _action_msg(text: str) -> dict:
+    """Interactive button action response — alleen zichtbaar voor de klikker."""
+    return {"ephemeral_text": text}

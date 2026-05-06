@@ -851,7 +851,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                           {att.bestandsnaam ?? att.url}
                         </a>
                       ) : (
-                        <span className="flex-1 truncate text-text">{att.bestandsnaam}</span>
+                        <span className="flex-1 truncate text-text">{att.bestandsnaam ?? '(naamloos)'}</span>
                       )}
                       {att.source === 'mattermost' && (
                         <span className="text-[10px] uppercase tracking-wider text-text-secondary px-1.5 py-0.5 rounded bg-gray-100">
@@ -884,13 +884,13 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                       <button
                         onClick={() => setLightboxSrc({
                           src: getLeadAttachmentDownloadUrl(lead.id, att.id),
-                          alt: att.bestandsnaam,
+                          alt: att.bestandsnaam ?? 'bijlage',
                         })}
                         className="relative group mt-2 ml-2 block"
                       >
                         <img
                           src={getLeadAttachmentDownloadUrl(lead.id, att.id)}
-                          alt={att.bestandsnaam}
+                          alt={att.bestandsnaam ?? 'bijlage'}
                           className="rounded-lg border border-border max-h-48 object-contain"
                         />
                         <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -1141,7 +1141,10 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
 
           {/* Mattermost-kanalen */}
           <DetailSection title="Mattermost" separated>
-            <MattermostChannelsSection scope={{ type: 'lead', id: lead.id }} />
+            <MattermostChannelsSection
+              scope={{ type: 'lead', id: lead.id }}
+              parentZIndex={zIndex}
+            />
           </DetailSection>
         </div>
       )}

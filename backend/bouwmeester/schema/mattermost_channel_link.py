@@ -29,6 +29,9 @@ class MattermostChannelLinkCreate(BaseModel):
 class MattermostChannelLinkUpdate(BaseModel):
     auto_note_enabled: bool | None = None
     suggest_leads_enabled: bool | None = None
+    # Stuur ``reenable=true`` om een uitgeschakelde koppeling weer aan te
+    # zetten nadat de bot terug is in het kanaal.
+    reenable: bool | None = None
 
 
 class MattermostChannelLinkResponse(BaseModel):

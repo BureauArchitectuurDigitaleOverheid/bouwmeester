@@ -27,6 +27,7 @@ from bouwmeester.services.mattermost_ingest_service import MattermostIngestServi
 from bouwmeester.services.mattermost_service import (
     MattermostService,
     _load_mattermost_config,
+    _validate_mattermost_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,9 @@ class MattermostWebsocketService:
                     await asyncio.sleep(_RECONNECT_BACKOFF_MAX)
                     continue
 
+                # Block SSRF naar interne hosts (link-local, loopback, etc.)
+                # net als de HTTP-client doet voor de REST API.
+                _validate_mattermost_url(http_url)
                 self._mm_base_url = http_url.rstrip("/")
                 ws_url = _ws_url_from_http(http_url)
                 logger.info("Mattermost websocket: connect %s", ws_url)
@@ -180,11 +184,16 @@ class MattermostWebsocketService:
 
     async def _dispatch(self, msg: dict) -> None:
         event = msg.get("event")
-        if event != "posted":
-            # `post_edited`, `post_deleted`, `reaction_added` worden in een
-            # latere PR ingehaakt. Voor PR1 alleen 'posted'.
+        if event == "posted":
+            await self._dispatch_posted(msg)
             return
+        if event in ("user_removed", "channel_deleted"):
+            await self._dispatch_channel_lost(event, msg)
+            return
+        # Andere events (`post_edited`, `post_deleted`, `reaction_added`)
+        # worden in een latere PR ingehaakt.
 
+    async def _dispatch_posted(self, msg: dict) -> None:
         data = msg.get("data") or {}
         post_raw = data.get("post")
         if not post_raw:
@@ -207,6 +216,59 @@ class MattermostWebsocketService:
             except Exception:
                 await session.rollback()
                 logger.exception("Fout bij verwerken Mattermost-post %s", post_id)
+
+    async def _dispatch_channel_lost(self, event: str, msg: dict) -> None:
+        """Markeer kanaal-koppelingen als ``disabled_at`` wanneer de bot
+        verdwijnt (uit kanaal getrapt of kanaal verwijderd).
+
+        Mattermost stuurt ``user_removed`` als event met ``user_id`` (de
+        verwijderde user) en ``channel_id`` in ``broadcast`` of ``data``.
+        We schakelen de koppeling alleen uit als het de bot zelf is.
+        """
+        data = msg.get("data") or {}
+        broadcast = msg.get("broadcast") or {}
+
+        if event == "user_removed":
+            removed_user_id = data.get("user_id") or broadcast.get("user_id")
+            if not removed_user_id or removed_user_id != self._bot_user_id:
+                return
+            channel_id = data.get("channel_id") or broadcast.get("channel_id")
+        else:  # channel_deleted
+            channel_id = (
+                data.get("channel_id")
+                or broadcast.get("channel_id")
+                or (data.get("channel") or {}).get("id")
+            )
+
+        if not channel_id:
+            return
+
+        async with async_session() as session:
+            try:
+                from datetime import UTC, datetime
+
+                from bouwmeester.repositories.mattermost_channel_link import (
+                    MattermostChannelLinkRepository,
+                )
+
+                repo = MattermostChannelLinkRepository(session)
+                link = await repo.get_by_channel_id(channel_id)
+                if link is None or link.disabled_at is not None:
+                    return
+                link.disabled_at = datetime.now(UTC)
+                await session.flush()
+                await session.commit()
+                logger.info(
+                    "Channel-link %s uitgeschakeld na %s op kanaal %s",
+                    link.id,
+                    event,
+                    channel_id,
+                )
+            except Exception:
+                await session.rollback()
+                logger.exception(
+                    "Kon channel-link voor %s niet uitschakelen", channel_id
+                )
 
     async def _record_post(self, session: AsyncSession, post: dict) -> None:
         """Verwerk één Mattermost-post via :class:`MattermostIngestService`."""
