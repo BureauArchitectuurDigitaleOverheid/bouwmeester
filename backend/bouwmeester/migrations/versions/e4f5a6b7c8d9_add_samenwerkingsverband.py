@@ -1,7 +1,7 @@
 """add samenwerkingsverband and persoon_samenwerkingsverband
 
 Revision ID: e4f5a6b7c8d9
-Revises: a1f3c8e7d402
+Revises: d2e3f4a5b6c7
 Create Date: 2026-05-06 16:00:00.000000
 
 Voegt het Samenwerkingsverband-domein toe: ad-hoc samenwerkingsvormen
@@ -18,7 +18,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "e4f5a6b7c8d9"
-down_revision: str | None = "a1f3c8e7d402"
+down_revision: str | None = "d2e3f4a5b6c7"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
