@@ -137,7 +137,6 @@ interface CommunityGraphNodeData {
   label: string;
   nodeType: CommunityNodeType;
   stage?: string | null;
-  initiatiefId?: string | null;
   functie?: string | null;
   expertise?: string | null;
   personRole?: 'intern' | 'extern' | null;
@@ -478,7 +477,6 @@ function CommunityGraphInner({
           label: node.label,
           nodeType: node.node_type,
           stage: node.stage,
-          initiatiefId: node.initiatief_id,
           functie: node.functie,
           expertise: node.expertise,
           personRole: node.person_role ?? null,
