@@ -308,8 +308,10 @@ class GraphRepository:
 
         # -- 3. Lead → Person (assignee) edges --
         # Track internal vs external persons for visual distinction in the graph.
-        # Internal = assignee, brought_by, or corpus-stakeholder. External = only
-        # reachable through a lead-contact ResourcePermission.
+        # Internal = assignee or corpus-stakeholder. External = only reachable
+        # through a lead-contact ResourcePermission. brought_by_id is intentionally
+        # not added here: there is no edge for it, so adding the person would yield
+        # a disconnected node.
         person_ids = set[UUID]()
         internal_person_ids = set[UUID]()
         external_person_ids = set[UUID]()
@@ -326,11 +328,15 @@ class GraphRepository:
                         label="verantwoordelijke",
                     )
                 )
-            if lead.brought_by_id is not None:
-                person_ids.add(lead.brought_by_id)
-                internal_person_ids.add(lead.brought_by_id)
 
         # -- 4. Lead → Person (contacts via ResourcePermission) --
+        # Map the database-level rol values to user-facing labels. The DB still
+        # stores "contactpersoon"; the UI renames it to "externe contactpersoon".
+        contact_label_map = {
+            "contactpersoon": "externe contactpersoon",
+            "opdrachtgever": "opdrachtgever",
+            "betrokken": "betrokken",
+        }
         contacts_stmt = select(ResourcePermission).where(
             ResourcePermission.resource_type == "lead",
             ResourcePermission.resource_id.in_(lead_ids),
@@ -345,7 +351,7 @@ class GraphRepository:
                     source=f"lead-{contact.resource_id}",
                     target=f"person-{contact.person_id}",
                     edge_type="contact",
-                    label=contact.rol,
+                    label=contact_label_map.get(contact.rol, contact.rol),
                 )
             )
 
