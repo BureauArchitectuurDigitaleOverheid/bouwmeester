@@ -59,6 +59,7 @@ class Lead(Base):
     raw_intake_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     engagement_type: Mapped[str | None] = mapped_column(
         nullable=True,
+        index=True,
         comment=(
             "intern_oppakken|voorbereiden_eigen_team|betrokken_houden|"
             "verkenning|nog_te_bepalen"

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Text, UniqueConstraint, func, text
+from sqlalchemy import DateTime, ForeignKey, Index, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +29,11 @@ class StakeholderAssessment(Base):
             "scope_type",
             "scope_id",
             name="uq_stakeholder_assessment_person_scope",
+        ),
+        Index(
+            "ix_stakeholder_assessment_scope",
+            "scope_type",
+            "scope_id",
         ),
     )
 
@@ -63,6 +68,7 @@ class StakeholderAssessment(Base):
         UUID(as_uuid=True),
         ForeignKey("person.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     assessed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

@@ -51,6 +51,7 @@ class Notification(Base):
         UUID(as_uuid=True),
         ForeignKey("lead.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     sender_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
