@@ -81,6 +81,12 @@ from bouwmeester.schema.fcc import (
     SyncDirection,
     SyncStatus,
 )
+from bouwmeester.schema.github_link import (
+    GitHubLinkCreate,
+    GitHubLinkResponse,
+    GitHubLinkType,
+    GitHubLinkUpdate,
+)
 from bouwmeester.schema.graph import (
     GraphNeighborsResponse,
     GraphSearchParams,
@@ -378,6 +384,11 @@ __all__ = [
     "FccSyncTriggerResponse",
     "SyncDirection",
     "SyncStatus",
+    # github_link
+    "GitHubLinkCreate",
+    "GitHubLinkResponse",
+    "GitHubLinkType",
+    "GitHubLinkUpdate",
     # opdracht
     "FinancieelJaar",
     "FinancieelOverzicht",

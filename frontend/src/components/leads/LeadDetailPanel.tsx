@@ -26,6 +26,7 @@ import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { LinkLeadNodeModal } from './LinkLeadNodeModal';
 import { AddLeadContactModal } from './AddLeadContactModal';
+import { LeadGitHubLinks } from './LeadGitHubLinks';
 import { MattermostChannelsSection } from '@/components/mattermost/MattermostChannelsSection';
 import { Badge } from '@/components/common/Badge';
 import { DetailSection } from '@/components/common/DetailSection';
@@ -905,6 +906,8 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               <p className="text-sm text-text-secondary">Geen bijlagen</p>
             )}
           </DetailSection>
+
+          <LeadGitHubLinks leadId={lead.id} links={lead.github_links ?? []} />
 
           {/* Externe contactpersonen */}
           <DetailSection

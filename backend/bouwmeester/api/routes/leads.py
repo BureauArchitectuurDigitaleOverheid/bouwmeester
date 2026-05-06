@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.github_url import parse_github_url
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
@@ -25,12 +26,19 @@ from bouwmeester.core.storage import (
     validate_upload,
     write_upload_to_disk,
 )
+from bouwmeester.models.github_link import SCOPE_LEAD, GitHubLink
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.lead_node import LeadNode
+from bouwmeester.repositories.github_link import GitHubLinkRepository
 from bouwmeester.repositories.lead import LeadRepository
 from bouwmeester.repositories.lead_activity import LeadActivityRepository
+from bouwmeester.schema.github_link import (
+    GitHubLinkCreate,
+    GitHubLinkResponse,
+    GitHubLinkUpdate,
+)
 from bouwmeester.schema.lead import (
     LeadActivityCreate,
     LeadActivityResponse,
@@ -39,6 +47,7 @@ from bouwmeester.schema.lead import (
     LeadContactResponse,
     LeadCreate,
     LeadDetailResponse,
+    LeadGitHubLinkSummary,
     LeadMergeRequest,
     LeadMetricsResponse,
     LeadMove,
@@ -354,6 +363,12 @@ async def get_lead(
     response = LeadDetailResponse.model_validate(lead)
     response.contacts = contacts
 
+    gh_repo = GitHubLinkRepository(db)
+    gh_links = await gh_repo.list_for_scope(SCOPE_LEAD, lead_id)
+    response.github_links = [
+        LeadGitHubLinkSummary.model_validate(link) for link in gh_links
+    ]
+
     # Mark file-attachments whose files no longer exist on disk.
     # URL-attachments (soort='link') hebben geen pad — die blijven beschikbaar.
     pad_by_id = {a.id: a.pad for a in lead.attachments}
@@ -452,6 +467,12 @@ async def delete_lead(
         sa_delete(ResourcePermission).where(
             ResourcePermission.resource_type == "lead",
             ResourcePermission.resource_id == lead_id,
+        )
+    )
+    await db.execute(
+        sa_delete(GitHubLink).where(
+            GitHubLink.scope_type == SCOPE_LEAD,
+            GitHubLink.scope_id == lead_id,
         )
     )
 
@@ -1098,6 +1119,162 @@ async def delete_attachment(
 
     if file_path.exists():
         file_path.unlink()
+
+
+# ---------------------------------------------------------------------------
+# GitHub links
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{lead_id}/github-links",
+    response_model=list[GitHubLinkResponse],
+)
+async def list_github_links(
+    lead_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+) -> list[GitHubLinkResponse]:
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, init_ctx)
+
+    repo = GitHubLinkRepository(db)
+    links = await repo.list_for_scope(SCOPE_LEAD, lead_id)
+    return [GitHubLinkResponse.model_validate(link) for link in links]
+
+
+@router.post(
+    "/{lead_id}/github-links",
+    response_model=GitHubLinkResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_github_link(
+    lead_id: UUID,
+    payload: GitHubLinkCreate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+) -> GitHubLinkResponse:
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, init_ctx)
+
+    parsed = parse_github_url(payload.url)
+    if parsed is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Ongeldige GitHub-URL",
+        )
+
+    normalized_url = payload.url.strip()
+    repo = GitHubLinkRepository(db)
+    existing = await repo.get_by_scope_url(SCOPE_LEAD, lead_id, normalized_url)
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Deze GitHub-link is al gekoppeld aan deze lead",
+        )
+
+    created_by_id = (
+        UUID(current_user["id"]) if current_user and current_user.get("id") else None
+    )
+
+    link = await repo.create(
+        scope_type=SCOPE_LEAD,
+        scope_id=lead_id,
+        url=normalized_url,
+        link_type=parsed.link_type.value,
+        owner=parsed.owner,
+        repo=parsed.repo,
+        ref=parsed.ref,
+        title=payload.title,
+        created_by_id=created_by_id,
+    )
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_github_link.added",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "url": normalized_url,
+            "link_type": parsed.link_type.value,
+            "owner_repo": f"{parsed.owner}/{parsed.repo}",
+        },
+    )
+
+    return GitHubLinkResponse.model_validate(link)
+
+
+@router.patch(
+    "/{lead_id}/github-links/{link_id}",
+    response_model=GitHubLinkResponse,
+)
+async def update_github_link(
+    lead_id: UUID,
+    link_id: UUID,
+    payload: GitHubLinkUpdate,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+) -> GitHubLinkResponse:
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, init_ctx)
+
+    repo = GitHubLinkRepository(db)
+    link = await repo.get(link_id)
+    if link is None or link.scope_type != SCOPE_LEAD or link.scope_id != lead_id:
+        raise HTTPException(status_code=404, detail="GitHub-link niet gevonden")
+
+    updated = await repo.update_title(link, payload.title)
+    return GitHubLinkResponse.model_validate(updated)
+
+
+@router.delete(
+    "/{lead_id}/github-links/{link_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_github_link(
+    lead_id: UUID,
+    link_id: UUID,
+    current_user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+) -> None:
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    _check_lead_access(lead, init_ctx)
+
+    repo = GitHubLinkRepository(db)
+    link = await repo.get(link_id)
+    if link is None or link.scope_type != SCOPE_LEAD or link.scope_id != lead_id:
+        raise HTTPException(status_code=404, detail="GitHub-link niet gevonden")
+
+    url = link.url
+    owner_repo = f"{link.owner}/{link.repo}"
+    await repo.delete(link)
+
+    await log_activity(
+        db,
+        current_user,
+        None,
+        "lead_github_link.deleted",
+        details={
+            "lead_id": str(lead_id),
+            "lead_title": lead.title,
+            "url": url,
+            "owner_repo": owner_repo,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

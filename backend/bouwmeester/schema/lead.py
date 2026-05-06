@@ -260,11 +260,25 @@ class LeadResponse(BaseModel):
         return data
 
 
+class LeadGitHubLinkSummary(BaseModel):
+    id: UUID
+    url: str
+    link_type: str
+    owner: str
+    repo: str
+    ref: str | None = None
+    title: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class LeadDetailResponse(LeadResponse):
     activities: list[LeadActivityResponse] = Field(default_factory=list)
     attachments: list[LeadAttachmentResponse] = Field(default_factory=list)
     contacts: list[LeadContactResponse] = Field(default_factory=list)
     linked_nodes: list[LeadNodeResponse] = Field(default_factory=list)
+    github_links: list[LeadGitHubLinkSummary] = Field(default_factory=list)
 
 
 class LeadMetricsResponse(BaseModel):

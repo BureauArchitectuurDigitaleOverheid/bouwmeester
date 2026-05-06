@@ -204,6 +204,7 @@ export const queryKeys = {
     list: (filters?: LeadFilters) => ['leads', 'list', filters] as const,
     detail: (id: string | null) => ['leads', 'detail', id] as const,
     activities: (leadId: string | null) => ['leads', 'detail', leadId, 'activities'] as const,
+    githubLinks: (leadId: string | null) => ['leads', 'detail', leadId, 'github-links'] as const,
     metrics: () => ['leads', 'metrics'] as const,
   },
 

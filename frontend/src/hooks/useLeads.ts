@@ -18,6 +18,9 @@ import {
   getLeadMetrics,
   uploadLeadAttachment,
   deleteLeadAttachment,
+  addLeadGitHubLink,
+  updateLeadGitHubLink,
+  deleteLeadGitHubLink,
   parseLeadIntake,
   getCommunityGraph,
   getLeadTimeline,
@@ -263,6 +266,52 @@ export function useDeleteLeadAttachment() {
       attachmentId: string;
     }) => deleteLeadAttachment(leadId, attachmentId),
     errorMessage: 'Fout bij verwijderen bijlage',
+    invalidateKeys: [queryKeys.leads.all],
+  });
+}
+
+export function useAddLeadGitHubLink() {
+  return useMutationWithError({
+    mutationFn: ({
+      leadId,
+      url,
+      title,
+    }: {
+      leadId: string;
+      url: string;
+      title?: string | null;
+    }) => addLeadGitHubLink(leadId, url, title),
+    errorMessage: 'Fout bij toevoegen GitHub-link',
+    invalidateKeys: [queryKeys.leads.all],
+  });
+}
+
+export function useUpdateLeadGitHubLink() {
+  return useMutationWithError({
+    mutationFn: ({
+      leadId,
+      linkId,
+      title,
+    }: {
+      leadId: string;
+      linkId: string;
+      title: string | null;
+    }) => updateLeadGitHubLink(leadId, linkId, title),
+    errorMessage: 'Fout bij bewerken GitHub-link',
+    invalidateKeys: [queryKeys.leads.all],
+  });
+}
+
+export function useDeleteLeadGitHubLink() {
+  return useMutationWithError({
+    mutationFn: ({
+      leadId,
+      linkId,
+    }: {
+      leadId: string;
+      linkId: string;
+    }) => deleteLeadGitHubLink(leadId, linkId),
+    errorMessage: 'Fout bij verwijderen GitHub-link',
     invalidateKeys: [queryKeys.leads.all],
   });
 }

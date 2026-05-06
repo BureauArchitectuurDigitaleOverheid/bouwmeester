@@ -1754,11 +1754,31 @@ export interface Lead {
   updated_at: string | null;
 }
 
+export type GitHubLinkType =
+  | "branch"
+  | "pull_request"
+  | "issue"
+  | "repo"
+  | "workflow_run"
+  | "other";
+
+export interface LeadGitHubLink {
+  id: string;
+  url: string;
+  link_type: GitHubLinkType;
+  owner: string;
+  repo: string;
+  ref: string | null;
+  title: string | null;
+  created_at: string;
+}
+
 export interface LeadDetail extends Lead {
   activities: LeadActivity[];
   attachments: LeadAttachment[];
   contacts: LeadContact[];
   linked_nodes: LeadNode[];
+  github_links: LeadGitHubLink[];
 }
 
 export interface LeadCreate {
