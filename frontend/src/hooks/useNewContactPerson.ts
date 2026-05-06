@@ -26,12 +26,6 @@ export interface NewContactPersonInput {
   samenwerkingsverbandIds?: string[];
 }
 
-export interface CreateContactPersonResult {
-  personId: string;
-  /** Velden die niet konden worden opgeslagen (best-effort). */
-  followUpFailures: Array<'phone' | 'plaatsing' | 'samenwerkingsverband'>;
-}
-
 export function useCreateContactPerson() {
   const createPerson = useCreatePerson();
   const addPersonPhone = useAddPersonPhone();
@@ -39,14 +33,15 @@ export function useCreateContactPerson() {
   const addLid = useAddLid();
 
   const create = useCallback(
-    async (input: NewContactPersonInput): Promise<CreateContactPersonResult | null> => {
+    async (input: NewContactPersonInput): Promise<{ personId: string } | null> => {
       const naam = input.naam.trim();
       if (!naam) return null;
 
       const email = input.email?.trim() || undefined;
       const phone = input.phone?.trim() || undefined;
 
-      // 1. Maak de persoon. Foutgevallen blokkeren de hele flow.
+      // 1. Maak de persoon. Foutgevallen blokkeren de hele flow; toast wordt
+      //    door useMutationWithError getoond.
       let personId: string;
       try {
         const person = await createPerson.mutateAsync({
@@ -61,10 +56,10 @@ export function useCreateContactPerson() {
         return null;
       }
 
-      const failures: CreateContactPersonResult['followUpFailures'] = [];
-
       // 2. Best-effort: extra velden die niet via createPerson gaan
-      //    (telefoon staat alleen als secundair record op een persoon).
+      //    (telefoon staat als secundair record). Falen geeft een toast en
+      //    blokkeert de lead-koppeling niet — de persoon bestaat al, beter
+      //    gekoppeld zonder telefoon dan helemaal niks.
       if (phone) {
         try {
           await addPersonPhone.mutateAsync({
@@ -72,7 +67,7 @@ export function useCreateContactPerson() {
             data: { phone_number: phone, label: 'werk', is_default: true },
           });
         } catch {
-          failures.push('phone');
+          /* toast uit useMutationWithError */
         }
       }
 
@@ -87,7 +82,7 @@ export function useCreateContactPerson() {
             },
           });
         } catch {
-          failures.push('plaatsing');
+          /* toast */
         }
       }
 
@@ -100,11 +95,11 @@ export function useCreateContactPerson() {
             data: { person_id: personId, start_datum: today },
           });
         } catch {
-          failures.push('samenwerkingsverband');
+          /* toast */
         }
       }
 
-      return { personId, followUpFailures: failures };
+      return { personId };
     },
     [createPerson, addPersonPhone, addPersonOrg, addLid],
   );

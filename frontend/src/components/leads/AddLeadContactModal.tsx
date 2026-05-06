@@ -98,6 +98,7 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
       }
       size={mode === 'create' ? 'md' : 'sm'}
       zIndex={60}
+      closeable={!isPending}
       footer={
         mode === 'create' ? (
           <>
