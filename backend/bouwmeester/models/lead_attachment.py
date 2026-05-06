@@ -28,10 +28,27 @@ class LeadAttachment(Base):
         nullable=False,
         index=True,
     )
-    bestandsnaam: Mapped[str] = mapped_column(nullable=False)
-    content_type: Mapped[str] = mapped_column(nullable=False)
-    bestandsgrootte: Mapped[int] = mapped_column(nullable=False)
-    pad: Mapped[str] = mapped_column(nullable=False)
+    soort: Mapped[str] = mapped_column(
+        nullable=False,
+        default="file",
+        server_default="file",
+        comment="file|link",
+    )
+    bestandsnaam: Mapped[str | None] = mapped_column(nullable=True)
+    content_type: Mapped[str | None] = mapped_column(nullable=True)
+    bestandsgrootte: Mapped[int | None] = mapped_column(nullable=True)
+    pad: Mapped[str | None] = mapped_column(nullable=True)
+    url: Mapped[str | None] = mapped_column(nullable=True)
+    source: Mapped[str] = mapped_column(
+        nullable=False,
+        default="upload",
+        server_default="upload",
+        comment="upload|mattermost",
+    )
+    source_ref: Mapped[str | None] = mapped_column(
+        nullable=True,
+        comment="bv. mattermost post_id",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

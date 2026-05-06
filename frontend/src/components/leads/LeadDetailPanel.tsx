@@ -26,6 +26,7 @@ import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { LinkLeadNodeModal } from './LinkLeadNodeModal';
 import { AddLeadContactModal } from './AddLeadContactModal';
+import { MattermostChannelsSection } from '@/components/mattermost/MattermostChannelsSection';
 import { Badge } from '@/components/common/Badge';
 import { DetailSection } from '@/components/common/DetailSection';
 import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
@@ -834,13 +835,34 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 {lead.attachments.map((att) => (
                   <div key={att.id}>
                     <div className={`flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-gray-50 ${!att.bestand_beschikbaar ? 'opacity-50' : ''}`}>
-                      <Paperclip className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-                      <span className="flex-1 truncate text-text">{att.bestandsnaam}</span>
-                      {!att.bestand_beschikbaar ? (
-                        <span className="text-xs text-red-500">Bestand niet beschikbaar</span>
+                      {att.soort === 'link' ? (
+                        <ExternalLink className="h-3.5 w-3.5 text-text-secondary shrink-0" />
                       ) : (
+                        <Paperclip className="h-3.5 w-3.5 text-text-secondary shrink-0" />
+                      )}
+                      {att.soort === 'link' && att.url ? (
+                        <a
+                          href={att.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 truncate text-primary-700 hover:underline"
+                          title={att.url}
+                        >
+                          {att.bestandsnaam ?? att.url}
+                        </a>
+                      ) : (
+                        <span className="flex-1 truncate text-text">{att.bestandsnaam ?? '(naamloos)'}</span>
+                      )}
+                      {att.source === 'mattermost' && (
+                        <span className="text-[10px] uppercase tracking-wider text-text-secondary px-1.5 py-0.5 rounded bg-gray-100">
+                          via mm
+                        </span>
+                      )}
+                      {att.soort === 'file' && !att.bestand_beschikbaar ? (
+                        <span className="text-xs text-red-500">Bestand niet beschikbaar</span>
+                      ) : att.soort === 'file' ? (
                         <>
-                          <span className="text-xs text-text-secondary">{Math.round(att.bestandsgrootte / 1024)} KB</span>
+                          <span className="text-xs text-text-secondary">{Math.round((att.bestandsgrootte ?? 0) / 1024)} KB</span>
                           <a
                             href={getLeadAttachmentDownloadUrl(lead.id, att.id)}
                             className="p-1 text-text-secondary hover:text-primary-600 transition-colors"
@@ -849,7 +871,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                             <Download className="h-3.5 w-3.5" />
                           </a>
                         </>
-                      )}
+                      ) : null}
                       <button
                         onClick={() => deleteAttachment.mutate({ leadId: lead.id, attachmentId: att.id })}
                         className="p-1 text-text-secondary hover:text-red-500 transition-colors"
@@ -858,17 +880,17 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    {att.bestand_beschikbaar && att.content_type?.startsWith('image/') && (
+                    {att.soort === 'file' && att.bestand_beschikbaar && att.content_type?.startsWith('image/') && (
                       <button
                         onClick={() => setLightboxSrc({
                           src: getLeadAttachmentDownloadUrl(lead.id, att.id),
-                          alt: att.bestandsnaam,
+                          alt: att.bestandsnaam ?? 'bijlage',
                         })}
                         className="relative group mt-2 ml-2 block"
                       >
                         <img
                           src={getLeadAttachmentDownloadUrl(lead.id, att.id)}
-                          alt={att.bestandsnaam}
+                          alt={att.bestandsnaam ?? 'bijlage'}
                           className="rounded-lg border border-border max-h-48 object-contain"
                         />
                         <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -1047,6 +1069,26 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                         <Badge variant="gray">
                           {LEAD_ACTIVITY_TYPE_LABELS[activity.activity_type]}
                         </Badge>
+                        {activity.metadata_?.source === 'mattermost' && (
+                          (() => {
+                            const permalink = activity.metadata_?.mm_permalink;
+                            const badge = (
+                              <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                                via Mattermost
+                              </span>
+                            );
+                            return typeof permalink === 'string' ? (
+                              <a
+                                href={permalink}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Open in Mattermost"
+                              >
+                                {badge}
+                              </a>
+                            ) : badge;
+                          })()
+                        )}
                         <span>{timeAgo(activity.created_at)}</span>
                         {canDelete && (
                           <button
@@ -1095,6 +1137,14 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             ) : (
               <p className="text-sm text-text-secondary">Nog geen activiteiten</p>
             )}
+          </DetailSection>
+
+          {/* Mattermost-kanalen */}
+          <DetailSection title="Mattermost" separated>
+            <MattermostChannelsSection
+              scope={{ type: 'lead', id: lead.id }}
+              parentZIndex={zIndex}
+            />
           </DetailSection>
         </div>
       )}

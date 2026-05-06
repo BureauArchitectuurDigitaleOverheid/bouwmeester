@@ -142,6 +142,12 @@ from bouwmeester.schema.llm import (
     TagSuggestionRequest,
     TagSuggestionResponse,
 )
+from bouwmeester.schema.mattermost_channel_link import (
+    MattermostChannelLinkCreate,
+    MattermostChannelLinkResponse,
+    MattermostChannelLinkUpdate,
+    MattermostChannelSearchResult,
+)
 from bouwmeester.schema.mattermost_user import (
     MattermostLinkCodeResponse,
     MattermostLinkStatusResponse,
@@ -239,6 +245,7 @@ from bouwmeester.schema.stakeholder_assessment import (
     StakeholderHouding,
     StakeholderScopeType,
 )
+from bouwmeester.schema.suggested_lead import SuggestedLeadResponse
 from bouwmeester.schema.tag import (
     LeadTagCreate,
     LeadTagResponse,
@@ -479,6 +486,10 @@ __all__ = [
     "TagTreeResponse",
     "TagUpdate",
     # mattermost
+    "MattermostChannelLinkCreate",
+    "MattermostChannelLinkResponse",
+    "MattermostChannelLinkUpdate",
+    "MattermostChannelSearchResult",
     "MattermostLinkCodeResponse",
     "MattermostLinkStatusResponse",
     "MattermostUserResponse",
@@ -528,6 +539,8 @@ __all__ = [
     "ParlementairItemResponse",
     "ReviewAction",
     "SuggestedEdgeResponse",
+    # suggested_lead
+    "SuggestedLeadResponse",
     # whitelist / admin
     "AdminToggleRequest",
     "AdminUserResponse",

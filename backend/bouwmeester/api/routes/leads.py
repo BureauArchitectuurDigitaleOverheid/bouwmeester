@@ -354,12 +354,15 @@ async def get_lead(
     response = LeadDetailResponse.model_validate(lead)
     response.contacts = contacts
 
-    # Mark attachments whose files no longer exist on disk.
+    # Mark file-attachments whose files no longer exist on disk.
+    # URL-attachments (soort='link') hebben geen pad — die blijven beschikbaar.
     pad_by_id = {a.id: a.pad for a in lead.attachments}
     for att in response.attachments:
-        att.bestand_beschikbaar = file_exists_on_disk(
-            LEADS_BIJLAGEN_ROOT, pad_by_id[att.id]
-        )
+        pad = pad_by_id.get(att.id)
+        if att.soort == "file" and pad:
+            att.bestand_beschikbaar = file_exists_on_disk(LEADS_BIJLAGEN_ROOT, pad)
+        else:
+            att.bestand_beschikbaar = True
 
     return response
 

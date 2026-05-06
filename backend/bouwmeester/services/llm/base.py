@@ -63,6 +63,15 @@ class GapAnalysisResult(BaseModel):
     recommendations: list[str]
 
 
+class LeadCandidateClassification(BaseModel):
+    is_lead: bool
+    confidence: float
+    proposed_title: str
+    proposed_description: str
+    match_existing_lead_id: str | None
+    reasoning: str
+
+
 class BaseLLMService(ABC):
     """Abstract base for all LLM providers."""
 
@@ -257,3 +266,90 @@ class BaseLLMService(ABC):
         except Exception:
             logger.exception("Fout bij LLM gap-analyse")
             return GapAnalysisResult(narrative="", recommendations=[])
+
+    async def is_mattermost_noise(self, message: str) -> bool:
+        """True als het bericht ruis is (ack/emoji/no-content)."""
+        from bouwmeester.services.llm.prompts import build_is_noise_prompt
+
+        prompt = build_is_noise_prompt(message)
+        try:
+            text = await self._complete(prompt, max_tokens=64)
+            result = self._parse_json(text)
+            return bool(result.get("is_noise", False))
+        except Exception:
+            logger.exception("Fout bij LLM noise-classificatie")
+            return False  # Bij twijfel: behouden.
+
+    async def summarize_mattermost_message(
+        self, message: str, *, max_words: int = 80
+    ) -> str:
+        """Vat een lang MM-bericht samen. Returns lege string bij fout."""
+        from bouwmeester.services.llm.prompts import (
+            build_summarize_mattermost_thread_prompt,
+        )
+
+        prompt = build_summarize_mattermost_thread_prompt(
+            message=message, max_words=max_words
+        )
+        try:
+            text = await self._complete(prompt, max_tokens=300)
+            result = self._parse_json(text)
+            return str(result.get("samenvatting") or "")
+        except Exception:
+            logger.exception("Fout bij LLM samenvatting")
+            return ""
+
+    async def classify_mattermost_lead_candidate(
+        self,
+        *,
+        message: str,
+        initiatief_naam: str,
+        channel_display_name: str,
+        recent_leads: list[dict],
+    ) -> LeadCandidateClassification:
+        """Classificeer een Mattermost-bericht als (mogelijke) lead.
+
+        Wordt aangeroepen voor berichten in een aan een initiatief gekoppeld
+        kanaal. CONFIDENTIAL: alleen door VLAM uitvoerbaar.
+        """
+        from bouwmeester.services.llm.prompts import (
+            build_classify_mattermost_lead_prompt,
+        )
+
+        prompt = build_classify_mattermost_lead_prompt(
+            message=message,
+            initiatief_naam=initiatief_naam,
+            channel_display_name=channel_display_name,
+            recent_leads=recent_leads,
+        )
+        try:
+            text = await self._complete(prompt, max_tokens=512)
+            result = self._parse_json(text)
+            match_id = result.get("match_existing_lead_id")
+            if isinstance(match_id, str):
+                match_id = match_id.strip() or None
+            else:
+                match_id = None
+            try:
+                raw_confidence = float(result.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                raw_confidence = 0.0
+            confidence = max(0.0, min(1.0, raw_confidence))
+            return LeadCandidateClassification(
+                is_lead=bool(result.get("is_lead", False)),
+                confidence=confidence,
+                proposed_title=str(result.get("proposed_title") or "")[:500],
+                proposed_description=str(result.get("proposed_description") or ""),
+                match_existing_lead_id=match_id,
+                reasoning=str(result.get("reasoning") or ""),
+            )
+        except Exception:
+            logger.exception("Fout bij LLM lead-classificatie")
+            return LeadCandidateClassification(
+                is_lead=False,
+                confidence=0.0,
+                proposed_title="",
+                proposed_description="",
+                match_existing_lead_id=None,
+                reasoning="LLM-call mislukt",
+            )

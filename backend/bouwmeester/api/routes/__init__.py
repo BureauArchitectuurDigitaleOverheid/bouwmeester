@@ -24,6 +24,9 @@ from bouwmeester.api.routes.initiatief_update import (
 from bouwmeester.api.routes.leads import router as leads_router
 from bouwmeester.api.routes.llm import router as llm_router
 from bouwmeester.api.routes.mattermost import router as mattermost_router
+from bouwmeester.api.routes.mattermost_channels import (
+    router as mattermost_channels_router,
+)
 from bouwmeester.api.routes.mentions import router as mentions_router
 from bouwmeester.api.routes.nodes import router as nodes_router
 from bouwmeester.api.routes.notifications import router as notifications_router
@@ -72,6 +75,7 @@ api_router.include_router(import_export_router)
 api_router.include_router(leads_router)
 api_router.include_router(llm_router)
 api_router.include_router(mattermost_router)
+api_router.include_router(mattermost_channels_router)
 api_router.include_router(mentions_router)
 api_router.include_router(nodes_router)
 api_router.include_router(notifications_router)
