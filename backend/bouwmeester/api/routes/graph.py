@@ -77,13 +77,19 @@ async def get_community_graph(
     current_user: OptionalUser,
     org_ctx: OrgContext = Depends(get_org_context),
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    initiatief_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> CommunityGraphResponse:
     """Return a community graph of leads, people, organisations and corpus nodes.
 
-    Builds a unified graph starting from all visible leads (filtered by
-    the caller's initiatief context) and transitively includes all related
-    persons, external organisations, and linked corpus nodes.
+    Builds a unified graph starting from leads (filtered by the caller's
+    initiatief context for visibility, and optionally narrowed to a single
+    ``initiatief_id``) and transitively includes all related persons,
+    external organisations, samenwerkingsverbanden and corpus nodes.
     """
     repo = GraphRepository(db)
-    return await repo.get_community_graph(org_ctx=org_ctx, init_ctx=init_ctx)
+    return await repo.get_community_graph(
+        org_ctx=org_ctx,
+        init_ctx=init_ctx,
+        initiatief_id=initiatief_id,
+    )

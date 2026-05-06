@@ -402,3 +402,91 @@ async def test_community_graph_renders_samenwerkingsverband(
     )
     assert swv_edge is not None
     assert swv_edge["label"] == "trekker"
+
+
+async def test_community_graph_filters_by_initiatief_id_query_param(
+    client, db_session, sample_person
+):
+    """initiatief_id query-param beperkt de graaf tot die ene initiatief.
+
+    Voorheen filterde alleen de frontend op `lead.initiatiefId`, waardoor
+    persons en organisations die aan leads van een ander initiatief
+    hingen wel in de respons stonden en in de UI 'rondzwommen'.
+    """
+    from bouwmeester.models.initiatief import Initiatief
+
+    init_a = Initiatief(id=uuid.uuid4(), naam="Init A")
+    init_b = Initiatief(id=uuid.uuid4(), naam="Init B")
+    db_session.add_all([init_a, init_b])
+    await db_session.flush()
+
+    lead_a = Lead(
+        id=uuid.uuid4(),
+        title="Lead in A",
+        stage="verkennen",
+        initiatief_id=init_a.id,
+        assignee_id=sample_person.id,
+    )
+    lead_b = Lead(
+        id=uuid.uuid4(),
+        title="Lead in B",
+        stage="verkennen",
+        initiatief_id=init_b.id,
+    )
+    db_session.add_all([lead_a, lead_b])
+    await db_session.flush()
+
+    resp = await client.get(f"/api/graph/community?initiatief_id={init_a.id}")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    lead_ids = {n["id"] for n in data["nodes"] if n["node_type"] == "lead"}
+    assert f"lead-{lead_a.id}" in lead_ids
+    assert f"lead-{lead_b.id}" not in lead_ids
+
+    person_ids = {n["id"] for n in data["nodes"] if n["node_type"] == "person"}
+    assert f"person-{sample_person.id}" in person_ids
+
+
+async def test_community_graph_excludes_persons_from_other_initiatief(
+    client, db_session, create_person
+):
+    """Een persoon die alleen via een lead van een ander initiatief in de
+    graaf zou komen, mag bij filtering op initiatief_id niet meer verschijnen.
+    """
+    from bouwmeester.models.initiatief import Initiatief
+
+    init_a = Initiatief(id=uuid.uuid4(), naam="Init A")
+    init_b = Initiatief(id=uuid.uuid4(), naam="Init B")
+    db_session.add_all([init_a, init_b])
+
+    person_a = await create_person(naam="Alice")
+    person_b = await create_person(naam="Bob")
+
+    db_session.add_all(
+        [
+            Lead(
+                id=uuid.uuid4(),
+                title="Lead in A",
+                stage="verkennen",
+                initiatief_id=init_a.id,
+                assignee_id=person_a.id,
+            ),
+            Lead(
+                id=uuid.uuid4(),
+                title="Lead in B",
+                stage="verkennen",
+                initiatief_id=init_b.id,
+                assignee_id=person_b.id,
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    resp = await client.get(f"/api/graph/community?initiatief_id={init_a.id}")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    person_ids = {n["id"] for n in data["nodes"] if n["node_type"] == "person"}
+    assert f"person-{person_a.id}" in person_ids
+    assert f"person-{person_b.id}" not in person_ids
