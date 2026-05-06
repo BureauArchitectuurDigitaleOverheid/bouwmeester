@@ -134,15 +134,11 @@ export function NewContactPersonFields({
           disabled={disabled}
         />
       </div>
-      <div>
-        <label className="block text-sm font-medium text-text mb-1">
-          Organisatie-eenheid (optioneel)
-        </label>
-        <CascadingOrgSelect
-          value={state.organisatieEenheidId}
-          onChange={(v) => set('organisatieEenheidId', v)}
-        />
-      </div>
+      <CascadingOrgSelect
+        label="Organisatie-eenheid (optioneel)"
+        value={state.organisatieEenheidId}
+        onChange={(v) => set('organisatieEenheidId', v)}
+      />
       {samenwerkingsverbanden.length > 0 && (
         <SwvCheckboxList
           samenwerkingsverbanden={samenwerkingsverbanden}
