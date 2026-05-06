@@ -81,6 +81,13 @@ export async function createLeadActivity(
   return apiPost<LeadActivity>(`/api/leads/${leadId}/activities`, data);
 }
 
+export async function deleteLeadActivity(
+  leadId: string,
+  activityId: string,
+): Promise<void> {
+  return apiDelete(`/api/leads/${leadId}/activities/${activityId}`);
+}
+
 export async function addLeadContact(
   leadId: string,
   personId: string,

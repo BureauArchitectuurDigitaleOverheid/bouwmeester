@@ -97,6 +97,44 @@ async def test_add_activity_with_mention_notifies_target(
     assert "Test lead" in notifs[0].title
 
 
+async def test_delete_activity_returns_204_and_removes_row(
+    client, db_session, sample_lead
+):
+    """Admin (default in test/dev mode) can delete; row is gone afterwards."""
+    from bouwmeester.models.lead_activity import LeadActivity
+
+    create_resp = await client.post(
+        f"/api/leads/{sample_lead.id}/activities",
+        json={"content": "Te verwijderen", "activity_type": "note"},
+    )
+    assert create_resp.status_code == 201
+    activity_id = create_resp.json()["id"]
+
+    del_resp = await client.delete(
+        f"/api/leads/{sample_lead.id}/activities/{activity_id}"
+    )
+    assert del_resp.status_code == 204
+
+    refreshed = await db_session.get(LeadActivity, uuid.UUID(activity_id))
+    assert refreshed is None
+
+
+async def test_delete_activity_wrong_lead_returns_404(client, sample_lead):
+    """Activity that does not belong to the given lead returns 404."""
+    create_resp = await client.post(
+        f"/api/leads/{sample_lead.id}/activities",
+        json={"content": "Notitie", "activity_type": "note"},
+    )
+    assert create_resp.status_code == 201
+    activity_id = create_resp.json()["id"]
+
+    other_lead_id = uuid.uuid4()
+    del_resp = await client.delete(
+        f"/api/leads/{other_lead_id}/activities/{activity_id}"
+    )
+    assert del_resp.status_code == 404
+
+
 async def test_mentioned_assignee_only_gets_one_notification(
     client, db_session, assigned_lead, sample_person
 ):
