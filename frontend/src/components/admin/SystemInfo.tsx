@@ -1,5 +1,6 @@
 import { AlertTriangle, ExternalLink } from 'lucide-react';
 import { useVersionInfo } from '@/hooks/useAdmin';
+import { WorkerHealthTable } from './WorkerHealthTable';
 
 const FRONTEND_GIT_SHA = (import.meta.env.VITE_GIT_SHA ?? '') as string;
 const FRONTEND_BUILD_TIME = (import.meta.env.VITE_BUILD_TIME ?? '') as string;
@@ -51,11 +52,12 @@ export function SystemInfo() {
   const drift = backendSha && FRONTEND_GIT_SHA && backendSha !== FRONTEND_GIT_SHA;
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-8 max-w-3xl">
       <div>
         <h2 className="text-lg font-semibold mb-1">Systeem</h2>
         <p className="text-sm text-text-secondary">
-          Welke versie van Bouwmeester draait er nu in deze omgeving.
+          Welke versie van Bouwmeester draait er nu, en zijn de
+          achtergrondprocessen gezond.
         </p>
       </div>
 
@@ -91,6 +93,8 @@ export function SystemInfo() {
           </dl>
         </>
       )}
+
+      <WorkerHealthTable />
     </div>
   );
 }

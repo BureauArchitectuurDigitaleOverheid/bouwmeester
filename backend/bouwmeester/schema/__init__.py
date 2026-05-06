@@ -289,6 +289,10 @@ from bouwmeester.schema.whitelist import (
     WhitelistEmailCreate,
     WhitelistEmailResponse,
 )
+from bouwmeester.schema.worker_health import (
+    WorkerHealthResponse,
+    WorkerHeartbeatResponse,
+)
 
 # Resolve forward references between corpus_node <-> edge schemas.
 CorpusNodeWithEdges.model_rebuild()
@@ -562,4 +566,7 @@ __all__ = [
     "WebAuthnCredentialResponse",
     "WhitelistEmailCreate",
     "WhitelistEmailResponse",
+    # worker_health
+    "WorkerHealthResponse",
+    "WorkerHeartbeatResponse",
 ]

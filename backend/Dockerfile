@@ -36,6 +36,11 @@ USER 1001
 # Activate venv via PATH — entrypoint uses python/alembic/uvicorn directly
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Force unbuffered stdout/stderr — without this Python buffers when stdout
+# is not a TTY, so the worker's log lines (and crash tracebacks) sit in the
+# buffer until the process exits, making operational issues invisible.
+ENV PYTHONUNBUFFERED=1
+
 ARG GIT_SHA=""
 ARG BUILD_TIME=""
 ENV GIT_SHA=$GIT_SHA

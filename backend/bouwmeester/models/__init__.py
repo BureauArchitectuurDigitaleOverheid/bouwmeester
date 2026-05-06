@@ -79,6 +79,7 @@ from bouwmeester.models.tag import LeadTag, NodeTag, Tag  # noqa: F401
 from bouwmeester.models.task import Task  # noqa: F401
 from bouwmeester.models.webauthn_credential import WebAuthnCredential  # noqa: F401
 from bouwmeester.models.whitelist_email import WhitelistEmail  # noqa: F401
+from bouwmeester.models.worker_heartbeat import WorkerHeartbeat  # noqa: F401
 
 __all__ = [
     "AccessRequest",
@@ -148,4 +149,5 @@ __all__ = [
     "Task",
     "WebAuthnCredential",
     "WhitelistEmail",
+    "WorkerHeartbeat",
 ]

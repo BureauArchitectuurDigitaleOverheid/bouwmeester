@@ -29,6 +29,7 @@ from bouwmeester.services.mattermost_service import (
     _load_mattermost_config,
     _validate_mattermost_url,
 )
+from bouwmeester.services.worker_health import tick as health_tick
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,11 @@ class MattermostWebsocketService:
                     config = await _load_mattermost_config(bootstrap)
                 enabled = (config.get("MATTERMOST_ENABLED") or "").lower()
                 if enabled in ("", "false", "0"):
+                    await health_tick(
+                        "mattermost_websocket",
+                        status="disabled",
+                        detail="MATTERMOST_ENABLED is false",
+                    )
                     await asyncio.sleep(_RECONNECT_BACKOFF_MAX)
                     continue
 
@@ -107,6 +113,11 @@ class MattermostWebsocketService:
                 token = config.get("MATTERMOST_BOT_TOKEN", "")
                 if not http_url or not token:
                     logger.debug("Mattermost niet geconfigureerd, skip websocket-loop")
+                    await health_tick(
+                        "mattermost_websocket",
+                        status="disabled",
+                        detail="MATTERMOST_URL or token missing",
+                    )
                     await asyncio.sleep(_RECONNECT_BACKOFF_MAX)
                     continue
 
@@ -122,15 +133,25 @@ class MattermostWebsocketService:
                     connected_at = time.monotonic()
                     await self._authenticate(ws, token)
                     await self._resolve_bot_user_id()
+                    await health_tick(
+                        "mattermost_websocket",
+                        status="connected",
+                        detail=f"connected to {ws_url}",
+                    )
                     await self._recover_missed_posts()
                     await self._read_loop(ws)
                     backoff = _RECONNECT_BACKOFF_BASE
             except asyncio.CancelledError:
                 logger.info("Mattermost websocket: loop cancelled")
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.exception(
                     "Mattermost websocket: error, reconnect in %.1fs", backoff
+                )
+                await health_tick(
+                    "mattermost_websocket",
+                    status="reconnecting",
+                    detail=f"{type(exc).__name__}: {exc!s}"[:500],
                 )
 
             if self._stop:
@@ -194,6 +215,7 @@ class MattermostWebsocketService:
 
     async def _read_loop(self, ws) -> None:
         last_activity = time.monotonic()
+        last_heartbeat = 0.0
         while not self._stop:
             try:
                 raw = await asyncio.wait_for(ws.recv(), timeout=_HEARTBEAT_INTERVAL)
@@ -204,6 +226,16 @@ class MattermostWebsocketService:
                 # bij langdurige stilte (>2x interval) breken we de connectie.
                 if time.monotonic() - last_activity > _HEARTBEAT_INTERVAL * 2:
                     raise RuntimeError("Mattermost websocket: idle timeout")
+                # Idle but still under threshold — refresh the heartbeat row
+                # so the admin UI can distinguish "connected, just quiet" from
+                # "connected then died". Once per minute is plenty.
+                if time.monotonic() - last_heartbeat > 60.0:
+                    last_heartbeat = time.monotonic()
+                    await health_tick(
+                        "mattermost_websocket",
+                        status="connected",
+                        detail="idle (no events)",
+                    )
                 continue
 
             try:
@@ -211,6 +243,13 @@ class MattermostWebsocketService:
             except json.JSONDecodeError:
                 continue
             await self._dispatch(msg)
+            if time.monotonic() - last_heartbeat > 60.0:
+                last_heartbeat = time.monotonic()
+                await health_tick(
+                    "mattermost_websocket",
+                    status="connected",
+                    detail=f"last event: {msg.get('event', '?')}",
+                )
 
     async def _dispatch(self, msg: dict) -> None:
         event = msg.get("event")
