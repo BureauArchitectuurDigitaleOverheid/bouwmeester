@@ -324,6 +324,21 @@ class MattermostWebsocketService:
             len(post.get("message") or ""),
         )
 
+        # DM-events doen al hun werk in een eigen session via
+        # ``handle_dm_post`` — open hier geen outer session voor niets.
+        if channel_type == "D":
+            from bouwmeester.services.mattermost_ingest_service import (
+                handle_dm_post,
+            )
+
+            try:
+                await handle_dm_post(post, bot_user_id=self._bot_user_id)
+            except Exception:
+                logger.exception("Fout bij verwerken Mattermost DM %s", post_id)
+            else:
+                self._mark_dm_processed(post_id)
+            return
+
         async with async_session() as session:
             try:
                 await self._record_post(session, post, channel_type=channel_type)
@@ -331,9 +346,6 @@ class MattermostWebsocketService:
             except Exception:
                 await session.rollback()
                 logger.exception("Fout bij verwerken Mattermost-post %s", post_id)
-            else:
-                if channel_type == "D":
-                    self._mark_dm_processed(post_id)
 
     async def _dispatch_channel_lost(self, event: str, msg: dict) -> None:
         """Markeer kanaal-koppelingen als ``disabled_at`` wanneer de bot
@@ -472,6 +484,7 @@ class MattermostWebsocketService:
             return
 
         recovered = 0
+        failures = 0
         for post in posts:
             post_id = post.get("id")
             if not post_id or self._dm_already_processed(post_id):
@@ -480,10 +493,18 @@ class MattermostWebsocketService:
                 await self._record_post(session, post, channel_type="D")
             except Exception:
                 logger.exception("DM-recovery: fout bij post %s", post_id)
+                failures += 1
                 continue
             self._mark_dm_processed(post_id)
             recovered += 1
 
-        self._last_dm_recovery_ms = now_ms
+        # Schuif de cursor alleen door bij volledig succes — anders willen
+        # we mislukte posts bij de volgende reconnect opnieuw zien.
+        if failures == 0:
+            self._last_dm_recovery_ms = now_ms
         if recovered:
             logger.info("DM-recovery: %d posts opnieuw verwerkt", recovered)
+        if failures:
+            logger.warning(
+                "DM-recovery: %d posts mislukt, cursor blijft staan", failures
+            )

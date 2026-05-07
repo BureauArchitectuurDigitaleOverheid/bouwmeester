@@ -581,18 +581,19 @@ async def test_patch_reenable_false_rejected_by_pydantic(client, linked_channel)
 # ---------------------------------------------------------------------------
 
 
-async def test_dispatch_posted_extracts_channel_type():
-    """``data.channel_type`` (niet ``post.channel_type``) wordt doorgegeven
-    aan ``_record_post`` zodat ``ingest_post`` de DM-flow kan kiezen."""
+async def test_dispatch_posted_dms_routed_to_handle_dm_post():
+    """``data.channel_type=='D'`` triggert de module-level
+    ``handle_dm_post`` zonder een outer session te openen — kortste pad
+    voor link-codes."""
     import json
     from unittest.mock import AsyncMock, patch
 
     svc = MattermostWebsocketService()
     captured: dict = {}
 
-    async def fake_record_post(session, post, *, channel_type=None):
-        captured["channel_type"] = channel_type
+    async def fake_handle_dm_post(post, *, bot_user_id=None):
         captured["post_id"] = post.get("id")
+        captured["bot_user_id"] = bot_user_id
 
     msg = {
         "event": "posted",
@@ -603,10 +604,22 @@ async def test_dispatch_posted_extracts_channel_type():
             ),
         },
     }
-    with patch.object(svc, "_record_post", new=AsyncMock(side_effect=fake_record_post)):
+    svc._bot_user_id = "bot-id"
+    record_post = AsyncMock(return_value=None)
+    with (
+        patch(
+            "bouwmeester.services.mattermost_ingest_service.handle_dm_post",
+            new=AsyncMock(side_effect=fake_handle_dm_post),
+        ),
+        patch.object(svc, "_record_post", new=record_post),
+    ):
         await svc._dispatch_posted(msg)
 
-    assert captured == {"channel_type": "D", "post_id": "p1"}
+    assert captured == {"post_id": "p1", "bot_user_id": "bot-id"}
+    # DM-pad gaat NIET via _record_post — outer session wordt niet geopend.
+    record_post.assert_not_called()
+    # Post is gemarkeerd als verwerkt zodat een recovery-loop 'm skipt.
+    assert "p1" in svc._recent_dm_post_ids
 
 
 async def test_dispatch_posted_with_channel_type_o_falls_through():
@@ -760,6 +773,37 @@ async def test_recover_dm_posts_skips_already_processed_post():
     assert record_post.await_count == 1
     posted_ids = [call.args[1]["id"] for call in record_post.call_args_list]
     assert posted_ids == ["dm-new"]
+
+
+async def test_recover_dm_posts_does_not_advance_cursor_on_failure():
+    """Bij een mislukte ``_record_post`` moet de cursor blijven staan
+    zodat de mislukte post bij de volgende recovery opnieuw verschijnt."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    svc = MattermostWebsocketService()
+    svc._last_dm_recovery_ms = 1_700_000_000_000
+
+    service = MagicMock()
+    service.get_bot_dm_posts = AsyncMock(
+        return_value=[
+            {"id": "good", "user_id": "u1"},
+            {"id": "bad", "user_id": "u2"},
+        ]
+    )
+    session = MagicMock()
+
+    async def flaky_record(_session, post, *, channel_type=None):
+        if post["id"] == "bad":
+            raise RuntimeError("DB-glitch")
+
+    with patch.object(svc, "_record_post", new=AsyncMock(side_effect=flaky_record)):
+        await svc._recover_dm_posts(session, service)
+
+    # Cursor staat nog op het oude punt — anders mist "bad" bij volgende run.
+    assert svc._last_dm_recovery_ms == 1_700_000_000_000
+    # De geslaagde post zit wel in de cache zodat hij niet dubbel komt.
+    assert "good" in svc._recent_dm_post_ids
+    assert "bad" not in svc._recent_dm_post_ids
 
 
 async def test_recover_dm_posts_uses_last_recovery_ms_on_subsequent_runs():

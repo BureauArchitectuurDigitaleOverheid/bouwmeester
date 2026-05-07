@@ -46,6 +46,37 @@ from bouwmeester.services.mattermost_doc_link_extractor import (
 logger = logging.getLogger(__name__)
 
 
+async def handle_dm_post(post: dict, *, bot_user_id: str | None = None) -> None:
+    """Verwerk een DM naar de bot: zoek link-code, koppel account.
+
+    Draait in een eigen ``async_session`` zodat fouten in
+    ``MattermostLinkPoller`` (bijvoorbeeld een ``IntegrityError`` op een
+    race-conditie bij ``create_mapping``) niet doorslaan naar de session
+    waar de caller in zit. Bij een crash is alleen deze ene DM verloren.
+
+    Skip bot-eigen DMs als ``bot_user_id`` bekend is — anti
+    feedback-loop voor bevestigingsreplies van de bot zelf.
+    """
+    if bot_user_id and post.get("user_id") == bot_user_id:
+        return
+
+    from bouwmeester.services.mattermost_link_poller import MattermostLinkPoller
+    from bouwmeester.services.mattermost_service import MattermostService
+
+    async with async_session() as dm_session:
+        mm_service = MattermostService(dm_session)
+        try:
+            poller = MattermostLinkPoller(dm_session, mm_service=mm_service)
+            try:
+                await poller.process_posts([post])
+                await dm_session.commit()
+            except Exception:
+                await dm_session.rollback()
+                logger.exception("DM-handling faalde voor post %s", post.get("id"))
+        finally:
+            await mm_service.close()
+
+
 class MattermostIngestService:
     """Stateless verwerking — instantieer per session, gooi daarna weg."""
 
@@ -201,29 +232,10 @@ class MattermostIngestService:
             await self._react(post_id, "eyes")
 
     async def _handle_dm(self, post: dict) -> None:
-        """Verwerk een DM naar de bot: zoek link-code, koppel account.
-
-        Draait in een eigen ``async_session`` zodat fouten in
-        ``MattermostLinkPoller`` (bijvoorbeeld ``IntegrityError`` op een
-        race-conditie bij ``create_mapping``) de outer-session van de
-        WS-loop niet in aborted-state achterlaten. Bij een crash is
-        alleen deze ene DM verloren — de WS-loop draait door.
-        """
-        from bouwmeester.services.mattermost_link_poller import MattermostLinkPoller
-        from bouwmeester.services.mattermost_service import MattermostService
-
-        async with async_session() as dm_session:
-            mm_service = MattermostService(dm_session)
-            try:
-                poller = MattermostLinkPoller(dm_session, mm_service=mm_service)
-                try:
-                    await poller.process_posts([post])
-                    await dm_session.commit()
-                except Exception:
-                    await dm_session.rollback()
-                    logger.exception("DM-handling faalde voor post %s", post.get("id"))
-            finally:
-                await mm_service.close()
+        """Backwards-compat shim — delegate naar de module-level helper
+        zodat ``handle_dm_post`` ook direct vanuit de WS-loop aanroepbaar
+        is zonder een ``MattermostIngestService`` te instantiëren."""
+        await handle_dm_post(post, bot_user_id=self.bot_user_id)
 
     async def _is_noise(self, message: str) -> bool:
         """Vraag VLAM of dit een triviaal/ack-bericht is.

@@ -176,12 +176,36 @@ async def _mattermost_websocket_loop(settings) -> None:  # type: ignore[no-untyp
         await asyncio.sleep(5)
 
 
+async def _cleanup_obsolete_heartbeats() -> None:
+    """Verwijder heartbeat-rijen van loops die niet meer bestaan.
+
+    De ``mattermost_link``-rij bleef hangen toen we die loop schrapten,
+    waardoor de admin-UI 'm als 'unexpected, down' bleef tonen. Run-once
+    bij worker-startup is genoeg — best-effort, fout wordt gelogd.
+    """
+    from sqlalchemy import delete
+
+    from bouwmeester.models.worker_heartbeat import WorkerHeartbeat
+
+    obsolete = ["mattermost_link"]
+    try:
+        async with async_session() as session:
+            await session.execute(
+                delete(WorkerHeartbeat).where(WorkerHeartbeat.loop_name.in_(obsolete))
+            )
+            await session.commit()
+    except Exception:
+        logger.exception("Cleanup obsolete heartbeats faalde")
+
+
 async def main() -> None:
     settings = get_settings()
     logger.info(
         f"Worker started. Parlementair poll interval: "
         f"{settings.TK_POLL_INTERVAL_SECONDS}s"
     )
+
+    await _cleanup_obsolete_heartbeats()
 
     tasks = [
         asyncio.create_task(_parlementair_loop(settings)),
