@@ -849,3 +849,69 @@ async def test_recover_dm_posts_uses_last_recovery_ms_on_subsequent_runs():
 
     service.get_bot_dm_posts.assert_called_once()
     assert service.get_bot_dm_posts.call_args.kwargs["since"] == 1_700_000_000_000
+
+
+# ---------------------------------------------------------------------------
+# _read_loop idle-gedrag — lange stilte mag niet leiden tot reconnect-storm
+# ---------------------------------------------------------------------------
+
+
+async def test_read_loop_idle_does_not_raise_on_long_silence(monkeypatch):
+    """Bij een rustig kanaal (geen events binnen ``_HEARTBEAT_INTERVAL``)
+    mag ``_read_loop`` géén ``RuntimeError`` gooien. De ``websockets``-
+    library doet zelf ping/pong; een artificiële idle-counter veroorzaakt
+    alleen reconnect-stormen op stille verbindingen."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from bouwmeester.services import mattermost_websocket_service as ws_mod
+
+    svc = MattermostWebsocketService()
+
+    # Nooit een echte recv() — trigger altijd TimeoutError. Dit zou
+    # vóór de fix na 60s een RuntimeError("idle timeout") opgooien.
+    async def never_resolves():
+        await asyncio.sleep(3600)
+
+    fake_ws = AsyncMock()
+    fake_ws.recv = AsyncMock(side_effect=never_resolves)
+
+    # Maak het heartbeat-interval kort zodat de test niet 30s wacht.
+    monkeypatch.setattr(ws_mod, "_HEARTBEAT_INTERVAL", 0.05)
+
+    # Health-tick mocken zodat we niet daadwerkelijk de DB raken.
+    monkeypatch.setattr(ws_mod, "health_tick", AsyncMock(return_value=None))
+
+    # Stop het loopje na een tijdje van buitenaf.
+    async def stopper():
+        await asyncio.sleep(0.25)
+        svc._stop = True
+
+    stopper_task = asyncio.create_task(stopper())
+    try:
+        # Mag terugkeren zonder RuntimeError, ondanks dat er nooit een
+        # frame is binnengekomen.
+        await svc._read_loop(fake_ws)
+    finally:
+        await stopper_task
+
+
+async def test_read_loop_propagates_connection_closed(monkeypatch):
+    """Bij een echte connection-close (door library zelf opgemerkt via
+    ping-timeout) mag ``_read_loop`` de exception laten bubblen zodat
+    ``run()`` reconnect."""
+    from unittest.mock import AsyncMock
+
+    import websockets
+
+    from bouwmeester.services import mattermost_websocket_service as ws_mod
+
+    svc = MattermostWebsocketService()
+    fake_ws = AsyncMock()
+    fake_ws.recv = AsyncMock(side_effect=websockets.ConnectionClosedError(None, None))
+
+    monkeypatch.setattr(ws_mod, "_HEARTBEAT_INTERVAL", 0.05)
+    monkeypatch.setattr(ws_mod, "health_tick", AsyncMock(return_value=None))
+
+    with pytest.raises(websockets.ConnectionClosedError):
+        await svc._read_loop(fake_ws)

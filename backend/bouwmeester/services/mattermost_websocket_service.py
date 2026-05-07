@@ -239,21 +239,18 @@ class MattermostWebsocketService:
                 await service.close()
 
     async def _read_loop(self, ws) -> None:
-        last_activity = time.monotonic()
         last_heartbeat = 0.0
         while not self._stop:
             try:
                 raw = await asyncio.wait_for(ws.recv(), timeout=_HEARTBEAT_INTERVAL)
-                last_activity = time.monotonic()
             except TimeoutError:
-                # Stuur een lichte ping via een no-op authentication_challenge?
-                # Mattermost gebruikt geen expliciet ping/pong voor clients;
-                # bij langdurige stilte (>2x interval) breken we de connectie.
-                if time.monotonic() - last_activity > _HEARTBEAT_INTERVAL * 2:
-                    raise RuntimeError("Mattermost websocket: idle timeout")
-                # Idle but still under threshold — refresh the heartbeat row
-                # so the admin UI can distinguish "connected, just quiet" from
-                # "connected then died". Once per minute is plenty.
+                # Geen events binnen het heartbeat-venster — gewoon
+                # admin-UI heartbeat ticken. De `websockets`-library doet
+                # zelf ping/pong elke 20s (zie ``ping_interval`` in run());
+                # die control-frames passeren ``recv()`` niet, dus stilte
+                # hier zegt niets over de connectie-gezondheid. Een dode
+                # connectie wordt door de library zelf opgemerkt en als
+                # ``ConnectionClosed`` op ``recv()`` opgegooid.
                 if time.monotonic() - last_heartbeat > 60.0:
                     last_heartbeat = time.monotonic()
                     await health_tick(
