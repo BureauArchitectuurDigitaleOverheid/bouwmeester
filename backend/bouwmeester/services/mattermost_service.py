@@ -301,13 +301,13 @@ class MattermostService:
             return f"{base}/nodes/{notification.related_node_id}"
         return base
 
-    def format_notification(
-        self, notification: Notification, *, with_actions: bool = True
-    ) -> tuple[str, dict]:
+    def format_notification(self, notification: Notification) -> tuple[str, dict]:
         """Format a notification into a Mattermost message with rich attachment.
 
-        Returns (text, props) where props contains attachments and optionally
-        interactive button integrations.
+        Returns ``(text, props)`` where ``props`` contains the attachment.
+        Interactive buttons zijn weggehaald: Mattermost stuurt voor
+        message-attachment-button-clicks geen POST naar onze publieke
+        endpoint, dus de "Taak afronden"-knop deed nooit iets.
         """
         color = _NOTIFICATION_COLORS.get(notification.type, "#94A3B8")
         deep_link = self._deep_link(notification)
@@ -346,41 +346,8 @@ class MattermostService:
             "footer": "Bouwmeester",
         }
 
-        # Add interactive buttons for actionable notification types.
-        if with_actions:
-            actions = self._build_actions(notification, deep_link)
-            if actions:
-                attachment["actions"] = actions
-
         props: dict = {"attachments": [attachment]}
         return ("", props)
-
-    def _build_actions(self, notification: Notification, deep_link: str) -> list[dict]:
-        """Build interactive button actions for a notification."""
-        backend_url = self.settings.BACKEND_URL.rstrip("/")
-        actions: list[dict] = []
-
-        # Add "Taak afronden" for task-related notifications.
-        if (
-            notification.type in ("task_assigned", "task_overdue")
-            and notification.related_task_id
-        ):
-            actions.append(
-                {
-                    "id": "complete_task",
-                    "name": "Taak afronden",
-                    "integration": {
-                        "url": f"{backend_url}/api/mattermost/action",
-                        "context": {
-                            "action": "complete_task",
-                            "task_id": str(notification.related_task_id),
-                            "notification_id": str(notification.id),
-                        },
-                    },
-                }
-            )
-
-        return actions
 
     async def send_notification(self, notification: Notification) -> bool:
         """Route a notification to DM or channel based on type."""
