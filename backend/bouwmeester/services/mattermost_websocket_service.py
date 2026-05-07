@@ -133,8 +133,17 @@ class MattermostWebsocketService:
                 self._mm_base_url = http_url.rstrip("/")
                 ws_url = _ws_url_from_http(http_url)
                 logger.info("Mattermost websocket: connect %s", ws_url)
+                # Ping elke 20s — zonder pings sluit een reverse-proxy
+                # (zoals die voor digilab.overheid.nl) een idle websocket
+                # binnen ~1min met "ConnectionClosedError: no close frame".
+                # ping_timeout iets lager dan ons idle-timeout zodat een
+                # gemiste pong eerder een reconnect triggert dan de
+                # heartbeat-loop dat zou doen.
                 async with websockets.connect(
-                    ws_url, ping_interval=None, max_size=2 * 1024 * 1024
+                    ws_url,
+                    ping_interval=20,
+                    ping_timeout=20,
+                    max_size=2 * 1024 * 1024,
                 ) as ws:
                     connected_at = time.monotonic()
                     await self._authenticate(ws, token)
