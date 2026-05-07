@@ -4755,6 +4755,7 @@ async def seed(db: AsyncSession) -> None:
     from bouwmeester.core.slug import slugify
     from bouwmeester.models.initiatief import Initiatief
     from bouwmeester.models.resource_permission import ResourcePermission
+    from bouwmeester.repositories.lead_column import LeadColumnRepository
 
     initiatieven_data = [
         ("Regelrecht", "#3B82F6", "Community-tool voor team Regelrecht"),
@@ -4781,6 +4782,10 @@ async def seed(db: AsyncSession) -> None:
         )
         db.add(init)
         await db.flush()
+        # Seed de 7 default funnel-kolommen — het script bypasst
+        # InitiatiefRepository.create dus de auto-seed daar wordt niet
+        # getriggerd.
+        await LeadColumnRepository(db).seed_defaults(init.id)
         # First person (super_admin) becomes eigenaar
         if first_person:
             db.add(
