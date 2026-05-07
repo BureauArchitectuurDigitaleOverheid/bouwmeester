@@ -37,9 +37,9 @@ import { useCommunityGraph } from '@/hooks/useLeads';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import {
-  LeadStage,
   LEAD_STAGE_LABELS,
   LEAD_STAGE_COLORS,
+  LeadStage,
   NODE_TYPE_HEX_COLORS,
   NodeType,
   formatFunctie,
@@ -175,12 +175,17 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
 
   const badgeContent = (() => {
     if (data.nodeType === 'lead' && data.stage) {
-      const stageKey = data.stage as LeadStage;
+      // De stage is sinds per-initiatief-kolommen een vrije slug. We pakken
+      // alleen de vaste fallback-stijlen voor de 7 defaults; voor custom
+      // kolommen valt de styling terug op een neutraal grijs en wordt de
+      // slug zelf getoond — een per-graph-node lookup van de actieve
+      // LeadColumn lijst zou hier overkill zijn.
+      const fallbackKey = data.stage as LeadStage;
       return (
         <span
-          className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium mb-1 ${LEAD_STAGE_COLORS[stageKey] ?? 'bg-gray-100 text-gray-800'}`}
+          className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium mb-1 ${LEAD_STAGE_COLORS[fallbackKey] ?? 'bg-gray-100 text-gray-800'}`}
         >
-          {LEAD_STAGE_LABELS[stageKey] ?? data.stage}
+          {LEAD_STAGE_LABELS[fallbackKey] ?? data.stage}
         </span>
       );
     }

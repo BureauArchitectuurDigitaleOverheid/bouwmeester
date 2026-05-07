@@ -136,6 +136,12 @@ from bouwmeester.schema.lead import (
     LeadTimelineResponse,
     LeadUpdate,
 )
+from bouwmeester.schema.lead_column import (
+    LeadColumnCreate,
+    LeadColumnReorder,
+    LeadColumnResponse,
+    LeadColumnUpdate,
+)
 from bouwmeester.schema.llm import (
     CorpusGapOverviewResponse,
     CorpusGapSummaryItem,
@@ -476,6 +482,11 @@ __all__ = [
     "LeadTimelineEvent",
     "LeadTimelineResponse",
     "LeadUpdate",
+    # lead_column
+    "LeadColumnCreate",
+    "LeadColumnReorder",
+    "LeadColumnResponse",
+    "LeadColumnUpdate",
     # samenwerkingsverband
     "PersoonLidmaatschapResponse",
     "SamenwerkingsverbandCreate",

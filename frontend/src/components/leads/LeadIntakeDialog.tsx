@@ -21,7 +21,8 @@ import {
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
-import { LeadStage, LEAD_STAGE_ORDER, LEAD_STAGE_LABELS, LEAD_STAGE_COLORS, INITIATIEF_COLORS, formatFunctie } from '@/types';
+import { INITIATIEF_COLORS, formatFunctie } from '@/types';
+import { useLeadColumns } from '@/hooks/useLeadColumns';
 import type { LeadParseResult } from '@/types';
 import { buildPersonOptions } from '@/utils/personOptions';
 
@@ -69,7 +70,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagSearch, setTagSearch] = useState('');
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
-  const [stage, setStage] = useState<LeadStage>(LeadStage.INBOX);
+  const [stage, setStage] = useState<string>('inbox');
   const [contacts, setContacts] = useState<ContactEntry[]>([emptyContact()]);
   const updateContact = useCallback((index: number, updates: Partial<ContactEntry>) => {
     setContacts(prev => prev.map((c, i) => i === index ? { ...c, ...updates } : c));
@@ -83,6 +84,24 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const [assigneeId, setAssigneeId] = useState<string>('');
   const [broughtById, setBroughtById] = useState<string>('');
   const [leadDate, setLeadDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const { columns: stageColumns } = useLeadColumns(initiatiefId || undefined);
+  const sortedStageColumns = useMemo(
+    () => [...stageColumns].sort((a, b) => a.sort_order - b.sort_order),
+    [stageColumns],
+  );
+  const stageColumnsBySlug = useMemo(() => {
+    const map = new Map<string, (typeof sortedStageColumns)[number]>();
+    for (const c of sortedStageColumns) map.set(c.slug, c);
+    return map;
+  }, [sortedStageColumns]);
+  // Wanneer het initiatief verandert kan de geselecteerde stage niet langer
+  // bestaan in de kolommen van dat initiatief. Val terug op de eerste kolom.
+  useEffect(() => {
+    if (sortedStageColumns.length === 0) return;
+    if (!stageColumnsBySlug.has(stage)) {
+      setStage(sortedStageColumns[0].slug);
+    }
+  }, [sortedStageColumns, stageColumnsBySlug, stage]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const createLead = useCreateLead();
@@ -317,7 +336,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     setSelectedTags([]);
     setTagSearch('');
     setTagDropdownOpen(false);
-    setStage(LeadStage.INBOX);
+    setStage('inbox');
     setContacts([emptyContact()]);
     setExtraExpertiseValues([]);
     setAssigneeId('');
@@ -676,7 +695,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                           {d.title}
                         </button>
                         <span className="text-text-secondary ml-1">
-                          ({d.organization ?? 'geen organisatie'} - {LEAD_STAGE_LABELS[d.stage as LeadStage]})
+                          ({d.organization ?? 'geen organisatie'} - {stageColumnsBySlug.get(d.stage)?.name ?? d.stage})
                         </span>
                       </li>
                     ))}
@@ -689,18 +708,18 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                   Status
                 </label>
                 <div className="flex flex-wrap gap-1.5">
-                  {LEAD_STAGE_ORDER.map((s) => (
+                  {sortedStageColumns.map((c) => (
                     <button
-                      key={s}
+                      key={c.id}
                       type="button"
-                      onClick={() => setStage(s)}
+                      onClick={() => setStage(c.slug)}
                       className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                        stage === s
-                          ? `${LEAD_STAGE_COLORS[s]} ring-2 ring-offset-1 ring-current`
+                        stage === c.slug
+                          ? `${c.color} ring-2 ring-offset-1 ring-current`
                           : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
                       }`}
                     >
-                      {LEAD_STAGE_LABELS[s]}
+                      {c.name}
                     </button>
                   ))}
                 </div>

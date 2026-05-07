@@ -94,6 +94,12 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
             self.session.add(rp)
             await self.session.flush()
 
+        # Seed the 7 default funnel-kolommen so the initiatief has a board
+        # out of the box. Imported lazily to avoid a circular import.
+        from bouwmeester.repositories.lead_column import LeadColumnRepository
+
+        await LeadColumnRepository(self.session).seed_defaults(initiatief.id)
+
         await self.session.refresh(initiatief)
         return initiatief
 

@@ -85,7 +85,7 @@ interface PublicationStatus {
 function publicationStatus(args: {
   publicVisible: boolean;
   publicTitle: string | null;
-  stage: LeadStage;
+  stage: string;
 }): PublicationStatus {
   if (!args.publicVisible) {
     return { visible: false, reason: 'Toggle "Publiek tonen" staat uit.' };
@@ -93,10 +93,15 @@ function publicationStatus(args: {
   if (!args.publicTitle?.trim()) {
     return { visible: false, reason: 'Publieke titel is leeg.' };
   }
-  if (!PUBLIC_VISIBLE_STAGES.includes(args.stage)) {
+  // Heuristiek-fallback: voor de detail-panel-hint gebruiken we de
+  // 7-default whitelist. De backend doet de echte check op
+  // LeadColumn.is_public_visible per initiatief; deze UI-hint hoeft
+  // alleen "ongeveer juist" te zijn voor default-stages.
+  if (!PUBLIC_VISIBLE_STAGES.includes(args.stage as LeadStage)) {
+    const label = LEAD_STAGE_LABELS[args.stage] ?? args.stage;
     return {
       visible: false,
-      reason: `Lead in stage "${LEAD_STAGE_LABELS[args.stage]}" — alleen actieve stages worden publiek.`,
+      reason: `Lead in stage "${label}" — alleen actieve stages worden publiek.`,
     };
   }
   return { visible: true, reason: null };
@@ -142,7 +147,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editOrganization, setEditOrganization] = useState('');
-  const [editStage, setEditStage] = useState<LeadStage>(LeadStage.VERKENNEN);
+  const [editStage, setEditStage] = useState<string>(LeadStage.VERKENNEN);
   const [editAssignee, setEditAssignee] = useState('');
   const [editNextAction, setEditNextAction] = useState('');
   const [editNextActionDate, setEditNextActionDate] = useState('');

@@ -1601,7 +1601,11 @@ export interface FinancieelOverzicht {
   per_jaar: FinancieelJaar[];
 }
 
-// Lead Stage enum and labels
+// Lead Stage enum and labels.
+// De stage-waarde van een lead is sinds de per-initiatief-kolommen-feature
+// geen vaste enum meer; eigenaren kunnen kolommen toevoegen/verwijderen via
+// `LeadColumn`. Deze enum + de DEFAULT_LEAD_COLUMNS hieronder dienen als
+// fallback voor orphan-leads (geen initiatief) en als loading-placeholder.
 export enum LeadStage {
   INBOX = 'inbox',
   VERKENNEN = 'verkennen',
@@ -1612,7 +1616,25 @@ export enum LeadStage {
   KOELKAST = 'koelkast',
 }
 
-export const LEAD_STAGE_LABELS: Record<LeadStage, string> = {
+export interface LeadColumn {
+  id: string;
+  initiatief_id: string;
+  name: string;
+  slug: string;
+  sort_order: number;
+  color: string;
+  is_active_stage: boolean;
+  is_public_visible: boolean;
+  lead_count: number;
+  created_at: string;
+  updated_at: string | null;
+}
+
+// Record<string, ...> ipv Record<LeadStage, ...> zodat call-sites die met
+// een willekeurige slug-string indexeren (per-initiatief custom kolommen)
+// geen TS-fout krijgen. Onbekende slugs returnen `undefined` — gebruik
+// `?? slug` als fallback om de raw slug te tonen.
+export const LEAD_STAGE_LABELS: Record<string, string> = {
   [LeadStage.INBOX]: 'Inbox',
   [LeadStage.VERKENNEN]: 'Verkennen',
   [LeadStage.EERSTE_GESPREK]: 'Eerste gesprek',
@@ -1622,7 +1644,7 @@ export const LEAD_STAGE_LABELS: Record<LeadStage, string> = {
   [LeadStage.KOELKAST]: 'Koelkast',
 };
 
-export const LEAD_STAGE_COLORS: Record<LeadStage, string> = {
+export const LEAD_STAGE_COLORS: Record<string, string> = {
   [LeadStage.INBOX]: 'bg-indigo-100 text-indigo-800',
   [LeadStage.VERKENNEN]: 'bg-blue-100 text-blue-800',
   [LeadStage.EERSTE_GESPREK]: 'bg-yellow-100 text-yellow-800',
@@ -1641,6 +1663,33 @@ export const LEAD_STAGE_ORDER: LeadStage[] = [
   LeadStage.IN_THE_POCKET,
   LeadStage.KOELKAST,
 ];
+
+// Fallback-kolommen voor leads zonder initiatief en voor de loading-flow van
+// `useLeadColumns`. Spiegelt de defaults uit `backend/schema/lead_column.py`.
+export const DEFAULT_LEAD_COLUMNS: LeadColumn[] = LEAD_STAGE_ORDER.map(
+  (slug, idx) => ({
+    id: `default-${slug}`,
+    initiatief_id: '',
+    name: LEAD_STAGE_LABELS[slug],
+    slug,
+    sort_order: idx,
+    color: LEAD_STAGE_COLORS[slug],
+    is_active_stage: ![
+      LeadStage.INBOX,
+      LeadStage.IN_THE_POCKET,
+      LeadStage.KOELKAST,
+    ].includes(slug),
+    is_public_visible: [
+      LeadStage.EERSTE_GESPREK,
+      LeadStage.INTERNE_CHECK,
+      LeadStage.FOLLOW_UP,
+      LeadStage.IN_THE_POCKET,
+    ].includes(slug),
+    lead_count: 0,
+    created_at: new Date(0).toISOString(),
+    updated_at: null,
+  }),
+);
 
 export enum LeadActivityType {
   NOTE = 'note',
@@ -1729,7 +1778,7 @@ export interface Lead {
   organization: string | null;
   externe_organisatie_id: string | null;
   externe_organisatie: LeadExterneOrgSummary | null;
-  stage: LeadStage;
+  stage: string;
   assignee_id: string | null;
   assignee: LeadAssigneeSummary | null;
   brought_by_id: string | null;
@@ -1789,7 +1838,7 @@ export interface LeadCreate {
   description?: string | null;
   organization?: string | null;
   externe_organisatie_id?: string | null;
-  stage?: LeadStage;
+  stage?: string;
   assignee_id?: string | null;
   brought_by_id?: string | null;
   next_action?: string | null;
@@ -1811,7 +1860,7 @@ export interface LeadUpdate {
   description?: string | null;
   organization?: string | null;
   externe_organisatie_id?: string | null;
-  stage?: LeadStage;
+  stage?: string;
   assignee_id?: string | null;
   brought_by_id?: string | null;
   next_action?: string | null;

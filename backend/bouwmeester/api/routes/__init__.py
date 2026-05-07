@@ -21,6 +21,7 @@ from bouwmeester.api.routes.initiatief import router as initiatieven_router
 from bouwmeester.api.routes.initiatief_update import (
     router as initiatief_updates_router,
 )
+from bouwmeester.api.routes.lead_columns import router as lead_columns_router
 from bouwmeester.api.routes.leads import router as leads_router
 from bouwmeester.api.routes.llm import router as llm_router
 from bouwmeester.api.routes.mattermost import router as mattermost_router
@@ -72,6 +73,7 @@ api_router.include_router(graph_router)
 api_router.include_router(initiatieven_router)
 api_router.include_router(initiatief_updates_router)
 api_router.include_router(import_export_router)
+api_router.include_router(lead_columns_router)
 api_router.include_router(leads_router)
 api_router.include_router(llm_router)
 api_router.include_router(mattermost_router)

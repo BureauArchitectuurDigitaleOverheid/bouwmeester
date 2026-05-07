@@ -17,6 +17,7 @@ async def _create_initiatief(
     public: bool = False,
 ):
     from bouwmeester.models.initiatief import Initiatief
+    from bouwmeester.repositories.lead_column import LeadColumnRepository
 
     init = Initiatief(
         id=uuid.uuid4(),
@@ -28,6 +29,10 @@ async def _create_initiatief(
     )
     db_session.add(init)
     await db_session.flush()
+    # Seed de 7 default-kolommen zodat de publieke pagina casuses kan tonen
+    # (LeadColumn.is_public_visible filtert nu wat zichtbaar is, ipv een
+    # hardcoded slug-lijst).
+    await LeadColumnRepository(db_session).seed_defaults(init.id)
     return init
 
 

@@ -52,6 +52,7 @@ import type {
 } from '@/types';
 import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
 import { MattermostChannelsSection } from '@/components/mattermost/MattermostChannelsSection';
+import { ColumnsManager } from '@/components/leads/ColumnsManager';
 
 interface InitiatiefDetailModalProps {
   initiatiefId: string;
@@ -483,6 +484,19 @@ export function InitiatiefDetailModal({
 
             {/* Updates (publication posts) */}
             <UpdatesSection initiatief={detail} canEdit={canEdit} />
+
+            {/* Funnel-kolommen — eigenaar only */}
+            {isEigenaar && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                    <SettingsIcon className="h-3.5 w-3.5" />
+                    Funnel-kolommen
+                  </h4>
+                </div>
+                <ColumnsManager initiatiefId={detail.id} />
+              </div>
+            )}
 
             {/* Settings — eigenaar only */}
             {isEigenaar && <SettingsSection initiatief={detail} />}

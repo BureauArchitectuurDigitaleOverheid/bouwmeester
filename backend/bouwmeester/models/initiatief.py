@@ -60,3 +60,9 @@ class Initiatief(Base):
         cascade="all, delete-orphan",
         order_by="InitiatiefUpdatePost.created_at.desc()",
     )
+    lead_columns: Mapped[list["LeadColumn"]] = relationship(  # noqa: F821
+        "LeadColumn",
+        back_populates="initiatief",
+        cascade="all, delete-orphan",
+        order_by="LeadColumn.sort_order",
+    )

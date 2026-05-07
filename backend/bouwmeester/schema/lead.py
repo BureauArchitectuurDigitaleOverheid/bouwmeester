@@ -11,6 +11,14 @@ from bouwmeester.schema.github_link import GitHubLinkResponse
 
 
 class LeadStage(enum.StrEnum):
+    """Default stage slugs.
+
+    Stage waarden zijn niet langer beperkt tot deze enum: per-initiatief
+    kunnen eigenaren eigen kolommen aanmaken via `lead_column`. De enum
+    blijft als referentie voor de 7 default-kolommen (orphan-leads zonder
+    initiatief, frontend fallback bij loading).
+    """
+
     inbox = "inbox"
     verkennen = "verkennen"
     eerste_gesprek = "eerste_gesprek"
@@ -47,7 +55,7 @@ class LeadBase(BaseModel):
     description: str | None = Field(None, max_length=10000)
     organization: str | None = Field(None, max_length=500)
     externe_organisatie_id: UUID | None = None
-    stage: LeadStage = LeadStage.inbox
+    stage: str = Field(default="inbox", min_length=1, max_length=120)
     assignee_id: UUID | None = None
     brought_by_id: UUID | None = None
     next_action: str | None = Field(None, max_length=5000)
@@ -72,7 +80,7 @@ class LeadUpdate(BaseModel):
     description: str | None = Field(None, max_length=10000)
     organization: str | None = Field(None, max_length=500)
     externe_organisatie_id: UUID | None = None
-    stage: LeadStage | None = None
+    stage: str | None = Field(None, min_length=1, max_length=120)
     assignee_id: UUID | None = None
     brought_by_id: UUID | None = None
     next_action: str | None = Field(None, max_length=5000)
@@ -91,12 +99,12 @@ class LeadUpdate(BaseModel):
 
 
 class LeadMove(BaseModel):
-    stage: LeadStage
+    stage: str = Field(min_length=1, max_length=120)
 
 
 class LeadReorder(BaseModel):
     lead_ids: list[UUID]
-    stage: LeadStage
+    stage: str = Field(min_length=1, max_length=120)
 
 
 class LeadMergeRequest(BaseModel):
@@ -239,7 +247,7 @@ class LeadResponse(BaseModel):
     organization: str | None = None
     externe_organisatie_id: UUID | None = None
     externe_organisatie: LeadExterneOrgSummary | None = None
-    stage: LeadStage
+    stage: str
     assignee_id: UUID | None = None
     assignee: LeadAssigneeSummary | None = None
     brought_by_id: UUID | None = None

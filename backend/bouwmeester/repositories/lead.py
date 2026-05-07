@@ -3,7 +3,7 @@
 from datetime import UTC, date, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.initiatief_context import (
@@ -12,9 +12,25 @@ from bouwmeester.core.initiatief_context import (
 )
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
+from bouwmeester.models.lead_column import LeadColumn
 from bouwmeester.models.tag import LeadTag, Tag
 from bouwmeester.repositories.base import BaseRepository
-from bouwmeester.schema.lead import LeadCreate, LeadStage, LeadUpdate
+from bouwmeester.schema.lead import LeadCreate, LeadUpdate
+from bouwmeester.schema.lead_column import DEFAULT_ACTIVE_SLUGS, DEFAULT_SLUGS
+
+
+def _non_active_subq():
+    """Slugs whose column has is_active_stage=False (per-initiatief).
+
+    Returns a correlated subquery: a stage is "non-active" when it
+    matches a `lead_column` row with `is_active_stage=False` for the
+    same `initiatief_id`. Used to exclude terminal/inbox-like stages
+    from "overdue"/"stale" filters.
+    """
+    return select(LeadColumn.slug).where(
+        LeadColumn.initiatief_id == Lead.initiatief_id,
+        LeadColumn.is_active_stage.is_(False),
+    )
 
 
 def _lead_options():
@@ -29,8 +45,33 @@ def _lead_options():
     ]
 
 
+class StageNotInColumnsError(ValueError):
+    """Raised when a write tries to set a stage that has no matching column."""
+
+
 class LeadRepository(BaseRepository[Lead]):
     model = Lead
+
+    async def _validate_stage(
+        self, stage: str | None, initiatief_id: UUID | None
+    ) -> None:
+        """Reject writes that target a stage not defined for this initiatief.
+
+        Orphan leads (no initiatief) fall back to the 7 default slugs.
+        """
+        if stage is None:
+            return
+        if initiatief_id is None:
+            if stage not in DEFAULT_SLUGS:
+                raise StageNotInColumnsError(stage)
+            return
+        stmt = select(LeadColumn.id).where(
+            LeadColumn.initiatief_id == initiatief_id,
+            LeadColumn.slug == stage,
+        )
+        result = await self.session.execute(stmt.limit(1))
+        if result.first() is None:
+            raise StageNotInColumnsError(stage)
 
     async def get(
         self, id: UUID, init_ctx: InitiatiefContext | None = None
@@ -67,7 +108,7 @@ class LeadRepository(BaseRepository[Lead]):
         self,
         skip: int = 0,
         limit: int = 100,
-        stage: LeadStage | None = None,
+        stage: str | None = None,
         tag: str | None = None,
         assignee_id: UUID | None = None,
         init_ctx: InitiatiefContext | None = None,
@@ -105,7 +146,16 @@ class LeadRepository(BaseRepository[Lead]):
             if next_action_filter == "overdue":
                 stmt = stmt.where(
                     Lead.next_action_date < today,
-                    Lead.stage.notin_(["inbox", "in_the_pocket", "koelkast"]),
+                    or_(
+                        and_(
+                            Lead.initiatief_id.isnot(None),
+                            Lead.stage.notin_(_non_active_subq()),
+                        ),
+                        and_(
+                            Lead.initiatief_id.is_(None),
+                            Lead.stage.in_(DEFAULT_ACTIVE_SLUGS),
+                        ),
+                    ),
                 )
             elif next_action_filter == "today":
                 stmt = stmt.where(Lead.next_action_date == today)
@@ -133,6 +183,7 @@ class LeadRepository(BaseRepository[Lead]):
         return list(result.scalars().all())
 
     async def create(self, data: LeadCreate, author_id: UUID | None = None) -> Lead:
+        await self._validate_stage(data.stage, data.initiatief_id)
         dump = data.model_dump()
         # Only set created_at if explicitly provided (for backdating)
         if dump.get("created_at") is None:
@@ -169,6 +220,13 @@ class LeadRepository(BaseRepository[Lead]):
         if lead is None:
             return None
         update_data = data.model_dump(exclude_unset=True)
+        # If either the stage or the initiatief changes, validate against the
+        # destination initiatief's columns (or the new initiatief_id if both
+        # change in the same payload).
+        if "stage" in update_data or "initiatief_id" in update_data:
+            target_stage = update_data.get("stage", lead.stage)
+            target_init = update_data.get("initiatief_id", lead.initiatief_id)
+            await self._validate_stage(target_stage, target_init)
         for key, value in update_data.items():
             setattr(lead, key, value)
         await self.session.flush()
@@ -176,11 +234,12 @@ class LeadRepository(BaseRepository[Lead]):
         return await self.get(id)
 
     async def move(
-        self, id: UUID, stage: LeadStage, author_id: UUID | None = None
+        self, id: UUID, stage: str, author_id: UUID | None = None
     ) -> Lead | None:
         lead = await self.session.get(Lead, id)
         if lead is None:
             return None
+        await self._validate_stage(stage, lead.initiatief_id)
         old_stage = lead.stage
         lead.stage = stage
         await self.session.flush()
@@ -199,7 +258,7 @@ class LeadRepository(BaseRepository[Lead]):
         # Re-fetch with all eager loads to avoid lazy-loading errors
         return await self.get(id)
 
-    async def reorder(self, lead_ids: list[UUID], stage: LeadStage) -> list[Lead]:
+    async def reorder(self, lead_ids: list[UUID], stage: str) -> list[Lead]:
         for idx, lead_id in enumerate(lead_ids):
             lead = await self.session.get(Lead, lead_id)
             if lead is not None and lead.stage == stage:
@@ -483,13 +542,24 @@ class LeadRepository(BaseRepository[Lead]):
         stage_result = await self.session.execute(stage_stmt)
         by_stage = {row[0]: row[1] for row in stage_result.all()}
 
-        # Stale count: next_action_date < today and not in terminal/inbox stages
+        # Stale count: next_action_date < today and not in terminal/inbox stages.
+        # Active-stage filter is per-initiatief (lead_column.is_active_stage);
+        # orphan leads (initiatief_id IS NULL) fall back to the default set.
         stale_stmt = (
             select(func.count())
             .select_from(Lead)
             .where(
                 Lead.next_action_date < date.today(),
-                Lead.stage.notin_(["inbox", "in_the_pocket", "koelkast"]),
+                or_(
+                    and_(
+                        Lead.initiatief_id.isnot(None),
+                        Lead.stage.notin_(_non_active_subq()),
+                    ),
+                    and_(
+                        Lead.initiatief_id.is_(None),
+                        Lead.stage.in_(DEFAULT_ACTIVE_SLUGS),
+                    ),
+                ),
             )
         )
         stale_stmt = apply_initiatief_filter(stale_stmt, Lead.initiatief_id, init_ctx)

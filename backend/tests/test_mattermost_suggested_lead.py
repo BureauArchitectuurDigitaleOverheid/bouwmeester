@@ -26,9 +26,15 @@ def _id() -> str:
 
 @pytest.fixture
 async def sample_initiatief(db_session):
+    from bouwmeester.repositories.lead_column import LeadColumnRepository
+
     init = Initiatief(id=uuid.uuid4(), naam="Regelrecht")
     db_session.add(init)
     await db_session.flush()
+    # Seed de 7 default-kolommen zodat stage-labels (bv. "Verkennen") door
+    # _resolve_stage_label gevonden worden in plaats van terug te vallen
+    # op de raw slug.
+    await LeadColumnRepository(db_session).seed_defaults(init.id)
     return init
 
 
@@ -736,6 +742,7 @@ async def test_post_suggestion_reply_existing_lead_copy(
             matched_lead={
                 "title": "HHNK (Hoogheemraadschap Hollands Noorderkwartier)",
                 "stage": "verkennen",
+                "stage_label": "Verkennen",
             },
         )
 
@@ -814,3 +821,6 @@ async def test_ingest_propagates_matched_lead_to_reply(
     assert matched is not None
     assert matched["title"] == "HHNK (Hoogheemraadschap Hollands Noorderkwartier)"
     assert matched["stage"] == "verkennen"
+    # Label komt uit lead_column.name (per-initiatief), niet uit een
+    # hardcoded backend-map.
+    assert matched["stage_label"] == "Verkennen"
