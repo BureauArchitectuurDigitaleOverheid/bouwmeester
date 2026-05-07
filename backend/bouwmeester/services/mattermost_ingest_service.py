@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +48,19 @@ from bouwmeester.services.mattermost_mention_renderer import (
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 
 logger = logging.getLogger(__name__)
+
+
+# Selectie van bestaande leads die meegaan in de LLM-prompt voor
+# duplicate-detection. We nemen een unie van twee groepen, dedupliceren op
+# id en cappen op MAX_LEADS_FOR_LLM:
+#   1. de N nieuwste leads (vangt kwesties op die nog actief gespeeld worden)
+#   2. de M leads waarvan titel/organisatie het meest lijkt op het
+#      bericht via pg_trgm word_similarity (vangt oude leads waarvan de
+#      naam expliciet genoemd wordt)
+RECENT_LEADS_FOR_LLM = 25
+SIMILAR_LEADS_FOR_LLM = 50
+SIMILAR_LEAD_THRESHOLD = 0.3
+MAX_LEADS_FOR_LLM = 60
 
 
 async def handle_dm_post(post: dict, *, bot_user_id: str | None = None) -> bool:
@@ -400,15 +413,17 @@ class MattermostIngestService:
             )
             return None, "stale_initiatief"
 
-        recent_leads_stmt = (
-            select(Lead.id, Lead.title, Lead.stage)
-            .where(Lead.initiatief_id == channel_link_initiatief_id)
-            .order_by(Lead.created_at.desc())
-            .limit(20)
+        rows = await self._collect_lead_candidates_for_llm(
+            channel_link_initiatief_id, message
         )
-        rows = (await self.session.execute(recent_leads_stmt)).all()
         recent = [
-            {"id": str(row.id), "title": row.title, "stage": row.stage} for row in rows
+            {
+                "id": str(row.id),
+                "title": row.title,
+                "organization": row.organization,
+                "stage": row.stage,
+            }
+            for row in rows
         ]
 
         result = await llm.classify_mattermost_lead_candidate(
@@ -468,6 +483,63 @@ class MattermostIngestService:
             )
 
         return suggested.id, None
+
+    async def _collect_lead_candidates_for_llm(
+        self, initiatief_id: UUID, message: str
+    ) -> list:
+        """Selecteer bestaande leads die mogelijk relevant zijn voor de
+        LLM-duplicate-check.
+
+        Twee groepen, gededupliceerd op id en gecapped:
+
+        1. ``RECENT_LEADS_FOR_LLM`` nieuwste leads voor dit initiatief
+           (recency, vangt actieve kwesties zonder expliciete naam in
+           het bericht).
+        2. ``SIMILAR_LEADS_FOR_LLM`` leads die het meest lijken op het
+           bericht via ``pg_trgm.word_similarity`` op titel of
+           organisatie (vangt oude leads waarvan de naam expliciet
+           genoemd wordt; bv. "HHNK" matcht een lead "HHNK
+           (Hoogheemraadschap...)" ook al staat die niet in de top-25).
+
+        Recente leads krijgen voorrang in de dedup zodat hun ``stage``
+        consistent is. ``SIMILAR_LEAD_THRESHOLD`` is een ruime default;
+        ``word_similarity`` retourneert 0..1 en 0.3 vangt afkortingen +
+        kleine spelvariaties zonder te veel ruis.
+        """
+        recent_stmt = (
+            select(Lead.id, Lead.title, Lead.organization, Lead.stage)
+            .where(Lead.initiatief_id == initiatief_id)
+            .order_by(Lead.created_at.desc())
+            .limit(RECENT_LEADS_FOR_LLM)
+        )
+        recent_rows = (await self.session.execute(recent_stmt)).all()
+
+        # Pre-filter ruwweg op een ondergrens om geen full-table-scan op te
+        # eten in initiatieven met veel leads. word_similarity is symmetrisch:
+        # we zoeken leads waar TITEL of ORG voorkomt als "woord" in MESSAGE.
+        title_sim = func.word_similarity(Lead.title, message)
+        org_sim = func.word_similarity(Lead.organization, message)
+        max_sim = func.greatest(title_sim, func.coalesce(org_sim, 0.0))
+        similar_stmt = (
+            select(Lead.id, Lead.title, Lead.organization, Lead.stage)
+            .where(
+                Lead.initiatief_id == initiatief_id,
+                or_(
+                    title_sim > SIMILAR_LEAD_THRESHOLD,
+                    org_sim > SIMILAR_LEAD_THRESHOLD,
+                ),
+            )
+            .order_by(max_sim.desc())
+            .limit(SIMILAR_LEADS_FOR_LLM)
+        )
+        similar_rows = (await self.session.execute(similar_stmt)).all()
+
+        merged: dict = {}
+        for row in recent_rows:
+            merged[row.id] = row
+        for row in similar_rows:
+            merged.setdefault(row.id, row)
+        return list(merged.values())[:MAX_LEADS_FOR_LLM]
 
     async def _post_suggestion_reply(
         self,

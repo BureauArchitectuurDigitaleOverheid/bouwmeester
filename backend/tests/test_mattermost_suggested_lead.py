@@ -561,3 +561,75 @@ async def test_llm_says_no_marks_no_lead(db_session, sample_channel):
         )
     ).scalar_one()
     assert pl.skipped_reason == "no_lead"
+
+
+# ---------------------------------------------------------------------------
+# Lead-kandidaten-selectie voor LLM (recency + trigram-similarity)
+# ---------------------------------------------------------------------------
+
+
+async def test_collect_candidates_includes_old_lead_via_similarity(
+    db_session, sample_initiatief
+):
+    """Een oude lead (buiten de top-25 recency) moet via trigram-similarity
+    op organisatie/titel toch in de kandidaten-lijst belanden zodra de
+    naam in het bericht voorkomt. Reproductie van het HHNK-scenario."""
+    from datetime import UTC, datetime, timedelta
+
+    # 1 oude HHNK-lead, lang geleden aangemaakt.
+    old = Lead(
+        id=uuid.uuid4(),
+        title="HHNK",
+        organization="Hoogheemraadschap Hollands Noorderkwartier",
+        initiatief_id=sample_initiatief.id,
+        stage="in_the_pocket",
+    )
+    db_session.add(old)
+    await db_session.flush()
+    old.created_at = datetime.now(UTC) - timedelta(days=120)
+
+    # Ruim genoeg jongere leads om de oude HHNK uit de top-25 te duwen.
+    for i in range(40):
+        recent = Lead(
+            id=uuid.uuid4(),
+            title=f"Andere lead {i}",
+            organization=f"Organisatie {i}",
+            initiatief_id=sample_initiatief.id,
+            stage="lead",
+        )
+        db_session.add(recent)
+    await db_session.flush()
+
+    ingest = MattermostIngestService(db_session)
+    rows = await ingest._collect_lead_candidates_for_llm(
+        sample_initiatief.id,
+        "Ik denk dat ik een nieuwe lead heb! HHNK lijkt een goeie partner",
+    )
+
+    ids = [r.id for r in rows]
+    assert old.id in ids, (
+        "Oude HHNK-lead moet via trigram-similarity gevonden worden, "
+        "ook al staat hij niet in de top-25 nieuwste."
+    )
+
+
+async def test_collect_candidates_dedups_overlap(db_session, sample_initiatief):
+    """Een lead die zowel in de recency-top als in de similarity-top zit,
+    mag maar één keer voorkomen in de output."""
+    overlap = Lead(
+        id=uuid.uuid4(),
+        title="Gemeente Utrecht",
+        organization="Gemeente Utrecht",
+        initiatief_id=sample_initiatief.id,
+        stage="lead",
+    )
+    db_session.add(overlap)
+    await db_session.flush()
+
+    ingest = MattermostIngestService(db_session)
+    rows = await ingest._collect_lead_candidates_for_llm(
+        sample_initiatief.id,
+        "Gemeente Utrecht heeft interesse",
+    )
+
+    assert [r.id for r in rows].count(overlap.id) == 1
