@@ -40,7 +40,6 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     "/api/chat/attachments/{attachment_id}/preview": "owner-check in handler",
     # Mattermost webhook endpoints (authenticated via shared secret)
     "/api/mattermost/slash": "authenticated via shared secret in body",
-    "/api/mattermost/action": "authenticated via shared secret in body",
     "/api/mattermost/verify-link": "public — link verification",
     # WebAuthn registration/authentication ceremony
     "/api/webauthn/authenticate/options": "public — start authn ceremony",
