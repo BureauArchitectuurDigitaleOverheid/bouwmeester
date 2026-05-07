@@ -287,3 +287,73 @@ async def test_action_complete_task_wrong_assignee(
     )
 
     assert "niet de toegewezene" in result["ephemeral_text"]
+
+
+# ---------------------------------------------------------------------------
+# Route-level tests for /api/mattermost/action.
+#
+# Mattermost stuurt voor message-attachment-buttons GEEN top-level token.
+# Authenticatie loopt via mattermost_user_id -> MattermostUser mapping.
+# ---------------------------------------------------------------------------
+
+
+async def test_action_route_unlinked_user_403(client):
+    """Een onbekende mattermost_user_id krijgt 403, geen knop-acties zonder
+    gekoppeld Bouwmeester-account."""
+    resp = await client.post(
+        "/api/mattermost/action",
+        json={
+            "user_id": "mm_unknown_user",
+            "context": {
+                "action": "create_lead_from_suggestion",
+                "suggested_lead_id": str(uuid.uuid4()),
+            },
+        },
+    )
+    assert resp.status_code == 403
+
+
+async def test_action_route_missing_user_id_403(client):
+    """Een POST zonder user_id krijgt 403, voorkomt dat een lege string
+    matcht tegen een lege mapping."""
+    resp = await client.post(
+        "/api/mattermost/action",
+        json={
+            "context": {
+                "action": "create_lead_from_suggestion",
+                "suggested_lead_id": str(uuid.uuid4()),
+            },
+        },
+    )
+    assert resp.status_code == 403
+
+
+async def test_action_route_linked_user_routes_to_handler(
+    client, db_session: AsyncSession, sample_person, sample_task
+):
+    """Een gekoppelde MM-user kan de action-route raken; de handler wordt
+    aangeroepen en voert zijn werk uit (taak afronden)."""
+    repo = MattermostUserRepository(db_session)
+    await repo.create_mapping(
+        person_id=sample_person.id,
+        mattermost_user_id="mm_route_test",
+        mattermost_username="routetest",
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/mattermost/action",
+        json={
+            "user_id": "mm_route_test",
+            "context": {
+                "action": "complete_task",
+                "task_id": str(sample_task.id),
+            },
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "update" in body
+
+    await db_session.refresh(sample_task)
+    assert sample_task.status == "done"

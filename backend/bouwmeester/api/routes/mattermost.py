@@ -8,7 +8,12 @@ User-facing endpoints (behind normal auth + CSRF):
 Webhook endpoints (token-verified, no user auth):
   - POST /api/mattermost/verify-link  -- bot verifies a link code
   - POST /api/mattermost/slash        -- slash command handler
-  - POST /api/mattermost/action       -- button action handler
+
+Webhook endpoint (no token; auth via gekoppelde MattermostUser):
+  - POST /api/mattermost/action       -- button action handler.
+    Mattermost stuurt geen top-level token voor message-attachment buttons,
+    dus we authenticeren via ``mattermost_user_id`` -> ``MattermostUser``
+    mapping plus per-handler initiatief-toegangschecks.
 """
 
 import logging
@@ -279,26 +284,27 @@ async def handle_action(
 ) -> dict:
     """Handle interactive button actions from Mattermost.
 
-    **Trust model**: het integration-token (gedeelde geheim) is hier de
-    enige authenticatie. Wie het token kent, kan ``user_id`` van iedere
-    MM-user naïef invullen en als die persoon acties uitvoeren. Het token
-    moet daarom als admin-equivalent worden behandeld en alleen aan de
-    Mattermost-server toevertrouwd. Voor extra audit loggen we hier de
-    door MM doorgestuurde ``post_id`` + ``trigger_id`` zodat een
-    onbekende/onverwachte action achteraf gecorreleerd kan worden met de
-    server-side post-trail van Mattermost.
+    **Trust model**: Mattermost stuurt voor message-attachment-buttons GEEN
+    top-level ``token`` mee (anders dan bij outgoing webhooks of slash
+    commands). Authenticatie loopt daarom via twee lagen:
+
+    1. ``mattermost_user_id`` moet resolven naar een gekoppelde
+       ``MattermostUser``. Alleen Bouwmeester-users die hun account aan
+       Mattermost hebben gekoppeld kunnen knoppen klikken.
+    2. De business-handlers (``_action_*`` in ``MattermostSlashService``)
+       checken vervolgens initiatief-toegang en resource-eigendom voor de
+       specifieke actie.
+
+    Een aanvaller die deze publieke endpoint raakt zonder geldig
+    ``mattermost_user_id`` krijgt 403; mét een geldig ID maar zonder
+    initiatief-toegang krijgt-ie alsnog een ``ephemeral_text``-afwijzing
+    uit de handler. Voor audit loggen we ``post_id`` + ``trigger_id``
+    zodat onverwachte calls te correleren zijn met de MM-server-trail.
     """
     body = await request.json()
 
-    # Mattermost sends the integration token at the top level for interactive
-    # messages.  Never read from "context" — that is user/attacker-controllable.
-    token = body.get("token", "")
-
-    # Always verify — reject if no token is provided.
-    await _verify_webhook_token(token, db)
-
-    user_id = body.get("user_id", "unknown")
-    _check_rate_limit("action", user_id)
+    user_id = body.get("user_id", "")
+    _check_rate_limit("action", user_id or "unknown")
 
     context = body.get("context", {}) or {}
     action_name = context.get("action", "")
@@ -318,6 +324,15 @@ async def handle_action(
         body.get("channel_id"),
         suggested_lead_id,
     )
+
+    # Auth-laag 1: alleen gekoppelde Mattermost-users mogen acties triggeren.
+    repo = MattermostUserRepository(db)
+    mapping = await repo.get_by_mattermost_user_id(user_id) if user_id else None
+    if mapping is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Mattermost-account is niet gekoppeld aan Bouwmeester.",
+        )
 
     from bouwmeester.services.mattermost_slash_service import MattermostSlashService
 
