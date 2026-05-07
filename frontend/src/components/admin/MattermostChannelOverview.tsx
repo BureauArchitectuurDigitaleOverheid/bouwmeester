@@ -1,5 +1,4 @@
 import { CheckCircle2, MinusCircle, XCircle } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import {
   useMattermostChannelOverview,
   type MattermostChannelOverview as Channel,
@@ -14,17 +13,13 @@ function formatRelative(iso: string | null): string {
   return `${Math.round(ms / 86_400_000)} dagen geleden`;
 }
 
-function ScopeLink({ channel }: { channel: Channel }) {
+function ScopeLabel({ channel }: { channel: Channel }) {
   const label = channel.scope_label ?? '(niet gevonden)';
-  const href =
-    channel.scope_type === 'lead'
-      ? `/leads/${channel.scope_id}`
-      : `/initiatieven/${channel.scope_id}`;
   const prefix = channel.scope_type === 'lead' ? 'Lead' : 'Initiatief';
   return (
-    <Link to={href} className="text-primary-700 hover:underline">
-      {prefix}: {label}
-    </Link>
+    <span>
+      <span className="text-text-secondary">{prefix}:</span> {label}
+    </span>
   );
 }
 
@@ -36,7 +31,7 @@ function ChannelRow({ channel }: { channel: Channel }) {
         <div className="font-mono text-xs text-text-secondary">{channel.channel_name}</div>
       </td>
       <td className="py-2 pr-4 text-sm">
-        <ScopeLink channel={channel} />
+        <ScopeLabel channel={channel} />
       </td>
       <td className="py-2 pr-4 text-sm">
         {channel.disabled_at ? (

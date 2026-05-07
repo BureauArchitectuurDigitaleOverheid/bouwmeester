@@ -119,10 +119,6 @@ class MattermostIngestService:
                     post_id=post_id,
                     channel_id=channel_id,
                 )
-                # Subtiele bevestiging in Mattermost: oogje als reactie op
-                # het oorspronkelijke bericht. Faalt deze stap, dan is dat
-                # niet fataal — de note staat al.
-                await self._react(post_id, "eyes")
         elif (
             channel_link.scope_type == SCOPE_INITIATIEF
             and channel_link.suggest_leads_enabled
@@ -183,6 +179,13 @@ class MattermostIngestService:
         create_at = post.get("create_at")
         if isinstance(create_at, int):
             await link_repo.update_last_seen(channel_link, create_at)
+
+        # Subtiele bevestiging in Mattermost: oogje op het oorspronkelijke
+        # bericht. Pas na de DB-write zodat een trage HTTP-call de ingest
+        # niet blokkeert. Faalt deze stap, dan is dat niet fataal — de
+        # note staat al.
+        if lead_activity_id is not None:
+            await self._react(post_id, "eyes")
 
     async def _is_noise(self, message: str) -> bool:
         """Vraag VLAM of dit een triviaal/ack-bericht is.
