@@ -1,7 +1,7 @@
 """Samenwerkingsverband model: ad-hoc samenwerkingsvormen los van de
 hierarchische OrganisatieEenheid-boom (programma, werkgroep,
 opschalingsticket, ketenproject, stuurgroep, taskforce, innovatiebudget,
-community_of_practice, pilot, convenant)."""
+community_of_practice, pilot, convenant, commissie, raad)."""
 
 import uuid
 from datetime import date, datetime
@@ -33,7 +33,8 @@ class Samenwerkingsverband(Base):
         index=True,
         comment=(
             "programma|werkgroep|opschalingsticket|ketenproject|stuurgroep|"
-            "taskforce|innovatiebudget|community_of_practice|pilot|convenant"
+            "taskforce|innovatiebudget|community_of_practice|pilot|convenant|"
+            "commissie|raad"
         ),
     )
     beschrijving: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -2133,7 +2133,9 @@ export type SamenwerkingsverbandType =
   | 'innovatiebudget'
   | 'community_of_practice'
   | 'pilot'
-  | 'convenant';
+  | 'convenant'
+  | 'commissie'
+  | 'raad';
 
 export const SAMENWERKINGSVERBAND_TYPE_LABELS: Record<string, string> = {
   programma: 'Programma',
@@ -2146,6 +2148,8 @@ export const SAMENWERKINGSVERBAND_TYPE_LABELS: Record<string, string> = {
   community_of_practice: 'Community of Practice',
   pilot: 'Pilot',
   convenant: 'Convenant',
+  commissie: 'Commissie',
+  raad: 'Raad',
 };
 
 export const SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS: Record<string, BadgeVariant> = {
@@ -2159,6 +2163,8 @@ export const SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS: Record<string, BadgeVariant
   community_of_practice: 'blue',
   pilot: 'orange',
   convenant: 'slate',
+  commissie: 'rose',
+  raad: 'gray',
 };
 
 export const SAMENWERKINGSVERBAND_TYPE_OPTIONS: { value: string; label: string }[] =
