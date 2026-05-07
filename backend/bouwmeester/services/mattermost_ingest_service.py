@@ -41,6 +41,10 @@ from bouwmeester.services.mattermost_doc_link_extractor import (
     derive_attachment_label,
     extract_doc_links,
 )
+from bouwmeester.services.mattermost_mention_renderer import (
+    render_mattermost_message_to_tiptap,
+)
+from bouwmeester.services.mention_helper import sync_and_notify_mentions
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +240,16 @@ class MattermostIngestService:
         prefix = ""
         if author_person_id is None and mm_user_id:
             prefix = f"_(via mm:@{mm_user_id})_  \n"
-        content = prefix + body
+        plain_content = prefix + body
+
+        # Probeer @username-vermeldingen om te zetten naar TipTap-mentions
+        # zodat het frontend ze als klikbare badge rendert. Als geen enkele
+        # username aan een Person gekoppeld is, vallen we terug op platte
+        # tekst (bestaand gedrag).
+        tiptap_json, mentioned_ids = await render_mattermost_message_to_tiptap(
+            self.session, plain_content
+        )
+        content = tiptap_json or plain_content
 
         metadata = {
             "source": "mattermost",
@@ -260,6 +273,22 @@ class MattermostIngestService:
         self.session.add(activity)
         await self.session.flush()
         await self.session.refresh(activity)
+
+        # Sync mentions + notify gementionde personen. Geen-op als content
+        # geen TipTap-JSON is (sync_mentions parsed dan een lege lijst).
+        if mentioned_ids:
+            lead = await self.session.get(Lead, lead_id)
+            lead_title = lead.title if lead is not None else "Mattermost-bericht"
+            await sync_and_notify_mentions(
+                self.session,
+                "lead_activity",
+                activity.id,
+                content,
+                lead_title,
+                sender_id=author_person_id,
+                source_lead_id=lead_id,
+                exclude_person_id=author_person_id,
+            )
 
         for link in extract_doc_links(message):
             url = link["url"]

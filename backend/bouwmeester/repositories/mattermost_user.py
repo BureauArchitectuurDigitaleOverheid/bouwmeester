@@ -32,6 +32,15 @@ class MattermostUserRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_mattermost_username(
+        self, mattermost_username: str
+    ) -> MattermostUser | None:
+        stmt = select(MattermostUser).where(
+            MattermostUser.mattermost_username == mattermost_username
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def create_mapping(
         self,
         person_id: UUID,

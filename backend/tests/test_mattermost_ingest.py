@@ -323,6 +323,133 @@ async def test_lead_channel_unlinked_author_uses_via_prefix(db_session, sample_l
     assert f"via mm:@{mm_uid}" in activity.content
 
 
+async def test_lead_channel_renders_at_mentions_as_tiptap(
+    db_session, sample_lead, create_person
+):
+    """``@username`` van een gekoppeld persoon wordt een TipTap-mention
+    zodat de frontend een klikbare badge kan tonen."""
+    import json
+
+    from bouwmeester.models.mention import Mention
+    from bouwmeester.models.notification import Notification
+
+    anne = await create_person(naam="Anne Schuth", prefix="anne.schuth")
+    daan = await create_person(naam="Daan Wijnhorst", prefix="daan")
+    cid = _id()
+    daan_mm_uid = _id()
+    db_session.add_all(
+        [
+            MattermostChannelLink(
+                channel_id=cid,
+                channel_name="proj",
+                channel_display_name="Project",
+                scope_type=SCOPE_LEAD,
+                scope_id=sample_lead.id,
+                auto_note_enabled=True,
+            ),
+            MattermostUser(
+                person_id=anne.id,
+                mattermost_user_id=_id(),
+                mattermost_username="anne.schuth-rijksoverheid",
+            ),
+            MattermostUser(
+                person_id=daan.id,
+                mattermost_user_id=daan_mm_uid,
+                mattermost_username="daan",
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    ingest = MattermostIngestService(db_session)
+    post = {
+        "id": _id(),
+        "channel_id": cid,
+        "user_id": daan_mm_uid,
+        "create_at": 1_700_000_000_000,
+        "message": ("@anne.schuth-rijksoverheid handig om ff over WOW te overleggen"),
+    }
+    await ingest.ingest_post(post)
+
+    activity = (
+        await db_session.execute(
+            select(LeadActivity).where(LeadActivity.lead_id == sample_lead.id)
+        )
+    ).scalar_one()
+
+    doc = json.loads(activity.content)
+    assert doc["type"] == "doc"
+    inline = doc["content"][0]["content"]
+    mention_nodes = [n for n in inline if n["type"] == "mention"]
+    assert len(mention_nodes) == 1
+    assert mention_nodes[0]["attrs"]["id"] == str(anne.id)
+    assert mention_nodes[0]["attrs"]["label"] == "Anne Schuth"
+    assert mention_nodes[0]["attrs"]["mentionType"] == "person"
+
+    # Mention-record voor back-references.
+    mentions = (
+        (
+            await db_session.execute(
+                select(Mention).where(
+                    Mention.source_type == "lead_activity",
+                    Mention.source_id == activity.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [m.target_id for m in mentions] == [anne.id]
+
+    # Anne krijgt een notification, Daan (de auteur) niet.
+    notifs = (
+        (
+            await db_session.execute(
+                select(Notification).where(Notification.type == "mention")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [n.person_id for n in notifs] == [anne.id]
+    assert notifs[0].related_lead_id == sample_lead.id
+
+
+async def test_lead_channel_unknown_username_stays_plain_text(db_session, sample_lead):
+    """Een ``@username`` zonder MattermostUser-koppeling blijft platte tekst."""
+    cid = _id()
+    db_session.add(
+        MattermostChannelLink(
+            channel_id=cid,
+            channel_name="proj",
+            channel_display_name="Project",
+            scope_type=SCOPE_LEAD,
+            scope_id=sample_lead.id,
+            auto_note_enabled=True,
+        )
+    )
+    await db_session.flush()
+
+    ingest = MattermostIngestService(db_session)
+    post = {
+        "id": _id(),
+        "channel_id": cid,
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "@onbekend hoi",
+    }
+    await ingest.ingest_post(post)
+
+    activity = (
+        await db_session.execute(
+            select(LeadActivity).where(LeadActivity.lead_id == sample_lead.id)
+        )
+    ).scalar_one()
+    # Geen TipTap, geen mention-node — gewoon de oorspronkelijke tekst.
+    assert "@onbekend hoi" in activity.content
+    assert not activity.content.startswith("{")
+
+
 async def test_lead_channel_with_auto_note_disabled_skips_activity(
     db_session, sample_lead
 ):
