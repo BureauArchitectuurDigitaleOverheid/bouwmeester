@@ -10,19 +10,10 @@ from bouwmeester.core.database import get_db
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.initiatief_update import InitiatiefUpdatePost
 from bouwmeester.models.lead import Lead
+from bouwmeester.models.lead_column import LeadColumn
 from bouwmeester.schema.initiatief_update import InitiatiefUpdatePostPublicResponse
 
 router = APIRouter(prefix="/public/initiatieven", tags=["public-initiatief"])
-
-# Stages where a lead is considered actively in progress; others (inbox /
-# verkennen / koelkast) are intentionally hidden from the public surface
-# even when public_visible is true.
-_PUBLIC_VISIBLE_STAGES = (
-    "eerste_gesprek",
-    "interne_check",
-    "follow_up",
-    "in_the_pocket",
-)
 
 
 class PublicCasus(BaseModel):
@@ -82,15 +73,20 @@ async def get_public_initiatief(
     )
 
     # Lopende casussen: leads waar de eigenaar/contributor expliciet een
-    # publieks-titel heeft geschreven én de toggle aan zette én de lead in
-    # een actieve stage zit.
+    # publieks-titel heeft geschreven, de toggle aan zette, en de stage
+    # behoort tot een kolom die per-initiatief als publiek-zichtbaar is
+    # gemarkeerd (LeadColumn.is_public_visible).
+    public_slugs_subq = select(LeadColumn.slug).where(
+        LeadColumn.initiatief_id == initiatief.id,
+        LeadColumn.is_public_visible.is_(True),
+    )
     casussen_result = await db.execute(
         select(Lead.public_title, Lead.public_summary)
         .where(
             Lead.initiatief_id == initiatief.id,
             Lead.public_visible.is_(True),
             Lead.public_title.is_not(None),
-            Lead.stage.in_(_PUBLIC_VISIBLE_STAGES),
+            Lead.stage.in_(public_slugs_subq),
         )
         .order_by(Lead.created_at.desc())
     )

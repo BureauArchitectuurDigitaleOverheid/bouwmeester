@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Text, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,6 +22,12 @@ if TYPE_CHECKING:
 
 class Lead(Base):
     __tablename__ = "lead"
+    __table_args__ = (
+        # Speeds up the per-initiatief stage filter that the kanbanbord,
+        # de metrics-aggregatie, en de "non-active stage" subquery in de
+        # overdue/stale filters elke keer raken.
+        Index("ix_lead_initiatief_stage", "initiatief_id", "stage"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

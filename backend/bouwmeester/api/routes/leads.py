@@ -32,7 +32,7 @@ from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.lead_node import LeadNode
 from bouwmeester.repositories.github_link import GitHubLinkRepository
-from bouwmeester.repositories.lead import LeadRepository
+from bouwmeester.repositories.lead import LeadRepository, StageNotInColumnsError
 from bouwmeester.repositories.lead_activity import LeadActivityRepository
 from bouwmeester.schema.github_link import (
     GitHubLinkCreate,
@@ -55,7 +55,6 @@ from bouwmeester.schema.lead import (
     LeadParseResult,
     LeadReorder,
     LeadResponse,
-    LeadStage,
     LeadTimelineEvent,
     LeadTimelineResponse,
     LeadUpdate,
@@ -151,7 +150,7 @@ def _check_initiatief_access(
 @router.get("", response_model=list[LeadResponse])
 async def list_leads(
     current_user: OptionalUser,
-    stage: LeadStage | None = Query(None),
+    stage: str | None = Query(None, max_length=120),
     tag: str | None = Query(None),
     assignee_id: UUID | None = Query(None),
     date_from: date | None = Query(None),
@@ -202,7 +201,13 @@ async def create_lead(
     _check_initiatief_access(data.initiatief_id, init_ctx)
     author_id = current_user.id if current_user else None
     repo = LeadRepository(db)
-    lead = await repo.create(data, author_id=author_id)
+    try:
+        lead = await repo.create(data, author_id=author_id)
+    except StageNotInColumnsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Onbekende stage '{exc.args[0]}' voor dit initiatief",
+        )
 
     # Notify assignee (if any, and not self-assignment)
     if lead.assignee_id and lead.assignee_id != author_id:
@@ -401,7 +406,13 @@ async def update_lead(
     old_stage = old_lead.stage
 
     repo = LeadRepository(db)
-    lead = require_found(await repo.update(lead_id, data), "Lead")
+    try:
+        lead = require_found(await repo.update(lead_id, data), "Lead")
+    except StageNotInColumnsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Onbekende stage '{exc.args[0]}' voor dit initiatief",
+        )
 
     notif_svc = NotificationService(db)
 
@@ -502,9 +513,15 @@ async def move_lead(
     _check_lead_access(lead, init_ctx)
     author_id = current_user.id if current_user else None
     repo = LeadRepository(db)
-    lead = require_found(
-        await repo.move(lead_id, data.stage, author_id=author_id), "Lead"
-    )
+    try:
+        lead = require_found(
+            await repo.move(lead_id, data.stage, author_id=author_id), "Lead"
+        )
+    except StageNotInColumnsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Onbekende stage '{exc.args[0]}' voor dit initiatief",
+        )
 
     # Notify assignee about stage change
     if lead.assignee_id and lead.assignee_id != author_id:

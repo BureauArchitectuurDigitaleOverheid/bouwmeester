@@ -7,15 +7,10 @@ import { Button } from '@/components/common/Button';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { useLeads, useMergeLeads, useDeleteLead } from '@/hooks/useLeads';
+import { useLeadColumns } from '@/hooks/useLeadColumns';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { LeadMetricsBar } from './LeadMetricsBar';
-import {
-  LeadStage,
-  LEAD_STAGE_ORDER,
-  LEAD_STAGE_LABELS,
-  LEAD_STAGE_COLORS,
-} from '@/types';
-import type { Lead, LeadFilters } from '@/types';
+import type { Lead, LeadColumn, LeadFilters } from '@/types';
 import { isOverdue, formatDateShort, timeAgo } from '@/utils/dates';
 
 const SORT_OPTIONS: SelectOption[] = [
@@ -58,6 +53,12 @@ export function LeadListView({
   const { data: leads, isLoading } = useLeads(
     Object.keys(filters).length > 0 ? filters : undefined,
   );
+  const { columns } = useLeadColumns(initiatiefId);
+  const columnsBySlug = useMemo(() => {
+    const map = new Map<string, LeadColumn>();
+    for (const c of columns) map.set(c.slug, c);
+    return map;
+  }, [columns]);
   const { openLeadDetail } = useLeadDetail();
   const mergeMutation = useMergeLeads();
   const deleteLead = useDeleteLead();
@@ -75,9 +76,11 @@ export function LeadListView({
 
   const stageIndex = useMemo(() => {
     const map = new Map<string, number>();
-    LEAD_STAGE_ORDER.forEach((s, i) => map.set(s, i));
+    [...columns]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .forEach((c, i) => map.set(c.slug, i));
     return map;
-  }, []);
+  }, [columns]);
 
   const filteredLeads = useMemo(() => {
     if (!leads) return [];
@@ -224,11 +227,18 @@ export function LeadListView({
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${LEAD_STAGE_COLORS[lead.stage]}`}
-                        >
-                          {LEAD_STAGE_LABELS[lead.stage]}
-                        </span>
+                        {(() => {
+                          const col = columnsBySlug.get(lead.stage);
+                          return (
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
+                                col?.color ?? 'bg-gray-100 text-gray-800'
+                              }`}
+                            >
+                              {col?.name ?? lead.stage}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-text-secondary truncate max-w-[150px]">
                         {lead.assignee?.naam ?? '-'}
@@ -308,7 +318,7 @@ export function LeadListView({
                   <div className="font-medium">{lead.title}</div>
                   <div className="text-sm text-text-secondary">
                     {lead.organization ?? 'geen organisatie'} -{' '}
-                    {LEAD_STAGE_LABELS[lead.stage as LeadStage]}
+                    {columnsBySlug.get(lead.stage)?.name ?? lead.stage}
                   </div>
                   <div className="text-xs text-primary-600 mt-1">
                     ← Deze behouden

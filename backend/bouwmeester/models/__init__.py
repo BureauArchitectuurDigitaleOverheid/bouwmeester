@@ -29,6 +29,7 @@ from bouwmeester.models.instrument import Instrument  # noqa: F401
 from bouwmeester.models.lead import Lead  # noqa: F401
 from bouwmeester.models.lead_activity import LeadActivity  # noqa: F401
 from bouwmeester.models.lead_attachment import LeadAttachment  # noqa: F401
+from bouwmeester.models.lead_column import LeadColumn  # noqa: F401
 from bouwmeester.models.lead_node import LeadNode  # noqa: F401
 from bouwmeester.models.maatregel import Maatregel  # noqa: F401
 from bouwmeester.models.mattermost_channel_link import (  # noqa: F401
@@ -112,6 +113,7 @@ __all__ = [
     "Lead",
     "LeadActivity",
     "LeadAttachment",
+    "LeadColumn",
     "LeadNode",
     "LeadTag",
     "Maatregel",

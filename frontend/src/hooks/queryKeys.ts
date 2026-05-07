@@ -210,6 +210,13 @@ export const queryKeys = {
     metrics: () => ['leads', 'metrics'] as const,
   },
 
+  // --- Lead-kolommen (per-initiatief funnel-stages) ---
+  leadColumns: {
+    all: ['lead-columns'] as const,
+    list: (initiatiefId: string | undefined) =>
+      ['lead-columns', 'list', initiatiefId ?? null] as const,
+  },
+
   // --- Financieel ---
   financieel: {
     all: ['financieel'] as const,
