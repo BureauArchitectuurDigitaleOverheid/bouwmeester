@@ -851,7 +851,6 @@ async def test_recover_dm_posts_uses_last_recovery_ms_on_subsequent_runs():
     assert service.get_bot_dm_posts.call_args.kwargs["since"] == 1_700_000_000_000
 
 
-# ---------------------------------------------------------------------------
 # _read_loop idle-gedrag — lange stilte mag niet leiden tot reconnect-storm
 # ---------------------------------------------------------------------------
 
@@ -915,3 +914,217 @@ async def test_read_loop_propagates_connection_closed(monkeypatch):
 
     with pytest.raises(websockets.ConnectionClosedError):
         await svc._read_loop(fake_ws)
+
+
+# ---------------------------------------------------------------------------
+# reaction_added: emoji-trigger voor suggested-lead approvals
+# ---------------------------------------------------------------------------
+
+
+def test_parse_reaction_dict_form():
+    msg = {"data": {"reaction": {"user_id": "u", "post_id": "p", "emoji_name": "x"}}}
+    out = MattermostWebsocketService._parse_reaction(msg)
+    assert out == {"user_id": "u", "post_id": "p", "emoji_name": "x"}
+
+
+def test_parse_reaction_json_string_form():
+    import json
+
+    msg = {
+        "data": {
+            "reaction": json.dumps(
+                {"user_id": "u", "post_id": "p", "emoji_name": "white_check_mark"}
+            )
+        }
+    }
+    out = MattermostWebsocketService._parse_reaction(msg)
+    assert out["emoji_name"] == "white_check_mark"
+
+
+def test_parse_reaction_missing_returns_none():
+    assert MattermostWebsocketService._parse_reaction({}) is None
+    assert MattermostWebsocketService._parse_reaction({"data": {}}) is None
+    assert (
+        MattermostWebsocketService._parse_reaction({"data": {"reaction": "not-json"}})
+        is None
+    )
+
+
+async def test_dispatch_reaction_added_skips_own_reaction():
+    """Reactions van de bot zelf (we plaatsen ze als affordance) mogen
+    geen actie triggeren, anders zouden we direct na het posten alles
+    aanmaken/afwijzen."""
+    from unittest.mock import patch
+
+    svc = MattermostWebsocketService()
+    svc._bot_user_id = "bot-id"
+
+    msg = {
+        "event": "reaction_added",
+        "data": {
+            "reaction": {
+                "user_id": "bot-id",
+                "post_id": "p1",
+                "emoji_name": "white_check_mark",
+            }
+        },
+    }
+    with patch(
+        "bouwmeester.services.mattermost_websocket_service.async_session"
+    ) as session_factory:
+        await svc._dispatch_reaction_added(msg)
+    session_factory.assert_not_called()
+
+
+async def test_dispatch_reaction_added_skips_unknown_emoji():
+    """Onbekende emoji's (niet in de mapping) doen niets, anders zou
+    elke reactie van een gebruiker een DB-call triggeren."""
+    from unittest.mock import patch
+
+    svc = MattermostWebsocketService()
+    svc._bot_user_id = "bot-id"
+
+    msg = {
+        "event": "reaction_added",
+        "data": {
+            "reaction": {
+                "user_id": "u1",
+                "post_id": "p1",
+                "emoji_name": "thumbsup",
+            }
+        },
+    }
+    with patch(
+        "bouwmeester.services.mattermost_websocket_service.async_session"
+    ) as session_factory:
+        await svc._dispatch_reaction_added(msg)
+    session_factory.assert_not_called()
+
+
+async def test_dispatch_reaction_added_unknown_post_does_nothing(_test_engine):
+    """Reactions op posts die geen bekende SuggestedLead.mm_thread_post_id
+    zijn, mogen geen handler triggeren."""
+    from unittest.mock import AsyncMock, patch
+
+    svc = MattermostWebsocketService()
+    svc._bot_user_id = "bot-id"
+
+    handle_action_mock = AsyncMock(return_value={})
+    msg = {
+        "event": "reaction_added",
+        "data": {
+            "reaction": {
+                "user_id": "u1",
+                "post_id": "p_unknown",
+                "emoji_name": "white_check_mark",
+            }
+        },
+    }
+    with patch(
+        "bouwmeester.services.mattermost_slash_service."
+        "MattermostSlashService.handle_action",
+        new=handle_action_mock,
+    ):
+        await svc._dispatch_reaction_added(msg)
+
+    handle_action_mock.assert_not_called()
+
+
+async def test_dispatch_reaction_added_known_post_calls_handler(
+    _test_engine, create_person
+):
+    """End-to-end: een gekoppelde gebruiker reageert met :white_check_mark:
+    op de bot-suggestion-post, en dat triggert
+    ``MattermostSlashService.handle_action``."""
+    from unittest.mock import AsyncMock, patch
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from bouwmeester.models.mattermost_user import MattermostUser
+    from bouwmeester.models.suggested_lead import SuggestedLead
+
+    init_id = uuid.uuid4()
+    sug_id = uuid.uuid4()
+    person_id = uuid.uuid4()
+    mm_uid = _id()
+    cid = _id()
+    bot_post_id = _id()
+
+    async with AsyncSession(_test_engine, expire_on_commit=False) as setup:
+        from bouwmeester.models.person import Person
+
+        setup.add(Initiatief(id=init_id, naam="Reaction"))
+        await setup.flush()
+        setup.add(
+            Person(
+                id=person_id,
+                naam="A Reaction",
+                email="reaction@example.com",
+                is_active=True,
+            )
+        )
+        await setup.flush()
+        setup.add(
+            MattermostUser(
+                person_id=person_id,
+                mattermost_user_id=mm_uid,
+                mattermost_username="a",
+            )
+        )
+        setup.add(
+            SuggestedLead(
+                id=sug_id,
+                source_post_id=_id(),
+                source_channel_id=cid,
+                initiatief_id=init_id,
+                proposed_title="Reaction lead",
+                raw_text="iets",
+                status="pending",
+                mm_thread_post_id=bot_post_id,
+            )
+        )
+        await setup.commit()
+
+    handle_action_mock = AsyncMock(return_value={"ephemeral_text": "ok"})
+    svc = MattermostWebsocketService()
+    svc._bot_user_id = "bot-id"
+
+    msg = {
+        "event": "reaction_added",
+        "data": {
+            "reaction": {
+                "user_id": mm_uid,
+                "post_id": bot_post_id,
+                "emoji_name": "white_check_mark",
+            }
+        },
+    }
+    try:
+        with patch(
+            "bouwmeester.services.mattermost_slash_service."
+            "MattermostSlashService.handle_action",
+            new=handle_action_mock,
+        ):
+            await svc._dispatch_reaction_added(msg)
+
+        handle_action_mock.assert_awaited_once()
+        kwargs = handle_action_mock.await_args.kwargs
+        assert kwargs["mattermost_user_id"] == mm_uid
+        assert kwargs["action"] == "create_lead_from_suggestion"
+        assert kwargs["context"] == {"suggested_lead_id": str(sug_id)}
+    finally:
+        # Cleanup voor andere tests die op dezelfde engine draaien.
+        async with AsyncSession(_test_engine, expire_on_commit=False) as cleanup:
+            from sqlalchemy import delete
+
+            await cleanup.execute(
+                delete(SuggestedLead).where(SuggestedLead.id == sug_id)
+            )
+            await cleanup.execute(
+                delete(MattermostUser).where(MattermostUser.person_id == person_id)
+            )
+            from bouwmeester.models.person import Person
+
+            await cleanup.execute(delete(Person).where(Person.id == person_id))
+            await cleanup.execute(delete(Initiatief).where(Initiatief.id == init_id))
+            await cleanup.commit()
