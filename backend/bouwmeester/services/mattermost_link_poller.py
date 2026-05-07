@@ -83,13 +83,17 @@ class MattermostLinkPoller:
             username = await self.mm_service.get_username(mm_user_id)
 
             # Create the mapping — handle race condition where another path
-            # already linked this user or person concurrently.
+            # already linked this user or person concurrently. Het savepoint
+            # zorgt dat de IntegrityError de outer-transactie niet in
+            # aborted-state achterlaat zodat een volgende post (of de
+            # ``commit()`` van de caller) niet faalt.
             try:
-                await self.repo.create_mapping(
-                    person_id=link_code.person_id,
-                    mattermost_user_id=mm_user_id,
-                    mattermost_username=username,
-                )
+                async with self.session.begin_nested():
+                    await self.repo.create_mapping(
+                        person_id=link_code.person_id,
+                        mattermost_user_id=mm_user_id,
+                        mattermost_username=username,
+                    )
             except IntegrityError:
                 await self._safe_reply(
                     channel_id,

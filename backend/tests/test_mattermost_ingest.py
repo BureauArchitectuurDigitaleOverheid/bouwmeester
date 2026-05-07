@@ -409,6 +409,37 @@ async def test_initiatief_channel_writes_only_post_link(db_session, sample_initi
 # ---------------------------------------------------------------------------
 
 
+def _patch_dm_session(db_session):
+    """Patch ``async_session`` in ``mattermost_ingest_service`` zodat
+    ``_handle_dm`` op de test-session werkt ipv een eigen verbinding.
+
+    ``commit()`` en ``rollback()`` op de inner session worden no-op
+    gemaakt zodat de outer test-rollback alle DM-writes afvoert en een
+    inner-rollback de outer-session niet vernielt — in productie zou
+    ``_handle_dm`` op een aparte session werken, dus de outer-session
+    moet ongeacht inner-uitkomst bruikbaar blijven.
+    """
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock, patch
+
+    @asynccontextmanager
+    async def _fake_session():
+        original_commit = db_session.commit
+        original_rollback = db_session.rollback
+        db_session.commit = AsyncMock(return_value=None)
+        db_session.rollback = AsyncMock(return_value=None)
+        try:
+            yield db_session
+        finally:
+            db_session.commit = original_commit
+            db_session.rollback = original_rollback
+
+    return patch(
+        "bouwmeester.services.mattermost_ingest_service.async_session",
+        new=_fake_session,
+    )
+
+
 async def test_dm_post_with_valid_code_creates_mapping(db_session, create_person):
     """Een DM met een geldige BM-code koppelt het Mattermost-account aan
     de bijbehorende persoon — dezelfde uitkomst als de oude poller, maar
@@ -432,6 +463,7 @@ async def test_dm_post_with_valid_code_creates_mapping(db_session, create_person
 
     ingest = MattermostIngestService(db_session)
     with (
+        _patch_dm_session(db_session),
         patch(
             "bouwmeester.services.mattermost_link_poller."
             "MattermostLinkPoller._safe_reply",
@@ -478,9 +510,13 @@ async def test_dm_post_with_unknown_code_does_not_create_mapping(db_session):
 
     safe_reply = AsyncMock(return_value=None)
     ingest = MattermostIngestService(db_session)
-    with patch(
-        "bouwmeester.services.mattermost_link_poller.MattermostLinkPoller._safe_reply",
-        new=safe_reply,
+    with (
+        _patch_dm_session(db_session),
+        patch(
+            "bouwmeester.services.mattermost_link_poller."
+            "MattermostLinkPoller._safe_reply",
+            new=safe_reply,
+        ),
     ):
         await ingest.ingest_post(post, channel_type="D")
 
@@ -534,6 +570,94 @@ async def test_group_dm_is_ignored(db_session):
     ) as handle_dm:
         await ingest.ingest_post(post, channel_type="G")
     handle_dm.assert_not_called()
+
+
+async def test_link_poller_integrity_error_keeps_session_usable(
+    db_session, create_person
+):
+    """Bij een race waar dezelfde Mattermost-user al elders is gekoppeld,
+    moet de poller de IntegrityError netjes binnen een savepoint
+    afvangen zodat de session bruikbaar blijft voor een volgende query.
+    Voor de fix zat de session na de IntegrityError in aborted-state."""
+    from unittest.mock import AsyncMock, patch
+
+    from bouwmeester.repositories.mattermost_user import MattermostUserRepository
+    from bouwmeester.services.mattermost_link_poller import MattermostLinkPoller
+    from bouwmeester.services.mattermost_service import MattermostService
+
+    p1 = await create_person(naam="P1", prefix="p1")
+    p2 = await create_person(naam="P2", prefix="p2")
+
+    repo = MattermostUserRepository(db_session)
+    code = await repo.create_link_code(p2.id)
+
+    # P1 is al gekoppeld aan een Mattermost-user; we proberen nu P2 te
+    # koppelen aan dezelfde MM-user → IntegrityError op unique mm_user_id.
+    shared_mm_uid = _id()
+    await repo.create_mapping(
+        person_id=p1.id,
+        mattermost_user_id=shared_mm_uid,
+        mattermost_username="p1",
+    )
+
+    post = {
+        "id": _id(),
+        "channel_id": _id(),
+        "user_id": shared_mm_uid,
+        "create_at": 1_700_000_000_000,
+        "message": f"hier is mijn code: {code.code}",
+    }
+
+    mm_service = MattermostService(db_session)
+    poller = MattermostLinkPoller(db_session, mm_service=mm_service)
+    with (
+        patch.object(poller, "_safe_reply", new=AsyncMock(return_value=None)),
+        patch.object(
+            mm_service, "get_username", new=AsyncMock(return_value="duplicate")
+        ),
+    ):
+        await poller.process_posts([post])
+
+    # Session moet nog werken na de afgevangen IntegrityError.
+    refreshed = await db_session.get(type(p1), p1.id)
+    assert refreshed is not None
+    # P1's mapping bestaat nog steeds, P2 heeft géén nieuwe mapping.
+    assert (await repo.get_by_mattermost_user_id(shared_mm_uid)).person_id == p1.id
+
+
+async def test_dm_handling_failure_does_not_break_outer_session(
+    db_session, create_person
+):
+    """Een onverwachte exception in ``_handle_dm`` mag de outer-session
+    van de WS-loop niet kapot maken. We forceren een fout en checken dat
+    de outer-session daarna nog gewone queries kan uitvoeren."""
+    from unittest.mock import AsyncMock, patch
+
+    person = await create_person(naam="Outer", prefix="outer")
+    post = {
+        "id": _id(),
+        "channel_id": _id(),
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "BM-irrelevantcode",
+    }
+
+    ingest = MattermostIngestService(db_session)
+    with (
+        _patch_dm_session(db_session),
+        patch(
+            "bouwmeester.services.mattermost_link_poller."
+            "MattermostLinkPoller.process_posts",
+            new=AsyncMock(side_effect=RuntimeError("simulated crash")),
+        ),
+    ):
+        # Mag NIET propageren — _handle_dm vangt het op.
+        await ingest.ingest_post(post, channel_type="D")
+
+    # Outer-session is nog bruikbaar voor een vervolgquery.
+    refreshed = await db_session.get(type(person), person.id)
+    assert refreshed is not None
+    assert refreshed.naam == "Outer"
 
 
 async def test_channel_post_without_channel_type_unaffected(db_session, sample_lead):

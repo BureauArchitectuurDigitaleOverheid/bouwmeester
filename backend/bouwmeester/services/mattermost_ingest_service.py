@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.database import async_session
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
@@ -202,20 +203,27 @@ class MattermostIngestService:
     async def _handle_dm(self, post: dict) -> None:
         """Verwerk een DM naar de bot: zoek link-code, koppel account.
 
-        Dit pad verving de oude 15s-polling-loop. ``MattermostLinkPoller``
-        is idempotent (verify_code → delete_code, IntegrityError op
-        dubbele mapping), dus een dubbele call door WS+recovery-race
-        loopt stilletjes dood.
+        Draait in een eigen ``async_session`` zodat fouten in
+        ``MattermostLinkPoller`` (bijvoorbeeld ``IntegrityError`` op een
+        race-conditie bij ``create_mapping``) de outer-session van de
+        WS-loop niet in aborted-state achterlaten. Bij een crash is
+        alleen deze ene DM verloren — de WS-loop draait door.
         """
         from bouwmeester.services.mattermost_link_poller import MattermostLinkPoller
         from bouwmeester.services.mattermost_service import MattermostService
 
-        mm_service = MattermostService(self.session)
-        try:
-            poller = MattermostLinkPoller(self.session, mm_service=mm_service)
-            await poller.process_posts([post])
-        finally:
-            await mm_service.close()
+        async with async_session() as dm_session:
+            mm_service = MattermostService(dm_session)
+            try:
+                poller = MattermostLinkPoller(dm_session, mm_service=mm_service)
+                try:
+                    await poller.process_posts([post])
+                    await dm_session.commit()
+                except Exception:
+                    await dm_session.rollback()
+                    logger.exception("DM-handling faalde voor post %s", post.get("id"))
+            finally:
+                await mm_service.close()
 
     async def _is_noise(self, message: str) -> bool:
         """Vraag VLAM of dit een triviaal/ack-bericht is.
