@@ -19,6 +19,13 @@ from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.whitelist import refresh_whitelist_cache, seed_admins_from_file
 from bouwmeester.models.access_request import AccessRequest
 from bouwmeester.models.app_config import AppConfig
+from bouwmeester.models.initiatief import Initiatief
+from bouwmeester.models.lead import Lead
+from bouwmeester.models.mattermost_channel_link import (
+    SCOPE_INITIATIEF,
+    SCOPE_LEAD,
+    MattermostChannelLink,
+)
 from bouwmeester.models.person import Person
 from bouwmeester.models.whitelist_email import WhitelistEmail
 from bouwmeester.models.worker_heartbeat import WorkerHeartbeat
@@ -40,6 +47,7 @@ from bouwmeester.schema.whitelist import (
     WhitelistEmailResponse,
 )
 from bouwmeester.schema.worker_health import (
+    MattermostChannelOverview,
     WorkerHealthResponse,
     WorkerHeartbeatResponse,
 )
@@ -872,3 +880,78 @@ async def workers_health(
         )
 
     return WorkerHealthResponse(workers=out, server_now=now)
+
+
+# ---------------------------------------------------------------------------
+# Mattermost channel overview
+# ---------------------------------------------------------------------------
+
+
+@router.get("/mattermost-channels", response_model=list[MattermostChannelOverview])
+async def mattermost_channel_overview(
+    admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[MattermostChannelOverview]:
+    """Lijst alle gekoppelde Mattermost-kanalen met hun scope-label.
+
+    Beheer > Systeem gebruikt dit om in één oogopslag te zien naar welke
+    kanalen de bot meeleest en hoe lang het geleden is dat er een post is
+    binnengekomen.
+    """
+    rows = (
+        (
+            await db.execute(
+                select(MattermostChannelLink).order_by(
+                    MattermostChannelLink.disabled_at.is_(None).desc(),
+                    MattermostChannelLink.channel_display_name,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Bulk-resolve scope-labels in twee queries (1× per scope-type) ipv N+1.
+    lead_ids = [r.scope_id for r in rows if r.scope_type == SCOPE_LEAD]
+    init_ids = [r.scope_id for r in rows if r.scope_type == SCOPE_INITIATIEF]
+    lead_titles: dict[UUID, str] = {}
+    init_names: dict[UUID, str] = {}
+    if lead_ids:
+        result = await db.execute(
+            select(Lead.id, Lead.title).where(Lead.id.in_(lead_ids))
+        )
+        lead_titles = {r.id: r.title for r in result.all()}
+    if init_ids:
+        result = await db.execute(
+            select(Initiatief.id, Initiatief.naam).where(Initiatief.id.in_(init_ids))
+        )
+        init_names = {r.id: r.naam for r in result.all()}
+
+    out: list[MattermostChannelOverview] = []
+    for r in rows:
+        if r.scope_type == SCOPE_LEAD:
+            label = lead_titles.get(r.scope_id)
+        elif r.scope_type == SCOPE_INITIATIEF:
+            label = init_names.get(r.scope_id)
+        else:
+            label = None
+        last_seen = None
+        if r.last_seen_post_at is not None:
+            last_seen = datetime.fromtimestamp(r.last_seen_post_at / 1000.0, tz=UTC)
+        out.append(
+            MattermostChannelOverview(
+                id=r.id,
+                channel_id=r.channel_id,
+                channel_display_name=r.channel_display_name,
+                channel_name=r.channel_name,
+                scope_type=r.scope_type,
+                scope_id=r.scope_id,
+                scope_label=label,
+                auto_note_enabled=r.auto_note_enabled,
+                suggest_leads_enabled=r.suggest_leads_enabled,
+                last_seen_post_at=last_seen,
+                disabled_at=r.disabled_at,
+                created_at=r.created_at,
+            )
+        )
+    return out

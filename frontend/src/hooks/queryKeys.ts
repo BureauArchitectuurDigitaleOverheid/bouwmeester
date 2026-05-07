@@ -128,6 +128,7 @@ export const queryKeys = {
       ['admin', 'eenheid-role-assignments', eenheidId] as const,
     version: () => ['admin', 'version'] as const,
     workers: () => ['admin', 'workers'] as const,
+    mattermostChannels: () => ['admin', 'mattermost-channels'] as const,
   },
 
   // --- Org Placements ---

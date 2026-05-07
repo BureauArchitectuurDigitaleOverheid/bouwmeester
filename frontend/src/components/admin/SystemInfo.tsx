@@ -1,5 +1,6 @@
 import { AlertTriangle, ExternalLink } from 'lucide-react';
 import { useVersionInfo } from '@/hooks/useAdmin';
+import { MattermostChannelOverviewTable } from './MattermostChannelOverview';
 import { WorkerHealthTable } from './WorkerHealthTable';
 
 const FRONTEND_GIT_SHA = (import.meta.env.VITE_GIT_SHA ?? '') as string;
@@ -95,6 +96,8 @@ export function SystemInfo() {
       )}
 
       <WorkerHealthTable />
+
+      <MattermostChannelOverviewTable />
     </div>
   );
 }

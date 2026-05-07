@@ -133,8 +133,17 @@ class MattermostWebsocketService:
                 self._mm_base_url = http_url.rstrip("/")
                 ws_url = _ws_url_from_http(http_url)
                 logger.info("Mattermost websocket: connect %s", ws_url)
+                # Ping elke 20s — zonder pings sluit een reverse-proxy
+                # (zoals die voor digilab.overheid.nl) een idle websocket
+                # binnen ~1min met "ConnectionClosedError: no close frame".
+                # ping_timeout iets lager dan ons idle-timeout zodat een
+                # gemiste pong eerder een reconnect triggert dan de
+                # heartbeat-loop dat zou doen.
                 async with websockets.connect(
-                    ws_url, ping_interval=None, max_size=2 * 1024 * 1024
+                    ws_url,
+                    ping_interval=20,
+                    ping_timeout=20,
+                    max_size=2 * 1024 * 1024,
                 ) as ws:
                     connected_at = time.monotonic()
                     await self._authenticate(ws, token)
@@ -248,13 +257,14 @@ class MattermostWebsocketService:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
+            event_name = msg.get("event") or msg.get("seq_reply") or "(unknown)"
             await self._dispatch(msg)
             if time.monotonic() - last_heartbeat > 60.0:
                 last_heartbeat = time.monotonic()
                 await health_tick(
                     "mattermost_websocket",
                     status="connected",
-                    detail=f"last event: {msg.get('event', '?')}",
+                    detail=f"last event: {event_name}",
                 )
 
     async def _dispatch(self, msg: dict) -> None:
@@ -283,6 +293,17 @@ class MattermostWebsocketService:
         channel_id = post.get("channel_id")
         if not post_id or not channel_id:
             return
+
+        # Hard signaal in productie-logs dat een bericht überhaupt is
+        # aangekomen via de websocket — voorkomt giswerk wanneer een note
+        # uitblijft. Korte regel zodat 'm niet snel uit het log-venster
+        # rolt door noise.
+        logger.info(
+            "Mattermost posted event: channel=%s post=%s len=%d",
+            channel_id,
+            post_id,
+            len(post.get("message") or ""),
+        )
 
         async with async_session() as session:
             try:
