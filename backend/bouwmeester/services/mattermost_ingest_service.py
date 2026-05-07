@@ -478,73 +478,41 @@ class MattermostIngestService:
         initiatief: Initiatief,
         match_lead: bool,
     ) -> None:
-        """Plaats een bot-reply met interactive attachment in de thread."""
+        """Plaats een bot-reply met emoji-reactions als trigger.
+
+        We gebruiken bewust geen interactive message-attachment-buttons:
+        Mattermost stuurt voor button-clicks geen authenticatie-token mee
+        in de webhook, en de digilab-installatie levert sowieso geen POSTs
+        naar onze publieke endpoint. Reactions komen via dezelfde
+        websocket binnen die we al gebruiken voor het meelezen, en zijn
+        daarmee robuust tegen die platformbeperkingen.
+        """
         from bouwmeester.services.mattermost_service import MattermostService
 
         service = MattermostService(self.session)
         try:
             if not await service.is_enabled():
                 return
+            instructie_lines = [
+                "_Reageer met:_",
+                ":white_check_mark: om de lead aan te maken",
+            ]
+            if match_lead:
+                instructie_lines.append(":link: om aan een bestaande lead te koppelen")
+            instructie_lines.append(":x: om de suggestie te negeren")
+            instructie = "\n".join(instructie_lines)
             text = (
                 f":dart: Ik denk dat dit een lead is voor "
                 f"**{initiatief.naam}**.\n"
                 f"_Voorstel:_ {suggested.proposed_title}\n"
-                f"_Vertrouwen:_ {int((suggested.confidence or 0) * 100)}%"
+                f"_Vertrouwen:_ {int((suggested.confidence or 0) * 100)}%\n\n"
+                f"{instructie}"
             )
-            actions = [
-                {
-                    "id": "create_lead",
-                    "name": "Maak lead aan",
-                    "integration": {
-                        "url": (
-                            f"{service.settings.BACKEND_URL.rstrip('/')}"
-                            "/api/mattermost/action"
-                        ),
-                        "context": {
-                            "action": "create_lead_from_suggestion",
-                            "suggested_lead_id": str(suggested.id),
-                        },
-                    },
-                },
-                {
-                    "id": "reject_lead",
-                    "name": "Negeer",
-                    "integration": {
-                        "url": (
-                            f"{service.settings.BACKEND_URL.rstrip('/')}"
-                            "/api/mattermost/action"
-                        ),
-                        "context": {
-                            "action": "reject_suggestion",
-                            "suggested_lead_id": str(suggested.id),
-                        },
-                    },
-                },
-            ]
-            if match_lead:
-                actions.insert(
-                    1,
-                    {
-                        "id": "link_lead",
-                        "name": "Koppel aan bestaande lead",
-                        "integration": {
-                            "url": (
-                                f"{service.settings.BACKEND_URL.rstrip('/')}"
-                                "/api/mattermost/action"
-                            ),
-                            "context": {
-                                "action": "link_lead_to_suggestion",
-                                "suggested_lead_id": str(suggested.id),
-                            },
-                        },
-                    },
-                )
             attachment = {
                 "color": "#3B82F6",
                 "title": suggested.proposed_title,
                 "text": suggested.proposed_description or "",
                 "footer": "Bouwmeester · suggestie vanuit Mattermost",
-                "actions": actions,
             }
             data = await service.reply_to_post(
                 channel_id,
@@ -553,9 +521,18 @@ class MattermostIngestService:
                 props={"attachments": [attachment]},
             )
             mm_thread_post_id = (data or {}).get("id")
-            if mm_thread_post_id:
-                suggested.mm_thread_post_id = mm_thread_post_id
-                await self.session.flush()
+            if not mm_thread_post_id:
+                return
+            suggested.mm_thread_post_id = mm_thread_post_id
+            await self.session.flush()
+
+            # Plaats bot-reactions als clickable affordance. Volgorde:
+            # check, link (alleen bij match), x. Failures zijn niet
+            # fataal; de gebruiker kan zelf nog reacties plaatsen.
+            await service.add_reaction(mm_thread_post_id, "white_check_mark")
+            if match_lead:
+                await service.add_reaction(mm_thread_post_id, "link")
+            await service.add_reaction(mm_thread_post_id, "x")
         finally:
             await service.close()
 

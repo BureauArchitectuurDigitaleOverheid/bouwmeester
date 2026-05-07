@@ -285,7 +285,10 @@ class MattermostWebsocketService:
         if event in ("user_removed", "channel_deleted"):
             await self._dispatch_channel_lost(event, msg)
             return
-        # Andere events (`post_edited`, `post_deleted`, `reaction_added`)
+        if event == "reaction_added":
+            await self._dispatch_reaction_added(msg)
+            return
+        # Andere events (`post_edited`, `post_deleted`, `reaction_removed`)
         # worden in een latere PR ingehaakt.
 
     async def _dispatch_posted(self, msg: dict) -> None:
@@ -386,6 +389,97 @@ class MattermostWebsocketService:
                 or broadcast.get("channel_id")
                 or (data.get("channel") or {}).get("id")
             )
+        return None
+
+    # Mapping van emoji-naam naar suggested-lead-action. Zelfde keys als
+    # in ``MattermostSlashService.handle_action``.
+    _SUGGESTION_REACTION_ACTIONS = {
+        "white_check_mark": "create_lead_from_suggestion",
+        "x": "reject_suggestion",
+        "link": "link_lead_to_suggestion",
+    }
+
+    async def _dispatch_reaction_added(self, msg: dict) -> None:
+        """Verwerk een ``reaction_added`` event als trigger voor een
+        suggested-lead approval.
+
+        Mattermost stuurt voor message-attachment-button-clicks geen POST
+        naar onze publieke endpoint; we gebruiken daarom emoji-reactions
+        op de bot-suggestion-post als trigger. Alleen reacties op een
+        post die als ``SuggestedLead.mm_thread_post_id`` bekend is en met
+        een herkende emoji-naam triggeren een actie.
+        """
+        reaction = self._parse_reaction(msg)
+        if reaction is None:
+            return
+        user_id = reaction.get("user_id")
+        post_id = reaction.get("post_id")
+        emoji_name = reaction.get("emoji_name")
+        if not user_id or not post_id or not emoji_name:
+            return
+        # Skip eigen reactions (we plaatsen zelf white_check_mark/x/link
+        # als affordance, die mogen geen actie triggeren).
+        if user_id == self._bot_user_id:
+            return
+        action_name = self._SUGGESTION_REACTION_ACTIONS.get(emoji_name)
+        if action_name is None:
+            return
+
+        async with async_session() as session:
+            try:
+                from bouwmeester.models.suggested_lead import SuggestedLead
+                from bouwmeester.services.mattermost_slash_service import (
+                    MattermostSlashService,
+                )
+
+                stmt = select(SuggestedLead.id).where(
+                    SuggestedLead.mm_thread_post_id == post_id
+                )
+                row = (await session.execute(stmt)).first()
+                if row is None:
+                    return
+                suggested_lead_id = row[0]
+
+                logger.info(
+                    "Mattermost reaction trigger: emoji=%s post=%s user=%s "
+                    "suggested_lead=%s action=%s",
+                    emoji_name,
+                    post_id,
+                    user_id,
+                    suggested_lead_id,
+                    action_name,
+                )
+
+                service = MattermostSlashService(session)
+                await service.handle_action(
+                    mattermost_user_id=user_id,
+                    action=action_name,
+                    context={"suggested_lead_id": str(suggested_lead_id)},
+                )
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                logger.exception("Fout bij verwerken reaction op post %s", post_id)
+
+    @staticmethod
+    def _parse_reaction(msg: dict) -> dict | None:
+        """Haal de reaction-payload uit een ``reaction_added`` event.
+
+        Mattermost wrapt de reaction als JSON-string in ``data.reaction``;
+        oudere/varianten leveren soms een dict aan. Beide ondersteunen.
+        """
+        data = msg.get("data") or {}
+        raw = data.get("reaction")
+        if raw is None:
+            return None
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                return None
+            return parsed if isinstance(parsed, dict) else None
         return None
 
     async def _record_post(
