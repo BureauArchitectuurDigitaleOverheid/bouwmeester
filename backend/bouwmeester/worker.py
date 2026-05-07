@@ -1,11 +1,9 @@
 """Background worker for polling TK/EK APIs, importing parliamentary items,
-and polling Mattermost for link codes."""
+and running the persistent Mattermost websocket."""
 
 import asyncio
 import logging
-import time
 import traceback
-from collections import OrderedDict
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import async_session
@@ -48,84 +46,6 @@ async def _parlementair_loop(settings) -> None:  # type: ignore[no-untyped-def]
             await health_tick("parlementair", status="error", detail=_short_error(exc))
 
         await asyncio.sleep(settings.TK_POLL_INTERVAL_SECONDS)
-
-
-async def _mattermost_link_loop(settings) -> None:  # type: ignore[no-untyped-def]
-    """Poll Mattermost bot DMs for link codes.
-
-    Checks DB config each iteration so the poller starts automatically
-    when MATTERMOST_ENABLED is toggled to true in Beheer > Instellingen.
-    """
-    started = False
-    last_poll_ms: int = int(time.time() * 1000)
-    # OrderedDict preserves insertion order for correct eviction.
-    seen_post_ids: OrderedDict[str, None] = OrderedDict()
-
-    await health_tick("mattermost_link", status="starting")
-    while True:
-        mm = None
-        try:
-            async with async_session() as session:
-                from bouwmeester.services.mattermost_service import (
-                    MattermostService,
-                )
-
-                mm = MattermostService(session)
-                if not await mm.is_enabled():
-                    if started:
-                        logger.info("Mattermost integration disabled, pausing poller")
-                        started = False
-                    await health_tick(
-                        "mattermost_link",
-                        status="disabled",
-                        detail="MATTERMOST_ENABLED is false",
-                    )
-                    await asyncio.sleep(settings.MATTERMOST_POLL_INTERVAL_SECONDS)
-                    continue
-
-                if not started:
-                    logger.info("Mattermost link poller started")
-                    started = True
-
-                since = last_poll_ms
-                last_poll_ms = int(time.time() * 1000)
-
-                posts = await mm.get_bot_dm_posts(since=since)
-                # Filter out posts we've already processed (Mattermost's
-                # `since` API also returns posts whose threads were updated).
-                new_posts = [p for p in posts if p.get("id") not in seen_post_ids]
-                for p in new_posts:
-                    seen_post_ids[p.get("id", "")] = None
-
-                if new_posts:
-                    from bouwmeester.services.mattermost_link_poller import (
-                        MattermostLinkPoller,
-                    )
-
-                    poller = MattermostLinkPoller(session, mm_service=mm)
-                    count = await poller.process_posts(new_posts)
-                    if count:
-                        logger.info(f"Mattermost link poll: {count} accounts linked")
-                    await poller.cleanup()
-
-                # Cap the dict size — evict oldest entries first.
-                while len(seen_post_ids) > 1000:
-                    seen_post_ids.popitem(last=False)
-
-                await session.commit()
-            await health_tick(
-                "mattermost_link", detail=f"{len(new_posts)} new dm posts"
-            )
-        except Exception as exc:
-            logger.exception("Error in Mattermost link poll cycle")
-            await health_tick(
-                "mattermost_link", status="error", detail=_short_error(exc)
-            )
-        finally:
-            if mm:
-                await mm.close()
-
-        await asyncio.sleep(settings.MATTERMOST_POLL_INTERVAL_SECONDS)
 
 
 async def _opdracht_task_loop(settings) -> None:  # type: ignore[no-untyped-def]
@@ -256,6 +176,28 @@ async def _mattermost_websocket_loop(settings) -> None:  # type: ignore[no-untyp
         await asyncio.sleep(5)
 
 
+async def _cleanup_obsolete_heartbeats() -> None:
+    """Verwijder heartbeat-rijen van loops die niet meer bestaan.
+
+    De ``mattermost_link``-rij bleef hangen toen we die loop schrapten,
+    waardoor de admin-UI 'm als 'unexpected, down' bleef tonen. Run-once
+    bij worker-startup is genoeg — best-effort, fout wordt gelogd.
+    """
+    from sqlalchemy import delete
+
+    from bouwmeester.models.worker_heartbeat import WorkerHeartbeat
+
+    obsolete = ["mattermost_link"]
+    try:
+        async with async_session() as session:
+            await session.execute(
+                delete(WorkerHeartbeat).where(WorkerHeartbeat.loop_name.in_(obsolete))
+            )
+            await session.commit()
+    except Exception:
+        logger.exception("Cleanup obsolete heartbeats faalde")
+
+
 async def main() -> None:
     settings = get_settings()
     logger.info(
@@ -263,9 +205,10 @@ async def main() -> None:
         f"{settings.TK_POLL_INTERVAL_SECONDS}s"
     )
 
+    await _cleanup_obsolete_heartbeats()
+
     tasks = [
         asyncio.create_task(_parlementair_loop(settings)),
-        asyncio.create_task(_mattermost_link_loop(settings)),
         asyncio.create_task(_mattermost_websocket_loop(settings)),
         asyncio.create_task(_opdracht_task_loop(settings)),
         asyncio.create_task(_fcc_sync_loop(settings)),

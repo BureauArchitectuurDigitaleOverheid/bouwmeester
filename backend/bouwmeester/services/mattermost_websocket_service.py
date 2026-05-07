@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import time
+from collections import OrderedDict
 from urllib.parse import urlparse
 
 import httpx
@@ -38,6 +39,13 @@ _HEARTBEAT_INTERVAL = 30.0  # sec
 _RECONNECT_BACKOFF_BASE = 2.0
 _RECONNECT_BACKOFF_MAX = 60.0
 _BACKOFF_RESET_AFTER_HEALTHY_SEC = 120.0
+# Cold-start-window voor DM-recovery bij eerste connect — dekt de paar
+# seconden tussen worker-restart en WS-connect. Bij elke volgende reconnect
+# kijken we vanaf het vorige recovery-tijdstip terug.
+_DM_COLD_START_WINDOW_MS = 120_000
+# Cap op de in-memory cache van recent-verwerkte DM-post-ids; voorkomt
+# dubbele processing bij race tussen WS-event en recovery-loop.
+_RECENT_DM_CACHE_CAP = 500
 
 
 def _ws_url_from_http(http_url: str) -> str:
@@ -96,6 +104,8 @@ class MattermostWebsocketService:
         self._stop = False
         self._bot_user_id: str | None = None
         self._mm_base_url: str | None = None
+        self._last_dm_recovery_ms: int | None = None
+        self._recent_dm_post_ids: OrderedDict[str, None] = OrderedDict()
 
     async def run(self) -> None:
         """Hoofdloop: connect, auth, lees events, reconnect bij disconnect."""
@@ -283,6 +293,9 @@ class MattermostWebsocketService:
         post_raw = data.get("post")
         if not post_raw:
             return
+        # ``channel_type`` zit op ``data``, niet op de geparste ``post`` —
+        # ``"D"`` markeert een 1-op-1 DM (link-code-pad), ``"G"`` group-DM.
+        channel_type = data.get("channel_type") if isinstance(data, dict) else None
         try:
             post = json.loads(post_raw) if isinstance(post_raw, str) else post_raw
         except json.JSONDecodeError:
@@ -294,20 +307,41 @@ class MattermostWebsocketService:
         if not post_id or not channel_id:
             return
 
+        # DM-events kunnen ook via _recover_missed_posts binnenkomen vlak
+        # na een reconnect — skip als we 'm net hebben verwerkt.
+        if channel_type == "D" and self._dm_already_processed(post_id):
+            return
+
         # Hard signaal in productie-logs dat een bericht überhaupt is
         # aangekomen via de websocket — voorkomt giswerk wanneer een note
         # uitblijft. Korte regel zodat 'm niet snel uit het log-venster
         # rolt door noise.
         logger.info(
-            "Mattermost posted event: channel=%s post=%s len=%d",
+            "Mattermost posted event: channel=%s post=%s type=%s len=%d",
             channel_id,
             post_id,
+            channel_type or "?",
             len(post.get("message") or ""),
         )
 
+        # DM-events doen al hun werk in een eigen session via
+        # ``handle_dm_post`` — open hier geen outer session voor niets.
+        if channel_type == "D":
+            from bouwmeester.services.mattermost_ingest_service import (
+                handle_dm_post,
+            )
+
+            # ``handle_dm_post`` swallowt eigen exceptions en returnt
+            # False bij fouten. Alleen geslaagde DMs in de dedup-cache
+            # zetten — anders mist de recovery-loop ze later.
+            ok = await handle_dm_post(post, bot_user_id=self._bot_user_id)
+            if ok:
+                self._mark_dm_processed(post_id)
+            return
+
         async with async_session() as session:
             try:
-                await self._record_post(session, post)
+                await self._record_post(session, post, channel_type=channel_type)
                 await session.commit()
             except Exception:
                 await session.rollback()
@@ -354,21 +388,40 @@ class MattermostWebsocketService:
             )
         return None
 
-    async def _record_post(self, session: AsyncSession, post: dict) -> None:
+    async def _record_post(
+        self,
+        session: AsyncSession,
+        post: dict,
+        *,
+        channel_type: str | None = None,
+    ) -> None:
         """Verwerk één Mattermost-post via :class:`MattermostIngestService`."""
         ingest = MattermostIngestService(
             session,
             bot_user_id=self._bot_user_id,
             mm_base_url=self._mm_base_url,
         )
-        await ingest.ingest_post(post)
+        await ingest.ingest_post(post, channel_type=channel_type)
+
+    def _dm_already_processed(self, post_id: str) -> bool:
+        return post_id in self._recent_dm_post_ids
+
+    def _mark_dm_processed(self, post_id: str) -> None:
+        self._recent_dm_post_ids[post_id] = None
+        while len(self._recent_dm_post_ids) > _RECENT_DM_CACHE_CAP:
+            self._recent_dm_post_ids.popitem(last=False)
 
     async def _recover_missed_posts(self) -> None:
         """Haal posts op die binnenkwamen terwijl we offline waren.
 
-        We doen dit per gekoppeld kanaal, vanaf ``last_seen_post_at``.
-        Posts die we al hadden (unique post_id) worden door de
-        IntegrityError-handler in ``_record_post`` afgevangen.
+        Twee paden:
+        1. Per gekoppeld kanaal vanaf ``last_seen_post_at`` (meelees-flow).
+        2. Bot-DMs voor link-codes vanaf ``_last_dm_recovery_ms`` (bij
+           cold start: laatste 2 minuten).
+
+        Dubbele posts (zowel via WS-event als recovery) worden afgevangen
+        door de unique constraint op ``mattermost_post_link.post_id`` voor
+        kanaal-posts en door de in-memory dedup-cache voor DM-posts.
         """
         async with async_session() as session:
             stmt = select(MattermostChannelLink).where(
@@ -377,13 +430,11 @@ class MattermostWebsocketService:
             result = await session.execute(stmt)
             links = list(result.scalars().all())
 
-            if not links:
-                return
-
             service = MattermostService(session)
             try:
                 if not await service.is_enabled():
                     return
+
                 for link in links:
                     since = link.last_seen_post_at or 0
                     if since == 0:
@@ -406,6 +457,54 @@ class MattermostWebsocketService:
                             logger.exception(
                                 "Recovery: fout bij post %s", post.get("id")
                             )
+
+                await self._recover_dm_posts(session, service)
+
                 await session.commit()
             finally:
                 await service.close()
+
+    async def _recover_dm_posts(
+        self, session: AsyncSession, service: MattermostService
+    ) -> None:
+        """Eenmalige REST-poll van bot-DMs sinds laatste recovery-tijdstip.
+
+        Vangnet voor link-codes die binnenkwamen tijdens een korte
+        WS-disconnect. Bij cold start: 2 minuten terug.
+        """
+        now_ms = int(time.time() * 1000)
+        since_ms = self._last_dm_recovery_ms
+        if since_ms is None:
+            since_ms = now_ms - _DM_COLD_START_WINDOW_MS
+
+        try:
+            posts = await service.get_bot_dm_posts(since=since_ms)
+        except httpx.HTTPError:
+            logger.exception("DM-recovery faalde")
+            return
+
+        recovered = 0
+        failures = 0
+        for post in posts:
+            post_id = post.get("id")
+            if not post_id or self._dm_already_processed(post_id):
+                continue
+            try:
+                await self._record_post(session, post, channel_type="D")
+            except Exception:
+                logger.exception("DM-recovery: fout bij post %s", post_id)
+                failures += 1
+                continue
+            self._mark_dm_processed(post_id)
+            recovered += 1
+
+        # Schuif de cursor alleen door bij volledig succes — anders willen
+        # we mislukte posts bij de volgende reconnect opnieuw zien.
+        if failures == 0:
+            self._last_dm_recovery_ms = now_ms
+        if recovered:
+            logger.info("DM-recovery: %d posts opnieuw verwerkt", recovered)
+        if failures:
+            logger.warning(
+                "DM-recovery: %d posts mislukt, cursor blijft staan", failures
+            )

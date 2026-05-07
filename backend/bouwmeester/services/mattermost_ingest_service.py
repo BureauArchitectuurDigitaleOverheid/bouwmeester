@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.database import async_session
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
@@ -49,6 +50,45 @@ from bouwmeester.services.mention_helper import sync_and_notify_mentions
 logger = logging.getLogger(__name__)
 
 
+async def handle_dm_post(post: dict, *, bot_user_id: str | None = None) -> bool:
+    """Verwerk een DM naar de bot: zoek link-code, koppel account.
+
+    Draait in een eigen ``async_session`` zodat fouten in
+    ``MattermostLinkPoller`` (bijvoorbeeld een ``IntegrityError`` op een
+    race-conditie bij ``create_mapping``) niet doorslaan naar de session
+    waar de caller in zit. Bij een crash is alleen deze ene DM verloren.
+
+    Skip bot-eigen DMs als ``bot_user_id`` bekend is — anti
+    feedback-loop voor bevestigingsreplies van de bot zelf. Bot-skips
+    tellen als ``True`` (niets te doen, geslaagd).
+
+    Returns ``True`` als de post zonder fouten is doorgelopen, ``False``
+    als er een exception was. De caller gebruikt dit om te beslissen
+    of de post in een dedup-cache mag — een mislukte DM moet bij
+    recovery opnieuw kunnen worden geprobeerd.
+    """
+    if bot_user_id and post.get("user_id") == bot_user_id:
+        return True
+
+    from bouwmeester.services.mattermost_link_poller import MattermostLinkPoller
+    from bouwmeester.services.mattermost_service import MattermostService
+
+    async with async_session() as dm_session:
+        mm_service = MattermostService(dm_session)
+        try:
+            poller = MattermostLinkPoller(dm_session, mm_service=mm_service)
+            try:
+                await poller.process_posts([post])
+                await dm_session.commit()
+                return True
+            except Exception:
+                await dm_session.rollback()
+                logger.exception("DM-handling faalde voor post %s", post.get("id"))
+                return False
+        finally:
+            await mm_service.close()
+
+
 class MattermostIngestService:
     """Stateless verwerking — instantieer per session, gooi daarna weg."""
 
@@ -63,10 +103,16 @@ class MattermostIngestService:
         self.bot_user_id = bot_user_id
         self.mm_base_url = mm_base_url.rstrip("/") if mm_base_url else None
 
-    async def ingest_post(self, post: dict) -> None:
+    async def ingest_post(self, post: dict, *, channel_type: str | None = None) -> None:
         """Verwerk één Mattermost-post.
 
         De caller is verantwoordelijk voor commit/rollback van de session.
+
+        ``channel_type`` komt uit de ``data.channel_type`` van het Mattermost
+        ``posted``-event: ``"D"`` = 1-op-1 DM (link-code-pad),
+        ``"G"`` = group-DM (genegeerd, consistent met legacy poller-gedrag),
+        andere waardes (``"O"`` open, ``"P"`` private) of ``None`` vallen
+        door naar de channel-link-flow.
         """
         post_id = post.get("id")
         channel_id = post.get("channel_id")
@@ -78,6 +124,12 @@ class MattermostIngestService:
 
         # Skip bot's eigen posts (anti feedback-loop).
         if self.bot_user_id and mm_user_id == self.bot_user_id:
+            return
+
+        if channel_type == "D":
+            await handle_dm_post(post, bot_user_id=self.bot_user_id)
+            return
+        if channel_type == "G":
             return
 
         link_repo = MattermostChannelLinkRepository(self.session)

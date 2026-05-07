@@ -3,8 +3,7 @@ import { useWorkerHealth, type WorkerHealth, type WorkerHeartbeat } from '@/hook
 
 const LOOP_LABELS: Record<string, string> = {
   parlementair: 'Parlementaire import',
-  mattermost_link: 'Mattermost: account-koppeling (DM-poller)',
-  mattermost_websocket: 'Mattermost: meelezen in kanalen (websocket)',
+  mattermost_websocket: 'Mattermost: websocket (kanaal-meelezen + DM-koppeling)',
   opdracht_task: 'Opdracht-taken (deadlines, budget)',
   fcc_sync: 'Fortes Change Cloud sync',
 };
