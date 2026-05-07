@@ -1630,7 +1630,11 @@ export interface LeadColumn {
   updated_at: string | null;
 }
 
-export const LEAD_STAGE_LABELS: Record<LeadStage, string> = {
+// Record<string, ...> ipv Record<LeadStage, ...> zodat call-sites die met
+// een willekeurige slug-string indexeren (per-initiatief custom kolommen)
+// geen TS-fout krijgen. Onbekende slugs returnen `undefined` — gebruik
+// `?? slug` als fallback om de raw slug te tonen.
+export const LEAD_STAGE_LABELS: Record<string, string> = {
   [LeadStage.INBOX]: 'Inbox',
   [LeadStage.VERKENNEN]: 'Verkennen',
   [LeadStage.EERSTE_GESPREK]: 'Eerste gesprek',
@@ -1640,7 +1644,7 @@ export const LEAD_STAGE_LABELS: Record<LeadStage, string> = {
   [LeadStage.KOELKAST]: 'Koelkast',
 };
 
-export const LEAD_STAGE_COLORS: Record<LeadStage, string> = {
+export const LEAD_STAGE_COLORS: Record<string, string> = {
   [LeadStage.INBOX]: 'bg-indigo-100 text-indigo-800',
   [LeadStage.VERKENNEN]: 'bg-blue-100 text-blue-800',
   [LeadStage.EERSTE_GESPREK]: 'bg-yellow-100 text-yellow-800',
@@ -1774,7 +1778,7 @@ export interface Lead {
   organization: string | null;
   externe_organisatie_id: string | null;
   externe_organisatie: LeadExterneOrgSummary | null;
-  stage: LeadStage;
+  stage: string;
   assignee_id: string | null;
   assignee: LeadAssigneeSummary | null;
   brought_by_id: string | null;
@@ -1834,7 +1838,7 @@ export interface LeadCreate {
   description?: string | null;
   organization?: string | null;
   externe_organisatie_id?: string | null;
-  stage?: LeadStage;
+  stage?: string;
   assignee_id?: string | null;
   brought_by_id?: string | null;
   next_action?: string | null;
@@ -1856,7 +1860,7 @@ export interface LeadUpdate {
   description?: string | null;
   organization?: string | null;
   externe_organisatie_id?: string | null;
-  stage?: LeadStage;
+  stage?: string;
   assignee_id?: string | null;
   brought_by_id?: string | null;
   next_action?: string | null;
