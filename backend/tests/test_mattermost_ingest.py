@@ -411,12 +411,12 @@ async def test_initiatief_channel_writes_only_post_link(db_session, sample_initi
 
 def _patch_dm_session(db_session):
     """Patch ``async_session`` in ``mattermost_ingest_service`` zodat
-    ``_handle_dm`` op de test-session werkt ipv een eigen verbinding.
+    ``handle_dm_post`` op de test-session werkt ipv een eigen verbinding.
 
     ``commit()`` en ``rollback()`` op de inner session worden no-op
     gemaakt zodat de outer test-rollback alle DM-writes afvoert en een
     inner-rollback de outer-session niet vernielt — in productie zou
-    ``_handle_dm`` op een aparte session werken, dus de outer-session
+    ``handle_dm_post`` op een aparte session werken, dus de outer-session
     moet ongeacht inner-uitkomst bruikbaar blijven.
     """
     from contextlib import asynccontextmanager
@@ -543,8 +543,7 @@ async def test_dm_post_from_bot_itself_is_ignored(db_session):
     }
 
     with patch(
-        "bouwmeester.services.mattermost_ingest_service."
-        "MattermostIngestService._handle_dm"
+        "bouwmeester.services.mattermost_ingest_service.handle_dm_post"
     ) as handle_dm:
         await ingest.ingest_post(post, channel_type="D")
     handle_dm.assert_not_called()
@@ -565,8 +564,7 @@ async def test_group_dm_is_ignored(db_session):
 
     ingest = MattermostIngestService(db_session)
     with patch(
-        "bouwmeester.services.mattermost_ingest_service."
-        "MattermostIngestService._handle_dm"
+        "bouwmeester.services.mattermost_ingest_service.handle_dm_post"
     ) as handle_dm:
         await ingest.ingest_post(post, channel_type="G")
     handle_dm.assert_not_called()
@@ -628,9 +626,10 @@ async def test_link_poller_integrity_error_keeps_session_usable(
 async def test_dm_handling_failure_does_not_break_outer_session(
     db_session, create_person
 ):
-    """Een onverwachte exception in ``_handle_dm`` mag de outer-session
-    van de WS-loop niet kapot maken. We forceren een fout en checken dat
-    de outer-session daarna nog gewone queries kan uitvoeren."""
+    """Een onverwachte exception in ``handle_dm_post`` mag de
+    outer-session van de WS-loop niet kapot maken. We forceren een fout
+    en checken dat de outer-session daarna nog gewone queries kan
+    uitvoeren."""
     from unittest.mock import AsyncMock, patch
 
     person = await create_person(naam="Outer", prefix="outer")
@@ -651,7 +650,7 @@ async def test_dm_handling_failure_does_not_break_outer_session(
             new=AsyncMock(side_effect=RuntimeError("simulated crash")),
         ),
     ):
-        # Mag NIET propageren — _handle_dm vangt het op.
+        # Mag NIET propageren — handle_dm_post vangt het op.
         await ingest.ingest_post(post, channel_type="D")
 
     # Outer-session is nog bruikbaar voor een vervolgquery.

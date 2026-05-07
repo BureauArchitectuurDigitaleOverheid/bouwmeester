@@ -46,7 +46,7 @@ from bouwmeester.services.mattermost_doc_link_extractor import (
 logger = logging.getLogger(__name__)
 
 
-async def handle_dm_post(post: dict, *, bot_user_id: str | None = None) -> None:
+async def handle_dm_post(post: dict, *, bot_user_id: str | None = None) -> bool:
     """Verwerk een DM naar de bot: zoek link-code, koppel account.
 
     Draait in een eigen ``async_session`` zodat fouten in
@@ -55,10 +55,16 @@ async def handle_dm_post(post: dict, *, bot_user_id: str | None = None) -> None:
     waar de caller in zit. Bij een crash is alleen deze ene DM verloren.
 
     Skip bot-eigen DMs als ``bot_user_id`` bekend is — anti
-    feedback-loop voor bevestigingsreplies van de bot zelf.
+    feedback-loop voor bevestigingsreplies van de bot zelf. Bot-skips
+    tellen als ``True`` (niets te doen, geslaagd).
+
+    Returns ``True`` als de post zonder fouten is doorgelopen, ``False``
+    als er een exception was. De caller gebruikt dit om te beslissen
+    of de post in een dedup-cache mag — een mislukte DM moet bij
+    recovery opnieuw kunnen worden geprobeerd.
     """
     if bot_user_id and post.get("user_id") == bot_user_id:
-        return
+        return True
 
     from bouwmeester.services.mattermost_link_poller import MattermostLinkPoller
     from bouwmeester.services.mattermost_service import MattermostService
@@ -70,9 +76,11 @@ async def handle_dm_post(post: dict, *, bot_user_id: str | None = None) -> None:
             try:
                 await poller.process_posts([post])
                 await dm_session.commit()
+                return True
             except Exception:
                 await dm_session.rollback()
                 logger.exception("DM-handling faalde voor post %s", post.get("id"))
+                return False
         finally:
             await mm_service.close()
 
@@ -115,7 +123,7 @@ class MattermostIngestService:
             return
 
         if channel_type == "D":
-            await self._handle_dm(post)
+            await handle_dm_post(post, bot_user_id=self.bot_user_id)
             return
         if channel_type == "G":
             return
@@ -230,12 +238,6 @@ class MattermostIngestService:
         # note staat al.
         if lead_activity_id is not None:
             await self._react(post_id, "eyes")
-
-    async def _handle_dm(self, post: dict) -> None:
-        """Backwards-compat shim — delegate naar de module-level helper
-        zodat ``handle_dm_post`` ook direct vanuit de WS-loop aanroepbaar
-        is zonder een ``MattermostIngestService`` te instantiëren."""
-        await handle_dm_post(post, bot_user_id=self.bot_user_id)
 
     async def _is_noise(self, message: str) -> bool:
         """Vraag VLAM of dit een triviaal/ack-bericht is.

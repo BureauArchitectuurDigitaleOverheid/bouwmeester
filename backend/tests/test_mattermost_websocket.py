@@ -581,6 +581,32 @@ async def test_patch_reenable_false_rejected_by_pydantic(client, linked_channel)
 # ---------------------------------------------------------------------------
 
 
+async def test_dispatch_posted_does_not_mark_failed_dm_as_processed():
+    """Als ``handle_dm_post`` False returnt (interne fout), mag de post
+    NIET in de dedup-cache komen — anders kan de recovery-loop hem niet
+    later opnieuw oppakken."""
+    import json
+    from unittest.mock import AsyncMock, patch
+
+    svc = MattermostWebsocketService()
+    msg = {
+        "event": "posted",
+        "data": {
+            "channel_type": "D",
+            "post": json.dumps(
+                {"id": "fail1", "channel_id": "c1", "user_id": "u1", "message": "BM-x"}
+            ),
+        },
+    }
+    with patch(
+        "bouwmeester.services.mattermost_ingest_service.handle_dm_post",
+        new=AsyncMock(return_value=False),
+    ):
+        await svc._dispatch_posted(msg)
+
+    assert "fail1" not in svc._recent_dm_post_ids
+
+
 async def test_dispatch_posted_dms_routed_to_handle_dm_post():
     """``data.channel_type=='D'`` triggert de module-level
     ``handle_dm_post`` zonder een outer session te openen — kortste pad
@@ -594,6 +620,7 @@ async def test_dispatch_posted_dms_routed_to_handle_dm_post():
     async def fake_handle_dm_post(post, *, bot_user_id=None):
         captured["post_id"] = post.get("id")
         captured["bot_user_id"] = bot_user_id
+        return True
 
     msg = {
         "event": "posted",

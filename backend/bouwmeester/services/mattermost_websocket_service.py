@@ -331,11 +331,11 @@ class MattermostWebsocketService:
                 handle_dm_post,
             )
 
-            try:
-                await handle_dm_post(post, bot_user_id=self._bot_user_id)
-            except Exception:
-                logger.exception("Fout bij verwerken Mattermost DM %s", post_id)
-            else:
+            # ``handle_dm_post`` swallowt eigen exceptions en returnt
+            # False bij fouten. Alleen geslaagde DMs in de dedup-cache
+            # zetten — anders mist de recovery-loop ze later.
+            ok = await handle_dm_post(post, bot_user_id=self._bot_user_id)
+            if ok:
                 self._mark_dm_processed(post_id)
             return
 

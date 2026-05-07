@@ -119,7 +119,3 @@ class MattermostLinkPoller:
             )
 
         return links_created
-
-    async def cleanup(self) -> None:
-        """Clean up expired codes."""
-        await self.repo.cleanup_expired_codes()
