@@ -70,8 +70,8 @@ const RANK_ORGANISATION = 0;
 const RANK_CORPUS_NODE = 1;
 const RANK_LEAD = 2;
 const RANK_SAMENWERKINGSVERBAND = 3;
-const RANK_PERSON_INTERN = 4;
-const RANK_PERSON_EXTERN = 5;
+const RANK_PERSON_EXTERN = 4;
+const RANK_PERSON_INTERN = 5;
 const RANK_DEFAULT = RANK_LEAD;
 
 const LANE_Y: Record<number, number> = {
@@ -79,8 +79,8 @@ const LANE_Y: Record<number, number> = {
   [RANK_CORPUS_NODE]: 240,
   [RANK_LEAD]: 440,
   [RANK_SAMENWERKINGSVERBAND]: 640,
-  [RANK_PERSON_INTERN]: 840,
-  [RANK_PERSON_EXTERN]: 1040,
+  [RANK_PERSON_EXTERN]: 840,
+  [RANK_PERSON_INTERN]: 1040,
 };
 
 function getNodeRank(node: CommunityGraphNode): number {
