@@ -46,7 +46,6 @@ _PUBLIC_PREFIXES = (
     "/api/public/",
     "/api/webauthn/authenticate/",
     "/api/mattermost/slash",
-    "/api/mattermost/action",
     "/api/mattermost/verify-link",
 )
 

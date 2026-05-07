@@ -427,13 +427,20 @@ class MattermostWebsocketService:
 
         async with async_session() as session:
             try:
-                from bouwmeester.models.suggested_lead import SuggestedLead
+                from bouwmeester.models.suggested_lead import (
+                    STATUS_PENDING,
+                    SuggestedLead,
+                )
                 from bouwmeester.services.mattermost_slash_service import (
                     MattermostSlashService,
                 )
 
+                # Filter ook op status: een afgehandelde SuggestedLead
+                # heeft niets meer te doen, en handle_action zou alleen
+                # een ephemeral-melding teruggeven die we niet tonen.
                 stmt = select(SuggestedLead.id).where(
-                    SuggestedLead.mm_thread_post_id == post_id
+                    SuggestedLead.mm_thread_post_id == post_id,
+                    SuggestedLead.status == STATUS_PENDING,
                 )
                 row = (await session.execute(stmt)).first()
                 if row is None:

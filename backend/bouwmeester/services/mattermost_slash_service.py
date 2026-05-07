@@ -429,21 +429,20 @@ class MattermostSlashService:
         return result.scalar_one_or_none()
 
     # ---------------------------------------------------------------------------
-    # Interactive button actions
+    # Reaction-driven actions on suggested-lead bot-replies
     # ---------------------------------------------------------------------------
 
     async def handle_action(
         self, mattermost_user_id: str, action: str, context: dict
     ) -> dict:
-        """Handle an interactive button click.
+        """Handle a reaction-triggered action on a suggested-lead bot-reply.
 
-        Mattermost interactive response-shape: ``{"ephemeral_text": "..."}``
-        voor in-line feedback aan de klikker, of ``{"update": {...}}`` om
-        de oorspronkelijke post te overschrijven. Dit verschilt van de
-        slash-command-shape (``{"response_type": "ephemeral", "text": ...}``).
+        Returns ``{"ephemeral_text": "..."}`` voor in-line feedback. Sinds
+        we van interactive buttons naar emoji-reactions zijn geswitcht
+        wordt deze method alleen nog vanuit
+        ``MattermostWebsocketService._dispatch_reaction_added`` aangeroepen,
+        en is de keyset beperkt tot suggested-lead approvals.
         """
-        if action == "complete_task":
-            return await self._action_complete_task(mattermost_user_id, context)
         if action == "create_lead_from_suggestion":
             return await self._action_create_lead_from_suggestion(
                 mattermost_user_id, context
@@ -455,70 +454,6 @@ class MattermostSlashService:
         if action == "reject_suggestion":
             return await self._action_reject_suggestion(mattermost_user_id, context)
         return {"ephemeral_text": "Onbekende actie."}
-
-    async def _action_complete_task(
-        self, mattermost_user_id: str, context: dict
-    ) -> dict:
-        """Complete a task from a Mattermost button click."""
-        person_id = await self._resolve_person_id(mattermost_user_id)
-        if not person_id:
-            return {"ephemeral_text": "Je account is niet gekoppeld."}
-
-        task_id_str = context.get("task_id")
-        if not task_id_str:
-            return {"ephemeral_text": "Geen taak-ID gevonden."}
-
-        try:
-            task_id = UUID(task_id_str)
-        except (ValueError, AttributeError):
-            return {"ephemeral_text": "Ongeldig taak-ID."}
-        task = await self.session.get(Task, task_id)
-        if not task:
-            return {"ephemeral_text": "Taak niet gevonden."}
-
-        # Verify the user is the assignee.
-        if task.assignee_id != person_id:
-            return {"ephemeral_text": "Je bent niet de toegewezene van deze taak."}
-
-        if task.status == "done":
-            return {"ephemeral_text": "Deze taak is al afgerond."}
-
-        # Complete the task.
-        task.status = "done"
-        await self.session.flush()
-
-        # Log activity.
-        from bouwmeester.services.activity_service import ActivityService
-
-        activity_service = ActivityService(self.session)
-        await activity_service.log_event(
-            event_type="task.completed",
-            actor_id=person_id,
-            task_id=task.id,
-            node_id=task.node_id,
-            details={"completed_from": "mattermost"},
-        )
-
-        # Trigger completion notifications.
-        from bouwmeester.services.notification_service import NotificationService
-
-        notif_service = NotificationService(self.session)
-        await notif_service.notify_task_completed(task, actor_id=person_id)
-
-        escaped_title = _escape_md(task.title)
-        return {
-            "update": {
-                "message": f"Taak afgerond: **{escaped_title}**",
-                "props": {
-                    "attachments": [
-                        {
-                            "color": "#22C55E",
-                            "text": f"Taak '{escaped_title}' is afgerond.",
-                        }
-                    ],
-                },
-            },
-        }
 
     # ------------------------------------------------------------------
     # Suggested-lead approval
