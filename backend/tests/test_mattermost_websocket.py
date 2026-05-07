@@ -887,11 +887,13 @@ async def test_read_loop_idle_does_not_raise_on_long_silence(monkeypatch):
         await asyncio.sleep(0.25)
         svc._stop = True
 
-    asyncio.create_task(stopper())
-
-    # Mag terugkeren zonder RuntimeError, ondanks dat er nooit een frame
-    # is binnengekomen.
-    await svc._read_loop(fake_ws)
+    stopper_task = asyncio.create_task(stopper())
+    try:
+        # Mag terugkeren zonder RuntimeError, ondanks dat er nooit een
+        # frame is binnengekomen.
+        await svc._read_loop(fake_ws)
+    finally:
+        await stopper_task
 
 
 async def test_read_loop_propagates_connection_closed(monkeypatch):
