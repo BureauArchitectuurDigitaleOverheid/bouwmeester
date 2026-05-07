@@ -87,7 +87,6 @@ class Settings(BaseSettings):
     MATTERMOST_NOTIFICATION_CHANNEL_ID: str = ""
     # Token to verify incoming slash commands
     MATTERMOST_WEBHOOK_TOKEN: str = ""
-    MATTERMOST_POLL_INTERVAL_SECONDS: int = 15
     MATTERMOST_LINK_CODE_TTL_MINUTES: int = 10
     MATTERMOST_LINK_CODE_LENGTH: int = 8
 

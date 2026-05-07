@@ -402,3 +402,170 @@ async def test_initiatief_channel_writes_only_post_link(db_session, sample_initi
     ).scalar_one()
     assert post_link.lead_activity_id is None
     assert post_link.scope_type == SCOPE_INITIATIEF
+
+
+# ---------------------------------------------------------------------------
+# DM-pad: link-codes via websocket-event ipv polling
+# ---------------------------------------------------------------------------
+
+
+async def test_dm_post_with_valid_code_creates_mapping(db_session, create_person):
+    """Een DM met een geldige BM-code koppelt het Mattermost-account aan
+    de bijbehorende persoon — dezelfde uitkomst als de oude poller, maar
+    nu via het websocket-pad in ``ingest_post``."""
+    from unittest.mock import AsyncMock, patch
+
+    from bouwmeester.repositories.mattermost_user import MattermostUserRepository
+
+    person = await create_person(naam="DM Tester", prefix="dm")
+    repo = MattermostUserRepository(db_session)
+    code = await repo.create_link_code(person.id)
+
+    mm_uid = _id()
+    post = {
+        "id": _id(),
+        "channel_id": _id(),
+        "user_id": mm_uid,
+        "create_at": 1_700_000_000_000,
+        "message": f"hoi, mijn code is {code.code}",
+    }
+
+    ingest = MattermostIngestService(db_session)
+    with (
+        patch(
+            "bouwmeester.services.mattermost_link_poller."
+            "MattermostLinkPoller._safe_reply",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "bouwmeester.services.mattermost_service.MattermostService.get_username",
+            new=AsyncMock(return_value="dm_user"),
+        ),
+    ):
+        await ingest.ingest_post(post, channel_type="D")
+
+    mapping = await repo.get_by_mattermost_user_id(mm_uid)
+    assert mapping is not None
+    assert mapping.person_id == person.id
+    assert mapping.mattermost_username == "dm_user"
+    # Code is verbruikt.
+    assert await repo.verify_code(code.code) is None
+    # Geen MattermostPostLink voor DMs — dat record is alleen voor
+    # gekoppelde channels.
+    post_link = (
+        await db_session.execute(
+            select(MattermostPostLink).where(MattermostPostLink.post_id == post["id"])
+        )
+    ).scalar_one_or_none()
+    assert post_link is None
+
+
+async def test_dm_post_with_unknown_code_does_not_create_mapping(db_session):
+    """Een DM met een code die niet in de DB staat resulteert in een
+    nette reply en géén mapping."""
+    from unittest.mock import AsyncMock, patch
+
+    from bouwmeester.repositories.mattermost_user import MattermostUserRepository
+
+    mm_uid = _id()
+    post = {
+        "id": _id(),
+        "channel_id": _id(),
+        "user_id": mm_uid,
+        "create_at": 1_700_000_000_000,
+        "message": "BM-doesnotexist klopt dit?",
+    }
+
+    safe_reply = AsyncMock(return_value=None)
+    ingest = MattermostIngestService(db_session)
+    with patch(
+        "bouwmeester.services.mattermost_link_poller.MattermostLinkPoller._safe_reply",
+        new=safe_reply,
+    ):
+        await ingest.ingest_post(post, channel_type="D")
+
+    repo = MattermostUserRepository(db_session)
+    assert await repo.get_by_mattermost_user_id(mm_uid) is None
+    safe_reply.assert_called_once()
+    _, _, message = safe_reply.call_args.args
+    assert "code herken ik niet" in message
+
+
+async def test_dm_post_from_bot_itself_is_ignored(db_session):
+    """Bot-eigen DM-posts (anti feedback-loop) worden vroeg geskipt — dus
+    we moeten geen MattermostLinkPoller instantiëren."""
+    from unittest.mock import patch
+
+    bot_id = _id()
+    ingest = MattermostIngestService(db_session, bot_user_id=bot_id)
+    post = {
+        "id": _id(),
+        "channel_id": _id(),
+        "user_id": bot_id,
+        "create_at": 1_700_000_000_000,
+        "message": "BM-something",
+    }
+
+    with patch(
+        "bouwmeester.services.mattermost_ingest_service."
+        "MattermostIngestService._handle_dm"
+    ) as handle_dm:
+        await ingest.ingest_post(post, channel_type="D")
+    handle_dm.assert_not_called()
+
+
+async def test_group_dm_is_ignored(db_session):
+    """Group-DMs (channel_type='G') vallen niet onder de link-flow én niet
+    onder de channel-link-flow."""
+    from unittest.mock import patch
+
+    post = {
+        "id": _id(),
+        "channel_id": _id(),
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "BM-someothercode",
+    }
+
+    ingest = MattermostIngestService(db_session)
+    with patch(
+        "bouwmeester.services.mattermost_ingest_service."
+        "MattermostIngestService._handle_dm"
+    ) as handle_dm:
+        await ingest.ingest_post(post, channel_type="G")
+    handle_dm.assert_not_called()
+
+
+async def test_channel_post_without_channel_type_unaffected(db_session, sample_lead):
+    """Bestaande aanroepen zonder ``channel_type`` blijven door de
+    channel-link-flow lopen — backward compat met bestaande tests."""
+    cid = _id()
+    db_session.add(
+        MattermostChannelLink(
+            channel_id=cid,
+            channel_name="proj",
+            channel_display_name="Project",
+            scope_type=SCOPE_LEAD,
+            scope_id=sample_lead.id,
+            auto_note_enabled=True,
+        )
+    )
+    await db_session.flush()
+
+    ingest = MattermostIngestService(db_session)
+    post = {
+        "id": _id(),
+        "channel_id": cid,
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "Een gewone update over het project.",
+    }
+    # Default channel_type=None — moet door channel-link-flow vallen.
+    await ingest.ingest_post(post)
+
+    activity = (
+        await db_session.execute(
+            select(LeadActivity).where(LeadActivity.lead_id == sample_lead.id)
+        )
+    ).scalar_one()
+    assert activity.activity_type == "note"

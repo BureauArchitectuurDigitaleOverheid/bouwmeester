@@ -59,10 +59,16 @@ class MattermostIngestService:
         self.bot_user_id = bot_user_id
         self.mm_base_url = mm_base_url.rstrip("/") if mm_base_url else None
 
-    async def ingest_post(self, post: dict) -> None:
+    async def ingest_post(self, post: dict, *, channel_type: str | None = None) -> None:
         """Verwerk één Mattermost-post.
 
         De caller is verantwoordelijk voor commit/rollback van de session.
+
+        ``channel_type`` komt uit de ``data.channel_type`` van het Mattermost
+        ``posted``-event: ``"D"`` = 1-op-1 DM (link-code-pad),
+        ``"G"`` = group-DM (genegeerd, consistent met legacy poller-gedrag),
+        andere waardes (``"O"`` open, ``"P"`` private) of ``None`` vallen
+        door naar de channel-link-flow.
         """
         post_id = post.get("id")
         channel_id = post.get("channel_id")
@@ -74,6 +80,12 @@ class MattermostIngestService:
 
         # Skip bot's eigen posts (anti feedback-loop).
         if self.bot_user_id and mm_user_id == self.bot_user_id:
+            return
+
+        if channel_type == "D":
+            await self._handle_dm(post)
+            return
+        if channel_type == "G":
             return
 
         link_repo = MattermostChannelLinkRepository(self.session)
@@ -186,6 +198,24 @@ class MattermostIngestService:
         # note staat al.
         if lead_activity_id is not None:
             await self._react(post_id, "eyes")
+
+    async def _handle_dm(self, post: dict) -> None:
+        """Verwerk een DM naar de bot: zoek link-code, koppel account.
+
+        Dit pad verving de oude 15s-polling-loop. ``MattermostLinkPoller``
+        is idempotent (verify_code → delete_code, IntegrityError op
+        dubbele mapping), dus een dubbele call door WS+recovery-race
+        loopt stilletjes dood.
+        """
+        from bouwmeester.services.mattermost_link_poller import MattermostLinkPoller
+        from bouwmeester.services.mattermost_service import MattermostService
+
+        mm_service = MattermostService(self.session)
+        try:
+            poller = MattermostLinkPoller(self.session, mm_service=mm_service)
+            await poller.process_posts([post])
+        finally:
+            await mm_service.close()
 
     async def _is_noise(self, message: str) -> bool:
         """Vraag VLAM of dit een triviaal/ack-bericht is.

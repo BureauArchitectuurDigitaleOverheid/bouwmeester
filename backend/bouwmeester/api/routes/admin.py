@@ -779,7 +779,6 @@ async def version_info(admin: AdminUser) -> dict[str, str]:
 # err on the side of "noisy when broken" rather than "quiet when broken".
 _WORKER_EXPECTED_CADENCE_SEC = {
     "parlementair": 900,  # TK_POLL_INTERVAL_SECONDS default 15min
-    "mattermost_link": 60,  # MATTERMOST_POLL_INTERVAL_SECONDS default
     "mattermost_websocket": 90,  # idle-heartbeat is once per 60s
     "opdracht_task": 86400,  # daily — give it 4× before declaring down
     "fcc_sync": 600,  # FCC_POLL_INTERVAL_SECONDS default 10min
