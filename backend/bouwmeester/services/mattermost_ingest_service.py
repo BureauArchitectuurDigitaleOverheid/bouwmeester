@@ -63,10 +63,11 @@ SIMILAR_LEAD_THRESHOLD = 0.3
 MAX_LEADS_FOR_LLM = 60
 
 
-# Mirror van LEAD_STAGE_LABELS in frontend/src/types/index.ts. Backend heeft
-# verder geen plek waar lead-stages naar mensentaal worden vertaald, dus we
-# houden de map lokaal tot een tweede call-site dit nodig heeft.
-_LEAD_STAGE_LABELS = {
+# Fallback labels voor de 7 default-stages. De echte naam komt sinds
+# per-initiatief lead_columns uit `lead_column.name`; deze map dient
+# alleen als reservering wanneer de stage-slug niet (meer) als kolom
+# bestaat (orphan-data, oude rij).
+_DEFAULT_STAGE_LABELS = {
     "inbox": "Inbox",
     "verkennen": "Verkennen",
     "eerste_gesprek": "Eerste gesprek",
@@ -460,7 +461,14 @@ class MattermostIngestService:
                 for row in rows:
                     if str(row.id) == str(candidate):
                         match_lead_uuid = candidate
-                        matched_lead = {"title": row.title, "stage": row.stage}
+                        stage_label = await self._resolve_stage_label(
+                            channel_link_initiatief_id, row.stage
+                        )
+                        matched_lead = {
+                            "title": row.title,
+                            "stage": row.stage,
+                            "stage_label": stage_label,
+                        }
                         break
 
         suggested = SuggestedLead(
@@ -558,6 +566,33 @@ class MattermostIngestService:
             merged.setdefault(row.id, row)
         return list(merged.values())[:MAX_LEADS_FOR_LLM]
 
+    async def _resolve_stage_label(
+        self, initiatief_id: UUID | None, stage: str | None
+    ) -> str:
+        """Vertaal een stage-slug naar de zichtbare kolomnaam.
+
+        Sinds per-initiatief lead_columns kunnen eigenaren stages
+        hernoemen; we lezen de naam direct uit ``lead_column``. Voor
+        orphan-leads (geen initiatief) of slugs die niet langer als
+        kolom bestaan vallen we terug op de 7-default-labels — anders
+        krijgt de bot-reply de raw slug te zien.
+        """
+        if not stage:
+            return ""
+        if initiatief_id is not None:
+            from sqlalchemy import select
+
+            from bouwmeester.models.lead_column import LeadColumn
+
+            stmt = select(LeadColumn.name).where(
+                LeadColumn.initiatief_id == initiatief_id,
+                LeadColumn.slug == stage,
+            )
+            name = (await self.session.execute(stmt)).scalar_one_or_none()
+            if name:
+                return name
+        return _DEFAULT_STAGE_LABELS.get(stage, stage)
+
     async def _post_suggestion_reply(
         self,
         *,
@@ -590,9 +625,7 @@ class MattermostIngestService:
             pct = int((suggested.confidence or 0) * 100)
 
             if matched_lead is not None:
-                stage_label = _LEAD_STAGE_LABELS.get(
-                    matched_lead.get("stage") or "", matched_lead.get("stage") or ""
-                )
+                stage_label = matched_lead.get("stage_label") or ""
                 text = (
                     f":link: Dit lijkt te gaan over een bestaande lead voor "
                     f"**{initiatief.naam}**: **{matched_lead['title']}**"
