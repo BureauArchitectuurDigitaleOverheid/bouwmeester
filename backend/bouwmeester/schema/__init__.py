@@ -290,6 +290,7 @@ from bouwmeester.schema.whitelist import (
     WhitelistEmailResponse,
 )
 from bouwmeester.schema.worker_health import (
+    MattermostChannelOverview,
     WorkerHealthResponse,
     WorkerHeartbeatResponse,
 )
@@ -567,6 +568,7 @@ __all__ = [
     "WhitelistEmailCreate",
     "WhitelistEmailResponse",
     # worker_health
+    "MattermostChannelOverview",
     "WorkerHealthResponse",
     "WorkerHeartbeatResponse",
 ]

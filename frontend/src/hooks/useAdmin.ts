@@ -129,3 +129,30 @@ export function useWorkerHealth() {
     refetchInterval: 15_000,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Mattermost channel overview
+// ---------------------------------------------------------------------------
+
+export interface MattermostChannelOverview {
+  id: string;
+  channel_id: string;
+  channel_display_name: string;
+  channel_name: string;
+  scope_type: 'lead' | 'initiatief';
+  scope_id: string;
+  scope_label: string | null;
+  auto_note_enabled: boolean;
+  suggest_leads_enabled: boolean;
+  last_seen_post_at: string | null;
+  disabled_at: string | null;
+  created_at: string;
+}
+
+export function useMattermostChannelOverview() {
+  return useQuery({
+    queryKey: queryKeys.admin.mattermostChannels(),
+    queryFn: () => apiGet<MattermostChannelOverview[]>('/api/admin/mattermost-channels'),
+    refetchInterval: 30_000,
+  });
+}

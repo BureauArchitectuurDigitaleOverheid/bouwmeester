@@ -257,13 +257,14 @@ class MattermostWebsocketService:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
+            event_name = msg.get("event") or msg.get("seq_reply") or "(unknown)"
             await self._dispatch(msg)
             if time.monotonic() - last_heartbeat > 60.0:
                 last_heartbeat = time.monotonic()
                 await health_tick(
                     "mattermost_websocket",
                     status="connected",
-                    detail=f"last event: {msg.get('event', '?')}",
+                    detail=f"last event: {event_name}",
                 )
 
     async def _dispatch(self, msg: dict) -> None:
@@ -292,6 +293,17 @@ class MattermostWebsocketService:
         channel_id = post.get("channel_id")
         if not post_id or not channel_id:
             return
+
+        # Hard signaal in productie-logs dat een bericht überhaupt is
+        # aangekomen via de websocket — voorkomt giswerk wanneer een note
+        # uitblijft. Korte regel zodat 'm niet snel uit het log-venster
+        # rolt door noise.
+        logger.info(
+            "Mattermost posted event: channel=%s post=%s len=%d",
+            channel_id,
+            post_id,
+            len(post.get("message") or ""),
+        )
 
         async with async_session() as session:
             try:

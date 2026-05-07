@@ -479,6 +479,35 @@ class MattermostService:
             logger.exception("Failed to reply to post %s", root_id)
             return None
 
+    async def add_reaction(self, post_id: str, emoji_name: str) -> bool:
+        """Plak een reactie-emoji op een post.
+
+        Wordt door de ingest-service gebruikt om subtiel te bevestigen dat
+        een bericht is verwerkt. We hebben de bot-user-id nodig — de
+        Mattermost-API verwacht die in de payload, niet als query-param.
+        Returns ``True`` bij succes, ``False`` bij fout (geen retry).
+        """
+        bot_user_id = await self.get_bot_user_id()
+        if not bot_user_id:
+            return False
+        client = await self._get_client()
+        try:
+            resp = await client.post(
+                "/api/v4/reactions",
+                json={
+                    "user_id": bot_user_id,
+                    "post_id": post_id,
+                    "emoji_name": emoji_name,
+                },
+            )
+            resp.raise_for_status()
+            return True
+        except httpx.HTTPError:
+            logger.exception(
+                "Failed to add reaction %s to post %s", emoji_name, post_id
+            )
+            return False
+
     async def update_post(
         self, post_id: str, message: str, props: dict | None = None
     ) -> bool:
