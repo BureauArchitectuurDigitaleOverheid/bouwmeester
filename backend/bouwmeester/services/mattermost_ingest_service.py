@@ -63,6 +63,20 @@ SIMILAR_LEAD_THRESHOLD = 0.3
 MAX_LEADS_FOR_LLM = 60
 
 
+# Mirror van LEAD_STAGE_LABELS in frontend/src/types/index.ts. Backend heeft
+# verder geen plek waar lead-stages naar mensentaal worden vertaald, dus we
+# houden de map lokaal tot een tweede call-site dit nodig heeft.
+_LEAD_STAGE_LABELS = {
+    "inbox": "Inbox",
+    "verkennen": "Verkennen",
+    "eerste_gesprek": "Eerste gesprek",
+    "interne_check": "Interne check",
+    "follow_up": "Follow-up",
+    "in_the_pocket": "In the pocket",
+    "koelkast": "Koelkast",
+}
+
+
 async def handle_dm_post(post: dict, *, bot_user_id: str | None = None) -> bool:
     """Verwerk een DM naar de bot: zoek link-code, koppel account.
 
@@ -436,15 +450,18 @@ class MattermostIngestService:
             return None, "no_lead"
 
         match_lead_uuid: UUID | None = None
+        matched_lead: dict | None = None
         if result.match_existing_lead_id:
             try:
                 candidate = UUID(result.match_existing_lead_id)
             except ValueError:
                 candidate = None
-            if candidate is not None and any(
-                str(row.id) == str(candidate) for row in rows
-            ):
-                match_lead_uuid = candidate
+            if candidate is not None:
+                for row in rows:
+                    if str(row.id) == str(candidate):
+                        match_lead_uuid = candidate
+                        matched_lead = {"title": row.title, "stage": row.stage}
+                        break
 
         suggested = SuggestedLead(
             source_type="mattermost",
@@ -475,7 +492,7 @@ class MattermostIngestService:
                 root_post_id=post.get("root_id") or post["id"],
                 suggested=suggested,
                 initiatief=initiatief,
-                match_lead=match_lead_uuid is not None,
+                matched_lead=matched_lead,
             )
         except Exception:
             logger.exception(
@@ -548,7 +565,7 @@ class MattermostIngestService:
         root_post_id: str,
         suggested: SuggestedLead,
         initiatief: Initiatief,
-        match_lead: bool,
+        matched_lead: dict | None,
     ) -> None:
         """Plaats een bot-reply met emoji-reactions als trigger.
 
@@ -558,6 +575,10 @@ class MattermostIngestService:
         naar onze publieke endpoint. Reactions komen via dezelfde
         websocket binnen die we al gebruiken voor het meelezen, en zijn
         daarmee robuust tegen die platformbeperkingen.
+
+        Bij ``matched_lead`` (titel + stage van een door de LLM herkende
+        bestaande lead) gebruiken we andere copy en zetten we :link: als
+        eerste/aanbevolen actie boven :white_check_mark:.
         """
         from bouwmeester.services.mattermost_service import MattermostService
 
@@ -565,27 +586,52 @@ class MattermostIngestService:
         try:
             if not await service.is_enabled():
                 return
-            instructie_lines = [
-                "_Reageer met:_",
-                ":white_check_mark: om de lead aan te maken",
-            ]
-            if match_lead:
-                instructie_lines.append(":link: om aan een bestaande lead te koppelen")
-            instructie_lines.append(":x: om de suggestie te negeren")
-            instructie = "\n".join(instructie_lines)
-            text = (
-                f":dart: Ik denk dat dit een lead is voor "
-                f"**{initiatief.naam}**.\n"
-                f"_Voorstel:_ {suggested.proposed_title}\n"
-                f"_Vertrouwen:_ {int((suggested.confidence or 0) * 100)}%\n\n"
-                f"{instructie}"
-            )
-            attachment = {
-                "color": "#3B82F6",
-                "title": suggested.proposed_title,
-                "text": suggested.proposed_description or "",
-                "footer": "Bouwmeester · suggestie vanuit Mattermost",
-            }
+
+            pct = int((suggested.confidence or 0) * 100)
+
+            if matched_lead is not None:
+                stage_label = _LEAD_STAGE_LABELS.get(
+                    matched_lead.get("stage") or "", matched_lead.get("stage") or ""
+                )
+                text = (
+                    f":link: Dit lijkt te gaan over een bestaande lead voor "
+                    f"**{initiatief.naam}**: **{matched_lead['title']}**"
+                    f"{f' ({stage_label})' if stage_label else ''}.\n"
+                    f"_Vertrouwen:_ {pct}%\n\n"
+                    "_Reageer met:_\n"
+                    ":link: om dit bericht aan die lead te koppelen "
+                    "_(aanbevolen)_\n"
+                    ":white_check_mark: om tóch een nieuwe lead aan te maken\n"
+                    ":x: om de suggestie te negeren"
+                )
+                attachment = {
+                    "color": "#3B82F6",
+                    "title": matched_lead["title"],
+                    "text": (
+                        f"Bestaande lead in stage _{stage_label}_. "
+                        if stage_label
+                        else ""
+                    )
+                    + "Bij koppelen wordt dit Mattermost-bericht als notitie "
+                    "aan de lead toegevoegd.",
+                    "footer": "Bouwmeester · bestaande lead herkend",
+                }
+            else:
+                text = (
+                    f":dart: Nieuwe lead voor **{initiatief.naam}**?\n"
+                    f"_Voorstel:_ {suggested.proposed_title}\n"
+                    f"_Vertrouwen:_ {pct}%\n\n"
+                    "_Reageer met:_\n"
+                    ":white_check_mark: om de lead aan te maken\n"
+                    ":x: om de suggestie te negeren"
+                )
+                attachment = {
+                    "color": "#3B82F6",
+                    "title": suggested.proposed_title,
+                    "text": suggested.proposed_description or "",
+                    "footer": "Bouwmeester · suggestie vanuit Mattermost",
+                }
+
             data = await service.reply_to_post(
                 channel_id,
                 root_post_id,
@@ -598,12 +644,14 @@ class MattermostIngestService:
             suggested.mm_thread_post_id = mm_thread_post_id
             await self.session.flush()
 
-            # Plaats bot-reactions als clickable affordance. Volgorde:
-            # check, link (alleen bij match), x. Failures zijn niet
-            # fataal; de gebruiker kan zelf nog reacties plaatsen.
-            await service.add_reaction(mm_thread_post_id, "white_check_mark")
-            if match_lead:
+            # Plaats bot-reactions als clickable affordance. Bij een match
+            # komt :link: eerst (aanbevolen actie), anders alleen :check: + :x:.
+            # Failures zijn niet fataal; de gebruiker kan zelf reacties plaatsen.
+            if matched_lead is not None:
                 await service.add_reaction(mm_thread_post_id, "link")
+                await service.add_reaction(mm_thread_post_id, "white_check_mark")
+            else:
+                await service.add_reaction(mm_thread_post_id, "white_check_mark")
             await service.add_reaction(mm_thread_post_id, "x")
         finally:
             await service.close()
