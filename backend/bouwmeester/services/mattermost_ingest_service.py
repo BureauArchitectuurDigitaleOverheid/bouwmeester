@@ -612,8 +612,8 @@ class MattermostIngestService:
                         if stage_label
                         else ""
                     )
-                    + "Het Mattermost-bericht wordt als notitie aan deze lead "
-                    "toegevoegd zodra je :link: plaatst.",
+                    + "Bij koppelen wordt dit Mattermost-bericht als notitie "
+                    "aan de lead toegevoegd.",
                     "footer": "Bouwmeester · bestaande lead herkend",
                 }
             else:
