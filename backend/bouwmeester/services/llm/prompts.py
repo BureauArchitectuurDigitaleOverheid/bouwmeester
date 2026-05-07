@@ -545,7 +545,7 @@ def build_chat_context_message(context: dict | None) -> str:
 # ---------------------------------------------------------------------------
 
 
-MAX_RECENT_LEADS_IN_PROMPT = 20
+MAX_RECENT_LEADS_IN_PROMPT = 60
 
 
 def build_classify_mattermost_lead_prompt(
@@ -558,16 +558,21 @@ def build_classify_mattermost_lead_prompt(
     """Bouw een prompt voor het classificeren van een Mattermost-bericht
     als (potentiële) lead binnen een initiatief.
 
-    ``recent_leads`` is een lijst dicts ``{id, title, stage}`` van leads
-    binnen hetzelfde initiatief, zodat de LLM duplicaten kan voorstellen.
+    ``recent_leads`` is een lijst dicts ``{id, title, organization, stage}``
+    van leads binnen hetzelfde initiatief, zodat de LLM duplicaten kan
+    voorstellen. De caller bepaalt de selectie (recency + trigram-
+    similarity); deze functie cap't alleen op ``MAX_RECENT_LEADS_IN_PROMPT``.
     """
     leads_block = ""
     if recent_leads:
         items = []
         for lead in recent_leads[:MAX_RECENT_LEADS_IN_PROMPT]:
+            org = lead.get("organization")
+            org_part = f', organisatie: "{org}"' if org else ""
             items.append(
                 f"- id: {lead['id']}, "
-                f'titel: "{lead["title"]}", '
+                f'titel: "{lead["title"]}"'
+                f"{org_part}, "
                 f"stage: {lead.get('stage', '?')}"
             )
         leads_block = (
