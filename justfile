@@ -56,6 +56,10 @@ migration NAME:
 seed:
     cd backend && uv run python scripts/seed.py
 
+# Backfill TipTap-mentions in bestaande Mattermost-LeadActivities
+backfill-mattermost-mentions:
+    cd backend && DATABASE_URL=postgresql+asyncpg://bouwmeester:bouwmeester@localhost:5433/bouwmeester uv run python -m scripts.backfill_mattermost_mentions
+
 # Force restart all services (always works, even after crashes)
 kick:
     -docker compose down backend
