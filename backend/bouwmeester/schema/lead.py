@@ -206,6 +206,26 @@ class LeadActivityResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _fill_author_naam(cls, data: Any) -> Any:
+        # Vul ``author_naam`` uit de relationship als die mee-geladen is.
+        # Het ORM-object heeft geen `author_naam` kolom, dus zonder deze
+        # validator blijft het veld in de response altijd None — een
+        # latente bug die zichtbaar werd toen Mattermost-imports leidden
+        # tot notes zonder zichtbare auteur.
+        if hasattr(data, "author") and getattr(data, "author", None):
+            if not getattr(data, "author_naam", None):
+                # Pydantic v2 model_validator(before) geeft het ORM-object
+                # zelf — we zetten een attribuut zodat from_attributes het
+                # oppikt. Geen DB-write; deze instantie wordt na de
+                # response weggegooid.
+                try:
+                    data.author_naam = data.author.naam
+                except AttributeError:
+                    pass
+        return data
+
 
 # ---------------------------------------------------------------------------
 # Lead response (list) and detail response
