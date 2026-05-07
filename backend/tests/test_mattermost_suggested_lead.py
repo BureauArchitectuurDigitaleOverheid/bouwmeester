@@ -758,3 +758,59 @@ async def test_post_suggestion_reply_existing_lead_copy(
 
     emojis = [c.args[1] for c in stub.add_reaction.await_args_list]
     assert emojis == ["link", "white_check_mark", "x"]
+
+
+async def test_ingest_propagates_matched_lead_to_reply(
+    db_session, sample_initiatief, sample_channel
+):
+    """End-to-end: als de LLM een bestaande lead-id teruggeeft die in de
+    candidate-rows staat, ontvangt _post_suggestion_reply een matched_lead
+    dict met titel + stage. Vangt regressies in de extractie-loop in
+    _create_suggested_lead."""
+    existing = Lead(
+        id=uuid.uuid4(),
+        title="HHNK (Hoogheemraadschap Hollands Noorderkwartier)",
+        organization="HHNK",
+        initiatief_id=sample_initiatief.id,
+        stage="verkennen",
+    )
+    db_session.add(existing)
+    await db_session.flush()
+
+    llm_match = AsyncMock(
+        return_value=LeadCandidateClassification(
+            is_lead=True,
+            confidence=0.95,
+            proposed_title="HHNK",
+            proposed_description="Vraag van HHNK",
+            match_existing_lead_id=str(existing.id),
+            reasoning="naam matcht expliciet",
+        )
+    )
+    fake_llm = AsyncMock()
+    fake_llm.classify_mattermost_lead_candidate = llm_match
+
+    reply_mock = AsyncMock(return_value=None)
+    with (
+        patch(
+            "bouwmeester.services.llm.factory.get_llm_service_for",
+            new=AsyncMock(return_value=fake_llm),
+        ),
+        patch.object(MattermostIngestService, "_post_suggestion_reply", new=reply_mock),
+    ):
+        ingest = MattermostIngestService(db_session)
+        await ingest.ingest_post(
+            {
+                "id": _id(),
+                "channel_id": sample_channel.channel_id,
+                "user_id": _id(),
+                "create_at": 1_700_000_000_000,
+                "message": "HHNK heeft een vervolgvraag.",
+            }
+        )
+
+    reply_mock.assert_awaited_once()
+    matched = reply_mock.await_args.kwargs["matched_lead"]
+    assert matched is not None
+    assert matched["title"] == "HHNK (Hoogheemraadschap Hollands Noorderkwartier)"
+    assert matched["stage"] == "verkennen"
