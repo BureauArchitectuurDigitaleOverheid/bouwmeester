@@ -192,3 +192,19 @@ async def test_aanmaker_can_delete_own_eenheid_outside_scope(editor_setup):
 
     delete = await s["client"].delete(f"/api/organisatie/{new_id}")
     assert delete.status_code == 204
+
+
+async def test_editor_has_org_create_but_not_org_manage(
+    editor_setup, db_session: AsyncSession
+):
+    """Regression-guard: editor must have org:create, not org:manage.
+
+    org:manage gates the AdminPage > Organisatie tab in the frontend, so
+    granting it to editors would unintentionally expose admin UI. Failing
+    this test means the design has drifted.
+    """
+    from bouwmeester.repositories.role import RoleRepository
+
+    perms = await RoleRepository(db_session).get_role_permission_ids("editor")
+    assert "org:create" in perms
+    assert "org:manage" not in perms
