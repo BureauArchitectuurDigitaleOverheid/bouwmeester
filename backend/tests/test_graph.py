@@ -417,9 +417,15 @@ async def test_community_graph_org_with_only_external_person_is_extern(
 
     resp = await client.get("/api/graph/community")
     assert resp.status_code == 200
+    nodes = resp.json()["nodes"]
+    person_node = next(
+        (n for n in nodes if n["id"] == f"person-{sample_person.id}"), None
+    )
+    assert person_node is not None
+    # Bewijs de keten: persoon is extern → org waar die persoon in zit blijft extern.
+    assert person_node["person_role"] == "extern"
     org_node = next(
-        (n for n in resp.json()["nodes"] if n["id"] == f"oe-{sample_organisatie.id}"),
-        None,
+        (n for n in nodes if n["id"] == f"oe-{sample_organisatie.id}"), None
     )
     assert org_node is not None
     assert org_node["org_role"] == "extern"

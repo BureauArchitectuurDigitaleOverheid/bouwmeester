@@ -225,12 +225,28 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
     if (data.nodeType === 'organisation') {
       const isIntern = data.orgRole === 'intern';
       const badgeColor = isIntern ? PERSON_INTERN_COLOR : color;
+      const orgTypeLabel = data.orgType ?? 'Organisatie';
+      const label = isIntern
+        ? data.orgType
+          ? `Intern · ${data.orgType}`
+          : 'Intern'
+        : orgTypeLabel;
       return (
-        <div className="flex items-center gap-1 mb-1">
-          <Building2 className="h-3 w-3" style={{ color: badgeColor }} />
-          <span style={{ color: badgeColor, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
-            {isIntern ? 'Intern' : data.orgType ?? 'Organisatie'}
-            {isIntern && data.orgType ? ` · ${data.orgType}` : ''}
+        <div className="flex items-center gap-1 mb-1 min-w-0">
+          <Building2 className="h-3 w-3 shrink-0" style={{ color: badgeColor }} />
+          <span
+            style={{
+              color: badgeColor,
+              fontSize: '10px',
+              fontWeight: 600,
+              letterSpacing: '0.025em',
+              textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {label}
           </span>
         </div>
       );
