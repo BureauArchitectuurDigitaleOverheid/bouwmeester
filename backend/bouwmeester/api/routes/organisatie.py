@@ -9,9 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import OrgContext, check_org_scope, get_org_context
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.org_context import OrgContext, get_org_context
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    check_resource_permission,
+    require_permission,
+)
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
+from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.schema.organisatie_eenheid import (
     OrganisatieEenheidCreate,
     OrganisatieEenheidPersonenGroup,
@@ -27,6 +32,38 @@ from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 
 router = APIRouter(prefix="/organisatie", tags=["organisatie"])
+
+
+async def _check_eenheid_write_access(
+    db: AsyncSession,
+    eenheid_id: UUID,
+    perm_ctx: PermissionContext,
+    org_ctx: OrgContext,
+) -> None:
+    """Allow update/delete on an eenheid that is either in scope or owned.
+
+    A user with org:manage may mutate any eenheid within their org scope
+    (the regular ministry-admin / unit-manager case). Editors who created
+    a stakeholder eenheid outside their scope are granted an "eigenaar"
+    resource-permission at create-time and may mutate it via that path.
+    Raises 403 otherwise.
+    """
+    if perm_ctx.is_super_admin:
+        return
+    all_visible = set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
+    if org_ctx.is_admin or eenheid_id in all_visible:
+        return
+    if perm_ctx.person_id is not None and await check_resource_permission(
+        db,
+        perm_ctx.person_id,
+        "organisatie_eenheid",
+        eenheid_id,
+        "org:manage",
+    ):
+        return
+    raise HTTPException(
+        status_code=403, detail="Geen toegang tot deze organisatie-eenheid"
+    )
 
 
 async def _enrich_with_managers(
@@ -128,15 +165,27 @@ async def create_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(require_permission("org:manage")),
 ) -> OrganisatieEenheidResponse:
-    """Create a new org unit, optionally under a parent."""
-    check_org_scope(data.parent_id, org_ctx)
+    """Create a new org unit, optionally under a parent.
+
+    Anyone with org:manage may pick any parent (or none) — stakeholder
+    eenheden often live outside the caller's own ministry. The aanmaker
+    is granted an eigenaar resource-permission so they can edit/delete
+    their creation later, even if it falls outside their org scope.
+    """
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
         require_found(await repo.get(data.parent_id), "Parent eenheid")
     eenheid = await repo.create(data)
+
+    if perm_ctx.person_id is not None and not perm_ctx.is_super_admin:
+        await ResourcePermissionRepository(db).create_permission(
+            person_id=perm_ctx.person_id,
+            resource_type="organisatie_eenheid",
+            resource_id=eenheid.id,
+            rol="eigenaar",
+        )
 
     await sync_and_notify_mentions(
         db,
@@ -180,11 +229,11 @@ async def update_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    perm_ctx: PermissionContext = Depends(require_permission("org:manage")),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> OrganisatieEenheidResponse:
     """Update an org unit. Detects circular parent references."""
-    check_org_scope(id, org_ctx)
+    await _check_eenheid_write_access(db, id, perm_ctx, org_ctx)
     repo = OrganisatieEenheidRepository(db)
 
     # Cycle detection for parent_id changes
@@ -224,11 +273,11 @@ async def delete_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    perm_ctx: PermissionContext = Depends(require_permission("org:manage")),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     """Delete an org unit. Fails if it has children or members."""
-    check_org_scope(id, org_ctx)
+    await _check_eenheid_write_access(db, id, perm_ctx, org_ctx)
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
     if await repo.has_children(id):
