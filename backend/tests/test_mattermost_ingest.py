@@ -532,6 +532,363 @@ async def test_initiatief_channel_writes_only_post_link(db_session, sample_initi
 
 
 # ---------------------------------------------------------------------------
+# Native file-uploads
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def lead_bijlagen_tmp(tmp_path):
+    """Patch bijlagen-root voor ingest-file-tests zodat we niet naar
+    /data/bijlagen schrijven."""
+    from unittest.mock import patch
+
+    with patch("bouwmeester.core.storage.bijlagen_root", return_value=tmp_path):
+        yield tmp_path
+
+
+def _setup_lead_channel(db_session, lead) -> str:
+    cid = _id()
+    db_session.add(
+        MattermostChannelLink(
+            channel_id=cid,
+            channel_name="proj",
+            channel_display_name="Project",
+            scope_type=SCOPE_LEAD,
+            scope_id=lead.id,
+            auto_note_enabled=True,
+        )
+    )
+    return cid
+
+
+async def test_lead_channel_downloads_native_file_upload(
+    db_session, sample_lead, lead_bijlagen_tmp
+):
+    """post.file_ids met één PDF -> LeadAttachment(soort='file') + bytes
+    op disk, met juiste velden."""
+    from unittest.mock import AsyncMock, patch
+
+    cid = _setup_lead_channel(db_session, sample_lead)
+    await db_session.flush()
+
+    pdf_bytes = b"%PDF-1.4 fake"
+
+    ingest = MattermostIngestService(db_session)
+    post = {
+        "id": _id(),
+        "channel_id": cid,
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "Hier het rapport.",
+        "file_ids": ["fid1"],
+        "metadata": {
+            "files": [
+                {
+                    "id": "fid1",
+                    "name": "rapport.pdf",
+                    "mime_type": "application/pdf",
+                    "size": len(pdf_bytes),
+                }
+            ]
+        },
+    }
+
+    with patch(
+        "bouwmeester.services.mattermost_service.MattermostService.download_file",
+        new=AsyncMock(return_value=pdf_bytes),
+    ):
+        await ingest.ingest_post(post)
+
+    attachments = (
+        (
+            await db_session.execute(
+                select(LeadAttachment).where(
+                    LeadAttachment.lead_id == sample_lead.id,
+                    LeadAttachment.soort == "file",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(attachments) == 1
+    att = attachments[0]
+    assert att.bestandsnaam == "rapport.pdf"
+    assert att.content_type == "application/pdf"
+    assert att.bestandsgrootte == len(pdf_bytes)
+    assert att.source == "mattermost"
+    assert att.source_ref == f"{post['id']}:fid1"
+    assert att.pad is not None
+    assert att.pad.startswith("leads/")
+
+    # Bestand staat op disk en is leesbaar.
+    on_disk = lead_bijlagen_tmp / att.pad
+    assert on_disk.exists()
+    assert on_disk.read_bytes() == pdf_bytes
+
+
+async def test_lead_channel_dedupes_native_file_upload(
+    db_session, sample_lead, lead_bijlagen_tmp
+):
+    """Twee keer dezelfde post-id+file-id geeft maar één LeadAttachment."""
+    from unittest.mock import AsyncMock, patch
+
+    cid = _setup_lead_channel(db_session, sample_lead)
+    await db_session.flush()
+
+    pdf_bytes = b"%PDF-1.4 fake"
+    post_id_str = _id()
+    post = {
+        "id": post_id_str,
+        "channel_id": cid,
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "rapport",
+        "file_ids": ["fidA"],
+        "metadata": {
+            "files": [
+                {
+                    "id": "fidA",
+                    "name": "x.pdf",
+                    "mime_type": "application/pdf",
+                    "size": len(pdf_bytes),
+                }
+            ]
+        },
+    }
+
+    ingest = MattermostIngestService(db_session)
+    with patch(
+        "bouwmeester.services.mattermost_service.MattermostService.download_file",
+        new=AsyncMock(return_value=pdf_bytes),
+    ):
+        # Eerste keer via volledige ingest_post (post_link wordt aangemaakt).
+        await ingest.ingest_post(post)
+        # Tweede keer alleen de file-helper aanroepen — simuleert recovery
+        # waar dezelfde file op een al-bekende post nog eens binnenkomt.
+        await ingest._ingest_post_files(
+            lead_id=sample_lead.id, post=post, post_id=post_id_str
+        )
+
+    attachments = (
+        (
+            await db_session.execute(
+                select(LeadAttachment).where(
+                    LeadAttachment.lead_id == sample_lead.id,
+                    LeadAttachment.soort == "file",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(attachments) == 1
+
+
+async def test_lead_channel_skips_disallowed_file_type(
+    db_session, sample_lead, lead_bijlagen_tmp
+):
+    """mime_type=application/x-msdownload -> geen file-attachment, maar
+    note + post_link gaan wel door. download_file wordt niet aangeroepen."""
+    from unittest.mock import AsyncMock, patch
+
+    cid = _setup_lead_channel(db_session, sample_lead)
+    await db_session.flush()
+
+    download = AsyncMock(return_value=b"MZ")
+    post = {
+        "id": _id(),
+        "channel_id": cid,
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "kijk eens",
+        "file_ids": ["badfid"],
+        "metadata": {
+            "files": [
+                {
+                    "id": "badfid",
+                    "name": "evil.exe",
+                    "mime_type": "application/x-msdownload",
+                    "size": 2,
+                }
+            ]
+        },
+    }
+
+    ingest = MattermostIngestService(db_session)
+    with patch(
+        "bouwmeester.services.mattermost_service.MattermostService.download_file",
+        new=download,
+    ):
+        await ingest.ingest_post(post)
+
+    file_attachments = (
+        (
+            await db_session.execute(
+                select(LeadAttachment).where(
+                    LeadAttachment.lead_id == sample_lead.id,
+                    LeadAttachment.soort == "file",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert file_attachments == []
+    # Allowlist-check vóór download zodat we geen MM-bandwidth verbranden.
+    download.assert_not_called()
+    # Note + post_link bestaan wel.
+    activity = (
+        await db_session.execute(
+            select(LeadActivity).where(LeadActivity.lead_id == sample_lead.id)
+        )
+    ).scalar_one()
+    assert activity.activity_type == "note"
+    post_link = (
+        await db_session.execute(
+            select(MattermostPostLink).where(MattermostPostLink.post_id == post["id"])
+        )
+    ).scalar_one()
+    assert post_link.lead_activity_id == activity.id
+
+
+async def test_lead_channel_one_corrupt_file_does_not_block_others(
+    db_session, sample_lead, lead_bijlagen_tmp
+):
+    """Twee files: één goed, één breekt. Goede komt door, de hele post
+    crasht niet."""
+    from unittest.mock import AsyncMock, patch
+
+    cid = _setup_lead_channel(db_session, sample_lead)
+    await db_session.flush()
+
+    good_bytes = b"%PDF-1.4 ok"
+
+    async def fake_download(file_id, *, max_bytes):
+        if file_id == "good":
+            return good_bytes
+        return None
+
+    post = {
+        "id": _id(),
+        "channel_id": cid,
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "twee bestanden",
+        "file_ids": ["good", "broken"],
+        "metadata": {
+            "files": [
+                {
+                    "id": "good",
+                    "name": "ok.pdf",
+                    "mime_type": "application/pdf",
+                    "size": len(good_bytes),
+                },
+                {
+                    "id": "broken",
+                    "name": "stuk.pdf",
+                    "mime_type": "application/pdf",
+                    "size": 999,
+                },
+            ]
+        },
+    }
+
+    ingest = MattermostIngestService(db_session)
+    with patch(
+        "bouwmeester.services.mattermost_service.MattermostService.download_file",
+        new=AsyncMock(side_effect=fake_download),
+    ):
+        await ingest.ingest_post(post)
+
+    attachments = (
+        (
+            await db_session.execute(
+                select(LeadAttachment).where(
+                    LeadAttachment.lead_id == sample_lead.id,
+                    LeadAttachment.soort == "file",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(attachments) == 1
+    assert attachments[0].bestandsnaam == "ok.pdf"
+    assert attachments[0].source_ref == f"{post['id']}:good"
+
+    # Note + post_link gaan ook gewoon door.
+    activity = (
+        await db_session.execute(
+            select(LeadActivity).where(LeadActivity.lead_id == sample_lead.id)
+        )
+    ).scalar_one()
+    assert activity.activity_type == "note"
+    post_link = (
+        await db_session.execute(
+            select(MattermostPostLink).where(MattermostPostLink.post_id == post["id"])
+        )
+    ).scalar_one()
+    assert post_link.lead_activity_id == activity.id
+
+
+async def test_lead_channel_falls_back_to_get_file_info(
+    db_session, sample_lead, lead_bijlagen_tmp
+):
+    """Zonder metadata.files moet ingest get_file_info aanroepen voor naam +
+    mime."""
+    from unittest.mock import AsyncMock, patch
+
+    cid = _setup_lead_channel(db_session, sample_lead)
+    await db_session.flush()
+
+    pdf_bytes = b"%PDF-1.4 fb"
+    info = AsyncMock(
+        return_value={
+            "id": "fidZ",
+            "name": "fallback.pdf",
+            "mime_type": "application/pdf",
+            "size": len(pdf_bytes),
+        }
+    )
+    download = AsyncMock(return_value=pdf_bytes)
+
+    post = {
+        "id": _id(),
+        "channel_id": cid,
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "geen metadata",
+        "file_ids": ["fidZ"],
+        # Geen "metadata"-key — dwingt fallback naar get_file_info.
+    }
+
+    ingest = MattermostIngestService(db_session)
+    with (
+        patch(
+            "bouwmeester.services.mattermost_service.MattermostService.get_file_info",
+            new=info,
+        ),
+        patch(
+            "bouwmeester.services.mattermost_service.MattermostService.download_file",
+            new=download,
+        ),
+    ):
+        await ingest.ingest_post(post)
+
+    info.assert_called_once_with("fidZ")
+    att = (
+        await db_session.execute(
+            select(LeadAttachment).where(
+                LeadAttachment.lead_id == sample_lead.id,
+                LeadAttachment.soort == "file",
+            )
+        )
+    ).scalar_one()
+    assert att.bestandsnaam == "fallback.pdf"
+
+
+# ---------------------------------------------------------------------------
 # DM-pad: link-codes via websocket-event ipv polling
 # ---------------------------------------------------------------------------
 

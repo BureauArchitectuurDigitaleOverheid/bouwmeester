@@ -501,6 +501,61 @@ class MattermostService:
         except httpx.HTTPError:
             return mattermost_user_id
 
+    async def get_file_info(self, file_id: str) -> dict | None:
+        """Haal metadata van een Mattermost-bestand op.
+
+        Returns ``None`` bij elke fout zodat de caller (ingest) een rotte
+        file kan overslaan zonder de hele post-verwerking te laten klappen.
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.get(f"/api/v4/files/{file_id}/info")
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError:
+            logger.warning("Kon file-info voor %s niet ophalen", file_id)
+            return None
+
+    async def download_file(self, file_id: str, *, max_bytes: int) -> bytes | None:
+        """Download een Mattermost-bestand, met cap op ``max_bytes``.
+
+        Streamt zodat een veel-te-groot bestand niet eerst volledig in
+        geheugen geladen wordt. Bij overschrijden van ``max_bytes``,
+        netwerkfout, of niet-200-status returnen we ``None``. De caller
+        moet dan deze ene file overslaan.
+
+        Eigen timeout van 30s, ruimer dan de default 10s op het client-
+        niveau, omdat file-downloads merkbaar trager zijn dan API-calls.
+        """
+        client = await self._get_client()
+        try:
+            async with client.stream(
+                "GET",
+                f"/api/v4/files/{file_id}",
+                timeout=30.0,
+            ) as resp:
+                if resp.status_code != 200:
+                    logger.warning(
+                        "Download file %s gaf status %s",
+                        file_id,
+                        resp.status_code,
+                    )
+                    return None
+                buffer = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    buffer.extend(chunk)
+                    if len(buffer) > max_bytes:
+                        logger.warning(
+                            "File %s overschrijdt max_bytes (%d), abort",
+                            file_id,
+                            max_bytes,
+                        )
+                        return None
+                return bytes(buffer)
+        except httpx.HTTPError:
+            logger.warning("Kon file %s niet downloaden", file_id)
+            return None
+
     async def is_bot_member_of_channel(self, channel_id: str) -> bool:
         """Check of de bot momenteel lid is van een kanaal.
 
