@@ -2151,6 +2151,7 @@ export interface CommunityGraphNode {
   expertise?: string | null;
   person_role?: 'intern' | 'extern' | null;
   org_type?: string | null;
+  org_role?: 'intern' | 'extern' | null;
   samenwerkingsverband_type?: string | null;
   corpus_node_type?: string | null;
 }

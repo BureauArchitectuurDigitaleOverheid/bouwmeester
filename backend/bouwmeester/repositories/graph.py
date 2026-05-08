@@ -232,6 +232,10 @@ class GraphRepository:
         """
         graph_nodes: dict[str, CommunityGraphNode] = {}
         graph_edges: list[CommunityGraphEdge] = []
+        # Org keys (graph_nodes IDs) where at least one internal person is
+        # actively placed. Used at the end to flag org_role="intern" so the
+        # frontend can put these in a separate swim-lane.
+        internal_org_keys: set[str] = set()
         edge_counter = 0
 
         def _next_edge_id() -> str:
@@ -510,11 +514,14 @@ class GraphRepository:
                     )
 
                 for pl in plaatsing_rows:
+                    oe_key = f"oe-{pl.organisatie_eenheid_id}"
+                    if pl.person_id in internal_person_ids:
+                        internal_org_keys.add(oe_key)
                     graph_edges.append(
                         CommunityGraphEdge(
                             id=_next_edge_id(),
                             source=f"person-{pl.person_id}",
-                            target=f"oe-{pl.organisatie_eenheid_id}",
+                            target=oe_key,
                             edge_type="lid_van",
                             label="lid van",
                         )
@@ -559,6 +566,10 @@ class GraphRepository:
                             label=lid.rol or "lid",
                         )
                     )
+
+        for node in graph_nodes.values():
+            if node.node_type == "organisation":
+                node.org_role = "intern" if node.id in internal_org_keys else "extern"
 
         return CommunityGraphResponse(
             nodes=list(graph_nodes.values()),
