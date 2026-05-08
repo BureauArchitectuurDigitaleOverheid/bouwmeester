@@ -6,6 +6,7 @@ import {
   useUpdateSamenwerkingsverband,
   useDeleteSamenwerkingsverband,
   useAddLid,
+  useUpdateLid,
   useRemoveLid,
 } from '@/hooks/useSamenwerkingsverbanden';
 import { usePeople } from '@/hooks/usePeople';
@@ -17,10 +18,13 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
+import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import {
   SAMENWERKINGSVERBAND_TYPE_LABELS,
   SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS,
   SAMENWERKINGSVERBAND_TYPE_OPTIONS,
+  type SamenwerkingsverbandLid,
+  type SamenwerkingsverbandLidUpdate,
   type SamenwerkingsverbandUpdate,
 } from '@/types';
 
@@ -31,6 +35,7 @@ export function SamenwerkingsverbandDetailPage() {
   const updateMutation = useUpdateSamenwerkingsverband();
   const deleteMutation = useDeleteSamenwerkingsverband();
   const addLidMutation = useAddLid();
+  const updateLidMutation = useUpdateLid();
   const removeLidMutation = useRemoveLid();
   const { data: people = [] } = usePeople();
 
@@ -43,6 +48,18 @@ export function SamenwerkingsverbandDetailPage() {
   const [showAddLid, setShowAddLid] = useState(false);
   const [newLidPersonId, setNewLidPersonId] = useState('');
   const [newLidRol, setNewLidRol] = useState('');
+
+  // Inline persoon-aanmaken vanuit lid-toevoeg-flow
+  const [showPersonCreate, setShowPersonCreate] = useState(false);
+  const [personCreateName, setPersonCreateName] = useState('');
+
+  // Lid-bewerken-form (één lid tegelijk)
+  const [editingLidId, setEditingLidId] = useState<string | null>(null);
+  const [lidEditForm, setLidEditForm] = useState<{
+    rol: string;
+    start_datum: string;
+    eind_datum: string;
+  }>({ rol: '', start_datum: '', eind_datum: '' });
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-12"><LoadingSpinner /></div>;
@@ -112,6 +129,48 @@ export function SamenwerkingsverbandDetailPage() {
       setConfirmRemoveLidId(null);
     } catch {
       setConfirmRemoveLidId(null);
+    }
+  };
+
+  const handleCreatePerson = async (text: string): Promise<string | null> => {
+    setPersonCreateName(text);
+    setShowPersonCreate(true);
+    return null;
+  };
+
+  const handlePersonCreated = (personId: string) => {
+    setNewLidPersonId(personId);
+  };
+
+  const startEditLid = (lid: SamenwerkingsverbandLid) => {
+    setEditingLidId(lid.id);
+    setLidEditForm({
+      rol: lid.rol ?? '',
+      start_datum: lid.start_datum ?? '',
+      eind_datum: lid.eind_datum ?? '',
+    });
+  };
+
+  const cancelEditLid = () => {
+    setEditingLidId(null);
+  };
+
+  const handleSaveLid = async () => {
+    if (!id || !editingLidId) return;
+    const data: SamenwerkingsverbandLidUpdate = {
+      rol: lidEditForm.rol.trim() || null,
+      eind_datum: lidEditForm.eind_datum || null,
+    };
+    // Lege start_datum niet meesturen: kolom is NOT NULL en er is geen
+    // semantische "lid sinds onbekend"-state. Veld blijft dan onveranderd.
+    if (lidEditForm.start_datum) {
+      data.start_datum = lidEditForm.start_datum;
+    }
+    try {
+      await updateLidMutation.mutateAsync({ swvId: id, lidId: editingLidId, data });
+      setEditingLidId(null);
+    } catch {
+      // toast
     }
   };
 
@@ -257,6 +316,8 @@ export function SamenwerkingsverbandDetailPage() {
                 onChange={setNewLidPersonId}
                 options={personOptions}
                 placeholder="Zoek persoon..."
+                onCreate={handleCreatePerson}
+                createLabel="Nieuwe persoon aanmaken"
               />
               <Input
                 label="Rol (optioneel)"
@@ -289,32 +350,93 @@ export function SamenwerkingsverbandDetailPage() {
           <p className="text-sm text-text-secondary italic">Nog geen leden.</p>
         ) : (
           <ul className="space-y-1">
-            {swv.leden.map((lid) => (
-              <li
-                key={lid.id}
-                className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex-1 flex items-center gap-2 text-sm">
-                  <span className="font-medium text-text">{lid.person_naam}</span>
-                  {lid.person_expertise && (
-                    <Badge variant="indigo">{lid.person_expertise}</Badge>
-                  )}
-                  {lid.rol && (
-                    <span className="text-xs text-text-secondary">— {lid.rol}</span>
-                  )}
-                </div>
-                <span className="text-xs text-text-secondary">
-                  sinds {new Date(lid.start_datum).toLocaleDateString('nl-NL')}
-                </span>
-                <button
-                  onClick={() => setConfirmRemoveLidId(lid.id)}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-secondary hover:text-red-600 hover:bg-red-50 transition-all"
-                  title="Verwijderen"
+            {swv.leden.map((lid) => {
+              const isEditing = editingLidId === lid.id;
+              if (isEditing) {
+                return (
+                  <li
+                    key={lid.id}
+                    className="rounded-lg border border-border bg-gray-50 p-3 space-y-3"
+                  >
+                    <div className="text-sm font-medium text-text">{lid.person_naam}</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <Input
+                        label="Rol"
+                        value={lidEditForm.rol}
+                        onChange={(e) =>
+                          setLidEditForm((f) => ({ ...f, rol: e.target.value }))
+                        }
+                        placeholder="bv. trekker, voorzitter"
+                      />
+                      <Input
+                        label="Startdatum"
+                        type="date"
+                        value={lidEditForm.start_datum}
+                        onChange={(e) =>
+                          setLidEditForm((f) => ({ ...f, start_datum: e.target.value }))
+                        }
+                      />
+                      <Input
+                        label="Einddatum"
+                        type="date"
+                        value={lidEditForm.eind_datum}
+                        onChange={(e) =>
+                          setLidEditForm((f) => ({ ...f, eind_datum: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 justify-end">
+                      <Button variant="secondary" size="sm" onClick={cancelEditLid}>
+                        Annuleren
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleSaveLid}
+                        loading={updateLidMutation.isPending}
+                      >
+                        Opslaan
+                      </Button>
+                    </div>
+                  </li>
+                );
+              }
+              return (
+                <li
+                  key={lid.id}
+                  className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50 transition-colors"
                 >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </li>
-            ))}
+                  <div className="flex-1 flex items-center gap-2 text-sm">
+                    <span className="font-medium text-text">{lid.person_naam}</span>
+                    {lid.person_expertise && (
+                      <Badge variant="indigo">{lid.person_expertise}</Badge>
+                    )}
+                    {lid.rol && (
+                      <span className="text-xs text-text-secondary">— {lid.rol}</span>
+                    )}
+                  </div>
+                  <span className="text-xs text-text-secondary">
+                    sinds {new Date(lid.start_datum).toLocaleDateString('nl-NL')}
+                    {lid.eind_datum && (
+                      <> · tot {new Date(lid.eind_datum).toLocaleDateString('nl-NL')}</>
+                    )}
+                  </span>
+                  <button
+                    onClick={() => startEditLid(lid)}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-secondary hover:text-text hover:bg-gray-100 transition-all"
+                    title="Bewerken"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setConfirmRemoveLidId(lid.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-secondary hover:text-red-600 hover:bg-red-50 transition-all"
+                    title="Verwijderen"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -345,6 +467,13 @@ export function SamenwerkingsverbandDetailPage() {
       >
         <p>Weet je zeker dat je dit lid wilt verwijderen?</p>
       </ConfirmDialog>
+
+      <PersonQuickCreateForm
+        open={showPersonCreate}
+        onClose={() => setShowPersonCreate(false)}
+        initialName={personCreateName}
+        onCreated={handlePersonCreated}
+      />
     </div>
   );
 }

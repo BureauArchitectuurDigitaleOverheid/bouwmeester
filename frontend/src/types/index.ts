@@ -2273,6 +2273,7 @@ export interface SamenwerkingsverbandLidCreate {
 
 export interface SamenwerkingsverbandLidUpdate {
   rol?: string | null;
+  start_datum?: string | null;
   eind_datum?: string | null;
 }
 
