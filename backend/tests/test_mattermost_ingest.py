@@ -630,7 +630,9 @@ async def test_lead_channel_downloads_native_file_upload(
 async def test_lead_channel_dedupes_native_file_upload(
     db_session, sample_lead, lead_bijlagen_tmp
 ):
-    """Twee keer dezelfde post-id+file-id geeft maar één LeadAttachment."""
+    """De pre-download dedupe-check in _ingest_one_file voorkomt dubbele
+    LeadAttachments bij replay op dezelfde (post_id, file_id), zelfs als
+    de outer post_link short-circuit niet greep (bv. directe call)."""
     from unittest.mock import AsyncMock, patch
 
     cid = _setup_lead_channel(db_session, sample_lead)

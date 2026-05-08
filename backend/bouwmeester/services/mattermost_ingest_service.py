@@ -452,6 +452,15 @@ class MattermostIngestService:
                         file_id=file_id,
                         meta=meta_by_id.get(file_id),
                     )
+                except ValueError:
+                    # Mattermost niet (volledig) geconfigureerd, bv. geen
+                    # bot-token. Niet zinvol om de loop af te maken; alle
+                    # volgende files zouden dezelfde error geven.
+                    logger.warning(
+                        "Mattermost niet geconfigureerd, sla %d file(s) over",
+                        len(file_ids),
+                    )
+                    return
                 except Exception:
                     logger.exception(
                         "Kon Mattermost-file %s voor lead %s niet ingesten",
@@ -490,7 +499,7 @@ class MattermostIngestService:
             logger.warning("Geen file-info voor %s, skip", file_id)
             return
 
-        claimed_ct = info.get("mime_type") or "application/octet-stream"
+        claimed_ct = (info.get("mime_type") or "application/octet-stream").lower()
         if claimed_ct not in ALLOWED_CONTENT_TYPES:
             logger.info(
                 "Mattermost-file %s heeft niet-toegestaan type %s, skip",
