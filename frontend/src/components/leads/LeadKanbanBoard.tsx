@@ -4,7 +4,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { LeadCard } from './LeadCard';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { LeadIntakeDialog } from './LeadIntakeDialog';
-import { useLeads, useMoveLead } from '@/hooks/useLeads';
+import { useLeads, useMoveLead, useReorderLeads } from '@/hooks/useLeads';
 import { useLeadColumns } from '@/hooks/useLeadColumns';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import type { Lead, LeadColumn, LeadFilters } from '@/types';
@@ -59,8 +59,14 @@ export function LeadKanbanBoard({
   );
   const { columns, isLoading: columnsLoading } = useLeadColumns(initiatiefId);
   const moveLead = useMoveLead();
+  const reorderLeads = useReorderLeads();
   const { openLeadDetail } = useLeadDetail();
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const [dragOverSlot, setDragOverSlot] = useState<{
+    slug: string;
+    index: number;
+  } | null>(null);
+  const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [showIntake, setShowIntake] = useState(false);
 
   const allLeads = useMemo(() => leads ?? [], [leads]);
@@ -102,26 +108,105 @@ export function LeadKanbanBoard({
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
     e.dataTransfer.setData('text/plain', lead.id);
     e.dataTransfer.effectAllowed = 'move';
+    setDraggedLeadId(lead.id);
   };
 
-  const handleDragOver = (e: React.DragEvent, slug: string) => {
+  const handleDragEnd = () => {
+    setDraggedLeadId(null);
+    setDragOverColumn(null);
+    setDragOverSlot(null);
+  };
+
+  // DragOver op een kaart: bepaal boven/onder midden en zet de slot-indicator
+  // op de juiste insert-positie.
+  const handleCardDragOver = (
+    e: React.DragEvent,
+    slug: string,
+    index: number,
+  ) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
+    const rect = e.currentTarget.getBoundingClientRect();
+    const above = e.clientY < rect.top + rect.height / 2;
+    const slotIndex = above ? index : index + 1;
+    setDragOverSlot({ slug, index: slotIndex });
     setDragOverColumn(slug);
   };
 
-  const handleDragLeave = () => {
+  // DragOver op de kolom buiten kaarten: drop wordt achteraan geplaatst tenzij
+  // een kaart-handler in dezelfde frame al een specifieke slot heeft gezet.
+  const handleColumnDragOver = (e: React.DragEvent, slug: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverColumn(slug);
+    setDragOverSlot((prev) => {
+      if (prev && prev.slug === slug) return prev;
+      const length = leadsByStage[slug]?.length ?? 0;
+      return { slug, index: length };
+    });
+  };
+
+  const handleColumnDragLeave = (e: React.DragEvent) => {
+    const related = e.relatedTarget as Node | null;
+    if (related && e.currentTarget.contains(related)) return;
     setDragOverColumn(null);
+    setDragOverSlot(null);
+  };
+
+  const reorderWithinStage = (
+    targetSlug: string,
+    leadId: string,
+    targetIndex: number,
+  ) => {
+    const current = leadsByStage[targetSlug] ?? [];
+    const without = current.filter((l) => l.id !== leadId);
+    const clampedIndex = Math.max(0, Math.min(targetIndex, without.length));
+    const newOrder = [
+      ...without.slice(0, clampedIndex).map((l) => l.id),
+      leadId,
+      ...without.slice(clampedIndex).map((l) => l.id),
+    ];
+    reorderLeads.mutate({ leadIds: newOrder, stage: targetSlug });
+  };
+
+  const performDrop = (
+    leadId: string,
+    targetSlug: string,
+    targetIndex: number,
+  ) => {
+    const lead = allLeads.find((l) => l.id === leadId);
+    if (!lead) return;
+
+    if (lead.stage === targetSlug) {
+      reorderWithinStage(targetSlug, leadId, targetIndex);
+      return;
+    }
+
+    moveLead.mutate(
+      { id: leadId, stage: targetSlug },
+      {
+        onSuccess: () => {
+          reorderWithinStage(targetSlug, leadId, targetIndex);
+        },
+      },
+    );
   };
 
   const handleDrop = (e: React.DragEvent, targetSlug: string) => {
     e.preventDefault();
-    setDragOverColumn(null);
     const leadId = e.dataTransfer.getData('text/plain');
-    const lead = allLeads.find((l) => l.id === leadId);
-    if (!lead || lead.stage === targetSlug) return;
+    const slot = dragOverSlot;
+    setDragOverColumn(null);
+    setDragOverSlot(null);
+    setDraggedLeadId(null);
+    if (!leadId) return;
 
-    moveLead.mutate({ id: leadId, stage: targetSlug });
+    const targetIndex =
+      slot && slot.slug === targetSlug
+        ? slot.index
+        : (leadsByStage[targetSlug]?.length ?? 0);
+    performDrop(leadId, targetSlug, targetIndex);
   };
 
   return (
@@ -134,8 +219,8 @@ export function LeadKanbanBoard({
         {visibleColumns.map((col) => (
           <div
             key={col.id}
-            onDragOver={(e) => handleDragOver(e, col.slug)}
-            onDragLeave={handleDragLeave}
+            onDragOver={(e) => handleColumnDragOver(e, col.slug)}
+            onDragLeave={handleColumnDragLeave}
             onDrop={(e) => handleDrop(e, col.slug)}
             className={`flex-none w-[85vw] sm:w-[320px] md:flex-1 md:min-w-[200px] snap-center ${
               dragOverColumn === col.slug ? 'ring-2 ring-primary-300 ring-inset rounded-xl' : ''
@@ -155,24 +240,63 @@ export function LeadKanbanBoard({
                 </span>
               </div>
 
-              <div className="flex-1 px-2 pb-2 space-y-2">
+              <div className="flex-1 px-2 pb-2">
                 {(leadsByStage[col.slug] ?? []).length > 0 ? (
-                  (leadsByStage[col.slug] ?? []).map((lead) => (
-                    <div
-                      key={lead.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, lead)}
-                    >
-                      <LeadCard
-                        lead={lead}
-                        onClick={() => openLeadDetail(lead.id)}
-                      />
-                    </div>
-                  ))
+                  <>
+                    {(leadsByStage[col.slug] ?? []).map((lead, index) => {
+                      const indicatorAbove =
+                        dragOverSlot?.slug === col.slug &&
+                        dragOverSlot.index === index &&
+                        draggedLeadId !== lead.id;
+                      return (
+                        <div key={lead.id}>
+                          <div
+                            className={`h-1 my-1 rounded transition-colors ${
+                              indicatorAbove ? 'bg-primary-400' : ''
+                            }`}
+                          />
+                          <div
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, lead)}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) =>
+                              handleCardDragOver(e, col.slug, index)
+                            }
+                            onDrop={(e) => handleDrop(e, col.slug)}
+                            className={
+                              draggedLeadId === lead.id ? 'opacity-40' : ''
+                            }
+                          >
+                            <LeadCard
+                              lead={lead}
+                              onClick={() => openLeadDetail(lead.id)}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {(() => {
+                      const lastIndex = (leadsByStage[col.slug] ?? []).length;
+                      const indicatorActive =
+                        dragOverSlot?.slug === col.slug &&
+                        dragOverSlot.index === lastIndex;
+                      return (
+                        <div
+                          className={`h-1 my-1 rounded transition-colors ${
+                            indicatorActive ? 'bg-primary-400' : ''
+                          }`}
+                        />
+                      );
+                    })()}
+                  </>
                 ) : (
-                  <p className="text-xs text-text-secondary text-center py-6">
+                  <div
+                    className={`text-xs text-text-secondary text-center py-6 rounded transition-colors ${
+                      dragOverColumn === col.slug ? 'bg-primary-50' : ''
+                    }`}
+                  >
                     Sleep leads hierheen
-                  </p>
+                  </div>
                 )}
               </div>
 
