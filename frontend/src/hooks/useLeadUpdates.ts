@@ -16,11 +16,11 @@ import type {
   LeadUpdatePostEdit,
 } from '@/types';
 
-const queryKey = (leadId: string) => ['leadUpdates', leadId] as const;
+const queryKey = (leadId: string | null) => ['leadUpdates', leadId] as const;
 
 export function useLeadUpdates(leadId: string | null) {
   return useQuery<LeadUpdatePost[]>({
-    queryKey: queryKey(leadId ?? ''),
+    queryKey: queryKey(leadId),
     queryFn: () => listLeadUpdates(leadId as string),
     enabled: !!leadId,
   });

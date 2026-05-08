@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Megaphone, Mail, Sparkles, Trash2, Pencil, Globe, EyeOff, Upload } from 'lucide-react';
 
 import { Button } from '@/components/common/Button';
@@ -114,6 +114,9 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
         mail_cc: d.mail_cc.length ? d.mail_cc : result.suggested_cc ?? [],
         source_raw_text: rawText,
       }));
+      // Reset the upload list so the same files don't get re-sent on the
+      // next click; the extracted output is now in draft state.
+      setFiles([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Onbekende fout bij AI-extract.');
     }
@@ -292,14 +295,14 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
               variant="secondary"
               size="sm"
               onClick={() => handleSave(false)}
-              disabled={!draft.titel.trim()}
+              disabled={!draft.titel.trim() || parseMutation.isPending}
             >
               Opslaan als concept
             </Button>
             <Button
               size="sm"
               onClick={() => handleSave(true)}
-              disabled={!draft.titel.trim()}
+              disabled={!draft.titel.trim() || parseMutation.isPending}
             >
               {editingId ? 'Opslaan + publiceren' : 'Direct publiceren'}
             </Button>
@@ -453,6 +456,12 @@ function EmailListInput({
   onChange: (next: string[]) => void;
 }) {
   const [text, setText] = useState(value.join(', '));
+  // Sync local edit-text with the canonical value when the parent updates
+  // it (e.g. after AI suggested recipients land via setDraft). Without this
+  // the input keeps showing the previous string until the user focuses+blurs.
+  useEffect(() => {
+    setText(value.join(', '));
+  }, [value]);
   return (
     <div>
       <label className="text-xs font-medium text-text-secondary">{label}</label>

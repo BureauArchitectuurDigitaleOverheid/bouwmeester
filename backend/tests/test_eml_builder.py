@@ -34,3 +34,27 @@ def test_empty_to_and_cc_omitted():
     msg = message_from_bytes(eml)
     assert msg["To"] is None
     assert msg["Cc"] is None
+
+
+def test_markdown_to_html_handles_multiple_bold_segments():
+    """Regression: ``**a** **b**`` must produce two <strong>, not one greedy
+    span swallowing the space between them."""
+    from bouwmeester.services.markdown_min import markdown_to_html
+
+    out = markdown_to_html("**a** **b**")
+    assert out == "<p><strong>a</strong> <strong>b</strong></p>"
+
+
+def test_markdown_to_html_escapes_html_in_input():
+    from bouwmeester.services.markdown_min import markdown_to_html
+
+    out = markdown_to_html("<script>alert(1)</script> & co")
+    assert "<script>" not in out
+    assert "&amp;" in out
+
+
+def test_markdown_to_html_renders_bullet_list():
+    from bouwmeester.services.markdown_min import markdown_to_html
+
+    out = markdown_to_html("- een\n- twee")
+    assert out == "<ul><li>een</li><li>twee</li></ul>"

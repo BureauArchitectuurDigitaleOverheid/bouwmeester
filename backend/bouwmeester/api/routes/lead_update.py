@@ -192,9 +192,11 @@ def _load_lead_attachments_for_llm(
     text_parts: list[str] = []
     image_parts: list[dict] = []
 
+    # ``created_at`` has a server_default so post-flush it's never None, but
+    # be defensive: an in-memory model that hasn't hit the DB has no value.
     sorted_attachments = sorted(
         (a for a in attachments if a.pad),
-        key=lambda a: a.created_at,
+        key=lambda a: a.created_at or datetime.min.replace(tzinfo=UTC),
         reverse=True,
     )[:_MAX_ATTACHMENTS_FOR_PARSE]
 
@@ -589,8 +591,12 @@ async def download_update_eml(
         cc=list(post.mail_cc or []),
         body_html=body_html,
     )
+    # ASCII-only — non-ASCII filenames in Content-Disposition need RFC 5987
+    # encoding which Outlook/legacy clients handle inconsistently. Strip to
+    # the safe set instead.
     safe_title = "".join(
-        c if c.isalnum() or c in "-_" else "-" for c in (post.titel or "update")
+        c if (c.isascii() and (c.isalnum() or c in "-_")) else "-"
+        for c in (post.titel or "update")
     )[:60]
     filename = f"update-{safe_title}.eml"
     return Response(

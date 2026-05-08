@@ -122,6 +122,34 @@ async def test_unknown_lead_returns_404(client):
     assert resp.status_code == 404
 
 
+async def test_internal_listing_returns_full_payload_for_lead_members(
+    client, sample_lead
+):
+    """Authenticated users that can see the lead get the full update payload —
+    including body_internal, mail_subject, mail_to. The boundary is at the
+    public /c/:slug endpoint (covered in test_public_initiatief), not here.
+    """
+    create = await client.post(
+        f"/api/leads/{sample_lead.id}/updates",
+        json={
+            "titel": "T",
+            "body_internal": "intern",
+            "body_public": "publiek",
+            "mail_subject": "subject",
+            "mail_to": ["to@x.nl"],
+            "mail_cc": ["cc@x.nl"],
+        },
+    )
+    assert create.status_code == 201
+    listing = await client.get(f"/api/leads/{sample_lead.id}/updates")
+    assert listing.status_code == 200
+    post = listing.json()[0]
+    assert post["body_internal"] == "intern"
+    assert post["mail_subject"] == "subject"
+    assert post["mail_to"] == ["to@x.nl"]
+    assert post["mail_cc"] == ["cc@x.nl"]
+
+
 async def test_load_lead_attachments_for_llm_picks_text_and_image(tmp_path):
     """Unit test the helper that feeds existing lead-attachments into the LLM."""
     from datetime import UTC, datetime
@@ -166,6 +194,68 @@ async def test_load_lead_attachments_for_llm_picks_text_and_image(tmp_path):
     assert len(image_parts) == 1
     assert image_parts[0]["type"] == "image_url"
     assert image_parts[0]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+async def test_parse_round_trip_with_mocked_llm(client, sample_lead, monkeypatch):
+    """End-to-end parse: raw_text → mocked LLM → structured response."""
+    from unittest.mock import AsyncMock
+
+    fake_llm_response = (
+        '{"titel": "Mock-titel",'
+        ' "body_internal": "Lange interne tekst",'
+        ' "body_public": "Korte publieke versie",'
+        ' "mail_subject": "Onderwerp"}'
+    )
+
+    fake_llm = AsyncMock()
+    fake_llm._complete = AsyncMock(return_value=fake_llm_response)
+
+    async def fake_get_llm_service(_db):
+        return fake_llm
+
+    monkeypatch.setattr(
+        "bouwmeester.services.llm.factory.get_llm_service",
+        fake_get_llm_service,
+    )
+
+    resp = await client.post(
+        f"/api/leads/{sample_lead.id}/updates/parse",
+        data={"raw_text": "Korte invoer van de gebruiker"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["titel"] == "Mock-titel"
+    assert body["body_internal"] == "Lange interne tekst"
+    assert body["body_public"] == "Korte publieke versie"
+    assert body["mail_subject"] == "Onderwerp"
+    assert body["suggested_to"] == []  # geen contacten op deze lead
+    fake_llm._complete.assert_awaited_once()
+
+
+async def test_parse_strips_markdown_codeblock_from_llm_response(
+    client, sample_lead, monkeypatch
+):
+    """LLM wraps JSON in ```json fences sometimes — _robust_parse_json strips."""
+    from unittest.mock import AsyncMock
+
+    fake_response = '```json\n{"titel": "X", "body_internal": "y"}\n```'
+    fake_llm = AsyncMock()
+    fake_llm._complete = AsyncMock(return_value=fake_response)
+
+    async def fake_get_llm_service(_db):
+        return fake_llm
+
+    monkeypatch.setattr(
+        "bouwmeester.services.llm.factory.get_llm_service",
+        fake_get_llm_service,
+    )
+
+    resp = await client.post(
+        f"/api/leads/{sample_lead.id}/updates/parse",
+        data={"raw_text": "input"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["titel"] == "X"
 
 
 async def test_load_lead_attachments_for_llm_skips_oversized(tmp_path):
