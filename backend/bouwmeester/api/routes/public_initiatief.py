@@ -11,7 +11,9 @@ from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.initiatief_update import InitiatiefUpdatePost
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_column import LeadColumn
+from bouwmeester.models.lead_update import LeadUpdatePost
 from bouwmeester.schema.initiatief_update import InitiatiefUpdatePostPublicResponse
+from bouwmeester.schema.lead_update import LeadUpdatePostPublicResponse
 
 router = APIRouter(prefix="/public/initiatieven", tags=["public-initiatief"])
 
@@ -21,6 +23,7 @@ class PublicCasus(BaseModel):
 
     titel: str
     samenvatting: str | None = None
+    updates: list[LeadUpdatePostPublicResponse] = []
 
 
 class PublicInitiatiefResponse(BaseModel):
@@ -80,19 +83,41 @@ async def get_public_initiatief(
         LeadColumn.initiatief_id == initiatief.id,
         LeadColumn.is_public_visible.is_(True),
     )
-    casussen_result = await db.execute(
-        select(Lead.public_title, Lead.public_summary)
+    leads_result = await db.execute(
+        select(Lead)
         .where(
             Lead.initiatief_id == initiatief.id,
             Lead.public_visible.is_(True),
             Lead.public_title.is_not(None),
             Lead.stage.in_(public_slugs_subq),
         )
+        .options(selectinload(Lead.updates).selectinload(LeadUpdatePost.published_by))
         .order_by(Lead.created_at.desc())
     )
-    casussen = [
-        PublicCasus(titel=row[0], samenvatting=row[1]) for row in casussen_result.all()
-    ]
+    casussen: list[PublicCasus] = []
+    for lead in leads_result.scalars().all():
+        published = sorted(
+            (u for u in lead.updates if u.published_at is not None and u.body_public),
+            key=lambda u: u.published_at,
+            reverse=True,
+        )
+        casussen.append(
+            PublicCasus(
+                titel=lead.public_title or "",
+                samenvatting=lead.public_summary,
+                updates=[
+                    LeadUpdatePostPublicResponse(
+                        titel=u.titel,
+                        body_public=u.body_public,
+                        published_at=u.published_at,
+                        published_by_naam=(
+                            u.published_by.naam if u.published_by else None
+                        ),
+                    )
+                    for u in published
+                ],
+            )
+        )
 
     return PublicInitiatiefResponse(
         naam=initiatief.naam,

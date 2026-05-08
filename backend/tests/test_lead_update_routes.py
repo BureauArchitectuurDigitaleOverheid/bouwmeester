@@ -1,0 +1,284 @@
+"""Tests for LeadUpdatePost CRUD, publish flow, and .eml download."""
+
+import uuid
+
+import pytest
+
+from bouwmeester.models.lead import Lead
+
+
+@pytest.fixture
+async def sample_lead(db_session):
+    lead = Lead(id=uuid.uuid4(), title="Test lead", stage="inbox")
+    db_session.add(lead)
+    await db_session.flush()
+    return lead
+
+
+async def test_create_draft_update(client, sample_lead):
+    resp = await client.post(
+        f"/api/leads/{sample_lead.id}/updates",
+        json={
+            "titel": "Eerste",
+            "body_internal": "Lange interne tekst",
+            "body_public": "Korte publieke versie",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["titel"] == "Eerste"
+    assert body["body_public"] == "Korte publieke versie"
+    assert body["published_at"] is None
+
+
+async def test_create_and_publish(client, sample_lead):
+    resp = await client.post(
+        f"/api/leads/{sample_lead.id}/updates",
+        json={"titel": "Direct publiek", "publish": True},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["published_at"] is not None
+
+
+async def test_edit_update(client, sample_lead):
+    create = await client.post(
+        f"/api/leads/{sample_lead.id}/updates",
+        json={"titel": "Origineel"},
+    )
+    post_id = create.json()["id"]
+    edit = await client.put(
+        f"/api/leads/{sample_lead.id}/updates/{post_id}",
+        json={"titel": "Bijgewerkt", "body_internal": "Nieuw"},
+    )
+    assert edit.status_code == 200
+    assert edit.json()["titel"] == "Bijgewerkt"
+    assert edit.json()["body_internal"] == "Nieuw"
+
+
+async def test_publish_then_unpublish_keeps_published_by(client, sample_lead):
+    create = await client.post(
+        f"/api/leads/{sample_lead.id}/updates",
+        json={"titel": "Audit", "publish": True},
+    )
+    post_id = create.json()["id"]
+    publisher_id = create.json()["published_by_id"]
+    unpub = await client.post(
+        f"/api/leads/{sample_lead.id}/updates/{post_id}/unpublish"
+    )
+    assert unpub.status_code == 200
+    assert unpub.json()["published_at"] is None
+    assert unpub.json()["published_by_id"] == publisher_id
+
+
+async def test_delete_update(client, sample_lead):
+    create = await client.post(
+        f"/api/leads/{sample_lead.id}/updates",
+        json={"titel": "Weg ermee"},
+    )
+    post_id = create.json()["id"]
+    delete = await client.delete(f"/api/leads/{sample_lead.id}/updates/{post_id}")
+    assert delete.status_code == 204
+
+    listing = await client.get(f"/api/leads/{sample_lead.id}/updates")
+    assert listing.status_code == 200
+    assert all(p["id"] != post_id for p in listing.json())
+
+
+async def test_eml_download_outlook_headers(client, sample_lead):
+    create = await client.post(
+        f"/api/leads/{sample_lead.id}/updates",
+        json={
+            "titel": "Mail-test",
+            "body_internal": "Beste team,\n\nEen update.",
+            "mail_subject": "Subject van mail",
+            "mail_to": ["a@example.org", "b@example.org"],
+            "mail_cc": ["c@example.org"],
+        },
+    )
+    post_id = create.json()["id"]
+    eml = await client.get(f"/api/leads/{sample_lead.id}/updates/{post_id}/eml")
+    assert eml.status_code == 200
+    body = eml.text
+    assert "X-Unsent: 1" in body
+    assert "Subject: Subject van mail" in body
+    assert "a@example.org" in body
+    assert "b@example.org" in body
+    assert "Cc: c@example.org" in body
+    assert eml.headers["content-type"].startswith("message/rfc822")
+    assert "attachment" in eml.headers["content-disposition"].lower()
+
+
+async def test_parse_requires_input(client, sample_lead):
+    """Without raw_text, files, or use_lead_history we must 400."""
+    resp = await client.post(
+        f"/api/leads/{sample_lead.id}/updates/parse",
+        data={},
+    )
+    assert resp.status_code == 400
+
+
+async def test_unknown_lead_returns_404(client):
+    resp = await client.get(f"/api/leads/{uuid.uuid4()}/updates")
+    assert resp.status_code == 404
+
+
+async def test_internal_listing_returns_full_payload_for_lead_members(
+    client, sample_lead
+):
+    """Authenticated users that can see the lead get the full update payload —
+    including body_internal, mail_subject, mail_to. The boundary is at the
+    public /c/:slug endpoint (covered in test_public_initiatief), not here.
+    """
+    create = await client.post(
+        f"/api/leads/{sample_lead.id}/updates",
+        json={
+            "titel": "T",
+            "body_internal": "intern",
+            "body_public": "publiek",
+            "mail_subject": "subject",
+            "mail_to": ["to@x.nl"],
+            "mail_cc": ["cc@x.nl"],
+        },
+    )
+    assert create.status_code == 201
+    listing = await client.get(f"/api/leads/{sample_lead.id}/updates")
+    assert listing.status_code == 200
+    post = listing.json()[0]
+    assert post["body_internal"] == "intern"
+    assert post["mail_subject"] == "subject"
+    assert post["mail_to"] == ["to@x.nl"]
+    assert post["mail_cc"] == ["cc@x.nl"]
+
+
+async def test_load_lead_attachments_for_llm_picks_text_and_image(tmp_path):
+    """Unit test the helper that feeds existing lead-attachments into the LLM."""
+    from datetime import UTC, datetime
+    from unittest.mock import patch
+
+    from bouwmeester.api.routes import lead_update as lu_module
+    from bouwmeester.models.lead_attachment import LeadAttachment
+
+    txt_file = tmp_path / "notitie.txt"
+    txt_file.write_text("Dit is een notitie uit een eerder gesprek.", encoding="utf-8")
+    png_file = tmp_path / "screenshot.png"
+    # 1x1 transparent PNG — small but valid bytes the helper will base64.
+    png_file.write_bytes(
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\x00"
+        b"\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+    attachments = [
+        LeadAttachment(
+            id=uuid.uuid4(),
+            lead_id=uuid.uuid4(),
+            bestandsnaam="notitie.txt",
+            content_type="text/plain",
+            pad="notitie.txt",
+            created_at=datetime.now(UTC),
+        ),
+        LeadAttachment(
+            id=uuid.uuid4(),
+            lead_id=uuid.uuid4(),
+            bestandsnaam="screenshot.png",
+            content_type="image/png",
+            pad="screenshot.png",
+            created_at=datetime.now(UTC),
+        ),
+    ]
+
+    with patch.object(lu_module, "LEADS_BIJLAGEN_ROOT", tmp_path):
+        text_parts, image_parts = lu_module._load_lead_attachments_for_llm(attachments)
+
+    assert any("notitie uit een eerder gesprek" in t for t in text_parts)
+    assert len(image_parts) == 1
+    assert image_parts[0]["type"] == "image_url"
+    assert image_parts[0]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+async def test_parse_round_trip_with_mocked_llm(client, sample_lead, monkeypatch):
+    """End-to-end parse: raw_text → mocked LLM → structured response."""
+    from unittest.mock import AsyncMock
+
+    fake_llm_response = (
+        '{"titel": "Mock-titel",'
+        ' "body_internal": "Lange interne tekst",'
+        ' "body_public": "Korte publieke versie",'
+        ' "mail_subject": "Onderwerp"}'
+    )
+
+    fake_llm = AsyncMock()
+    fake_llm._complete = AsyncMock(return_value=fake_llm_response)
+
+    async def fake_get_llm_service(_db):
+        return fake_llm
+
+    monkeypatch.setattr(
+        "bouwmeester.services.llm.factory.get_llm_service",
+        fake_get_llm_service,
+    )
+
+    resp = await client.post(
+        f"/api/leads/{sample_lead.id}/updates/parse",
+        data={"raw_text": "Korte invoer van de gebruiker"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["titel"] == "Mock-titel"
+    assert body["body_internal"] == "Lange interne tekst"
+    assert body["body_public"] == "Korte publieke versie"
+    assert body["mail_subject"] == "Onderwerp"
+    assert body["suggested_to"] == []  # geen contacten op deze lead
+    fake_llm._complete.assert_awaited_once()
+
+
+async def test_parse_strips_markdown_codeblock_from_llm_response(
+    client, sample_lead, monkeypatch
+):
+    """LLM wraps JSON in ```json fences sometimes — _robust_parse_json strips."""
+    from unittest.mock import AsyncMock
+
+    fake_response = '```json\n{"titel": "X", "body_internal": "y"}\n```'
+    fake_llm = AsyncMock()
+    fake_llm._complete = AsyncMock(return_value=fake_response)
+
+    async def fake_get_llm_service(_db):
+        return fake_llm
+
+    monkeypatch.setattr(
+        "bouwmeester.services.llm.factory.get_llm_service",
+        fake_get_llm_service,
+    )
+
+    resp = await client.post(
+        f"/api/leads/{sample_lead.id}/updates/parse",
+        data={"raw_text": "input"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["titel"] == "X"
+
+
+async def test_load_lead_attachments_for_llm_skips_oversized(tmp_path):
+    from datetime import UTC, datetime
+    from unittest.mock import patch
+
+    from bouwmeester.api.routes import lead_update as lu_module
+    from bouwmeester.models.lead_attachment import LeadAttachment
+
+    big = tmp_path / "huge.txt"
+    big.write_bytes(b"x" * (lu_module._MAX_ATTACHMENT_BYTES + 1))
+
+    attachments = [
+        LeadAttachment(
+            id=uuid.uuid4(),
+            lead_id=uuid.uuid4(),
+            bestandsnaam="huge.txt",
+            content_type="text/plain",
+            pad="huge.txt",
+            created_at=datetime.now(UTC),
+        )
+    ]
+    with patch.object(lu_module, "LEADS_BIJLAGEN_ROOT", tmp_path):
+        text_parts, image_parts = lu_module._load_lead_attachments_for_llm(attachments)
+    assert text_parts == []
+    assert image_parts == []

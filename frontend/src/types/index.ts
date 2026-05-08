@@ -1993,9 +1993,62 @@ export interface PublicInitiatiefUpdate {
   published_by_naam: string | null;
 }
 
+export interface LeadUpdatePost {
+  id: string;
+  lead_id: string;
+  titel: string;
+  body_internal: string | null;
+  body_public: string | null;
+  mail_subject: string | null;
+  mail_to: string[] | null;
+  mail_cc: string[] | null;
+  published_at: string | null;
+  published_by_id: string | null;
+  published_by_naam: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface LeadUpdatePostCreate {
+  titel: string;
+  body_internal?: string | null;
+  body_public?: string | null;
+  mail_subject?: string | null;
+  mail_to?: string[] | null;
+  mail_cc?: string[] | null;
+  source_raw_text?: string | null;
+  publish?: boolean;
+}
+
+export interface LeadUpdatePostEdit {
+  titel?: string;
+  body_internal?: string | null;
+  body_public?: string | null;
+  mail_subject?: string | null;
+  mail_to?: string[] | null;
+  mail_cc?: string[] | null;
+}
+
+export interface LeadUpdateExtractResult {
+  titel: string | null;
+  body_internal: string | null;
+  body_public: string | null;
+  mail_subject: string | null;
+  suggested_to: string[];
+  suggested_cc: string[];
+}
+
+export interface PublicLeadUpdate {
+  titel: string;
+  body_public: string | null;
+  published_at: string;
+  published_by_naam: string | null;
+}
+
 export interface PublicCasus {
   titel: string;
   samenvatting: string | null;
+  updates: PublicLeadUpdate[];
 }
 
 export interface PublicInitiatief {

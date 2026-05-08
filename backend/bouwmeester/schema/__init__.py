@@ -142,6 +142,13 @@ from bouwmeester.schema.lead_column import (
     LeadColumnResponse,
     LeadColumnUpdate,
 )
+from bouwmeester.schema.lead_update import (
+    LeadUpdateExtractResult,
+    LeadUpdatePostCreate,
+    LeadUpdatePostEdit,
+    LeadUpdatePostPublicResponse,
+    LeadUpdatePostResponse,
+)
 from bouwmeester.schema.llm import (
     CorpusGapOverviewResponse,
     CorpusGapSummaryItem,
@@ -556,6 +563,12 @@ __all__ = [
     "InitiatiefUpdatePostEdit",
     "InitiatiefUpdatePostPublicResponse",
     "InitiatiefUpdatePostResponse",
+    # lead_update (per-lead update post)
+    "LeadUpdateExtractResult",
+    "LeadUpdatePostCreate",
+    "LeadUpdatePostEdit",
+    "LeadUpdatePostPublicResponse",
+    "LeadUpdatePostResponse",
     # stakeholder_assessment
     "StakeholderAssessmentCreate",
     "StakeholderAssessmentResponse",

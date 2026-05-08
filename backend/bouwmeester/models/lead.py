@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from bouwmeester.models.lead_activity import LeadActivity
     from bouwmeester.models.lead_attachment import LeadAttachment
     from bouwmeester.models.lead_node import LeadNode
+    from bouwmeester.models.lead_update import LeadUpdatePost
     from bouwmeester.models.person import Person
     from bouwmeester.models.tag import LeadTag
 
@@ -124,4 +125,10 @@ class Lead(Base):
         "LeadTag",
         back_populates="lead",
         cascade="all, delete-orphan",
+    )
+    updates: Mapped[list["LeadUpdatePost"]] = relationship(
+        "LeadUpdatePost",
+        back_populates="lead",
+        cascade="all, delete-orphan",
+        order_by="LeadUpdatePost.created_at.desc()",
     )

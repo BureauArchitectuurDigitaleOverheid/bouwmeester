@@ -210,6 +210,7 @@ async def test_casussen_only_visible_when_opted_in(client, db_session):
     assert casussen[0] == {
         "titel": "Pilot Gemeente Utrecht",
         "samenvatting": "We werken samen met Utrecht aan een pilot voor X.",
+        "updates": [],
     }
     # Internal title mag nooit lekken
     body_text = resp.text
@@ -248,8 +249,8 @@ async def test_casussen_response_shape_no_extra_lead_fields(client, db_session):
     )
     resp = await client.get("/api/public/initiatieven/by-slug/shape")
     casus = resp.json()["casussen"][0]
-    # Strikt: alleen titel + samenvatting
-    assert set(casus.keys()) == {"titel", "samenvatting"}
+    # Strikt: alleen titel + samenvatting + (lege) updates-feed.
+    assert set(casus.keys()) == {"titel", "samenvatting", "updates"}
     for forbidden in (
         "id",
         "initiatief_id",
@@ -261,3 +262,88 @@ async def test_casussen_response_shape_no_extra_lead_fields(client, db_session):
         "engagement_type",
     ):
         assert forbidden not in casus
+
+
+async def _create_lead_update(
+    db_session,
+    *,
+    lead_id: uuid.UUID,
+    titel: str,
+    body_internal: str | None = "Interne tekst (mag NIET lekken)",
+    body_public: str | None = "Korte publieke samenvatting",
+    published: bool = False,
+    mail_subject: str | None = "geheim onderwerp",
+    mail_to: list[str] | None = None,
+):
+    from bouwmeester.models.lead_update import LeadUpdatePost
+
+    post = LeadUpdatePost(
+        id=uuid.uuid4(),
+        lead_id=lead_id,
+        titel=titel,
+        body_internal=body_internal,
+        body_public=body_public,
+        mail_subject=mail_subject,
+        mail_to=mail_to or ["intern@team.nl"],
+        published_at=datetime.now(UTC) if published else None,
+    )
+    db_session.add(post)
+    await db_session.flush()
+    return post
+
+
+async def test_casus_published_updates_visible(client, db_session):
+    init = await _create_initiatief(
+        db_session, naam="Met updates", slug="met-updates", public=True
+    )
+    lead = await _create_lead(
+        db_session,
+        initiatief_id=init.id,
+        title="INTERN",
+        stage="eerste_gesprek",
+        public_visible=True,
+        public_title="Mijn casus",
+        public_summary="Korte samenvatting",
+    )
+    await _create_lead_update(
+        db_session, lead_id=lead.id, titel="Update 1", published=True
+    )
+    await _create_lead_update(
+        db_session, lead_id=lead.id, titel="Concept (mag niet lekken)", published=False
+    )
+
+    resp = await client.get("/api/public/initiatieven/by-slug/met-updates")
+    assert resp.status_code == 200
+    casus = resp.json()["casussen"][0]
+    assert len(casus["updates"]) == 1, "alleen gepubliceerde updates mogen lekken"
+    update = casus["updates"][0]
+    assert update["titel"] == "Update 1"
+    assert update["body_public"] == "Korte publieke samenvatting"
+    # Internal/mail-velden mogen nooit in de publieke response zitten.
+    assert "body_internal" not in update
+    assert "mail_subject" not in update
+    assert "mail_to" not in update
+
+
+async def test_casus_updates_skip_those_without_body_public(client, db_session):
+    init = await _create_initiatief(
+        db_session, naam="No body", slug="no-body", public=True
+    )
+    lead = await _create_lead(
+        db_session,
+        initiatief_id=init.id,
+        title="INTERN",
+        stage="eerste_gesprek",
+        public_visible=True,
+        public_title="Casus",
+    )
+    await _create_lead_update(
+        db_session,
+        lead_id=lead.id,
+        titel="Wel intern, geen publieke tekst",
+        body_public=None,
+        published=True,
+    )
+    resp = await client.get("/api/public/initiatieven/by-slug/no-body")
+    casus = resp.json()["casussen"][0]
+    assert casus["updates"] == []

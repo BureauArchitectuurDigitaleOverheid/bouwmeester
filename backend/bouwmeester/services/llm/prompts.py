@@ -285,6 +285,51 @@ def build_lead_intake_prompt(
     )
 
 
+def build_lead_update_prompt(
+    raw_text: str,
+    lead_context: str,
+    initiatief_naam: str | None = None,
+) -> str:
+    """Build a prompt that turns raw input + lead context into two update versions.
+
+    `lead_context` is a paragraph the route assembles: lead title, organisatie,
+    initiatief metadata (naam, beschrijving), recent activities, contact names.
+    `initiatief_naam` is also passed separately so subject lines can include
+    it without the LLM having to fish it out of the context blob.
+    """
+    initiatief_label = initiatief_naam or "(initiatief onbekend)"
+    return (
+        "Je schrijft een update over een lopende lead binnen een initiatief"
+        " bij de Nederlandse overheid. De update bestaat uit drie tekstdelen"
+        " plus een mail-onderwerp. Schrijf in het Nederlands, zakelijk maar"
+        " toegankelijk. Verzin niets dat niet in de context of de ruwe invoer"
+        " staat — vraag liever om iets weg te laten dan om het te bedenken.\n\n"
+        f"INITIATIEF: {initiatief_label}\n\n"
+        f"CONTEXT (lead + initiatief + historie):\n"
+        f"{lead_context[:MAX_TEXT_IN_PROMPT]}\n\n"
+        f"RUWE INVOER VAN DE GEBRUIKER:\n{raw_text[:MAX_TEXT_IN_PROMPT]}\n\n"
+        "Lever vier velden:\n"
+        "- titel: korte titel voor de update (max 80 tekens),"
+        " bv. 'Pilot gestart met MinJenV'.\n"
+        "- body_internal: 2-5 alinea's voor het project-/trajectteam."
+        " Mag namen, knelpunten, vervolgafspraken en concrete getallen"
+        " bevatten. Markdown toegestaan: alinea's, **vet**, lijsten met '-'.\n"
+        "- body_public: 1 tot 3 zinnen voor de publieke community-pagina van"
+        " het initiatief. GEEN interne namen, GEEN citaten, GEEN bedragen of"
+        " stappen die intern zijn. Wel mag genoemd worden welke organisatie"
+        " het betreft en wat het thema is, op hoofdlijnen.\n"
+        "- mail_subject: Subject voor de mail aan het team. Begin met de"
+        f" naam van het initiatief, bv. '{initiatief_label} — ...'.\n\n"
+        "Geef je antwoord als JSON (en ALLEEN JSON, geen andere tekst):\n"
+        "{\n"
+        '  "titel": "...",\n'
+        '  "body_internal": "...",\n'
+        '  "body_public": "...",\n'
+        '  "mail_subject": "..."\n'
+        "}"
+    )
+
+
 MAX_CANDIDATES_IN_PROMPT = 30
 
 
