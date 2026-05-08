@@ -44,6 +44,7 @@ class SamenwerkingsverbandLidCreate(BaseModel):
 
 class SamenwerkingsverbandLidUpdate(BaseModel):
     rol: str | None = Field(None, max_length=50)
+    start_datum: date | None = None
     eind_datum: date | None = None
 
 
