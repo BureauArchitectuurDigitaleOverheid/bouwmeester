@@ -92,9 +92,15 @@ export function useParseLeadUpdate() {
   return useMutation<
     LeadUpdateExtractResult,
     Error,
-    { leadId: string; rawText?: string; useLeadHistory?: boolean; files?: File[] }
+    {
+      leadId: string;
+      rawText?: string;
+      useLeadHistory?: boolean;
+      includeAttachments?: boolean;
+      files?: File[];
+    }
   >({
-    mutationFn: ({ leadId, rawText, useLeadHistory, files }) =>
-      parseLeadUpdate(leadId, { rawText, useLeadHistory, files }),
+    mutationFn: ({ leadId, rawText, useLeadHistory, includeAttachments, files }) =>
+      parseLeadUpdate(leadId, { rawText, useLeadHistory, includeAttachments, files }),
   });
 }

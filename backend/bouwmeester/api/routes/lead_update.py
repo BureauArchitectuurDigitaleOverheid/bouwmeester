@@ -19,8 +19,14 @@ from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
 )
+from bouwmeester.core.storage import (
+    ensure_bijlagen_dir,
+    file_exists_on_disk,
+    safe_resolve_or_400,
+)
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
+from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.lead_update import LeadUpdatePost
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.lead import LeadRepository
@@ -38,6 +44,14 @@ from bouwmeester.services.markdown_min import markdown_to_html
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/leads", tags=["lead-updates"])
+
+LEADS_BIJLAGEN_ROOT = ensure_bijlagen_dir()
+
+# Cap how many existing attachments we drop into a single LLM call. The /parse
+# endpoint already accepts ad-hoc uploads; bulk-feeding 30 historical files
+# would blow past the model's vision-image budget and balloon token cost.
+_MAX_ATTACHMENTS_FOR_PARSE = 6
+_MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024  # per file
 
 
 def _to_response(post: LeadUpdatePost) -> LeadUpdatePostResponse:
@@ -162,6 +176,70 @@ async def _suggested_recipients(db: AsyncSession, lead_id: UUID) -> list[str]:
     return sorted({c["email"] for c in contacts if c["email"]})
 
 
+def _load_lead_attachments_for_llm(
+    attachments: list[LeadAttachment],
+) -> tuple[list[str], list[dict]]:
+    """Read existing lead-attachments from disk for LLM consumption.
+
+    Returns (text_parts, image_parts) — same shapes the parse endpoint uses
+    for ad-hoc UploadFile inputs. Images become vision content; text-bearing
+    documents (pdf/docx/odt/txt) get extracted via the existing
+    ``document_extract`` helper. Anything else is silently skipped.
+
+    Caps at ``_MAX_ATTACHMENTS_FOR_PARSE`` newest-first to keep token cost
+    bounded; per-file size is gated by ``_MAX_ATTACHMENT_BYTES``.
+    """
+    text_parts: list[str] = []
+    image_parts: list[dict] = []
+
+    sorted_attachments = sorted(
+        (a for a in attachments if a.pad),
+        key=lambda a: a.created_at,
+        reverse=True,
+    )[:_MAX_ATTACHMENTS_FOR_PARSE]
+
+    for att in sorted_attachments:
+        if not file_exists_on_disk(LEADS_BIJLAGEN_ROOT, att.pad):
+            continue
+        try:
+            file_path = safe_resolve_or_400(LEADS_BIJLAGEN_ROOT, att.pad)
+        except HTTPException:
+            continue
+        try:
+            size = file_path.stat().st_size
+        except OSError:
+            continue
+        if size > _MAX_ATTACHMENT_BYTES:
+            logger.info(
+                "Skipping lead-attachment %s in parse: %d bytes > limit",
+                att.bestandsnaam,
+                size,
+            )
+            continue
+
+        ct = att.content_type or ""
+        if ct.startswith("image/"):
+            try:
+                content_bytes = file_path.read_bytes()
+            except OSError:
+                continue
+            b64 = base64.b64encode(content_bytes).decode("ascii")
+            image_parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{ct};base64,{b64}"},
+                }
+            )
+            continue
+
+        extracted = extract_text(file_path, ct)
+        if extracted:
+            label = att.bestandsnaam or "bijlage"
+            text_parts.append(f"[bijlage: {label}]\n{extracted}")
+
+    return text_parts, image_parts
+
+
 # ---------------------------------------------------------------------------
 # AI parse — produce a draft from raw input + lead context
 # ---------------------------------------------------------------------------
@@ -176,6 +254,7 @@ async def parse_lead_update(
     current_user: OptionalUser,
     raw_text: str | None = Form(None),
     use_lead_history: bool = Form(False),
+    include_attachments: bool = Form(False),
     files: list[UploadFile] | None = None,
     db: AsyncSession = Depends(get_db),
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
@@ -190,6 +269,19 @@ async def parse_lead_update(
 
     text_parts: list[str] = []
     image_parts: list[dict] = []
+
+    # When generating from lead history we always pull in attachments too —
+    # screenshots and uploaded documents (incl. the ones Mattermost-ingest
+    # auto-attaches) are usually the most concrete evidence the LLM has to
+    # work with. For the raw-input mode it's opt-in to keep token cost in
+    # check when the user just wants to clean up a quick paste.
+    pull_attachments = include_attachments or use_lead_history
+    if pull_attachments and lead.attachments:
+        attachment_text, attachment_images = _load_lead_attachments_for_llm(
+            lead.attachments
+        )
+        text_parts.extend(attachment_text)
+        image_parts.extend(attachment_images)
 
     if raw_text:
         text_parts.append(raw_text)
@@ -229,7 +321,8 @@ async def parse_lead_update(
             status_code=400,
             detail=(
                 "Geen invoer: geef ruwe tekst, een bestand, of zet"
-                " use_lead_history=true om uit lead-historie te genereren."
+                " use_lead_history=true / include_attachments=true om uit"
+                " lead-context te genereren."
             ),
         )
 

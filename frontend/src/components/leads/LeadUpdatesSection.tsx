@@ -52,6 +52,7 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [rawText, setRawText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [includeAttachments, setIncludeAttachments] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,6 +63,7 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
     setDraft(emptyDraft());
     setRawText('');
     setFiles([]);
+    setIncludeAttachments(false);
     setEditingId(null);
     setComposing(true);
     setError(null);
@@ -97,6 +99,9 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
         leadId,
         rawText: rawText || undefined,
         useLeadHistory,
+        // Lead-history mode pulls attachments automatically; for raw-input
+        // mode it's the user's choice via the checkbox.
+        includeAttachments: useLeadHistory ? false : includeAttachments,
         files: files.length ? files : undefined,
       });
       setDraft((d) => ({
@@ -193,6 +198,15 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
                   </span>
                 )}
               </div>
+              <label className="inline-flex items-center gap-1.5 text-xs text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={includeAttachments}
+                  onChange={(e) => setIncludeAttachments(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Neem bestaande bijlagen op deze lead mee (screenshots, documenten)
+              </label>
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   size="sm"
@@ -200,7 +214,7 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
                   onClick={() => runExtract(false)}
                   disabled={
                     parseMutation.isPending ||
-                    (!rawText.trim() && files.length === 0)
+                    (!rawText.trim() && files.length === 0 && !includeAttachments)
                   }
                 >
                   <Sparkles className="h-3.5 w-3.5 mr-1" />
@@ -211,7 +225,7 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
                   variant="secondary"
                   onClick={() => runExtract(true)}
                   disabled={parseMutation.isPending}
-                  title="Genereer een update op basis van de lead-historie (notes, contacten, recente activity)"
+                  title="Genereer een update op basis van notities, contacten, recente activity én bestaande bijlagen op deze lead"
                 >
                   <Sparkles className="h-3.5 w-3.5 mr-1" />
                   AI: uit lead-historie

@@ -120,3 +120,75 @@ async def test_parse_requires_input(client, sample_lead):
 async def test_unknown_lead_returns_404(client):
     resp = await client.get(f"/api/leads/{uuid.uuid4()}/updates")
     assert resp.status_code == 404
+
+
+async def test_load_lead_attachments_for_llm_picks_text_and_image(tmp_path):
+    """Unit test the helper that feeds existing lead-attachments into the LLM."""
+    from datetime import UTC, datetime
+    from unittest.mock import patch
+
+    from bouwmeester.api.routes import lead_update as lu_module
+    from bouwmeester.models.lead_attachment import LeadAttachment
+
+    txt_file = tmp_path / "notitie.txt"
+    txt_file.write_text("Dit is een notitie uit een eerder gesprek.", encoding="utf-8")
+    png_file = tmp_path / "screenshot.png"
+    # 1x1 transparent PNG — small but valid bytes the helper will base64.
+    png_file.write_bytes(
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\x00"
+        b"\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+    attachments = [
+        LeadAttachment(
+            id=uuid.uuid4(),
+            lead_id=uuid.uuid4(),
+            bestandsnaam="notitie.txt",
+            content_type="text/plain",
+            pad="notitie.txt",
+            created_at=datetime.now(UTC),
+        ),
+        LeadAttachment(
+            id=uuid.uuid4(),
+            lead_id=uuid.uuid4(),
+            bestandsnaam="screenshot.png",
+            content_type="image/png",
+            pad="screenshot.png",
+            created_at=datetime.now(UTC),
+        ),
+    ]
+
+    with patch.object(lu_module, "LEADS_BIJLAGEN_ROOT", tmp_path):
+        text_parts, image_parts = lu_module._load_lead_attachments_for_llm(attachments)
+
+    assert any("notitie uit een eerder gesprek" in t for t in text_parts)
+    assert len(image_parts) == 1
+    assert image_parts[0]["type"] == "image_url"
+    assert image_parts[0]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+async def test_load_lead_attachments_for_llm_skips_oversized(tmp_path):
+    from datetime import UTC, datetime
+    from unittest.mock import patch
+
+    from bouwmeester.api.routes import lead_update as lu_module
+    from bouwmeester.models.lead_attachment import LeadAttachment
+
+    big = tmp_path / "huge.txt"
+    big.write_bytes(b"x" * (lu_module._MAX_ATTACHMENT_BYTES + 1))
+
+    attachments = [
+        LeadAttachment(
+            id=uuid.uuid4(),
+            lead_id=uuid.uuid4(),
+            bestandsnaam="huge.txt",
+            content_type="text/plain",
+            pad="huge.txt",
+            created_at=datetime.now(UTC),
+        )
+    ]
+    with patch.object(lu_module, "LEADS_BIJLAGEN_ROOT", tmp_path):
+        text_parts, image_parts = lu_module._load_lead_attachments_for_llm(attachments)
+    assert text_parts == []
+    assert image_parts == []

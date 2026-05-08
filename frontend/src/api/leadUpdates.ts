@@ -45,11 +45,17 @@ export async function deleteLeadUpdate(leadId: string, postId: string): Promise<
 
 export async function parseLeadUpdate(
   leadId: string,
-  options: { rawText?: string; useLeadHistory?: boolean; files?: File[] },
+  options: {
+    rawText?: string;
+    useLeadHistory?: boolean;
+    includeAttachments?: boolean;
+    files?: File[];
+  },
 ): Promise<LeadUpdateExtractResult> {
   const formData = new FormData();
   if (options.rawText) formData.append('raw_text', options.rawText);
   if (options.useLeadHistory) formData.append('use_lead_history', 'true');
+  if (options.includeAttachments) formData.append('include_attachments', 'true');
   if (options.files) {
     for (const file of options.files) formData.append('files', file);
   }
