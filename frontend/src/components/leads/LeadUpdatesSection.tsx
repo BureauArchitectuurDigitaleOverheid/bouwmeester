@@ -342,10 +342,12 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
       <ConfirmDialog
         open={!!confirmDelete}
         title="Update verwijderen?"
-        message="Weet je zeker dat je deze update wilt verwijderen?"
         onConfirm={handleDelete}
-        onCancel={() => setConfirmDelete(null)}
-      />
+        onClose={() => setConfirmDelete(null)}
+        variant="danger"
+      >
+        Weet je zeker dat je deze update wilt verwijderen?
+      </ConfirmDialog>
     </DetailSection>
   );
 }

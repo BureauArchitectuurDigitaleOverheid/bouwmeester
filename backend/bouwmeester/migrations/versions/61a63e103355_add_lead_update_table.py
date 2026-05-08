@@ -59,9 +59,23 @@ def upgrade() -> None:
         ["published_at"],
         unique=False,
     )
+    op.create_index(
+        op.f("ix_lead_update_published_by_id"),
+        "lead_update",
+        ["published_by_id"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_lead_update_created_by_id"),
+        "lead_update",
+        ["created_by_id"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
+    op.drop_index(op.f("ix_lead_update_created_by_id"), table_name="lead_update")
+    op.drop_index(op.f("ix_lead_update_published_by_id"), table_name="lead_update")
     op.drop_index(op.f("ix_lead_update_published_at"), table_name="lead_update")
     op.drop_index(op.f("ix_lead_update_lead_id"), table_name="lead_update")
     op.drop_table("lead_update")
