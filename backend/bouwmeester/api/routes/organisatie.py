@@ -165,7 +165,9 @@ async def create_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("org:manage")),
+    perm_ctx: PermissionContext = Depends(
+        require_permission("org:create", "org:manage")
+    ),
 ) -> OrganisatieEenheidResponse:
     """Create a new org unit, optionally under a parent.
 
@@ -229,7 +231,9 @@ async def update_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("org:manage")),
+    perm_ctx: PermissionContext = Depends(
+        require_permission("org:create", "org:manage")
+    ),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> OrganisatieEenheidResponse:
     """Update an org unit. Detects circular parent references."""
@@ -273,7 +277,9 @@ async def delete_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("org:manage")),
+    perm_ctx: PermissionContext = Depends(
+        require_permission("org:create", "org:manage")
+    ),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
     """Delete an org unit. Fails if it has children or members."""
