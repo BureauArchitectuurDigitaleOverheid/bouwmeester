@@ -3,8 +3,9 @@
 Per binnenkomend ``posted``-event:
 - skip bot-eigen berichten en niet-gekoppelde kanalen
 - match auteur via bestaande ``mattermost_user``-link
-- voor lead-scope met ``auto_note_enabled``: maak ``LeadActivity`` (note)
-  en haal doc-links op naar ``LeadAttachment(soort=link)``
+- voor lead-scope met ``auto_note_enabled``: maak ``LeadActivity`` (note),
+  haal doc-links op naar ``LeadAttachment(soort=link)`` en download
+  native Mattermost file-uploads naar ``LeadAttachment(soort=file)``
 - voor initiatief-scope met ``suggest_leads_enabled``: nog niet — komt in
   PR3 (hier alleen ``mattermost_post_link``-record)
 - altijd: schrijf ``mattermost_post_link`` zodat de post niet opnieuw
@@ -21,6 +22,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import async_session
+from bouwmeester.core.storage import (
+    ALLOWED_CONTENT_TYPES,
+    MAX_UPLOAD_SIZE,
+    ensure_bijlagen_dir,
+    verify_content_type,
+    write_upload_to_disk,
+)
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
@@ -390,8 +398,149 @@ class MattermostIngestService:
             )
             if existing.scalar_one_or_none() is None:
                 self.session.add(attachment)
+
+        await self._ingest_post_files(lead_id=lead_id, post=post, post_id=post_id)
         await self.session.flush()
         return activity.id
+
+    async def _ingest_post_files(
+        self,
+        *,
+        lead_id: UUID,
+        post: dict,
+        post_id: str,
+    ) -> None:
+        """Download native Mattermost file-uploads naar ``LeadAttachment``.
+
+        Mattermost stuurt ``file_ids`` mee in ``posted``-events; de rijkere
+        ``metadata.files`` is niet altijd aanwezig maar bevat naam + mime
+        + size zodat we per-file één API-call kunnen besparen. Per file:
+
+        - haal info op (uit ``metadata.files`` of via ``get_file_info``)
+        - check tegen ``ALLOWED_CONTENT_TYPES``
+        - download met ``MAX_UPLOAD_SIZE`` cap
+        - magic-byte verificatie
+        - schrijf naar disk via bestaand storage-pad
+        - dedupe op ``(lead_id, source='mattermost', source_ref)`` waarbij
+          ``source_ref = "{post_id}:{file_id}"``
+
+        Per-file ``try/except`` zodat één rotte file de andere files en
+        de note zelf niet sloopt.
+        """
+        file_ids = post.get("file_ids") or []
+        if not file_ids:
+            return
+
+        # metadata.files (indien aanwezig) heeft naam/mime/size — dat
+        # bespaart een get_file_info-call per bestand.
+        meta_by_id: dict[str, dict] = {}
+        for f in (post.get("metadata") or {}).get("files") or []:
+            fid = f.get("id")
+            if fid:
+                meta_by_id[fid] = f
+
+        from bouwmeester.services.mattermost_service import MattermostService
+
+        service = MattermostService(self.session)
+        try:
+            for file_id in file_ids:
+                try:
+                    await self._ingest_one_file(
+                        service=service,
+                        lead_id=lead_id,
+                        post_id=post_id,
+                        file_id=file_id,
+                        meta=meta_by_id.get(file_id),
+                    )
+                except ValueError:
+                    # Mattermost niet (volledig) geconfigureerd, bv. geen
+                    # bot-token. Niet zinvol om de loop af te maken; alle
+                    # volgende files zouden dezelfde error geven.
+                    logger.warning(
+                        "Mattermost niet geconfigureerd, sla %d file(s) over",
+                        len(file_ids),
+                    )
+                    return
+                except Exception:
+                    logger.exception(
+                        "Kon Mattermost-file %s voor lead %s niet ingesten",
+                        file_id,
+                        lead_id,
+                    )
+        finally:
+            await service.close()
+
+    async def _ingest_one_file(
+        self,
+        *,
+        service,
+        lead_id: UUID,
+        post_id: str,
+        file_id: str,
+        meta: dict | None,
+    ) -> None:
+        """Verwerk één file_id. Helper van ``_ingest_post_files`` zodat de
+        try/except-loop daar leesbaar blijft."""
+        source_ref = f"{post_id}:{file_id}"
+
+        # Dedupe vooraf — voorkomt overbodige download bij replay.
+        existing = await self.session.execute(
+            select(LeadAttachment.id).where(
+                LeadAttachment.lead_id == lead_id,
+                LeadAttachment.source == "mattermost",
+                LeadAttachment.source_ref == source_ref,
+            )
+        )
+        if existing.scalar_one_or_none() is not None:
+            return
+
+        info = meta or await service.get_file_info(file_id)
+        if not info:
+            logger.warning("Geen file-info voor %s, skip", file_id)
+            return
+
+        claimed_ct = (info.get("mime_type") or "application/octet-stream").lower()
+        if claimed_ct not in ALLOWED_CONTENT_TYPES:
+            logger.info(
+                "Mattermost-file %s heeft niet-toegestaan type %s, skip",
+                file_id,
+                claimed_ct,
+            )
+            return
+
+        content = await service.download_file(file_id, max_bytes=MAX_UPLOAD_SIZE)
+        if content is None:
+            return
+
+        if not verify_content_type(content, claimed_ct):
+            logger.info(
+                "Mattermost-file %s magic bytes komen niet overeen met %s, skip",
+                file_id,
+                claimed_ct,
+            )
+            return
+
+        leads_dir = ensure_bijlagen_dir() / "leads"
+        original_name = info.get("name") or f"bijlage-{file_id}"
+        filename, relative_path, _ = write_upload_to_disk(
+            content, original_name, leads_dir, item_id=lead_id
+        )
+        # write_upload_to_disk geeft pad relatief tot leads_dir; DB slaat
+        # op tov LEADS_BIJLAGEN_ROOT, dus pre-pend "leads/".
+        relative_path = f"leads/{relative_path}"
+
+        attachment = LeadAttachment(
+            lead_id=lead_id,
+            soort="file",
+            bestandsnaam=filename,
+            content_type=claimed_ct,
+            bestandsgrootte=len(content),
+            pad=relative_path,
+            source="mattermost",
+            source_ref=source_ref,
+        )
+        self.session.add(attachment)
+        await self.session.flush()
 
     async def _create_suggested_lead(
         self,
