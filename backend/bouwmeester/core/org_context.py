@@ -340,6 +340,14 @@ async def resolve_resource_eenheid_id(
         row = result.one_or_none()
         return (True, row[0]) if row is not None else (False, None)
 
+    if resource_type == "organisatie_eenheid":
+        from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+        stmt = select(OrganisatieEenheid.id).where(OrganisatieEenheid.id == resource_id)
+        result = await db.execute(stmt)
+        row = result.one_or_none()
+        return (True, row[0]) if row is not None else (False, None)
+
     if resource_type == "opdracht":
         from bouwmeester.models.opdracht import Opdracht
 
