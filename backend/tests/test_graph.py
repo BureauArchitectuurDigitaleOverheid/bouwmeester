@@ -310,6 +310,121 @@ async def test_community_graph_intern_wins_over_extern(
     assert person_node["person_role"] == "intern"
 
 
+async def test_community_graph_org_with_internal_person_is_intern(
+    client, db_session, sample_person, sample_organisatie
+):
+    """Een OrganisatieEenheid waar een interne persoon (lead-assignee) actief
+    in geplaatst is, krijgt org_role='intern' — zodat de frontend deze in de
+    onderste swim-lane kan zetten."""
+    from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+
+    lead = Lead(
+        id=uuid.uuid4(),
+        title="Lead met interne assignee",
+        stage="verkennen",
+        assignee_id=sample_person.id,
+    )
+    db_session.add(lead)
+    db_session.add(
+        PersonOrganisatieEenheid(
+            id=uuid.uuid4(),
+            person_id=sample_person.id,
+            organisatie_eenheid_id=sample_organisatie.id,
+            start_datum=date.today(),
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.get("/api/graph/community")
+    assert resp.status_code == 200
+    org_node = next(
+        (n for n in resp.json()["nodes"] if n["id"] == f"oe-{sample_organisatie.id}"),
+        None,
+    )
+    assert org_node is not None
+    assert org_node["org_role"] == "intern"
+
+
+async def test_community_graph_externe_organisatie_is_extern(
+    client, db_session, sample_person
+):
+    """Een ExterneOrganisatie die via een lead in de graph terechtkomt krijgt
+    org_role='extern'."""
+    from bouwmeester.models.externe_organisatie import ExterneOrganisatie
+
+    ext_org = ExterneOrganisatie(
+        id=uuid.uuid4(),
+        naam="Externe Adviesbureau BV",
+        type="marktpartij",
+    )
+    db_session.add(ext_org)
+    await db_session.flush()
+
+    lead = Lead(
+        id=uuid.uuid4(),
+        title="Lead met externe organisatie",
+        stage="verkennen",
+        assignee_id=sample_person.id,
+        externe_organisatie_id=ext_org.id,
+    )
+    db_session.add(lead)
+    await db_session.flush()
+
+    resp = await client.get("/api/graph/community")
+    assert resp.status_code == 200
+    ext_node = next(
+        (n for n in resp.json()["nodes"] if n["id"] == f"org-{ext_org.id}"),
+        None,
+    )
+    assert ext_node is not None
+    assert ext_node["org_role"] == "extern"
+
+
+async def test_community_graph_org_with_only_external_person_is_extern(
+    client, db_session, sample_person, sample_organisatie
+):
+    """Een OrganisatieEenheid waar alleen een externe contact in geplaatst is,
+    krijgt org_role='extern'. Dit voorkomt dat een gemeente die toevallig als
+    OrganisatieEenheid bestaat onderaan terechtkomt zodra een externe contact
+    daar gekoppeld is."""
+    from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+
+    lead = Lead(
+        id=uuid.uuid4(),
+        title="Lead met externe contact in OE",
+        stage="verkennen",
+    )
+    db_session.add(lead)
+    await db_session.flush()
+    db_session.add(
+        ResourcePermission(
+            id=uuid.uuid4(),
+            resource_type="lead",
+            resource_id=lead.id,
+            person_id=sample_person.id,
+            rol="contactpersoon",
+        )
+    )
+    db_session.add(
+        PersonOrganisatieEenheid(
+            id=uuid.uuid4(),
+            person_id=sample_person.id,
+            organisatie_eenheid_id=sample_organisatie.id,
+            start_datum=date.today(),
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.get("/api/graph/community")
+    assert resp.status_code == 200
+    org_node = next(
+        (n for n in resp.json()["nodes"] if n["id"] == f"oe-{sample_organisatie.id}"),
+        None,
+    )
+    assert org_node is not None
+    assert org_node["org_role"] == "extern"
+
+
 async def test_community_graph_contact_edge_label_is_externe_contactpersoon(
     client, db_session, sample_person
 ):

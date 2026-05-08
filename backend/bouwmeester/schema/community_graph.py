@@ -20,6 +20,7 @@ class CommunityGraphNode(BaseModel):
     expertise: str | None = None  # for persons
     person_role: str | None = None  # "intern" | "extern" — for persons
     org_type: str | None = None  # for organisations
+    org_role: str | None = None  # "intern" | "extern" — for organisations
     samenwerkingsverband_type: str | None = None  # for samenwerkingsverbanden
     corpus_node_type: str | None = None  # for corpus nodes
 

@@ -66,28 +66,34 @@ const CORPUS_NODE_FALLBACK = '#6B7280';
 // ---- Community node type to rank (swim-lane y) ----
 // Strikte horizontale swim-lanes per node-type, top-down. Y wordt opgelegd
 // via LANE_Y; dagre regelt alleen nog x-positie en cross-minimization.
-const RANK_ORGANISATION = 0;
+// Externe orgs bovenaan, interne thuis-organisaties helemaal onderaan
+// (onder de interne mensen die er werken).
+const RANK_ORG_EXTERN = 0;
 const RANK_CORPUS_NODE = 1;
 const RANK_LEAD = 2;
 const RANK_SAMENWERKINGSVERBAND = 3;
 const RANK_PERSON_EXTERN = 4;
 const RANK_PERSON_INTERN = 5;
+const RANK_ORG_INTERN = 6;
 const RANK_DEFAULT = RANK_LEAD;
 
 const LANE_Y: Record<number, number> = {
-  [RANK_ORGANISATION]: 40,
+  [RANK_ORG_EXTERN]: 40,
   [RANK_CORPUS_NODE]: 240,
   [RANK_LEAD]: 440,
   [RANK_SAMENWERKINGSVERBAND]: 640,
   [RANK_PERSON_EXTERN]: 840,
   [RANK_PERSON_INTERN]: 1040,
+  [RANK_ORG_INTERN]: 1240,
 };
 
 function getNodeRank(node: CommunityGraphNode): number {
   if (node.node_type === 'person') {
     return node.person_role === 'extern' ? RANK_PERSON_EXTERN : RANK_PERSON_INTERN;
   }
-  if (node.node_type === 'organisation') return RANK_ORGANISATION;
+  if (node.node_type === 'organisation') {
+    return node.org_role === 'intern' ? RANK_ORG_INTERN : RANK_ORG_EXTERN;
+  }
   if (node.node_type === 'samenwerkingsverband') return RANK_SAMENWERKINGSVERBAND;
   if (node.node_type === 'corpus_node') return RANK_CORPUS_NODE;
   if (node.node_type === 'lead') return RANK_LEAD;
@@ -148,6 +154,7 @@ interface CommunityGraphNodeData {
   expertise?: string | null;
   personRole?: 'intern' | 'extern' | null;
   orgType?: string | null;
+  orgRole?: 'intern' | 'extern' | null;
   swvType?: string | null;
   corpusNodeType?: string | null;
   dimmed?: boolean;
@@ -172,6 +179,10 @@ function getNodeColor(data: CommunityGraphNodeData): string {
 
 function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>) {
   const color = getNodeColor(data);
+  const borderColor =
+    data.nodeType === 'organisation' && data.orgRole === 'intern'
+      ? PERSON_INTERN_COLOR
+      : color;
 
   const badgeContent = (() => {
     if (data.nodeType === 'lead' && data.stage) {
@@ -212,11 +223,14 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
       );
     }
     if (data.nodeType === 'organisation') {
+      const isIntern = data.orgRole === 'intern';
+      const badgeColor = isIntern ? PERSON_INTERN_COLOR : color;
       return (
         <div className="flex items-center gap-1 mb-1">
-          <Building2 className="h-3 w-3" style={{ color }} />
-          <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
-            {data.orgType ?? 'Organisatie'}
+          <Building2 className="h-3 w-3" style={{ color: badgeColor }} />
+          <span style={{ color: badgeColor, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
+            {isIntern ? 'Intern' : data.orgType ?? 'Organisatie'}
+            {isIntern && data.orgType ? ` · ${data.orgType}` : ''}
           </span>
         </div>
       );
@@ -254,7 +268,7 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
         background: '#ffffff',
         borderRadius: '10px',
         boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)',
-        border: `1px solid ${color}33`,
+        border: `1px solid ${borderColor}55`,
         minWidth: '160px',
         maxWidth: '220px',
         cursor: data.onClick ? 'pointer' : 'default',
@@ -490,6 +504,7 @@ function CommunityGraphInner({
           expertise: node.expertise,
           personRole: node.person_role ?? null,
           orgType: node.org_type,
+          orgRole: node.org_role ?? null,
           swvType: node.samenwerkingsverband_type ?? null,
           corpusNodeType: node.corpus_node_type,
           onClick,
