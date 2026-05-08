@@ -237,6 +237,29 @@ function CasusCard({ casus, accent }: { casus: PublicCasus; accent: string }) {
           {casus.samenvatting}
         </p>
       )}
+      {casus.updates.length > 0 && (
+        <ul className="mt-4 space-y-3 border-t border-slate-100 pt-3">
+          {casus.updates.map((u, idx) => (
+            <li key={idx} className="text-sm">
+              <div className="flex items-baseline gap-2 mb-0.5">
+                <span className="font-medium text-slate-800">{u.titel}</span>
+                <span className="text-xs text-slate-400">
+                  {new Date(u.published_at).toLocaleDateString('nl-NL', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </span>
+              </div>
+              {u.body_public && (
+                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
+                  {u.body_public}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </li>
   );
 }

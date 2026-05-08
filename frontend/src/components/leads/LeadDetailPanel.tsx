@@ -27,6 +27,7 @@ import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { LinkLeadNodeModal } from './LinkLeadNodeModal';
 import { AddLeadContactModal } from './AddLeadContactModal';
 import { LeadGitHubLinks } from './LeadGitHubLinks';
+import { LeadUpdatesSection } from './LeadUpdatesSection';
 import { MattermostChannelsSection } from '@/components/mattermost/MattermostChannelsSection';
 import { Badge } from '@/components/common/Badge';
 import { DetailSection } from '@/components/common/DetailSection';
@@ -798,6 +799,8 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               </DetailSection>
             );
           })()}
+
+          <LeadUpdatesSection leadId={lead.id} />
 
           {/* Tags */}
           {(leadTags ?? []).length > 0 && (
