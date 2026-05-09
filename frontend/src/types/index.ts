@@ -499,8 +499,30 @@ export function formatOrganisatieType(type: string): string {
   return ORGANISATIE_TYPE_LABELS[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// Types die een gebruiker handmatig kan aanmaken via OrganisatieForm.
+// TOOI-types (gemeente, provincie, zbo, ...) en synthetische groepen
+// zitten hier expres niet bij — die komen alleen uit syncs en zouden
+// anders botsen met TOOI-rijen via reconciliation.
+const HANDMATIG_AANMAAKBARE_TYPES = [
+  'ministerie',
+  'directoraat_generaal',
+  'directie',
+  'dienst',
+  'bureau',
+  'afdeling',
+  'cluster',
+  'team',
+  'stichting',
+  'marktpartij',
+  'koepelorganisatie',
+  'overig',
+] as const;
+
 export const ORGANISATIE_TYPE_OPTIONS: { value: string; label: string }[] =
-  Object.entries(ORGANISATIE_TYPE_LABELS).map(([value, label]) => ({ value, label }));
+  HANDMATIG_AANMAAKBARE_TYPES.map((value) => ({
+    value,
+    label: ORGANISATIE_TYPE_LABELS[value] ?? value,
+  }));
 
 export const FUNCTIE_LABELS: Record<string, string> = {
   minister: 'Minister',
