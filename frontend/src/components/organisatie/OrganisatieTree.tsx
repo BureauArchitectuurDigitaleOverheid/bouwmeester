@@ -103,8 +103,11 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
             ))}
         </button>
 
-        {/* Name + manager + total person count */}
+        {/* Name + afkorting + manager + total person count */}
         <span className="truncate flex-1">
+          {node.afkorting && (
+            <span className="text-text-secondary font-normal mr-1">{node.afkorting}</span>
+          )}
           {node.naam}
           {node.manager && (
             <span className="text-text-secondary font-normal text-xs"> — {node.manager.naam}</span>

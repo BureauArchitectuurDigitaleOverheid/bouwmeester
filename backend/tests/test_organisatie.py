@@ -70,6 +70,48 @@ async def test_search_organisatie_empty_query_returns_empty(client):
     assert resp.json() == []
 
 
+async def test_search_organisatie_op_afkorting(client, db_session):
+    """Zoeken op afkorting moet de eenheid vinden, ook als die niet in de naam staat."""
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    db_session.add(
+        OrganisatieEenheid(
+            naam="Centraal Justitieel Incassobureau",
+            afkorting="CJIB",
+            type="zbo",
+            bron="tooi",
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.get("/api/organisatie/search", params={"q": "CJIB"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any(item["afkorting"] == "CJIB" for item in data), data
+
+
+async def test_search_organisatie_exacte_afkorting_eerst(client, db_session):
+    """Bij twee matches op afkorting komt de exacte match eerst."""
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    db_session.add_all(
+        [
+            OrganisatieEenheid(
+                naam="Org alpha", afkorting="ABC", type="zbo", bron="tooi"
+            ),
+            OrganisatieEenheid(
+                naam="Org beta", afkorting="ABCD", type="zbo", bron="tooi"
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    resp = await client.get("/api/organisatie/search", params={"q": "ABC"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data[0]["afkorting"] == "ABC", [d["afkorting"] for d in data]
+
+
 # ---------------------------------------------------------------------------
 # Create organisatie
 # ---------------------------------------------------------------------------
