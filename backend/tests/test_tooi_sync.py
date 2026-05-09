@@ -182,6 +182,33 @@ async def test_sync_detecteert_conflict_met_handmatig(
     assert pendings[0].handmatige_id == handmatig.id
 
 
+async def test_sync_detecteert_conflict_met_dg_prefix(
+    db_session: AsyncSession, synth_groepen
+):
+    """Handmatige 'X' matcht met TOOI 'DG X' (en agentschap Y, Rijksvastgoed (RVB))."""
+    handmatige_namen = [
+        "Digitalisering en Overheidsorganisatie",
+        "Rijksvastgoedbedrijf",
+    ]
+    tooi_namen = [
+        "DG Digitalisering en Overheidsorganisatie",
+        "Rijksvastgoedbedrijf (RVB)",
+    ]
+    for naam in handmatige_namen:
+        db_session.add(OrganisatieEenheid(naam=naam, type="zbo", bron="handmatig"))
+    await db_session.flush()
+
+    async def fetcher():
+        return [_make_org(code=str(i), naam=n) for i, n in enumerate(tooi_namen)]
+
+    stats = await sync_tooi(
+        db_session, fetcher=fetcher, commit=False, sanity_max_soft_delete_pct=1.0
+    )
+    assert stats.conflicts == 2, (
+        f"Verwacht 2 conflicten via prefix-stripping, kreeg {stats.conflicts}"
+    )
+
+
 async def test_sync_sanity_check_blokkeert_massa_deletie(
     db_session: AsyncSession, synth_groepen
 ):

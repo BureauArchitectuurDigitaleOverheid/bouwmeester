@@ -275,10 +275,42 @@ def _resolveer_type_en_parent(
 
 
 def _normaliseer_naam(naam: str) -> str:
-    """Lower + collapse whitespace + strip 'ministerie van ' prefix."""
+    """Lower + collapse whitespace + strip type-prefixen.
+
+    TOOI en organogram-scrape gebruiken vaak prefixen (`ministerie van`,
+    `DG `, `agentschap `, `zbo `, `directoraat-generaal`) die handmatige
+    rijen niet hebben. Voor conflict-detectie strippen we die zodat
+    'Digitalisering en Overheidsorganisatie' matcht met
+    'DG Digitalisering en Overheidsorganisatie'.
+
+    Aanvullend: koppel-tekens en extra spaties opruimen, en een afkorting-
+    suffix tussen haakjes verwijderen ('Rijksvastgoedbedrijf (RVB)' ->
+    'Rijksvastgoedbedrijf').
+    """
     n = " ".join(naam.lower().split())
-    if n.startswith("ministerie van "):
-        n = n[len("ministerie van ") :]
+    # Verwijder afkorting-suffix: 'naam (AFK)' -> 'naam'
+    if n.endswith(")") and "(" in n:
+        bracket = n.rfind("(")
+        if bracket > 0:
+            n = n[:bracket].strip()
+    # Strip type-prefixen
+    prefixen = (
+        "ministerie van ",
+        "directoraat-generaal ",
+        "directoraat generaal ",
+        "dg ",
+        "agentschap ",
+        "zbo ",
+        "stichting ",
+    )
+    veranderd = True
+    while veranderd:
+        veranderd = False
+        for p in prefixen:
+            if n.startswith(p):
+                n = n[len(p) :]
+                veranderd = True
+                break
     return n.strip()
 
 
