@@ -179,3 +179,105 @@ async def test_reconciliation_merge_404_op_reeds_gemerged(
     await db_session.flush()
     resp = await client.post(f"/api/admin/reconciliation/{rec.id}/merge")
     assert resp.status_code == 404
+
+
+async def test_reconciliation_merge_verplaatst_children(
+    client, db_session: AsyncSession, reconciliation_setup
+):
+    """Bron met sub-eenheden (parent_id RESTRICT) faalde voorheen op delete.
+
+    Dit is het BZK-scenario in productie: handmatige BZK heeft DG's en
+    directies hangen via parent_id. Zonder parent_id-rewrite gaf delete
+    een ForeignKeyViolation -> 500.
+    """
+    handmatig = reconciliation_setup["handmatig"]
+    tooi = reconciliation_setup["tooi"]
+    rec = reconciliation_setup["rec"]
+
+    child1 = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Sub DG 1",
+        type="directoraat_generaal",
+        bron="handmatig",
+        parent_id=handmatig.id,
+    )
+    child2 = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Sub DG 2",
+        type="directoraat_generaal",
+        bron="handmatig",
+        parent_id=handmatig.id,
+    )
+    db_session.add_all([child1, child2])
+    await db_session.flush()
+
+    resp = await client.post(f"/api/admin/reconciliation/{rec.id}/merge")
+    assert resp.status_code == 200, resp.text
+
+    await db_session.refresh(child1)
+    await db_session.refresh(child2)
+    assert child1.parent_id == tooi.id
+    assert child2.parent_id == tooi.id
+
+    nog_handmatig = (
+        (
+            await db_session.execute(
+                select(OrganisatieEenheid).where(OrganisatieEenheid.id == handmatig.id)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert nog_handmatig is None
+
+
+async def test_reconciliation_merge_dedup_op_eenheid_module(
+    client, db_session: AsyncSession, reconciliation_setup
+):
+    """Als bron en doel allebei dezelfde module-key hebben dedupliceren."""
+    from bouwmeester.models.eenheid_module import EenheidModule
+
+    handmatig = reconciliation_setup["handmatig"]
+    tooi = reconciliation_setup["tooi"]
+    rec = reconciliation_setup["rec"]
+
+    # Beide rijen hebben dezelfde module_key — zou unique_constraint
+    # schenden bij naïeve UPDATE.
+    db_session.add_all(
+        [
+            EenheidModule(
+                organisatie_eenheid_id=handmatig.id,
+                module="leads",
+                enabled=True,
+            ),
+            EenheidModule(
+                organisatie_eenheid_id=tooi.id,
+                module="leads",
+                enabled=False,
+            ),
+            # En een module die alleen op handmatig zit -> moet wel mee.
+            EenheidModule(
+                organisatie_eenheid_id=handmatig.id,
+                module="opdrachten",
+                enabled=True,
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    resp = await client.post(f"/api/admin/reconciliation/{rec.id}/merge")
+    assert resp.status_code == 200, resp.text
+
+    rows = (
+        (
+            await db_session.execute(
+                select(EenheidModule).where(
+                    EenheidModule.organisatie_eenheid_id == tooi.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    keys = {r.module for r in rows}
+    assert keys == {"leads", "opdrachten"}

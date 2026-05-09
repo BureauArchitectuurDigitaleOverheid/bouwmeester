@@ -18,7 +18,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
@@ -29,7 +29,9 @@ from bouwmeester.core.permissions import (
 )
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.pending_reconciliation import PendingReconciliation
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.services.merge_organisatie_eenheden import (
+    merge_organisatie_eenheden,
+)
 
 log = logging.getLogger(__name__)
 
@@ -128,14 +130,9 @@ async def merge_reconciliation(
             detail="Een van beide rijen bestaat niet meer; reconciliation is stale",
         )
 
-    # Verplaats alle plaatsingen van handmatig naar kandidaat
-    await db.execute(
-        update(PersonOrganisatieEenheid)
-        .where(PersonOrganisatieEenheid.organisatie_eenheid_id == handmatig.id)
-        .values(organisatie_eenheid_id=kandidaat.id)
-    )
-
-    # Vul ontbrekende velden op kandidaat met handmatige data
+    # Vul ontbrekende velden op kandidaat met handmatige data vóór de
+    # source-rij wordt verwijderd. afkorting/website/kvk/beschrijving zijn
+    # de velden die TOOI niet levert maar handmatig vaak wel.
     if not kandidaat.afkorting and handmatig.afkorting:
         kandidaat.afkorting = handmatig.afkorting
     if not kandidaat.website and handmatig.website:
@@ -144,34 +141,30 @@ async def merge_reconciliation(
         kandidaat.kvk_nummer = handmatig.kvk_nummer
     if not kandidaat.beschrijving and handmatig.beschrijving:
         kandidaat.beschrijving = handmatig.beschrijving
+    await db.flush()
 
-    # Lead/Opdracht refs migreren — Lead.organisatie_eenheid_id en
-    # Opdracht.opdrachtnemer_eenheid_id wijzen mogelijk nog naar handmatig.
-    from bouwmeester.models.lead import Lead
-    from bouwmeester.models.opdracht import Opdracht
+    # FK-rewrite via introspectie + delete bron-rij. Dit dekt
+    # parent_id (children van handmatige BZK), resource_permission,
+    # eenheid_module, role, task, corpus_node, opdracht (beide rollen),
+    # shared_access en alles wat we nog vergeten zijn.
+    rewritten = await merge_organisatie_eenheden(db, handmatig.id, kandidaat.id)
 
-    await db.execute(
-        update(Lead)
-        .where(Lead.organisatie_eenheid_id == handmatig.id)
-        .values(organisatie_eenheid_id=kandidaat.id)
-    )
-    await db.execute(
-        update(Opdracht)
-        .where(Opdracht.opdrachtnemer_eenheid_id == handmatig.id)
-        .values(opdrachtnemer_eenheid_id=kandidaat.id)
-    )
-
-    # Markeer reconciliation als opgelost en delete handmatige rij
+    # Markeer reconciliation als opgelost.
     rec.status = "merged"
     rec.resolved_by = perm_ctx.person_id
     rec.resolved_at = datetime.now()
-    await db.delete(handmatig)
 
     await db.commit()
-    log.info("Reconciliation %s gemerged in kandidaat %s", rec_id, kandidaat.id)
+    log.info(
+        "Reconciliation %s gemerged in kandidaat %s; FK-rewrites: %s",
+        rec_id,
+        kandidaat.id,
+        rewritten,
+    )
     return {
         "status": "merged",
         "doelrij_id": str(kandidaat.id),
+        "rewritten": rewritten,
     }
 
 

@@ -29,3 +29,14 @@ export async function mergeReconciliation(id: string): Promise<{ status: string;
 export async function ignoreReconciliation(id: string): Promise<{ status: string }> {
   return apiPost(`/api/admin/reconciliation/${id}/ignore`, {});
 }
+
+export interface OrphanScanResult {
+  scanned: number;
+  found_match: number;
+  new_reconciliations: number;
+  already_pending: number;
+}
+
+export async function scanOrphanHandmatig(): Promise<OrphanScanResult> {
+  return apiPost('/api/admin/sync/orphan-handmatig', {});
+}
