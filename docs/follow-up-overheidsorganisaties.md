@@ -23,9 +23,25 @@ Wat in deze PR is gebouwd (na review-rondes):
 - Mutatie-blokkade: bron != 'handmatig' rijen zijn read-only (alleen super_admin)
 - UI met collapse-default voor synthetische groepen + zoekveld + TOOI-badge
 - Synthetische groepen worden door de Alembic-migratie aangemaakt (idempotent
-  via NOT EXISTS) zodat fresh deploys ze direct hebben.
+  via NOT EXISTS) zodat fresh deploys ze direct hebben. Inclusief
+  'Internationale organisaties' en 'Onderwijsinstellingen'.
 - Mutatie-blokkade getest: TOOI/synthetische rijen weigeren updates voor
   non-super_admin (3 nieuwe tests in `test_organisatie.py`).
+- Reconciliation-pagina in Beheer (Beheer > Reconciliatie): super_admin kan
+  open conflicten side-by-side bekijken en mergen of negeren. Mergen
+  verplaatst alle plaatsingen, leads en opdrachten naar de TOOI-kandidaat.
+- RIO email-suggestie bij persoon-aanmaak: bij invoer van een email wordt
+  het domein gecheckt en toont een blauw bannertje "Domein wijst naar X.
+  Koppel als organisatie".
+- Soft-deleted toggle op OrganisatiePage: 'Toon historisch'-checkbox toont
+  opgeheven rijen grijs/doorgestreept met geldig_tot in tooltip.
+- TOOI-badge tooltip: muis op een synced rij laat de bron zien (TOOI,
+  organogram-scrape, synthetisch).
+- Sync-notificaties: bij `skipped_sanity=True` of `conflicts > 0` krijgen
+  super_admins een sync_alert-notificatie. Eén batch-notificatie per run.
+- Test_tooi_sync.py is nu actief (5 tests): idempotency, conflict-detectie,
+  sanity-check, soft-delete + reactivate. Sync-services hebben een
+  `commit=False`-flag voor isolated test-runs.
 
 ## Wat nog moet komen
 
@@ -46,32 +62,21 @@ Wat in deze PR is gebouwd (na review-rondes):
       historische correctheid alle kabinetten Rutte I-IV en Schoof
       importeren met historische van/tot-data.
 
-### UI-features
+### UI-features (open)
 
-- [ ] **Reconciliation UI in Beheer**: backend-endpoints zijn klaar
-      (`GET /api/admin/reconciliation`, `POST .../merge`, `POST .../ignore`).
-      Frontend page met side-by-side handmatig vs TOOI-kandidaat.
-- [ ] **RIO email-suggestie UI**: backend `GET /api/people/match-email-organisatie?email=...`
-      is klaar. Frontend: bij persoon-form-email-veld onChange aanroepen en
-      "Wil je deze persoon koppelen aan X?"-prompt tonen.
-- [ ] **Soft-deleted weergave**: `OrganisatieEenheid.geldig_tot != NULL` rijen
-      worden nu volledig gefilterd uit de tree. Optie: 'Toon historisch'
-      toggle om verlopen rijen grijs/doorgestreept te tonen.
-- [ ] **TOOI-badge styling**: het badge zegt nu "TOOI" met grijze achtergrond.
-      Kan visueel beter (icoon + tooltip met bron-uitleg).
+- [ ] **TOOI-badge visuele polish**: badge zegt nu "TOOI" met tooltip op
+      hoverable items. Kan strakker met icoon + bron-specifiek kleurtje.
 
-### Tests
+### Tests (open)
 
 - [ ] **Hertest `test_opdrachten.py`, `test_fcc_sync.py`, `test_graph.py`**:
       drie testbestanden geskipt (refereren naar verwijderde
-      `ExterneOrganisatie`). Herschrijven naar OrganisatieEenheid-aanpak.
-- [ ] **Test_tooi_sync.py is geschreven maar geskipt**: sync-services doen
-      eigen `session.commit()` wat de transaction-rollback van db_session
-      breekt. Vervolg: geïsoleerde test-DB-fixture of `commit=False`-flag
-      in services.
+      `ExterneOrganisatie`). Herschrijven naar OrganisatieEenheid-aanpak
+      (~50 testfuncties). De fixture-pattern uit test_tooi_sync.py
+      (commit=False, schone_db) kan hergebruikt worden.
 - [ ] **Tests voor merge_existing_with_tooi.py, kabinet_scrape.py
-      ministerie-detectie, RIO XML parser**: nu alleen end-to-end
-      gevalideerd via lokale runs.
+      ministerie-detectie, RIO XML parser, organogram-scrape, TK OData
+      sync**: nu alleen end-to-end gevalideerd via lokale runs.
 
 ### Data-kwaliteit
 

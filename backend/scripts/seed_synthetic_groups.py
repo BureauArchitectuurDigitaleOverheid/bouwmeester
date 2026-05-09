@@ -105,6 +105,24 @@ GROEPEN: tuple[SynthetischeGroep, ...] = (
             "externe organisaties die geen overheidsorgaan zijn."
         ),
     ),
+    SynthetischeGroep(
+        naam="Internationale organisaties",
+        type="synthetische_groep",
+        afkorting=None,
+        beschrijving=(
+            "EU-instellingen, VN-organen, OECD, NAVO en andere "
+            "internationale organen waar NL-stakeholders mee samenwerken."
+        ),
+    ),
+    SynthetischeGroep(
+        naam="Onderwijsinstellingen",
+        type="synthetische_groep",
+        afkorting=None,
+        beschrijving=(
+            "Universiteiten, hogescholen, mbo-instellingen. Niet in TOOI "
+            "maar vaak gekoppeld aan beleidsdossiers."
+        ),
+    ),
 )
 
 

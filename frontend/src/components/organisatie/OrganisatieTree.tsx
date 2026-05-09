@@ -25,6 +25,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
   // TOOI-rijen op tweede niveau idem: alleen synthetische ministeries staan open.
   const isSynthetisch = node.bron === 'synthetisch';
   const isTooi = node.bron === 'tooi' && node.type !== 'ministerie';
+  const isHistorisch = !!node.geldig_tot;
   const defaultExpanded = depth < 2 && !isSynthetisch && !isTooi;
   const isSearching = searchTerm.trim().length > 0;
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -64,7 +65,19 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
             ? 'bg-primary-50 text-primary-700 font-medium'
             : 'text-text hover:bg-gray-50',
           dragOver && 'ring-2 ring-primary-500 bg-primary-50/50',
+          isHistorisch && 'text-text-secondary line-through opacity-60',
         )}
+        title={
+          isHistorisch
+            ? `Opgeheven per ${node.geldig_tot}`
+            : node.bron === 'tooi'
+              ? 'Synced uit TOOI-waardelijsten (KOOP/Logius). Read-only.'
+              : node.bron === 'synthetisch'
+                ? 'Synthetische groep, beheerd door het systeem.'
+                : node.bron === 'organogram_scrape'
+                  ? 'Synced uit rijksoverheid.nl/organogram. Read-only.'
+                  : undefined
+        }
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={() => onSelect(node.id)}
         onDragOver={handleDragOver}

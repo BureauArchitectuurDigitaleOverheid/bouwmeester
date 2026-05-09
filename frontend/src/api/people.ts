@@ -9,6 +9,17 @@ export async function getPerson(id: string): Promise<Person> {
   return apiGet<Person>(`/api/people/${id}`);
 }
 
+export interface EmailOrganisatieMatch {
+  matched: boolean;
+  domein: string | null;
+  organisatie_eenheid_id?: string;
+  organisatie_naam?: string;
+}
+
+export async function matchEmailOrganisatie(email: string): Promise<EmailOrganisatieMatch> {
+  return apiGet<EmailOrganisatieMatch>('/api/people/match-email-organisatie', { email });
+}
+
 export async function createPerson(
   data: PersonCreate,
   force = false,

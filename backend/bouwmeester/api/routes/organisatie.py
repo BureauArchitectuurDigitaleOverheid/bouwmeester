@@ -140,13 +140,20 @@ def _build_tree(
 async def list_organisatie(
     current_user: OptionalUser,
     format: str = Query("flat", pattern="^(flat|tree)$"),
+    include_historisch: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ) -> list[OrganisatieEenheidResponse] | list[OrganisatieEenheidTreeNode]:
-    """List org units as flat list or hierarchical tree (format=flat|tree)."""
+    """List org units as flat list or hierarchical tree (format=flat|tree).
+
+    Met `include_historisch=true` worden ook rijen met `geldig_tot != NULL`
+    meegenomen — bv. opgeheven gemeenten, oude ministeries, of TOOI-rijen
+    die uit de feed verdwenen zijn. UI gebruikt dit voor de
+    'Toon historisch'-toggle.
+    """
     repo = OrganisatieEenheidRepository(db)
     # Hoge limit om alle TOOI-rijen mee te krijgen (~1500). Performance is OK
     # tot ~5k; bij meer schalen we naar paginated of lazy.
-    items = await repo.get_all(limit=10000)
+    items = await repo.get_all(limit=10000, active_only=not include_historisch)
     flat = [OrganisatieEenheidResponse.model_validate(item) for item in items]
     await _enrich_with_managers(repo, flat)
 

@@ -34,6 +34,7 @@ export function OrganisatiePage() {
 
   // Boom-zoek
   const [searchTerm, setSearchTerm] = useState('');
+  const [includeHistorisch, setIncludeHistorisch] = useState(false);
 
   // Sync ?eenheid= param on arrival, then clear it
   useEffect(() => {
@@ -44,7 +45,7 @@ export function OrganisatiePage() {
     }
   }, [searchParams, setSearchParams]);
 
-  const { data: tree = [], isLoading } = useOrganisatieTree();
+  const { data: tree = [], isLoading } = useOrganisatieTree(includeHistorisch);
 
   // Filter de boom op zoekterm: een node blijft staan als hijzelf matcht
   // OF een afstammeling matcht (die wordt dan automatisch zichtbaar).
@@ -223,6 +224,15 @@ export function OrganisatiePage() {
                     </button>
                   )}
                 </div>
+                <label className="flex items-center gap-1.5 mb-2 text-xs text-text-secondary cursor-pointer select-none px-1">
+                  <input
+                    type="checkbox"
+                    checked={includeHistorisch}
+                    onChange={(e) => setIncludeHistorisch(e.target.checked)}
+                    className="h-3 w-3"
+                  />
+                  Toon historisch (opgeheven)
+                </label>
                 <OrganisatieTree
                   tree={filteredTree}
                   selectedId={selectedId}

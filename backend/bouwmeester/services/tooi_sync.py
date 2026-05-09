@@ -386,8 +386,14 @@ async def sync_tooi(
     *,
     fetcher=fetch_all,
     sanity_max_soft_delete_pct: float = 0.05,
+    commit: bool = True,
 ) -> SyncStats:
-    """Voer een TOOI-sync uit. Geeft statistieken terug."""
+    """Voer een TOOI-sync uit. Geeft statistieken terug.
+
+    Met commit=False (voor tests in een rolled-back transaction) doet de
+    sync een `flush()` aan het eind in plaats van `commit()`. De caller is
+    dan verantwoordelijk voor commit/rollback.
+    """
     sync_run_id = uuid.uuid4()
     stats = SyncStats(sync_run_id=sync_run_id)
 
@@ -395,6 +401,20 @@ async def sync_tooi(
     if not feed:
         log.error("TOOI feed leeg, sync afgebroken")
         stats.skipped_sanity = True
+        from bouwmeester.services.sync_notifications import notify_super_admins
+
+        await notify_super_admins(
+            session,
+            title="TOOI-sync overgeslagen",
+            message=(
+                "TOOI-feed leverde 0 organisaties. Sync is afgebroken. "
+                "Check standaarden.overheid.nl/tooi/waardelijsten."
+            ),
+        )
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
         return stats
 
     bestaand = await _bestaande_per_tooi_uri(session)
@@ -427,7 +447,23 @@ async def sync_tooi(
                 ),
             )
         )
-        await session.commit()
+        from bouwmeester.services.sync_notifications import notify_super_admins
+
+        await notify_super_admins(
+            session,
+            title="TOOI-sync sanity-check geblokkeerd",
+            message=(
+                f"De TOOI-feed zou {len(zou_verdwijnen)} van "
+                f"{len(bestaande_actief)} actieve organisaties soft-deleten "
+                f"({100.0 * len(zou_verdwijnen) / len(bestaande_actief):.1f}%) — "
+                "boven de drempel van "
+                f"{sanity_max_soft_delete_pct * 100:.0f}%. Sync afgebroken."
+            ),
+        )
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
         return stats
 
     today = date.today()
@@ -607,7 +643,25 @@ async def sync_tooi(
             )
         )
 
-    await session.commit()
+    # Eén batch-notificatie als er conflicts zijn die handmatige review nodig
+    # hebben — niet per conflict, anders krijgen super_admins 100en mails.
+    if stats.conflicts > 0:
+        from bouwmeester.services.sync_notifications import notify_super_admins
+
+        await notify_super_admins(
+            session,
+            title=f"TOOI-sync: {stats.conflicts} reconciliation(s) open",
+            message=(
+                f"De laatste TOOI-sync heeft {stats.conflicts} naam-conflict(en) "
+                "gedetecteerd tussen handmatige rijen en TOOI-data. "
+                "Open ze in Beheer > Reconciliatie om te mergen of te negeren."
+            ),
+        )
+
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     log.info(
         "TOOI sync run=%s: +%d added, %d renamed, %d moved, "
         "%d soft_deleted, %d conflicts",

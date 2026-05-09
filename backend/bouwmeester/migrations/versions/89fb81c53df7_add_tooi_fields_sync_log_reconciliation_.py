@@ -349,6 +349,16 @@ def upgrade() -> None:
         ),
         ("ZBO's en agentschappen", "Vangnet voor ZBO's en agentschappen."),
         ("Marktpartijen en overige", "Marktpartijen, stichtingen, koepelorganisaties."),
+        (
+            "Internationale organisaties",
+            "EU-instellingen, VN-organen, OECD, NAVO en andere internationale "
+            "organen waar NL-stakeholders mee samenwerken.",
+        ),
+        (
+            "Onderwijsinstellingen",
+            "Universiteiten, hogescholen, mbo-instellingen. Niet in TOOI maar "
+            "vaak gekoppeld aan beleidsdossiers.",
+        ),
     ]
     for naam, beschrijving in namen:
         op.execute(

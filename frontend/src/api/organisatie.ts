@@ -8,8 +8,13 @@ import type {
   Person,
 } from '@/types';
 
-export async function getOrganisatieTree(): Promise<OrganisatieEenheidTreeNode[]> {
-  return apiGet<OrganisatieEenheidTreeNode[]>('/api/organisatie', { format: 'tree' });
+export async function getOrganisatieTree(
+  includeHistorisch = false,
+): Promise<OrganisatieEenheidTreeNode[]> {
+  return apiGet<OrganisatieEenheidTreeNode[]>('/api/organisatie', {
+    format: 'tree',
+    ...(includeHistorisch ? { include_historisch: 'true' } : {}),
+  });
 }
 
 export async function getOrganisatieFlat(): Promise<OrganisatieEenheid[]> {
