@@ -16,10 +16,20 @@ interface TreeNodeProps {
   onAdd: (parentId: string) => void;
   onDropPerson?: (personId: string, targetNodeId: string) => void;
   depth?: number;
+  searchTerm?: string;
 }
 
-function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0 }: TreeNodeProps) {
-  const [expanded, setExpanded] = useState(depth < 2);
+function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, searchTerm = '' }: TreeNodeProps) {
+  // Synthetische groepen (Gemeenten, Provincies, etc.) houden we standaard
+  // dichtgeklapt — anders worden er 340 nodes uitgeklapt bij het laden.
+  // TOOI-rijen op tweede niveau idem: alleen synthetische ministeries staan open.
+  const isSynthetisch = node.bron === 'synthetisch';
+  const isTooi = node.bron === 'tooi' && node.type !== 'ministerie';
+  const defaultExpanded = depth < 2 && !isSynthetisch && !isTooi;
+  const isSearching = searchTerm.trim().length > 0;
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  // Bij actieve zoekterm forceren we alles open zodat treffers zichtbaar zijn
+  const effectiveExpanded = isSearching ? true : expanded;
   const [dragOver, setDragOver] = useState(false);
   const hasChildren = node.children.length > 0;
   const isSelected = selectedId === node.id;
@@ -73,7 +83,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0 }
           )}
         >
           {hasChildren &&
-            (expanded ? (
+            (effectiveExpanded ? (
               <ChevronDown className="h-3.5 w-3.5" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5" />
@@ -87,12 +97,24 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0 }
             <span className="text-text-secondary font-normal text-xs"> — {node.manager.naam}</span>
           )}
           {(() => {
+            // Synthetische groepen tonen aantal directe children, niet personen
+            if (node.bron === 'synthetisch' && node.children.length > 0) {
+              return (
+                <span className="text-text-secondary font-normal"> ({node.children.length})</span>
+              );
+            }
             const total = getTotalPersonenCount(node);
             return total > 0 ? (
               <span className="text-text-secondary font-normal"> ({total})</span>
             ) : null;
           })()}
         </span>
+
+        {node.bron === 'tooi' && (
+          <Badge variant="gray" className="text-[10px] px-1.5 py-0 shrink-0">
+            TOOI
+          </Badge>
+        )}
 
         <Badge
           variant={ORGANISATIE_TYPE_BADGE_COLORS[node.type] || 'gray'}
@@ -101,21 +123,23 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0 }
           {formatOrganisatieType(node.type)}
         </Badge>
 
-        {/* Add child button */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onAdd(node.id);
-          }}
-          className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-5 w-5 rounded hover:bg-gray-200 shrink-0 transition-opacity"
-          title="Subeenheid toevoegen"
-        >
-          <Plus className="h-3 w-3" />
-        </button>
+        {/* Add child button — niet voor synthetische groepen of TOOI-rijen */}
+        {node.bron !== 'synthetisch' && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdd(node.id);
+            }}
+            className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-5 w-5 rounded hover:bg-gray-200 shrink-0 transition-opacity"
+            title="Subeenheid toevoegen"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+        )}
       </div>
 
       {/* Children */}
-      {expanded && hasChildren && (
+      {effectiveExpanded && hasChildren && (
         <div>
           {node.children.map((child) => (
             <TreeNode
@@ -126,6 +150,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0 }
               onAdd={onAdd}
               onDropPerson={onDropPerson}
               depth={depth + 1}
+              searchTerm={searchTerm}
             />
           ))}
         </div>
@@ -140,9 +165,10 @@ interface OrganisatieTreeProps {
   onSelect: (id: string) => void;
   onAdd: (parentId: string | null) => void;
   onDropPerson?: (personId: string, targetNodeId: string) => void;
+  searchTerm?: string;
 }
 
-export function OrganisatieTree({ tree, selectedId, onSelect, onAdd, onDropPerson }: OrganisatieTreeProps) {
+export function OrganisatieTree({ tree, selectedId, onSelect, onAdd, onDropPerson, searchTerm }: OrganisatieTreeProps) {
   return (
     <div className="space-y-0.5">
       {tree.map((node) => (
@@ -153,6 +179,7 @@ export function OrganisatieTree({ tree, selectedId, onSelect, onAdd, onDropPerso
           onSelect={onSelect}
           onAdd={(parentId) => onAdd(parentId)}
           onDropPerson={onDropPerson}
+          searchTerm={searchTerm}
         />
       ))}
     </div>

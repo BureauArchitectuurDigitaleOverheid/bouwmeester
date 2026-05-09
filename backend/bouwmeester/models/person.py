@@ -35,6 +35,17 @@ class Person(Base):
     is_agent: Mapped[bool] = mapped_column(default=False, server_default="false")
 
     api_key_hash: Mapped[str | None] = mapped_column(nullable=True, unique=True)
+    tk_persoon_id: Mapped[str | None] = mapped_column(
+        unique=True,
+        nullable=True,
+        index=True,
+        comment="UUID van TK Open Data Persoon-entity",
+    )
+    bron: Mapped[str] = mapped_column(
+        nullable=False,
+        server_default=text("'handmatig'"),
+        comment="handmatig | tk_odata | roo_leidinggevende | kabinet_yaml",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

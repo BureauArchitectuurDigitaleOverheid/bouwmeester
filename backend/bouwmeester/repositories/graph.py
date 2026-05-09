@@ -15,7 +15,6 @@ from bouwmeester.core.initiatief_context import (
 from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
-from bouwmeester.models.externe_organisatie import ExterneOrganisatie
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_node import LeadNode
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
@@ -266,33 +265,34 @@ class GraphRepository:
         if not lead_ids:
             return CommunityGraphResponse(nodes=[], edges=[])
 
-        # -- 2. Lead → ExterneOrganisatie edges --
-        ext_org_ids = {
-            lead.externe_organisatie_id
+        # -- 2. Lead → OrganisatieEenheid edges (externe organisaties zijn nu
+        # gewone OrganisatieEenheid-rijen) --
+        org_ids = {
+            lead.organisatie_eenheid_id
             for lead in leads
-            if lead.externe_organisatie_id is not None
+            if lead.organisatie_eenheid_id is not None
         }
-        if ext_org_ids:
-            ext_orgs_stmt = select(ExterneOrganisatie).where(
-                ExterneOrganisatie.id.in_(ext_org_ids)
+        if org_ids:
+            orgs_stmt = select(OrganisatieEenheid).where(
+                OrganisatieEenheid.id.in_(org_ids)
             )
-            ext_orgs_result = await self.session.execute(ext_orgs_stmt)
-            for ext_org in ext_orgs_result.scalars().all():
-                oid = f"org-{ext_org.id}"
+            orgs_result = await self.session.execute(orgs_stmt)
+            for org in orgs_result.scalars().all():
+                oid = f"org-{org.id}"
                 graph_nodes[oid] = CommunityGraphNode(
                     id=oid,
                     node_type="organisation",
-                    label=ext_org.naam,
-                    org_type=ext_org.type,
+                    label=org.naam,
+                    org_type=org.type,
                 )
 
             for lead in leads:
-                if lead.externe_organisatie_id is not None:
+                if lead.organisatie_eenheid_id is not None:
                     graph_edges.append(
                         CommunityGraphEdge(
                             id=_next_edge_id(),
                             source=f"lead-{lead.id}",
-                            target=f"org-{lead.externe_organisatie_id}",
+                            target=f"org-{lead.organisatie_eenheid_id}",
                             edge_type="organisatie",
                             label="externe organisatie",
                         )
@@ -300,7 +300,7 @@ class GraphRepository:
 
         # -- 2b. Lead → organisation (free-text field) --
         for lead in leads:
-            if lead.organization and not lead.externe_organisatie_id:
+            if lead.organization and not lead.organisatie_eenheid_id:
                 org_key = f"orgtext-{lead.organization}"
                 if org_key not in graph_nodes:
                     graph_nodes[org_key] = CommunityGraphNode(

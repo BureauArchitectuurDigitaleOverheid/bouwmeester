@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from bouwmeester.api.routes.activity import router as activity_router
 from bouwmeester.api.routes.admin import router as admin_router
+from bouwmeester.api.routes.admin_sync import router as admin_sync_router
 from bouwmeester.api.routes.auth import router as auth_router
 from bouwmeester.api.routes.bijlage import router as bijlage_router
 from bouwmeester.api.routes.chat import router as chat_router
@@ -11,9 +12,6 @@ from bouwmeester.api.routes.edge_schema import router as edge_schema_router
 from bouwmeester.api.routes.edge_types import router as edge_types_router
 from bouwmeester.api.routes.edges import router as edges_router
 from bouwmeester.api.routes.eenheid_modules import router as eenheid_modules_router
-from bouwmeester.api.routes.externe_organisaties import (
-    router as externe_organisaties_router,
-)
 from bouwmeester.api.routes.fcc import router as fcc_router
 from bouwmeester.api.routes.graph import router as graph_router
 from bouwmeester.api.routes.import_export import router as import_export_router
@@ -68,8 +66,8 @@ api_router.include_router(edge_schema_router)
 api_router.include_router(edge_types_router)
 api_router.include_router(eenheid_modules_router)
 api_router.include_router(edges_router)
+api_router.include_router(admin_sync_router)
 api_router.include_router(fcc_router)
-api_router.include_router(externe_organisaties_router)
 api_router.include_router(graph_router)
 api_router.include_router(initiatieven_router)
 api_router.include_router(initiatief_updates_router)

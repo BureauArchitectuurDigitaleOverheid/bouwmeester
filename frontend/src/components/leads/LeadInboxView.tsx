@@ -267,7 +267,7 @@ export function LeadInboxView({
                         )}
                         {lead.organization && (
                           <span className="truncate max-w-[160px]">
-                            {lead.externe_organisatie?.naam ?? lead.organization}
+                            {lead.organisatie_eenheid?.naam ?? lead.organization}
                           </span>
                         )}
                         {lead.contact_names.length > 0 && (

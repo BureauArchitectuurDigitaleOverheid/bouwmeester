@@ -94,14 +94,19 @@ def _build_tree(
     to stay in sync with the temporal OrganisatieEenheidParent records.
     """
     children = [item for item in all_items if item.parent_id == parent_id]
-    return [
-        OrganisatieEenheidTreeNode(
-            **item.model_dump(),
-            children=_build_tree(all_items, personen_counts, item.id),
-            personen_count=personen_counts.get(item.id, 0),
+    nodes: list[OrganisatieEenheidTreeNode] = []
+    for item in sorted(children, key=lambda x: x.naam):
+        sub = _build_tree(all_items, personen_counts, item.id)
+        nodes.append(
+            OrganisatieEenheidTreeNode(
+                **item.model_dump(),
+                children=sub,
+                personen_count=personen_counts.get(item.id, 0),
+                children_count=len(sub),
+                has_children=bool(sub),
+            )
         )
-        for item in sorted(children, key=lambda x: x.naam)
-    ]
+    return nodes
 
 
 @router.get(
@@ -115,7 +120,9 @@ async def list_organisatie(
 ) -> list[OrganisatieEenheidResponse] | list[OrganisatieEenheidTreeNode]:
     """List org units as flat list or hierarchical tree (format=flat|tree)."""
     repo = OrganisatieEenheidRepository(db)
-    items = await repo.get_all()
+    # Hoge limit om alle TOOI-rijen mee te krijgen (~1500). Performance is OK
+    # tot ~5k; bij meer schalen we naar paginated of lazy.
+    items = await repo.get_all(limit=10000)
     flat = [OrganisatieEenheidResponse.model_validate(item) for item in items]
     await _enrich_with_managers(repo, flat)
 
@@ -124,6 +131,44 @@ async def list_organisatie(
         return _build_tree(flat, personen_counts)
 
     return flat
+
+
+@router.get(
+    "/tree-children",
+    response_model=list[OrganisatieEenheidTreeNode],
+)
+async def get_tree_children(
+    current_user: OptionalUser,
+    parent_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> list[OrganisatieEenheidTreeNode]:
+    """Geef directe children van een eenheid (of root als parent_id ontbreekt).
+
+    Wordt gebruikt voor lazy-load van de boom: bij uitvouwen van een node
+    haalt de UI alleen de directe children op (met counts), niet de hele
+    sub-boom. Levert per child `personen_count`, `children_count` en
+    `has_children` zodat de UI direct kan tonen welke nodes nog
+    uitklapbaar zijn.
+    """
+    repo = OrganisatieEenheidRepository(db)
+    units = await repo.get_by_parent(parent_id)
+    responses = [OrganisatieEenheidResponse.model_validate(u) for u in units]
+    await _enrich_with_managers(repo, responses)
+
+    ids = [r.id for r in responses]
+    personen_counts = await repo.count_personen_batch(ids)
+    children_counts = await repo.count_children_batch(ids)
+
+    return [
+        OrganisatieEenheidTreeNode(
+            **r.model_dump(),
+            children=[],  # lazy: niet meegestuurd
+            personen_count=personen_counts.get(r.id, 0),
+            children_count=children_counts.get(r.id, 0),
+            has_children=children_counts.get(r.id, 0) > 0,
+        )
+        for r in sorted(responses, key=lambda x: x.naam)
+    ]
 
 
 @router.get("/search", response_model=list[OrganisatieEenheidResponse])

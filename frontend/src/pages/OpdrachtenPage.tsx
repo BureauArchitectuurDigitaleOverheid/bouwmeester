@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Plus, Search, RefreshCw, Sparkles } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { useOpdrachten, useOpdrachtenSummary, useMatchOpdrachtContactsBulk } from '@/hooks/useOpdrachten';
-import { useExterneOrganisaties } from '@/hooks/useExterneOrganisaties';
+import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { usePeople } from '@/hooks/usePeople';
 import { useNodes } from '@/hooks/useNodes';
 import { useTriggerFccSync, useFccSchema, useLastFccSync } from '@/hooks/useFcc';
@@ -82,7 +82,18 @@ export function OpdrachtenPage() {
   const bulkMatch = useMatchOpdrachtContactsBulk();
   const { data: opdrachten = [], isLoading } = useOpdrachten(apiFilters);
   const { data: summary } = useOpdrachtenSummary(apiFilters);
-  const { data: externeOrgs = [] } = useExterneOrganisaties();
+  const { data: alleEenheden = [] } = useOrganisatieFlat();
+  // Externe organisaties zijn nu OrganisatieEenheid-rijen die niet behoren tot
+  // de interne hiërarchie of synthetische groepen.
+  const externeOrgs = useMemo(
+    () =>
+      alleEenheden.filter(
+        (e) =>
+          e.bron !== 'synthetisch' &&
+          !['ministerie', 'directoraat_generaal', 'directie', 'afdeling', 'cluster', 'bureau', 'team'].includes(e.type),
+      ),
+    [alleEenheden],
+  );
   const { data: people = [] } = usePeople();
   const { data: instrumenten = [] } = useNodes(NodeType.INSTRUMENT);
 
@@ -268,17 +279,17 @@ export function OpdrachtenPage() {
         </div>
         <div className="w-full sm:w-52">
           <CreatableSelect
-            value={apiFilters.opdrachtnemer_id ?? ''}
+            value={apiFilters.opdrachtnemer_eenheid_id ?? ''}
             onChange={(v) =>
               setApiFilters((f) => ({
                 ...f,
-                opdrachtnemer_id: v || undefined,
+                opdrachtnemer_eenheid_id: v || undefined,
               }))
             }
             options={opdrachtnemerOptions}
             placeholder="Alle opdrachtnemers"
             onClear={() =>
-              setApiFilters((f) => ({ ...f, opdrachtnemer_id: undefined }))
+              setApiFilters((f) => ({ ...f, opdrachtnemer_eenheid_id: undefined }))
             }
           />
         </div>

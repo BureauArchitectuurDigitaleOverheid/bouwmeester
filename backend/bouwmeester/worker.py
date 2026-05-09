@@ -198,6 +198,63 @@ async def _cleanup_obsolete_heartbeats() -> None:
         logger.exception("Cleanup obsolete heartbeats faalde")
 
 
+async def _overheidsorganisaties_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Dagelijkse sync van TOOI/RIO/Ministeries.csv/organogram/TK/kabinet.
+
+    Volgorde is belangrijk: TOOI eerst (anders geen TOOI-URI's om CSV/RIO
+    tegen te matchen). Default-interval 24 uur; bij eerste start meteen één
+    keer draaien zodat een verse DB direct gevuld wordt.
+    """
+    interval_seconds = getattr(
+        settings, "OVERHEIDSORGANISATIES_SYNC_INTERVAL_SECONDS", 24 * 3600
+    )
+    await health_tick("overheidsorganisaties", status="starting")
+    while True:
+        try:
+            async with async_session() as session:
+                from bouwmeester.services.kabinet_scrape import schrijf_kabinet_yaml
+                from bouwmeester.services.kabinet_sync import sync_kabinet
+                from bouwmeester.services.ministeries_csv_sync import (
+                    sync_ministeries_csv,
+                )
+                from bouwmeester.services.organogram_scrape import sync_organogram
+                from bouwmeester.services.rio_sync import sync_rio
+                from bouwmeester.services.tk_persoon_sync import sync_tk_personen
+                from bouwmeester.services.tooi_sync import sync_tooi
+
+                tooi_stats = await sync_tooi(session)
+                csv_stats = await sync_ministeries_csv(session)
+                rio_stats = await sync_rio(session)
+                org_stats = await sync_organogram(session)
+                tk_stats = await sync_tk_personen(session)
+
+                # Kabinet: scrape -> yaml -> sync
+                from pathlib import Path
+
+                kab_yaml = Path(__file__).resolve().parent / "data" / "kabinet.yaml"
+            async with async_session() as session2:
+                await schrijf_kabinet_yaml(session2, str(kab_yaml))
+                kab_stats = await sync_kabinet(session2, kab_yaml)
+
+            await health_tick(
+                "overheidsorganisaties",
+                detail=(
+                    f"tooi+{tooi_stats.added} csv+{csv_stats.enriched} "
+                    f"rio+{rio_stats.domeinen_added} dg+{org_stats.dgs_added} "
+                    f"tk+{tk_stats.nieuwe_plaatsingen} kab+{kab_stats.nieuwe_plaatsingen}"  # noqa: E501
+                ),
+            )
+        except Exception as exc:
+            logger.exception("Error in overheidsorganisaties sync cycle")
+            await health_tick(
+                "overheidsorganisaties",
+                status="error",
+                detail=_short_error(exc),
+            )
+
+        await asyncio.sleep(interval_seconds)
+
+
 async def main() -> None:
     settings = get_settings()
     logger.info(
@@ -212,6 +269,7 @@ async def main() -> None:
         asyncio.create_task(_mattermost_websocket_loop(settings)),
         asyncio.create_task(_opdracht_task_loop(settings)),
         asyncio.create_task(_fcc_sync_loop(settings)),
+        asyncio.create_task(_overheidsorganisaties_loop(settings)),
     ]
     await asyncio.gather(*tasks)
 

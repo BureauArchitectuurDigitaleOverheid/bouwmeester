@@ -1,0 +1,102 @@
+# Auto-gegenereerd door kabinet_scrape.py uit
+# https://www.rijksoverheid.nl/regering/bewindspersonen
+# Handmatige bewerkingen worden bij volgende scrape overschreven.
+# Voor handmatige overrides: maak een aparte YAML en voeg die toe
+# aan de sync-runner.
+bewindspersonen:
+- naam: Rob Jetten
+  functie: minister_president
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1010
+  functietitel: Minister-president, Minister van Algemene Zaken
+- naam: Dilan Yeşilgöz-Zegerius
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1018
+  functietitel: Minister van Defensie, 1e viceminister-president
+- naam: Tom Berendsen
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1013
+  functietitel: Minister van Buitenlandse Zaken
+- naam: Sjoerd Sjoerdsma
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1013
+  functietitel: Minister van Buitenlandse Handel en Ontwikkelingssamenwerking
+- naam: David van Weel
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1058
+  functietitel: Minister van Justitie en Veiligheid
+- naam: Pieter Heerma
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1034
+  functietitel: Minister van Binnenlandse Zaken en Koninkrijksrelaties
+- naam: Rianne Letschert
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1109
+  functietitel: Minister van Onderwijs, Cultuur en Wetenschap
+- naam: Eelco Heinen
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1090
+  functietitel: Minister van Financiën
+- naam: Vincent Karremans
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1130
+  functietitel: Minister van Infrastructuur en Waterstaat
+- naam: Heleen Herbert
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1045
+  functietitel: Minister van Economische Zaken en Klimaat
+- naam: Jaimi van Essen
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1153
+  functietitel: Minister van Landbouw, Visserij, Voedselzekerheid en Natuur
+- naam: Hans Vijlbrief
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1073
+  functietitel: Minister van Sociale Zaken en Werkgelegenheid
+- naam: Thierry Aartsen
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1073
+  functietitel: Minister van Werk en Participatie
+- naam: Sophie Hermans
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1025
+  functietitel: Minister van Volksgezondheid, Welzijn en Sport
+- naam: Mirjam Sterk
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1025
+  functietitel: Minister van Langdurige Zorg, Jeugd en Sport
+- naam: Claudia van Bruggen
+  functie: staatssecretaris
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1058
+  functietitel: Staatssecretaris van Justitie en Veiligheid
+- naam: Eric van der Burg
+  functie: staatssecretaris
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1034
+  functietitel: Staatssecretaris Koninkrijksrelaties en Slagvaardige Overheid
+- naam: Judith Tielen
+  functie: staatssecretaris
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1109
+  functietitel: Staatssecretaris Onderwijs en Emancipatie
+- naam: Eelco Eerenberg
+  functie: staatssecretaris
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1090
+  functietitel: Staatssecretaris van Financiën
+- naam: Sandra Palmen-Schlangen
+  functie: staatssecretaris
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1090
+  functietitel: Staatssecretaris Herstel Toeslagen
+- naam: Derk Boswijk
+  functie: staatssecretaris
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1018
+  functietitel: Staatssecretaris van Defensie
+- naam: Annet Bertram
+  functie: staatssecretaris
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1130
+  functietitel: Staatssecretaris van Infrastructuur en Waterstaat
+- naam: Willemijn Aerdts
+  functie: staatssecretaris
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1045
+  functietitel: Staatssecretaris Digitale Economie en Soevereiniteit
+- naam: Silvio Erkens
+  functie: staatssecretaris
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1153
+  functietitel: Staatssecretaris van Landbouw, Visserij, Voedselzekerheid en Natuur

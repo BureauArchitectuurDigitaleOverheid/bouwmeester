@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Building2 } from 'lucide-react';
+import { Plus, Building2, Search, X } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -32,6 +32,9 @@ export function OrganisatiePage() {
   const [editPerson, setEditPerson] = useState<Person | null>(null);
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
 
+  // Boom-zoek
+  const [searchTerm, setSearchTerm] = useState('');
+
   // Sync ?eenheid= param on arrival, then clear it
   useEffect(() => {
     const eenheidParam = searchParams.get('eenheid');
@@ -42,6 +45,25 @@ export function OrganisatiePage() {
   }, [searchParams, setSearchParams]);
 
   const { data: tree = [], isLoading } = useOrganisatieTree();
+
+  // Filter de boom op zoekterm: een node blijft staan als hijzelf matcht
+  // OF een afstammeling matcht (die wordt dan automatisch zichtbaar).
+  const filteredTree = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return tree;
+    const matches = (n: typeof tree[number]): boolean => {
+      const self =
+        n.naam.toLowerCase().includes(term) ||
+        (n.afkorting?.toLowerCase().includes(term) ?? false);
+      const child = n.children.some(matches);
+      return self || child;
+    };
+    const filter = (nodes: typeof tree): typeof tree =>
+      nodes
+        .filter(matches)
+        .map((n) => ({ ...n, children: filter(n.children) }));
+    return filter(tree);
+  }, [tree, searchTerm]);
   const createMutation = useCreateOrganisatieEenheid();
   const updateMutation = useUpdateOrganisatieEenheid();
   const deleteMutation = useDeleteOrganisatieEenheid();
@@ -181,13 +203,33 @@ export function OrganisatiePage() {
           {/* Left panel: Tree */}
           <div className="lg:col-span-1">
             <Card>
-              <div className="p-1">
+              <div className="p-2">
+                <div className="relative mb-2">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Zoek organisatie of afkorting..."
+                    className="w-full pl-8 pr-8 py-1.5 text-sm rounded border border-gray-200 focus:border-primary-500 focus:outline-none"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center text-text-secondary hover:text-text"
+                      title="Wis zoekterm"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
                 <OrganisatieTree
-                  tree={tree}
+                  tree={filteredTree}
                   selectedId={selectedId}
                   onSelect={setSelectedId}
                   onAdd={handleAdd}
                   onDropPerson={handleDropPerson}
+                  searchTerm={searchTerm}
                 />
               </div>
             </Card>

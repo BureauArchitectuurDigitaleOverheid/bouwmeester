@@ -40,6 +40,15 @@ class PersonOrganisatieEenheid(Base):
         server_default="in_dienst",
         comment="in_dienst|ingehuurd|extern",
     )
+    functietitel: Mapped[str | None] = mapped_column(
+        nullable=True,
+        comment="Bv. 'Tweede Kamerlid', 'Minister', 'SG', 'directeur'",
+    )
+    bron: Mapped[str] = mapped_column(
+        nullable=False,
+        server_default=text("'handmatig'"),
+        comment="handmatig | tk_odata | kabinet_yaml | roo_leidinggevende",
+    )
     start_datum: Mapped[date] = mapped_column(nullable=False)
     eind_datum: Mapped[date | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(

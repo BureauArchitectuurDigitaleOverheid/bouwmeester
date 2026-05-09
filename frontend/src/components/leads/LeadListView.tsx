@@ -210,7 +210,7 @@ export function LeadListView({
                         {lead.title}
                       </td>
                       <td className="px-4 py-3 text-text-secondary truncate max-w-[180px]">
-                        {lead.externe_organisatie?.naam ??
+                        {lead.organisatie_eenheid?.naam ??
                           lead.organization ??
                           '-'}
                       </td>

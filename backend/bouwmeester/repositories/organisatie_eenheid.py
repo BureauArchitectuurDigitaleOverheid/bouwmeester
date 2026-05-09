@@ -307,6 +307,27 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
 
         return await get_descendant_ids(self.session, root_id)
 
+    async def count_children_batch(
+        self,
+        ids: list[UUID],
+    ) -> dict[UUID, int]:
+        """Tel directe children per eenheid in één query."""
+        if not ids:
+            return {}
+        stmt = (
+            select(
+                OrganisatieEenheidParent.parent_id,
+                func.count().label("cnt"),
+            )
+            .where(
+                OrganisatieEenheidParent.parent_id.in_(ids),
+                OrganisatieEenheidParent.geldig_tot.is_(None),
+            )
+            .group_by(OrganisatieEenheidParent.parent_id)
+        )
+        result = await self.session.execute(stmt)
+        return {row[0]: row[1] for row in result.all()}
+
     async def get_units_by_ids(
         self,
         unit_ids: list[UUID],

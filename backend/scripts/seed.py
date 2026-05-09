@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
 from bouwmeester.core.database import async_session
-from bouwmeester.models.externe_organisatie import ExterneOrganisatie
 from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
@@ -4372,7 +4371,25 @@ async def seed(db: AsyncSession) -> None:
     # EXTERNE ORGANISATIES & OPDRACHTEN
     # =========================================================================
 
-    ext_orgs: dict[str, ExterneOrganisatie] = {}
+    # Externe organisaties zitten sinds de TOOI-migratie als OrganisatieEenheid
+    # in de boom. Deze seed-rijen worden onder synthetische 'Marktpartijen en
+    # overige' gehangen voor zover ze niet door tooi_sync al worden ingelezen.
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    marktpartijen_parent = (
+        (
+            await db.execute(
+                select(OrganisatieEenheid).where(
+                    OrganisatieEenheid.bron == "synthetisch",
+                    OrganisatieEenheid.naam == "Marktpartijen en overige",
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+
+    ext_orgs: dict[str, OrganisatieEenheid] = {}
     ext_org_data = [
         (
             "logius",
@@ -4455,11 +4472,27 @@ async def seed(db: AsyncSession) -> None:
         ),
     ]
     for key, naam, afkorting, type_, beschrijving in ext_org_data:
-        org = ExterneOrganisatie(
+        # Skip als er al een TOOI/handmatig rij met deze naam bestaat (anders
+        # 2x in de DB na seed + tooi_sync).
+        bestaand = (
+            (
+                await db.execute(
+                    select(OrganisatieEenheid).where(OrganisatieEenheid.naam == naam)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if bestaand is not None:
+            ext_orgs[key] = bestaand
+            continue
+        org = OrganisatieEenheid(
             naam=naam,
             afkorting=afkorting,
             type=type_,
             beschrijving=beschrijving,
+            bron="handmatig",
+            parent_id=marktpartijen_parent.id if marktpartijen_parent else None,
         )
         db.add(org)
         ext_orgs[key] = org
@@ -4657,7 +4690,7 @@ async def seed(db: AsyncSession) -> None:
             gerealiseerd=gerealiseerd,
             kostensoort=kostensoort,
             instrument_id=instrument.id,
-            opdrachtnemer_id=ext_orgs[opdrachtnemer_key].id,
+            opdrachtnemer_eenheid_id=ext_orgs[opdrachtnemer_key].id,
             opdrachtgever_id=opdrachtgever.id if opdrachtgever else None,
             verantwoordelijke_id=pm("p_dir_ddo").id if pm("p_dir_ddo") else None,
             status=status,

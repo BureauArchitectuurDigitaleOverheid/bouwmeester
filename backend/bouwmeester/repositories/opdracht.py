@@ -87,7 +87,7 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         type: str | None = None,
         status: str | None = None,
         instrument_id: UUID | None = None,
-        opdrachtnemer_id: UUID | None = None,
+        opdrachtnemer_eenheid_id: UUID | None = None,
         opdrachtgever_id: UUID | None = None,
         verantwoordelijke_id: UUID | None = None,
         org_ctx: OrgContext | None = None,
@@ -102,8 +102,10 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
             stmt = stmt.where(Opdracht.status == status)
         if instrument_id is not None:
             stmt = stmt.where(Opdracht.instrument_id == instrument_id)
-        if opdrachtnemer_id is not None:
-            stmt = stmt.where(Opdracht.opdrachtnemer_id == opdrachtnemer_id)
+        if opdrachtnemer_eenheid_id is not None:
+            stmt = stmt.where(
+                Opdracht.opdrachtnemer_eenheid_id == opdrachtnemer_eenheid_id
+            )
         if opdrachtgever_id is not None:
             stmt = stmt.where(Opdracht.opdrachtgever_id == opdrachtgever_id)
         if verantwoordelijke_id is not None:
@@ -189,7 +191,7 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
         type: str | None = None,
         status: str | None = None,
         instrument_id: UUID | None = None,
-        opdrachtnemer_id: UUID | None = None,
+        opdrachtnemer_eenheid_id: UUID | None = None,
         opdrachtgever_id: UUID | None = None,
         verantwoordelijke_id: UUID | None = None,
         org_ctx: OrgContext | None = None,
@@ -211,8 +213,10 @@ class OpdrachtRepository(BaseRepository[Opdracht]):
             stmt = stmt.where(Opdracht.status == status)
         if instrument_id is not None:
             stmt = stmt.where(Opdracht.instrument_id == instrument_id)
-        if opdrachtnemer_id is not None:
-            stmt = stmt.where(Opdracht.opdrachtnemer_id == opdrachtnemer_id)
+        if opdrachtnemer_eenheid_id is not None:
+            stmt = stmt.where(
+                Opdracht.opdrachtnemer_eenheid_id == opdrachtnemer_eenheid_id
+            )
         if opdrachtgever_id is not None:
             stmt = stmt.where(Opdracht.opdrachtgever_id == opdrachtgever_id)
         if verantwoordelijke_id is not None:

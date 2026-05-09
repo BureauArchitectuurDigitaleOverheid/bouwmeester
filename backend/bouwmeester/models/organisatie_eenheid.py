@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from bouwmeester.core.database import Base
 
 if TYPE_CHECKING:
+    from bouwmeester.models.org_email_domein import OrganisatieEmailDomein
     from bouwmeester.models.org_naam import OrganisatieEenheidNaam
     from bouwmeester.models.org_parent import OrganisatieEenheidParent
     from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
@@ -41,11 +42,28 @@ class OrganisatieEenheid(Base):
     type: Mapped[str] = mapped_column(
         nullable=False,
         comment=(
-            "Hierarchy: ministerie > directoraat_generaal > directie "
-            "> afdeling > (cluster|bureau) > team"
+            "Internal: ministerie > directoraat_generaal > directie > afdeling > "
+            "(cluster|bureau) > team. External: zbo, agentschap, gemeente, provincie, "
+            "waterschap, hoge_college_van_staat, rechtspraak, openbaar_ministerie, "
+            "uitvoeringsorganisatie, koepelorganisatie, stichting, marktpartij, "
+            "synthetische_groep, overig"
         ),
     )
     beschrijving: Mapped[str | None] = mapped_column(Text, nullable=True)
+    afkorting: Mapped[str | None] = mapped_column(nullable=True)
+    website: Mapped[str | None] = mapped_column(nullable=True)
+    kvk_nummer: Mapped[str | None] = mapped_column(nullable=True)
+
+    tooi_uri: Mapped[str | None] = mapped_column(unique=True, nullable=True, index=True)
+    tooi_organisatiesoort: Mapped[str | None] = mapped_column(nullable=True)
+    oin: Mapped[str | None] = mapped_column(nullable=True)
+    fte_aantal: Mapped[int | None] = mapped_column(nullable=True)
+    bron: Mapped[str] = mapped_column(
+        nullable=False,
+        server_default=text("'handmatig'"),
+        comment="handmatig | tooi | synthetisch | organogram_scrape | fcc_import",
+    )
+
     geldig_van: Mapped[date] = mapped_column(
         nullable=False,
         server_default=text("CURRENT_DATE"),
@@ -68,6 +86,12 @@ class OrganisatieEenheid(Base):
     # Placements (people assigned to this unit via junction table)
     plaatsingen: Mapped[list["PersonOrganisatieEenheid"]] = relationship(
         "PersonOrganisatieEenheid",
+        back_populates="organisatie_eenheid",
+        cascade="all, delete-orphan",
+    )
+
+    email_domeinen: Mapped[list["OrganisatieEmailDomein"]] = relationship(
+        "OrganisatieEmailDomein",
         back_populates="organisatie_eenheid",
         cascade="all, delete-orphan",
     )

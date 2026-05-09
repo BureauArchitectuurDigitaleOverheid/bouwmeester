@@ -6,7 +6,7 @@ export async function getOpdrachten(params?: {
   type?: string;
   status?: string;
   instrument_id?: string;
-  opdrachtnemer_id?: string;
+  opdrachtnemer_eenheid_id?: string;
   opdrachtgever_id?: string;
   verantwoordelijke_id?: string;
 }): Promise<Opdracht[]> {
@@ -17,7 +17,7 @@ export async function getOpdrachtenSummary(params?: {
   begrotingsjaar?: number;
   type?: string;
   status?: string;
-  opdrachtnemer_id?: string;
+  opdrachtnemer_eenheid_id?: string;
 }): Promise<OpdrachtenSummary> {
   return apiGet<OpdrachtenSummary>('/api/opdrachten/summary', params as Record<string, string | number | boolean | undefined>);
 }

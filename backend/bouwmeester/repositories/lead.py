@@ -38,7 +38,7 @@ def _lead_options():
     return [
         selectinload(Lead.assignee),
         selectinload(Lead.brought_by),
-        selectinload(Lead.externe_organisatie),
+        selectinload(Lead.organisatie_eenheid),
         selectinload(Lead.initiatief),
         selectinload(Lead.attachments),
         selectinload(Lead.lead_tags).selectinload(LeadTag.tag),
@@ -92,7 +92,7 @@ class LeadRepository(BaseRepository[Lead]):
             .options(
                 selectinload(Lead.assignee),
                 selectinload(Lead.brought_by),
-                selectinload(Lead.externe_organisatie),
+                selectinload(Lead.organisatie_eenheid),
                 selectinload(Lead.initiatief),
                 selectinload(Lead.attachments),
                 selectinload(Lead.activities).selectinload(LeadActivity.author),
@@ -207,7 +207,7 @@ class LeadRepository(BaseRepository[Lead]):
             attribute_names=[
                 "assignee",
                 "brought_by",
-                "externe_organisatie",
+                "organisatie_eenheid",
                 "initiatief",
                 "attachments",
                 "lead_tags",

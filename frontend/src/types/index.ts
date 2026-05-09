@@ -362,6 +362,14 @@ export interface OrganisatieEenheid {
   manager_id?: string | null;
   manager?: Person | null;
   beschrijving?: string | null;
+  afkorting?: string | null;
+  website?: string | null;
+  kvk_nummer?: string | null;
+  tooi_uri?: string | null;
+  tooi_organisatiesoort?: string | null;
+  oin?: string | null;
+  fte_aantal?: number | null;
+  bron?: 'handmatig' | 'tooi' | 'synthetisch' | 'organogram_scrape' | 'fcc_import';
   geldig_van?: string | null;
   geldig_tot?: string | null;
   created_at: string;
@@ -370,6 +378,8 @@ export interface OrganisatieEenheid {
 export interface OrganisatieEenheidTreeNode extends OrganisatieEenheid {
   children: OrganisatieEenheidTreeNode[];
   personen_count: number;
+  children_count?: number;
+  has_children?: boolean;
 }
 
 export interface OrganisatieEenheidCreate {
@@ -378,6 +388,9 @@ export interface OrganisatieEenheidCreate {
   parent_id?: string | null;
   manager_id?: string | null;
   beschrijving?: string | null;
+  afkorting?: string | null;
+  website?: string | null;
+  kvk_nummer?: string | null;
   geldig_van?: string | null;
 }
 
@@ -387,6 +400,9 @@ export interface OrganisatieEenheidUpdate {
   parent_id?: string | null;
   manager_id?: string | null;
   beschrijving?: string | null;
+  afkorting?: string | null;
+  website?: string | null;
+  kvk_nummer?: string | null;
   geldig_tot?: string | null;
   wijzig_datum?: string | null;
 }
@@ -1302,34 +1318,10 @@ export const EXTERNE_ORG_TYPE_COLORS: Record<ExterneOrganisatieType, BadgeVarian
   [ExterneOrganisatieType.OVERIG]: 'gray',
 };
 
-export interface ExterneOrganisatie {
-  id: string;
-  naam: string;
-  afkorting?: string | null;
-  type: string;
-  kvk_nummer?: string | null;
-  website?: string | null;
-  beschrijving?: string | null;
-  created_at: string;
-}
-
-export interface ExterneOrganisatieCreate {
-  naam: string;
-  afkorting?: string | null;
-  type: ExterneOrganisatieType;
-  kvk_nummer?: string | null;
-  website?: string | null;
-  beschrijving?: string | null;
-}
-
-export interface ExterneOrganisatieUpdate {
-  naam?: string;
-  afkorting?: string | null;
-  type?: ExterneOrganisatieType;
-  kvk_nummer?: string | null;
-  website?: string | null;
-  beschrijving?: string | null;
-}
+// Externe organisaties zitten sinds de migratie in de OrganisatieEenheid-boom
+// onder synthetische groepen ('Marktpartijen en overige', 'ZBO's en agentschappen').
+// Deze type-alias houdt bestaande call-sites in Lead/Opdracht-componenten werkend.
+export type ExterneOrganisatie = OrganisatieEenheid;
 
 // Opdracht
 export enum OpdrachtType {

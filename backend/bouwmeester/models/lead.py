@@ -11,12 +11,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from bouwmeester.core.database import Base
 
 if TYPE_CHECKING:
-    from bouwmeester.models.externe_organisatie import ExterneOrganisatie
     from bouwmeester.models.initiatief import Initiatief
     from bouwmeester.models.lead_activity import LeadActivity
     from bouwmeester.models.lead_attachment import LeadAttachment
     from bouwmeester.models.lead_node import LeadNode
     from bouwmeester.models.lead_update import LeadUpdatePost
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
     from bouwmeester.models.person import Person
     from bouwmeester.models.tag import LeadTag
 
@@ -38,10 +38,11 @@ class Lead(Base):
     title: Mapped[str] = mapped_column(nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     organization: Mapped[str | None] = mapped_column(nullable=True)
-    externe_organisatie_id: Mapped[uuid.UUID | None] = mapped_column(
+    organisatie_eenheid_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("externe_organisatie.id", ondelete="SET NULL"),
+        ForeignKey("organisatie_eenheid.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     stage: Mapped[str] = mapped_column(
         default="inbox",
@@ -100,8 +101,8 @@ class Lead(Base):
     brought_by: Mapped[Optional["Person"]] = relationship(
         "Person", foreign_keys=[brought_by_id]
     )
-    externe_organisatie: Mapped[Optional["ExterneOrganisatie"]] = relationship(
-        "ExterneOrganisatie"
+    organisatie_eenheid: Mapped[Optional["OrganisatieEenheid"]] = relationship(
+        "OrganisatieEenheid"
     )
     initiatief: Mapped[Optional["Initiatief"]] = relationship(
         "Initiatief", back_populates="leads"

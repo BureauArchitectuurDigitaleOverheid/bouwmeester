@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { X, Plus } from 'lucide-react';
 import { useCreateOpdracht, useUpdateOpdracht, useAddOpdrachtNodeKoppeling, useRemoveOpdrachtNodeKoppeling } from '@/hooks/useOpdrachten';
-import { useExterneOrganisaties, useCreateExterneOrganisatie } from '@/hooks/useExterneOrganisaties';
 import { useNodes } from '@/hooks/useNodes';
 import { usePeople } from '@/hooks/usePeople';
-import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import { useOrganisatieFlat, useCreateOrganisatieEenheid } from '@/hooks/useOrganisatie';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
@@ -14,7 +13,6 @@ import {
   OpdrachtType,
   OpdrachtStatus,
   Kostensoort,
-  ExterneOrganisatieType,
   OPDRACHT_TYPE_LABELS,
   OPDRACHT_STATUS_LABELS,
   KOSTENSOORT_LABELS,
@@ -37,14 +35,17 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
   const isEdit = !!opdracht;
   const createMutation = useCreateOpdracht();
   const updateMutation = useUpdateOpdracht();
-  const createExterneOrg = useCreateExterneOrganisatie();
+  const createOrganisatieEenheid = useCreateOrganisatieEenheid();
   const addKoppeling = useAddOpdrachtNodeKoppeling();
   const removeKoppeling = useRemoveOpdrachtNodeKoppeling();
-  const { data: externeOrgs = [] } = useExterneOrganisaties();
   const { data: instrumenten = [] } = useNodes(NodeType.INSTRUMENT);
   const { data: allNodes = [] } = useNodes();
   const { data: people = [] } = usePeople();
   const { data: eenheden = [] } = useOrganisatieFlat();
+  // Externe orgs zitten nu in dezelfde tabel als interne; filter op niet-synthetisch.
+  const externeOrgs = eenheden.filter(
+    (e) => e.bron !== 'synthetisch' && !['ministerie', 'directoraat_generaal', 'directie', 'afdeling', 'cluster', 'bureau', 'team'].includes(e.type),
+  );
   const { currentPerson } = useCurrentPerson();
 
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +61,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
     volgend_jaar_benodigd: opdracht?.volgend_jaar_benodigd?.toString() || '',
     volgend_jaar_aangevraagd: opdracht?.volgend_jaar_aangevraagd?.toString() || '',
     instrument_id: opdracht?.instrument_id || defaults?.instrument_id || '',
-    opdrachtnemer_id: opdracht?.opdrachtnemer_id || '',
+    opdrachtnemer_eenheid_id: opdracht?.opdrachtnemer_eenheid_id || '',
     opdrachtgever_id: opdracht?.opdrachtgever_id || '',
     verantwoordelijke_id: opdracht?.verantwoordelijke_id || '',
     subsidieregeling: opdracht?.subsidieregeling || '',
@@ -94,9 +95,15 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
   }));
 
   const handleCreateOpdrachtnemer = async (text: string): Promise<string | null> => {
-    const result = await createExterneOrg.mutateAsync({
+    // Nieuwe externe org wordt aangemaakt onder synthetische "Marktpartijen en
+    // overige" parent (gezocht in eenheden); bron blijft handmatig.
+    const marktpartijenParent = eenheden.find(
+      (e) => e.bron === 'synthetisch' && e.naam === 'Marktpartijen en overige',
+    );
+    const result = await createOrganisatieEenheid.mutateAsync({
       naam: text,
-      type: ExterneOrganisatieType.OVERIG,
+      type: 'overig',
+      parent_id: marktpartijenParent?.id ?? null,
     });
     return result?.id || null;
   };
@@ -148,7 +155,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
       volgend_jaar_benodigd: form.volgend_jaar_benodigd ? Number(form.volgend_jaar_benodigd) : undefined,
       volgend_jaar_aangevraagd: form.volgend_jaar_aangevraagd ? Number(form.volgend_jaar_aangevraagd) : undefined,
       instrument_id: form.instrument_id,
-      opdrachtnemer_id: form.opdrachtnemer_id || null,
+      opdrachtnemer_eenheid_id: form.opdrachtnemer_eenheid_id || null,
       opdrachtgever_id: form.opdrachtgever_id || null,
       verantwoordelijke_id: form.verantwoordelijke_id || null,
       subsidieregeling: form.subsidieregeling || undefined,
@@ -215,13 +222,13 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
         />
         <CreatableSelect
           label="Opdrachtnemer"
-          value={form.opdrachtnemer_id}
-          onChange={(value) => setForm(f => ({ ...f, opdrachtnemer_id: value }))}
+          value={form.opdrachtnemer_eenheid_id}
+          onChange={(value) => setForm(f => ({ ...f, opdrachtnemer_eenheid_id: value }))}
           options={opdrachtnemerOptions}
           placeholder="Kies opdrachtnemer..."
           onCreate={handleCreateOpdrachtnemer}
           createLabel="Nieuwe organisatie"
-          onClear={() => setForm(f => ({ ...f, opdrachtnemer_id: '' }))}
+          onClear={() => setForm(f => ({ ...f, opdrachtnemer_eenheid_id: '' }))}
         />
       </div>
 
