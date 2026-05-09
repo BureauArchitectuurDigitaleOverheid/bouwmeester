@@ -4375,6 +4375,10 @@ async def seed(db: AsyncSession) -> None:
     # in de boom. Deze seed-rijen worden onder synthetische 'Marktpartijen en
     # overige' gehangen voor zover ze niet door tooi_sync al worden ingelezen.
     from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+    from scripts.seed_synthetic_groups import seed as _seed_synth
+
+    # Zorg dat synthetische groepen bestaan (idempotent).
+    await _seed_synth(db)
 
     marktpartijen_parent = (
         (

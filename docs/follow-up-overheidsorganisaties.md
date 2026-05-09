@@ -1,6 +1,6 @@
 # Vervolg-werk na Overheidsorganisaties-PR
 
-Wat in deze PR is gebouwd:
+Wat in deze PR is gebouwd (na review-rondes):
 
 - TOOI-spine: ~1500 NL-overheidsorganisaties uit 8 `rwc_*` waardelijsten
 - Ministeries.csv (OIN, FTE, organogram-link), RIO email-domeinen (~5000)
@@ -22,6 +22,10 @@ Wat in deze PR is gebouwd:
 - Email->organisatie-match endpoint voor RIO-suggestie bij persoon-aanmaak
 - Mutatie-blokkade: bron != 'handmatig' rijen zijn read-only (alleen super_admin)
 - UI met collapse-default voor synthetische groepen + zoekveld + TOOI-badge
+- Synthetische groepen worden door de Alembic-migratie aangemaakt (idempotent
+  via NOT EXISTS) zodat fresh deploys ze direct hebben.
+- Mutatie-blokkade getest: TOOI/synthetische rijen weigeren updates voor
+  non-super_admin (3 nieuwe tests in `test_organisatie.py`).
 
 ## Wat nog moet komen
 

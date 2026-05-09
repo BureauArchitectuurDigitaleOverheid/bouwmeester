@@ -329,6 +329,41 @@ def upgrade() -> None:
         unique=False,
     )
 
+    # Seed synthetische top-level groepen — TOOI/scrape-syncs hebben deze
+    # nodig als parent-target voor gemeenten, provincies, marktpartijen, etc.
+    # Idempotent: skip als rij met dezelfde naam al bestaat (NOT EXISTS).
+    namen = [
+        (
+            "Hoge Colleges van Staat",
+            "Grondwettelijke instellingen die naast de regering staan.",
+        ),
+        ("Rechtspraak", "Onafhankelijke rechtsprekende macht."),
+        ("Openbaar Ministerie", "Het Openbaar Ministerie en arrondissementsparketten."),
+        ("Gemeenten", "Alle Nederlandse gemeenten."),
+        ("Provincies", "De twaalf provincies."),
+        ("Waterschappen", "Waterschappen en hoogheemraadschappen."),
+        ("Samenwerkingsorganisaties", "Gemeenschappelijke regelingen e.d."),
+        (
+            "Caribische openbare lichamen",
+            "Bonaire, Sint Eustatius en Saba (BES-eilanden).",
+        ),
+        ("ZBO's en agentschappen", "Vangnet voor ZBO's en agentschappen."),
+        ("Marktpartijen en overige", "Marktpartijen, stichtingen, koepelorganisaties."),
+    ]
+    for naam, beschrijving in namen:
+        op.execute(
+            sa.text(
+                """
+                INSERT INTO organisatie_eenheid (naam, type, bron, beschrijving)
+                SELECT :naam, 'synthetische_groep', 'synthetisch', :beschrijving
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM organisatie_eenheid
+                    WHERE bron='synthetisch' AND naam = :naam
+                )
+                """
+            ).bindparams(naam=naam, beschrijving=beschrijving)
+        )
+
 
 def downgrade() -> None:
     op.drop_index(
