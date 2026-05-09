@@ -4,6 +4,7 @@ from collections import defaultdict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
@@ -15,6 +16,7 @@ from bouwmeester.core.permissions import (
     check_resource_permission,
     require_permission,
 )
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.schema.organisatie_eenheid import (
@@ -47,9 +49,31 @@ async def _check_eenheid_write_access(
     a stakeholder eenheid outside their scope are granted an "eigenaar"
     resource-permission at create-time and may mutate it via that path.
     Raises 403 otherwise.
+
+    TOOI/synthetische rijen zijn read-only behalve voor super_admin —
+    die kennen we als bron != 'handmatig'. Mutaties op die rijen worden
+    geblokkeerd zodat een TOOI-sync ze niet vermalen worden door
+    handmatige bewerkingen.
     """
     if perm_ctx.is_super_admin:
         return
+
+    # Read-only check op niet-handmatige bron
+    eenheid = (
+        await db.execute(
+            select(OrganisatieEenheid.bron).where(OrganisatieEenheid.id == eenheid_id)
+        )
+    ).scalar_one_or_none()
+    if eenheid is not None and eenheid != "handmatig":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Deze organisatie-eenheid is read-only (bron='{eenheid}'). "
+                "TOOI/scrape/synthetische rijen worden door de sync beheerd; "
+                "alleen super_admin kan ze handmatig wijzigen."
+            ),
+        )
+
     all_visible = set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
     if org_ctx.is_admin or eenheid_id in all_visible:
         return

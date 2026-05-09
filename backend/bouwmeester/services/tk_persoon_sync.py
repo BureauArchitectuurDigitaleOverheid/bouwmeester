@@ -1,22 +1,15 @@
-"""Tweede Kamer OData personen-sync met echte start/eind-datums.
+"""Tweede en Eerste Kamer OData personen-sync.
 
-Bron: `https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0/FractieZetelPersoon`
-— levert per kamerlid de fractie-zittingsperiode met `Van` en `TotEnMet`-velden.
-Daaruit halen we de echte start/eind-datum van een lidmaatschap. CC0/public,
-dagelijks geüpdatet.
+Twee bronnen op `gegevensmagazijn.tweedekamer.nl/OData/v4/2.0`:
 
-Sync-logica:
-- Pak alle FractieZetelPersoon-records met expand op Persoon en
-  FractieZetel/Fractie
-- Filter op `Verwijderd=false` en `Functie='Lid'`
-- Voor elk record:
-  * Person (op tk_persoon_id) opzoeken/aanmaken
-  * PersonOrganisatieEenheid op (person, eenheid, start_datum) als unique key
-  * Eenheid is 'Tweede Kamer' onder HCvS
-  * `start_datum=Van.date()`, `eind_datum=TotEnMet.date()` (None = nog actief)
-  * `functietitel='Kamerlid (FRACTIE)'`
-- Bij hernieuwde sync: bestaande plaatsingen worden geüpdatet als TotEnMet
-  veranderde (kamerlid is vertrokken). Geen duplicaten.
+1. **FractieZetelPersoon** (Tweede Kamer): levert echte Van/TotEnMet datums
+   per fractie-zittingsperiode. Eén persoon kan meerdere periodes hebben.
+2. **Persoon** (Eerste Kamer): geen FractieZetelPersoon-equivalent voor EK.
+   Filter op `Functie='Eerste Kamerlid'` en koppel aan de 'Eerste Kamer'-
+   eenheid met `start_datum=today` (of bestaande start als persoon al gekend
+   is). Bij verdwijnen uit feed -> `eind_datum=today`.
+
+CC0/public, dagelijks geüpdatet sinds 2012.
 
 AVG: kamerleden zijn publieke functies onder art. 6.1.e — geen issue.
 """
@@ -42,10 +35,8 @@ log = logging.getLogger(__name__)
 ODATA_BASE = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0"
 PAGE_SIZE = 250
 
-# TK OData gaat alleen over de Tweede Kamer — Eerste Kamer heeft eigen
-# (beperktere) bron. Voor nu mappen we alle TK FractieZetelPersoon naar de
-# 'Tweede Kamer' synthetische eenheid.
-EENHEID_NAAM = "Tweede Kamer"
+TK_EENHEID_NAAM = "Tweede Kamer"
+EK_EENHEID_NAAM = "Eerste Kamer"
 
 
 @dataclass
@@ -54,6 +45,7 @@ class TkSyncStats:
     nieuwe_personen: int = 0
     nieuwe_plaatsingen: int = 0
     geupdate_plaatsingen: int = 0
+    verlopen_plaatsingen: int = 0
     onveranderd: int = 0
     fouten: list[str] = field(default_factory=list)
 
@@ -78,11 +70,7 @@ def _parse_datum(s: str | None) -> date | None:
 
 
 async def fetch_fractiezetel_personen(*, alleen_actief: bool = True) -> list[dict]:
-    """Pak FractieZetelPersoon-records met expand op Persoon en Fractie.
-
-    Met alleen_actief=True (default): alleen records waar TotEnMet null is.
-    Voor historische zittingsperiodes zet je dit op False.
-    """
+    """TK FractieZetelPersoon met expand op Persoon en Fractie."""
     out: list[dict] = []
     filt = "Verwijderd eq false and Functie eq 'Lid'"
     if alleen_actief:
@@ -102,24 +90,30 @@ async def fetch_fractiezetel_personen(*, alleen_actief: bool = True) -> list[dic
     return out
 
 
-async def sync_tk_personen(
-    session: AsyncSession,
-    *,
-    fetcher=fetch_fractiezetel_personen,
-) -> TkSyncStats:
-    sync_run_id = uuid.uuid4()
-    stats = TkSyncStats(sync_run_id=sync_run_id)
+async def fetch_eerste_kamerleden() -> list[dict]:
+    """Persoon-records waar Functie='Eerste Kamerlid' en niet-verwijderd."""
+    out: list[dict] = []
+    url: str | None = (
+        f"{ODATA_BASE}/Persoon"
+        f"?$filter=Verwijderd eq false and Functie eq 'Eerste Kamerlid'"
+        f"&$top={PAGE_SIZE}"
+    )
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        while url:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            payload = resp.json()
+            out.extend(payload.get("value", []))
+            url = payload.get("@odata.nextLink")
+    return out
 
-    feed = await fetcher()
-    if not feed:
-        log.warning("TK OData feed leeg, sync afgebroken")
-        return stats
 
-    eenheid = (
+async def _get_eenheid(session: AsyncSession, naam: str) -> OrganisatieEenheid | None:
+    return (
         (
             await session.execute(
                 select(OrganisatieEenheid).where(
-                    OrganisatieEenheid.naam == EENHEID_NAAM,
+                    OrganisatieEenheid.naam == naam,
                     OrganisatieEenheid.geldig_tot.is_(None),
                 )
             )
@@ -127,13 +121,12 @@ async def sync_tk_personen(
         .scalars()
         .first()
     )
-    if eenheid is None:
-        stats.fouten.append(
-            f"Geen OrganisatieEenheid '{EENHEID_NAAM}' gevonden — seed_synthetic_groups draaien"  # noqa: E501
-        )
-        return stats
 
-    bestaande_personen = {
+
+async def _bestaande_personen_per_tk_id(
+    session: AsyncSession,
+) -> dict[str, Person]:
+    return {
         p.tk_persoon_id: p
         for p in (
             await session.execute(
@@ -145,8 +138,21 @@ async def sync_tk_personen(
         if p.tk_persoon_id
     }
 
-    # Bestaande plaatsingen op (person_id, eenheid_id, start_datum) als unieke
-    # key — meerdere periodes per persoon zijn mogelijk.
+
+async def _sync_tk(
+    session: AsyncSession,
+    sync_run_id: uuid.UUID,
+    fractiezetel_fetcher,
+    bestaande_personen: dict[str, Person],
+    stats: TkSyncStats,
+) -> None:
+    eenheid = await _get_eenheid(session, TK_EENHEID_NAAM)
+    if eenheid is None:
+        stats.fouten.append(f"Geen OrganisatieEenheid '{TK_EENHEID_NAAM}'")
+        return
+
+    feed = await fractiezetel_fetcher()
+
     huidige_plaatsingen = (
         (
             await session.execute(
@@ -159,7 +165,6 @@ async def sync_tk_personen(
         .scalars()
         .all()
     )
-
     plc_per_key: dict[tuple[uuid.UUID, date], PersonOrganisatieEenheid] = {
         (p.person_id, p.start_datum): p for p in huidige_plaatsingen
     }
@@ -173,23 +178,19 @@ async def sync_tk_personen(
         if not naam:
             continue
         van = _parse_datum(record.get("Van"))
-        tot = _parse_datum(record.get("TotEnMet"))
         if van is None:
             stats.fouten.append(
-                f"FractieZetelPersoon zonder Van-datum overgeslagen (id={record.get('Id')})"  # noqa: E501
+                f"FractieZetelPersoon zonder Van-datum (id={record.get('Id')})"
             )
             continue
+        tot = _parse_datum(record.get("TotEnMet"))
         fractie = (record.get("FractieZetel") or {}).get("Fractie") or {}
         fractielabel = fractie.get("Afkorting") or fractie.get("NaamNL") or "?"
         functietitel = f"Tweede Kamerlid ({fractielabel})"
 
         person = bestaande_personen.get(tk_id)
         if person is None:
-            person = Person(
-                naam=naam,
-                bron="tk_odata",
-                tk_persoon_id=tk_id,
-            )
+            person = Person(naam=naam, bron="tk_odata", tk_persoon_id=tk_id)
             session.add(person)
             await session.flush()
             bestaande_personen[tk_id] = person
@@ -228,7 +229,6 @@ async def sync_tk_personen(
                 )
             )
         else:
-            # Update eind_datum/functietitel als die wijzigde
             if (
                 bestaand_plc.eind_datum != tot
                 or bestaand_plc.functietitel != functietitel
@@ -239,14 +239,136 @@ async def sync_tk_personen(
             else:
                 stats.onveranderd += 1
 
+
+async def _sync_ek(
+    session: AsyncSession,
+    sync_run_id: uuid.UUID,
+    ek_fetcher,
+    bestaande_personen: dict[str, Person],
+    stats: TkSyncStats,
+) -> None:
+    eenheid = await _get_eenheid(session, EK_EENHEID_NAAM)
+    if eenheid is None:
+        stats.fouten.append(f"Geen OrganisatieEenheid '{EK_EENHEID_NAAM}'")
+        return
+
+    feed = await ek_fetcher()
+    today = date.today()
+
+    huidige_plaatsingen = (
+        (
+            await session.execute(
+                select(PersonOrganisatieEenheid).where(
+                    PersonOrganisatieEenheid.bron == "tk_odata",
+                    PersonOrganisatieEenheid.organisatie_eenheid_id == eenheid.id,
+                    PersonOrganisatieEenheid.eind_datum.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    actief_per_person_id: dict[uuid.UUID, PersonOrganisatieEenheid] = {
+        p.person_id: p for p in huidige_plaatsingen
+    }
+
+    feed_person_ids: set[uuid.UUID] = set()
+
+    for record in feed:
+        tk_id = record.get("Id")
+        if not tk_id:
+            continue
+        naam = _bouw_naam(record)
+        if not naam:
+            continue
+        fractielabel = record.get("Fractielabel") or "?"
+        functietitel = f"Eerste Kamerlid ({fractielabel})"
+
+        person = bestaande_personen.get(tk_id)
+        if person is None:
+            person = Person(naam=naam, bron="tk_odata", tk_persoon_id=tk_id)
+            session.add(person)
+            await session.flush()
+            bestaande_personen[tk_id] = person
+            stats.nieuwe_personen += 1
+        elif person.naam != naam:
+            person.naam = naam
+
+        feed_person_ids.add(person.id)
+
+        if person.id in actief_per_person_id:
+            plc = actief_per_person_id[person.id]
+            if plc.functietitel != functietitel:
+                plc.functietitel = functietitel
+                stats.geupdate_plaatsingen += 1
+            else:
+                stats.onveranderd += 1
+        else:
+            session.add(
+                PersonOrganisatieEenheid(
+                    person_id=person.id,
+                    organisatie_eenheid_id=eenheid.id,
+                    dienstverband="extern",
+                    functietitel=functietitel,
+                    bron="tk_odata",
+                    start_datum=today,
+                )
+            )
+            stats.nieuwe_plaatsingen += 1
+            session.add(
+                TooiSyncLog(
+                    sync_run_id=sync_run_id,
+                    bron="tk_odata",
+                    action="add",
+                    person_id=person.id,
+                    organisatie_eenheid_id=eenheid.id,
+                    after={"naam": naam, "functietitel": functietitel},
+                )
+            )
+
+    # Verlopen: actieve plaatsingen die niet meer in EK-feed zitten
+    for person_id, plc in actief_per_person_id.items():
+        if person_id not in feed_person_ids:
+            plc.eind_datum = today
+            stats.verlopen_plaatsingen += 1
+            session.add(
+                TooiSyncLog(
+                    sync_run_id=sync_run_id,
+                    bron="tk_odata",
+                    action="soft_delete",
+                    person_id=person_id,
+                    organisatie_eenheid_id=eenheid.id,
+                    note="EK-lid niet meer in feed",
+                )
+            )
+
+
+async def sync_tk_personen(
+    session: AsyncSession,
+    *,
+    fractiezetel_fetcher=fetch_fractiezetel_personen,
+    ek_fetcher=fetch_eerste_kamerleden,
+) -> TkSyncStats:
+    """Sync TK + EK in één run."""
+    sync_run_id = uuid.uuid4()
+    stats = TkSyncStats(sync_run_id=sync_run_id)
+
+    bestaande_personen = await _bestaande_personen_per_tk_id(session)
+
+    await _sync_tk(
+        session, sync_run_id, fractiezetel_fetcher, bestaande_personen, stats
+    )
+    await _sync_ek(session, sync_run_id, ek_fetcher, bestaande_personen, stats)
+
     await session.commit()
     log.info(
-        "TK OData sync run=%s: +%d personen, +%d plaatsingen, "
-        "%d geüpdatet, %d onveranderd, %d fouten",
+        "TK+EK sync run=%s: +%d personen, +%d plaatsingen, "
+        "%d geüpdatet, %d verlopen, %d onveranderd, %d fouten",
         sync_run_id,
         stats.nieuwe_personen,
         stats.nieuwe_plaatsingen,
         stats.geupdate_plaatsingen,
+        stats.verlopen_plaatsingen,
         stats.onveranderd,
         len(stats.fouten),
     )

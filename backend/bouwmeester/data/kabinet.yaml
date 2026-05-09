@@ -12,6 +12,10 @@ bewindspersonen:
   functie: minister
   ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1018
   functietitel: Minister van Defensie, 1e viceminister-president
+- naam: Bart van den Brink
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1162
+  functietitel: Minister van Asiel en Migratie, 2e viceminister-president
 - naam: Tom Berendsen
   functie: minister
   ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1013
@@ -28,6 +32,10 @@ bewindspersonen:
   functie: minister
   ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1034
   functietitel: Minister van Binnenlandse Zaken en Koninkrijksrelaties
+- naam: Elanor Boekholt-O’Sullivan
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1171
+  functietitel: Minister van Volkshuisvesting en Ruimtelijke Ordening
 - naam: Rianne Letschert
   functie: minister
   ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1109
@@ -44,6 +52,10 @@ bewindspersonen:
   functie: minister
   ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1045
   functietitel: Minister van Economische Zaken en Klimaat
+- naam: Stientje van Veldhoven-van der Meer
+  functie: minister
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1182
+  functietitel: Minister van Klimaat en Groene Groei
 - naam: Jaimi van Essen
   functie: minister
   ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1153
@@ -96,6 +108,10 @@ bewindspersonen:
   functie: staatssecretaris
   ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1045
   functietitel: Staatssecretaris Digitale Economie en Soevereiniteit
+- naam: Jo-Annes de Bat
+  functie: staatssecretaris
+  ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1182
+  functietitel: Staatssecretaris van Klimaat en Groene Groei
 - naam: Silvio Erkens
   functie: staatssecretaris
   ministerie_tooi_uri: https://identifier.overheid.nl/tooi/id/ministerie/mnre1153

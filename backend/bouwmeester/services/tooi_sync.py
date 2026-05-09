@@ -296,6 +296,21 @@ async def _synthetische_parent_map(
     return {naam: id_ for (id_, naam) in rows}
 
 
+async def _has_actieve_plaatsing(session: AsyncSession, eenheid_id) -> bool:
+    """True als er minstens één lopende plaatsing aan deze eenheid hangt."""
+    from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+
+    result = await session.execute(
+        select(PersonOrganisatieEenheid.id)
+        .where(
+            PersonOrganisatieEenheid.organisatie_eenheid_id == eenheid_id,
+            PersonOrganisatieEenheid.eind_datum.is_(None),
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
+
 async def _bestaande_per_tooi_uri(
     session: AsyncSession,
 ) -> dict[str, OrganisatieEenheid]:
@@ -447,12 +462,30 @@ async def sync_tooi(
                 row.parent_id = parent_id
             if row.tooi_organisatiesoort != org.organisatiesoort:
                 row.tooi_organisatiesoort = org.organisatiesoort
-            # Einddatum uit TOOI naar geldig_tot
+            # Einddatum-merge regels:
+            # - TOOI markeert als opgeheven EN onze rij was actief: alleen
+            #   overnemen als er GEEN actieve plaatsing aan hangt (anders
+            #   respecteren we de heractivering door kabinet-scrape).
+            # - TOOI markeert weer als levend: clear geldig_tot.
             if org.einddatum is not None:
-                if row.geldig_tot != org.einddatum:
+                if row.geldig_tot is None:
+                    has_active = await _has_actieve_plaatsing(session, row.id)
+                    if has_active and org.einddatum < today:
+                        # Skip soft-delete; ministerie is in gebruik (bv.
+                        # kabinet-scrape heeft hem geheractiveerd na een
+                        # eerdere TOOI-soft-delete).
+                        log.info(
+                            "TOOI markeert %s als opgeheven %s, maar er "
+                            "zijn actieve plaatsingen — geheractiveerd",
+                            row.naam,
+                            org.einddatum,
+                        )
+                    else:
+                        row.geldig_tot = org.einddatum
+                elif row.geldig_tot != org.einddatum:
                     row.geldig_tot = org.einddatum
             elif row.geldig_tot is not None:
-                # was eerder soft-deleted, nu weer levend
+                # TOOI ziet hem nu als levend, was eerder soft-deleted
                 row.geldig_tot = None
 
             if naam_changed:

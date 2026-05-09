@@ -142,14 +142,17 @@ async def bouw_kabinet_yaml_data(session: AsyncSession) -> dict:
         log.warning("rijksoverheid.nl/regering/bewindspersonen leverde 0 entries")
         return {"bewindspersonen": []}
 
-    # Map TOOI-namen -> tooi_uri
+    # Map TOOI-namen -> tooi_uri. Inclusief opgeheven ministeries; als
+    # rijksoverheid.nl een ministerie laat zien dat in TOOI als
+    # geldig_tot is gemarkeerd (bv. ressort-wisseling tijdens
+    # kabinetsformatie) heractiveren we de bestaande rij zodat een
+    # bewindspersoon eraan gekoppeld kan worden.
     tooi_rows = (
         (
             await session.execute(
                 select(OrganisatieEenheid).where(
                     OrganisatieEenheid.type == "ministerie",
                     OrganisatieEenheid.tooi_uri.is_not(None),
-                    OrganisatieEenheid.geldig_tot.is_(None),
                 )
             )
         )
@@ -157,19 +160,28 @@ async def bouw_kabinet_yaml_data(session: AsyncSession) -> dict:
         .all()
     )
     uri_per_tooi_naam: dict[str, str] = {}
+    rij_per_tooi_naam: dict[str, OrganisatieEenheid] = {}
     for row in tooi_rows:
         naam = row.naam
         if naam.lower().startswith("ministerie van "):
             naam = naam[len("ministerie van ") :]
         uri_per_tooi_naam[naam] = row.tooi_uri
+        rij_per_tooi_naam[naam] = row
 
     bewindspersonen: list[dict] = []
     onbekend: list[str] = []
+    geheractiveerd: list[str] = []
     for naam, functie_tekst in items:
         ministerie_naam = _detecteer_ministerie(functie_tekst)
         if ministerie_naam is None or ministerie_naam not in uri_per_tooi_naam:
             onbekend.append(f"{naam} ({functie_tekst})")
             continue
+        # Heractiveer ministerie als TOOI hem als opgeheven heeft maar
+        # rijksoverheid.nl hem nu wel toont.
+        ministerie_rij = rij_per_tooi_naam[ministerie_naam]
+        if ministerie_rij.geldig_tot is not None:
+            ministerie_rij.geldig_tot = None
+            geheractiveerd.append(ministerie_rij.naam)
         bewindspersonen.append(
             {
                 "naam": naam,
@@ -178,6 +190,10 @@ async def bouw_kabinet_yaml_data(session: AsyncSession) -> dict:
                 "functietitel": functie_tekst,
             }
         )
+
+    if geheractiveerd:
+        log.info("Heractiveerde ministeries: %s", ", ".join(geheractiveerd))
+        await session.commit()
 
     if onbekend:
         log.info(

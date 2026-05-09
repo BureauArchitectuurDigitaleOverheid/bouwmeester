@@ -140,6 +140,33 @@ def _slug_van_url(website: str | None) -> str | None:
     return m.group(1) if m else None
 
 
+def _classificeer_dg_type(naam: str) -> str:
+    """Bepaal type op basis van de DG-pagina-naam.
+
+    Niet alle wayfinder-items op een organogram-pagina zijn echte DG's:
+    politieke leiding, clusters, secretaris-generaal, agentschappen,
+    inspecties en commissies komen óók voor onder dezelfde lijst.
+    """
+    n = naam.lower()
+    if "politieke leiding" in n or n.startswith("ambtelijke leiding"):
+        return "cluster"
+    if n.startswith("cluster ") or " cluster" in n:
+        return "cluster"
+    if n.startswith("inspectie ") or " inspectie" in n:
+        return "agentschap"
+    if "agentschap" in n or n.startswith("dienst "):
+        return "agentschap"
+    if "commissie" in n or "raad voor" in n:
+        return "overig"
+    if "regeringscommissaris" in n or "secretariaat" in n:
+        return "overig"
+    if n.startswith("dg ") or n.startswith("directoraat-generaal"):
+        return "directoraat_generaal"
+    if n.startswith("nationaal coordinator") or n.startswith("nationaal coördinator"):
+        return "overig"
+    return "directoraat_generaal"
+
+
 def _slug_van_naam(naam: str) -> str:
     """Construeer rijksoverheid.nl-slug uit een TOOI-ministerienaam.
 
@@ -225,9 +252,10 @@ async def sync_organogram(
             # Skip als handmatig al bestaat met dezelfde naam
             if dg.naam in bestaande_children:
                 continue
+            dg_type = _classificeer_dg_type(dg.naam)
             dg_row = OrganisatieEenheid(
                 naam=dg.naam,
-                type="directoraat_generaal",
+                type=dg_type,
                 parent_id=ministerie.id,
                 bron="organogram_scrape",
             )

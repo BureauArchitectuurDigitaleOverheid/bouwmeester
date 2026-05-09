@@ -2,96 +2,83 @@
 
 Wat in deze PR is gebouwd:
 
-- TOOI-spine: 1438 NL-overheidsorganisaties uit 8 `rwc_*` waardelijsten
+- TOOI-spine: ~1500 NL-overheidsorganisaties uit 8 `rwc_*` waardelijsten
 - Ministeries.csv (OIN, FTE, organogram-link), RIO email-domeinen (~5000)
-- Organogram-scrape voor 8 ministeries (DG/directie-laag, ~90 rijen)
-- TK OData kamerleden (133 actieve TK-leden met echte van/tot-datum)
-- Kabinet-Jetten scrape via rijksoverheid.nl (~25 bewindspersonen)
+- Organogram-scrape voor 9 ministeries (DG/directie-laag, ~90 rijen) met
+  type-classificatie op basis van naam (cluster, agentschap, overig, etc.)
+- TK OData FractieZetelPersoon: 133 actieve TK-leden met echte van/tot-datum
+- TK OData Persoon: 84 actieve EK-leden gekoppeld aan synthetische 'Eerste Kamer'
+- Kabinet-Jetten scrape via rijksoverheid.nl: ~28 bewindspersonen, met
+  auto-heractivering van TOOI-soft-deleted ministeries als rijksoverheid.nl
+  ze nog toont
+- Auto-merge persoon bij naam-match (kabinet-bewindspersonen die ex-TK-lid zijn)
+- Dedupe-script voor handmatige duplicates
 - ExterneOrganisatie volledig vervangen door OrganisatieEenheid
-- Synthetische groep-nodes (HCvS, Rechtspraak, OM, Gemeenten, etc.)
-- Admin sync-trigger endpoints + cron in worker
+- Synthetische groep-nodes (HCvS, Rechtspraak, OM, Gemeenten, Provincies,
+  Waterschappen, Samenwerkingsorganisaties, Caribische openbare lichamen,
+  ZBO's en agentschappen, Marktpartijen en overige)
+- Admin sync-trigger endpoints + cron in worker (24h default)
+- Reconciliation REST-API (GET/merge/ignore)
+- Email->organisatie-match endpoint voor RIO-suggestie bij persoon-aanmaak
+- Mutatie-blokkade: bron != 'handmatig' rijen zijn read-only (alleen super_admin)
 - UI met collapse-default voor synthetische groepen + zoekveld + TOOI-badge
 
 ## Wat nog moet komen
 
 ### Personen / rollen — uitbreidingen
 
-- [ ] **ABD topmanagementgroep wie-is-wie** (algemenebestuursdienst.nl): SG/DG-namen koppelen aan
-      bestaande DG-rijen. Pagina is een Next.js SPA — vereist headless
-      browser-scrape (Playwright). Werkt niet met simpele HTTP-fetch.
-      Update-frequentie: laag (paar keer per jaar). Voorstel: maandelijkse
-      Playwright-scrape, fallback handmatig YAML.
-- [ ] **Eerste Kamer leden**: TK OData levert `Persoon.Functie='Eerste Kamerlid'`
-      maar geen `FractieZetelPersoon`-equivalent. Aparte sync schrijven die
-      gewoon op `Persoon` zelf filtert (zonder van/tot — die info ontbreekt
-      in OData).
-- [ ] **Burgemeesters/wethouders/gedeputeerden/dijkgraven**: geen open API met
-      SLA. VNG ledendatabank niet publiek. Voor nu skippen.
-- [ ] **Bewindspersonen-portefeuilles voor nieuwe ministeries**: Asiel & Migratie,
-      Klimaat & Groene Groei, Volkshuisvesting & RO werden door TOOI als
-      `geldig_tot=2026-02-22` gemarkeerd. Kabinet-Jetten heeft ze weer. De
-      kabinet-scraper logt dit als 'niet matchde'. Strakkere oplossing: bij
-      kabinet-scrape, als ministerienaam matcht in `MINISTERIE_ALIAS` maar
-      TOOI-rij `geldig_tot` heeft, automatisch heractiveren (`geldig_tot=NULL`).
+- [ ] **ABD topmanagementgroep wie-is-wie** (algemenebestuursdienst.nl):
+      SG/DG-namen koppelen aan bestaande DG-rijen. Pagina is een Next.js SPA;
+      vereist headless browser-scrape (Playwright). Update-frequentie laag.
+      Voorstel: maandelijkse Playwright-scrape, fallback handmatige YAML.
+- [ ] **TK ex-Kamerleden met functie='Oud Kamerlid'**: bewindspersonen met
+      TK-historie kunnen gevonden worden door op naam achternaam te zoeken.
+      Nu doet de kabinet-sync een fuzzy match maar die werkt alleen als de
+      Person al in de DB zit. Vooraf alle Oud Kamerleden inlezen zou werken
+      maar veroorzaakt forse DB-groei.
+- [ ] **Burgemeesters/wethouders/gedeputeerden/dijkgraven**: geen open API
+      met SLA. VNG ledendatabank niet publiek. Voor nu skippen.
+- [ ] **Historische kabinetten in YAML**: nu alleen huidig kabinet. Voor
+      historische correctheid alle kabinetten Rutte I-IV en Schoof
+      importeren met historische van/tot-data.
 
 ### UI-features
 
-- [ ] **Reconciliation UI in Beheer**: tabel `pending_reconciliation` heeft rijen
-      maar geen UI om ze handmatig op te lossen. Bouwen: lijst-view met
-      side-by-side handmatig vs TOOI-kandidaat, knop 'Mergen' / 'Negeren'.
-- [ ] **RIO email-domein-suggestie bij persoon-aanmaak**: als iemand persoon
-      met email `@cjib.nl` invoert, toon "Wil je deze persoon koppelen aan
-      CJIB?". Data zit al in `organisatie_email_domein`. Frontend-only
-      feature.
+- [ ] **Reconciliation UI in Beheer**: backend-endpoints zijn klaar
+      (`GET /api/admin/reconciliation`, `POST .../merge`, `POST .../ignore`).
+      Frontend page met side-by-side handmatig vs TOOI-kandidaat.
+- [ ] **RIO email-suggestie UI**: backend `GET /api/people/match-email-organisatie?email=...`
+      is klaar. Frontend: bij persoon-form-email-veld onChange aanroepen en
+      "Wil je deze persoon koppelen aan X?"-prompt tonen.
 - [ ] **Soft-deleted weergave**: `OrganisatieEenheid.geldig_tot != NULL` rijen
-      moeten in UI grijs/doorgestreept tonen onder een 'Toon historisch'-toggle.
-      Nu zijn ze gewoon zichtbaar als levende rijen.
-- [ ] **Mutatie-blokkade voor bron != handmatig**: het plan beloofde dat
-      TOOI-rijen read-only zijn voor naam/parent/type. Backend-check ontbreekt
-      nog. Toevoegen aan `_check_eenheid_write_access` in
-      `routes/organisatie.py`.
+      worden nu volledig gefilterd uit de tree. Optie: 'Toon historisch'
+      toggle om verlopen rijen grijs/doorgestreept te tonen.
 - [ ] **TOOI-badge styling**: het badge zegt nu "TOOI" met grijze achtergrond.
       Kan visueel beter (icoon + tooltip met bron-uitleg).
 
 ### Tests
 
 - [ ] **Hertest `test_opdrachten.py`, `test_fcc_sync.py`, `test_graph.py`**:
-      drie testbestanden zijn geskipt omdat ze nog naar verwijderde
-      `ExterneOrganisatie` refereren. Herschrijven naar OrganisatieEenheid-
-      aanpak. ~50 testfuncties.
-- [ ] **Testdekking voor sync-services**: `test_tooi_sync.py`, `test_rio_sync.py`,
-      etc. met mock-fetchers. Nu alleen end-to-end gevalideerd via lokale runs.
-- [ ] **Test voor `merge_existing_with_tooi.py`**: edge-case waar twee
-      ministeries dezelfde TOOI-naam zouden krijgen.
-- [ ] **Test voor `kabinet_scrape.py` ministerie-detectie**: regex moet alle
-      bekende portefeuilles dekken; nu 4-van-28 niet-matched.
+      drie testbestanden geskipt (refereren naar verwijderde
+      `ExterneOrganisatie`). Herschrijven naar OrganisatieEenheid-aanpak.
+- [ ] **Test_tooi_sync.py is geschreven maar geskipt**: sync-services doen
+      eigen `session.commit()` wat de transaction-rollback van db_session
+      breekt. Vervolg: geïsoleerde test-DB-fixture of `commit=False`-flag
+      in services.
+- [ ] **Tests voor merge_existing_with_tooi.py, kabinet_scrape.py
+      ministerie-detectie, RIO XML parser**: nu alleen end-to-end
+      gevalideerd via lokale runs.
 
 ### Data-kwaliteit
 
-- [ ] **Type-classificatie organogram-scrape**: scraper labelt alle DG-pagina's
-      als `directoraat_generaal`, ook als ze duidelijk een Cluster, Diensten,
-      Commissie of Politieke leiding zijn. H1/h2-tekst pattern-detectie
-      toevoegen.
-- [ ] **Allmanak.nl als verrijking voor DG-rolverdeling**: PostgREST endpoint
-      met SG/DG-personen (mits live-test slaagt; eerdere check gaf lege
-      array, mogelijk authn nodig).
+- [ ] **Allmanak.nl als verrijking**: PostgREST endpoint met SG/DG-personen
+      (eerdere check gaf lege array, mogelijk authn nodig). Test live.
 - [ ] **OIN-verrijking decentraal**: COR-CSV
       (`data.overheid.nl/dataset/centrale-oin-raadpleegvoorziening-cor`)
       joinen op naam/KvK voor gemeenten/ZBO's.
-- [ ] **Wikidata cross-link op personen**: optioneel veld `wikidata_qid` toevoegen
-      voor toekomstige verrijking (foto, partij-historie via SPARQL).
-      YAGNI-besluit was 'niet nu'; herzien wanneer profiel-foto-feature
-      relevant wordt.
-
-### Kabinet-yaml en historische data
-
-- [ ] **Kabinet-yaml gevuld met historische kabinetten**: nu staat alleen
-      huidig in YAML; verlaten functies krijgen `eind_datum=today` bij
-      verwijdering. Voor historische correctheid: alle kabinetten Rutte
-      I-IV en Schoof importeren met historische van/tot-data.
-- [ ] **Auto-heractivering ministeries**: bij kabinetwissel kunnen oude
-      ministeries terugkomen (zie boven). Heuristiek toevoegen aan
-      `kabinet_scrape.py`.
+- [ ] **Wikidata cross-link op personen**: optioneel veld `wikidata_qid`
+      toevoegen voor toekomstige verrijking (foto, partij-historie via
+      SPARQL). YAGNI tot profielfoto-feature relevant wordt.
 
 ### Operations
 
@@ -100,12 +87,14 @@ Wat in deze PR is gebouwd:
 - [ ] **Sanity-check observability**: `sync_tooi.skipped_sanity=True` moet
       een loud signal zijn (Slack/Mattermost), nu alleen log.
 - [ ] **Schedule fine-tuning**: nu draait worker dagelijks om 04:00 (default
-      24h). Kan strakker: TOOI dagelijks, organogram wekelijks (mutaties
+      24h). Strakker: TOOI dagelijks, organogram wekelijks (mutaties
       zeldzaam), kabinet ook wekelijks.
 
 ### Scope-uitbreidingen
 
 - [ ] **Internationale overheden**: voor stakeholders bij EU-instellingen,
-      OECD, etc. Apart synthetische groep onder de boom of aparte tabel.
-- [ ] **Marktpartijen verrijking**: KvK-koppeling voor `Marktpartijen en
-      overige`-rijen (commerciële licentie). Niet voor MVP.
+      OECD, etc. Synthetische groep "Internationaal" + handmatige
+      toevoegingen.
+- [ ] **Universiteiten/hogescholen**: niet in TOOI. DUO heeft een register.
+- [ ] **Marktpartijen verrijking**: KvK-koppeling voor 'Marktpartijen en
+      overige'-rijen (commerciële licentie). Niet voor MVP.

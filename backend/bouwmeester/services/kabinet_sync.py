@@ -118,19 +118,43 @@ async def sync_kabinet(
             stats.onveranderd += 1
             continue
 
-        # Person opzoeken op naam (bron=kabinet_yaml)
+        # Person opzoeken — eerst breed op naam (bewindspersonen zijn vaak
+        # ex-Kamerlid en bestaan al via tk_odata). Alleen nieuw aanmaken als
+        # de naam echt nog niet voorkomt; voorkomt dubbele Person-rijen.
+        # Match-strategie:
+        #   1. Exact naam
+        #   2. Achternaam-substring (bv. 'Pieter Heerma' matcht 'Pieter
+        #      Enneüs Heerma')
         person = (
-            (
-                await session.execute(
-                    select(Person).where(
-                        Person.naam == naam,
-                        Person.bron == "kabinet_yaml",
-                    )
-                )
-            )
+            (await session.execute(select(Person).where(Person.naam == naam)))
             .scalars()
             .first()
         )
+        if person is None:
+            # Probeer match op laatste woord van de naam (achternaam)
+            achternaam = naam.split()[-1] if naam else ""
+            voornaam = naam.split()[0] if naam else ""
+            if achternaam and voornaam:
+                kandidaten = (
+                    (
+                        await session.execute(
+                            select(Person).where(
+                                Person.naam.ilike(f"%{achternaam}"),
+                                Person.naam.ilike(f"{voornaam}%"),
+                                Person.tk_persoon_id.is_not(None),
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                if len(kandidaten) == 1:
+                    person = kandidaten[0]
+                    log.info(
+                        "Kabinet: '%s' gemerged in bestaande TK-persoon '%s'",
+                        naam,
+                        person.naam,
+                    )
         if person is None:
             person = Person(
                 naam=naam,

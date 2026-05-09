@@ -38,6 +38,7 @@ from bouwmeester.api.routes.people import router as people_router
 from bouwmeester.api.routes.public_initiatief import (
     router as public_initiatief_router,
 )
+from bouwmeester.api.routes.reconciliation import router as reconciliation_router
 from bouwmeester.api.routes.resource_permissions import (
     router as resource_permissions_router,
 )
@@ -67,6 +68,7 @@ api_router.include_router(edge_types_router)
 api_router.include_router(eenheid_modules_router)
 api_router.include_router(edges_router)
 api_router.include_router(admin_sync_router)
+api_router.include_router(reconciliation_router)
 api_router.include_router(fcc_router)
 api_router.include_router(graph_router)
 api_router.include_router(initiatieven_router)
