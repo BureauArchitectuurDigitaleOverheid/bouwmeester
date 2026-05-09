@@ -27,7 +27,6 @@ from bouwmeester.core.database import Base
 
 if TYPE_CHECKING:
     from bouwmeester.models.corpus_node import CorpusNode
-    from bouwmeester.models.externe_organisatie import ExterneOrganisatie
     from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
     from bouwmeester.models.person import Person
     from bouwmeester.models.task import Task
@@ -115,10 +114,11 @@ class Opdracht(Base):
         nullable=True,
         index=True,
     )
-    opdrachtnemer_id: Mapped[uuid.UUID | None] = mapped_column(
+    opdrachtnemer_eenheid_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("externe_organisatie.id", ondelete="SET NULL"),
+        ForeignKey("organisatie_eenheid.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     opdrachtgever_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -183,9 +183,9 @@ class Opdracht(Base):
         foreign_keys=[instrument_id],
         lazy="joined",
     )
-    opdrachtnemer: Mapped["ExterneOrganisatie | None"] = relationship(
-        "ExterneOrganisatie",
-        foreign_keys=[opdrachtnemer_id],
+    opdrachtnemer: Mapped["OrganisatieEenheid | None"] = relationship(
+        "OrganisatieEenheid",
+        foreign_keys=[opdrachtnemer_eenheid_id],
         lazy="joined",
     )
     opdrachtgever: Mapped["OrganisatieEenheid | None"] = relationship(

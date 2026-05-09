@@ -14,10 +14,10 @@ import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { OrganisatieEenheidCreate, OrganisatieEenheidUpdate } from '@/types';
 
-export function useOrganisatieTree() {
+export function useOrganisatieTree(includeHistorisch = false) {
   return useQuery({
-    queryKey: queryKeys.organisatie.tree(),
-    queryFn: getOrganisatieTree,
+    queryKey: [...queryKeys.organisatie.tree(), { includeHistorisch }],
+    queryFn: () => getOrganisatieTree(includeHistorisch),
   });
 }
 

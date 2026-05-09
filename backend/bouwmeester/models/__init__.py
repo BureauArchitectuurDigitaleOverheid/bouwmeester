@@ -19,7 +19,6 @@ from bouwmeester.models.edge_schema_rule import EdgeSchemaRule  # noqa: F401
 from bouwmeester.models.edge_type import EdgeType  # noqa: F401
 from bouwmeester.models.eenheid_module import EenheidModule  # noqa: F401
 from bouwmeester.models.effect import Effect  # noqa: F401
-from bouwmeester.models.externe_organisatie import ExterneOrganisatie  # noqa: F401
 from bouwmeester.models.fcc_sync_log import FccSyncLog  # noqa: F401
 from bouwmeester.models.github_link import GitHubLink  # noqa: F401
 from bouwmeester.models.http_session import HttpSession  # noqa: F401
@@ -47,6 +46,7 @@ from bouwmeester.models.node_title import CorpusNodeTitle  # noqa: F401
 from bouwmeester.models.notification import Notification  # noqa: F401
 from bouwmeester.models.onboarding_dismissal import OnboardingDismissal  # noqa: F401
 from bouwmeester.models.opdracht import Opdracht, OpdrachtNode  # noqa: F401
+from bouwmeester.models.org_email_domein import OrganisatieEmailDomein  # noqa: F401
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam  # noqa: F401
 from bouwmeester.models.org_parent import OrganisatieEenheidParent  # noqa: F401
 from bouwmeester.models.org_placement_request import OrgPlacementRequest  # noqa: F401
@@ -54,6 +54,9 @@ from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid  # noqa: F
 from bouwmeester.models.parlementair_item import (  # noqa: F401
     ParlementairItem,
     SuggestedEdge,
+)
+from bouwmeester.models.pending_reconciliation import (  # noqa: F401
+    PendingReconciliation,
 )
 from bouwmeester.models.person import Person  # noqa: F401
 from bouwmeester.models.person_email import PersonEmail  # noqa: F401
@@ -79,6 +82,7 @@ from bouwmeester.models.stakeholder_assessment import (
 from bouwmeester.models.suggested_lead import SuggestedLead  # noqa: F401
 from bouwmeester.models.tag import LeadTag, NodeTag, Tag  # noqa: F401
 from bouwmeester.models.task import Task  # noqa: F401
+from bouwmeester.models.tooi_sync_log import TooiSyncLog  # noqa: F401
 from bouwmeester.models.webauthn_credential import WebAuthnCredential  # noqa: F401
 from bouwmeester.models.whitelist_email import WhitelistEmail  # noqa: F401
 from bouwmeester.models.worker_heartbeat import WorkerHeartbeat  # noqa: F401
@@ -104,7 +108,6 @@ __all__ = [
     "EdgeSchemaRule",
     "EdgeType",
     "Effect",
-    "ExterneOrganisatie",
     "FccSyncLog",
     "GitHubLink",
     "HttpSession",
@@ -134,6 +137,8 @@ __all__ = [
     "OrganisatieEenheidNaam",
     "OrganisatieEenheidParent",
     "OrganisatieEenheid",
+    "OrganisatieEmailDomein",
+    "PendingReconciliation",
     "Permission",
     "Person",
     "PersonRole",
@@ -151,6 +156,7 @@ __all__ = [
     "SuggestedLead",
     "Tag",
     "Task",
+    "TooiSyncLog",
     "WebAuthnCredential",
     "WhitelistEmail",
     "WorkerHeartbeat",

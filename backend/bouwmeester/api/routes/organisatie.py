@@ -4,6 +4,7 @@ from collections import defaultdict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
@@ -15,6 +16,7 @@ from bouwmeester.core.permissions import (
     check_resource_permission,
     require_permission,
 )
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.schema.organisatie_eenheid import (
@@ -47,9 +49,31 @@ async def _check_eenheid_write_access(
     a stakeholder eenheid outside their scope are granted an "eigenaar"
     resource-permission at create-time and may mutate it via that path.
     Raises 403 otherwise.
+
+    TOOI/synthetische rijen zijn read-only behalve voor super_admin —
+    die kennen we als bron != 'handmatig'. Mutaties op die rijen worden
+    geblokkeerd zodat een TOOI-sync ze niet vermalen worden door
+    handmatige bewerkingen.
     """
     if perm_ctx.is_super_admin:
         return
+
+    # Read-only check op niet-handmatige bron
+    eenheid = (
+        await db.execute(
+            select(OrganisatieEenheid.bron).where(OrganisatieEenheid.id == eenheid_id)
+        )
+    ).scalar_one_or_none()
+    if eenheid is not None and eenheid != "handmatig":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Deze organisatie-eenheid is read-only (bron='{eenheid}'). "
+                "TOOI/scrape/synthetische rijen worden door de sync beheerd; "
+                "alleen super_admin kan ze handmatig wijzigen."
+            ),
+        )
+
     all_visible = set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
     if org_ctx.is_admin or eenheid_id in all_visible:
         return
@@ -87,21 +111,61 @@ def _build_tree(
     all_items: list[OrganisatieEenheidResponse],
     personen_counts: dict[UUID, int],
     parent_id: UUID | None = None,
+    _named_with_parent: set[str] | None = None,
 ) -> list[OrganisatieEenheidTreeNode]:
     """Build a tree from a flat list.
 
     Uses the legacy parent_id column which is dual-written by the repository
     to stay in sync with the temporal OrganisatieEenheidParent records.
+
+    Sortering op top-level: ministeries eerst (alfabet op afkorting), dan
+    synthetische categorieën (HCvS, Gemeenten, ...), dan de rest alfabetisch.
+    Lager dieper: gewoon alfabetisch op naam.
+
+    Top-level orphan-filter: scrape-rijen zonder parent die ook elders met
+    parent voorkomen (zelfde naam) skippen we — dat zijn duplicates uit
+    een vroege organogram-sync. Echte top-level dingen (ministeries, synth-
+    groepen) worden niet door dit filter geraakt.
     """
+    # Pre-bereken: namen die ergens met parent voorkomen. Voor top-level filter.
+    if _named_with_parent is None:
+        _named_with_parent = {i.naam for i in all_items if i.parent_id is not None}
+
     children = [item for item in all_items if item.parent_id == parent_id]
-    return [
-        OrganisatieEenheidTreeNode(
-            **item.model_dump(),
-            children=_build_tree(all_items, personen_counts, item.id),
-            personen_count=personen_counts.get(item.id, 0),
+
+    if parent_id is None:
+        # Filter orphan-duplicates: scrape-rijen zonder parent die ook met
+        # parent in de boom hangen.
+        children = [
+            c
+            for c in children
+            if not (c.bron == "organogram_scrape" and c.naam in _named_with_parent)
+        ]
+
+        def _top_rang(item: OrganisatieEenheidResponse) -> tuple[int, str]:
+            if item.type == "ministerie":
+                return (0, (item.afkorting or item.naam).lower())
+            if item.bron == "synthetisch":
+                return (1, item.naam.lower())
+            return (2, item.naam.lower())
+
+        children_sorted = sorted(children, key=_top_rang)
+    else:
+        children_sorted = sorted(children, key=lambda x: x.naam.lower())
+
+    nodes: list[OrganisatieEenheidTreeNode] = []
+    for item in children_sorted:
+        sub = _build_tree(all_items, personen_counts, item.id, _named_with_parent)
+        nodes.append(
+            OrganisatieEenheidTreeNode(
+                **item.model_dump(),
+                children=sub,
+                personen_count=personen_counts.get(item.id, 0),
+                children_count=len(sub),
+                has_children=bool(sub),
+            )
         )
-        for item in sorted(children, key=lambda x: x.naam)
-    ]
+    return nodes
 
 
 @router.get(
@@ -111,11 +175,20 @@ def _build_tree(
 async def list_organisatie(
     current_user: OptionalUser,
     format: str = Query("flat", pattern="^(flat|tree)$"),
+    include_historisch: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ) -> list[OrganisatieEenheidResponse] | list[OrganisatieEenheidTreeNode]:
-    """List org units as flat list or hierarchical tree (format=flat|tree)."""
+    """List org units as flat list or hierarchical tree (format=flat|tree).
+
+    Met `include_historisch=true` worden ook rijen met `geldig_tot != NULL`
+    meegenomen — bv. opgeheven gemeenten, oude ministeries, of TOOI-rijen
+    die uit de feed verdwenen zijn. UI gebruikt dit voor de
+    'Toon historisch'-toggle.
+    """
     repo = OrganisatieEenheidRepository(db)
-    items = await repo.get_all()
+    # Hoge limit om alle TOOI-rijen mee te krijgen (~1500). Performance is OK
+    # tot ~5k; bij meer schalen we naar paginated of lazy.
+    items = await repo.get_all(limit=10000, active_only=not include_historisch)
     flat = [OrganisatieEenheidResponse.model_validate(item) for item in items]
     await _enrich_with_managers(repo, flat)
 
@@ -124,6 +197,44 @@ async def list_organisatie(
         return _build_tree(flat, personen_counts)
 
     return flat
+
+
+@router.get(
+    "/tree-children",
+    response_model=list[OrganisatieEenheidTreeNode],
+)
+async def get_tree_children(
+    current_user: OptionalUser,
+    parent_id: UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> list[OrganisatieEenheidTreeNode]:
+    """Geef directe children van een eenheid (of root als parent_id ontbreekt).
+
+    Wordt gebruikt voor lazy-load van de boom: bij uitvouwen van een node
+    haalt de UI alleen de directe children op (met counts), niet de hele
+    sub-boom. Levert per child `personen_count`, `children_count` en
+    `has_children` zodat de UI direct kan tonen welke nodes nog
+    uitklapbaar zijn.
+    """
+    repo = OrganisatieEenheidRepository(db)
+    units = await repo.get_by_parent(parent_id)
+    responses = [OrganisatieEenheidResponse.model_validate(u) for u in units]
+    await _enrich_with_managers(repo, responses)
+
+    ids = [r.id for r in responses]
+    personen_counts = await repo.count_personen_batch(ids)
+    children_counts = await repo.count_children_batch(ids)
+
+    return [
+        OrganisatieEenheidTreeNode(
+            **r.model_dump(),
+            children=[],  # lazy: niet meegestuurd
+            personen_count=personen_counts.get(r.id, 0),
+            children_count=children_counts.get(r.id, 0),
+            has_children=children_counts.get(r.id, 0) > 0,
+        )
+        for r in sorted(responses, key=lambda x: x.naam)
+    ]
 
 
 @router.get("/search", response_model=list[OrganisatieEenheidResponse])

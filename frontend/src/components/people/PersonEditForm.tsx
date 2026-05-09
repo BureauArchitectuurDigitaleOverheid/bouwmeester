@@ -22,6 +22,7 @@ import {
 } from '@/hooks/usePeople';
 import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS, formatFunctie } from '@/types';
 import type { Person, PersonFormSubmitParams } from '@/types';
+import { matchEmailOrganisatie } from '@/api/people';
 
 // Character names from Bordewijk's novel "Karakter" — used as agent names
 const KARAKTER_NAMEN = [
@@ -71,6 +72,34 @@ export function PersonEditForm({
   const [orgEenheidId, setOrgEenheidId] = useState('');
   const [dienstverband, setDienstverband] = useState('in_dienst');
   const [emailTouched, setEmailTouched] = useState(false);
+  const [emailMatch, setEmailMatch] = useState<{
+    organisatie_eenheid_id: string;
+    organisatie_naam: string;
+  } | null>(null);
+
+  // Debounced email-domein -> OrganisatieEenheid lookup via RIO
+  useEffect(() => {
+    if (!email || !email.includes('@') || orgEenheidId) {
+      setEmailMatch(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await matchEmailOrganisatie(email);
+        if (res.matched && res.organisatie_eenheid_id && res.organisatie_naam) {
+          setEmailMatch({
+            organisatie_eenheid_id: res.organisatie_eenheid_id,
+            organisatie_naam: res.organisatie_naam,
+          });
+        } else {
+          setEmailMatch(null);
+        }
+      } catch {
+        setEmailMatch(null);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [email, orgEenheidId]);
   const [functieOptions, setFunctieOptions] = useState<SelectOption[]>(DEFAULT_FUNCTIE_OPTIONS);
   const [expertiseLocalAdded, setExpertiseLocalAdded] = useState<string[]>([]);
   const { data: expertiseValues = [] } = useExpertiseValues();
@@ -438,16 +467,36 @@ export function PersonEditForm({
           />
         )}
         {!isAgent && isCreateMode && !selectedPerson && (
-          <Input
-            label="E-mail"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={() => setEmailTouched(true)}
-            placeholder="email@voorbeeld.nl"
-            required
-            error={emailTouched && !email.trim() ? 'E-mail is verplicht' : undefined}
-          />
+          <>
+            <Input
+              label="E-mail"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setEmailTouched(true)}
+              placeholder="email@voorbeeld.nl"
+              required
+              error={emailTouched && !email.trim() ? 'E-mail is verplicht' : undefined}
+            />
+            {emailMatch && (
+              <div className="text-xs flex items-center gap-2 -mt-2 mb-2 px-2 py-1.5 rounded bg-blue-50 text-blue-700">
+                <span>
+                  Domein wijst naar <strong>{emailMatch.organisatie_naam}</strong>.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrgEenheidId(emailMatch.organisatie_eenheid_id);
+                    setDienstverband('extern');
+                    setEmailMatch(null);
+                  }}
+                  className="underline hover:no-underline"
+                >
+                  Koppel als organisatie
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {/* Email management — edit mode, non-agent */}

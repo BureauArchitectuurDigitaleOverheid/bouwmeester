@@ -26,7 +26,7 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
 
       {lead.organization && (
         <p className="text-xs text-text-secondary truncate">
-          {lead.externe_organisatie?.naam ?? lead.organization}
+          {lead.organisatie_eenheid?.naam ?? lead.organization}
         </p>
       )}
 

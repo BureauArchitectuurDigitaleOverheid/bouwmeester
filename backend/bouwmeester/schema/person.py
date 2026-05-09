@@ -103,6 +103,9 @@ class PersonResponse(PersonBase):
     default_email: str | None = None
     default_phone: str | None = None
     has_api_key: bool = False
+    tk_persoon_id: str | None = None
+    wikidata_qid: str | None = None
+    bron: str = "handmatig"
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -249,5 +252,7 @@ class PersonOrganisatieResponse(BaseModel):
     organisatie_eenheid_id: UUID
     organisatie_eenheid_naam: str
     dienstverband: str
+    functietitel: str | None = None
+    bron: str = "handmatig"
     start_datum: date
     eind_datum: date | None = None

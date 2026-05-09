@@ -362,6 +362,14 @@ export interface OrganisatieEenheid {
   manager_id?: string | null;
   manager?: Person | null;
   beschrijving?: string | null;
+  afkorting?: string | null;
+  website?: string | null;
+  kvk_nummer?: string | null;
+  tooi_uri?: string | null;
+  tooi_organisatiesoort?: string | null;
+  oin?: string | null;
+  fte_aantal?: number | null;
+  bron?: 'handmatig' | 'tooi' | 'synthetisch' | 'organogram_scrape' | 'fcc_import';
   geldig_van?: string | null;
   geldig_tot?: string | null;
   created_at: string;
@@ -370,6 +378,8 @@ export interface OrganisatieEenheid {
 export interface OrganisatieEenheidTreeNode extends OrganisatieEenheid {
   children: OrganisatieEenheidTreeNode[];
   personen_count: number;
+  children_count?: number;
+  has_children?: boolean;
 }
 
 export interface OrganisatieEenheidCreate {
@@ -378,6 +388,9 @@ export interface OrganisatieEenheidCreate {
   parent_id?: string | null;
   manager_id?: string | null;
   beschrijving?: string | null;
+  afkorting?: string | null;
+  website?: string | null;
+  kvk_nummer?: string | null;
   geldig_van?: string | null;
 }
 
@@ -387,6 +400,9 @@ export interface OrganisatieEenheidUpdate {
   parent_id?: string | null;
   manager_id?: string | null;
   beschrijving?: string | null;
+  afkorting?: string | null;
+  website?: string | null;
+  kvk_nummer?: string | null;
   geldig_tot?: string | null;
   wijzig_datum?: string | null;
 }
@@ -428,6 +444,24 @@ export const ORGANISATIE_TYPE_LABELS: Record<string, string> = {
   afdeling: 'Afdeling',
   cluster: 'Cluster',
   team: 'Team',
+  zbo: 'ZBO / agentschap',
+  gemeente: 'Gemeente',
+  provincie: 'Provincie',
+  waterschap: 'Waterschap',
+  samenwerkingsorganisatie: 'Samenwerkingsorganisatie',
+  caribisch_openbaar_lichaam: 'Caribisch openbaar lichaam',
+  hoge_college_van_staat: 'Hoge College van Staat',
+  rechtspraak: 'Rechtspraak',
+  openbaar_ministerie: 'Openbaar Ministerie',
+  synthetische_groep: 'Categorie',
+  overig: 'Overig',
+  uitvoeringsorganisatie: 'Uitvoeringsorganisatie',
+  koepelorganisatie: 'Koepelorganisatie',
+  stichting: 'Stichting',
+  marktpartij: 'Marktpartij',
+  onderwijsinstelling: 'Onderwijsinstelling',
+  universiteit: 'Universiteit',
+  hogeschool: 'Hogeschool',
 };
 
 export type BadgeVariant = 'blue' | 'green' | 'purple' | 'amber' | 'cyan' | 'rose' | 'slate' | 'gray' | 'red' | 'orange' | 'emerald' | 'indigo';
@@ -441,14 +475,54 @@ export const ORGANISATIE_TYPE_BADGE_COLORS: Record<string, BadgeVariant> = {
   cluster: 'gray',
   afdeling: 'cyan',
   team: 'green',
+  zbo: 'indigo',
+  gemeente: 'emerald',
+  provincie: 'rose',
+  waterschap: 'cyan',
+  samenwerkingsorganisatie: 'slate',
+  caribisch_openbaar_lichaam: 'orange',
+  hoge_college_van_staat: 'red',
+  rechtspraak: 'red',
+  openbaar_ministerie: 'red',
+  synthetische_groep: 'slate',
+  overig: 'gray',
+  uitvoeringsorganisatie: 'indigo',
+  koepelorganisatie: 'slate',
+  stichting: 'gray',
+  marktpartij: 'orange',
+  onderwijsinstelling: 'purple',
+  universiteit: 'purple',
+  hogeschool: 'purple',
 };
 
 export function formatOrganisatieType(type: string): string {
   return ORGANISATIE_TYPE_LABELS[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// Types die een gebruiker handmatig kan aanmaken via OrganisatieForm.
+// TOOI-types (gemeente, provincie, zbo, ...) en synthetische groepen
+// zitten hier expres niet bij — die komen alleen uit syncs en zouden
+// anders botsen met TOOI-rijen via reconciliation.
+const HANDMATIG_AANMAAKBARE_TYPES = [
+  'ministerie',
+  'directoraat_generaal',
+  'directie',
+  'dienst',
+  'bureau',
+  'afdeling',
+  'cluster',
+  'team',
+  'stichting',
+  'marktpartij',
+  'koepelorganisatie',
+  'overig',
+] as const;
+
 export const ORGANISATIE_TYPE_OPTIONS: { value: string; label: string }[] =
-  Object.entries(ORGANISATIE_TYPE_LABELS).map(([value, label]) => ({ value, label }));
+  HANDMATIG_AANMAAKBARE_TYPES.map((value) => ({
+    value,
+    label: ORGANISATIE_TYPE_LABELS[value] ?? value,
+  }));
 
 export const FUNCTIE_LABELS: Record<string, string> = {
   minister: 'Minister',
@@ -527,6 +601,9 @@ export interface Person {
   phones: PersonPhone[];
   default_email?: string | null;
   default_phone?: string | null;
+  tk_persoon_id?: string | null;
+  wikidata_qid?: string | null;
+  bron?: 'handmatig' | 'tk_odata' | 'kabinet_yaml' | 'roo_leidinggevende' | 'abd_scrape';
 }
 
 /** Extended response from POST /api/people — includes one-time api_key for agents. */
@@ -581,6 +658,8 @@ export interface PersonOrganisatie {
   organisatie_eenheid_id: string;
   organisatie_eenheid_naam: string;
   dienstverband: string;
+  functietitel?: string | null;
+  bron?: string;
   start_datum: string;
   eind_datum?: string | null;
 }
@@ -1274,63 +1353,6 @@ export interface WebAuthnCredential {
   last_used_at: string | null;
 }
 
-// Externe Organisatie
-export enum ExterneOrganisatieType {
-  UITVOERINGSORGANISATIE = 'uitvoeringsorganisatie',
-  ZBO = 'zbo',
-  KOEPELORGANISATIE = 'koepelorganisatie',
-  STICHTING = 'stichting',
-  MARKTPARTIJ = 'marktpartij',
-  OVERIG = 'overig',
-}
-
-export const EXTERNE_ORG_TYPE_LABELS: Record<ExterneOrganisatieType, string> = {
-  [ExterneOrganisatieType.UITVOERINGSORGANISATIE]: 'Uitvoeringsorganisatie',
-  [ExterneOrganisatieType.ZBO]: 'ZBO',
-  [ExterneOrganisatieType.KOEPELORGANISATIE]: 'Koepelorganisatie',
-  [ExterneOrganisatieType.STICHTING]: 'Stichting',
-  [ExterneOrganisatieType.MARKTPARTIJ]: 'Marktpartij',
-  [ExterneOrganisatieType.OVERIG]: 'Overig',
-};
-
-export const EXTERNE_ORG_TYPE_COLORS: Record<ExterneOrganisatieType, BadgeVariant> = {
-  [ExterneOrganisatieType.UITVOERINGSORGANISATIE]: 'blue',
-  [ExterneOrganisatieType.ZBO]: 'purple',
-  [ExterneOrganisatieType.KOEPELORGANISATIE]: 'green',
-  [ExterneOrganisatieType.STICHTING]: 'amber',
-  [ExterneOrganisatieType.MARKTPARTIJ]: 'cyan',
-  [ExterneOrganisatieType.OVERIG]: 'gray',
-};
-
-export interface ExterneOrganisatie {
-  id: string;
-  naam: string;
-  afkorting?: string | null;
-  type: string;
-  kvk_nummer?: string | null;
-  website?: string | null;
-  beschrijving?: string | null;
-  created_at: string;
-}
-
-export interface ExterneOrganisatieCreate {
-  naam: string;
-  afkorting?: string | null;
-  type: ExterneOrganisatieType;
-  kvk_nummer?: string | null;
-  website?: string | null;
-  beschrijving?: string | null;
-}
-
-export interface ExterneOrganisatieUpdate {
-  naam?: string;
-  afkorting?: string | null;
-  type?: ExterneOrganisatieType;
-  kvk_nummer?: string | null;
-  website?: string | null;
-  beschrijving?: string | null;
-}
-
 // Opdracht
 export enum OpdrachtType {
   OPDRACHT = 'opdracht',
@@ -1471,8 +1493,8 @@ export interface Opdracht {
   volgend_jaar_aangevraagd?: number | null;
   instrument_id?: string | null;
   instrument?: { id: string; title: string; node_type: string } | null;
-  opdrachtnemer_id?: string | null;
-  opdrachtnemer?: ExterneOrganisatie | null;
+  opdrachtnemer_eenheid_id?: string | null;
+  opdrachtnemer?: OrganisatieEenheidSummary | null;
   opdrachtgever_id?: string | null;
   opdrachtgever?: { id: string; naam: string } | null;
   verantwoordelijke_id?: string | null;
@@ -1530,7 +1552,7 @@ export interface OpdrachtCreate {
   volgend_jaar_benodigd?: number | null;
   volgend_jaar_aangevraagd?: number | null;
   instrument_id: string;
-  opdrachtnemer_id?: string | null;
+  opdrachtnemer_eenheid_id?: string | null;
   opdrachtgever_id?: string | null;
   verantwoordelijke_id?: string | null;
   subsidieregeling?: string | null;
@@ -1553,7 +1575,7 @@ export interface OpdrachtUpdate {
   volgend_jaar_benodigd?: number | null;
   volgend_jaar_aangevraagd?: number | null;
   instrument_id?: string;
-  opdrachtnemer_id?: string | null;
+  opdrachtnemer_eenheid_id?: string | null;
   opdrachtgever_id?: string | null;
   verantwoordelijke_id?: string | null;
   subsidieregeling?: string | null;
@@ -1569,7 +1591,7 @@ export interface OpdrachtFilters {
   type?: string;
   status?: string;
   instrument_id?: string;
-  opdrachtnemer_id?: string;
+  opdrachtnemer_eenheid_id?: string;
   opdrachtgever_id?: string;
   verantwoordelijke_id?: string;
 }
@@ -1720,10 +1742,11 @@ export interface LeadInitiatiefSummary {
   kleur: string | null;
 }
 
-export interface LeadExterneOrgSummary {
+export interface OrganisatieEenheidSummary {
   id: string;
   naam: string;
   type: string | null;
+  afkorting?: string | null;
 }
 
 export interface LeadAttachment {
@@ -1776,8 +1799,8 @@ export interface Lead {
   title: string;
   description: string | null;
   organization: string | null;
-  externe_organisatie_id: string | null;
-  externe_organisatie: LeadExterneOrgSummary | null;
+  organisatie_eenheid_id: string | null;
+  organisatie_eenheid: OrganisatieEenheidSummary | null;
   stage: string;
   assignee_id: string | null;
   assignee: LeadAssigneeSummary | null;
@@ -1837,7 +1860,7 @@ export interface LeadCreate {
   title: string;
   description?: string | null;
   organization?: string | null;
-  externe_organisatie_id?: string | null;
+  organisatie_eenheid_id?: string | null;
   stage?: string;
   assignee_id?: string | null;
   brought_by_id?: string | null;
@@ -1859,7 +1882,7 @@ export interface LeadUpdate {
   title?: string;
   description?: string | null;
   organization?: string | null;
-  externe_organisatie_id?: string | null;
+  organisatie_eenheid_id?: string | null;
   stage?: string;
   assignee_id?: string | null;
   brought_by_id?: string | null;

@@ -649,7 +649,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             items={[
               {
                 label: 'Organisatie',
-                value: lead.externe_organisatie?.naam ?? lead.organization ?? 'Onbekend',
+                value: lead.organisatie_eenheid?.naam ?? lead.organization ?? 'Onbekend',
               },
               {
                 label: 'Toegewezen aan',

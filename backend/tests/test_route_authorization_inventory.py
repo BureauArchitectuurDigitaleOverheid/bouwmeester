@@ -60,6 +60,7 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     # Mutaties hebben wel require_permission("org:manage") + check_org_scope.
     "/api/organisatie": "org-chart is ministerie-breed by design",
     "/api/organisatie/search": "org-chart, ministerie-breed",
+    "/api/organisatie/tree-children": "org-chart, ministerie-breed (lazy-load van children)",  # noqa: E501
     "/api/organisatie/managed-by/{person_id}": "org-chart, ministerie-breed",
     "/api/organisatie/{id}": "org-chart, ministerie-breed",
     "/api/organisatie/{id}/history/managers": "org-chart history, ministerie-breed",

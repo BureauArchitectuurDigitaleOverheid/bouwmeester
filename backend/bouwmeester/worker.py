@@ -198,6 +198,106 @@ async def _cleanup_obsolete_heartbeats() -> None:
         logger.exception("Cleanup obsolete heartbeats faalde")
 
 
+async def _overheidsorganisaties_dagelijks_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Dagelijkse sync van fast-changing data: TK-leden, kabinet, ABD-feeds.
+
+    Deze data verandert vaker (kamerleden rotaties, ABD-benoemingen)
+    dan TOOI/organogram. Default 24h.
+    """
+    interval_seconds = getattr(
+        settings, "OVERHEIDSORG_DAILY_INTERVAL_SECONDS", 24 * 3600
+    )
+    await health_tick("overheidsorganisaties_daily", status="starting")
+    while True:
+        try:
+            async with async_session() as session:
+                from bouwmeester.services.kabinet_scrape import write_kabinet_yaml
+                from bouwmeester.services.kabinet_sync import sync_kabinet
+                from bouwmeester.services.tk_persoon_sync import sync_tk_personen
+
+                tk_stats = await sync_tk_personen(session)
+
+                from pathlib import Path
+
+                kab_yaml = Path(__file__).resolve().parent / "data" / "kabinet.yaml"
+            async with async_session() as session2:
+                await write_kabinet_yaml(session2, str(kab_yaml))
+                kab_stats = await sync_kabinet(session2, kab_yaml)
+
+            # ABD-scrape via Playwright (separaat session ivm browser-lifecycle)
+            abd_added = 0
+            try:
+                from bouwmeester.services.abd_scrape import sync_abd
+
+                async with async_session() as session3:
+                    abd_stats = await sync_abd(session3)
+                    abd_added = abd_stats.new_placements
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("ABD-scrape gefaald: %s", _short_error(exc))
+
+            await health_tick(
+                "overheidsorganisaties_daily",
+                detail=(
+                    f"tk+{tk_stats.new_placements} "
+                    f"kab+{kab_stats.new_placements} abd+{abd_added}"
+                ),
+            )
+        except Exception as exc:
+            logger.exception("Error in daily overheidsorg sync")
+            await health_tick(
+                "overheidsorganisaties_daily",
+                status="error",
+                detail=_short_error(exc),
+            )
+
+        await asyncio.sleep(interval_seconds)
+
+
+async def _overheidsorganisaties_wekelijks_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Wekelijkse sync van slow-changing data: TOOI-spine, RIO, organogram.
+
+    TOOI/RIO/organogram-mutaties zijn zeldzaam (gemeente-fusie,
+    ministerie-reshuffle). Default 7 dagen om bandwidth + parsing
+    overhead te beperken. Volgorde: TOOI eerst zodat URI's bestaan
+    voor CSV/RIO matching.
+    """
+    interval_seconds = getattr(
+        settings, "OVERHEIDSORG_WEEKLY_INTERVAL_SECONDS", 7 * 24 * 3600
+    )
+    await health_tick("overheidsorganisaties_weekly", status="starting")
+    while True:
+        try:
+            async with async_session() as session:
+                from bouwmeester.services.ministeries_csv_sync import (
+                    sync_ministeries_csv,
+                )
+                from bouwmeester.services.organogram_scrape import sync_organogram
+                from bouwmeester.services.rio_sync import sync_rio
+                from bouwmeester.services.tooi_sync import sync_tooi
+
+                tooi_stats = await sync_tooi(session)
+                csv_stats = await sync_ministeries_csv(session)
+                rio_stats = await sync_rio(session)
+                org_stats = await sync_organogram(session)
+
+            await health_tick(
+                "overheidsorganisaties_weekly",
+                detail=(
+                    f"tooi+{tooi_stats.added} csv+{csv_stats.enriched} "
+                    f"rio+{rio_stats.domeinen_added} dg+{org_stats.dgs_added}"
+                ),
+            )
+        except Exception as exc:
+            logger.exception("Error in weekly overheidsorg sync")
+            await health_tick(
+                "overheidsorganisaties_weekly",
+                status="error",
+                detail=_short_error(exc),
+            )
+
+        await asyncio.sleep(interval_seconds)
+
+
 async def main() -> None:
     settings = get_settings()
     logger.info(
@@ -212,6 +312,8 @@ async def main() -> None:
         asyncio.create_task(_mattermost_websocket_loop(settings)),
         asyncio.create_task(_opdracht_task_loop(settings)),
         asyncio.create_task(_fcc_sync_loop(settings)),
+        asyncio.create_task(_overheidsorganisaties_dagelijks_loop(settings)),
+        asyncio.create_task(_overheidsorganisaties_wekelijks_loop(settings)),
     ]
     await asyncio.gather(*tasks)
 

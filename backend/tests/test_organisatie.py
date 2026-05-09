@@ -3,6 +3,8 @@
 import uuid
 from datetime import date
 
+import pytest
+
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 
 # ---------------------------------------------------------------------------
@@ -66,6 +68,48 @@ async def test_search_organisatie_empty_query_returns_empty(client):
     resp = await client.get("/api/organisatie/search", params={"q": ""})
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+async def test_search_organisatie_op_afkorting(client, db_session):
+    """Zoeken op afkorting moet de eenheid vinden, ook als die niet in de naam staat."""
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    db_session.add(
+        OrganisatieEenheid(
+            naam="Centraal Justitieel Incassobureau",
+            afkorting="CJIB",
+            type="zbo",
+            bron="tooi",
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.get("/api/organisatie/search", params={"q": "CJIB"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any(item["afkorting"] == "CJIB" for item in data), data
+
+
+async def test_search_organisatie_exacte_afkorting_eerst(client, db_session):
+    """Bij twee matches op afkorting komt de exacte match eerst."""
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    db_session.add_all(
+        [
+            OrganisatieEenheid(
+                naam="Org alpha", afkorting="ABC", type="zbo", bron="tooi"
+            ),
+            OrganisatieEenheid(
+                naam="Org beta", afkorting="ABCD", type="zbo", bron="tooi"
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    resp = await client.get("/api/organisatie/search", params={"q": "ABC"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data[0]["afkorting"] == "ABC", [d["afkorting"] for d in data]
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +185,98 @@ async def test_update_organisatie(client, sample_organisatie):
     assert data["beschrijving"] == "Bijgewerkt"
     # type should remain unchanged
     assert data["type"] == "ministerie"
+
+
+async def test_check_eenheid_write_access_blokkeert_tooi_voor_non_admin(
+    db_session, sample_organisatie
+):
+    """TOOI/synthetische rijen zijn read-only voor non-super_admin.
+
+    Direct getest via _check_eenheid_write_access (de client-tests draaien
+    als super_admin en zouden de check skippen).
+    """
+    from fastapi import HTTPException
+
+    from bouwmeester.api.routes.organisatie import _check_eenheid_write_access
+    from bouwmeester.core.org_context import OrgContext
+    from bouwmeester.core.permissions import PermissionContext
+
+    sample_organisatie.bron = "tooi"
+    sample_organisatie.tooi_uri = "https://identifier.overheid.nl/tooi/id/test/x"
+    await db_session.flush()
+
+    perm_ctx = PermissionContext(person_id=None, is_super_admin=False)
+    org_ctx = OrgContext(
+        person_id=None,
+        is_admin=True,  # admin maar niet super_admin
+        own_eenheid_ids=set(),
+        managed_eenheid_ids=set(),
+        visible_eenheid_ids={sample_organisatie.id},
+        shared_eenheid_ids=set(),
+        shared_node_ids=set(),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await _check_eenheid_write_access(
+            db_session, sample_organisatie.id, perm_ctx, org_ctx
+        )
+    assert exc.value.status_code == 403
+    assert "read-only" in exc.value.detail.lower()
+
+
+async def test_check_eenheid_write_access_synthetisch_geblokkeerd(
+    db_session, sample_organisatie
+):
+    """Synthetische groepen zijn ook read-only voor non-super_admin."""
+    from fastapi import HTTPException
+
+    from bouwmeester.api.routes.organisatie import _check_eenheid_write_access
+    from bouwmeester.core.org_context import OrgContext
+    from bouwmeester.core.permissions import PermissionContext
+
+    sample_organisatie.bron = "synthetisch"
+    await db_session.flush()
+
+    perm_ctx = PermissionContext(person_id=None, is_super_admin=False)
+    org_ctx = OrgContext(
+        person_id=None,
+        is_admin=True,
+        own_eenheid_ids=set(),
+        managed_eenheid_ids=set(),
+        visible_eenheid_ids={sample_organisatie.id},
+        shared_eenheid_ids=set(),
+        shared_node_ids=set(),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await _check_eenheid_write_access(
+            db_session, sample_organisatie.id, perm_ctx, org_ctx
+        )
+    assert exc.value.status_code == 403
+
+
+async def test_check_eenheid_write_access_handmatig_blijft_muteerbaar(
+    db_session, sample_organisatie
+):
+    """Handmatige rijen (default) blijven muteerbaar voor in-scope users."""
+    from bouwmeester.api.routes.organisatie import _check_eenheid_write_access
+    from bouwmeester.core.org_context import OrgContext
+    from bouwmeester.core.permissions import PermissionContext
+
+    perm_ctx = PermissionContext(person_id=None, is_super_admin=False)
+    org_ctx = OrgContext(
+        person_id=None,
+        is_admin=True,
+        own_eenheid_ids=set(),
+        managed_eenheid_ids=set(),
+        visible_eenheid_ids={sample_organisatie.id},
+        shared_eenheid_ids=set(),
+        shared_node_ids=set(),
+    )
+    # Geen exception
+    await _check_eenheid_write_access(
+        db_session, sample_organisatie.id, perm_ctx, org_ctx
+    )
 
 
 # ---------------------------------------------------------------------------

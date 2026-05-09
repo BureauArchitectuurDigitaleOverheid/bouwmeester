@@ -1,4 +1,10 @@
-"""Tests for FCC import/export services and API endpoints."""
+"""Tests for FCC import/export services and API endpoints.
+
+Sinds de TOOI-migratie matcht FCC `_resolve_opdrachtnemer` op
+`OrganisatieEenheid` (afkorting -> naam -> nieuwe rij onder
+'Marktpartijen en overige'). Tests gebruiken nu OrganisatieEenheid
+ipv het verwijderde ExterneOrganisatie-model.
+"""
 
 import uuid
 from datetime import UTC, datetime
@@ -10,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.fcc_sync_log import FccSyncLog
 from bouwmeester.models.opdracht import Opdracht
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.services.fcc_import_service import FccImportService
 from bouwmeester.services.fcc_odata_mock import FccODataMockClient
 
@@ -367,19 +374,43 @@ async def test_api_fcc_conflicts_empty(client):
 # ---------------------------------------------------------------------------
 
 
+async def test_eliminate_migratie_levert_ictu_seed(db_session: AsyncSession):
+    """Verifieer dat de eliminate-migratie de oude ExterneOrganisatie-seed
+    correct heeft overgezet naar OrganisatieEenheid met afkorting='ICTU'.
+
+    De seed-migratie c4a1f2e83b01 zette ICTU in externe_organisatie. De
+    eliminate-migratie 9a1b2c3d4e5f migreerde dat naar organisatie_eenheid.
+    Als dat breekt valt het FCC-import-pad terug op auto-create en duikt
+    er een tweede ICTU op met andere bron.
+    """
+    result = await db_session.execute(
+        select(OrganisatieEenheid).where(OrganisatieEenheid.afkorting == "ICTU")
+    )
+    rows = result.scalars().all()
+    assert len(rows) >= 1, (
+        "ICTU ontbreekt — eliminate-migratie heeft seed niet opgepikt"
+    )
+    # Geen dubbele rijen die beide afkorting='ICTU' hebben en bron='handmatig'
+    handmatig = [r for r in rows if r.bron == "handmatig"]
+    assert len(handmatig) <= 1, "Meer dan één handmatige ICTU — reconciliation-risico"
+
+
 @pytest.mark.usefixtures("_use_mock_client")
 async def test_import_resolves_existing_opdrachtnemer(db_session: AsyncSession):
-    """Import links Uitvoeringsorganisatie to existing ExterneOrganisatie."""
-    from bouwmeester.models.externe_organisatie import ExterneOrganisatie
-
-    # ICTU is seeded in migrations — look it up
-    result = await db_session.execute(
-        select(ExterneOrganisatie).where(ExterneOrganisatie.afkorting == "ICTU")
+    """Import koppelt Uitvoeringsorganisatie aan bestaande OrganisatieEenheid op afkorting."""  # noqa: E501
+    # ICTU kan al bestaan via de eliminate-externe-organisatie-migratie
+    # (oude seed). Hergebruik die rij of maak hem aan als hij ontbreekt,
+    # zodat de FCC resolver hem op afkorting matcht.
+    existing = await db_session.execute(
+        select(OrganisatieEenheid).where(OrganisatieEenheid.afkorting == "ICTU")
     )
-    ictu = result.scalar_one_or_none()
-    if not ictu:
-        ictu = ExterneOrganisatie(
-            naam="ICTU", afkorting="ICTU", type="uitvoeringsorganisatie"
+    ictu = existing.scalars().first()
+    if ictu is None:
+        ictu = OrganisatieEenheid(
+            naam="ICTU",
+            afkorting="ICTU",
+            type="uitvoeringsorganisatie",
+            bron="handmatig",
         )
         db_session.add(ictu)
         await db_session.flush()
@@ -393,28 +424,29 @@ async def test_import_resolves_existing_opdrachtnemer(db_session: AsyncSession):
         select(Opdracht).where(Opdracht.fcc_id == "900001")
     )
     wallet = result.scalar_one()
-    assert wallet.opdrachtnemer_id == ictu.id
+    assert wallet.opdrachtnemer_eenheid_id == ictu.id
 
 
 @pytest.mark.usefixtures("_use_mock_client")
 async def test_import_auto_creates_unknown_opdrachtnemer(db_session: AsyncSession):
-    """Import auto-creates ExterneOrganisatie for unknown Uitvoeringsorganisatie."""
-    from bouwmeester.models.externe_organisatie import ExterneOrganisatie
-
+    """Import maakt nieuwe OrganisatieEenheid aan voor onbekende Uitvoeringsorganisatie."""  # noqa: E501
     service = FccImportService(db_session)
     await service.poll_and_import()
     await db_session.flush()
 
-    # Mock item 900003 has Uitvoeringsorganisatie="KOOP" (not seeded)
+    # Mock item 900003 has Uitvoeringsorganisatie="KOOP" (niet aanwezig
+    # als afkorting/naam in DB) -> nieuwe rij onder Marktpartijen en overige
+    # met bron='fcc_import'.
     result = await db_session.execute(
         select(Opdracht).where(Opdracht.fcc_id == "900003")
     )
     overheid_nl = result.scalar_one()
-    assert overheid_nl.opdrachtnemer_id is not None
+    assert overheid_nl.opdrachtnemer_eenheid_id is not None
 
-    org = await db_session.get(ExterneOrganisatie, overheid_nl.opdrachtnemer_id)
-    assert org.afkorting == "KOOP"
-    assert org.type == "uitvoeringsorganisatie"
+    org = await db_session.get(OrganisatieEenheid, overheid_nl.opdrachtnemer_eenheid_id)
+    assert org is not None
+    assert org.naam == "KOOP"
+    assert org.bron == "fcc_import"
 
 
 # ---------------------------------------------------------------------------
@@ -467,17 +499,19 @@ async def test_import_maps_metadata_for_item_without_labels(db_session: AsyncSes
 async def test_export_includes_uitvoeringsorganisatie(
     db_session: AsyncSession, sample_fcc_opdracht
 ):
-    """Export maps opdrachtnemer back to Uitvoeringsorganisatie."""
-    from bouwmeester.models.externe_organisatie import ExterneOrganisatie
+    """Export mapt opdrachtnemer (OrganisatieEenheid) terug naar Uitvoeringsorganisatie-veld."""  # noqa: E501
     from bouwmeester.services.fcc_export_service import FccExportService
 
-    org = ExterneOrganisatie(
-        naam="Test Org", afkorting="TST", type="uitvoeringsorganisatie"
+    org = OrganisatieEenheid(
+        naam="Test Org",
+        afkorting="TST",
+        type="uitvoeringsorganisatie",
+        bron="handmatig",
     )
     db_session.add(org)
     await db_session.flush()
 
-    sample_fcc_opdracht.opdrachtnemer_id = org.id
+    sample_fcc_opdracht.opdrachtnemer_eenheid_id = org.id
     await db_session.flush()
     await db_session.refresh(sample_fcc_opdracht, ["opdrachtnemer"])
 

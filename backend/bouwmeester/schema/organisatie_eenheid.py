@@ -49,6 +49,9 @@ class OrganisatieEenheidCreate(BaseModel):
     parent_id: UUID | None = None
     manager_id: UUID | None = None
     beschrijving: str | None = Field(None, max_length=5000)
+    afkorting: str | None = Field(None, max_length=50)
+    website: str | None = Field(None, max_length=500)
+    kvk_nummer: str | None = Field(None, max_length=20)
     geldig_van: date | None = None  # defaults to today in repository
 
 
@@ -58,6 +61,9 @@ class OrganisatieEenheidUpdate(BaseModel):
     parent_id: UUID | None = None
     manager_id: UUID | None = None
     beschrijving: str | None = Field(None, max_length=5000)
+    afkorting: str | None = Field(None, max_length=50)
+    website: str | None = Field(None, max_length=500)
+    kvk_nummer: str | None = Field(None, max_length=20)
     geldig_tot: date | None = None  # to dissolve the unit
     wijzig_datum: date | None = None  # effective date of the change
 
@@ -70,6 +76,14 @@ class OrganisatieEenheidResponse(BaseModel):
     manager_id: UUID | None = None
     manager: PersonResponse | None = None
     beschrijving: str | None = None
+    afkorting: str | None = None
+    website: str | None = None
+    kvk_nummer: str | None = None
+    tooi_uri: str | None = None
+    tooi_organisatiesoort: str | None = None
+    oin: str | None = None
+    fte_aantal: int | None = None
+    bron: str = "handmatig"
     geldig_van: date | None = None
     geldig_tot: date | None = None
     created_at: datetime
@@ -80,6 +94,8 @@ class OrganisatieEenheidResponse(BaseModel):
 class OrganisatieEenheidTreeNode(OrganisatieEenheidResponse):
     children: list[OrganisatieEenheidTreeNode] = []
     personen_count: int = 0
+    children_count: int = 0
+    has_children: bool = False
 
 
 class OrganisatieEenheidPersonenGroup(BaseModel):

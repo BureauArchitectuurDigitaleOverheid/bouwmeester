@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from bouwmeester.schema.externe_organisatie import ExterneOrganisatieResponse
+from bouwmeester.schema.organisatie_eenheid import OrganisatieEenheidResponse
 
 
 class OpdrachtType(enum.StrEnum):
@@ -80,7 +80,7 @@ class OpdrachtBase(BaseModel):
     volgend_jaar_benodigd: Decimal | None = Field(None, ge=0)
     volgend_jaar_aangevraagd: Decimal | None = Field(None, ge=0)
     instrument_id: UUID
-    opdrachtnemer_id: UUID | None = None
+    opdrachtnemer_eenheid_id: UUID | None = None
     opdrachtgever_id: UUID | None = None
     verantwoordelijke_id: UUID | None = None
     subsidieregeling: str | None = Field(None, max_length=500)
@@ -106,7 +106,7 @@ class OpdrachtUpdate(BaseModel):
     volgend_jaar_benodigd: Decimal | None = Field(None, ge=0)
     volgend_jaar_aangevraagd: Decimal | None = Field(None, ge=0)
     instrument_id: UUID | None = None
-    opdrachtnemer_id: UUID | None = None
+    opdrachtnemer_eenheid_id: UUID | None = None
     opdrachtgever_id: UUID | None = None
     verantwoordelijke_id: UUID | None = None
     subsidieregeling: str | None = Field(None, max_length=500)
@@ -207,8 +207,8 @@ class OpdrachtResponse(BaseModel):
     volgend_jaar_aangevraagd: Decimal | None = None
     instrument_id: UUID | None = None
     instrument: OpdrachtInstrumentSummary | None = None
-    opdrachtnemer_id: UUID | None = None
-    opdrachtnemer: ExterneOrganisatieResponse | None = None
+    opdrachtnemer_eenheid_id: UUID | None = None
+    opdrachtnemer: OrganisatieEenheidResponse | None = None
     opdrachtgever_id: UUID | None = None
     opdrachtgever: OpdrachtOrgSummary | None = None
     verantwoordelijke_id: UUID | None = None

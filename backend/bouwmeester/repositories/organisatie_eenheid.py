@@ -8,7 +8,7 @@ from person_role (role_id='unit_manager').
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import joinedload
 
 from bouwmeester.core.query_utils import escape_like
@@ -307,6 +307,27 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
 
         return await get_descendant_ids(self.session, root_id)
 
+    async def count_children_batch(
+        self,
+        ids: list[UUID],
+    ) -> dict[UUID, int]:
+        """Tel directe children per eenheid in één query."""
+        if not ids:
+            return {}
+        stmt = (
+            select(
+                OrganisatieEenheidParent.parent_id,
+                func.count().label("cnt"),
+            )
+            .where(
+                OrganisatieEenheidParent.parent_id.in_(ids),
+                OrganisatieEenheidParent.geldig_tot.is_(None),
+            )
+            .group_by(OrganisatieEenheidParent.parent_id)
+        )
+        result = await self.session.execute(stmt)
+        return {row[0]: row[1] for row in result.all()}
+
     async def get_units_by_ids(
         self,
         unit_ids: list[UUID],
@@ -326,20 +347,44 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         query: str,
         limit: int = 10,
     ) -> list[OrganisatieEenheid]:
-        """Search across all names (historical + current), active units only."""
-        escaped = escape_like(query)
+        """Search active units on afkorting OR naam (current + historical).
+
+        Ranking: exacte afkorting-match eerst (CJIB -> CJIB voor 'cjib'),
+        dan startswith op afkorting/naam, dan substring-match. Zo komt
+        TOOI-data met 374 afkortingen daadwerkelijk omhoog bij een typist
+        die 'CJIB' of 'RDW' intikt.
+        """
+        q = query.strip()
+        if not q:
+            return []
+        q_lower = q.lower()
+        escaped = escape_like(q)
+        like_pat = f"%{escaped}%"
+        starts_pat = f"{escaped}%"
+
+        rang = case(
+            (func.lower(OrganisatieEenheid.afkorting) == q_lower, 0),
+            (func.lower(OrganisatieEenheid.afkorting).like(starts_pat.lower()), 1),
+            (func.lower(OrganisatieEenheid.naam).like(starts_pat.lower()), 2),
+            else_=3,
+        )
+        # Match-IDs uit drie bronnen: huidige naam, naam-historie, afkorting.
+        # Naam-historie is alleen gevuld bij handmatige rotaties; TOOI-rijen
+        # hebben hun naam alleen op de hoofdtabel.
+        match_via_historie = select(OrganisatieEenheidNaam.eenheid_id).where(
+            OrganisatieEenheidNaam.naam.ilike(like_pat)
+        )
         stmt = (
             select(OrganisatieEenheid)
-            .join(
-                OrganisatieEenheidNaam,
-                OrganisatieEenheidNaam.eenheid_id == OrganisatieEenheid.id,
-            )
             .where(
-                OrganisatieEenheidNaam.naam.ilike(f"%{escaped}%"),
+                or_(
+                    OrganisatieEenheid.naam.ilike(like_pat),
+                    OrganisatieEenheid.afkorting.ilike(like_pat),
+                    OrganisatieEenheid.id.in_(match_via_historie.scalar_subquery()),
+                ),
                 OrganisatieEenheid.geldig_tot.is_(None),
             )
-            .distinct()
-            .order_by(OrganisatieEenheid.naam)
+            .order_by(rang, OrganisatieEenheid.naam)
             .limit(limit)
         )
         result = await self.session.execute(stmt)

@@ -242,6 +242,49 @@ async def search_people(
     return result
 
 
+@router.get(
+    "/match-email-organisatie",
+    response_model=dict,
+)
+async def match_email_naar_organisatie(
+    current_user: OptionalUser,
+    email: str = Query(min_length=3, max_length=320),
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("people:read")),
+) -> dict:
+    """Geef de OrganisatieEenheid die bij een email-domein hoort (RIO).
+
+    Gebruikt door de persoon-aanmaak-form: bij invoer van email zoekt de
+    UI de organisatie waar de persoon bij hoort op basis van het domein.
+    Returns 200 met `{matched: bool, organisatie_eenheid_id, organisatie_naam, domein}`.
+    """
+    from bouwmeester.models.org_email_domein import OrganisatieEmailDomein
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+    if "@" not in email:
+        return {"matched": False, "domein": None}
+    domein = email.rsplit("@", 1)[1].lower().strip()
+    row = (
+        await db.execute(
+            select(OrganisatieEmailDomein, OrganisatieEenheid)
+            .join(
+                OrganisatieEenheid,
+                OrganisatieEenheid.id == OrganisatieEmailDomein.organisatie_eenheid_id,
+            )
+            .where(OrganisatieEmailDomein.domein == domein)
+        )
+    ).first()
+    if row is None:
+        return {"matched": False, "domein": domein}
+    _ed, eenheid = row
+    return {
+        "matched": True,
+        "domein": domein,
+        "organisatie_eenheid_id": str(eenheid.id),
+        "organisatie_naam": eenheid.naam,
+    }
+
+
 @router.get("/expertise-values", response_model=list[str])
 async def list_expertise_values(
     current_user: OptionalUser,
@@ -483,6 +526,8 @@ async def list_person_organisaties(
             organisatie_eenheid_id=row.PersonOrganisatieEenheid.organisatie_eenheid_id,
             organisatie_eenheid_naam=row.naam,
             dienstverband=row.PersonOrganisatieEenheid.dienstverband,
+            functietitel=row.PersonOrganisatieEenheid.functietitel,
+            bron=row.PersonOrganisatieEenheid.bron,
             start_datum=row.PersonOrganisatieEenheid.start_datum,
             eind_datum=row.PersonOrganisatieEenheid.eind_datum,
         )

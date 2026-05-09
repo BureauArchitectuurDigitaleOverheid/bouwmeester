@@ -66,11 +66,6 @@ from bouwmeester.schema.eenheid_module import (  # noqa: F401
     EenheidModulesResponse,
     EenheidModuleUpdate,
 )
-from bouwmeester.schema.externe_organisatie import (
-    ExterneOrganisatieCreate,
-    ExterneOrganisatieResponse,
-    ExterneOrganisatieUpdate,
-)
 from bouwmeester.schema.fcc import (
     FccConflictResolution,
     FccConflictResolveRequest,
@@ -121,13 +116,13 @@ from bouwmeester.schema.lead import (
     LeadContactResponse,
     LeadCreate,
     LeadDetailResponse,
-    LeadExterneOrgSummary,
     LeadInitiatiefSummary,
     LeadMergeRequest,
     LeadMetricsResponse,
     LeadMove,
     LeadNodeCreate,
     LeadNodeResponse,
+    LeadOrganisatieSummary,
     LeadParseResult,
     LeadReorder,
     LeadResponse,
@@ -350,10 +345,6 @@ __all__ = [
     "NodeStatusRecord",
     "NodeTitleRecord",
     "NodeType",
-    # externe_organisatie
-    "ExterneOrganisatieCreate",
-    "ExterneOrganisatieResponse",
-    "ExterneOrganisatieUpdate",
     # edge
     "EenheidModuleResponse",
     "EenheidModulesResponse",
@@ -475,7 +466,7 @@ __all__ = [
     "LeadContactResponse",
     "LeadCreate",
     "LeadDetailResponse",
-    "LeadExterneOrgSummary",
+    "LeadOrganisatieSummary",
     "LeadMergeRequest",
     "LeadMetricsResponse",
     "LeadMove",

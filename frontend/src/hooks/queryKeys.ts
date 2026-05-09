@@ -173,14 +173,6 @@ export const queryKeys = {
     summary: (filters?: OpdrachtFilters) => ['opdrachten', 'summary', filters] as const,
   },
 
-  // --- Externe Organisaties ---
-  externeOrganisaties: {
-    all: ['externe-organisaties'] as const,
-    lists: () => ['externe-organisaties', 'list'] as const,
-    list: (params?: { type?: string; search?: string }) => ['externe-organisaties', 'list', params] as const,
-    detail: (id: string | undefined) => ['externe-organisaties', 'detail', id] as const,
-  },
-
   // --- Initiatieven ---
   initiatieven: {
     all: ['initiatieven'] as const,

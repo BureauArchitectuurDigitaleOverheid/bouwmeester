@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Building2 } from 'lucide-react';
+import { Plus, Building2, Search, X } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -15,8 +15,9 @@ import {
   useUpdateOrganisatieEenheid,
   useDeleteOrganisatieEenheid,
 } from '@/hooks/useOrganisatie';
-import { useAddPersonOrganisatie } from '@/hooks/usePeople';
+import { useAddPersonOrganisatie, usePersonOrganisaties } from '@/hooks/usePeople';
 import { usePersonFormSubmit } from '@/hooks/usePersonFormSubmit';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { todayISO } from '@/utils/dates';
 import type { OrganisatieEenheid, OrganisatieEenheidCreate, OrganisatieEenheidUpdate, Person } from '@/types';
 
@@ -32,6 +33,11 @@ export function OrganisatiePage() {
   const [editPerson, setEditPerson] = useState<Person | null>(null);
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
 
+  // Boom-zoek + filters
+  const [searchTerm, setSearchTerm] = useState('');
+  const [includeHistorisch, setIncludeHistorisch] = useState(false);
+  const [bronFilter, setBronFilter] = useState<'alle' | 'handmatig' | 'tooi' | 'scrape'>('alle');
+
   // Sync ?eenheid= param on arrival, then clear it
   useEffect(() => {
     const eenheidParam = searchParams.get('eenheid');
@@ -41,7 +47,70 @@ export function OrganisatiePage() {
     }
   }, [searchParams, setSearchParams]);
 
-  const { data: tree = [], isLoading } = useOrganisatieTree();
+  const { data: tree = [], isLoading } = useOrganisatieTree(includeHistorisch);
+  const { currentPerson } = useCurrentPerson();
+  const { data: ownPlacements = [] } = usePersonOrganisaties(
+    currentPerson?.id ?? null,
+  );
+
+  // Default-open: pad van root naar elk eigen-organisatie-id van de gebruiker.
+  // Met 1900+ nodes is alles dicht onhanteerbaar; je eigen ministerie hoort
+  // wel als entrypoint open te staan. We pakken alle actieve placements
+  // (functietitel-rollen onder een eenheid) van currentPerson.
+  const expandedByDefaultIds = useMemo(() => {
+    const eigenIds = new Set(ownPlacements.map((p) => p.organisatie_eenheid_id));
+    if (eigenIds.size === 0) return new Set<string>();
+    const open = new Set<string>();
+    const walk = (nodes: typeof tree, ancestors: string[]): boolean => {
+      let touched = false;
+      for (const n of nodes) {
+        const path = [...ancestors, n.id];
+        const hitChild = walk(n.children, path);
+        if (eigenIds.has(n.id) || hitChild) {
+          // Open alle ancestors plus de matchende node zelf, zodat children
+          // van de eigen-org zichtbaar worden zonder dat de eigen-org per
+          // se hoeft te worden geklikt.
+          for (const aid of path) open.add(aid);
+          touched = true;
+        }
+      }
+      return touched;
+    };
+    walk(tree, []);
+    return open;
+  }, [tree, ownPlacements]);
+
+  // Filter de boom op zoekterm + bron: een node blijft staan als hijzelf
+  // matcht OF een afstammeling matcht. Synthetische groepen worden altijd
+  // getoond als ze matchende children hebben (anders wordt de tree-structuur
+  // onnavigeerbaar).
+  const filteredTree = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const matchesBron = (bron: string | null | undefined): boolean => {
+      if (bronFilter === 'alle') return true;
+      if (bronFilter === 'scrape')
+        return bron === 'organogram_scrape' || bron === 'fcc_import';
+      if (bronFilter === 'tooi') return bron === 'tooi';
+      return bron === 'handmatig';
+    };
+    const matches = (n: (typeof tree)[number]): boolean => {
+      // Synthetische groepen: tonen als ze matchende children hebben
+      if (n.bron === 'synthetisch') return n.children.some(matches);
+      const termMatch =
+        !term ||
+        n.naam.toLowerCase().includes(term) ||
+        (n.afkorting?.toLowerCase().includes(term) ?? false);
+      const bronMatch = matchesBron(n.bron);
+      const self = termMatch && bronMatch;
+      const child = n.children.some(matches);
+      return self || child;
+    };
+    const filter = (nodes: typeof tree): typeof tree =>
+      nodes
+        .filter(matches)
+        .map((n) => ({ ...n, children: filter(n.children) }));
+    return filter(tree);
+  }, [tree, searchTerm, bronFilter]);
   const createMutation = useCreateOrganisatieEenheid();
   const updateMutation = useUpdateOrganisatieEenheid();
   const deleteMutation = useDeleteOrganisatieEenheid();
@@ -181,13 +250,58 @@ export function OrganisatiePage() {
           {/* Left panel: Tree */}
           <div className="lg:col-span-1">
             <Card>
-              <div className="p-1">
+              <div className="p-2">
+                <div className="relative mb-2">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Zoek organisatie of afkorting..."
+                    className="w-full pl-8 pr-8 py-1.5 text-sm rounded border border-gray-200 focus:border-primary-500 focus:outline-none"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center text-text-secondary hover:text-text"
+                      title="Wis zoekterm"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-2 mb-2 px-1">
+                  <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={includeHistorisch}
+                      onChange={(e) => setIncludeHistorisch(e.target.checked)}
+                      className="h-3 w-3"
+                    />
+                    Historisch
+                  </label>
+                  <select
+                    value={bronFilter}
+                    onChange={(e) =>
+                      setBronFilter(e.target.value as typeof bronFilter)
+                    }
+                    className="text-xs rounded border border-gray-200 bg-white px-1 py-0.5"
+                    title="Filter op bron"
+                  >
+                    <option value="alle">Alle bronnen</option>
+                    <option value="handmatig">Alleen handmatig</option>
+                    <option value="tooi">Alleen TOOI</option>
+                    <option value="scrape">Alleen scrape/import</option>
+                  </select>
+                </div>
                 <OrganisatieTree
-                  tree={tree}
+                  tree={filteredTree}
                   selectedId={selectedId}
                   onSelect={setSelectedId}
                   onAdd={handleAdd}
                   onDropPerson={handleDropPerson}
+                  searchTerm={searchTerm}
+                  expandedByDefaultIds={expandedByDefaultIds}
                 />
               </div>
             </Card>

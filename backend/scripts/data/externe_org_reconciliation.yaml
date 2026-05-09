@@ -1,0 +1,167 @@
+# Reconciliation tussen ExterneOrganisatie-rijen en TOOI-data.
+#
+# Deze YAML legt vast wat er per ExterneOrganisatie-naam moet gebeuren bij de
+# migratie naar OrganisatieEenheid. Drie acties:
+#
+#   merge_tooi:     vind TOOI-rij op (naam | afkorting | tooi_uri) en gebruik
+#                   die als doel. ExterneOrganisatie wordt naar dat id verwezen.
+#   nieuw_handmatig: maak nieuwe OrganisatieEenheid aan met bron=handmatig,
+#                   hang onder synthetische groep `parent_synth`.
+#   skip:           niets doen (ExterneOrganisatie wordt zelf verplaatst).
+#
+# Match-keys: 'naam_exact' / 'afkorting' / 'tooi_uri' / 'naam_ci' (case-insensitive).
+#
+# De namen zijn de keys waarop ExterneOrganisatie.naam exact matcht.
+# Onbekende ExterneOrganisatie-rijen (niet in deze YAML) krijgen een
+# pending_reconciliation-rij voor menselijke review tijdens migratie.
+
+reconciliations:
+  Logius:
+    actie: merge_tooi
+    match: naam_exact
+    naam: "Logius"
+    note: "TOOI heeft Logius als overheidsorganisatie (rwc_overige)."
+
+  ICTU:
+    actie: nieuw_handmatig
+    type: "uitvoeringsorganisatie"
+    parent_synth: "Marktpartijen en overige"
+    note: |
+      ICTU is een stichting onder verantwoordelijkheid van BZK maar staat
+      niet in TOOI als zelfstandig overheidsorgaan. Blijft handmatig.
+
+  Vereniging van Nederlandse Gemeenten:
+    actie: nieuw_handmatig
+    type: "koepelorganisatie"
+    parent_synth: "Marktpartijen en overige"
+    note: |
+      VNG is een vereniging, geen overheidsorgaan. Niet in TOOI.
+
+  Geonovum:
+    actie: nieuw_handmatig
+    type: "stichting"
+    parent_synth: "Marktpartijen en overige"
+    note: "Stichting voor geo-standaarden, niet in TOOI."
+
+  RINIS:
+    actie: nieuw_handmatig
+    type: "stichting"
+    parent_synth: "Marktpartijen en overige"
+    note: "Stichting Routeringsinstituut, niet in TOOI."
+
+  Rijksdienst voor Identiteitsgegevens:
+    actie: merge_tooi
+    match: naam_exact
+    naam: "Rijksdienst voor Identiteitsgegevens"
+    note: "TOOI heeft RvIG als overheidsorganisatie (rwc_overige)."
+
+  Kamer van Koophandel:
+    actie: merge_tooi
+    match: tooi_uri
+    tooi_uri_search_naam: "zbo Kamer van Koophandel"
+    note: "TOOI prefixt met 'zbo '."
+
+  Rijksdienst voor het Wegverkeer:
+    actie: merge_tooi
+    match: afkorting
+    afkorting_voor_match: "RDW"
+    fallback_naam_search: "zbo RDW"
+    note: |
+      TOOI heeft RDW vreemd geclassificeerd: naam='zbo RDW',
+      afkorting='Dienst Wegverkeer' (kennelijk verwisseld in feed).
+      We matchen op afkorting='RDW' uit ExterneOrganisatie en zoeken in
+      TOOI-data op naam-substring 'RDW'.
+
+  CIBG:
+    actie: merge_tooi
+    match: naam_exact
+    naam: "CIBG"
+    note: "Direct match in rwc_overige."
+
+  Atos Nederland:
+    actie: nieuw_handmatig
+    type: "marktpartij"
+    parent_synth: "Marktpartijen en overige"
+    note: "Marktpartij, niet in TOOI."
+
+  # FCC-aangemaakte rijen (uit screenshot van 2026-05-09)
+  DPC:
+    actie: merge_tooi
+    match: afkorting
+    afkorting_voor_match: "DPC"
+    note: "Dienst Publiek en Communicatie, in rwc_overige met afkorting DPC."
+
+  KOOP:
+    actie: nieuw_handmatig
+    type: "uitvoeringsorganisatie"
+    parent_synth: "ZBO's en agentschappen"
+    note: |
+      KOOP (Kennis- en exploitatiecentrum Officiele Overheidspublicaties) is
+      een onderdeel van de Rijksoverheid maar niet als zelfstandige rij in
+      TOOI. Hangt feitelijk onder JenV. Blijft handmatig.
+
+  Koninklijke Bibliotheek:
+    actie: merge_tooi
+    match: afkorting
+    afkorting_voor_match: "KB"
+    fallback_naam_search: "zbo Koninklijke Bibliotheek"
+    note: "ZBO Koninklijke Bibliotheek in rwc_zbo."
+
+  ODC Noord:
+    actie: nieuw_handmatig
+    type: "uitvoeringsorganisatie"
+    parent_synth: "ZBO's en agentschappen"
+    note: |
+      Overheids Data Centrum Noord (Groningen): rijksdatacenter, onderdeel
+      van JenV/SSC-ICT. Niet als zelfstandige rij in TOOI; blijft handmatig.
+
+  RDDI:
+    actie: nieuw_handmatig
+    type: "overig"
+    parent_synth: "Marktpartijen en overige"
+    note: |
+      Rijksprogramma Duurzame Digitale Informatiehuishouding (RDDI) is een
+      programma, geen organisatie. Niet in TOOI. Blijft handmatig.
+
+  RDI:
+    actie: nieuw_handmatig
+    type: "overig"
+    parent_synth: "ZBO's en agentschappen"
+    note: |
+      Rijksinspectie Digitale Infrastructuur (RDI), voorheen Agentschap
+      Telecom. Onderdeel van EZK/KGG. Niet als zelfstandige rij in TOOI
+      (waarschijnlijk per 2024 nieuw, nog niet geupdate).
+
+  RVO:
+    actie: merge_tooi
+    match: afkorting
+    afkorting_voor_match: "RVO"
+    fallback_naam_search: "Rijksdienst voor Ondernemend Nederland"
+    note: "RVO in rwc_overige."
+
+  Rijksorganisatie ODI:
+    actie: nieuw_handmatig
+    type: "agentschap"
+    parent_synth: "ZBO's en agentschappen"
+    note: |
+      Rijksorganisatie voor Ontwikkeling, Digitalisering en Innovatie. Volgens
+      de bestaande BZK-boom een agentschap onder BZK. Niet (nog) in TOOI als
+      zelfstandige rij. Blijft handmatig; eenheidsbeheerder kan hem onder
+      BZK hangen.
+
+  RvIHH:
+    actie: nieuw_handmatig
+    type: "overig"
+    parent_synth: "Marktpartijen en overige"
+    note: |
+      Onbekende afkorting; mogelijk Rijksvastgoedbedrijf-Inkoop-HH of een
+      lokale variant. TODO bij echte migratie: opzoeken wat dit is voordat
+      het in productie wordt opgevoerd. Tijdelijk in 'overig'.
+
+  SSC ICT:
+    actie: nieuw_handmatig
+    type: "uitvoeringsorganisatie"
+    parent_synth: "ZBO's en agentschappen"
+    note: |
+      Shared Service Centrum ICT, onderdeel van BZK. Niet zelfstandig in
+      TOOI; blijft handmatig.

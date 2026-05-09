@@ -94,7 +94,7 @@ export function CommunityEdgeModal({ pendingConnection, onClose }: Props) {
         case 'lead_org':
           await updateLead.mutateAsync({
             id: route.leadId,
-            data: { externe_organisatie_id: route.orgId },
+            data: { organisatie_eenheid_id: route.orgId },
           });
           break;
 

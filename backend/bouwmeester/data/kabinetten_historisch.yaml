@@ -1,0 +1,107 @@
+# Historische kabinetten met van/tot-data per bewindspersoon.
+#
+# Wordt bij sync verwerkt door kabinet_sync (parameter `historisch=True`):
+# voor elke entry komt een PersonOrganisatieEenheid met start_datum=van
+# en eind_datum=tot. Personen worden gemerged met bestaande tk_odata-rijen
+# op naam (zelfde fuzzy-match als voor huidige kabinet).
+#
+# Hand-curated; uitbreiden vereist research op rijksoverheid.nl/parlement.com.
+
+# Kabinet-Schoof (Wilders/PVV+VVD+NSC+BBB), 2 juli 2024 - 22 februari 2026
+# Demissionair geworden eind 2025; opgevolgd door kabinet-Jetten
+kabinet_schoof:
+  van: 2024-07-02
+  tot: 2026-02-22
+  bewindspersonen:
+    - naam: "Dick Schoof"
+      functie: minister_president
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1010"
+      functietitel: "Minister-president, Minister van Algemene Zaken"
+    - naam: "Caspar Veldkamp"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1013"
+      functietitel: "Minister van Buitenlandse Zaken"
+    - naam: "Reinette Klever"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1013"
+      functietitel: "Minister voor Buitenlandse Handel en Ontwikkelingshulp"
+    - naam: "Eelco Heinen"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1090"
+      functietitel: "Minister van Financiën"
+    - naam: "Ruben Brekelmans"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1018"
+      functietitel: "Minister van Defensie"
+    - naam: "Judith Uitermark"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1034"
+      functietitel: "Minister van Binnenlandse Zaken en Koninkrijksrelaties"
+    - naam: "David van Weel"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1058"
+      functietitel: "Minister van Justitie en Veiligheid"
+    - naam: "Marjolein Faber"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1162"
+      functietitel: "Minister van Asiel en Migratie"
+    - naam: "Eppo Bruins"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1109"
+      functietitel: "Minister van Onderwijs, Cultuur en Wetenschap"
+    - naam: "Fleur Agema"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1025"
+      functietitel: "Minister van Volksgezondheid, Welzijn en Sport"
+    - naam: "Beljaarts Dirk"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1045"
+      functietitel: "Minister van Economische Zaken"
+    - naam: "Sophie Hermans"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1182"
+      functietitel: "Minister van Klimaat en Groene Groei"
+    - naam: "Femke Wiersma"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1153"
+      functietitel: "Minister van Landbouw, Visserij, Voedselzekerheid en Natuur"
+    - naam: "Mona Keijzer"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1171"
+      functietitel: "Minister van Volkshuisvesting en Ruimtelijke Ordening"
+    - naam: "Eddy van Hijum"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1073"
+      functietitel: "Minister van Sociale Zaken en Werkgelegenheid"
+    - naam: "Barry Madlener"
+      functie: minister
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1130"
+      functietitel: "Minister van Infrastructuur en Waterstaat"
+    - naam: "Zsolt Szabó"
+      functie: staatssecretaris
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1034"
+      functietitel: "Staatssecretaris van Binnenlandse Zaken en Koninkrijksrelaties (Digitalisering)"
+    - naam: "Vincent Karremans"
+      functie: staatssecretaris
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1025"
+      functietitel: "Staatssecretaris van Volksgezondheid, Welzijn en Sport"
+    - naam: "Eddie van Marum"
+      functie: staatssecretaris
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1090"
+      functietitel: "Staatssecretaris van Financiën"
+    - naam: "Jurgen Nobel"
+      functie: staatssecretaris
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1090"
+      functietitel: "Staatssecretaris van Financiën (Toeslagen en Douane)"
+    - naam: "Mariëlle Paul"
+      functie: staatssecretaris
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1109"
+      functietitel: "Staatssecretaris van Onderwijs, Cultuur en Wetenschap"
+    - naam: "Chris Jansen"
+      functie: staatssecretaris
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1130"
+      functietitel: "Staatssecretaris van Infrastructuur en Waterstaat (Openbaar Vervoer en Milieu)"
+    - naam: "Gijs Tuinman"
+      functie: staatssecretaris
+      ministerie_tooi_uri: "https://identifier.overheid.nl/tooi/id/ministerie/mnre1018"
+      functietitel: "Staatssecretaris van Defensie"

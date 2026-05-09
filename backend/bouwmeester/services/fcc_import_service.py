@@ -237,18 +237,81 @@ class FccImportService:
         opdracht.fcc_labels = data.get("Labels") or None
 
     async def _resolve_opdrachtnemer(self, opdracht: Opdracht, data: dict) -> None:
-        """Link Uitvoeringsorganisatie to opdrachtnemer via ExterneOrganisatie."""
-        from bouwmeester.repositories.externe_organisatie import (
-            ExterneOrganisatieRepository,
+        """Link Uitvoeringsorganisatie to opdrachtnemer via OrganisatieEenheid.
+
+        Strategie:
+          1. Probeer match op afkorting (case-insensitive). FCC-data is
+             afkorting-zwaar ('RvIG', 'RDW', 'DPC').
+          2. Probeer match op naam (case-insensitive).
+          3. Geen match? Maak nieuwe OrganisatieEenheid aan onder synthetische
+             groep 'Marktpartijen en overige' met bron='fcc_import'.
+        """
+        from sqlalchemy import select as _select
+
+        from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
+        uitvoering = (data.get("Uitvoeringsorganisatie") or "").strip()
+        if not uitvoering:
+            opdracht.opdrachtnemer_eenheid_id = None
+            return
+
+        # 1. Match op afkorting
+        eenheid = (
+            (
+                await self.session.execute(
+                    _select(OrganisatieEenheid)
+                    .where(
+                        OrganisatieEenheid.afkorting.ilike(uitvoering),
+                        OrganisatieEenheid.geldig_tot.is_(None),
+                    )
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .first()
         )
 
-        uitvoering = data.get("Uitvoeringsorganisatie")
-        if uitvoering and uitvoering.strip():
-            repo = ExterneOrganisatieRepository(self.session)
-            org = await repo.get_or_create_by_name(uitvoering.strip())
-            opdracht.opdrachtnemer_id = org.id
-        else:
-            opdracht.opdrachtnemer_id = None
+        # 2. Match op naam
+        if eenheid is None:
+            eenheid = (
+                (
+                    await self.session.execute(
+                        _select(OrganisatieEenheid)
+                        .where(
+                            OrganisatieEenheid.naam.ilike(uitvoering),
+                            OrganisatieEenheid.geldig_tot.is_(None),
+                        )
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+
+        # 3. Nieuwe rij onder Marktpartijen en overige
+        if eenheid is None:
+            parent = (
+                (
+                    await self.session.execute(
+                        _select(OrganisatieEenheid).where(
+                            OrganisatieEenheid.bron == "synthetisch",
+                            OrganisatieEenheid.naam == "Marktpartijen en overige",
+                        )
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            eenheid = OrganisatieEenheid(
+                naam=uitvoering,
+                type="overig",
+                bron="fcc_import",
+                parent_id=parent.id if parent else None,
+            )
+            self.session.add(eenheid)
+            await self.session.flush()
+
+        opdracht.opdrachtnemer_eenheid_id = eenheid.id
 
     async def pull_single(self, opdracht_id: UUID) -> bool:
         """Re-pull a single opdracht from FCC (for conflict resolution)."""

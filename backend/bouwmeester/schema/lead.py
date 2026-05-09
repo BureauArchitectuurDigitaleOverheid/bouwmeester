@@ -54,7 +54,7 @@ class LeadBase(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     description: str | None = Field(None, max_length=10000)
     organization: str | None = Field(None, max_length=500)
-    externe_organisatie_id: UUID | None = None
+    organisatie_eenheid_id: UUID | None = None
     stage: str = Field(default="inbox", min_length=1, max_length=120)
     assignee_id: UUID | None = None
     brought_by_id: UUID | None = None
@@ -79,7 +79,7 @@ class LeadUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=500)
     description: str | None = Field(None, max_length=10000)
     organization: str | None = Field(None, max_length=500)
-    externe_organisatie_id: UUID | None = None
+    organisatie_eenheid_id: UUID | None = None
     stage: str | None = Field(None, min_length=1, max_length=120)
     assignee_id: UUID | None = None
     brought_by_id: UUID | None = None
@@ -132,10 +132,12 @@ class LeadInitiatiefSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class LeadExterneOrgSummary(BaseModel):
+class LeadOrganisatieSummary(BaseModel):
     id: UUID
     naam: str
     type: str | None = None
+    afkorting: str | None = None
+    bron: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -245,8 +247,8 @@ class LeadResponse(BaseModel):
     title: str
     description: str | None = None
     organization: str | None = None
-    externe_organisatie_id: UUID | None = None
-    externe_organisatie: LeadExterneOrgSummary | None = None
+    organisatie_eenheid_id: UUID | None = None
+    organisatie_eenheid: LeadOrganisatieSummary | None = None
     stage: str
     assignee_id: UUID | None = None
     assignee: LeadAssigneeSummary | None = None
