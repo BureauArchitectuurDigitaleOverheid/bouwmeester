@@ -314,7 +314,14 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                   <div className="space-y-1">
                     {placements.map((p) => (
                       <div key={p.id} className="flex items-center gap-2 text-text">
-                        <span className="truncate">{p.organisatie_eenheid_naam}</span>
+                        <span className="truncate">
+                          {p.organisatie_eenheid_naam}
+                          {p.functietitel && (
+                            <span className="text-text-secondary font-normal">
+                              {' '}— {p.functietitel}
+                            </span>
+                          )}
+                        </span>
                         <Badge variant="gray" className="text-[10px] px-1.5 py-0 shrink-0">
                           {DIENSTVERBAND_LABELS[p.dienstverband] || p.dienstverband}
                         </Badge>

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Play } from 'lucide-react';
+import { RefreshCw, Play, ChevronRight, ChevronDown } from 'lucide-react';
 import {
   getSyncStatus,
+  getSyncLog,
   triggerSync,
   triggerAllSyncs,
   SYNC_LABELS,
@@ -56,6 +57,13 @@ export function SyncStatusManager() {
   const [busyEndpoint, setBusyEndpoint] = useState<SyncEndpoint | 'all' | null>(
     null,
   );
+  const [expandedBron, setExpandedBron] = useState<string | null>(null);
+
+  const { data: logEntries = [] } = useQuery({
+    queryKey: ['sync-log', expandedBron],
+    queryFn: () => getSyncLog(expandedBron ?? undefined, 30),
+    enabled: expandedBron !== null,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['sync-status'],
@@ -152,32 +160,98 @@ export function SyncStatusManager() {
             {ENDPOINTS.map((ep) => {
               const bron = ENDPOINT_NAAR_BRON[ep];
               const laatste = data?.laatste_run_per_bron[bron];
+              const isExpanded = expandedBron === bron;
               return (
-                <tr key={ep} className="border-b border-border last:border-0">
-                  <td className="px-4 py-2 text-sm">{SYNC_LABELS[ep]}</td>
-                  <td className="px-4 py-2 text-sm text-text-secondary">
-                    {laatste
-                      ? `${relatieveTijd(laatste)} (${new Date(laatste).toLocaleString('nl-NL')})`
-                      : '—'}
-                  </td>
-                  <td className="px-4 py-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon={
-                        busyEndpoint === ep ? (
-                          <RefreshCw className="animate-spin h-3.5 w-3.5" />
+                <>
+                  <tr key={ep} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2 text-sm">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedBron(isExpanded ? null : bron)
+                        }
+                        className="flex items-center gap-1 hover:text-primary-600"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-3 w-3" />
                         ) : (
-                          <Play className="h-3.5 w-3.5" />
-                        )
-                      }
-                      onClick={() => runMutation.mutate(ep)}
-                      disabled={busyEndpoint !== null}
-                    >
-                      Run
-                    </Button>
-                  </td>
-                </tr>
+                          <ChevronRight className="h-3 w-3" />
+                        )}
+                        {SYNC_LABELS[ep]}
+                      </button>
+                    </td>
+                    <td className="px-4 py-2 text-sm text-text-secondary">
+                      {laatste
+                        ? `${relatieveTijd(laatste)} (${new Date(laatste).toLocaleString('nl-NL')})`
+                        : '—'}
+                    </td>
+                    <td className="px-4 py-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon={
+                          busyEndpoint === ep ? (
+                            <RefreshCw className="animate-spin h-3.5 w-3.5" />
+                          ) : (
+                            <Play className="h-3.5 w-3.5" />
+                          )
+                        }
+                        onClick={() => runMutation.mutate(ep)}
+                        disabled={busyEndpoint !== null}
+                      >
+                        Run
+                      </Button>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr key={`${ep}-log`} className="border-b border-border">
+                      <td colSpan={3} className="px-4 py-2 bg-gray-50">
+                        <div className="text-xs text-text-secondary mb-2">
+                          Recente log-entries (laatste 30):
+                        </div>
+                        {logEntries.length === 0 ? (
+                          <div className="text-xs text-text-secondary italic">
+                            Geen entries.
+                          </div>
+                        ) : (
+                          <div className="space-y-1 max-h-60 overflow-y-auto">
+                            {logEntries.map((entry) => (
+                              <div
+                                key={entry.id}
+                                className="text-xs flex items-start gap-2"
+                              >
+                                <span className="text-text-secondary shrink-0 w-32">
+                                  {new Date(entry.created_at).toLocaleString(
+                                    'nl-NL',
+                                  )}
+                                </span>
+                                <span
+                                  className={`shrink-0 px-1 rounded text-[10px] ${
+                                    entry.action === 'add'
+                                      ? 'bg-green-100 text-green-700'
+                                      : entry.action === 'soft_delete'
+                                        ? 'bg-amber-100 text-amber-700'
+                                        : entry.action === 'conflict'
+                                          ? 'bg-red-100 text-red-700'
+                                          : 'bg-gray-100 text-text-secondary'
+                                  }`}
+                                >
+                                  {entry.action}
+                                </span>
+                                <span className="truncate">
+                                  {entry.note ||
+                                    (entry.after && typeof entry.after.naam === 'string'
+                                      ? entry.after.naam
+                                      : entry.tooi_uri || '—')}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </>
               );
             })}
           </tbody>
