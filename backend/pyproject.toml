@@ -26,6 +26,7 @@ dependencies = [
     "odfpy>=1.4.1",
     "websockets>=13.1",
     "playwright>=1.59.0",
+    "pyyaml>=6.0",
 ]
 
 [dependency-groups]

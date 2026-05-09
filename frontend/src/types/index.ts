@@ -1353,39 +1353,6 @@ export interface WebAuthnCredential {
   last_used_at: string | null;
 }
 
-// Externe Organisatie
-export enum ExterneOrganisatieType {
-  UITVOERINGSORGANISATIE = 'uitvoeringsorganisatie',
-  ZBO = 'zbo',
-  KOEPELORGANISATIE = 'koepelorganisatie',
-  STICHTING = 'stichting',
-  MARKTPARTIJ = 'marktpartij',
-  OVERIG = 'overig',
-}
-
-export const EXTERNE_ORG_TYPE_LABELS: Record<ExterneOrganisatieType, string> = {
-  [ExterneOrganisatieType.UITVOERINGSORGANISATIE]: 'Uitvoeringsorganisatie',
-  [ExterneOrganisatieType.ZBO]: 'ZBO',
-  [ExterneOrganisatieType.KOEPELORGANISATIE]: 'Koepelorganisatie',
-  [ExterneOrganisatieType.STICHTING]: 'Stichting',
-  [ExterneOrganisatieType.MARKTPARTIJ]: 'Marktpartij',
-  [ExterneOrganisatieType.OVERIG]: 'Overig',
-};
-
-export const EXTERNE_ORG_TYPE_COLORS: Record<ExterneOrganisatieType, BadgeVariant> = {
-  [ExterneOrganisatieType.UITVOERINGSORGANISATIE]: 'blue',
-  [ExterneOrganisatieType.ZBO]: 'purple',
-  [ExterneOrganisatieType.KOEPELORGANISATIE]: 'green',
-  [ExterneOrganisatieType.STICHTING]: 'amber',
-  [ExterneOrganisatieType.MARKTPARTIJ]: 'cyan',
-  [ExterneOrganisatieType.OVERIG]: 'gray',
-};
-
-// Externe organisaties zitten sinds de migratie in de OrganisatieEenheid-boom
-// onder synthetische groepen ('Marktpartijen en overige', 'ZBO's en agentschappen').
-// Deze type-alias houdt bestaande call-sites in Lead/Opdracht-componenten werkend.
-export type ExterneOrganisatie = OrganisatieEenheid;
-
 // Opdracht
 export enum OpdrachtType {
   OPDRACHT = 'opdracht',
