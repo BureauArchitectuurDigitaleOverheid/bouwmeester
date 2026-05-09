@@ -59,34 +59,47 @@ async def merge_ministeries(session: AsyncSession) -> int:
         if _normaliseer(handmatig.naam) != _normaliseer(kandidaat.naam):
             continue
 
-        log.info(
-            "Auto-merge ministerie: handmatig %s (%s) <- TOOI %s (%s)",
-            handmatig.id,
-            handmatig.naam,
-            kandidaat.id,
-            kandidaat.naam,
-        )
+        # Per rij in een savepoint zodat één onverwachte FK-constraint
+        # of unique-violation de hele sync niet rollback'd. Bij failure:
+        # log + door met volgende reconciliation. Het Beheer > Reconciliatie-
+        # paneel toont dan nog steeds de open rij voor handmatige merge.
+        try:
+            async with session.begin_nested():
+                log.info(
+                    "Auto-merge ministerie: handmatig %s (%s) <- TOOI %s (%s)",
+                    handmatig.id,
+                    handmatig.naam,
+                    kandidaat.id,
+                    kandidaat.naam,
+                )
 
-        kandidaat_tooi_uri = kandidaat.tooi_uri
-        kandidaat_organisatiesoort = kandidaat.tooi_organisatiesoort
-        kandidaat_afkorting = kandidaat.afkorting
-        kandidaat_oin = kandidaat.oin
+                kandidaat_tooi_uri = kandidaat.tooi_uri
+                kandidaat_organisatiesoort = kandidaat.tooi_organisatiesoort
+                kandidaat_afkorting = kandidaat.afkorting
+                kandidaat_oin = kandidaat.oin
 
-        rec.status = "merged"
-        rec.kandidaat_id = None
+                rec.status = "merged"
+                rec.kandidaat_id = None
 
-        await session.delete(kandidaat)
-        await session.flush()
+                await session.delete(kandidaat)
+                await session.flush()
 
-        handmatig.tooi_uri = kandidaat_tooi_uri
-        handmatig.tooi_organisatiesoort = kandidaat_organisatiesoort
-        if not handmatig.afkorting and kandidaat_afkorting:
-            handmatig.afkorting = kandidaat_afkorting
-        if not handmatig.oin and kandidaat_oin:
-            handmatig.oin = kandidaat_oin
-        if handmatig.bron == "handmatig":
-            handmatig.bron = "tooi"
-        merged_count += 1
+                handmatig.tooi_uri = kandidaat_tooi_uri
+                handmatig.tooi_organisatiesoort = kandidaat_organisatiesoort
+                if not handmatig.afkorting and kandidaat_afkorting:
+                    handmatig.afkorting = kandidaat_afkorting
+                if not handmatig.oin and kandidaat_oin:
+                    handmatig.oin = kandidaat_oin
+                if handmatig.bron == "handmatig":
+                    handmatig.bron = "tooi"
+                merged_count += 1
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "Auto-merge faalde voor reconciliation %s (%s): %s — overslaan",
+                rec.id,
+                handmatig.naam if handmatig else "?",
+                exc,
+            )
 
     await session.commit()
     return merged_count
