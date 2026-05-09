@@ -149,11 +149,12 @@ def _parse_ingangsdatum(body: str) -> date | None:
 def _split_titel(volledige_titel: str) -> tuple[str, str, str] | None:
     """Splits 'X is Y bij Z' in (naam, functie, org_hint).
 
-    Falt back op een ruwe split als de regex niet matcht.
+    Bij meerdere 'bij'-occurrences ('directeur X bij DUO bij OCW') pakken
+    we de laatste — die geeft het overkoepelende ministerie.
     """
     titel = volledige_titel.strip()
-    # 'bij ORG' aan het einde
-    m = re.match(r"^(.+?)\s+bij\s+([^,]+?)$", titel)
+    # Greedy match op 'bij' tot laatste occurrence
+    m = re.match(r"^(.+)\s+bij\s+([^,]+?)$", titel)
     if not m:
         return None
     voor_bij = m.group(1).strip()
@@ -191,13 +192,17 @@ def _split_titel(volledige_titel: str) -> tuple[str, str, str] | None:
 async def fetch_recente_benoemingen(
     *, max_pages: int = 3, headless: bool = True
 ) -> list[AbdBenoeming]:
-    """Pak ABD-benoemingsnieuws via Playwright.
+    """Pak ABD-benoemingsnieuws via Playwright met detail-pagina-scrape.
 
-    Pas zoveel pagina's als opgegeven (default 3 ~= 30 nieuwste benoemingen).
+    Strategie: lijst-pagina geeft URLs (lijst-tekst is "TitelBody..."
+    aan elkaar geplakt zonder spatie, dus onbruikbaar). Per detail-pagina
+    halen we de schone H1 + intro-paragraaf; H1 = "NAAM functie bij ORG"
+    is uniform en parsing is daardoor nauwkeurig.
     """
     from playwright.async_api import async_playwright
 
-    out: list[AbdBenoeming] = []
+    # Stap 1: pak alle nieuws-URLs van lijst-pagina(s)
+    href_set: set[str] = set()
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=headless)
         page = await browser.new_page()
@@ -206,111 +211,67 @@ async def fetch_recente_benoemingen(
             try:
                 await page.goto(url, wait_until="networkidle", timeout=30000)
                 await page.wait_for_timeout(1500)
-                items = await page.eval_on_selector_all(
+                hrefs = await page.eval_on_selector_all(
                     'a[href*="/actueel/nieuws/2"]',
-                    "els => els.map(e => ({href: e.href, txt: (e.textContent||'').trim()}))",  # noqa: E501
+                    "els => Array.from(new Set(els.map(e => e.href)))",
                 )
             except Exception as exc:  # noqa: BLE001
-                log.warning("ABD-scrape pagina %s failed: %s", pagina_nr, exc)
+                log.warning("ABD-scrape lijst %s failed: %s", pagina_nr, exc)
+                continue
+            for href in hrefs:
+                if re.search(r"/\d{4}/\d{2}/\d{2}/[^/]+$", href):
+                    href_set.add(href)
+
+        # Stap 2: per detail-pagina H1 + intro scrapen
+        out: list[AbdBenoeming] = []
+        for href in sorted(href_set, reverse=True):
+            m = re.search(r"/(\d{4})/(\d{2})/(\d{2})/([^/]+)$", href)
+            if not m:
+                continue
+            pub_jaar, pub_maand, pub_dag, _slug = m.groups()
+            try:
+                await page.goto(href, wait_until="networkidle", timeout=20000)
+                await page.wait_for_timeout(300)
+                h1 = await page.eval_on_selector(
+                    "h1", "el => (el && el.textContent || '').trim()"
+                )
+                try:
+                    intro = await page.eval_on_selector(
+                        "main p", "el => (el && el.textContent || '').trim()"
+                    )
+                except Exception:  # noqa: BLE001
+                    intro = ""
+            except Exception as exc:  # noqa: BLE001
+                log.warning("ABD-detail %s failed: %s", href, exc)
                 continue
 
-            for item in items:
-                href = item["href"]
-                txt = item["txt"]
-                # URL-pattern: /actueel/nieuws/YYYY/MM/DD/slug
-                m = re.search(r"/(\d{4})/(\d{2})/(\d{2})/([^/]+)$", href)
-                if not m:
-                    continue
-                pub_jaar, pub_maand, pub_dag, _slug = m.groups()
+            if not h1:
+                continue
 
-                # ABD news-cards renderen titel + body zonder spatie ertussen.
-                # We zoeken de eerste "bij {Org}" en knippen daarna af zodra
-                # we body-tekst tegenkomen. Body begint typisch met
-                # "{Voornaam} {Achternaam} (wordt|start|begint)..." — dus
-                # gewoon alles vóór de tweede keer dat we de naam zien.
-                #
-                # Alternatief en eenvoudiger: pak " bij {ORG}" maar ORG kan
-                # met opvolgende body-tekst aan elkaar plakken
-                # ('JenVEsther'). Detect dat door op een hoofdletter na een
-                # andere hoofdletter te splitten — zolang het ORG zelf niet
-                # bestaat uit twee hoofdletter-woorden ('Hoge Raad', etc).
-                eerste_zin = re.split(r"[.\n]", txt, 1)[0].strip()
-                # Probeer 'bij {ORG}' waarbij ORG tot maximaal 30 chars na 'bij'
-                # gaat tot de body begint (eerste lowercase woord). De body
-                # start altijd met een naam (hoofdletter) gevolgd door een
-                # werkwoord ('wordt', 'is', 'start', etc).
-                m2 = re.search(
-                    r"\bbij\s+([A-Z][\w\-&\s]*?)"
-                    r"(?=[A-Z][a-z]+\s+(?:wordt|is|start|begint|krijgt|"
-                    r"verlaat|gaat|treedt|werkt|volgt))",
-                    eerste_zin,
+            # H1 = "NAAM functie bij ORG" — schoon
+            parts = _split_titel(h1)
+            if not parts:
+                continue
+            naam, functie, org_hint = parts
+
+            # Ingangsdatum uit intro-paragraaf
+            ingangsdatum = _parse_ingangsdatum(intro or h1)
+
+            try:
+                publicatiedatum = date(int(pub_jaar), int(pub_maand), int(pub_dag))
+            except ValueError:
+                publicatiedatum = date.today()
+
+            out.append(
+                AbdBenoeming(
+                    naam=naam,
+                    functietitel=functie,
+                    organisatie_hint=org_hint,
+                    nieuws_url=href,
+                    publicatiedatum=publicatiedatum,
+                    ingangsdatum=ingangsdatum,
                 )
-                if m2:
-                    org_end = m2.end(1)
-                    eerste_zin = eerste_zin[:org_end].strip()
-                else:
-                    # Fallback: knip op de eerste 'naar X' of na 80 chars
-                    eerste_zin = eerste_zin[:120]
-
-                parts = _split_titel(eerste_zin)
-                if not parts:
-                    continue
-                naam, functie, org_hint = parts
-                # Trim org_hint van body-pollutie. Bekende afkortingen
-                # (JenV, IenW, OCW, BZK, etc.) zijn 2-5 chars met
-                # hoofdletter/kleine-letter mix; daarna begint vaak een
-                # voornaam ('Esther', 'Niels') van de body. Probeer eerst:
-                # exact bekende afkorting prefix matchen.
-                bekend = sorted(
-                    list(AFKORTING_NAAR_MINISTERIE.keys())
-                    + list(DIENST_NAAR_NAAM_HINT.keys()),
-                    key=len,
-                    reverse=True,
-                )
-                for afk in bekend:
-                    if org_hint.startswith(afk):
-                        org_hint = afk
-                        break
-                else:
-                    # Knip op eerste 'na hoofdletter komt body-Voornaam'
-                    # patroon. ABD-body begint met capitalized voornaam
-                    # gevolgd door 'wordt/start/is/etc' werkwoord.
-                    m_split = re.search(
-                        r"([A-Z][a-z]+)\s+(?:wordt|is|start|begint|krijgt|"
-                        r"verlaat|gaat|treedt|werkt|volgt)",
-                        org_hint,
-                    )
-                    if m_split:
-                        org_hint = org_hint[: m_split.start(1)].strip()
-
-                # Body fetch voor ingangsdatum is optioneel (extra HTTP-call)
-                ingangsdatum: date | None = None
-                m_in = INGANGSDATUM_RE.search(txt)
-                if m_in:
-                    try:
-                        ingangsdatum = date(
-                            int(m_in.group("jaar")),
-                            MAAND_NAAR_NUMMER[m_in.group("maand").lower()],
-                            int(m_in.group("dag")),
-                        )
-                    except (KeyError, ValueError):
-                        ingangsdatum = None
-
-                try:
-                    publicatiedatum = date(int(pub_jaar), int(pub_maand), int(pub_dag))
-                except ValueError:
-                    publicatiedatum = date.today()
-
-                out.append(
-                    AbdBenoeming(
-                        naam=naam,
-                        functietitel=functie,
-                        organisatie_hint=org_hint,
-                        nieuws_url=href,
-                        publicatiedatum=publicatiedatum,
-                        ingangsdatum=ingangsdatum,
-                    )
-                )
+            )
 
         await browser.close()
 

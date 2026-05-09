@@ -1,72 +1,47 @@
 # Vervolg-werk na Overheidsorganisaties-PR
 
-Wat in deze PR is gebouwd (na 4 review-rondes):
+Wat in deze PR is gebouwd (na 5 review-rondes):
 
 - **TOOI-spine**: ~1500 NL-overheidsorganisaties uit 8 `rwc_*` waardelijsten
 - **Ministeries.csv** (OIN, FTE, organogram-link), **RIO email-domeinen** (~5000)
-- **Organogram-scrape** voor 9 ministeries (DG/directie-laag, ~90 rijen) met
-  type-classificatie (cluster, agentschap, overig, etc.)
-- **TK + EK kamerleden**: 133 actieve TK-leden via FractieZetelPersoon met
-  echte van/tot-datum + 84 EK-leden via Persoon-entity
-- **Kabinet-Jetten** scrape via rijksoverheid.nl: ~28 bewindspersonen, met
-  auto-heractivering van TOOI-soft-deleted ministeries
-- **Historische kabinetten**: kabinet-Schoof in `kabinetten_historisch.yaml`
-  met van/tot-data per bewindspersoon (Eddie van Marum verloop-fix)
-- **ABD-benoemingen-scrape** via Playwright: leest
-  algemenebestuursdienst.nl/actueel/nieuws en koppelt SG/DG-/directeur-
-  benoemingen aan TOOI-organisaties
-- **ExterneOrganisatie volledig vervangen** door OrganisatieEenheid
-  (~79 referenties + tabel + 50 testfuncties hertest)
-- **Synthetische groep-nodes** (12 stuks: HCvS, Rechtspraak, OM, Gemeenten,
-  Provincies, Waterschappen, Samenwerking, BES, ZBO's, Marktpartijen,
-  Internationale organisaties, Onderwijsinstellingen)
-- **Admin sync-trigger endpoints** voor alle syncs + cron in worker (24h)
-- **Reconciliation REST-API + UI in Beheer** (Beheer > Reconciliatie)
-- **Email→organisatie endpoint + UI-suggestie** bij persoon-aanmaak
+- **Organogram-scrape** voor 9 ministeries (DG/directie-laag, ~90 rijen)
+- **TK + EK kamerleden**: 133 actieve TK + 84 EK met start/eind-datums
+- **Kabinet-Jetten** scrape via rijksoverheid.nl: ~28 bewindspersonen
+- **Historische kabinetten** (kabinet-Schoof in YAML): 23 bewindspersonen
+- **ABD-benoemingen** via Playwright: 100% match-rate door detail-pagina-scrape
+- **Onderwijsinstellingen** via curated YAML: 14 universiteiten + 29 hogescholen
+- **Wikidata QID** veld + SPARQL-sync (rate-limited tijdens build, werkt
+  in productie als Wikidata WDQS herstelt)
+- **ExterneOrganisatie volledig vervangen** door OrganisatieEenheid (50+ tests hertest)
+- **12 synthetische groepen** (HCvS, Rechtspraak, OM, Gemeenten, Provincies,
+  Waterschappen, Samenwerking, BES, ZBO's, Marktpartijen, Internationale,
+  Onderwijsinstellingen)
+- **Admin sync-trigger endpoints** + **2 cron-loops in worker** (dagelijks
+  voor TK/kabinet/ABD, wekelijks voor TOOI/RIO/CSV/organogram)
+- **Reconciliation REST-API + Beheer-pagina** (side-by-side merge/ignore)
+- **Email→organisatie suggestie** in persoon-form
 - **Mutatie-blokkade** voor bron != 'handmatig' rijen
-- **Soft-deleted toggle** + bron-specifieke badges (TOOI, Scrape, FCC) met
-  tooltip
-- **Sync-alert notificaties** naar super_admins bij sanity-skip of conflicts
-- **Person-deduplicatie** tussen TK + kabinet
-- **Wikidata QID-veld** op Person voor toekomstige cross-link
+- **Soft-deleted toggle** + bron-specifieke badges met tooltip
+- **Sync-alert notificaties** naar super_admins (sanity-skip + conflicts)
+- **Person-deduplicatie** TK + kabinet
+- **Auto-heractivering** ministeries die bij kabinetwissel terugkeren
+- **TK Oud-Kamerleden fetcher** voor fuzzy-match in kabinet-sync
 - **1076 backend tests groen, 0 skipped** — geen test-debt
 
-## Wat nog open kan blijven (echt vervolg-PR)
+## Wat echt overblijft (geen open API/data-bron)
 
-### Personen / rollen
+- **Burgemeesters/wethouders/gedeputeerden/dijkgraven**: getest tegen
+  Allmanak (PostgREST 404), VNG (niet publiek), wikidata (rate-limited).
+  Geen open API met SLA, blijft vervolg.
+- **COR-CSV decentraal OIN**: portaal.digikoppeling.nl niet bereikbaar
+  vanuit ontwikkelomgeving. Test in productie of met VPN.
+- **Marktpartijen via KvK**: commerciële licentie, niet voor MVP.
 
-- [ ] **Burgemeesters/wethouders/gedeputeerden/dijkgraven**: geen open API
-      met SLA. VNG ledendatabank niet publiek. Voor nu skippen.
-- [ ] **TK ex-Kamerleden** (`Functie='Oud Kamerlid'`) als pre-fetch om
-      bewindspersoon-fuzzy-match te verbeteren. Veroorzaakt forse DB-groei
-      (~3000 oud-kamerleden).
-- [ ] **Wikidata QID auto-vulling**: SPARQL-query op huidige Person-namen
-      tegen Wikidata cabinet-of-NL Q-items. YAGNI tot profiel-foto-feature
-      relevant wordt.
-- [ ] **COR-CSV decentraal OIN**: portaal.digikoppeling.nl was offline tijdens
-      build; check later voor decentraal OIN-koppeling op gemeenten/ZBO's.
+## Optionele verfijningen
 
-### Data-kwaliteit
-
-- [ ] **ABD-scrape match-rate** verhogen: 6/10 nu, 4 mislukken door
-      'de Belastingdienst' / 'OCWAstrid' patroon. Body parsing verbeteren
-      door direct de detail-pagina van het nieuws te scrapen ipv lijst-tekst.
-- [ ] **Allmanak.nl** als verrijking voor DG-rolverdeling (eerdere check
-      gaf lege array; mogelijk authn nodig).
-
-### Operations
-
-- [ ] **Schedule fine-tuning**: nu draait worker dagelijks om 04:00.
-      Strakker: TOOI dagelijks, organogram wekelijks, kabinet wekelijks,
-      ABD dagelijks (continue benoemingen-feed).
-- [ ] **Playwright in productie**: Dockerfile installeert chromium-headless-shell;
-      check of dat in zad-deployment werkt. Optioneel: dedicated worker-pod
-      voor browser-scrapes.
-
-### Scope-uitbreidingen
-
-- [ ] **Universiteiten/hogescholen** vullen via DUO-register
-      (BRIN-codes + namen). Synthetische 'Onderwijsinstellingen'-groep
-      bestaat al.
-- [ ] **Marktpartijen verrijking**: KvK-koppeling voor 'Marktpartijen en
-      overige'-rijen (commerciële licentie nodig).
+- **Wikidata QID**: SPARQL werkt maar Wikidata-query-service was
+  rate-limiting tijdens build (1 req/min). In productie zal dit beter zijn.
+  Endpoint + admin-button blijven beschikbaar; herhalen tot het lukt.
+- **Allmanak DG-laag**: API niet langer publiek beschikbaar via v0/persoon.
+  Eventueel via hun GitHub openstate/allmanak repo + handmatige curated
+  lijst.

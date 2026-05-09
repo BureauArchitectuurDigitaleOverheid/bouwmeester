@@ -87,6 +87,53 @@ async def trigger_organogram(
 
 
 @router.post(
+    "/onderwijsinstellingen",
+    summary="Importeer onderwijsinstellingen-YAML (universiteiten + hogescholen)",
+)
+async def trigger_onderwijsinstellingen(
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("org:manage")),
+) -> dict:
+    from pathlib import Path
+
+    from bouwmeester.services.onderwijsinstellingen_sync import (
+        sync_onderwijsinstellingen,
+    )
+
+    yaml_path = (
+        Path(__file__).resolve().parent.parent.parent
+        / "data"
+        / "onderwijsinstellingen.yaml"
+    )
+    stats = await sync_onderwijsinstellingen(db, yaml_path)
+    return {
+        "sync_run_id": str(stats.sync_run_id),
+        "nieuwe_universiteiten": stats.nieuwe_universiteiten,
+        "nieuwe_hogescholen": stats.nieuwe_hogescholen,
+        "onveranderd": stats.onveranderd,
+    }
+
+
+@router.post(
+    "/wikidata-qid",
+    summary="Vul Person.wikidata_qid via Wikidata SPARQL",
+)
+async def trigger_wikidata_qid(
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("org:manage")),
+) -> dict:
+    from bouwmeester.services.wikidata_qid_sync import sync_wikidata_qid
+
+    stats = await sync_wikidata_qid(db)
+    return {
+        "sync_run_id": str(stats.sync_run_id),
+        "matches": stats.matches,
+        "geen_match": stats.geen_match,
+        "api_fouten": stats.api_fouten,
+    }
+
+
+@router.post(
     "/historische-kabinetten",
     summary="Importeer historische-kabinetten YAML",
 )
