@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Play, ChevronRight, ChevronDown } from 'lucide-react';
 import {
@@ -162,8 +162,8 @@ export function SyncStatusManager() {
               const laatste = data?.laatste_run_per_bron[bron];
               const isExpanded = expandedBron === bron;
               return (
-                <>
-                  <tr key={ep} className="border-b border-border last:border-0">
+                <Fragment key={ep}>
+                  <tr className="border-b border-border last:border-0">
                     <td className="px-4 py-2 text-sm">
                       <button
                         type="button"
@@ -204,7 +204,7 @@ export function SyncStatusManager() {
                     </td>
                   </tr>
                   {isExpanded && (
-                    <tr key={`${ep}-log`} className="border-b border-border">
+                    <tr className="border-b border-border">
                       <td colSpan={3} className="px-4 py-2 bg-gray-50">
                         <div className="text-xs text-text-secondary mb-2">
                           Recente log-entries (laatste 30):
@@ -251,7 +251,7 @@ export function SyncStatusManager() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>

@@ -374,6 +374,27 @@ async def test_api_fcc_conflicts_empty(client):
 # ---------------------------------------------------------------------------
 
 
+async def test_eliminate_migratie_levert_ictu_seed(db_session: AsyncSession):
+    """Verifieer dat de eliminate-migratie de oude ExterneOrganisatie-seed
+    correct heeft overgezet naar OrganisatieEenheid met afkorting='ICTU'.
+
+    De seed-migratie c4a1f2e83b01 zette ICTU in externe_organisatie. De
+    eliminate-migratie 9a1b2c3d4e5f migreerde dat naar organisatie_eenheid.
+    Als dat breekt valt het FCC-import-pad terug op auto-create en duikt
+    er een tweede ICTU op met andere bron.
+    """
+    result = await db_session.execute(
+        select(OrganisatieEenheid).where(OrganisatieEenheid.afkorting == "ICTU")
+    )
+    rows = result.scalars().all()
+    assert len(rows) >= 1, (
+        "ICTU ontbreekt — eliminate-migratie heeft seed niet opgepikt"
+    )
+    # Geen dubbele rijen die beide afkorting='ICTU' hebben en bron='handmatig'
+    handmatig = [r for r in rows if r.bron == "handmatig"]
+    assert len(handmatig) <= 1, "Meer dan één handmatige ICTU — reconciliation-risico"
+
+
 @pytest.mark.usefixtures("_use_mock_client")
 async def test_import_resolves_existing_opdrachtnemer(db_session: AsyncSession):
     """Import koppelt Uitvoeringsorganisatie aan bestaande OrganisatieEenheid op afkorting."""  # noqa: E501

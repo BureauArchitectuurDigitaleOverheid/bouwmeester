@@ -1527,7 +1527,7 @@ export interface Opdracht {
   instrument_id?: string | null;
   instrument?: { id: string; title: string; node_type: string } | null;
   opdrachtnemer_eenheid_id?: string | null;
-  opdrachtnemer?: LeadOrganisatieSummary | null;
+  opdrachtnemer?: OrganisatieEenheidSummary | null;
   opdrachtgever_id?: string | null;
   opdrachtgever?: { id: string; naam: string } | null;
   verantwoordelijke_id?: string | null;
@@ -1775,7 +1775,7 @@ export interface LeadInitiatiefSummary {
   kleur: string | null;
 }
 
-export interface LeadOrganisatieSummary {
+export interface OrganisatieEenheidSummary {
   id: string;
   naam: string;
   type: string | null;
@@ -1833,7 +1833,7 @@ export interface Lead {
   description: string | null;
   organization: string | null;
   organisatie_eenheid_id: string | null;
-  organisatie_eenheid: LeadOrganisatieSummary | null;
+  organisatie_eenheid: OrganisatieEenheidSummary | null;
   stage: string;
   assignee_id: string | null;
   assignee: LeadAssigneeSummary | null;
