@@ -274,7 +274,7 @@ def _resolveer_type_en_parent(
 # --- Database upsert ---
 
 
-def _normaliseer_naam(naam: str) -> str:
+def _normalize_name(naam: str) -> str:
     """Lower + collapse whitespace + strip type-prefixen.
 
     TOOI en organogram-scrape gebruiken vaak prefixen (`ministerie van`,
@@ -343,7 +343,7 @@ async def _has_actieve_plaatsing(session: AsyncSession, eenheid_id) -> bool:
     return result.scalar_one_or_none() is not None
 
 
-async def _bestaande_per_tooi_uri(
+async def _existing_by_tooi_uri(
     session: AsyncSession,
 ) -> dict[str, OrganisatieEenheid]:
     rows = (
@@ -360,7 +360,7 @@ async def _bestaande_per_tooi_uri(
     return {row.tooi_uri: row for row in rows if row.tooi_uri}
 
 
-async def _bestaande_handmatig_per_naam(
+async def _existing_manual_by_name(
     session: AsyncSession,
 ) -> dict[str, OrganisatieEenheid]:
     """Map van genormaliseerde naam -> handmatige rij (voor conflict-detectie)."""
@@ -378,13 +378,13 @@ async def _bestaande_handmatig_per_naam(
     )
     out: dict[str, OrganisatieEenheid] = {}
     for r in rows:
-        out[_normaliseer_naam(r.naam)] = r
+        out[_normalize_name(r.naam)] = r
         if r.afkorting:
             out[r.afkorting.lower()] = r
     return out
 
 
-async def _bestaande_synthetisch_per_naam(
+async def _existing_synthetic_by_name(
     session: AsyncSession,
 ) -> dict[str, OrganisatieEenheid]:
     rows = (
@@ -449,9 +449,9 @@ async def sync_tooi(
             await session.flush()
         return stats
 
-    bestaand = await _bestaande_per_tooi_uri(session)
-    handmatig_per_naam = await _bestaande_handmatig_per_naam(session)
-    synth_per_naam = await _bestaande_synthetisch_per_naam(session)
+    bestaand = await _existing_by_tooi_uri(session)
+    handmatig_per_naam = await _existing_manual_by_name(session)
+    synth_per_naam = await _existing_synthetic_by_name(session)
 
     # Sanity-check op massale soft-delete: hoeveel uri's zouden verdwijnen?
     feed_uris = {o.tooi_uri for o in feed}
@@ -580,7 +580,7 @@ async def sync_tooi(
             continue
 
         # Nieuwe rij: check eerst conflict met handmatige
-        norm_naam = _normaliseer_naam(org.naam)
+        norm_naam = _normalize_name(org.naam)
         kandidaat = handmatig_per_naam.get(norm_naam)
         if (
             kandidaat is None
@@ -710,9 +710,9 @@ async def sync_tooi(
     # uniek). Idempotent: bij volgende runs zijn er geen open conflicten meer
     # voor type=ministerie en doet de helper niks.
     if stats.conflicts > 0 and commit:
-        from bouwmeester.services.auto_merge_ministeries import merge_ministeries
+        from bouwmeester.services.auto_merge_ministries import merge_ministries
 
-        n_merged = await merge_ministeries(session)
+        n_merged = await merge_ministries(session)
         if n_merged:
             log.info("Auto-merge ministeries: %d rijen samengevoegd", n_merged)
 

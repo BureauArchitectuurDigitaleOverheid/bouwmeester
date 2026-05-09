@@ -25,7 +25,7 @@ async def main() -> None:
         stats = await sync_historische_kabinetten(session, YAML)
     print(
         f"Historische kabinetten: nieuwe_personen={stats.nieuwe_personen} "
-        f"nieuwe_plaatsingen={stats.nieuwe_plaatsingen} "
+        f"new_placements={stats.new_placements} "
         f"onveranderd={stats.onveranderd} fouten={len(stats.fouten)}"
     )
     for f in stats.fouten[:5]:

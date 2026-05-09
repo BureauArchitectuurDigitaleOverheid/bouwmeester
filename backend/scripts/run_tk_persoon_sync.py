@@ -15,7 +15,7 @@ async def main() -> None:
         stats = await sync_tk_personen(session)
     print(
         f"TK OData sync: nieuwe_personen={stats.nieuwe_personen} "
-        f"nieuwe_plaatsingen={stats.nieuwe_plaatsingen} "
+        f"new_placements={stats.new_placements} "
         f"geupdate={stats.geupdate_plaatsingen} "
         f"onveranderd={stats.onveranderd} fouten={len(stats.fouten)}"
     )

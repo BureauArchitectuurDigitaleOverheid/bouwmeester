@@ -113,7 +113,7 @@ def _parse_directies(html: str) -> list[str]:
     return out
 
 
-async def _scrape_ministerie(
+async def _scrape_ministry(
     client: httpx.AsyncClient,
     slug: str,
 ) -> tuple[list[DgInfo], dict[str, list[str]]]:
@@ -211,7 +211,7 @@ async def sync_organogram(
 
     async def _real_fetcher(slug: str):
         async with httpx.AsyncClient(timeout=30.0) as client:
-            return await _scrape_ministerie(client, slug)
+            return await _scrape_ministry(client, slug)
 
     fetch = fetcher or _real_fetcher
 

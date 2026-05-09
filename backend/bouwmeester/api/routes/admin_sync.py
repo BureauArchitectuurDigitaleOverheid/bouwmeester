@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import require_permission
-from bouwmeester.services.kabinet_scrape import schrijf_kabinet_yaml
+from bouwmeester.services.kabinet_scrape import write_kabinet_yaml
 from bouwmeester.services.kabinet_sync import sync_kabinet
 from bouwmeester.services.ministeries_csv_sync import sync_ministeries_csv
 from bouwmeester.services.organogram_scrape import sync_organogram
@@ -255,7 +255,7 @@ async def trigger_historische_kabinetten(
     return {
         "sync_run_id": str(stats.sync_run_id),
         "nieuwe_personen": stats.nieuwe_personen,
-        "nieuwe_plaatsingen": stats.nieuwe_plaatsingen,
+        "new_placements": stats.new_placements,
         "onveranderd": stats.onveranderd,
         "fouten": stats.fouten,
     }
@@ -275,7 +275,7 @@ async def trigger_abd(
     return {
         "sync_run_id": str(stats.sync_run_id),
         "nieuwe_personen": stats.nieuwe_personen,
-        "nieuwe_plaatsingen": stats.nieuwe_plaatsingen,
+        "new_placements": stats.new_placements,
         "onveranderd": stats.onveranderd,
         "geen_org_match": stats.geen_org_match,
     }
@@ -290,7 +290,7 @@ async def trigger_tk_personen(
     return {
         "sync_run_id": str(stats.sync_run_id),
         "nieuwe_personen": stats.nieuwe_personen,
-        "nieuwe_plaatsingen": stats.nieuwe_plaatsingen,
+        "new_placements": stats.new_placements,
         "geupdate_plaatsingen": stats.geupdate_plaatsingen,
         "onveranderd": stats.onveranderd,
     }
@@ -304,13 +304,13 @@ async def trigger_kabinet(
     db: AsyncSession = Depends(get_db),
     _perm=Depends(require_permission("org:manage")),
 ) -> dict:
-    aantal = await schrijf_kabinet_yaml(db, str(KABINET_YAML))
+    aantal = await write_kabinet_yaml(db, str(KABINET_YAML))
     stats = await sync_kabinet(db, KABINET_YAML)
     return {
         "scrape_aantal": aantal,
         "sync_run_id": str(stats.sync_run_id),
         "nieuwe_personen": stats.nieuwe_personen,
-        "nieuwe_plaatsingen": stats.nieuwe_plaatsingen,
+        "new_placements": stats.new_placements,
         "verlopen_plaatsingen": stats.verlopen_plaatsingen,
         "onveranderd": stats.onveranderd,
         "fouten": stats.fouten,
@@ -340,13 +340,13 @@ async def trigger_all(
     s5 = await sync_tk_personen(db)
     results["tk"] = {
         "nieuwe_personen": s5.nieuwe_personen,
-        "nieuwe_plaatsingen": s5.nieuwe_plaatsingen,
+        "new_placements": s5.new_placements,
     }
-    aantal = await schrijf_kabinet_yaml(db, str(KABINET_YAML))
+    aantal = await write_kabinet_yaml(db, str(KABINET_YAML))
     s6 = await sync_kabinet(db, KABINET_YAML)
     results["kabinet"] = {
         "scrape_aantal": aantal,
-        "nieuwe_plaatsingen": s6.nieuwe_plaatsingen,
+        "new_placements": s6.new_placements,
         "verlopen": s6.verlopen_plaatsingen,
     }
     return results

@@ -18,7 +18,7 @@ async def main() -> None:
         stats = await sync_kabinet(session, YAML)
     print(
         f"Kabinet sync: nieuwe_personen={stats.nieuwe_personen} "
-        f"nieuwe_plaatsingen={stats.nieuwe_plaatsingen} "
+        f"new_placements={stats.new_placements} "
         f"verlopen={stats.verlopen_plaatsingen} "
         f"onveranderd={stats.onveranderd} fouten={len(stats.fouten)}"
     )

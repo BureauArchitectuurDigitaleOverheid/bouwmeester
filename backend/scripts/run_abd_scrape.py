@@ -15,7 +15,7 @@ async def main() -> None:
         stats = await sync_abd(session)
     print(
         f"ABD-scrape: nieuwe_personen={stats.nieuwe_personen} "
-        f"nieuwe_plaatsingen={stats.nieuwe_plaatsingen} "
+        f"new_placements={stats.new_placements} "
         f"onveranderd={stats.onveranderd} "
         f"geen_org_match={stats.geen_org_match}"
     )

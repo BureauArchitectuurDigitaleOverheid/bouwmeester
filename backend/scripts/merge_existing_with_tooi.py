@@ -28,14 +28,14 @@ from bouwmeester.models.pending_reconciliation import PendingReconciliation
 log = logging.getLogger(__name__)
 
 
-def _normaliseer(naam: str) -> str:
+def _normalize(naam: str) -> str:
     n = " ".join(naam.lower().split())
     if n.startswith("ministerie van "):
         n = n[len("ministerie van ") :]
     return n.strip()
 
 
-async def merge_ministeries(session: AsyncSession) -> int:
+async def merge_ministries(session: AsyncSession) -> int:
     """Merge handmatige ministerie-rijen met TOOI-rijen.
 
     Returns het aantal succesvol gemerged rijen.
@@ -65,7 +65,7 @@ async def merge_ministeries(session: AsyncSession) -> int:
         if handmatig.type != "ministerie" or kandidaat.type != "ministerie":
             continue
         # Genormaliseerde naam moet matchen
-        if _normaliseer(handmatig.naam) != _normaliseer(kandidaat.naam):
+        if _normalize(handmatig.naam) != _normalize(kandidaat.naam):
             continue
 
         log.info(
@@ -109,7 +109,7 @@ async def merge_ministeries(session: AsyncSession) -> int:
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     async with async_session() as session:
-        n = await merge_ministeries(session)
+        n = await merge_ministries(session)
     print(f"Merge ministeries: {n} rijen gemerged")
 
 

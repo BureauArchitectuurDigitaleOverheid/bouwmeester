@@ -90,7 +90,7 @@ class AbdBenoeming:
 class AbdSyncStats:
     sync_run_id: uuid.UUID
     nieuwe_personen: int = 0
-    nieuwe_plaatsingen: int = 0
+    new_placements: int = 0
     onveranderd: int = 0
     geen_org_match: int = 0
     fouten: list[str] = field(default_factory=list)
@@ -461,7 +461,7 @@ async def sync_abd(
             start_datum=b.ingangsdatum or b.publicatiedatum,
         )
         session.add(plc)
-        stats.nieuwe_plaatsingen += 1
+        stats.new_placements += 1
         session.add(
             TooiSyncLog(
                 sync_run_id=sync_run_id,
@@ -489,7 +489,7 @@ async def sync_abd(
         "%d onveranderd, %d zonder org-match",
         sync_run_id,
         stats.nieuwe_personen,
-        stats.nieuwe_plaatsingen,
+        stats.new_placements,
         stats.onveranderd,
         stats.geen_org_match,
     )

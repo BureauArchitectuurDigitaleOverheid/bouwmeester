@@ -43,7 +43,7 @@ EK_EENHEID_NAAM = "Eerste Kamer"
 class TkSyncStats:
     sync_run_id: uuid.UUID
     nieuwe_personen: int = 0
-    nieuwe_plaatsingen: int = 0
+    new_placements: int = 0
     geupdate_plaatsingen: int = 0
     verlopen_plaatsingen: int = 0
     onveranderd: int = 0
@@ -149,7 +149,7 @@ async def _get_eenheid(session: AsyncSession, naam: str) -> OrganisatieEenheid |
     )
 
 
-async def _bestaande_personen_per_tk_id(
+async def _existing_persons_by_tk_id(
     session: AsyncSession,
 ) -> dict[str, Person]:
     return {
@@ -238,7 +238,7 @@ async def _sync_tk(
                     eind_datum=tot,
                 )
             )
-            stats.nieuwe_plaatsingen += 1
+            stats.new_placements += 1
             session.add(
                 TooiSyncLog(
                     sync_run_id=sync_run_id,
@@ -340,7 +340,7 @@ async def _sync_ek(
                     start_datum=today,
                 )
             )
-            stats.nieuwe_plaatsingen += 1
+            stats.new_placements += 1
             session.add(
                 TooiSyncLog(
                     sync_run_id=sync_run_id,
@@ -379,7 +379,7 @@ async def sync_tk_personen(
     sync_run_id = uuid.uuid4()
     stats = TkSyncStats(sync_run_id=sync_run_id)
 
-    bestaande_personen = await _bestaande_personen_per_tk_id(session)
+    bestaande_personen = await _existing_persons_by_tk_id(session)
 
     await _sync_tk(
         session, sync_run_id, fractiezetel_fetcher, bestaande_personen, stats
@@ -392,7 +392,7 @@ async def sync_tk_personen(
         "%d geüpdatet, %d verlopen, %d onveranderd, %d fouten",
         sync_run_id,
         stats.nieuwe_personen,
-        stats.nieuwe_plaatsingen,
+        stats.new_placements,
         stats.geupdate_plaatsingen,
         stats.verlopen_plaatsingen,
         stats.onveranderd,

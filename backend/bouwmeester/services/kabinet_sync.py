@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 class KabinetSyncStats:
     sync_run_id: uuid.UUID
     nieuwe_personen: int = 0
-    nieuwe_plaatsingen: int = 0
+    new_placements: int = 0
     verlopen_plaatsingen: int = 0
     onveranderd: int = 0
     fouten: list[str] = field(default_factory=list)
@@ -193,7 +193,7 @@ async def sync_kabinet(
             eind_datum=_parse_datum(entry.get("tot"), None),
         )
         session.add(plc)
-        stats.nieuwe_plaatsingen += 1
+        stats.new_placements += 1
 
         session.add(
             TooiSyncLog(
@@ -216,7 +216,7 @@ async def sync_kabinet(
         "-%d verlopen, %d onveranderd, %d fouten",
         sync_run_id,
         stats.nieuwe_personen,
-        stats.nieuwe_plaatsingen,
+        stats.new_placements,
         stats.verlopen_plaatsingen,
         stats.onveranderd,
         len(stats.fouten),

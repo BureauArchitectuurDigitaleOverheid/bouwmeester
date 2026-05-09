@@ -165,7 +165,7 @@ async def test_sync_abd_met_mock_fetcher(db_session: AsyncSession, schone_org_db
 
     stats = await sync_abd(db_session, fetcher=mock_fetcher, commit=False)
     assert stats.nieuwe_personen == 1
-    assert stats.nieuwe_plaatsingen == 1
+    assert stats.new_placements == 1
     assert stats.geen_org_match == 0
 
     person = (
@@ -203,6 +203,6 @@ async def test_sync_abd_idempotent(db_session: AsyncSession, schone_org_db):
 
     s1 = await sync_abd(db_session, fetcher=mock_fetcher, commit=False)
     s2 = await sync_abd(db_session, fetcher=mock_fetcher, commit=False)
-    assert s1.nieuwe_plaatsingen == 1
-    assert s2.nieuwe_plaatsingen == 0
+    assert s1.new_placements == 1
+    assert s2.new_placements == 0
     assert s2.onveranderd == 1

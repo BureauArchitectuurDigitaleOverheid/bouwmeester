@@ -211,7 +211,7 @@ async def _overheidsorganisaties_dagelijks_loop(settings) -> None:  # type: igno
     while True:
         try:
             async with async_session() as session:
-                from bouwmeester.services.kabinet_scrape import schrijf_kabinet_yaml
+                from bouwmeester.services.kabinet_scrape import write_kabinet_yaml
                 from bouwmeester.services.kabinet_sync import sync_kabinet
                 from bouwmeester.services.tk_persoon_sync import sync_tk_personen
 
@@ -221,7 +221,7 @@ async def _overheidsorganisaties_dagelijks_loop(settings) -> None:  # type: igno
 
                 kab_yaml = Path(__file__).resolve().parent / "data" / "kabinet.yaml"
             async with async_session() as session2:
-                await schrijf_kabinet_yaml(session2, str(kab_yaml))
+                await write_kabinet_yaml(session2, str(kab_yaml))
                 kab_stats = await sync_kabinet(session2, kab_yaml)
 
             # ABD-scrape via Playwright (separaat session ivm browser-lifecycle)
@@ -231,15 +231,15 @@ async def _overheidsorganisaties_dagelijks_loop(settings) -> None:  # type: igno
 
                 async with async_session() as session3:
                     abd_stats = await sync_abd(session3)
-                    abd_added = abd_stats.nieuwe_plaatsingen
+                    abd_added = abd_stats.new_placements
             except Exception as exc:  # noqa: BLE001
                 logger.warning("ABD-scrape gefaald: %s", _short_error(exc))
 
             await health_tick(
                 "overheidsorganisaties_daily",
                 detail=(
-                    f"tk+{tk_stats.nieuwe_plaatsingen} "
-                    f"kab+{kab_stats.nieuwe_plaatsingen} abd+{abd_added}"
+                    f"tk+{tk_stats.new_placements} "
+                    f"kab+{kab_stats.new_placements} abd+{abd_added}"
                 ),
             )
         except Exception as exc:

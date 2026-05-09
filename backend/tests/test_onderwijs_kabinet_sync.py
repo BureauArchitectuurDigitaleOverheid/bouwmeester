@@ -136,7 +136,7 @@ async def test_historisch_kabinet_basic(
     )
     stats = await sync_historische_kabinetten(db_session, yaml_path, commit=False)
     assert stats.nieuwe_personen == 2
-    assert stats.nieuwe_plaatsingen == 2
+    assert stats.new_placements == 2
 
     # Verifieer plaatsing met juiste van/tot
     plc = (
@@ -182,8 +182,8 @@ async def test_historisch_kabinet_idempotent(
     )
     s1 = await sync_historische_kabinetten(db_session, yaml_path, commit=False)
     s2 = await sync_historische_kabinetten(db_session, yaml_path, commit=False)
-    assert s1.nieuwe_plaatsingen == 1
-    assert s2.nieuwe_plaatsingen == 0
+    assert s1.new_placements == 1
+    assert s2.new_placements == 0
     assert s2.onveranderd == 1
 
 
@@ -203,5 +203,5 @@ async def test_historisch_kabinet_skip_zonder_tooi_uri(
         '      functietitel: "Minister"\n'
     )
     stats = await sync_historische_kabinetten(db_session, yaml_path, commit=False)
-    assert stats.nieuwe_plaatsingen == 0
+    assert stats.new_placements == 0
     assert any("Geen OrganisatieEenheid" in f for f in stats.fouten)

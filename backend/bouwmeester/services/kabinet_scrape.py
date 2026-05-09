@@ -132,7 +132,7 @@ async def scrape_bewindspersonen() -> list[tuple[str, str]]:
     ]
 
 
-async def bouw_kabinet_yaml_data(session: AsyncSession) -> dict:
+async def build_kabinet_yaml_data(session: AsyncSession) -> dict:
     """Bouw een dict in het kabinet.yaml-formaat op basis van de scrape.
 
     Levert {'bewindspersonen': [...]} dat kabinet_sync direct kan inlezen.
@@ -204,7 +204,7 @@ async def bouw_kabinet_yaml_data(session: AsyncSession) -> dict:
     return {"bewindspersonen": bewindspersonen}
 
 
-async def schrijf_kabinet_yaml(session: AsyncSession, pad: str) -> int:
+async def write_kabinet_yaml(session: AsyncSession, pad: str) -> int:
     """Scrape en schrijf naar de opgegeven YAML-locatie. Geeft aantal entries.
 
     Als de scrape 0 entries oplevert (rijksoverheid.nl onbereikbaar of
@@ -212,7 +212,7 @@ async def schrijf_kabinet_yaml(session: AsyncSession, pad: str) -> int:
     zou kabinet_sync alle 28 bewindspersonen op eind_datum=today zetten
     bij één enkele hapering.
     """
-    data = await bouw_kabinet_yaml_data(session)
+    data = await build_kabinet_yaml_data(session)
     n = len(data["bewindspersonen"])
     if n == 0:
         log.warning(
