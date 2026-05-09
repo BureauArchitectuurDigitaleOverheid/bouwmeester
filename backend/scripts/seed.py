@@ -214,7 +214,6 @@ async def seed(db: AsyncSession) -> None:
         "parlementair_item",
         "opdracht_node",
         "opdracht",
-        "externe_organisatie",
         "node_tag",
         "tag",
         "task",
