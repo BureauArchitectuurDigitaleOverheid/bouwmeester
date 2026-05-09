@@ -1504,8 +1504,8 @@ export interface Opdracht {
   volgend_jaar_aangevraagd?: number | null;
   instrument_id?: string | null;
   instrument?: { id: string; title: string; node_type: string } | null;
-  opdrachtnemer_id?: string | null;
-  opdrachtnemer?: ExterneOrganisatie | null;
+  opdrachtnemer_eenheid_id?: string | null;
+  opdrachtnemer?: LeadOrganisatieSummary | null;
   opdrachtgever_id?: string | null;
   opdrachtgever?: { id: string; naam: string } | null;
   verantwoordelijke_id?: string | null;
@@ -1563,7 +1563,7 @@ export interface OpdrachtCreate {
   volgend_jaar_benodigd?: number | null;
   volgend_jaar_aangevraagd?: number | null;
   instrument_id: string;
-  opdrachtnemer_id?: string | null;
+  opdrachtnemer_eenheid_id?: string | null;
   opdrachtgever_id?: string | null;
   verantwoordelijke_id?: string | null;
   subsidieregeling?: string | null;
@@ -1586,7 +1586,7 @@ export interface OpdrachtUpdate {
   volgend_jaar_benodigd?: number | null;
   volgend_jaar_aangevraagd?: number | null;
   instrument_id?: string;
-  opdrachtnemer_id?: string | null;
+  opdrachtnemer_eenheid_id?: string | null;
   opdrachtgever_id?: string | null;
   verantwoordelijke_id?: string | null;
   subsidieregeling?: string | null;
@@ -1602,7 +1602,7 @@ export interface OpdrachtFilters {
   type?: string;
   status?: string;
   instrument_id?: string;
-  opdrachtnemer_id?: string;
+  opdrachtnemer_eenheid_id?: string;
   opdrachtgever_id?: string;
   verantwoordelijke_id?: string;
 }
@@ -1753,10 +1753,11 @@ export interface LeadInitiatiefSummary {
   kleur: string | null;
 }
 
-export interface LeadExterneOrgSummary {
+export interface LeadOrganisatieSummary {
   id: string;
   naam: string;
   type: string | null;
+  afkorting?: string | null;
 }
 
 export interface LeadAttachment {
@@ -1809,8 +1810,8 @@ export interface Lead {
   title: string;
   description: string | null;
   organization: string | null;
-  externe_organisatie_id: string | null;
-  externe_organisatie: LeadExterneOrgSummary | null;
+  organisatie_eenheid_id: string | null;
+  organisatie_eenheid: LeadOrganisatieSummary | null;
   stage: string;
   assignee_id: string | null;
   assignee: LeadAssigneeSummary | null;
@@ -1870,7 +1871,7 @@ export interface LeadCreate {
   title: string;
   description?: string | null;
   organization?: string | null;
-  externe_organisatie_id?: string | null;
+  organisatie_eenheid_id?: string | null;
   stage?: string;
   assignee_id?: string | null;
   brought_by_id?: string | null;
@@ -1892,7 +1893,7 @@ export interface LeadUpdate {
   title?: string;
   description?: string | null;
   organization?: string | null;
-  externe_organisatie_id?: string | null;
+  organisatie_eenheid_id?: string | null;
   stage?: string;
   assignee_id?: string | null;
   brought_by_id?: string | null;

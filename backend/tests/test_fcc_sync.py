@@ -377,17 +377,22 @@ async def test_api_fcc_conflicts_empty(client):
 @pytest.mark.usefixtures("_use_mock_client")
 async def test_import_resolves_existing_opdrachtnemer(db_session: AsyncSession):
     """Import koppelt Uitvoeringsorganisatie aan bestaande OrganisatieEenheid op afkorting."""  # noqa: E501
-    # Maak ICTU als OrganisatieEenheid aan met afkorting='ICTU' zodat de
-    # FCC resolver hem op afkorting matcht (eerste strategie in
-    # _resolve_opdrachtnemer).
-    ictu = OrganisatieEenheid(
-        naam="ICTU",
-        afkorting="ICTU",
-        type="uitvoeringsorganisatie",
-        bron="handmatig",
+    # ICTU kan al bestaan via de eliminate-externe-organisatie-migratie
+    # (oude seed). Hergebruik die rij of maak hem aan als hij ontbreekt,
+    # zodat de FCC resolver hem op afkorting matcht.
+    existing = await db_session.execute(
+        select(OrganisatieEenheid).where(OrganisatieEenheid.afkorting == "ICTU")
     )
-    db_session.add(ictu)
-    await db_session.flush()
+    ictu = existing.scalars().first()
+    if ictu is None:
+        ictu = OrganisatieEenheid(
+            naam="ICTU",
+            afkorting="ICTU",
+            type="uitvoeringsorganisatie",
+            bron="handmatig",
+        )
+        db_session.add(ictu)
+        await db_session.flush()
 
     service = FccImportService(db_session)
     await service.poll_and_import()
