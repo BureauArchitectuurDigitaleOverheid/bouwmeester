@@ -15,8 +15,9 @@ import {
   useUpdateOrganisatieEenheid,
   useDeleteOrganisatieEenheid,
 } from '@/hooks/useOrganisatie';
-import { useAddPersonOrganisatie } from '@/hooks/usePeople';
+import { useAddPersonOrganisatie, usePersonOrganisaties } from '@/hooks/usePeople';
 import { usePersonFormSubmit } from '@/hooks/usePersonFormSubmit';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { todayISO } from '@/utils/dates';
 import type { OrganisatieEenheid, OrganisatieEenheidCreate, OrganisatieEenheidUpdate, Person } from '@/types';
 
@@ -47,6 +48,37 @@ export function OrganisatiePage() {
   }, [searchParams, setSearchParams]);
 
   const { data: tree = [], isLoading } = useOrganisatieTree(includeHistorisch);
+  const { currentPerson } = useCurrentPerson();
+  const { data: ownPlacements = [] } = usePersonOrganisaties(
+    currentPerson?.id ?? null,
+  );
+
+  // Default-open: pad van root naar elk eigen-organisatie-id van de gebruiker.
+  // Met 1900+ nodes is alles dicht onhanteerbaar; je eigen ministerie hoort
+  // wel als entrypoint open te staan. We pakken alle actieve placements
+  // (functietitel-rollen onder een eenheid) van currentPerson.
+  const expandedByDefaultIds = useMemo(() => {
+    const eigenIds = new Set(ownPlacements.map((p) => p.organisatie_eenheid_id));
+    if (eigenIds.size === 0) return new Set<string>();
+    const open = new Set<string>();
+    const walk = (nodes: typeof tree, ancestors: string[]): boolean => {
+      let touched = false;
+      for (const n of nodes) {
+        const path = [...ancestors, n.id];
+        const hitChild = walk(n.children, path);
+        if (eigenIds.has(n.id) || hitChild) {
+          // Open alle ancestors plus de matchende node zelf, zodat children
+          // van de eigen-org zichtbaar worden zonder dat de eigen-org per
+          // se hoeft te worden geklikt.
+          for (const aid of path) open.add(aid);
+          touched = true;
+        }
+      }
+      return touched;
+    };
+    walk(tree, []);
+    return open;
+  }, [tree, ownPlacements]);
 
   // Filter de boom op zoekterm + bron: een node blijft staan als hijzelf
   // matcht OF een afstammeling matcht. Synthetische groepen worden altijd
@@ -269,6 +301,7 @@ export function OrganisatiePage() {
                   onAdd={handleAdd}
                   onDropPerson={handleDropPerson}
                   searchTerm={searchTerm}
+                  expandedByDefaultIds={expandedByDefaultIds}
                 />
               </div>
             </Card>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Badge } from '@/components/common/Badge';
@@ -17,18 +17,24 @@ interface TreeNodeProps {
   onDropPerson?: (personId: string, targetNodeId: string) => void;
   depth?: number;
   searchTerm?: string;
+  expandedByDefaultIds?: Set<string>;
 }
 
-function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, searchTerm = '' }: TreeNodeProps) {
-  // Synthetische groepen (Gemeenten, Provincies, etc.) houden we standaard
-  // dichtgeklapt — anders worden er 340 nodes uitgeklapt bij het laden.
-  // TOOI-rijen op tweede niveau idem: alleen synthetische ministeries staan open.
-  const isSynthetisch = node.bron === 'synthetisch';
-  const isTooi = node.bron === 'tooi' && node.type !== 'ministerie';
+function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, searchTerm = '', expandedByDefaultIds }: TreeNodeProps) {
+  // Default: alles dicht. Met 1437 TOOI-rijen + 470 organogram-scrapes wordt
+  // de boom anders onleesbaar. Uitzondering: nodes op het pad naar de eigen
+  // organisatie van de gebruiker staan wel open — dat is je entrypoint.
+  // Bij een actieve zoekterm forceren we alles open zodat treffers zichtbaar zijn.
   const isHistorisch = !!node.geldig_tot;
-  const defaultExpanded = depth < 2 && !isSynthetisch && !isTooi;
+  const defaultExpanded = expandedByDefaultIds?.has(node.id) ?? false;
   const isSearching = searchTerm.trim().length > 0;
   const [expanded, setExpanded] = useState(defaultExpanded);
+  // expandedByDefaultIds wordt asynchroon berekend (auth + tree moeten beide
+  // binnen zijn). Bij elke wijziging van de set updaten we de lokale state,
+  // anders blijft de boom dicht omdat useState alleen de eerste init gebruikt.
+  useEffect(() => {
+    if (defaultExpanded) setExpanded(true);
+  }, [defaultExpanded]);
   // Bij actieve zoekterm forceren we alles open zodat treffers zichtbaar zijn
   const effectiveExpanded = isSearching ? true : expanded;
   const [dragOver, setDragOver] = useState(false);
@@ -126,54 +132,42 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
           })()}
         </span>
 
-        {node.bron === 'tooi' && (
-          <Badge
-            variant="blue"
-            className="text-[10px] px-1.5 py-0 shrink-0"
-            title="Synced uit TOOI-waardelijsten"
-          >
-            🔗 TOOI
-          </Badge>
-        )}
-        {node.bron === 'organogram_scrape' && (
-          <Badge
-            variant="purple"
-            className="text-[10px] px-1.5 py-0 shrink-0"
-            title="Synced uit rijksoverheid.nl/organogram"
-          >
-            📋 Scrape
-          </Badge>
-        )}
-        {node.bron === 'fcc_import' && (
-          <Badge
-            variant="amber"
-            className="text-[10px] px-1.5 py-0 shrink-0"
-            title="Auto-aangemaakt door FCC-import"
-          >
-            FCC
-          </Badge>
-        )}
+        {/* Vaste rechter-kolom: type-badge rechts uitgelijnd + add-button. */}
+        <div className="flex items-center gap-1 shrink-0 w-52 justify-end">
+          {node.bron === 'fcc_import' && (
+            <Badge
+              variant="amber"
+              className="text-[10px] px-1.5 py-0 shrink-0"
+              title="Auto-aangemaakt door FCC-import"
+            >
+              FCC
+            </Badge>
+          )}
 
-        <Badge
-          variant={ORGANISATIE_TYPE_BADGE_COLORS[node.type] || 'gray'}
-          className="text-xs px-2 py-0.5 shrink-0"
-        >
-          {formatOrganisatieType(node.type)}
-        </Badge>
-
-        {/* Add child button — niet voor synthetische groepen of TOOI-rijen */}
-        {node.bron !== 'synthetisch' && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAdd(node.id);
-            }}
-            className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-5 w-5 rounded hover:bg-gray-200 shrink-0 transition-opacity"
-            title="Subeenheid toevoegen"
+          <Badge
+            variant={ORGANISATIE_TYPE_BADGE_COLORS[node.type] || 'gray'}
+            className="text-xs px-2 py-0.5 shrink-0"
           >
-            <Plus className="h-3 w-3" />
-          </button>
-        )}
+            {formatOrganisatieType(node.type)}
+          </Badge>
+
+          {/* Add child button — niet voor synthetische groepen */}
+          {node.bron !== 'synthetisch' ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdd(node.id);
+              }}
+              className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-5 w-5 rounded hover:bg-gray-200 shrink-0 transition-opacity"
+              title="Subeenheid toevoegen"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          ) : (
+            // Placeholder zodat synth-rijen dezelfde breedte hebben (badges blijven uitgelijnd)
+            <span className="h-5 w-5 shrink-0" aria-hidden />
+          )}
+        </div>
       </div>
 
       {/* Children */}
@@ -189,6 +183,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
               onDropPerson={onDropPerson}
               depth={depth + 1}
               searchTerm={searchTerm}
+              expandedByDefaultIds={expandedByDefaultIds}
             />
           ))}
         </div>
@@ -204,9 +199,12 @@ interface OrganisatieTreeProps {
   onAdd: (parentId: string | null) => void;
   onDropPerson?: (personId: string, targetNodeId: string) => void;
   searchTerm?: string;
+  /** Nodes die default open staan. Pad naar eigen organisatie inclusief
+   *  ancestors. Recursief doorgegeven aan elke TreeNode. */
+  expandedByDefaultIds?: Set<string>;
 }
 
-export function OrganisatieTree({ tree, selectedId, onSelect, onAdd, onDropPerson, searchTerm }: OrganisatieTreeProps) {
+export function OrganisatieTree({ tree, selectedId, onSelect, onAdd, onDropPerson, searchTerm, expandedByDefaultIds }: OrganisatieTreeProps) {
   return (
     <div className="space-y-0.5">
       {tree.map((node) => (
@@ -218,6 +216,7 @@ export function OrganisatieTree({ tree, selectedId, onSelect, onAdd, onDropPerso
           onAdd={(parentId) => onAdd(parentId)}
           onDropPerson={onDropPerson}
           searchTerm={searchTerm}
+          expandedByDefaultIds={expandedByDefaultIds}
         />
       ))}
     </div>

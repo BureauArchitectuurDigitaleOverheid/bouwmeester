@@ -111,16 +111,51 @@ def _build_tree(
     all_items: list[OrganisatieEenheidResponse],
     personen_counts: dict[UUID, int],
     parent_id: UUID | None = None,
+    _named_with_parent: set[str] | None = None,
 ) -> list[OrganisatieEenheidTreeNode]:
     """Build a tree from a flat list.
 
     Uses the legacy parent_id column which is dual-written by the repository
     to stay in sync with the temporal OrganisatieEenheidParent records.
+
+    Sortering op top-level: ministeries eerst (alfabet op afkorting), dan
+    synthetische categorieën (HCvS, Gemeenten, ...), dan de rest alfabetisch.
+    Lager dieper: gewoon alfabetisch op naam.
+
+    Top-level orphan-filter: scrape-rijen zonder parent die ook elders met
+    parent voorkomen (zelfde naam) skippen we — dat zijn duplicates uit
+    een vroege organogram-sync. Echte top-level dingen (ministeries, synth-
+    groepen) worden niet door dit filter geraakt.
     """
+    # Pre-bereken: namen die ergens met parent voorkomen. Voor top-level filter.
+    if _named_with_parent is None:
+        _named_with_parent = {i.naam for i in all_items if i.parent_id is not None}
+
     children = [item for item in all_items if item.parent_id == parent_id]
+
+    if parent_id is None:
+        # Filter orphan-duplicates: scrape-rijen zonder parent die ook met
+        # parent in de boom hangen.
+        children = [
+            c
+            for c in children
+            if not (c.bron == "organogram_scrape" and c.naam in _named_with_parent)
+        ]
+
+        def _top_rang(item: OrganisatieEenheidResponse) -> tuple[int, str]:
+            if item.type == "ministerie":
+                return (0, (item.afkorting or item.naam).lower())
+            if item.bron == "synthetisch":
+                return (1, item.naam.lower())
+            return (2, item.naam.lower())
+
+        children_sorted = sorted(children, key=_top_rang)
+    else:
+        children_sorted = sorted(children, key=lambda x: x.naam.lower())
+
     nodes: list[OrganisatieEenheidTreeNode] = []
-    for item in sorted(children, key=lambda x: x.naam):
-        sub = _build_tree(all_items, personen_counts, item.id)
+    for item in children_sorted:
+        sub = _build_tree(all_items, personen_counts, item.id, _named_with_parent)
         nodes.append(
             OrganisatieEenheidTreeNode(
                 **item.model_dump(),

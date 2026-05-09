@@ -205,9 +205,22 @@ async def bouw_kabinet_yaml_data(session: AsyncSession) -> dict:
 
 
 async def schrijf_kabinet_yaml(session: AsyncSession, pad: str) -> int:
-    """Scrape en schrijf naar de opgegeven YAML-locatie. Geeft aantal entries."""
+    """Scrape en schrijf naar de opgegeven YAML-locatie. Geeft aantal entries.
+
+    Als de scrape 0 entries oplevert (rijksoverheid.nl onbereikbaar of
+    HTML-structuur veranderd) laten we de bestaande YAML staan. Anders
+    zou kabinet_sync alle 28 bewindspersonen op eind_datum=today zetten
+    bij één enkele hapering.
+    """
     data = await bouw_kabinet_yaml_data(session)
     n = len(data["bewindspersonen"])
+    if n == 0:
+        log.warning(
+            "Scrape leverde 0 bewindspersonen — YAML niet overschreven om "
+            "data-loss te voorkomen. Pad: %s",
+            pad,
+        )
+        return 0
     header = (
         "# Auto-gegenereerd door kabinet_scrape.py uit\n"
         "# https://www.rijksoverheid.nl/regering/bewindspersonen\n"
