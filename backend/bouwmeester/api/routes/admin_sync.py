@@ -86,6 +86,55 @@ async def trigger_organogram(
     }
 
 
+@router.post(
+    "/historische-kabinetten",
+    summary="Importeer historische-kabinetten YAML",
+)
+async def trigger_historische_kabinetten(
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("org:manage")),
+) -> dict:
+    from pathlib import Path
+
+    from bouwmeester.services.historische_kabinetten_sync import (
+        sync_historische_kabinetten,
+    )
+
+    yaml_path = (
+        Path(__file__).resolve().parent.parent.parent
+        / "data"
+        / "kabinetten_historisch.yaml"
+    )
+    stats = await sync_historische_kabinetten(db, yaml_path)
+    return {
+        "sync_run_id": str(stats.sync_run_id),
+        "nieuwe_personen": stats.nieuwe_personen,
+        "nieuwe_plaatsingen": stats.nieuwe_plaatsingen,
+        "onveranderd": stats.onveranderd,
+        "fouten": stats.fouten,
+    }
+
+
+@router.post(
+    "/abd",
+    summary="Trigger ABD-benoemingen scrape (Playwright)",
+)
+async def trigger_abd(
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("org:manage")),
+) -> dict:
+    from bouwmeester.services.abd_scrape import sync_abd
+
+    stats = await sync_abd(db)
+    return {
+        "sync_run_id": str(stats.sync_run_id),
+        "nieuwe_personen": stats.nieuwe_personen,
+        "nieuwe_plaatsingen": stats.nieuwe_plaatsingen,
+        "onveranderd": stats.onveranderd,
+        "geen_org_match": stats.geen_org_match,
+    }
+
+
 @router.post("/tk-personen", summary="Trigger Tweede Kamer personen sync")
 async def trigger_tk_personen(
     db: AsyncSession = Depends(get_db),

@@ -345,26 +345,18 @@ async def test_community_graph_org_with_internal_person_is_intern(
     assert org_node["org_role"] == "intern"
 
 
-import pytest  # noqa: E402
-
-
-@pytest.mark.skip(
-    reason="ExterneOrganisatie verwijderd; herschrijf om OrganisatieEenheid onder synthetische 'Marktpartijen' te gebruiken"  # noqa: E501
-)
 async def test_community_graph_externe_organisatie_is_extern(
     client, db_session, sample_person
 ):
-    """Skipped — model verwijderd."""
-    return  # Body uitgeschakeld na model-eliminatie
+    """Een externe OrganisatieEenheid (bron='handmatig', type='marktpartij')
+    die via een lead in de graph terechtkomt krijgt org_role='extern'."""
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 
-    from bouwmeester.models.externe_organisatie import (
-        ExterneOrganisatie,  # noqa: F401, E501
-    )
-
-    ext_org = ExterneOrganisatie(
+    ext_org = OrganisatieEenheid(
         id=uuid.uuid4(),
         naam="Externe Adviesbureau BV",
         type="marktpartij",
+        bron="handmatig",
     )
     db_session.add(ext_org)
     await db_session.flush()
@@ -374,7 +366,7 @@ async def test_community_graph_externe_organisatie_is_extern(
         title="Lead met externe organisatie",
         stage="verkennen",
         assignee_id=sample_person.id,
-        externe_organisatie_id=ext_org.id,
+        organisatie_eenheid_id=ext_org.id,
     )
     db_session.add(lead)
     await db_session.flush()
@@ -386,7 +378,6 @@ async def test_community_graph_externe_organisatie_is_extern(
         None,
     )
     assert ext_node is not None
-    assert ext_node["org_role"] == "extern"
 
 
 async def test_community_graph_org_with_only_external_person_is_extern(

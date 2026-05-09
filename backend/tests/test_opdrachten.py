@@ -1,29 +1,22 @@
-"""Tests for opdrachten, externe organisaties, and financial features."""
+"""Tests for opdrachten and financial features.
+
+Externe organisaties zitten sinds de TOOI-migratie in OrganisatieEenheid.
+De voormalige ExterneOrganisatie-tabel + bijbehorende /api/externe-organisaties
+routes zijn verwijderd; tests die op die endpoints leunden zijn weg.
+"""
+
+import uuid
+from datetime import date, timedelta
+from decimal import Decimal
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
-# TODO(post-MVP): herschrijven naar OrganisatieEenheid na de eliminatie van
-# de ExterneOrganisatie-tabel. Tests bevatten nog refs naar het oude model
-# en worden voor nu collected-time geskipt.
-pytestmark = pytest.mark.skip(
-    reason="ExterneOrganisatie verwijderd; tests herschrijven"
-)
-
-# Stubs zodat ruff geen F821 geeft op de geslagen body. De tests draaien
-# nooit (skip op module-niveau), dus de stubs hoeven niet bruikbaar te zijn.
-ExterneOrganisatie = type("ExterneOrganisatie", (), {})
-ExterneOrganisatieUpdate = type("ExterneOrganisatieUpdate", (), {})
-
-import uuid  # noqa: E402
-from datetime import date, timedelta  # noqa: E402
-from decimal import Decimal  # noqa: E402
-
-from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
-
-from bouwmeester.models.corpus_node import CorpusNode  # noqa: E402
-from bouwmeester.models.opdracht import Opdracht  # noqa: E402
-from bouwmeester.repositories.opdracht import OpdrachtRepository  # noqa: E402
-from bouwmeester.services.opdracht_task_service import OpdrachtTaskService  # noqa: E402
+from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.opdracht import Opdracht
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.repositories.opdracht import OpdrachtRepository
+from bouwmeester.services.opdracht_task_service import OpdrachtTaskService
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -44,11 +37,13 @@ async def instrument_node(db_session: AsyncSession):
 
 
 @pytest.fixture
-async def externe_org(db_session: AsyncSession):
-    org = ExterneOrganisatie(
+async def extern_org_eenheid(db_session: AsyncSession):
+    """Externe organisatie als OrganisatieEenheid (was: ExterneOrganisatie)."""
+    org = OrganisatieEenheid(
         id=uuid.uuid4(),
         naam=f"Test Org {uuid.uuid4().hex[:6]}",
         type="uitvoeringsorganisatie",
+        bron="handmatig",
     )
     db_session.add(org)
     await db_session.flush()
@@ -57,7 +52,7 @@ async def externe_org(db_session: AsyncSession):
 
 @pytest.fixture
 async def sample_opdracht(
-    db_session: AsyncSession, instrument_node, externe_org, sample_person
+    db_session: AsyncSession, instrument_node, extern_org_eenheid, sample_person
 ):
     opdracht = Opdracht(
         id=uuid.uuid4(),
@@ -66,7 +61,7 @@ async def sample_opdracht(
         status="actief",
         begrotingsjaar=2025,
         instrument_id=instrument_node.id,
-        opdrachtnemer_id=externe_org.id,
+        opdrachtnemer_eenheid_id=extern_org_eenheid.id,
         verantwoordelijke_id=sample_person.id,
         budget=Decimal("100000"),
         gerealiseerd=Decimal("50000"),
@@ -101,7 +96,9 @@ async def test_get_opdracht_not_found(client):
     assert resp.status_code == 404
 
 
-async def test_create_opdracht(client, instrument_node, externe_org, sample_person):
+async def test_create_opdracht(
+    client, instrument_node, extern_org_eenheid, sample_person
+):
     resp = await client.post(
         "/api/opdrachten",
         json={
@@ -110,7 +107,7 @@ async def test_create_opdracht(client, instrument_node, externe_org, sample_pers
             "status": "concept",
             "begrotingsjaar": 2025,
             "instrument_id": str(instrument_node.id),
-            "opdrachtnemer_id": str(externe_org.id),
+            "opdrachtnemer_eenheid_id": str(extern_org_eenheid.id),
             "verantwoordelijke_id": str(sample_person.id),
             "budget": 50000,
         },
@@ -189,88 +186,12 @@ async def test_summary_respects_verantwoordelijke_filter(
 
 
 # ---------------------------------------------------------------------------
-# Externe organisaties
-# ---------------------------------------------------------------------------
-
-
-async def test_list_externe_organisaties(client, externe_org):
-    resp = await client.get("/api/externe-organisaties")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert any(o["id"] == str(externe_org.id) for o in data)
-
-
-async def test_create_externe_organisatie(client):
-    resp = await client.post(
-        "/api/externe-organisaties",
-        json={
-            "naam": "Nieuwe Org",
-            "type": "zbo",
-            "website": "https://example.com",
-        },
-    )
-    assert resp.status_code == 201
-    assert resp.json()["naam"] == "Nieuwe Org"
-
-
-async def test_create_externe_organisatie_invalid_website(client):
-    resp = await client.post(
-        "/api/externe-organisaties",
-        json={
-            "naam": "Bad Org",
-            "type": "zbo",
-            "website": "ftp://malicious.example",
-        },
-    )
-    assert resp.status_code == 422
-
-
-async def test_update_externe_organisatie_invalid_website(client, externe_org):
-    """PUT should also validate website URLs (regression test)."""
-    resp = await client.put(
-        f"/api/externe-organisaties/{externe_org.id}",
-        json={"website": "javascript:alert(1)"},
-    )
-    assert resp.status_code == 422
-
-
-async def test_update_externe_organisatie_valid_website(client, externe_org):
-    resp = await client.put(
-        f"/api/externe-organisaties/{externe_org.id}",
-        json={"website": "https://example.com"},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["website"] == "https://example.com"
-
-
-# ---------------------------------------------------------------------------
-# Schema validation
-# ---------------------------------------------------------------------------
-
-
-def test_externe_organisatie_update_rejects_bad_url():
-    """ExterneOrganisatieUpdate should reject non-HTTP URLs."""
-    with pytest.raises(Exception):
-        ExterneOrganisatieUpdate(website="ftp://bad.example")
-
-
-def test_externe_organisatie_update_accepts_https():
-    schema = ExterneOrganisatieUpdate(website="https://good.example")
-    assert schema.website == "https://good.example"
-
-
-def test_externe_organisatie_update_accepts_none():
-    schema = ExterneOrganisatieUpdate(website=None)
-    assert schema.website is None
-
-
-# ---------------------------------------------------------------------------
 # check_deadlines
 # ---------------------------------------------------------------------------
 
 
 async def test_check_deadlines_ignores_past_due(
-    db_session, instrument_node, externe_org, sample_person
+    db_session, instrument_node, extern_org_eenheid, sample_person
 ):
     """Opdrachten with einddatum in the past should NOT get deadline tasks."""
     opdracht = Opdracht(
@@ -280,7 +201,7 @@ async def test_check_deadlines_ignores_past_due(
         status="actief",
         begrotingsjaar=2024,
         instrument_id=instrument_node.id,
-        opdrachtnemer_id=externe_org.id,
+        opdrachtnemer_eenheid_id=extern_org_eenheid.id,
         verantwoordelijke_id=sample_person.id,
         einddatum=date.today() - timedelta(days=60),
     )
@@ -293,7 +214,7 @@ async def test_check_deadlines_ignores_past_due(
 
 
 async def test_check_deadlines_picks_up_upcoming(
-    db_session, instrument_node, externe_org, sample_person
+    db_session, instrument_node, extern_org_eenheid, sample_person
 ):
     """Opdrachten due within 30 days should get deadline tasks."""
     opdracht = Opdracht(
@@ -303,7 +224,7 @@ async def test_check_deadlines_picks_up_upcoming(
         status="actief",
         begrotingsjaar=2025,
         instrument_id=instrument_node.id,
-        opdrachtnemer_id=externe_org.id,
+        opdrachtnemer_eenheid_id=extern_org_eenheid.id,
         verantwoordelijke_id=sample_person.id,
         einddatum=date.today() + timedelta(days=15),
     )
@@ -316,7 +237,7 @@ async def test_check_deadlines_picks_up_upcoming(
 
 
 async def test_check_deadlines_skips_far_future(
-    db_session, instrument_node, externe_org, sample_person
+    db_session, instrument_node, extern_org_eenheid, sample_person
 ):
     """Opdrachten due more than 30 days out should NOT get deadline tasks."""
     opdracht = Opdracht(
@@ -326,7 +247,7 @@ async def test_check_deadlines_skips_far_future(
         status="actief",
         begrotingsjaar=2025,
         instrument_id=instrument_node.id,
-        opdrachtnemer_id=externe_org.id,
+        opdrachtnemer_eenheid_id=extern_org_eenheid.id,
         verantwoordelijke_id=sample_person.id,
         einddatum=date.today() + timedelta(days=60),
     )

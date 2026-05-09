@@ -41,10 +41,15 @@ class Person(Base):
         index=True,
         comment="UUID van TK Open Data Persoon-entity",
     )
+    wikidata_qid: Mapped[str | None] = mapped_column(
+        nullable=True,
+        index=True,
+        comment="Wikidata Q-identifier (bv. Q33181); cross-link naar foto/loopbaan",
+    )
     bron: Mapped[str] = mapped_column(
         nullable=False,
         server_default=text("'handmatig'"),
-        comment="handmatig | tk_odata | roo_leidinggevende | kabinet_yaml",
+        comment="handmatig | tk_odata | roo_leidinggevende | kabinet_yaml | abd_scrape",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

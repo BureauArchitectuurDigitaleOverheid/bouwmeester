@@ -236,12 +236,24 @@ async def _overheidsorganisaties_loop(settings) -> None:  # type: ignore[no-unty
                 await schrijf_kabinet_yaml(session2, str(kab_yaml))
                 kab_stats = await sync_kabinet(session2, kab_yaml)
 
+            # ABD-scrape via Playwright (separaat session ivm browser-lifecycle)
+            abd_added = 0
+            try:
+                from bouwmeester.services.abd_scrape import sync_abd
+
+                async with async_session() as session3:
+                    abd_stats = await sync_abd(session3)
+                    abd_added = abd_stats.nieuwe_plaatsingen
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("ABD-scrape gefaald: %s", _short_error(exc))
+
             await health_tick(
                 "overheidsorganisaties",
                 detail=(
                     f"tooi+{tooi_stats.added} csv+{csv_stats.enriched} "
                     f"rio+{rio_stats.domeinen_added} dg+{org_stats.dgs_added} "
-                    f"tk+{tk_stats.nieuwe_plaatsingen} kab+{kab_stats.nieuwe_plaatsingen}"  # noqa: E501
+                    f"tk+{tk_stats.nieuwe_plaatsingen} kab+{kab_stats.nieuwe_plaatsingen} "  # noqa: E501
+                    f"abd+{abd_added}"
                 ),
             )
         except Exception as exc:

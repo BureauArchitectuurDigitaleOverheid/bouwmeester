@@ -124,8 +124,30 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
         </span>
 
         {node.bron === 'tooi' && (
-          <Badge variant="gray" className="text-[10px] px-1.5 py-0 shrink-0">
-            TOOI
+          <Badge
+            variant="blue"
+            className="text-[10px] px-1.5 py-0 shrink-0"
+            title="Synced uit TOOI-waardelijsten"
+          >
+            🔗 TOOI
+          </Badge>
+        )}
+        {node.bron === 'organogram_scrape' && (
+          <Badge
+            variant="purple"
+            className="text-[10px] px-1.5 py-0 shrink-0"
+            title="Synced uit rijksoverheid.nl/organogram"
+          >
+            📋 Scrape
+          </Badge>
+        )}
+        {node.bron === 'fcc_import' && (
+          <Badge
+            variant="amber"
+            className="text-[10px] px-1.5 py-0 shrink-0"
+            title="Auto-aangemaakt door FCC-import"
+          >
+            FCC
           </Badge>
         )}
 

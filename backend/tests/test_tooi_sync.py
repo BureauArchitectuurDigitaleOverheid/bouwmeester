@@ -36,16 +36,17 @@ async def schone_db(db_session: AsyncSession):
     await db_session.execute(text("DELETE FROM pending_reconciliation"))
     await db_session.execute(text("DELETE FROM tooi_sync_log"))
     await db_session.execute(text("DELETE FROM organisatie_email_domein"))
-    # Pas op met FK-relaties op person_organisatie_eenheid; we beperken ons
-    # tot het verwijderen van TOOI-rijen die geen plaatsingen hebben.
+    # Verwijder plaatsingen die naar TOOI-rijen wijzen, dan de TOOI-rijen
+    # zelf. Volgorde: plaatsingen eerst (FK), dan rijen.
     await db_session.execute(
         text(
-            "DELETE FROM organisatie_eenheid WHERE bron='tooi' "
-            "AND id NOT IN ("
-            "  SELECT organisatie_eenheid_id FROM person_organisatie_eenheid"
+            "DELETE FROM person_organisatie_eenheid "
+            "WHERE organisatie_eenheid_id IN ("
+            "  SELECT id FROM organisatie_eenheid WHERE bron='tooi'"
             ")"
         )
     )
+    await db_session.execute(text("DELETE FROM organisatie_eenheid WHERE bron='tooi'"))
     await db_session.flush()
 
 

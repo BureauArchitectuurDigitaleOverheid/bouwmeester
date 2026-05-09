@@ -13,8 +13,15 @@ RUN uv sync --frozen
 
 FROM python:3.13-slim
 
+# Playwright runtime deps voor headless chromium (ABD-scrape).
+# We installeren chromium via `playwright install chromium` na de
+# uv sync; de browser zelf landt in /home/appuser/.cache/ms-playwright.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+    libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 \
+    libxext6 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 \
+    libcairo2 libasound2 libatspi2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 1001 appuser && \
@@ -35,6 +42,10 @@ USER 1001
 
 # Activate venv via PATH — entrypoint uses python/alembic/uvicorn directly
 ENV PATH="/app/.venv/bin:$PATH"
+
+# Playwright chromium (skip download error si offline build)
+RUN python -m playwright install chromium-headless-shell || \
+    echo "Playwright chromium install gefaald; ABD-scrape niet beschikbaar"
 
 # Force unbuffered stdout/stderr — without this Python buffers when stdout
 # is not a TTY, so the worker's log lines (and crash tracebacks) sit in the
