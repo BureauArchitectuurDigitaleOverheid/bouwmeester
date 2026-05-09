@@ -672,4 +672,16 @@ async def sync_tooi(
         stats.soft_deleted,
         stats.conflicts,
     )
+
+    # Auto-merge ministeries: één-op-één naam-match tussen handmatige
+    # ministerie-rij en TOOI-rij is veilig (ministerie-namen zijn wettelijk
+    # uniek). Idempotent: bij volgende runs zijn er geen open conflicten meer
+    # voor type=ministerie en doet de helper niks.
+    if stats.conflicts > 0 and commit:
+        from bouwmeester.services.auto_merge_ministeries import merge_ministeries
+
+        n_merged = await merge_ministeries(session)
+        if n_merged:
+            log.info("Auto-merge ministeries: %d rijen samengevoegd", n_merged)
+
     return stats
