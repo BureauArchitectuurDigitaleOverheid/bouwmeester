@@ -33,7 +33,7 @@ from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 
 log = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/admin/reconciliation", tags=["reconciliation"])
+router = APIRouter(prefix="/admin/reconciliation", tags=["reconciliation"])
 
 
 class ReconciliationResponse(BaseModel):

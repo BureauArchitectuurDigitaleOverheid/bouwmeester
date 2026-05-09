@@ -543,6 +543,9 @@ export interface Person {
   phones: PersonPhone[];
   default_email?: string | null;
   default_phone?: string | null;
+  tk_persoon_id?: string | null;
+  wikidata_qid?: string | null;
+  bron?: 'handmatig' | 'tk_odata' | 'kabinet_yaml' | 'roo_leidinggevende' | 'abd_scrape';
 }
 
 /** Extended response from POST /api/people — includes one-time api_key for agents. */

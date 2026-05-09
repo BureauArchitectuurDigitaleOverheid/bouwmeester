@@ -26,7 +26,13 @@ Wat in deze PR is gebouwd (na 5 review-rondes):
 - **Person-deduplicatie** TK + kabinet
 - **Auto-heractivering** ministeries die bij kabinetwissel terugkeren
 - **TK Oud-Kamerleden fetcher** voor fuzzy-match in kabinet-sync
-- **1076 backend tests groen, 0 skipped** — geen test-debt
+- **1094 backend tests groen, 0 skipped** — geen test-debt
+- **OrganisatieDetail rijke metadata-velden**: OIN, FTE, website, KvK,
+  TOOI-URI met externe links
+- **PersonCardExpandable**: TK-link + Wikidata-link wanneer beschikbaar
+- **Sync-status dashboard** in Beheer: laatste run per bron, run-knoppen,
+  conflict-teller, 'Alles syncen'-knop
+- **Tests voor reconciliation-API** (7 tests) en **ABD-scrape parser** (11 tests)
 
 ## Wat echt overblijft (geen open API/data-bron)
 

@@ -127,6 +127,33 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 <span className={expanded ? 'whitespace-normal' : 'truncate'}>{richTextToPlain(person.description)}</span>
               </span>
             )}
+            {/* Externe links: TK OData, Wikidata */}
+            {expanded && (person.tk_persoon_id || person.wikidata_qid) && (
+              <div className="flex items-center gap-3 text-[11px]">
+                {person.tk_persoon_id && (
+                  <a
+                    href={`https://www.tweedekamer.nl/kamerleden_en_commissies/alle_kamerleden/${person.tk_persoon_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary-600 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Tweede Kamer ↗
+                  </a>
+                )}
+                {person.wikidata_qid && (
+                  <a
+                    href={`https://www.wikidata.org/wiki/${person.wikidata_qid}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary-600 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Wikidata {person.wikidata_qid} ↗
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
         {/* Prominent message/prompt button — always visible */}

@@ -12,6 +12,7 @@ import { SharingManager } from '@/components/admin/SharingManager';
 import { RoleManager } from '@/components/admin/RoleManager';
 import { EenheidBeheerManager } from '@/components/admin/EenheidBeheerManager';
 import { ReconciliationManager } from '@/components/admin/ReconciliationManager';
+import { SyncStatusManager } from '@/components/admin/SyncStatusManager';
 import { SystemInfo } from '@/components/admin/SystemInfo';
 type Tab =
   | 'whitelist'
@@ -24,6 +25,7 @@ type Tab =
   | 'sharing'
   | 'eenheden'
   | 'reconciliation'
+  | 'sync-status'
   | 'system';
 
 export function AdminPage() {
@@ -86,6 +88,9 @@ export function AdminPage() {
   if (hasPermission('org:manage')) {
     tabs.push({ id: 'reconciliation', label: 'Reconciliatie' });
   }
+  if (hasPermission('org:manage')) {
+    tabs.push({ id: 'sync-status', label: 'Sync-status' });
+  }
   if (hasPermission('config:manage')) {
     tabs.push({ id: 'config', label: 'Omgevingsvariabelen' });
     tabs.push({ id: 'schema', label: 'Relatieschema' });
@@ -129,6 +134,7 @@ export function AdminPage() {
           {activeTab === 'sharing' && <SharingManager />}
           {activeTab === 'eenheden' && <EenheidBeheerManager />}
           {activeTab === 'reconciliation' && <ReconciliationManager />}
+          {activeTab === 'sync-status' && <SyncStatusManager />}
           {activeTab === 'system' && <SystemInfo />}
         </>
       ) : null}

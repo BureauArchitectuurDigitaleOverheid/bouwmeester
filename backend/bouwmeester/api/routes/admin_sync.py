@@ -8,6 +8,7 @@ en debugging.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
@@ -20,12 +21,69 @@ from bouwmeester.services.rio_sync import sync_rio
 from bouwmeester.services.tk_persoon_sync import sync_tk_personen
 from bouwmeester.services.tooi_sync import sync_tooi
 
-router = APIRouter(prefix="/api/admin/sync", tags=["admin-sync"])
+router = APIRouter(prefix="/admin/sync", tags=["admin-sync"])
 
 # Pad naar kabinet.yaml — relatief vanaf backend-root
 from pathlib import Path  # noqa: E402
 
 KABINET_YAML = Path(__file__).resolve().parent.parent.parent / "data" / "kabinet.yaml"
+
+
+@router.get(
+    "/status",
+    summary="Status: laatste sync-run per bron met counts",
+)
+async def sync_status(
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("org:manage")),
+) -> dict:
+    """Geef laatste sync-run per bron + bron-tellingen.
+
+    Resultaat: { 'tooi': {laatste_run, ...}, 'rio': {...}, ... } plus
+    organisatie-eenheid-tellingen per bron en open reconciliations.
+    """
+    from sqlalchemy import func
+
+    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+    from bouwmeester.models.pending_reconciliation import PendingReconciliation
+    from bouwmeester.models.tooi_sync_log import TooiSyncLog
+
+    # Laatste run per bron
+    sub = (
+        select(
+            TooiSyncLog.bron,
+            func.max(TooiSyncLog.created_at).label("laatste"),
+        )
+        .group_by(TooiSyncLog.bron)
+        .subquery()
+    )
+    rows = (await db.execute(select(sub))).all()
+    laatste_run_per_bron = {r.bron: r.laatste.isoformat() for r in rows}
+
+    # Tellingen per bron
+    cnt_rows = (
+        await db.execute(
+            select(OrganisatieEenheid.bron, func.count())
+            .where(OrganisatieEenheid.geldig_tot.is_(None))
+            .group_by(OrganisatieEenheid.bron)
+        )
+    ).all()
+    actief_per_bron = {b: c for b, c in cnt_rows}
+
+    # Open reconciliations
+    open_rec = (
+        await db.execute(
+            select(func.count(PendingReconciliation.id)).where(
+                PendingReconciliation.status == "open"
+            )
+        )
+    ).scalar_one()
+
+    return {
+        "laatste_run_per_bron": laatste_run_per_bron,
+        "actief_per_bron": actief_per_bron,
+        "open_reconciliations": open_rec,
+    }
 
 
 @router.post("/tooi", summary="Trigger TOOI-waardelijsten sync")

@@ -57,7 +57,20 @@ class WikidataSyncStats:
     api_fouten: list[str] = field(default_factory=list)
 
 
-async def _query_sparql(query: str, *, timeout: float = 30.0) -> list[dict]:
+async def _query_sparql(
+    query: str,
+    *,
+    timeout: float = 60.0,
+    max_retries: int = 3,
+    retry_delay: float = 65.0,
+) -> list[dict]:
+    """Query Wikidata SPARQL met retry op 429-rate-limit.
+
+    Wikidata WDQS hanteert tijdens outages een 1 req/min throttle.
+    We retryen tot max_retries keer met retry_delay sec wachttijd.
+    """
+    import asyncio
+
     headers = {
         "Accept": "application/sparql-results+json",
         "User-Agent": (
@@ -66,14 +79,30 @@ async def _query_sparql(query: str, *, timeout: float = 30.0) -> list[dict]:
         ),
     }
     async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.get(
-            WIKIDATA_SPARQL,
-            params={"query": query},
-            headers=headers,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    return data.get("results", {}).get("bindings", [])
+        for attempt in range(1, max_retries + 1):
+            try:
+                resp = await client.get(
+                    WIKIDATA_SPARQL,
+                    params={"query": query},
+                    headers=headers,
+                )
+                if resp.status_code == 429 and attempt < max_retries:
+                    log.warning(
+                        "Wikidata 429, retry %d/%d na %ds",
+                        attempt,
+                        max_retries,
+                        retry_delay,
+                    )
+                    await asyncio.sleep(retry_delay)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("results", {}).get("bindings", [])
+            except httpx.HTTPStatusError:
+                if attempt >= max_retries:
+                    raise
+                await asyncio.sleep(retry_delay)
+    return []
 
 
 def _qid_uit_uri(uri: str) -> str | None:

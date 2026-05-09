@@ -279,6 +279,70 @@ export function OrganisatieDetail({
               <RichTextDisplay content={eenheid.beschrijving} fallback="" />
             </div>
           )}
+          {/* Externe-data velden uit TOOI/Ministeries.csv/handmatig */}
+          {(eenheid.afkorting ||
+            eenheid.oin ||
+            eenheid.fte_aantal ||
+            eenheid.website ||
+            eenheid.kvk_nummer ||
+            eenheid.tooi_uri) && (
+            <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
+              {eenheid.afkorting && (
+                <>
+                  <dt className="text-text-secondary">Afkorting</dt>
+                  <dd>{eenheid.afkorting}</dd>
+                </>
+              )}
+              {eenheid.oin && (
+                <>
+                  <dt className="text-text-secondary">OIN</dt>
+                  <dd className="font-mono">{eenheid.oin}</dd>
+                </>
+              )}
+              {eenheid.fte_aantal != null && (
+                <>
+                  <dt className="text-text-secondary">FTE</dt>
+                  <dd>{eenheid.fte_aantal}</dd>
+                </>
+              )}
+              {eenheid.website && (
+                <>
+                  <dt className="text-text-secondary">Website</dt>
+                  <dd>
+                    <a
+                      href={eenheid.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary-600 hover:underline truncate block max-w-[400px]"
+                    >
+                      {eenheid.website}
+                    </a>
+                  </dd>
+                </>
+              )}
+              {eenheid.kvk_nummer && (
+                <>
+                  <dt className="text-text-secondary">KvK</dt>
+                  <dd className="font-mono">{eenheid.kvk_nummer}</dd>
+                </>
+              )}
+              {eenheid.tooi_uri && (
+                <>
+                  <dt className="text-text-secondary">TOOI</dt>
+                  <dd>
+                    <a
+                      href={eenheid.tooi_uri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary-600 hover:underline font-mono text-[10px] truncate block max-w-[400px]"
+                    >
+                      {eenheid.tooi_uri}
+                    </a>
+                  </dd>
+                </>
+              )}
+            </dl>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button
