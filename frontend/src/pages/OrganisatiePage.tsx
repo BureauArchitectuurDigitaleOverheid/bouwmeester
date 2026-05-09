@@ -32,9 +32,10 @@ export function OrganisatiePage() {
   const [editPerson, setEditPerson] = useState<Person | null>(null);
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
 
-  // Boom-zoek
+  // Boom-zoek + filters
   const [searchTerm, setSearchTerm] = useState('');
   const [includeHistorisch, setIncludeHistorisch] = useState(false);
+  const [bronFilter, setBronFilter] = useState<'alle' | 'handmatig' | 'tooi' | 'scrape'>('alle');
 
   // Sync ?eenheid= param on arrival, then clear it
   useEffect(() => {
@@ -47,15 +48,28 @@ export function OrganisatiePage() {
 
   const { data: tree = [], isLoading } = useOrganisatieTree(includeHistorisch);
 
-  // Filter de boom op zoekterm: een node blijft staan als hijzelf matcht
-  // OF een afstammeling matcht (die wordt dan automatisch zichtbaar).
+  // Filter de boom op zoekterm + bron: een node blijft staan als hijzelf
+  // matcht OF een afstammeling matcht. Synthetische groepen worden altijd
+  // getoond als ze matchende children hebben (anders wordt de tree-structuur
+  // onnavigeerbaar).
   const filteredTree = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    if (!term) return tree;
-    const matches = (n: typeof tree[number]): boolean => {
-      const self =
+    const matchesBron = (bron: string | null | undefined): boolean => {
+      if (bronFilter === 'alle') return true;
+      if (bronFilter === 'scrape')
+        return bron === 'organogram_scrape' || bron === 'fcc_import';
+      if (bronFilter === 'tooi') return bron === 'tooi';
+      return bron === 'handmatig';
+    };
+    const matches = (n: (typeof tree)[number]): boolean => {
+      // Synthetische groepen: tonen als ze matchende children hebben
+      if (n.bron === 'synthetisch') return n.children.some(matches);
+      const termMatch =
+        !term ||
         n.naam.toLowerCase().includes(term) ||
         (n.afkorting?.toLowerCase().includes(term) ?? false);
+      const bronMatch = matchesBron(n.bron);
+      const self = termMatch && bronMatch;
       const child = n.children.some(matches);
       return self || child;
     };
@@ -64,7 +78,7 @@ export function OrganisatiePage() {
         .filter(matches)
         .map((n) => ({ ...n, children: filter(n.children) }));
     return filter(tree);
-  }, [tree, searchTerm]);
+  }, [tree, searchTerm, bronFilter]);
   const createMutation = useCreateOrganisatieEenheid();
   const updateMutation = useUpdateOrganisatieEenheid();
   const deleteMutation = useDeleteOrganisatieEenheid();
@@ -224,15 +238,30 @@ export function OrganisatiePage() {
                     </button>
                   )}
                 </div>
-                <label className="flex items-center gap-1.5 mb-2 text-xs text-text-secondary cursor-pointer select-none px-1">
-                  <input
-                    type="checkbox"
-                    checked={includeHistorisch}
-                    onChange={(e) => setIncludeHistorisch(e.target.checked)}
-                    className="h-3 w-3"
-                  />
-                  Toon historisch (opgeheven)
-                </label>
+                <div className="flex items-center justify-between gap-2 mb-2 px-1">
+                  <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={includeHistorisch}
+                      onChange={(e) => setIncludeHistorisch(e.target.checked)}
+                      className="h-3 w-3"
+                    />
+                    Historisch
+                  </label>
+                  <select
+                    value={bronFilter}
+                    onChange={(e) =>
+                      setBronFilter(e.target.value as typeof bronFilter)
+                    }
+                    className="text-xs rounded border border-gray-200 bg-white px-1 py-0.5"
+                    title="Filter op bron"
+                  >
+                    <option value="alle">Alle bronnen</option>
+                    <option value="handmatig">Alleen handmatig</option>
+                    <option value="tooi">Alleen TOOI</option>
+                    <option value="scrape">Alleen scrape/import</option>
+                  </select>
+                </div>
                 <OrganisatieTree
                   tree={filteredTree}
                   selectedId={selectedId}
