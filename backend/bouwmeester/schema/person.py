@@ -252,5 +252,7 @@ class PersonOrganisatieResponse(BaseModel):
     organisatie_eenheid_id: UUID
     organisatie_eenheid_naam: str
     dienstverband: str
+    functietitel: str | None = None
+    bron: str = "handmatig"
     start_datum: date
     eind_datum: date | None = None

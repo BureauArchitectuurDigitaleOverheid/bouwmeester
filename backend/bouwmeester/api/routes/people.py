@@ -526,6 +526,8 @@ async def list_person_organisaties(
             organisatie_eenheid_id=row.PersonOrganisatieEenheid.organisatie_eenheid_id,
             organisatie_eenheid_naam=row.naam,
             dienstverband=row.PersonOrganisatieEenheid.dienstverband,
+            functietitel=row.PersonOrganisatieEenheid.functietitel,
+            bron=row.PersonOrganisatieEenheid.bron,
             start_datum=row.PersonOrganisatieEenheid.start_datum,
             eind_datum=row.PersonOrganisatieEenheid.eind_datum,
         )

@@ -600,6 +600,8 @@ export interface PersonOrganisatie {
   organisatie_eenheid_id: string;
   organisatie_eenheid_naam: string;
   dienstverband: string;
+  functietitel?: string | null;
+  bron?: string;
   start_datum: string;
   eind_datum?: string | null;
 }

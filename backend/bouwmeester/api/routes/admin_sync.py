@@ -30,6 +30,47 @@ KABINET_YAML = Path(__file__).resolve().parent.parent.parent / "data" / "kabinet
 
 
 @router.get(
+    "/log",
+    summary="Recente sync-log entries (drilldown van sync-status)",
+)
+async def sync_log(
+    bron: str | None = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("org:manage")),
+) -> list[dict]:
+    """Levert tot `limit` recente TooiSyncLog-rijen, optioneel per bron.
+
+    Gebruikt voor drilldown op de sync-status pagina: 'wat ging er fout
+    bij de laatste sync', 'welke organisaties zijn toegevoegd', etc.
+    """
+    from bouwmeester.models.tooi_sync_log import TooiSyncLog
+
+    stmt = select(TooiSyncLog).order_by(TooiSyncLog.created_at.desc()).limit(limit)
+    if bron:
+        stmt = stmt.where(TooiSyncLog.bron == bron)
+    rows = (await db.execute(stmt)).scalars().all()
+    return [
+        {
+            "id": str(r.id),
+            "sync_run_id": str(r.sync_run_id),
+            "bron": r.bron,
+            "action": r.action,
+            "tooi_uri": r.tooi_uri,
+            "organisatie_eenheid_id": (
+                str(r.organisatie_eenheid_id) if r.organisatie_eenheid_id else None
+            ),
+            "person_id": str(r.person_id) if r.person_id else None,
+            "before": r.before,
+            "after": r.after,
+            "note": r.note,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
+@router.get(
     "/status",
     summary="Status: laatste sync-run per bron met counts",
 )
