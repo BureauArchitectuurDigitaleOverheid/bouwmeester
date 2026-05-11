@@ -110,9 +110,21 @@ async def merge_reconciliation(
     perm_ctx: PermissionContext = Depends(get_permission_context),
     _perm=Depends(require_permission("org:manage")),
 ) -> dict:
-    """Merge: alle plaatsingen van handmatige rij naar TOOI-rij,
-    afkorting/website overzetten, handmatige rij verwijderen."""
-    rec = await db.get(PendingReconciliation, rec_id)
+    """Merge: alle referenties (plaatsingen, leads, opdrachten, children,
+    permissions, modules, namen, parents, polymorphic resource_id-velden)
+    van de handmatige rij gaan over naar de TOOI-rij. Handmatige rij wordt
+    verwijderd."""
+    # Lock de reconciliation-row zodat twee gelijktijdige admins niet
+    # allebei een half-merge proberen. Wachten op de lock duurt typisch
+    # milliseconden; de tweede request ziet daarna status='merged' en
+    # krijgt 404.
+    rec = (
+        await db.execute(
+            select(PendingReconciliation)
+            .where(PendingReconciliation.id == rec_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if rec is None or rec.status != "open":
         raise HTTPException(status_code=404, detail="Reconciliation niet gevonden")
     if rec.resource_type != "organisatie_eenheid":
@@ -143,13 +155,8 @@ async def merge_reconciliation(
         kandidaat.beschrijving = handmatig.beschrijving
     await db.flush()
 
-    # FK-rewrite via introspectie + delete bron-rij. Dit dekt
-    # parent_id (children van handmatige BZK), resource_permission,
-    # eenheid_module, role, task, corpus_node, opdracht (beide rollen),
-    # shared_access en alles wat we nog vergeten zijn.
     rewritten = await merge_organisatie_eenheden(db, handmatig.id, kandidaat.id)
 
-    # Markeer reconciliation als opgelost.
     rec.status = "merged"
     rec.resolved_by = perm_ctx.person_id
     rec.resolved_at = datetime.now()

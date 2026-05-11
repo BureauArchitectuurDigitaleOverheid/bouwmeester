@@ -1,19 +1,26 @@
 """Merge twee OrganisatieEenheid-rijen door alle FK's te rewriten.
 
-The reconciliation merge endpoint used to migrate only three FK columns
-(person_organisatie_eenheid, lead, opdracht.opdrachtnemer_eenheid_id) and
-then delete the source row. That fails on rows with children (parent_id
-RESTRICT) or any FK that wasn't explicitly listed — the BZK row in prod
-has sub-DGs, members, eenheid_modules, resource_permissions, etc.
+Vindt via pg_catalog elke FK-kolom die naar organisatie_eenheid.id wijst en
+rewrite die in één transactie. Nieuwe FK-kolommen in toekomstige models
+worden automatisch opgepakt.
 
-This helper introspects pg_catalog to find every FK column referencing
-organisatie_eenheid.id and rewrites them in one transaction. New FK
-columns added to other models are picked up automatically.
+Drie soorten unique-handling, want naïef UPDATE faalt op:
 
-Dedup-logic for tables with unique constraints (eenheid_module on
-organisatie_eenheid_id+module_key, org_naam on eenheid_id+naam,
-org_email_domein on organisatie_eenheid_id+domein): pre-delete rows on
-the source that would conflict with rows already on the target.
+  * Composite unique (eenheid_module.uq op (OE_id, module)): pre-delete
+    source-rijen waarvan (target_id, other_cols) al op target bestaat.
+  * Partial unique 'één actief per FK' (org_naam, org_parent met
+    WHERE geldig_tot IS NULL): sluit source's actieve rij af voordat
+    de UPDATE een tweede actieve op target zou creëren.
+  * Partial unique 'één actief per (FK, group)' (person_organisatie met
+    WHERE eind_datum IS NULL): per group_col (person_id): sluit source's
+    actieve rij af alleen waar target ook een actief heeft. Historische
+    rijen blijven met hun eigen eind_datum, krijgen alleen OE_id rewrite.
+
+Buiten de FK-graph zitten nog twee polymorphic-tabellen die logisch ook
+naar organisatie_eenheid kunnen wijzen via (resource_type, resource_id):
+resource_permission (wordt apart afgehandeld omdat het beide angles in
+één rij heeft) en activity/notification/stakeholder_assessment (kolommen-
+bestaan-check eerst — asyncpg aborteert anders de transactie).
 """
 
 from __future__ import annotations
@@ -34,23 +41,35 @@ class FkRef:
     column: str
 
 
-# Tables with composite unique constraints involving the FK column.
-# Maps (table, fk_column) -> list of other columns in the unique constraint.
-# Before rewriting source rows to target, we delete source rows whose
-# (target_id, other_cols) tuple already exists on target — otherwise
-# the rewrite would violate the unique constraint.
+# Tables with a regular composite UNIQUE constraint over the FK column.
+# Maps (table, fk_column) -> list of other columns in the unique tuple.
+# Pre-rewrite we delete source rows whose (target_id, other_cols) tuple
+# already exists on target — otherwise the UPDATE would violate the unique.
+# Only use for non-partial uniques. Partial uniques go through
+# _PARTIAL_PER_GROUP_TABLES, NOT here, because partial uniques don't restrict
+# historical (eind_datum/geldig_tot non-null) rows that we want to keep.
+# eenheid_module: uq_eenheid_module on (organisatie_eenheid_id, module)
 _DEDUP_RULES: dict[tuple[str, str], list[str]] = {
     ("eenheid_module", "organisatie_eenheid_id"): ["module"],
-    ("organisatie_email_domein", "organisatie_eenheid_id"): ["domein"],
-    ("person_organisatie_eenheid", "organisatie_eenheid_id"): ["person_id"],
 }
 
-# Tables with a partial unique constraint (WHERE geldig_tot IS NULL).
-# At most one active row per eenheid. When merging, close the source's
-# active row before rewriting so target's active row stays the canonical one.
-_PARTIAL_UNIQUE_TABLES: list[tuple[str, str]] = [
+# Tables with a partial unique 'one active row per <fk>' (WHERE geldig_tot
+# IS NULL). When merging, close source's active row if target already has
+# one. Historical rows on source are rewritten unchanged.
+_PARTIAL_UNIQUE_BY_FK: list[tuple[str, str]] = [
     ("organisatie_eenheid_naam", "eenheid_id"),
     ("organisatie_eenheid_parent", "eenheid_id"),
+]
+
+# Tables with a partial unique 'one active row per (fk, group_col)'
+# (WHERE eind_datum IS NULL). E.g. person_organisatie_eenheid:
+# uq_active_placement on (person_id, organisatie_eenheid_id) WHERE
+# eind_datum IS NULL. Per group_col-value on source: if target has an
+# active row for that group, close source's active row instead of
+# letting two collide. Historical rows are rewritten as-is.
+_PARTIAL_UNIQUE_PER_GROUP: list[tuple[str, str, str, str]] = [
+    # (table, fk_col, group_col, eind_col)
+    ("person_organisatie_eenheid", "organisatie_eenheid_id", "person_id", "eind_datum"),
 ]
 
 
@@ -150,22 +169,61 @@ async def _close_source_active_row(
     return result.rowcount or 0
 
 
-async def _dedupe_resource_permission(
+async def _close_source_active_per_group(
+    session: AsyncSession,
+    table: str,
+    fk_col: str,
+    group_col: str,
+    eind_col: str,
+    source_id: uuid.UUID,
+    target_id: uuid.UUID,
+) -> int:
+    """Close source's active row PER group_col-value if target has one.
+
+    For person_organisatie_eenheid: partial unique (person_id, OE_id) WHERE
+    eind_datum IS NULL. Per person: if target already has an active placement
+    AND source has an active placement, close the source's eind_datum to
+    today so they don't collide on rewrite. Historical placements on source
+    (eind_datum already set) are kept and just get their OE_id rewritten.
+    """
+    sql = text(
+        f"UPDATE {table} SET {eind_col} = CURRENT_DATE "  # noqa: S608
+        f"WHERE {fk_col} = :source_id "
+        f"AND {eind_col} IS NULL "
+        f"AND EXISTS ("
+        f"  SELECT 1 FROM {table} tgt "
+        f"  WHERE tgt.{fk_col} = :target_id "
+        f"  AND tgt.{eind_col} IS NULL "
+        f"  AND tgt.{group_col} = {table}.{group_col}"
+        f")"
+    )
+    result = await session.execute(
+        sql, {"source_id": source_id, "target_id": target_id}
+    )
+    return result.rowcount or 0
+
+
+async def _dedupe_and_rewrite_resource_permission(
     session: AsyncSession, source_id: uuid.UUID, target_id: uuid.UUID
 ) -> int:
-    """resource_permission has a polymorphic FK and a separate FK column.
+    """resource_permission heeft twee verschillende referentie-vormen.
 
-    There are two angles here:
-      1. resource_permission.organisatie_eenheid_id (the FK column) — if this
-         is set, the row is *attached to* an eenheid via permission-context.
-         Unique on (resource_type, resource_id, person_id) does NOT involve
-         this column directly.
-      2. resource_permission.resource_id — when resource_type='organisatie_eenheid'
-         this points at an eenheid too. Rewrite that as well.
+    Echte unique: (person_id, organisatie_eenheid_id, resource_type,
+    resource_id, rol). Mijn dedup moet álle vijf velden meetellen, inclusief
+    rol — anders verlies ik permissions waar source en target verschillende
+    rollen hebben op dezelfde resource.
+
+    Twee plekken waar OE-id kan zitten:
+      A. organisatie_eenheid_id (FK column) — 'wie krijgt deze permissie'
+      B. resource_id when resource_type='organisatie_eenheid' — 'op welke
+         resource is de permissie van toepassing'
+
+    Dedup voor beide angles vóór UPDATE, anders krijg je unique-violations.
+    Returns: aantal dedupes (informatief).
     """
     n = 0
-    # Angle 1: dedupe on (resource_type, resource_id, person_id) when both
-    # source and target have a permission for the same resource+person.
+    # Angle A: source.organisatie_eenheid_id = source_id wordt target_id.
+    # Dedupe op (person_id, target_id, resource_type, resource_id, rol).
     result = await session.execute(
         text(
             "DELETE FROM resource_permission src "
@@ -175,15 +233,42 @@ async def _dedupe_resource_permission(
             "  WHERE tgt.organisatie_eenheid_id = :target_id "
             "  AND tgt.resource_type = src.resource_type "
             "  AND tgt.resource_id = src.resource_id "
+            "  AND tgt.rol = src.rol "
             "  AND tgt.person_id IS NOT DISTINCT FROM src.person_id"
             ")"
         ),
         {"source_id": source_id, "target_id": target_id},
     )
     n += result.rowcount or 0
+    await session.execute(
+        text(
+            "UPDATE resource_permission SET organisatie_eenheid_id = :target_id "
+            "WHERE organisatie_eenheid_id = :source_id"
+        ),
+        {"source_id": source_id, "target_id": target_id},
+    )
 
-    # Angle 2: rewrite resource_id where resource_type='organisatie_eenheid'.
-    # This is not picked up by the FK-introspection (no FK constraint).
+    # Angle B: source.resource_id (where resource_type='organisatie_eenheid')
+    # wordt target_id. Dedupe op (person_id, organisatie_eenheid_id,
+    # 'organisatie_eenheid', target_id, rol).
+    result = await session.execute(
+        text(
+            "DELETE FROM resource_permission src "
+            "WHERE src.resource_type = 'organisatie_eenheid' "
+            "AND src.resource_id = :source_id "
+            "AND EXISTS ("
+            "  SELECT 1 FROM resource_permission tgt "
+            "  WHERE tgt.resource_type = 'organisatie_eenheid' "
+            "  AND tgt.resource_id = :target_id "
+            "  AND tgt.rol = src.rol "
+            "  AND tgt.person_id IS NOT DISTINCT FROM src.person_id "
+            "  AND tgt.organisatie_eenheid_id "
+            "      IS NOT DISTINCT FROM src.organisatie_eenheid_id"
+            ")"
+        ),
+        {"source_id": source_id, "target_id": target_id},
+    )
+    n += result.rowcount or 0
     await session.execute(
         text(
             "UPDATE resource_permission SET resource_id = :target_id "
@@ -278,24 +363,26 @@ async def merge_organisatie_eenheden(
             continue
 
         if fk.table == "resource_permission" and fk.column == "organisatie_eenheid_id":
-            await _dedupe_resource_permission(session, source_id, target_id)
-            result = await session.execute(
-                text(
-                    "UPDATE resource_permission "
-                    "SET organisatie_eenheid_id = :target_id "
-                    "WHERE organisatie_eenheid_id = :source_id"
-                ),
-                {"source_id": source_id, "target_id": target_id},
+            # Behandelt zowel organisatie_eenheid_id (de FK-kolom) als
+            # resource_id waar resource_type='organisatie_eenheid'. Inclusief
+            # rol in de unique-check zodat rollen niet verloren gaan.
+            n = await _dedupe_and_rewrite_resource_permission(
+                session, source_id, target_id
             )
-            n = result.rowcount or 0
             if n:
                 rewritten[f"{fk.table}.{fk.column}"] = n
             continue
 
-        if (fk.table, fk.column) in _PARTIAL_UNIQUE_TABLES:
+        if (fk.table, fk.column) in _PARTIAL_UNIQUE_BY_FK:
             await _close_source_active_row(
                 session, fk.table, fk.column, source_id, target_id
             )
+
+        for ptable, pfk, pgroup, peind in _PARTIAL_UNIQUE_PER_GROUP:
+            if fk.table == ptable and fk.column == pfk:
+                await _close_source_active_per_group(
+                    session, ptable, pfk, pgroup, peind, source_id, target_id
+                )
 
         await _dedupe_before_rewrite(session, fk, source_id, target_id)
 

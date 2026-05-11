@@ -231,6 +231,139 @@ async def test_reconciliation_merge_verplaatst_children(
     assert nog_handmatig is None
 
 
+async def test_reconciliation_merge_behoudt_historische_plaatsingen(
+    client, db_session: AsyncSession, reconciliation_setup, sample_person
+):
+    """Regressie: historische plaatsingen op source moeten BLIJVEN bestaan,
+    niet weggegooid worden door dedup. De partial-unique constraint op
+    person_organisatie_eenheid is WHERE eind_datum IS NULL, dus historische
+    rijen (eind_datum gevuld) botsen nooit en moeten gewoon mee."""
+    from datetime import date
+
+    from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+
+    handmatig = reconciliation_setup["handmatig"]
+    tooi = reconciliation_setup["tooi"]
+    rec = reconciliation_setup["rec"]
+
+    # 1) Historische plaatsing op source (eind_datum gevuld)
+    historisch = PersonOrganisatieEenheid(
+        id=uuid.uuid4(),
+        person_id=sample_person.id,
+        organisatie_eenheid_id=handmatig.id,
+        start_datum=date(2020, 1, 1),
+        eind_datum=date(2022, 1, 1),
+    )
+    # 2) Actieve plaatsing op source
+    actief_source = PersonOrganisatieEenheid(
+        id=uuid.uuid4(),
+        person_id=sample_person.id,
+        organisatie_eenheid_id=handmatig.id,
+        start_datum=date(2024, 1, 1),
+    )
+    # 3) Actieve plaatsing op target — partial-unique conflict aanstaande
+    actief_target = PersonOrganisatieEenheid(
+        id=uuid.uuid4(),
+        person_id=sample_person.id,
+        organisatie_eenheid_id=tooi.id,
+        start_datum=date(2023, 1, 1),
+    )
+    db_session.add_all([historisch, actief_source, actief_target])
+    await db_session.flush()
+
+    resp = await client.post(f"/api/admin/reconciliation/{rec.id}/merge")
+    assert resp.status_code == 200, resp.text
+
+    # Verifieer via raw SQL — de session cached oude IDs op de in-memory
+    # objecten omdat de helper raw UPDATEs gebruikt, niet ORM-instances.
+    from sqlalchemy import text
+
+    rows = (
+        await db_session.execute(
+            text(
+                "SELECT id, organisatie_eenheid_id, start_datum, eind_datum "
+                "FROM person_organisatie_eenheid "
+                "WHERE person_id = :p ORDER BY start_datum"
+            ),
+            {"p": sample_person.id},
+        )
+    ).all()
+    assert len(rows) == 3, f"Verwacht 3 plaatsingen, kreeg {len(rows)} — data-verlies!"
+    by_id = {r.id: r for r in rows}
+    assert by_id[historisch.id].organisatie_eenheid_id == tooi.id
+    assert by_id[historisch.id].eind_datum == date(2022, 1, 1)
+    assert by_id[actief_source.id].organisatie_eenheid_id == tooi.id
+    # Source's actieve plaatsing is afgesloten i.p.v. weggegooid
+    assert by_id[actief_source.id].eind_datum is not None
+    assert by_id[actief_target.id].organisatie_eenheid_id == tooi.id
+    assert by_id[actief_target.id].eind_datum is None
+
+
+async def test_reconciliation_merge_behoudt_verschillende_rollen(
+    client, db_session: AsyncSession, reconciliation_setup
+):
+    """Regressie B2: resource_permission unique is (person, OE, type, id, rol).
+    Scenario: target en source zijn beide subjects van permissions op een
+    derde resource X — met verschillende rollen. Alleen identieke rollen
+    mogen dedupen, verschillende rollen moeten blijven."""
+    from sqlalchemy import text
+
+    from bouwmeester.models.corpus_node import CorpusNode
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    handmatig = reconciliation_setup["handmatig"]
+    tooi = reconciliation_setup["tooi"]
+    rec = reconciliation_setup["rec"]
+
+    # Twee derden — een corpus_node en de eenheden zelf zijn niet relevant.
+    # We zetten permissions met person_id=None (eenheid-scoped) op
+    # resource_type='corpus_node'.
+    node = CorpusNode(
+        id=uuid.uuid4(), title="Test node", node_type="dossier", status="actief"
+    )
+    db_session.add(node)
+    await db_session.flush()
+
+    # Source als subject: 'eigenaar' op de node
+    perm_a = ResourcePermission(
+        id=uuid.uuid4(),
+        person_id=None,
+        organisatie_eenheid_id=handmatig.id,
+        resource_type="corpus_node",
+        resource_id=node.id,
+        rol="eigenaar",
+    )
+    # Target als subject: 'adviseur' op dezelfde node
+    perm_b = ResourcePermission(
+        id=uuid.uuid4(),
+        person_id=None,
+        organisatie_eenheid_id=tooi.id,
+        resource_type="corpus_node",
+        resource_id=node.id,
+        rol="adviseur",
+    )
+    db_session.add_all([perm_a, perm_b])
+    await db_session.flush()
+
+    resp = await client.post(f"/api/admin/reconciliation/{rec.id}/merge")
+    assert resp.status_code == 200, resp.text
+
+    rows = (
+        await db_session.execute(
+            text(
+                "SELECT rol FROM resource_permission "
+                "WHERE organisatie_eenheid_id = :oe "
+                "AND resource_id = :n"
+            ),
+            {"oe": tooi.id, "n": node.id},
+        )
+    ).all()
+    rollen = {r.rol for r in rows}
+    assert rollen == {"eigenaar", "adviseur"}, (
+        f"Verschillende rollen verloren gegaan! rollen={rollen}"
+    )
+
+
 async def test_reconciliation_merge_dedup_op_eenheid_module(
     client, db_session: AsyncSession, reconciliation_setup
 ):
