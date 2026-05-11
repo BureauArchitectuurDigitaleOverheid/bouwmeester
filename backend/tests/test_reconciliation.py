@@ -414,3 +414,100 @@ async def test_reconciliation_merge_dedup_op_eenheid_module(
     )
     keys = {r.module for r in rows}
     assert keys == {"leads", "opdrachten"}
+
+
+async def test_reconciliation_merge_geen_self_loop_in_parent(
+    client, db_session: AsyncSession, reconciliation_setup
+):
+    """Regressie C5: source hangt al onder target. Na merge zou een naïeve
+    UPDATE een self-loop (eenheid=target, parent=target) creëren in
+    organisatie_eenheid_parent en organisatie_eenheid.parent_id.
+    """
+    from datetime import date
+
+    from sqlalchemy import text
+
+    handmatig = reconciliation_setup["handmatig"]
+    tooi = reconciliation_setup["tooi"]
+    rec = reconciliation_setup["rec"]
+
+    # Source hangt onder target via direct parent_id
+    handmatig.parent_id = tooi.id
+    # Plus temporele tabel: actieve rij (eenheid=source, parent=target)
+    await db_session.execute(
+        text(
+            "INSERT INTO organisatie_eenheid_parent "
+            "(eenheid_id, parent_id, geldig_van) VALUES (:e, :p, :v)"
+        ),
+        {"e": handmatig.id, "p": tooi.id, "v": date.today()},
+    )
+    await db_session.flush()
+
+    resp = await client.post(f"/api/admin/reconciliation/{rec.id}/merge")
+    assert resp.status_code == 200, resp.text
+
+    # organisatie_eenheid.parent_id mag niet naar zichzelf wijzen
+    row = (
+        await db_session.execute(
+            text("SELECT parent_id FROM organisatie_eenheid WHERE id = :t"),
+            {"t": tooi.id},
+        )
+    ).first()
+    assert row.parent_id != tooi.id, "self-loop in organisatie_eenheid.parent_id!"
+
+    # organisatie_eenheid_parent mag geen self-loop bevatten
+    self_loops = (
+        await db_session.execute(
+            text(
+                "SELECT COUNT(*) AS n FROM organisatie_eenheid_parent "
+                "WHERE eenheid_id = parent_id"
+            ),
+        )
+    ).first()
+    assert self_loops.n == 0, (
+        f"{self_loops.n} self-loops in organisatie_eenheid_parent!"
+    )
+
+
+async def test_reconciliation_merge_dedup_stakeholder_assessment(
+    client, db_session: AsyncSession, reconciliation_setup, sample_person
+):
+    """Regressie C14: stakeholder_assessment heeft unique
+    (person_id, scope_type, scope_id). Als persoon assessment heeft op
+    zowel source als target eenheid, mag UPDATE niet violaten.
+    """
+    from sqlalchemy import text
+
+    handmatig = reconciliation_setup["handmatig"]
+    tooi = reconciliation_setup["tooi"]
+    rec = reconciliation_setup["rec"]
+
+    # Twee assessments voor dezelfde persoon — één op source, één op target
+    for scope_id, belang in [(handmatig.id, 3), (tooi.id, 5)]:
+        await db_session.execute(
+            text(
+                "INSERT INTO stakeholder_assessment "
+                "(person_id, scope_type, scope_id, belang) "
+                "VALUES (:p, 'organisatie_eenheid', :s, :b)"
+            ),
+            {"p": sample_person.id, "s": scope_id, "b": belang},
+        )
+    await db_session.flush()
+
+    resp = await client.post(f"/api/admin/reconciliation/{rec.id}/merge")
+    assert resp.status_code == 200, resp.text
+
+    # Verwacht: één assessment op target (target's eigen overleeft, source's
+    # wordt gededupeerd). Geen unique-violation, geen orphan op source.
+    rows = (
+        await db_session.execute(
+            text(
+                "SELECT scope_id, belang FROM stakeholder_assessment "
+                "WHERE person_id = :p AND scope_type = 'organisatie_eenheid'"
+            ),
+            {"p": sample_person.id},
+        )
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].scope_id == tooi.id
+    assert rows[0].belang == 5  # Target's eigen waarde behouden

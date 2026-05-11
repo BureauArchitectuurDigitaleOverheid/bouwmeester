@@ -298,33 +298,45 @@ async def _columns_exist(session: AsyncSession, table: str, columns: list[str]) 
 async def _rewrite_polymorphic_resource_ids(
     session: AsyncSession, source_id: uuid.UUID, target_id: uuid.UUID
 ) -> None:
-    """Tables with polymorphic (resource_type, resource_id) columns.
+    """Tables with polymorphic (type_col, id_col) referring to organisatie_eenheid.
 
-    These have no FK to organisatie_eenheid but logically reference it.
-    Verify columns exist in the schema first — calling UPDATE on a
-    non-existent column aborts the postgres transaction even when wrapped
-    in try/except (asyncpg behavior).
+    These have no FK constraint but logically reference an eenheid.
+    stakeholder_assessment is the relevant one today (scope_type +
+    scope_id). The unique (person_id, scope_type, scope_id) means we
+    must dedup vóór de rewrite, anders krijgen we een violation als één
+    persoon assessments op zowel source als target heeft.
+
+    Columns-exist check is een vangnet voor schema-drift, niet de actieve
+    behoefte — schrappen mag zodra we zeker zijn dat het schema stabiel is.
     """
-    polymorphic_targets = [
-        ("stakeholder_assessment", "scope_type", "scope_id", "organisatie_eenheid"),
-        ("activity", "resource_type", "resource_id", "organisatie_eenheid"),
-        ("notification", "resource_type", "resource_id", "organisatie_eenheid"),
-    ]
-    for table, type_col, id_col, type_value in polymorphic_targets:
-        if not await _columns_exist(session, table, [type_col, id_col]):
-            continue
-        await session.execute(
-            text(
-                f"UPDATE {table} SET {id_col} = :target_id "  # noqa: S608
-                f"WHERE {type_col} = :type_value "
-                f"AND {id_col} = :source_id"
-            ),
-            {
-                "source_id": source_id,
-                "target_id": target_id,
-                "type_value": type_value,
-            },
-        )
+    table = "stakeholder_assessment"
+    if not await _columns_exist(session, table, ["scope_type", "scope_id"]):
+        return
+
+    # Dedup: assessments op source verwijderen waar dezelfde person al een
+    # assessment op target heeft (anders unique-violation bij UPDATE).
+    await session.execute(
+        text(
+            "DELETE FROM stakeholder_assessment src "
+            "WHERE src.scope_type = 'organisatie_eenheid' "
+            "AND src.scope_id = :source_id "
+            "AND EXISTS ("
+            "  SELECT 1 FROM stakeholder_assessment tgt "
+            "  WHERE tgt.scope_type = 'organisatie_eenheid' "
+            "  AND tgt.scope_id = :target_id "
+            "  AND tgt.person_id = src.person_id"
+            ")"
+        ),
+        {"source_id": source_id, "target_id": target_id},
+    )
+    await session.execute(
+        text(
+            "UPDATE stakeholder_assessment SET scope_id = :target_id "
+            "WHERE scope_type = 'organisatie_eenheid' "
+            "AND scope_id = :source_id"
+        ),
+        {"source_id": source_id, "target_id": target_id},
+    )
 
 
 async def merge_organisatie_eenheden(
@@ -398,6 +410,22 @@ async def merge_organisatie_eenheden(
             rewritten[f"{fk.table}.{fk.column}"] = n
 
     await _rewrite_polymorphic_resource_ids(session, source_id, target_id)
+
+    # Cleanup self-references die na rewrite kunnen ontstaan. Voorbeeld:
+    # source had organisatie_eenheid_parent-rij (eenheid=source, parent=target)
+    # omdat handmatige BZK al onder TOOI-BZK hing. Na rewrite van eenheid_id
+    # wordt dat (eenheid=target, parent=target) — self-loop, semantisch
+    # onzin en kan tree-rendering kapot maken. Idem shared_access.
+    for sql in (
+        "DELETE FROM organisatie_eenheid_parent "
+        "WHERE eenheid_id = :target_id AND parent_id = :target_id",
+        "DELETE FROM shared_access "
+        "WHERE source_eenheid_id = :target_id "
+        "AND target_eenheid_id = :target_id",
+        "UPDATE organisatie_eenheid SET parent_id = NULL "
+        "WHERE id = :target_id AND parent_id = :target_id",
+    ):
+        await session.execute(text(sql), {"target_id": target_id})
 
     # Now safe to delete the source row — all FKs point at target.
     await session.execute(
