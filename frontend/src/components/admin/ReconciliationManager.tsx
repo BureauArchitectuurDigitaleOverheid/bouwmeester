@@ -5,6 +5,8 @@ import {
   listReconciliations,
   mergeReconciliation,
   ignoreReconciliation,
+  scanOrphanHandmatig,
+  type OrphanScanResult,
 } from '@/api/reconciliation';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
@@ -36,6 +38,15 @@ export function ReconciliationManager() {
     },
   });
 
+  const [scanResult, setScanResult] = useState<OrphanScanResult | null>(null);
+  const orphanScanMutation = useMutation({
+    mutationFn: scanOrphanHandmatig,
+    onSuccess: (data) => {
+      setScanResult(data);
+      queryClient.invalidateQueries({ queryKey: ['reconciliation'] });
+    },
+  });
+
   return (
     <div className="space-y-4">
       <div>
@@ -49,6 +60,31 @@ export function ReconciliationManager() {
           beide rijen bestaan.
         </p>
       </div>
+
+      <Card>
+        <div className="p-3 flex items-center justify-between gap-3 text-sm">
+          <div>
+            <strong>Scan op afkorting/naam-match:</strong> zoekt handmatige
+            rijen (vaak FCC-import) die alsnog matchen op een TOOI-rij.
+            Genereert open reconciliations.
+            {scanResult && (
+              <span className="ml-2 text-text-secondary">
+                Laatste run: {scanResult.scanned} gescand,
+                {' '}{scanResult.found_match} matches,
+                {' '}{scanResult.new_reconciliations} nieuw,
+                {' '}{scanResult.already_pending} al open.
+              </span>
+            )}
+          </div>
+          <Button
+            onClick={() => orphanScanMutation.mutate()}
+            disabled={orphanScanMutation.isPending}
+            variant="secondary"
+          >
+            {orphanScanMutation.isPending ? 'Bezig…' : 'Scan starten'}
+          </Button>
+        </div>
+      </Card>
 
       <div className="flex gap-2">
         {(['open', 'merged', 'ignored'] as const).map((s) => (

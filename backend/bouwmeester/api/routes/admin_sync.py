@@ -13,6 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import require_permission
+from bouwmeester.services.detect_orphan_handmatig import (
+    detect_orphan_handmatig_matches,
+)
 from bouwmeester.services.kabinet_scrape import write_kabinet_yaml
 from bouwmeester.services.kabinet_sync import sync_kabinet
 from bouwmeester.services.ministeries_csv_sync import sync_ministeries_csv
@@ -141,6 +144,28 @@ async def trigger_tooi(
         "soft_deleted": stats.soft_deleted,
         "conflicts": stats.conflicts,
         "skipped_sanity": stats.skipped_sanity,
+    }
+
+
+@router.post(
+    "/orphan-handmatig",
+    summary="Detecteer handmatige rijen die alsnog matchen op een TOOI-rij",
+)
+async def trigger_orphan_handmatig_scan(
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("org:manage")),
+) -> dict:
+    """Vind handmatige rijen (FCC-import zonder YAML-entry) die op afkorting
+    of genormaliseerde naam matchen met een TOOI-rij. Genereert
+    PendingReconciliation-rijen voor elke kandidaat zodat de admin ze
+    via Beheer > Reconciliatie kan mergen.
+    """
+    stats = await detect_orphan_handmatig_matches(db)
+    return {
+        "scanned": stats.scanned,
+        "found_match": stats.found_match,
+        "new_reconciliations": stats.new_reconciliations,
+        "already_pending": stats.already_pending,
     }
 
 
