@@ -9,7 +9,7 @@ import {
   manualMerge,
   type OrphanScanResult,
 } from '@/api/reconciliation';
-import { getOrganisatieFlat } from '@/api/organisatie';
+import { getOrganisatieFlatMetHistorisch } from '@/api/organisatie';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
@@ -23,7 +23,7 @@ function ManualMergePanel() {
   // gevuld); zonder dit kun je zo'n rij niet als bron kiezen.
   const { data: eenheden = [] } = useQuery({
     queryKey: ['organisatie', 'flat', 'historisch'],
-    queryFn: () => getOrganisatieFlat(true),
+    queryFn: getOrganisatieFlatMetHistorisch,
   });
 
   // source verdwijnt, target blijft. Default-voorstel zodra beide gekozen
