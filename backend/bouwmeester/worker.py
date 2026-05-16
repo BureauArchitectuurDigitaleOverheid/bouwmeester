@@ -211,15 +211,14 @@ async def _overheidsorganisaties_dagelijks_loop(settings) -> None:  # type: igno
     while True:
         try:
             async with async_session() as session:
+                from bouwmeester.core.storage import kabinet_yaml_path
                 from bouwmeester.services.kabinet_scrape import write_kabinet_yaml
                 from bouwmeester.services.kabinet_sync import sync_kabinet
                 from bouwmeester.services.tk_persoon_sync import sync_tk_personen
 
                 tk_stats = await sync_tk_personen(session)
 
-                from pathlib import Path
-
-                kab_yaml = Path(__file__).resolve().parent / "data" / "kabinet.yaml"
+                kab_yaml = kabinet_yaml_path()
             async with async_session() as session2:
                 await write_kabinet_yaml(session2, str(kab_yaml))
                 kab_stats = await sync_kabinet(session2, kab_yaml)
