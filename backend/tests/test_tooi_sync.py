@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.pending_reconciliation import PendingReconciliation
-from bouwmeester.services.tooi_sync import TooiOrganisatie, sync_tooi
+from bouwmeester.services.tooi_sync import TooiOrganisatie, _parse_rwc, sync_tooi
 
 
 @pytest.fixture
@@ -267,3 +267,21 @@ async def test_sync_soft_delete_en_reactivate(db_session: AsyncSession, synth_gr
     await sync_tooi(db_session, fetcher=hersteld, commit=False)
     await db_session.refresh(weg)
     assert weg.geldig_tot is None
+
+
+def test_parse_rwc_unescapes_html_entities() -> None:
+    """JSON-LD-bron levert &amp;; _parse_rwc moet naam/afkorting ontescapen."""
+    node = {
+        "@id": "https://identifier.overheid.nl/tooi/id/test/ao",
+        "@type": ["https://identifier.overheid.nl/tooi/def/ont/Ministerie"],
+        "https://identifier.overheid.nl/tooi/def/ont/voorkeursnaamInclSoort": [
+            {"@value": "Directie Ambtenaar &amp; Organisatie (A&amp;O)"}
+        ],
+        "https://identifier.overheid.nl/tooi/def/ont/afkorting": [
+            {"@value": "A&amp;O"}
+        ],
+    }
+    orgs = _parse_rwc("rwc_ministeries_compleet", "ministerie", None, [node])
+    assert len(orgs) == 1
+    assert orgs[0].naam == "Directie Ambtenaar & Organisatie (A&O)"
+    assert orgs[0].afkorting == "A&O"

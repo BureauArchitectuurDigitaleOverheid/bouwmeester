@@ -25,6 +25,7 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.text import unescape_html
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 
 log = logging.getLogger(__name__)
@@ -128,7 +129,8 @@ async def scrape_bewindspersonen() -> list[tuple[str, str]]:
         resp = await client.get(URL)
         resp.raise_for_status()
     return [
-        (naam.strip(), funct.strip()) for naam, funct in ENTRY_RE.findall(resp.text)
+        (unescape_html(naam.strip()), unescape_html(funct.strip()))
+        for naam, funct in ENTRY_RE.findall(resp.text)
     ]
 
 

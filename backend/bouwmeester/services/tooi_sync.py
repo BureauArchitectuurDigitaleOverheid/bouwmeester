@@ -27,6 +27,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.text import unescape_html
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.pending_reconciliation import PendingReconciliation
 from bouwmeester.models.tooi_sync_log import TooiSyncLog
@@ -139,7 +140,9 @@ def _value(node: dict[str, Any], predicate: str) -> str | None:
     if not items:
         return None
     first = items[0]
-    return first.get("@value") if isinstance(first, dict) else None
+    if not isinstance(first, dict):
+        return None
+    return unescape_html(first.get("@value"))
 
 
 def _id(node: dict[str, Any], predicate: str) -> str | None:
