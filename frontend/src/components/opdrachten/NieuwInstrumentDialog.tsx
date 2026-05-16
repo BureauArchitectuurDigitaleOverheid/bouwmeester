@@ -2,15 +2,15 @@ import { useState } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { useCreateNode } from '@/hooks/useNodes';
-import { INSTRUMENT_TYPE_LABELS, NodeType } from '@/types';
+import { INSTRUMENT_TYPE_LABELS, NodeType, type CorpusNode } from '@/types';
 
 interface NieuwInstrumentDialogProps {
   open: boolean;
   /** Prefilled title — the text the user typed in the instrument dropdown. */
   initialTitle: string;
   onClose: () => void;
-  /** Called with the new instrument's id after a successful create. */
-  onCreated: (id: string) => void;
+  /** Called with the freshly created instrument node after a successful create. */
+  onCreated: (node: CorpusNode) => void;
 }
 
 export function NieuwInstrumentDialog({ open, initialTitle, onClose, onCreated }: NieuwInstrumentDialogProps) {
@@ -36,7 +36,7 @@ export function NieuwInstrumentDialog({ open, initialTitle, onClose, onCreated }
         node_type: NodeType.INSTRUMENT,
         instrument_type: type,
       });
-      onCreated(node.id);
+      onCreated(node);
     } catch {
       setError('Fout bij aanmaken van instrument.');
     }

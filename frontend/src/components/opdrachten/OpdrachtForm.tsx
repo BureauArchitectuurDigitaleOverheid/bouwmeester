@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { X, Plus } from 'lucide-react';
 import { useCreateOpdracht, useUpdateOpdracht, useAddOpdrachtNodeKoppeling, useRemoveOpdrachtNodeKoppeling } from '@/hooks/useOpdrachten';
 import { useNodes } from '@/hooks/useNodes';
+import { queryKeys } from '@/hooks/queryKeys';
 import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat, useCreateOrganisatieEenheid } from '@/hooks/useOrganisatie';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -23,6 +25,7 @@ import {
   type OpdrachtCreate,
   type OpdrachtUpdate,
   type OpdrachtNodeResponse,
+  type CorpusNode,
 } from '@/types';
 
 interface OpdrachtFormProps {
@@ -50,6 +53,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
     (e) => e.bron !== 'synthetisch' && !['ministerie', 'directoraat_generaal', 'directie', 'afdeling', 'cluster', 'bureau', 'team'].includes(e.type),
   );
   const { currentPerson } = useCurrentPerson();
+  const queryClient = useQueryClient();
 
   const [error, setError] = useState<string | null>(null);
 
@@ -440,8 +444,15 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
         open={instrumentDialog.open}
         initialTitle={instrumentDialog.titel}
         onClose={() => setInstrumentDialog(d => ({ ...d, open: false, titel: '' }))}
-        onCreated={(id) => {
-          setForm(f => ({ ...f, instrument_id: id }));
+        onCreated={(node: CorpusNode) => {
+          // Seed the just-created instrument into the same cached list the
+          // dropdown reads from, so its label shows immediately instead of
+          // a blank field until useCreateNode's invalidation refetches.
+          queryClient.setQueryData<CorpusNode[]>(
+            queryKeys.nodes.list(NodeType.INSTRUMENT, undefined, 500),
+            (prev) => (prev ? [...prev, node] : [node]),
+          );
+          setForm(f => ({ ...f, instrument_id: node.id }));
           setInstrumentDialog(d => ({ ...d, open: false, titel: '' }));
         }}
       />
