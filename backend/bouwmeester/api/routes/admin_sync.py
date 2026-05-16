@@ -26,10 +26,7 @@ from bouwmeester.services.tooi_sync import sync_tooi
 
 router = APIRouter(prefix="/admin/sync", tags=["admin-sync"])
 
-# Pad naar kabinet.yaml — relatief vanaf backend-root
-from pathlib import Path  # noqa: E402
-
-KABINET_YAML = Path(__file__).resolve().parent.parent.parent / "data" / "kabinet.yaml"
+from bouwmeester.core.storage import kabinet_yaml_path  # noqa: E402
 
 
 @router.get(
@@ -329,8 +326,9 @@ async def trigger_kabinet(
     db: AsyncSession = Depends(get_db),
     _perm=Depends(require_permission("org:manage")),
 ) -> dict:
-    aantal = await write_kabinet_yaml(db, str(KABINET_YAML))
-    stats = await sync_kabinet(db, KABINET_YAML)
+    kab_yaml = kabinet_yaml_path()
+    aantal = await write_kabinet_yaml(db, str(kab_yaml))
+    stats = await sync_kabinet(db, kab_yaml)
     return {
         "scrape_aantal": aantal,
         "sync_run_id": str(stats.sync_run_id),
@@ -367,8 +365,9 @@ async def trigger_all(
         "nieuwe_personen": s5.nieuwe_personen,
         "new_placements": s5.new_placements,
     }
-    aantal = await write_kabinet_yaml(db, str(KABINET_YAML))
-    s6 = await sync_kabinet(db, KABINET_YAML)
+    kab_yaml = kabinet_yaml_path()
+    aantal = await write_kabinet_yaml(db, str(kab_yaml))
+    s6 = await sync_kabinet(db, kab_yaml)
     results["kabinet"] = {
         "scrape_aantal": aantal,
         "new_placements": s6.new_placements,

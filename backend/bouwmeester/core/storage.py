@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import uuid as _uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,6 +15,50 @@ if TYPE_CHECKING:
     from fastapi import UploadFile
 
 logger = logging.getLogger(__name__)
+
+
+def data_root() -> Path:
+    """Return the writable runtime data directory.
+
+    Resolution order:
+    1. ``DATA_PATH`` env var (explicit override)
+    2. ``/data`` (container default — made group-writable for arbitrary
+       UIDs in the Dockerfile, unlike the read-only ``/app`` code tree)
+
+    Used for generated runtime state that must survive process restarts
+    but cannot be written into the immutable image layer.
+    """
+    data_path = os.environ.get("DATA_PATH")
+    if data_path:
+        return Path(data_path)
+    return Path("/data")
+
+
+def kabinet_yaml_path() -> Path:
+    """Return the writable path for the scraped ``kabinet.yaml``.
+
+    The worker scrapes rijksoverheid.nl and overwrites this file daily, so
+    it cannot live in the read-only ``/app`` code tree (the deployed
+    container runs as an arbitrary, non-owning UID and gets ``EACCES`` on
+    write — see ``backend/bouwmeester/data/kabinet.yaml`` shipped only as a
+    seed). On first run we copy the in-image seed into the writable data
+    dir so ``write_kabinet_yaml``'s "0 entries → keep existing YAML"
+    data-loss guard still has a baseline to fall back to.
+    """
+    target = data_root() / "kabinet.yaml"
+    if not target.exists():
+        seed = Path(__file__).resolve().parent.parent / "data" / "kabinet.yaml"
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if seed.exists():
+                shutil.copyfile(seed, target)
+        except OSError:
+            logger.warning(
+                "Kon kabinet.yaml-seed niet naar %s kopiëren; scrape begint "
+                "zonder baseline",
+                target,
+            )
+    return target
 
 
 def bijlagen_root() -> Path:
