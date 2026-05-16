@@ -563,6 +563,56 @@ async def test_manual_merge_sluit_open_reconciliation(
     assert rec.status == "merged"
 
 
+async def test_manual_merge_sluit_reconciliation_via_kandidaat_id(
+    client, db_session: AsyncSession
+):
+    """Open reconciliation waarvan de SOURCE de kandidaat is wordt ook
+    afgesloten — niet alleen die via handmatige_id. Anders blijft er een
+    conflict-rij staan die naar een verwijderde kandidaat wijst."""
+    andere_handmatig = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Andere handmatige rij",
+        type="zbo",
+        bron="handmatig",
+    )
+    source = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Bron die kandidaat is",
+        type="zbo",
+        bron="organogram_scrape",
+    )
+    target = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Doelrij",
+        type="zbo",
+        bron="tooi",
+        tooi_uri="https://identifier.overheid.nl/tooi/id/test/doel",
+    )
+    db_session.add_all([andere_handmatig, source, target])
+    await db_session.flush()
+
+    rec = PendingReconciliation(
+        id=uuid.uuid4(),
+        resource_type="organisatie_eenheid",
+        handmatige_id=andere_handmatig.id,
+        kandidaat_id=source.id,
+        kandidaat_bron="organogram_scrape",
+        match_reden="naam_normalized",
+        status="open",
+    )
+    db_session.add(rec)
+    await db_session.flush()
+
+    resp = await client.post(
+        "/api/admin/reconciliation/manual-merge",
+        json={"source_id": str(source.id), "target_id": str(target.id)},
+    )
+    assert resp.status_code == 200, resp.text
+
+    await db_session.refresh(rec)
+    assert rec.status == "merged"
+
+
 async def test_reconciliation_merge_dedup_stakeholder_assessment(
     client, db_session: AsyncSession, reconciliation_setup, sample_person
 ):

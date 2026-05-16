@@ -19,7 +19,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
@@ -216,6 +216,7 @@ async def ignore_reconciliation(
 async def manual_merge(
     body: ManualMergeRequest,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
     _perm=Depends(require_permission("org:manage")),
 ) -> dict:
     """Merge twee willekeurige eenheden zonder voorafgaande reconciliation.
@@ -244,14 +245,19 @@ async def manual_merge(
 
     rewritten = await merge_organisatie_eenheden(db, source.id, target.id)
 
-    # Sluit open reconciliations die nu zinloos zijn (source is weg).
+    # Sluit open reconciliations die nu zinloos zijn: source is verwijderd
+    # en al zijn FK's (ook PendingReconciliation.handmatige_id/kandidaat_id)
+    # zijn naar target herschreven. Een open conflict tussen target en
+    # zichzelf of een al-opgeloste source heeft geen betekenis meer.
+    ids = [body.source_id, body.target_id]
     stale = (
         (
             await db.execute(
                 select(PendingReconciliation).where(
                     PendingReconciliation.status == "open",
-                    PendingReconciliation.handmatige_id.in_(
-                        [body.source_id, body.target_id]
+                    or_(
+                        PendingReconciliation.handmatige_id.in_(ids),
+                        PendingReconciliation.kandidaat_id.in_(ids),
                     ),
                 )
             )
@@ -261,6 +267,7 @@ async def manual_merge(
     )
     for rec in stale:
         rec.status = "merged"
+        rec.resolved_by = perm_ctx.person_id
         rec.resolved_at = datetime.now()
 
     await db.commit()
