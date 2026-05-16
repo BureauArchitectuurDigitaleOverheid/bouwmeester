@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { X, Plus } from 'lucide-react';
 import { useCreateOpdracht, useUpdateOpdracht, useAddOpdrachtNodeKoppeling, useRemoveOpdrachtNodeKoppeling } from '@/hooks/useOpdrachten';
 import { useNodes } from '@/hooks/useNodes';
+import { queryKeys } from '@/hooks/queryKeys';
 import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat, useCreateOrganisatieEenheid } from '@/hooks/useOrganisatie';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -9,6 +11,7 @@ import { CreatableSelect, type SelectOption } from '@/components/common/Creatabl
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { buildPersonOptions } from '@/utils/personOptions';
 import { Badge } from '@/components/common/Badge';
+import { NieuwInstrumentDialog } from './NieuwInstrumentDialog';
 import {
   OpdrachtType,
   OpdrachtStatus,
@@ -22,6 +25,7 @@ import {
   type OpdrachtCreate,
   type OpdrachtUpdate,
   type OpdrachtNodeResponse,
+  type CorpusNode,
 } from '@/types';
 
 interface OpdrachtFormProps {
@@ -38,7 +42,9 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
   const createOrganisatieEenheid = useCreateOrganisatieEenheid();
   const addKoppeling = useAddOpdrachtNodeKoppeling();
   const removeKoppeling = useRemoveOpdrachtNodeKoppeling();
-  const { data: instrumenten = [] } = useNodes(NodeType.INSTRUMENT);
+  // limit=500 (backend max) so the instrument picker isn't truncated at the
+  // default 100; the dropdown must show every instrument.
+  const { data: instrumenten = [] } = useNodes(NodeType.INSTRUMENT, undefined, 500);
   const { data: allNodes = [] } = useNodes();
   const { data: people = [] } = usePeople();
   const { data: eenheden = [] } = useOrganisatieFlat();
@@ -47,6 +53,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
     (e) => e.bron !== 'synthetisch' && !['ministerie', 'directoraat_generaal', 'directie', 'afdeling', 'cluster', 'bureau', 'team'].includes(e.type),
   );
   const { currentPerson } = useCurrentPerson();
+  const queryClient = useQueryClient();
 
   const [error, setError] = useState<string | null>(null);
 
@@ -70,6 +77,17 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
     referentie: opdracht?.referentie || '',
     startdatum: opdracht?.startdatum || '',
     einddatum: opdracht?.einddatum || '',
+  });
+
+  // Inline "nieuw instrument" dialog: opened from the instrument dropdown's
+  // create action, prefilled with the text the user typed.
+  // `seq` increments on every open so the dialog remounts and its title
+  // field re-initialises from the freshly typed text (useState reads its
+  // initial value only once per mount).
+  const [instrumentDialog, setInstrumentDialog] = useState<{ open: boolean; titel: string; seq: number }>({
+    open: false,
+    titel: '',
+    seq: 0,
   });
 
   const [koppelingen, setKoppelingen] = useState<OpdrachtNodeResponse[]>(opdracht?.node_koppelingen || []);
@@ -106,6 +124,14 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
       parent_id: marktpartijenParent?.id ?? null,
     });
     return result?.id || null;
+  };
+
+  // Returns null: actual creation happens in the dialog, which sets the
+  // instrument id via onChange on success. CreatableSelect treats a null
+  // return as a soft success (closes + clears its query).
+  const handleCreateInstrument = async (text: string): Promise<string | null> => {
+    setInstrumentDialog(d => ({ open: true, titel: text, seq: d.seq + 1 }));
+    return null;
   };
 
   const nodeOptions: SelectOption[] = allNodes
@@ -219,6 +245,8 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
           onChange={(value) => setForm(f => ({ ...f, instrument_id: value }))}
           options={instrumentOptions}
           placeholder="Kies instrument..."
+          onCreate={handleCreateInstrument}
+          createLabel="Nieuw instrument"
         />
         <CreatableSelect
           label="Opdrachtnemer"
@@ -408,5 +436,26 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
     </form>
   );
 
-  return formContent;
+  return (
+    <>
+      {formContent}
+      <NieuwInstrumentDialog
+        key={instrumentDialog.seq}
+        open={instrumentDialog.open}
+        initialTitle={instrumentDialog.titel}
+        onClose={() => setInstrumentDialog(d => ({ ...d, open: false, titel: '' }))}
+        onCreated={(node: CorpusNode) => {
+          // Seed the just-created instrument into the same cached list the
+          // dropdown reads from, so its label shows immediately instead of
+          // a blank field until useCreateNode's invalidation refetches.
+          queryClient.setQueryData<CorpusNode[]>(
+            queryKeys.nodes.list(NodeType.INSTRUMENT, undefined, 500),
+            (prev) => (prev ? [...prev, node] : [node]),
+          );
+          setForm(f => ({ ...f, instrument_id: node.id }));
+          setInstrumentDialog(d => ({ ...d, open: false, titel: '' }));
+        }}
+      />
+    </>
+  );
 }

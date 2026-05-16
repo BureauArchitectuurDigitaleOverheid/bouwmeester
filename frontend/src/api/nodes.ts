@@ -1,10 +1,11 @@
 import { apiGet, apiPost, apiPut, apiDelete, BASE_URL, getCsrfToken } from './client';
 import type { CorpusNode, CorpusNodeCreate, CorpusNodeUpdate, GraphViewResponse, NodeStakeholder, NodeTitleRecord, NodeStatusRecord, NodeType, NodeParlementairItem, NodeBronDetail, BijlageInfo } from '@/types';
 
-export async function getNodes(nodeType?: NodeType, search?: string): Promise<CorpusNode[]> {
+export async function getNodes(nodeType?: NodeType, search?: string, limit?: number): Promise<CorpusNode[]> {
   return apiGet<CorpusNode[]>('/api/nodes', {
     node_type: nodeType,
     search: search || undefined,
+    limit,
   });
 }
 

@@ -59,7 +59,9 @@ class NodeService:
         type_factories = {
             "dossier": lambda nid: Dossier(id=nid, fase="verkenning"),
             "doel": lambda nid: Doel(id=nid, type="operationeel"),
-            "instrument": lambda nid: Instrument(id=nid, type="overig"),
+            "instrument": lambda nid: Instrument(
+                id=nid, type=data.instrument_type or "overig"
+            ),
             "beleidskader": lambda nid: Beleidskader(id=nid, scope="nationaal"),
             "maatregel": lambda nid: Maatregel(id=nid),
             "politieke_input": lambda nid: PolitiekeInput(id=nid, type="toezegging"),

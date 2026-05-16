@@ -12,7 +12,7 @@ export const queryKeys = {
   nodes: {
     all: ['nodes'] as const,
     lists: () => ['nodes', 'list'] as const,
-    list: (nodeType?: string, search?: string) => ['nodes', 'list', nodeType, search] as const,
+    list: (nodeType?: string, search?: string, limit?: number) => ['nodes', 'list', nodeType, search, limit] as const,
     details: () => ['nodes', 'detail'] as const,
     detail: (id: string | undefined) => ['nodes', 'detail', id] as const,
     neighbors: (id: string | undefined) => ['nodes', 'detail', id, 'neighbors'] as const,
