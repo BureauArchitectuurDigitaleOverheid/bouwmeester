@@ -150,7 +150,10 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
             stmt = stmt.where(exclude_unconnected_pi())
 
         stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
-        stmt = stmt.order_by(CorpusNode.created_at.desc()).offset(skip).limit(limit)
+        # Alphabetical by title: this is the generic node list used by
+        # selection dropdowns (e.g. the Opdracht instrument picker), where
+        # alphabetical order is what users expect, not creation order.
+        stmt = stmt.order_by(CorpusNode.title.asc()).offset(skip).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

@@ -10,10 +10,10 @@ import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { CorpusNodeCreate, CorpusNodeUpdate, NodeType } from '@/types';
 
-export function useNodes(nodeType?: NodeType, search?: string) {
+export function useNodes(nodeType?: NodeType, search?: string, limit?: number) {
   return useQuery({
-    queryKey: queryKeys.nodes.list(nodeType, search),
-    queryFn: () => getNodes(nodeType, search),
+    queryKey: queryKeys.nodes.list(nodeType, search, limit),
+    queryFn: () => getNodes(nodeType, search, limit),
   });
 }
 

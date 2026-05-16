@@ -3,7 +3,7 @@
 import enum
 from datetime import date, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -56,8 +56,17 @@ class CorpusNodeBase(BaseModel):
     status: str = Field("actief", max_length=50)
 
 
+InstrumentType = Literal[
+    "wetgeving", "subsidie", "voorlichting", "handhaving", "overig"
+]
+
+
 class CorpusNodeCreate(CorpusNodeBase):
     geldig_van: date | None = None  # defaults to today in repository
+    # Only meaningful when node_type == "instrument": sets Instrument.type
+    # on the auto-created extension row. Ignored for other node types.
+    # Defaults to "overig" in NodeService.create when omitted.
+    instrument_type: InstrumentType | None = None
 
     model_config = ConfigDict(
         json_schema_extra={

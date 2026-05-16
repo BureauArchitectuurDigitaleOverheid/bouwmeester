@@ -96,6 +96,14 @@ export const BRON_TYPE_LABELS: Record<string, string> = {
   overig: 'Overig',
 };
 
+export const INSTRUMENT_TYPE_LABELS: Record<string, string> = {
+  wetgeving: 'Wetgeving',
+  subsidie: 'Subsidie',
+  voorlichting: 'Voorlichting',
+  handhaving: 'Handhaving',
+  overig: 'Overig',
+};
+
 // Node Status
 export enum NodeStatus {
   CONCEPT = 'concept',
@@ -151,6 +159,8 @@ export interface CorpusNodeCreate {
   status?: string;
   metadata?: Record<string, unknown>;
   geldig_van?: string | null;
+  /** Only used when node_type is 'instrument'; sets Instrument.type. */
+  instrument_type?: string;
 }
 
 export interface CorpusNodeUpdate {

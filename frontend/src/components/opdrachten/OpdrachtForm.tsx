@@ -9,6 +9,7 @@ import { CreatableSelect, type SelectOption } from '@/components/common/Creatabl
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { buildPersonOptions } from '@/utils/personOptions';
 import { Badge } from '@/components/common/Badge';
+import { NieuwInstrumentDialog } from './NieuwInstrumentDialog';
 import {
   OpdrachtType,
   OpdrachtStatus,
@@ -38,7 +39,9 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
   const createOrganisatieEenheid = useCreateOrganisatieEenheid();
   const addKoppeling = useAddOpdrachtNodeKoppeling();
   const removeKoppeling = useRemoveOpdrachtNodeKoppeling();
-  const { data: instrumenten = [] } = useNodes(NodeType.INSTRUMENT);
+  // limit=500 (backend max) so the instrument picker isn't truncated at the
+  // default 100; the dropdown must show every instrument.
+  const { data: instrumenten = [] } = useNodes(NodeType.INSTRUMENT, undefined, 500);
   const { data: allNodes = [] } = useNodes();
   const { data: people = [] } = usePeople();
   const { data: eenheden = [] } = useOrganisatieFlat();
@@ -70,6 +73,13 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
     referentie: opdracht?.referentie || '',
     startdatum: opdracht?.startdatum || '',
     einddatum: opdracht?.einddatum || '',
+  });
+
+  // Inline "nieuw instrument" dialog: opened from the instrument dropdown's
+  // create action, prefilled with the text the user typed.
+  const [instrumentDialog, setInstrumentDialog] = useState<{ open: boolean; titel: string }>({
+    open: false,
+    titel: '',
   });
 
   const [koppelingen, setKoppelingen] = useState<OpdrachtNodeResponse[]>(opdracht?.node_koppelingen || []);
@@ -106,6 +116,14 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
       parent_id: marktpartijenParent?.id ?? null,
     });
     return result?.id || null;
+  };
+
+  // Returns null: actual creation happens in the dialog, which sets the
+  // instrument id via onChange on success. CreatableSelect treats a null
+  // return as a soft success (closes + clears its query).
+  const handleCreateInstrument = async (text: string): Promise<string | null> => {
+    setInstrumentDialog({ open: true, titel: text });
+    return null;
   };
 
   const nodeOptions: SelectOption[] = allNodes
@@ -219,6 +237,8 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
           onChange={(value) => setForm(f => ({ ...f, instrument_id: value }))}
           options={instrumentOptions}
           placeholder="Kies instrument..."
+          onCreate={handleCreateInstrument}
+          createLabel="Nieuw instrument"
         />
         <CreatableSelect
           label="Opdrachtnemer"
@@ -408,5 +428,18 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
     </form>
   );
 
-  return formContent;
+  return (
+    <>
+      {formContent}
+      <NieuwInstrumentDialog
+        open={instrumentDialog.open}
+        initialTitle={instrumentDialog.titel}
+        onClose={() => setInstrumentDialog({ open: false, titel: '' })}
+        onCreated={(id) => {
+          setForm(f => ({ ...f, instrument_id: id }));
+          setInstrumentDialog({ open: false, titel: '' });
+        }}
+      />
+    </>
+  );
 }
