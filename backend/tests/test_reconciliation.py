@@ -545,6 +545,39 @@ async def test_manual_merge_404_op_onbekende_eenheid(client):
     assert resp.status_code == 404
 
 
+async def test_manual_merge_400_op_synthetisch_doel(client, db_session: AsyncSession):
+    """Een synthetische groep als doel wordt geweigerd."""
+    source = OrganisatieEenheid(
+        id=uuid.uuid4(), naam="Echte eenheid", type="zbo", bron="handmatig"
+    )
+    synthetisch = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Marktpartijen en overige",
+        type="overig",
+        bron="synthetisch",
+    )
+    db_session.add_all([source, synthetisch])
+    await db_session.flush()
+
+    resp = await client.post(
+        "/api/admin/reconciliation/manual-merge",
+        json={"source_id": str(source.id), "target_id": str(synthetisch.id)},
+    )
+    assert resp.status_code == 400
+
+    # source bestaat nog (merge niet uitgevoerd)
+    nog = (
+        (
+            await db_session.execute(
+                select(OrganisatieEenheid).where(OrganisatieEenheid.id == source.id)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert nog is not None
+
+
 async def test_manual_merge_sluit_open_reconciliation(
     client, db_session: AsyncSession, reconciliation_setup
 ):

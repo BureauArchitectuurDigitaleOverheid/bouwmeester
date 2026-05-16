@@ -19,9 +19,11 @@ type Status = 'open' | 'merged' | 'ignored';
 
 function ManualMergePanel() {
   const queryClient = useQueryClient();
+  // include_historisch: een duplicaat kan soft-deleted zijn (geldig_tot
+  // gevuld); zonder dit kun je zo'n rij niet als bron kiezen.
   const { data: eenheden = [] } = useQuery({
-    queryKey: ['organisatie', 'flat'],
-    queryFn: getOrganisatieFlat,
+    queryKey: ['organisatie', 'flat', 'historisch'],
+    queryFn: () => getOrganisatieFlat(true),
   });
 
   // source verdwijnt, target blijft. Default-voorstel zodra beide gekozen
@@ -48,6 +50,7 @@ function ManualMergePanel() {
             e.type,
             e.afkorting,
             e.bron && e.bron !== 'handmatig' ? e.bron : null,
+            e.geldig_tot ? 'historisch' : null,
           ]
             .filter(Boolean)
             .join(' · '),
@@ -82,7 +85,11 @@ function ManualMergePanel() {
   };
 
   const sameRow = sourceId !== '' && sourceId === targetId;
-  const canMerge = source && target && !sameRow;
+  // Een synthetische rij ('ZBO's en agentschappen', 'Marktpartijen en
+  // overige', ...) is een container, geen echte eenheid. FK's daarheen
+  // verhuizen is vrijwel altijd fout — blokkeer het als doel.
+  const targetIsSynthetic = target?.bron === 'synthetisch';
+  const canMerge = source && target && !sameRow && !targetIsSynthetic;
 
   return (
     <Card>
@@ -136,6 +143,13 @@ function ManualMergePanel() {
         {sameRow && (
           <p className="text-sm text-red-600">
             Bron en doel zijn dezelfde eenheid.
+          </p>
+        )}
+
+        {targetIsSynthetic && (
+          <p className="text-sm text-red-600">
+            Het doel is een synthetische groep, geen echte eenheid. Kies
+            een echte organisatie-eenheid als doel.
           </p>
         )}
 

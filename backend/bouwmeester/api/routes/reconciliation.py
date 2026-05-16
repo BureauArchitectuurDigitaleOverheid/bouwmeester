@@ -239,6 +239,14 @@ async def manual_merge(
         raise HTTPException(
             status_code=404, detail="source of target eenheid bestaat niet"
         )
+    # Een synthetische rij is een container ('ZBO's en agentschappen',
+    # 'Marktpartijen en overige'), geen echte eenheid. FK's daarheen
+    # verhuizen is vrijwel altijd fout.
+    if target.bron == "synthetisch":
+        raise HTTPException(
+            status_code=400,
+            detail="target is een synthetische groep, geen echte eenheid",
+        )
 
     _backfill_target_fields(target=target, source=source)
     await db.flush()

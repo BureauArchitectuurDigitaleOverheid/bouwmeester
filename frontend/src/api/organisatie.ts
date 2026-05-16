@@ -17,8 +17,12 @@ export async function getOrganisatieTree(
   });
 }
 
-export async function getOrganisatieFlat(): Promise<OrganisatieEenheid[]> {
-  return apiGet<OrganisatieEenheid[]>('/api/organisatie');
+export async function getOrganisatieFlat(
+  includeHistorisch = false,
+): Promise<OrganisatieEenheid[]> {
+  return apiGet<OrganisatieEenheid[]>('/api/organisatie', {
+    ...(includeHistorisch ? { include_historisch: 'true' } : {}),
+  });
 }
 
 export async function getOrganisatieEenheid(id: string): Promise<OrganisatieEenheid> {
