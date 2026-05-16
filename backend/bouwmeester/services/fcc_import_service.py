@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.encryption import decrypt_value
+from bouwmeester.core.text import unescape_html
 from bouwmeester.models.app_config import AppConfig
 from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.schema.fcc import SyncDirection, SyncStatus
@@ -203,9 +204,9 @@ class FccImportService:
         from decimal import Decimal
 
         if naam := data.get("Naam"):
-            opdracht.titel = naam
+            opdracht.titel = unescape_html(naam)
         if desc := data.get("Omschrijving"):
-            opdracht.beschrijving = desc
+            opdracht.beschrijving = unescape_html(desc)
         if (budget := data.get("Budget_huidig_jaar_")) is not None:
             try:
                 opdracht.budget = Decimal(str(budget))
@@ -250,7 +251,7 @@ class FccImportService:
 
         from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 
-        uitvoering = (data.get("Uitvoeringsorganisatie") or "").strip()
+        uitvoering = unescape_html((data.get("Uitvoeringsorganisatie") or "").strip())
         if not uitvoering:
             opdracht.opdrachtnemer_eenheid_id = None
             return

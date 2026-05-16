@@ -26,6 +26,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.text import unescape_html
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.tooi_sync_log import TooiSyncLog
 
@@ -95,7 +96,7 @@ class OrganogramScrapeStats:
 def _parse_organogram_index(html: str) -> list[DgInfo]:
     """Pak alle DG's uit de organogram-indexpagina."""
     return [
-        DgInfo(naam=naam.strip(), detail_url=ORGANOGRAM_BASE + url)
+        DgInfo(naam=unescape_html(naam.strip()), detail_url=ORGANOGRAM_BASE + url)
         for url, naam in WAYFINDER_RE.findall(html)
     ]
 
@@ -104,7 +105,7 @@ def _parse_directies(html: str) -> list[str]:
     """Pak directies (h2-koppen) uit DG-detailpagina, exclusief metadata-koppen."""
     out: list[str] = []
     for h in H2_RE.findall(html):
-        clean = h.strip()
+        clean = unescape_html(h.strip())
         if not clean:
             continue
         if clean.lower() in H2_BLACKLIST:
