@@ -77,9 +77,13 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
 
   // Inline "nieuw instrument" dialog: opened from the instrument dropdown's
   // create action, prefilled with the text the user typed.
-  const [instrumentDialog, setInstrumentDialog] = useState<{ open: boolean; titel: string }>({
+  // `seq` increments on every open so the dialog remounts and its title
+  // field re-initialises from the freshly typed text (useState reads its
+  // initial value only once per mount).
+  const [instrumentDialog, setInstrumentDialog] = useState<{ open: boolean; titel: string; seq: number }>({
     open: false,
     titel: '',
+    seq: 0,
   });
 
   const [koppelingen, setKoppelingen] = useState<OpdrachtNodeResponse[]>(opdracht?.node_koppelingen || []);
@@ -122,7 +126,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
   // instrument id via onChange on success. CreatableSelect treats a null
   // return as a soft success (closes + clears its query).
   const handleCreateInstrument = async (text: string): Promise<string | null> => {
-    setInstrumentDialog({ open: true, titel: text });
+    setInstrumentDialog(d => ({ open: true, titel: text, seq: d.seq + 1 }));
     return null;
   };
 
@@ -432,12 +436,13 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
     <>
       {formContent}
       <NieuwInstrumentDialog
+        key={instrumentDialog.seq}
         open={instrumentDialog.open}
         initialTitle={instrumentDialog.titel}
-        onClose={() => setInstrumentDialog({ open: false, titel: '' })}
+        onClose={() => setInstrumentDialog(d => ({ ...d, open: false, titel: '' }))}
         onCreated={(id) => {
           setForm(f => ({ ...f, instrument_id: id }));
-          setInstrumentDialog({ open: false, titel: '' });
+          setInstrumentDialog(d => ({ ...d, open: false, titel: '' }));
         }}
       />
     </>
