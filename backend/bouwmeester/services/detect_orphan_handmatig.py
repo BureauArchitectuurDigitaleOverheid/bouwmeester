@@ -14,6 +14,12 @@ Match-strategie (in volgorde, eerste hit wint):
   1. afkorting case-insensitive exact (sterkst — 'CJIB' = 'CJIB')
   2. genormaliseerde naam (lower + trim + strip 'ministerie van' / 'agentschap')
 
+Kandidaten komen uit alle gesyncte bronnen (tooi, organogram_scrape,
+kabinet, ...), niet alleen TOOI. De DGDOO-duplicaat ontstond doordat een
+seed-DG ('DG Digitalisering en Overheidsorganisatie') en een
+organogram-scrape-rij ('Digitalisering en Overheidsorganisatie') naast
+elkaar bleven staan; een tooi-only kandidaatfilter zag dat nooit.
+
 Skipt rijen die al een open reconciliation hebben.
 """
 
@@ -26,10 +32,22 @@ from dataclasses import dataclass
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.text import normalize_org_name
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.pending_reconciliation import PendingReconciliation
 
 log = logging.getLogger(__name__)
+
+# Bronnen waaruit een kandidaat voor een handmatige rij mag komen. Alles
+# wat door een externe sync wordt onderhouden; 'handmatig' zelf valt af
+# (we willen een handmatige rij juist in een gesyncte rij opgaan).
+_KANDIDAAT_BRONNEN = (
+    "tooi",
+    "organogram_scrape",
+    "kabinet",
+    "rio",
+    "ministeries_csv",
+)
 
 
 @dataclass
@@ -38,23 +56,6 @@ class OrphanScanStats:
     found_match: int
     new_reconciliations: int
     already_pending: int
-
-
-def _normalize_name(naam: str) -> str:
-    n = " ".join(naam.lower().split())
-    for prefix in (
-        "ministerie van ",
-        "directoraat-generaal ",
-        "directoraat generaal ",
-        "dg ",
-        "agentschap ",
-        "zbo ",
-        "stichting ",
-    ):
-        if n.startswith(prefix):
-            n = n[len(prefix) :]
-            break
-    return n.strip()
 
 
 async def _existing_open_for_handmatig(
@@ -103,7 +104,7 @@ async def detect_orphan_handmatig_matches(
 
     for handmatig in handmatig_rows:
         afk = (handmatig.afkorting or "").strip()
-        norm = _normalize_name(handmatig.naam)
+        norm = normalize_org_name(handmatig.naam)
         if not afk and not norm:
             continue
 
@@ -127,7 +128,7 @@ async def detect_orphan_handmatig_matches(
                 await session.execute(
                     select(OrganisatieEenheid).where(
                         and_(
-                            OrganisatieEenheid.bron == "tooi",
+                            OrganisatieEenheid.bron.in_(_KANDIDAAT_BRONNEN),
                             OrganisatieEenheid.id != handmatig.id,
                             or_(*conditions),
                         )
@@ -148,7 +149,7 @@ async def detect_orphan_handmatig_matches(
                     break
         if kandidaat is None and norm:
             for kand in kandidaten:
-                if _normalize_name(kand.naam) == norm:
+                if normalize_org_name(kand.naam) == norm:
                     kandidaat = kand
                     match_reden = "naam_normalized"
                     break
@@ -168,17 +169,18 @@ async def detect_orphan_handmatig_matches(
             resource_type="organisatie_eenheid",
             handmatige_id=handmatig.id,
             kandidaat_id=kandidaat.id,
-            kandidaat_bron="tooi",
+            kandidaat_bron=kandidaat.bron or "tooi",
             match_reden=match_reden,
             status="open",
         )
         session.add(rec)
         stats.new_reconciliations += 1
         log.info(
-            "Orphan-match: handmatig %s '%s' (afk=%s) -> TOOI %s '%s' (%s)",
+            "Orphan-match: handmatig %s '%s' (afk=%s) -> %s %s '%s' (%s)",
             handmatig.id,
             handmatig.naam,
             handmatig.afkorting,
+            kandidaat.bron,
             kandidaat.id,
             kandidaat.naam,
             match_reden,

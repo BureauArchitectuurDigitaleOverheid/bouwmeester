@@ -7,6 +7,7 @@ laten een super_admin (of org:manage) de duplicaten oplossen.
 GET /api/admin/reconciliation - lijst open conflicten
 POST /api/admin/reconciliation/{id}/merge - merge handmatige rij in TOOI-rij
 POST /api/admin/reconciliation/{id}/ignore - markeer als 'no merge'
+POST /api/admin/reconciliation/manual-merge - ad-hoc merge van twee eenheden
 """
 
 from __future__ import annotations
@@ -54,6 +55,33 @@ class ReconciliationResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ManualMergeRequest(BaseModel):
+    # source verdwijnt, target blijft. De UI stelt standaard de gesyncte
+    # rij als target voor (officiële naam + tooi_uri blijven, alle FK's
+    # van de handmatige rij verhuizen mee), maar de admin mag omkeren.
+    source_id: uuid.UUID
+    target_id: uuid.UUID
+
+
+def _backfill_target_fields(
+    *, target: OrganisatieEenheid, source: OrganisatieEenheid
+) -> None:
+    """Vul lege target-velden met source-data vóór de merge.
+
+    afkorting/website/kvk/beschrijving levert TOOI niet maar een
+    handmatige rij vaak wel; zonder backfill zou die data met de
+    source-rij verdwijnen.
+    """
+    if not target.afkorting and source.afkorting:
+        target.afkorting = source.afkorting
+    if not target.website and source.website:
+        target.website = source.website
+    if not target.kvk_nummer and source.kvk_nummer:
+        target.kvk_nummer = source.kvk_nummer
+    if not target.beschrijving and source.beschrijving:
+        target.beschrijving = source.beschrijving
 
 
 @router.get("", response_model=list[ReconciliationResponse])
@@ -142,17 +170,7 @@ async def merge_reconciliation(
             detail="Een van beide rijen bestaat niet meer; reconciliation is stale",
         )
 
-    # Vul ontbrekende velden op kandidaat met handmatige data vóór de
-    # source-rij wordt verwijderd. afkorting/website/kvk/beschrijving zijn
-    # de velden die TOOI niet levert maar handmatig vaak wel.
-    if not kandidaat.afkorting and handmatig.afkorting:
-        kandidaat.afkorting = handmatig.afkorting
-    if not kandidaat.website and handmatig.website:
-        kandidaat.website = handmatig.website
-    if not kandidaat.kvk_nummer and handmatig.kvk_nummer:
-        kandidaat.kvk_nummer = handmatig.kvk_nummer
-    if not kandidaat.beschrijving and handmatig.beschrijving:
-        kandidaat.beschrijving = handmatig.beschrijving
+    _backfill_target_fields(target=kandidaat, source=handmatig)
     await db.flush()
 
     rewritten = await merge_organisatie_eenheden(db, handmatig.id, kandidaat.id)
@@ -192,3 +210,70 @@ async def ignore_reconciliation(
     rec.resolved_at = datetime.now()
     await db.commit()
     return {"status": "ignored"}
+
+
+@router.post("/manual-merge", summary="Ad-hoc merge van twee organisatie-eenheden")
+async def manual_merge(
+    body: ManualMergeRequest,
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("org:manage")),
+) -> dict:
+    """Merge twee willekeurige eenheden zonder voorafgaande reconciliation.
+
+    Voor duplicaten die de scan niet vangt (bv. een seed-DG naast een
+    organogram-scrape-rij met net andere naam). Alle referenties van
+    source verhuizen naar target via dezelfde merge_organisatie_eenheden-
+    helper; source wordt daarna verwijderd. Eventuele open reconciliations
+    die naar source of target wijzen worden afgesloten zodat de admin geen
+    stale conflict-rij overhoudt.
+    """
+    if body.source_id == body.target_id:
+        raise HTTPException(
+            status_code=400, detail="source en target zijn dezelfde eenheid"
+        )
+
+    source = await db.get(OrganisatieEenheid, body.source_id)
+    target = await db.get(OrganisatieEenheid, body.target_id)
+    if source is None or target is None:
+        raise HTTPException(
+            status_code=404, detail="source of target eenheid bestaat niet"
+        )
+
+    _backfill_target_fields(target=target, source=source)
+    await db.flush()
+
+    rewritten = await merge_organisatie_eenheden(db, source.id, target.id)
+
+    # Sluit open reconciliations die nu zinloos zijn (source is weg).
+    stale = (
+        (
+            await db.execute(
+                select(PendingReconciliation).where(
+                    PendingReconciliation.status == "open",
+                    PendingReconciliation.handmatige_id.in_(
+                        [body.source_id, body.target_id]
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for rec in stale:
+        rec.status = "merged"
+        rec.resolved_at = datetime.now()
+
+    await db.commit()
+    log.info(
+        "Manual merge: %s '%s' -> %s '%s'; FK-rewrites: %s",
+        source.id,
+        source.naam,
+        target.id,
+        target.naam,
+        rewritten,
+    )
+    return {
+        "status": "merged",
+        "doelrij_id": str(target.id),
+        "rewritten": rewritten,
+    }

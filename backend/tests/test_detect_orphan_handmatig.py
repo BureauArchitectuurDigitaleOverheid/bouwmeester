@@ -158,6 +158,49 @@ async def test_orphan_skipt_reeds_open_reconciliation(
     assert len(rec2) == 1
 
 
+async def test_orphan_match_op_organogram_bron(
+    db_session: AsyncSession, schone_pending
+):
+    """Kandidaat mag ook uit organogram_scrape komen, niet alleen tooi.
+
+    Dit is de DGDOO-case: seed-DG 'DG X' (handmatig) naast een
+    organogram-scrape-rij 'X' — een tooi-only kandidaatfilter zag dat
+    nooit en liet het duplicaat staan.
+    """
+    seed_dg = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="DG Digitalisering-test-Overheidsorg",
+        type="directoraat_generaal",
+        bron="handmatig",
+    )
+    organogram = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Digitalisering-test-Overheidsorg",
+        type="directoraat_generaal",
+        bron="organogram_scrape",
+    )
+    db_session.add_all([seed_dg, organogram])
+    await db_session.flush()
+
+    await detect_orphan_handmatig_matches(db_session, commit=False)
+
+    rec = (
+        (
+            await db_session.execute(
+                select(PendingReconciliation).where(
+                    PendingReconciliation.handmatige_id == seed_dg.id
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert rec is not None
+    assert rec.kandidaat_id == organogram.id
+    assert rec.kandidaat_bron == "organogram_scrape"
+    assert rec.match_reden == "naam_normalized"
+
+
 async def test_orphan_match_op_genormaliseerde_naam(
     db_session: AsyncSession, schone_pending
 ):

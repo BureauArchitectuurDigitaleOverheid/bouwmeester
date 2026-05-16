@@ -469,6 +469,100 @@ async def test_reconciliation_merge_geen_self_loop_in_parent(
     )
 
 
+async def test_manual_merge_verplaatst_children_en_verwijdert_source(
+    client, db_session: AsyncSession
+):
+    """Ad-hoc merge zonder reconciliation-rij: DGDOO-scenario.
+
+    Seed-DG 'DG X' (source) heeft sub-eenheden; organogram-rij 'X'
+    (target) blijft. Sub-eenheden verhuizen, source verdwijnt.
+    """
+    seed_dg = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="DG Digitalisering en Overheidsorganisatie",
+        type="directoraat_generaal",
+        bron="handmatig",
+        afkorting="DGDOO",
+    )
+    organogram_dg = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Digitalisering en Overheidsorganisatie",
+        type="directoraat_generaal",
+        bron="organogram_scrape",
+    )
+    child = OrganisatieEenheid(
+        id=uuid.uuid4(),
+        naam="Directie Digitale Overheid",
+        type="directie",
+        bron="handmatig",
+        parent_id=seed_dg.id,
+    )
+    db_session.add_all([seed_dg, organogram_dg, child])
+    await db_session.flush()
+
+    resp = await client.post(
+        "/api/admin/reconciliation/manual-merge",
+        json={"source_id": str(seed_dg.id), "target_id": str(organogram_dg.id)},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["doelrij_id"] == str(organogram_dg.id)
+
+    await db_session.refresh(child)
+    assert child.parent_id == organogram_dg.id
+
+    # afkorting van seed-DG is naar de organogram-rij gebackfilld
+    await db_session.refresh(organogram_dg)
+    assert organogram_dg.afkorting == "DGDOO"
+
+    weg = (
+        (
+            await db_session.execute(
+                select(OrganisatieEenheid).where(OrganisatieEenheid.id == seed_dg.id)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert weg is None
+
+
+async def test_manual_merge_400_op_zelfde_eenheid(client, db_session: AsyncSession):
+    e = OrganisatieEenheid(id=uuid.uuid4(), naam="Solo", type="zbo", bron="handmatig")
+    db_session.add(e)
+    await db_session.flush()
+    resp = await client.post(
+        "/api/admin/reconciliation/manual-merge",
+        json={"source_id": str(e.id), "target_id": str(e.id)},
+    )
+    assert resp.status_code == 400
+
+
+async def test_manual_merge_404_op_onbekende_eenheid(client):
+    resp = await client.post(
+        "/api/admin/reconciliation/manual-merge",
+        json={"source_id": str(uuid.uuid4()), "target_id": str(uuid.uuid4())},
+    )
+    assert resp.status_code == 404
+
+
+async def test_manual_merge_sluit_open_reconciliation(
+    client, db_session: AsyncSession, reconciliation_setup
+):
+    """Open reconciliation die naar de gemergede rijen wijst wordt afgesloten."""
+    handmatig = reconciliation_setup["handmatig"]
+    tooi = reconciliation_setup["tooi"]
+    rec = reconciliation_setup["rec"]
+
+    resp = await client.post(
+        "/api/admin/reconciliation/manual-merge",
+        json={"source_id": str(handmatig.id), "target_id": str(tooi.id)},
+    )
+    assert resp.status_code == 200, resp.text
+
+    await db_session.refresh(rec)
+    assert rec.status == "merged"
+
+
 async def test_reconciliation_merge_dedup_stakeholder_assessment(
     client, db_session: AsyncSession, reconciliation_setup, sample_person
 ):

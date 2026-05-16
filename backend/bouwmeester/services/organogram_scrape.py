@@ -26,7 +26,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.text import unescape_html
+from bouwmeester.core.text import normalize_org_name, unescape_html
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.tooi_sync_log import TooiSyncLog
 
@@ -234,9 +234,13 @@ async def sync_organogram(
             stats.skipped.append(ministerie.naam)
             continue
 
-        # Bestaande children van dit ministerie
+        # Bestaande children van dit ministerie, gekeyed op genormaliseerde
+        # naam. Cross-source-mismatch: de seed heeft "DG Digitalisering en
+        # Overheidsorganisatie", organogram.overheid.nl noemt diezelfde DG
+        # "Digitalisering en Overheidsorganisatie". Exacte string-match liet
+        # dat als duplicaat ontstaan; normaliseren strijkt de "DG "-prefix glad.
         bestaande_children = {
-            r.naam: r
+            normalize_org_name(r.naam): r
             for r in (
                 await session.execute(
                     select(OrganisatieEenheid).where(
@@ -250,8 +254,9 @@ async def sync_organogram(
         }
 
         for dg in dgs:
-            # Skip als handmatig al bestaat met dezelfde naam
-            if dg.naam in bestaande_children:
+            # Skip als er al een rij (handmatig, seed of eerdere scrape) met
+            # dezelfde genormaliseerde naam onder dit ministerie hangt
+            if normalize_org_name(dg.naam) in bestaande_children:
                 continue
             dg_type = _classificeer_dg_type(dg.naam)
             dg_row = OrganisatieEenheid(
@@ -273,23 +278,23 @@ async def sync_organogram(
                 )
             )
 
-            # Directies onder DG
-            for d_naam in directies_per_dg.get(dg.naam, []):
-                # Check niet handmatig
-                bestaand = (
-                    (
-                        await session.execute(
-                            select(OrganisatieEenheid).where(
-                                OrganisatieEenheid.naam == d_naam,
-                                OrganisatieEenheid.parent_id == dg_row.id,
-                                OrganisatieEenheid.geldig_tot.is_(None),
-                            )
+            # Directies onder DG. Genormaliseerde naam-match zodat een
+            # bestaande "Directie X" niet als "X" opnieuw wordt aangemaakt.
+            bestaande_dir_children = {
+                normalize_org_name(r.naam)
+                for r in (
+                    await session.execute(
+                        select(OrganisatieEenheid).where(
+                            OrganisatieEenheid.parent_id == dg_row.id,
+                            OrganisatieEenheid.geldig_tot.is_(None),
                         )
                     )
-                    .scalars()
-                    .first()
                 )
-                if bestaand:
+                .scalars()
+                .all()
+            }
+            for d_naam in directies_per_dg.get(dg.naam, []):
+                if normalize_org_name(d_naam) in bestaande_dir_children:
                     continue
                 dir_row = OrganisatieEenheid(
                     naam=d_naam,
