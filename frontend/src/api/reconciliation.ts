@@ -40,3 +40,19 @@ export interface OrphanScanResult {
 export async function scanOrphanHandmatig(): Promise<OrphanScanResult> {
   return apiPost('/api/admin/sync/orphan-handmatig', {});
 }
+
+export interface ManualMergeResult {
+  status: string;
+  doelrij_id: string;
+  rewritten: Record<string, number>;
+}
+
+export async function manualMerge(
+  sourceId: string,
+  targetId: string,
+): Promise<ManualMergeResult> {
+  return apiPost('/api/admin/reconciliation/manual-merge', {
+    source_id: sourceId,
+    target_id: targetId,
+  });
+}

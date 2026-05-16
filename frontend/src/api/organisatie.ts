@@ -21,6 +21,17 @@ export async function getOrganisatieFlat(): Promise<OrganisatieEenheid[]> {
   return apiGet<OrganisatieEenheid[]>('/api/organisatie');
 }
 
+// Aparte functie i.p.v. een optionele param op getOrganisatieFlat: die
+// wordt vaak direct als React Query queryFn doorgegeven, en een leading
+// boolean-param botst dan met de QueryFunctionContext die RQ injecteert.
+export async function getOrganisatieFlatMetHistorisch(): Promise<
+  OrganisatieEenheid[]
+> {
+  return apiGet<OrganisatieEenheid[]>('/api/organisatie', {
+    include_historisch: 'true',
+  });
+}
+
 export async function getOrganisatieEenheid(id: string): Promise<OrganisatieEenheid> {
   return apiGet<OrganisatieEenheid>(`/api/organisatie/${id}`);
 }
