@@ -1,5 +1,10 @@
 # Bouwmeester project commands
 
+# Local dev has no OIDC. Settings now fails closed without it, so host-run
+# tooling (alembic, seed scripts) needs this opt-in. Overridable from the
+# environment; docker-compose sets the same default for the containers.
+export DEV_NO_AUTH := env_var_or_default("DEV_NO_AUTH", "1")
+
 # Default: list all available recipes
 default:
     @just --list

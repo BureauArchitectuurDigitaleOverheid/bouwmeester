@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 import httpx
+from defusedxml.ElementTree import fromstring as xml_fromstring
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,7 +43,9 @@ class RioSyncStats:
 
 def _parse_rio(xml_text: str) -> dict[str, set[str]]:
     """Parse RIO XML naar {tooi_uri: {domein, ...}}."""
-    root = ET.fromstring(xml_text)
+    # RIO XML is fetched over HTTP from an external source; the defusedxml
+    # parser rejects entity-expansion / XXE that stdlib ElementTree allows.
+    root = xml_fromstring(xml_text)
     out: dict[str, set[str]] = {}
     for org in root.findall("p:organisatie", NS):
         tooi_uri = org.get(

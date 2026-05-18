@@ -14,9 +14,9 @@ expecting every property to be present.
 
 import logging
 from typing import Any
-from xml.etree import ElementTree
 
 import httpx
+from defusedxml.ElementTree import fromstring as xml_fromstring
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,10 @@ class FccODataClient:
     @staticmethod
     def _parse_metadata_xml(xml_text: str) -> dict[str, dict[str, list[str]]]:
         """Parse an OData $metadata XML document into a simplified dict."""
-        root = ElementTree.fromstring(xml_text)
+        # $metadata is fetched over HTTP from the external FCC endpoint; the
+        # defusedxml parser rejects entity-expansion / XXE that stdlib
+        # ElementTree allows.
+        root = xml_fromstring(xml_text)
 
         # Collect EntityType definitions: name -> [property names]
         entity_types: dict[str, list[str]] = {}

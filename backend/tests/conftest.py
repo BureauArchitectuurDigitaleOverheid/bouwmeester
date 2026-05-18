@@ -4,6 +4,7 @@ Uses the running PostgreSQL database with per-test transaction rollback
 so tests never commit real data.
 """
 
+import os
 import uuid
 from datetime import date, timedelta
 from typing import Any
@@ -14,10 +15,15 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from bouwmeester.core.config import get_settings
-from bouwmeester.core.database import get_db
-from bouwmeester.core.session_store import SessionStore
-from bouwmeester.middleware.session import ServerSideSessionMiddleware
+# The test environment has no OIDC configured. Settings now fails closed
+# in that state, so opt in to the no-auth dev mode before the first
+# get_settings() call below (it is @lru_cache, so this must run first).
+os.environ.setdefault("DEV_NO_AUTH", "1")
+
+from bouwmeester.core.config import get_settings  # noqa: E402
+from bouwmeester.core.database import get_db  # noqa: E402
+from bouwmeester.core.session_store import SessionStore  # noqa: E402
+from bouwmeester.middleware.session import ServerSideSessionMiddleware  # noqa: E402
 
 settings = get_settings()
 
