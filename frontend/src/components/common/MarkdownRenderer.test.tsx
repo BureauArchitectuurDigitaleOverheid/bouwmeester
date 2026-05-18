@@ -14,8 +14,8 @@ import DOMPurify from 'dompurify';
  * unit and won't go stale when the rendering plumbing changes.
  */
 
-const SVG_OPTS = { USE_PROFILES: { svg: true, svgFilters: true } } as const;
-const sanitize = (svg: string) => DOMPurify.sanitize(svg, SVG_OPTS);
+const sanitize = (svg: string) =>
+  DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } });
 
 describe('MarkdownRenderer Mermaid SVG sanitization', () => {
   it('keeps benign SVG shapes and filters', () => {

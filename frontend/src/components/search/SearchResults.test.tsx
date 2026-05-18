@@ -13,8 +13,8 @@ import DOMPurify from 'dompurify';
  * future bump regresses the sanitizer (the reason for #321).
  */
 
-const SANITIZE_OPTS = { ALLOWED_TAGS: ['mark'] } as const;
-const sanitize = (html: string) => DOMPurify.sanitize(html, SANITIZE_OPTS);
+const sanitize = (html: string) =>
+  DOMPurify.sanitize(html, { ALLOWED_TAGS: ['mark'] });
 
 describe('SearchResults highlight sanitization', () => {
   it('keeps a legitimate <mark> highlight intact', () => {

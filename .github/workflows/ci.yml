@@ -55,6 +55,9 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql+asyncpg://bouwmeester:bouwmeester@localhost:5432/bouwmeester
+      # CI has no OIDC. Settings fails closed without it, so opt into the
+      # no-auth mode for the migration and test steps (same as local dev).
+      DEV_NO_AUTH: "1"
     steps:
       - uses: actions/checkout@v6
 
