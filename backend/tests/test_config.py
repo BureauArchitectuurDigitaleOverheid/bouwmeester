@@ -46,3 +46,31 @@ def test_oidc_issuer_derived_from_zad_vars_satisfies_validator() -> None:
         SESSION_SECRET_KEY="a-secure-random-value",
     )
     assert settings.OIDC_ISSUER == "https://idp.example/realms/bm"
+
+
+def test_dev_no_auth_is_refused_in_a_deployed_environment() -> None:
+    """PUBLIC_HOST is the production marker (ZAD injects it per component).
+
+    DEV_NO_AUTH must not be honoured there, even with OIDC absent, so the
+    opt-in is genuinely fail-closed, not just relocated to "one stray env
+    var re-opens prod".
+    """
+    with pytest.raises(ValueError, match="gedeployde omgeving"):
+        _make(
+            OIDC_ISSUER="",
+            DEV_NO_AUTH=True,
+            PUBLIC_HOST="https://component-2.bouwmeester.rijks.app",
+        )
+
+
+def test_dev_no_auth_refused_in_prod_even_with_oidc_present() -> None:
+    """The deployment guard fires before the OIDC check: a deployed env
+    that still carries DEV_NO_AUTH=1 is a misconfiguration to reject, not
+    silently tolerate because OIDC happens to be set."""
+    with pytest.raises(ValueError, match="gedeployde omgeving"):
+        _make(
+            OIDC_ISSUER="https://idp.example/realms/bm",
+            DEV_NO_AUTH=True,
+            PUBLIC_HOST="https://component-2.bouwmeester.rijks.app",
+            SESSION_SECRET_KEY="a-secure-random-value",
+        )

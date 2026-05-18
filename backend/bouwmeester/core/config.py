@@ -148,9 +148,22 @@ class Settings(BaseSettings):
         unless DEV_NO_AUTH is explicitly set, so a forgotten OIDC_ISSUER
         crashes loudly instead of silently opening everything up.
 
+        DEV_NO_AUTH is honoured only outside production. PUBLIC_HOST is
+        injected by ZAD for every deployed component and is never set in
+        local dev, so it is the production marker: DEV_NO_AUTH in a
+        deployed environment is refused regardless of OIDC. That keeps
+        the opt-in genuinely fail-closed instead of just relocating the
+        hole to "one stray env var re-opens everything in prod".
+
         Runs after _derive_oidc_issuer so the ZAD-derived issuer
         (OIDC_URL + OIDC_REALM) counts as configured.
         """
+        if self.DEV_NO_AUTH and self.PUBLIC_HOST:
+            raise ValueError(
+                "DEV_NO_AUTH mag niet aan staan in een gedeployde omgeving "
+                "(PUBLIC_HOST is gezet). Zet OIDC_ISSUER (of OIDC_URL + "
+                "OIDC_REALM) zodat authenticatie actief is."
+            )
         if not self.OIDC_ISSUER and not self.DEV_NO_AUTH:
             raise ValueError(
                 "Authenticatie is niet geconfigureerd: OIDC_ISSUER ontbreekt. "
