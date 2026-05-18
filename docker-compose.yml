@@ -1,5 +1,8 @@
 x-backend-env: &backend-env
   DATABASE_URL: postgresql+asyncpg://bouwmeester:bouwmeester@db:5432/bouwmeester
+  # Local dev has no OIDC. Without this opt-in the app refuses to start
+  # (fail-closed): a missing OIDC_ISSUER must never silently disable auth.
+  DEV_NO_AUTH: ${DEV_NO_AUTH:-1}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   LLM_PROVIDER: ${LLM_PROVIDER:-claude}
   VLAM_API_KEY: ${VLAM_API_KEY:-}

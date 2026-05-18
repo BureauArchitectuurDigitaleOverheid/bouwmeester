@@ -23,6 +23,7 @@ dependencies = [
     "webauthn>=2.7.1",
     "pdfminer-six>=20260107",
     "python-docx>=1.2.0",
+    "defusedxml>=0.7.1",
     "odfpy>=1.4.1",
     "websockets>=13.1",
     "playwright>=1.59.0",

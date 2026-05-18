@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     OIDC_URL: str = ""
     OIDC_REALM: str = ""
 
+    # Explicit, deliberate opt-in to run with NO authentication. Only for
+    # local dev. When OIDC is not configured, the app refuses to start
+    # unless this is set, so an accidentally missing OIDC_ISSUER fails
+    # closed instead of silently leaving every /api/ route open.
+    DEV_NO_AUTH: bool = False
+
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "https://component-1.bouwmeester.rijks.app",
@@ -130,6 +136,40 @@ class Settings(BaseSettings):
             raise ValueError(
                 "SESSION_SECRET_KEY must be set to a secure random value "
                 "when OIDC is configured. Do not use the default."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_auth_configured(self) -> "Settings":
+        """Fail closed when authentication is not configured.
+
+        Without OIDC the AuthRequiredMiddleware is a no-op and every
+        /api/ route is unauthenticated. Refuse to start in that state
+        unless DEV_NO_AUTH is explicitly set, so a forgotten OIDC_ISSUER
+        crashes loudly instead of silently opening everything up.
+
+        DEV_NO_AUTH is honoured only outside production. PUBLIC_HOST is
+        injected by ZAD for every deployed component and is never set in
+        local dev, so it is the production marker: DEV_NO_AUTH in a
+        deployed environment is refused regardless of OIDC. That keeps
+        the opt-in genuinely fail-closed instead of just relocating the
+        hole to "one stray env var re-opens everything in prod".
+
+        Runs after _derive_oidc_issuer so the ZAD-derived issuer
+        (OIDC_URL + OIDC_REALM) counts as configured.
+        """
+        if self.DEV_NO_AUTH and self.PUBLIC_HOST:
+            raise ValueError(
+                "DEV_NO_AUTH mag niet aan staan in een gedeployde omgeving "
+                "(PUBLIC_HOST is gezet). Zet OIDC_ISSUER (of OIDC_URL + "
+                "OIDC_REALM) zodat authenticatie actief is."
+            )
+        if not self.OIDC_ISSUER and not self.DEV_NO_AUTH:
+            raise ValueError(
+                "Authenticatie is niet geconfigureerd: OIDC_ISSUER ontbreekt. "
+                "Zet OIDC_ISSUER (of OIDC_URL + OIDC_REALM) in productie, "
+                "of zet DEV_NO_AUTH=1 om de applicatie bewust zonder "
+                "authenticatie te draaien (alleen voor lokale ontwikkeling)."
             )
         return self
 
