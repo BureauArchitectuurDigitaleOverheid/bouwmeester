@@ -272,13 +272,6 @@ class MattermostIngestService:
         if isinstance(create_at, int):
             await link_repo.update_last_seen(channel_link, create_at)
 
-        # Subtiele bevestiging in Mattermost: oogje op het oorspronkelijke
-        # bericht. Pas na de DB-write zodat een trage HTTP-call de ingest
-        # niet blokkeert. Faalt deze stap, dan is dat niet fataal — de
-        # note staat al.
-        if lead_activity_id is not None:
-            await self._react(post_id, "eyes")
-
     async def _is_noise(self, message: str) -> bool:
         """Vraag VLAM of dit een triviaal/ack-bericht is.
 
@@ -848,19 +841,3 @@ class MattermostIngestService:
         if not self.mm_base_url:
             return None
         return f"{self.mm_base_url}/_redirect/pl/{post_id}"
-
-    async def _react(self, post_id: str, emoji_name: str) -> None:
-        """Plak een emoji-reactie op een Mattermost-post (best-effort)."""
-        from bouwmeester.services.mattermost_service import MattermostService
-
-        service = MattermostService(self.session)
-        try:
-            if not await service.is_enabled():
-                return
-            await service.add_reaction(post_id, emoji_name)
-        except Exception:
-            logger.exception(
-                "Kon reactie %s niet plaatsen op post %s", emoji_name, post_id
-            )
-        finally:
-            await service.close()
