@@ -591,6 +591,110 @@ async def test_post_link_row_exists_before_suggestion_side_effect(
     assert row_existed_during_side_effect is True
 
 
+async def test_two_concurrent_sessions_racing_same_post_id_produce_one_suggestion(
+    _test_engine,
+):
+    """Echte race-test met twee onafhankelijke connecties (niet de gedeelde
+    ``db_session``-fixture): twee workers verwerken dezelfde post
+    tegelijk. Precies één moet de LLM/suggestie-flow uitvoeren; de ander
+    moet vroeg stoppen zodra de insert-first-claim tegen de rij-lock van
+    de eerste aanloopt.
+
+    Dit dekt een subtielere fout dan de same-session-test hierboven: onder
+    échte gelijktijdigheid raakt de INSERT van de tweede sessie eerst een
+    rij-lock (niet direct een IntegrityError) en faalt pas zodra de eerste
+    sessie commit. Dat conflict poisoned niet alleen het savepoint maar
+    ook de *outer* transactie van de tweede sessie — zonder een expliciete
+    ``session.rollback()`` op dat pad zou de daaropvolgende
+    ``session.commit()`` van de caller alsnog een ``PendingRollbackError``
+    geven."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from sqlalchemy import delete
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    init_id = uuid.uuid4()
+    cid = _id()
+    post_id = _id()
+
+    async with AsyncSession(_test_engine, expire_on_commit=False) as setup:
+        setup.add(Initiatief(id=init_id, naam="Race check ingest"))
+        await setup.flush()
+        setup.add(
+            MattermostChannelLink(
+                channel_id=cid,
+                channel_name="alg",
+                channel_display_name="Algemeen",
+                scope_type=SCOPE_INITIATIEF,
+                scope_id=init_id,
+                auto_note_enabled=False,
+                suggest_leads_enabled=True,
+            )
+        )
+        await setup.commit()
+
+    post = {
+        "id": post_id,
+        "channel_id": cid,
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "Mogelijk een nieuwe lead?",
+    }
+    call_count = 0
+
+    async def slow_create_suggested_lead(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        # Simuleert LLM-latency zodat beide workers overlappen.
+        await asyncio.sleep(0.2)
+        return None, "no_lead"
+
+    async def worker() -> None:
+        async with AsyncSession(_test_engine, expire_on_commit=False) as s:
+            ingest = MattermostIngestService(s)
+            with patch.object(
+                ingest,
+                "_create_suggested_lead",
+                new=AsyncMock(side_effect=slow_create_suggested_lead),
+            ):
+                await ingest.ingest_post(dict(post))
+            # Moet zonder PendingRollbackError kunnen committen, ook voor
+            # de worker die het race-conflict trof.
+            await s.commit()
+
+    try:
+        await asyncio.gather(worker(), worker())
+
+        assert call_count == 1
+
+        async with AsyncSession(_test_engine, expire_on_commit=False) as verify:
+            rows = (
+                (
+                    await verify.execute(
+                        select(MattermostPostLink).where(
+                            MattermostPostLink.post_id == post_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert len(rows) == 1
+    finally:
+        async with AsyncSession(_test_engine, expire_on_commit=False) as cleanup:
+            await cleanup.execute(
+                delete(MattermostPostLink).where(MattermostPostLink.post_id == post_id)
+            )
+            await cleanup.execute(
+                delete(MattermostChannelLink).where(
+                    MattermostChannelLink.channel_id == cid
+                )
+            )
+            await cleanup.execute(delete(Initiatief).where(Initiatief.id == init_id))
+            await cleanup.commit()
+
+
 # ---------------------------------------------------------------------------
 # Native file-uploads
 # ---------------------------------------------------------------------------

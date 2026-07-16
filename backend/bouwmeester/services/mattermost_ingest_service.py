@@ -18,7 +18,7 @@ import logging
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import async_session
@@ -210,8 +210,16 @@ class MattermostIngestService:
         try:
             async with self.session.begin_nested():
                 await self.session.flush()
-        except IntegrityError:
+        except (IntegrityError, PendingRollbackError):
             # Race-condition op unique post_id — andere worker was sneller.
+            # Bij een conflict tegen een nog-niet-gecommitte rij van de
+            # andere worker (i.p.v. een al-gecommitte rij) blokkeert onze
+            # INSERT eerst op de rij-lock en faalt pas zodra de andere
+            # transactie commit; dat laat de *outer* transactie hier
+            # poisoned achter (niet alleen het savepoint), dus zonder
+            # expliciete rollback zou de volgende `session.commit()` bij
+            # de caller alsnog een PendingRollbackError geven.
+            await self.session.rollback()
             return
 
         message = post.get("message") or ""
