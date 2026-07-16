@@ -6,7 +6,8 @@ import logging
 import traceback
 
 from bouwmeester.core.config import get_settings
-from bouwmeester.core.database import async_session
+from bouwmeester.core.database import async_session, engine
+from bouwmeester.core.worker_lock import WorkerLock
 from bouwmeester.services.worker_health import tick as health_tick
 
 # Note on stdout buffering: PYTHONUNBUFFERED=1 lives in the Dockerfile and
@@ -297,12 +298,47 @@ async def _overheidsorganisaties_wekelijks_loop(settings) -> None:  # type: igno
         await asyncio.sleep(interval_seconds)
 
 
+_SINGLETON_LOCK_RETRY_SECONDS = 5.0
+
+
+async def _acquire_singleton_lock_or_wait(lock: WorkerLock) -> None:
+    """Blokkeert tot deze instantie de worker-singleton-lock krijgt.
+
+    Bij een overlappende deploy (oude pod's worker nog niet gestopt,
+    nieuwe pod al gestart) mag maar één instantie de achtergrond-loops
+    (met name de Mattermost-websocket) draaien — anders verwerken beide
+    dezelfde posts en ontstaan dubbele Mattermost-suggesties. Deze
+    instantie wacht gewoon tot de lock vrijkomt (oude pod stopt of
+    crasht) in plaats van zelf ook te gaan draaien."""
+    logged_waiting = False
+    while not await lock.acquire():
+        if not logged_waiting:
+            logger.warning(
+                "Worker-singleton-lock is al in gebruik door een andere "
+                "instantie, wacht tot die vrijkomt..."
+            )
+            await health_tick(
+                "worker_singleton",
+                status="waiting",
+                detail="lock in gebruik door andere instantie",
+            )
+            logged_waiting = True
+        await asyncio.sleep(_SINGLETON_LOCK_RETRY_SECONDS)
+
+    if logged_waiting:
+        logger.info("Worker-singleton-lock verkregen, start achtergrond-loops")
+    await health_tick("worker_singleton", status="ok", detail="lock verkregen")
+
+
 async def main() -> None:
     settings = get_settings()
     logger.info(
         f"Worker started. Parlementair poll interval: "
         f"{settings.TK_POLL_INTERVAL_SECONDS}s"
     )
+
+    lock = WorkerLock(engine)
+    await _acquire_singleton_lock_or_wait(lock)
 
     await _cleanup_obsolete_heartbeats()
 

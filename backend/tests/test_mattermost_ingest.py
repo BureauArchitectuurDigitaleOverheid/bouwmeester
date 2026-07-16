@@ -531,6 +531,66 @@ async def test_initiatief_channel_writes_only_post_link(db_session, sample_initi
     assert post_link.scope_type == SCOPE_INITIATIEF
 
 
+async def test_post_link_row_exists_before_suggestion_side_effect(
+    db_session, sample_initiatief
+):
+    """De ``MattermostPostLink``-idempotency-row moet in de database staan
+    vóórdat de LLM-call/suggestie-side-effect (``_create_suggested_lead``,
+    die ook de Mattermost-bot-reply verstuurt) wordt uitgevoerd.
+
+    Twee overlappende workers (bv. tijdens een deploy-overlap) die
+    dezelfde post allebei oppikken mogen niet allebei een SuggestedLead +
+    bot-reply produceren. Zolang de insert pas ná de side-effect gebeurt,
+    kunnen beide workers de pre-check-SELECT passeren vóórdat een van
+    beiden z'n insert commit — met als gevolg een dubbele Mattermost-post
+    die niet meer teruggedraaid kan worden zodra de unique constraint
+    de tweede insert alsnog blokkeert."""
+    from unittest.mock import AsyncMock, patch
+
+    cid = _id()
+    db_session.add(
+        MattermostChannelLink(
+            channel_id=cid,
+            channel_name="alg",
+            channel_display_name="Algemeen",
+            scope_type=SCOPE_INITIATIEF,
+            scope_id=sample_initiatief.id,
+            auto_note_enabled=False,
+            suggest_leads_enabled=True,
+        )
+    )
+    await db_session.flush()
+
+    post_id = _id()
+    post = {
+        "id": post_id,
+        "channel_id": cid,
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "Mogelijk een nieuwe lead?",
+    }
+
+    row_existed_during_side_effect = None
+
+    async def fake_create_suggested_lead(**kwargs):
+        nonlocal row_existed_during_side_effect
+        existing = await db_session.execute(
+            select(MattermostPostLink.id).where(MattermostPostLink.post_id == post_id)
+        )
+        row_existed_during_side_effect = existing.scalar_one_or_none() is not None
+        return None, "no_lead"
+
+    ingest = MattermostIngestService(db_session)
+    with patch.object(
+        ingest,
+        "_create_suggested_lead",
+        new=AsyncMock(side_effect=fake_create_suggested_lead),
+    ):
+        await ingest.ingest_post(post)
+
+    assert row_existed_during_side_effect is True
+
+
 # ---------------------------------------------------------------------------
 # Native file-uploads
 # ---------------------------------------------------------------------------
