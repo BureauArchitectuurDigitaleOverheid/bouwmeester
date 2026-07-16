@@ -18,7 +18,7 @@ import logging
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import async_session
@@ -189,6 +189,39 @@ class MattermostIngestService:
             if mapping is not None:
                 person_id = mapping.person_id
 
+        # Claim de post NU, vóór de LLM-call en eventuele bot-reply naar
+        # Mattermost. Twee overlappende workers (bv. tijdens een
+        # deploy-overlap) kunnen de pre-check-SELECT hierboven allebei
+        # passeren vóórdat een van beiden commit; zonder deze insert-
+        # first-claim zouden beiden de LLM aanroepen en allebei een
+        # zichtbare suggestie-post naar Mattermost sturen, en pas de
+        # állerlaatste insert zou de unique constraint raken — te laat om
+        # de dubbele Mattermost-post nog te voorkomen.
+        record = MattermostPostLink(
+            post_id=post_id,
+            channel_id=channel_id,
+            root_id=root_id,
+            scope_type=channel_link.scope_type,
+            scope_id=channel_link.scope_id,
+            mm_user_id=mm_user_id,
+            person_id=person_id,
+        )
+        self.session.add(record)
+        try:
+            async with self.session.begin_nested():
+                await self.session.flush()
+        except (IntegrityError, PendingRollbackError):
+            # Race-condition op unique post_id — andere worker was sneller.
+            # Bij een conflict tegen een nog-niet-gecommitte rij van de
+            # andere worker (i.p.v. een al-gecommitte rij) blokkeert onze
+            # INSERT eerst op de rij-lock en faalt pas zodra de andere
+            # transactie commit; dat laat de *outer* transactie hier
+            # poisoned achter (niet alleen het savepoint), dus zonder
+            # expliciete rollback zou de volgende `session.commit()` bij
+            # de caller alsnog een PendingRollbackError geven.
+            await self.session.rollback()
+            return
+
         message = post.get("message") or ""
         lead_activity_id: UUID | None = None
         suggested_lead_id: UUID | None = None
@@ -230,25 +263,10 @@ class MattermostIngestService:
             # zodat we de post niet opnieuw zien, maar geen note van maken.
             skipped_reason = "no_link"
 
-        record = MattermostPostLink(
-            post_id=post_id,
-            channel_id=channel_id,
-            root_id=root_id,
-            scope_type=channel_link.scope_type,
-            scope_id=channel_link.scope_id,
-            mm_user_id=mm_user_id,
-            person_id=person_id,
-            lead_activity_id=lead_activity_id,
-            suggested_lead_id=suggested_lead_id,
-            skipped_reason=skipped_reason,
-        )
-        self.session.add(record)
-        try:
-            async with self.session.begin_nested():
-                await self.session.flush()
-        except IntegrityError:
-            # Race-condition op unique post_id — andere worker was sneller.
-            return
+        record.lead_activity_id = lead_activity_id
+        record.suggested_lead_id = suggested_lead_id
+        record.skipped_reason = skipped_reason
+        await self.session.flush()
 
         # Eén regel per verwerkte post in production logs zodat we
         # kunnen zien waarom een note wel/niet ontstaat zonder DB-query.
