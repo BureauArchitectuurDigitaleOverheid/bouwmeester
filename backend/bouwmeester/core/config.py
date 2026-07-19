@@ -96,6 +96,21 @@ class Settings(BaseSettings):
     MATTERMOST_LINK_CODE_TTL_MINUTES: int = 10
     MATTERMOST_LINK_CODE_LENGTH: int = 8
 
+    # GitHub status-fetch (fase 2 van GitHub-werk-koppeling).
+    # Bij leeg token is status-fetch uitgeschakeld; UI toont links zonder
+    # state-icoon. Voor App-credentials komen later GITHUB_APP_ID +
+    # GITHUB_APP_PRIVATE_KEY + GITHUB_APP_INSTALLATION_ID erbij; de client
+    # kiest dan automatisch App boven PAT.
+    GITHUB_TOKEN: str = ""
+    GITHUB_API_BASE_URL: str = "https://api.github.com"
+    # Lazy-on-view TTL: bij elk lead-detail zien we welke github_links
+    # ouder dan dit zijn en triggeren een refresh in de achtergrond.
+    GITHUB_STATUS_TTL_SECONDS: int = 300
+    # Hoe lang we maximaal wachten op een GitHub-API-call binnen een
+    # request-handler. Zachte cap; bij timeout valt de fetch stil zonder
+    # de lead-detail-response te blokkeren.
+    GITHUB_FETCH_TIMEOUT_SECONDS: float = 3.0
+
     # Age encryption for database backups
     AGE_SECRET_KEY: str = ""  # Age secret key for decryption (set on production)
 

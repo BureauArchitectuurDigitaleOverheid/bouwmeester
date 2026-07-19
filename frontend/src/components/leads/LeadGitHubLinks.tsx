@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   GitBranch,
   GitPullRequest,
+  GitMerge,
   CircleDot,
   Github,
   Play,
@@ -11,6 +12,8 @@ import {
   Check,
   X,
   Plus,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { DetailSection } from '@/components/common/DetailSection';
@@ -19,6 +22,7 @@ import {
   useAddLeadGitHubLink,
   useUpdateLeadGitHubLink,
   useDeleteLeadGitHubLink,
+  useRefreshLeadGitHubLink,
 } from '@/hooks/useLeads';
 import type { LeadGitHubLink, GitHubLinkType } from '@/types';
 
@@ -58,6 +62,65 @@ function shortRef(link: LeadGitHubLink): string {
   return '';
 }
 
+interface StatusBadge {
+  icon: React.ReactNode;
+  label: string;
+  className: string;
+}
+
+function pullRequestBadge(link: LeadGitHubLink): StatusBadge | null {
+  if (!link.state) return null;
+  switch (link.state) {
+    case 'merged':
+      return {
+        icon: <GitMerge className="h-3 w-3" />,
+        label: 'merged',
+        className: 'bg-purple-50 text-purple-700 ring-1 ring-purple-200',
+      };
+    case 'closed':
+      return {
+        icon: <X className="h-3 w-3" />,
+        label: 'closed',
+        className: 'bg-red-50 text-red-700 ring-1 ring-red-200',
+      };
+    case 'draft':
+      return {
+        icon: <GitPullRequest className="h-3 w-3" />,
+        label: 'draft',
+        className: 'bg-gray-100 text-gray-600 ring-1 ring-gray-200',
+      };
+    case 'open':
+      return {
+        icon: <GitPullRequest className="h-3 w-3" />,
+        label: 'open',
+        className: 'bg-green-50 text-green-700 ring-1 ring-green-200',
+      };
+    default:
+      return null;
+  }
+}
+
+function statusTooltip(link: LeadGitHubLink): string {
+  const lines: string[] = [];
+  const extra = link.state_extra ?? {};
+  if (typeof extra.title === 'string') lines.push(extra.title);
+  if (typeof extra.head_ref === 'string') {
+    if (typeof extra.base_ref === 'string') {
+      lines.push(`${extra.head_ref} → ${extra.base_ref}`);
+    } else {
+      lines.push(extra.head_ref);
+    }
+  }
+  if (link.last_checked_at) {
+    const when = new Date(link.last_checked_at).toLocaleString('nl-NL');
+    lines.push(`Laatst gecheckt: ${when}`);
+  }
+  if (link.check_error) {
+    lines.push(`Fout: ${link.check_error}`);
+  }
+  return lines.join('\n');
+}
+
 export function LeadGitHubLinks({ leadId, links }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [url, setUrl] = useState('');
@@ -65,10 +128,12 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
 
   const addLink = useAddLeadGitHubLink();
   const updateLink = useUpdateLeadGitHubLink();
   const deleteLink = useDeleteLeadGitHubLink();
+  const refreshLink = useRefreshLeadGitHubLink();
 
   const submit = async () => {
     setError(null);
@@ -111,6 +176,15 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
       title: editingTitle.trim() || null,
     });
     setEditingId(null);
+  };
+
+  const onRefresh = async (link: LeadGitHubLink) => {
+    setRefreshingId(link.id);
+    try {
+      await refreshLink.mutateAsync({ leadId, linkId: link.id });
+    } finally {
+      setRefreshingId(null);
+    }
   };
 
   return (
@@ -180,6 +254,10 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
             const display =
               link.title ??
               (ref ? `${link.owner}/${link.repo} ${ref}` : `${link.owner}/${link.repo}`);
+            const badge =
+              link.link_type === 'pull_request' ? pullRequestBadge(link) : null;
+            const tooltip = statusTooltip(link);
+            const showRefresh = link.link_type === 'pull_request';
             return (
               <div
                 key={link.id}
@@ -217,13 +295,42 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
                       target="_blank"
                       rel="noreferrer"
                       className="flex-1 truncate text-primary-700 hover:underline"
-                      title={link.url}
+                      title={tooltip || link.url}
                     >
                       {display}
                     </a>
-                    <span className="text-[10px] uppercase tracking-wider text-text-secondary px-1.5 py-0.5 rounded bg-gray-100">
-                      {TYPE_LABELS[link.link_type]}
-                    </span>
+                    {badge ? (
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}
+                      >
+                        {badge.icon}
+                        {badge.label}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] uppercase tracking-wider text-text-secondary px-1.5 py-0.5 rounded bg-gray-100">
+                        {TYPE_LABELS[link.link_type]}
+                      </span>
+                    )}
+                    {link.check_error && (
+                      <span
+                        title={`Status-fout: ${link.check_error}`}
+                        className="text-amber-500"
+                      >
+                        <AlertCircle className="h-3.5 w-3.5" />
+                      </span>
+                    )}
+                    {showRefresh && (
+                      <button
+                        onClick={() => onRefresh(link)}
+                        disabled={refreshingId === link.id}
+                        className="p-1 text-text-secondary hover:text-primary-600 disabled:opacity-50"
+                        title="Status verversen"
+                      >
+                        <RefreshCw
+                          className={`h-3.5 w-3.5 ${refreshingId === link.id ? 'animate-spin' : ''}`}
+                        />
+                      </button>
+                    )}
                     <button
                       onClick={() => startEdit(link)}
                       className="p-1 text-text-secondary hover:text-primary-600"

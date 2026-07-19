@@ -34,6 +34,11 @@ class GitHubLinkResponse(BaseModel):
     repo: str
     ref: str | None = None
     title: str | None = None
+    state: str | None = None
+    state_extra: dict | None = None
+    last_checked_at: datetime | None = None
+    last_changed_at: datetime | None = None
+    check_error: str | None = None
     created_by_id: UUID | None = None
     created_at: datetime
 

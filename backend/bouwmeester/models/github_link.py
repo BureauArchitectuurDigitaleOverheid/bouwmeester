@@ -18,7 +18,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from bouwmeester.core.database import Base
@@ -59,6 +59,25 @@ class GitHubLink(Base):
     repo: Mapped[str] = mapped_column(String(200), nullable=False)
     ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Status-cache (fase 2). Allemaal nullable: een link zonder ooit een
+    # succesvolle fetch heeft state=None en check_error=None — UI toont
+    # die als "status onbekend".
+    state: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        comment="open|closed|merged|draft|completed|failure|...",
+    )
+    state_extra: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    etag: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    check_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("person.id", ondelete="SET NULL"),

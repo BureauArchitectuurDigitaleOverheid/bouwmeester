@@ -21,6 +21,7 @@ import {
   addLeadGitHubLink,
   updateLeadGitHubLink,
   deleteLeadGitHubLink,
+  refreshLeadGitHubLink,
   parseLeadIntake,
   getCommunityGraph,
   getLeadTimeline,
@@ -316,6 +317,20 @@ export function useDeleteLeadGitHubLink() {
       linkId: string;
     }) => deleteLeadGitHubLink(leadId, linkId),
     errorMessage: 'Fout bij verwijderen GitHub-link',
+    invalidateKeys: [queryKeys.leads.all],
+  });
+}
+
+export function useRefreshLeadGitHubLink() {
+  return useMutationWithError({
+    mutationFn: ({
+      leadId,
+      linkId,
+    }: {
+      leadId: string;
+      linkId: string;
+    }) => refreshLeadGitHubLink(leadId, linkId),
+    errorMessage: 'Status verversen mislukt',
     invalidateKeys: [queryKeys.leads.all],
   });
 }
