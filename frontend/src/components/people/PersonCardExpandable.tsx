@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { clsx } from 'clsx';
-import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, MessageSquare, Terminal, Building2, X, Phone, Star, Handshake } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { PersonAvatar } from '@/components/people/PersonAvatar';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddButton } from '@/components/nldd/NlddLink';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
 import { useSamenwerkingsverbandenForPerson } from '@/hooks/useSamenwerkingsverbanden';
 import { SAMENWERKINGSVERBAND_TYPE_LABELS, SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS } from '@/types';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
-import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS } from '@/types';
+import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS, TASK_PRIORITY_LABELS } from '@/types';
 import { richTextToPlain } from '@/utils/richtext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDateShort, todayISO } from '@/utils/dates';
@@ -18,11 +19,12 @@ import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import type { Person } from '@/types';
 
-const PRIORITY_DOT_COLORS: Record<string, string> = {
-  kritiek: 'bg-red-500',
-  hoog: 'bg-orange-400',
-  normaal: 'bg-blue-400',
-  laag: 'bg-gray-300',
+/** Priority -> the five semantic tag colors, for the task dot in the open-tasks list. */
+const PRIORITY_DOT_COLORS: Record<string, 'critical' | 'warning' | 'accent' | 'neutral'> = {
+  kritiek: 'critical',
+  hoog: 'warning',
+  normaal: 'accent',
+  laag: 'neutral',
 };
 
 interface PersonCardExpandableProps {
@@ -70,24 +72,17 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
       onDragStart={onDragStartPerson ? (e: React.DragEvent) => onDragStartPerson(e, person) : undefined}
     >
       <div className="flex items-center gap-3">
-        <PersonAvatar person={person} size="h-9 w-9" iconSize="h-4.5 w-4.5" agentColor="bg-violet-100 text-violet-700" />
+        <PersonAvatar person={person} size="32" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-text truncate">
               {person.naam}
             </p>
-            {person.is_agent && (
-              <Badge variant="purple" className="text-[10px] px-1.5 py-0 shrink-0">
-                Agent
-              </Badge>
-            )}
+            {person.is_agent && <Badge variant="purple">Agent</Badge>}
             {isManager && (() => {
               const label = managerLabel ?? 'Manager';
               return (
-                <Badge
-                  variant={label === 'Bewindspersoon' ? 'purple' : 'blue'}
-                  className="text-[10px] px-1.5 py-0 shrink-0"
-                >
+                <Badge variant={label === 'Bewindspersoon' ? 'purple' : 'blue'}>
                   {label}
                 </Badge>
               );
@@ -101,7 +96,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 onClick={handleCopyEmail}
                 title="Klik om e-mail te kopiëren"
               >
-                <Mail className="h-3 w-3 shrink-0" />
+                <Icon name="Mail" size="xs" />
                 <span className="truncate">{copied ? 'Gekopieerd!' : displayEmail}</span>
               </button>
             )}
@@ -111,19 +106,19 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 className="flex items-center gap-1 hover:text-primary-600 transition-colors"
                 onClick={(e) => e.stopPropagation()}
               >
-                <Phone className="h-3 w-3 shrink-0" />
+                <Icon name="Phone" size="xs" />
                 {person.default_phone}
               </a>
             )}
             {person.functie && !person.is_agent && (
               <span className="flex items-center gap-1 hidden sm:flex">
-                <Briefcase className="h-3 w-3 shrink-0" />
+                <Icon name="Briefcase" size="xs" />
                 <span className="truncate">{formatFunctie(person.functie)}</span>
               </span>
             )}
             {person.description && person.is_agent && (
               <span className={clsx('flex items-start gap-1', !expanded && 'truncate')}>
-                <Briefcase className="h-3 w-3 shrink-0 mt-0.5" />
+                <Icon name="Briefcase" size="xs" className="mt-0.5" />
                 <span className={expanded ? 'whitespace-normal' : 'truncate'}>{richTextToPlain(person.description)}</span>
               </span>
             )}
@@ -156,23 +151,19 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             )}
           </div>
         </div>
-        {/* Prominent message/prompt button — always visible */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setMessageOpen(true);
-          }}
-          className={clsx(
-            'shrink-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-            person.is_agent
-              ? 'bg-violet-100 text-violet-700 hover:bg-violet-200'
-              : 'bg-primary-100 text-primary-700 hover:bg-primary-200',
-          )}
-          title={person.is_agent ? 'Prompt sturen' : 'Bericht sturen'}
-        >
-          {person.is_agent ? <Terminal className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
-          {person.is_agent ? 'Prompt' : 'Bericht'}
-        </button>
+        {/* Prominent message/prompt button — always visible. The card wraps
+            everything in its own click-to-expand handler, and nldd-button's
+            click bubbles same as a native button would, so this is stopped
+            at capture before it reaches the card. */}
+        <div className="shrink-0" onClickCapture={(e) => e.stopPropagation()}>
+          <NlddButton
+            text={person.is_agent ? 'Prompt' : 'Bericht'}
+            startIcon={person.is_agent ? 'terminal' : 'message-rectangle-text'}
+            variant="neutral-tinted"
+            size="sm"
+            onClick={() => setMessageOpen(true)}
+          />
+        </div>
       </div>
 
       {/* Expanded details */}
@@ -182,7 +173,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
           {person.emails && person.emails.length > 0 && (
             <div className="mb-3">
               <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
-                <Mail className="h-3 w-3" />
+                <Icon name="Mail" size="xs" />
                 E-mailadressen
               </p>
               <div className="space-y-0.5">
@@ -195,9 +186,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                     >
                       {em.email}
                     </a>
-                    {em.is_default && (
-                      <Star className="h-3 w-3 text-amber-500 shrink-0" />
-                    )}
+                    {em.is_default && <Icon name="Star" size="xs" className="text-amber-500 shrink-0" />}
                   </div>
                 ))}
               </div>
@@ -207,7 +196,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
           {person.phones && person.phones.length > 0 && (
             <div className="mb-3">
               <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
-                <Phone className="h-3 w-3" />
+                <Icon name="Phone" size="xs" />
                 Telefoonnummers
               </p>
               <div className="space-y-0.5">
@@ -223,9 +212,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                     <span className="text-text-secondary">
                       {PHONE_LABELS[ph.label] || ph.label}
                     </span>
-                    {ph.is_default && (
-                      <Star className="h-3 w-3 text-amber-500 shrink-0" />
-                    )}
+                    {ph.is_default && <Icon name="Star" size="xs" className="text-amber-500 shrink-0" />}
                   </div>
                 ))}
               </div>
@@ -233,7 +220,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
           )}
           {summaryLoading ? (
             <div className="flex items-center gap-2 text-text-secondary py-1">
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <nldd-activity-indicator size="16" />
               <span>Laden...</span>
             </div>
           ) : summary ? (
@@ -242,11 +229,11 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               <div>
                 <div className="flex items-center gap-3 text-text-secondary">
                   <span className="flex items-center gap-1">
-                    <Circle className="h-3 w-3" />
+                    <Icon name="Circle" size="xs" />
                     {summary.open_task_count} open
                   </span>
                   <span className="flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
+                    <Icon name="CheckCircle2" size="xs" />
                     {summary.done_task_count} afgerond
                   </span>
                 </div>
@@ -261,7 +248,13 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                           openTaskDetail(task.id);
                         }}
                       >
-                        <span className={clsx('h-1.5 w-1.5 rounded-full shrink-0', PRIORITY_DOT_COLORS[task.priority] || 'bg-gray-300')} />
+                        <nldd-tag
+                          size="sm"
+                          color={PRIORITY_DOT_COLORS[task.priority] ?? 'neutral'}
+                          icon="circle-filled-extra-small"
+                          variant="icon"
+                          accessible-label={TASK_PRIORITY_LABELS[task.priority] ?? task.priority}
+                        />
                         <span className="truncate">{task.title}</span>
                         {task.due_date && (
                           <span className="text-text-secondary shrink-0 ml-auto">
@@ -287,11 +280,10 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                           openNodeDetail(node.node_id);
                         }}
                       >
-                        <FileText className="h-3 w-3 text-text-secondary shrink-0" />
+                        <Icon name="FileText" size="xs" className="text-text-secondary shrink-0" />
                         <span className="truncate">{node.node_title}</span>
                         <Badge
                           variant={NODE_TYPE_COLORS[node.node_type as keyof typeof NODE_TYPE_COLORS] || 'gray'}
-                          className="text-[10px] px-1.5 py-0 shrink-0"
                         >
                           {nodeLabel(node.node_type)}
                         </Badge>
@@ -308,7 +300,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               {placements && placements.length > 0 && (
                 <div>
                   <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
-                    <Building2 className="h-3 w-3" />
+                    <Icon name="Building2" size="xs" />
                     Teams
                   </p>
                   <div className="space-y-1">
@@ -322,7 +314,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                             </span>
                           )}
                         </span>
-                        <Badge variant="gray" className="text-[10px] px-1.5 py-0 shrink-0">
+                        <Badge variant="gray">
                           {DIENSTVERBAND_LABELS[p.dienstverband] || p.dienstverband}
                         </Badge>
                         {showPlacementActions && (
@@ -340,7 +332,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                                 className="text-text-secondary hover:text-amber-600 transition-colors"
                                 title="Team-indeling beëindigen"
                               >
-                                <CheckCircle2 className="h-3 w-3" />
+                                <Icon name="CheckCircle2" size="xs" />
                               </button>
                             )}
                             {confirmDeleteId === p.id ? (
@@ -377,7 +369,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                                 className="text-text-secondary hover:text-red-600 transition-colors"
                                 title="Team-indeling verwijderen"
                               >
-                                <X className="h-3 w-3" />
+                                <Icon name="X" size="xs" />
                               </button>
                             )}
                           </div>
@@ -392,7 +384,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               {lidmaatschappen && lidmaatschappen.length > 0 && (
                 <div>
                   <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
-                    <Handshake className="h-3 w-3" />
+                    <Icon name="Handshake" size="xs" />
                     Samenwerkingsverbanden
                   </p>
                   <div className="space-y-1">
@@ -414,7 +406,6 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                               lid.samenwerkingsverband_type
                             ] ?? 'gray'
                           }
-                          className="text-[10px] px-1.5 py-0 shrink-0"
                         >
                           {SAMENWERKINGSVERBAND_TYPE_LABELS[
                             lid.samenwerkingsverband_type
@@ -440,18 +431,17 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
 
           {/* Edit button */}
           {onEditPerson && (
-            <div className="flex justify-end mt-2 pt-2 border-t border-border">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEditPerson(person);
-                }}
-                className="flex items-center gap-1 text-text-secondary hover:text-text transition-colors"
-                title="Bewerken"
-              >
-                <Pencil className="h-3 w-3" />
-                <span>Bewerken</span>
-              </button>
+            <div
+              className="flex justify-end mt-2 pt-2 border-t border-border"
+              onClickCapture={(e) => e.stopPropagation()}
+            >
+              <NlddButton
+                text="Bewerken"
+                startIcon="pencil"
+                variant="neutral-transparent"
+                size="sm"
+                onClick={() => onEditPerson(person)}
+              />
             </div>
           )}
         </div>

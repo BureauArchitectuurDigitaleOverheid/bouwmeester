@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, Building2, User } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/common/Badge';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { Icon } from '@/components/nldd/Icon';
+import { useNlddEvent } from '@/components/nldd/events';
 import { useUpdateTask } from '@/hooks/useTasks';
 import { useOrganisatieFlat, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -88,15 +89,22 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
     });
   };
 
+  const titleRef = useRef<HTMLElement>(null);
+  useNlddEvent(titleRef, 'click', () => openTaskDetail(task.id));
+
   return (
     <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 py-2.5 px-4 border-b border-border last:border-0 hover:bg-gray-50/50">
       <div className="flex-1 min-w-0">
-        <button
-          onClick={() => openTaskDetail(task.id)}
-          className="text-sm font-medium text-text hover:text-primary-700 text-left truncate block max-w-full"
-        >
-          {task.title}
-        </button>
+        {/* nldd-button rather than the NlddButton wrapper: this needs
+            width="full" + left alignment, which the wrapper does not expose. */}
+        <nldd-button
+          ref={titleRef}
+          text={task.title}
+          variant="neutral-transparent"
+          size="sm"
+          width="full"
+          horizontal-alignment="left"
+        />
         <div className="flex items-center gap-2 mt-1">
           <Badge
             variant={TASK_PRIORITY_COLORS[task.priority]}
@@ -110,7 +118,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
                 isOverdue ? 'text-red-600 font-medium' : 'text-text-secondary'
               }`}
             >
-              <Clock className="h-3 w-3" />
+              <Icon name="Clock" size="xs" />
               {formatDateShort(task.due_date)}
             </span>
           )}
@@ -178,7 +186,7 @@ export function UnassignedTasksSection({
     <div className="bg-surface rounded-xl border border-border shadow-sm">
       <div className="flex items-center gap-3 px-5 py-4">
         <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-amber-100 text-amber-600">
-          <AlertTriangle className="h-5 w-5" />
+          <Icon name="AlertTriangle" size="lg" />
         </div>
         <div>
           <h2 className="text-base font-semibold text-text">Onverdeeld</h2>
@@ -195,12 +203,10 @@ export function UnassignedTasksSection({
             onClick={() => setNoUnitOpen(!noUnitOpen)}
             className="flex items-center gap-2 w-full px-5 py-3 text-sm font-medium text-text-secondary hover:bg-gray-50"
           >
-            {noUnitOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            <Building2 className="h-4 w-4" />
+            <Icon name={noUnitOpen ? 'ChevronDown' : 'ChevronRight'} size="sm" />
+            <Icon name="Building2" size="sm" />
             Geen eenheid
-            <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
-              {noUnitCount}
-            </span>
+            <nldd-tag text={String(noUnitCount)} color="warning" size="sm" />
           </button>
           {noUnitOpen && (
             <div>
@@ -224,12 +230,10 @@ export function UnassignedTasksSection({
             onClick={() => setNoPersonOpen(!noPersonOpen)}
             className="flex items-center gap-2 w-full px-5 py-3 text-sm font-medium text-text-secondary hover:bg-gray-50"
           >
-            {noPersonOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            <User className="h-4 w-4" />
+            <Icon name={noPersonOpen ? 'ChevronDown' : 'ChevronRight'} size="sm" />
+            <Icon name="User" size="sm" />
             Geen persoon
-            <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
-              {noPersonCount}
-            </span>
+            <nldd-tag text={String(noPersonCount)} color="warning" size="sm" />
           </button>
           {noPersonOpen && (
             <div>

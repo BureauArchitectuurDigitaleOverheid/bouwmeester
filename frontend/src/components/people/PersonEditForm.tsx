@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { Copy, RefreshCw, Check, Eye, EyeOff, Mail, Phone, Star, X, Plus } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
@@ -7,6 +6,10 @@ import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   usePeople,
   usePerson,
@@ -40,6 +43,107 @@ const KARAKTER_NAMEN = [
 const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS).map(
   ([value, label]) => ({ value, label })
 );
+
+interface EmailRowProps {
+  email: string;
+  isDefault: boolean;
+  onSetDefault: () => void;
+  onRemove: () => void;
+}
+
+/** One row of the email-management list: the address, a star to mark it
+ *  default, and a delete action — both as list-item-segments per the
+ *  established row-with-actions pattern (see LeadInboxView). */
+function EmailRow({ email, isDefault, onSetDefault, onRemove }: EmailRowProps) {
+  const starRef = useRef<HTMLElement>(null);
+  const removeRef = useRef<HTMLElement>(null);
+  useNlddEvent(starRef, 'click', onSetDefault);
+  useNlddEvent(removeRef, 'click', onRemove);
+
+  return (
+    <nldd-list-item>
+      <nldd-text-cell text={email} width="full" />
+      <nldd-list-item-segment
+        ref={starRef}
+        button
+        accessible-label={isDefault ? 'Standaard e-mailadres' : 'Instellen als standaard'}
+      >
+        <Icon name="Star" size="sm" className={isDefault ? 'text-amber-500' : 'text-text-secondary'} />
+      </nldd-list-item-segment>
+      <nldd-list-item-segment ref={removeRef} button accessible-label="E-mailadres verwijderen">
+        <Icon name="X" size="sm" />
+      </nldd-list-item-segment>
+    </nldd-list-item>
+  );
+}
+
+interface PhoneRowProps {
+  phoneNumber: string;
+  label: string;
+  isDefault: boolean;
+  onSetDefault: () => void;
+  onRemove: () => void;
+}
+
+function PhoneRow({ phoneNumber, label, isDefault, onSetDefault, onRemove }: PhoneRowProps) {
+  const starRef = useRef<HTMLElement>(null);
+  const removeRef = useRef<HTMLElement>(null);
+  useNlddEvent(starRef, 'click', onSetDefault);
+  useNlddEvent(removeRef, 'click', onRemove);
+
+  return (
+    <nldd-list-item>
+      <nldd-text-cell text={phoneNumber} supporting-text={label} width="full" />
+      <nldd-list-item-segment
+        ref={starRef}
+        button
+        accessible-label={isDefault ? 'Standaard telefoonnummer' : 'Instellen als standaard'}
+      >
+        <Icon name="Star" size="sm" className={isDefault ? 'text-amber-500' : 'text-text-secondary'} />
+      </nldd-list-item-segment>
+      <nldd-list-item-segment ref={removeRef} button accessible-label="Telefoonnummer verwijderen">
+        <Icon name="X" size="sm" />
+      </nldd-list-item-segment>
+    </nldd-list-item>
+  );
+}
+
+interface NewValueFieldProps {
+  type: 'email' | 'tel';
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  placeholder: string;
+  accessibleLabel: string;
+}
+
+/** A single `nldd-text-field` for a new email/phone value, submitting on
+ *  Enter — the design-system field has no form of its own to catch the
+ *  implicit-submission rule, so Enter is wired by hand here. */
+function NewValueField({ type, value, onChange, onSubmit, placeholder, accessibleLabel }: NewValueFieldProps) {
+  const ref = useRef<HTMLElement & { value?: string }>(null);
+  useNlddValue(ref, value);
+  useNlddEvent(ref, 'input', (e) => onChange(eventValue(e)));
+  useNlddEvent(
+    ref,
+    'keydown',
+    (e) => {
+      if ((e as KeyboardEvent).key === 'Enter') {
+        e.preventDefault();
+        onSubmit();
+      }
+    },
+  );
+
+  return (
+    <nldd-text-field
+      ref={ref}
+      type={type === 'tel' ? 'tel' : 'email'}
+      placeholder={placeholder}
+      accessible-label={accessibleLabel}
+    />
+  );
+}
 
 interface PersonEditFormProps {
   open: boolean;
@@ -479,22 +583,24 @@ export function PersonEditForm({
               error={emailTouched && !email.trim() ? 'E-mail is verplicht' : undefined}
             />
             {emailMatch && (
-              <div className="text-xs flex items-center gap-2 -mt-2 mb-2 px-2 py-1.5 rounded bg-blue-50 text-blue-700">
-                <span>
-                  Domein wijst naar <strong>{emailMatch.organisatie_naam}</strong>.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOrgEenheidId(emailMatch.organisatie_eenheid_id);
-                    setDienstverband('extern');
-                    setEmailMatch(null);
-                  }}
-                  className="underline hover:no-underline"
-                >
-                  Koppel als organisatie
-                </button>
-              </div>
+              <nldd-inline-dialog
+                variant="alert"
+                text={`Domein wijst naar ${emailMatch.organisatie_naam}`}
+                horizontal-alignment="left"
+              >
+                <div slot="actions">
+                  <NlddButton
+                    text="Koppel als organisatie"
+                    variant="neutral-transparent"
+                    size="sm"
+                    onClick={() => {
+                      setOrgEenheidId(emailMatch.organisatie_eenheid_id);
+                      setDienstverband('extern');
+                      setEmailMatch(null);
+                    }}
+                  />
+                </div>
+              </nldd-inline-dialog>
             )}
           </>
         )}
@@ -504,51 +610,38 @@ export function PersonEditForm({
           <div>
             <label className="block text-sm font-medium text-text mb-1">E-mailadressen</label>
             {personEmails.length === 0 ? (
-              <p className="text-sm text-text-secondary italic">Geen e-mailadressen</p>
+              <p className="text-sm text-text-secondary italic mb-2">Geen e-mailadressen</p>
             ) : (
-              <ul className="space-y-1 mb-2">
+              <nldd-list variant="box-tinted" accessible-label="E-mailadressen" className="mb-2">
                 {personEmails.map((em) => (
-                  <li key={em.id} className="group flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm">
-                    <Mail className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-                    <span className="flex-1 truncate">{em.email}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleSetDefaultEmail(em.id)}
-                      className="shrink-0 p-0.5 rounded hover:bg-gray-100 transition-colors"
-                      title={em.is_default ? 'Standaard e-mail' : 'Instellen als standaard'}
-                    >
-                      <Star className={`h-3.5 w-3.5 ${em.is_default ? 'fill-amber-400 text-amber-400' : 'text-gray-300 group-hover:text-gray-400'}`} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveEmail(em.id)}
-                      className="shrink-0 p-0.5 rounded hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                      title="Verwijderen"
-                    >
-                      <X className="h-3.5 w-3.5 text-red-400 hover:text-red-600" />
-                    </button>
-                  </li>
+                  <EmailRow
+                    key={em.id}
+                    email={em.email}
+                    isDefault={em.is_default}
+                    onSetDefault={() => handleSetDefaultEmail(em.id)}
+                    onRemove={() => handleRemoveEmail(em.id)}
+                  />
                 ))}
-              </ul>
+              </nldd-list>
             )}
             <div className="flex items-center gap-2">
-              <input
-                type="email"
-                value={newEmail}
-                onChange={(e) => { setNewEmail(e.target.value); setNewEmailError(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddEmail(); } }}
-                placeholder="Nieuw e-mailadres..."
-                className="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text placeholder:text-text-secondary/50 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-              />
-              <button
-                type="button"
-                onClick={handleAddEmail}
+              <div className="flex-1">
+                <NewValueField
+                  type="email"
+                  value={newEmail}
+                  onChange={(v) => { setNewEmail(v); setNewEmailError(''); }}
+                  onSubmit={handleAddEmail}
+                  placeholder="Nieuw e-mailadres..."
+                  accessibleLabel="Nieuw e-mailadres"
+                />
+              </div>
+              <NlddIconButton
+                icon="plus"
+                accessibleLabel="E-mailadres toevoegen"
+                variant="secondary"
                 disabled={!newEmail.trim() || addEmailMutation.isPending}
-                className="flex items-center justify-center h-8 w-8 rounded-lg border border-border hover:bg-gray-50 transition-colors disabled:opacity-40"
-                title="Toevoegen"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
+                onClick={handleAddEmail}
+              />
             </div>
             {newEmailError && (
               <p className="mt-1 text-xs text-red-600">{newEmailError}</p>
@@ -561,63 +654,50 @@ export function PersonEditForm({
           <div>
             <label className="block text-sm font-medium text-text mb-1">Telefoonnummers</label>
             {personPhones.length === 0 ? (
-              <p className="text-sm text-text-secondary italic">Geen telefoonnummers</p>
+              <p className="text-sm text-text-secondary italic mb-2">Geen telefoonnummers</p>
             ) : (
-              <ul className="space-y-1 mb-2">
+              <nldd-list variant="box-tinted" accessible-label="Telefoonnummers" className="mb-2">
                 {personPhones.map((ph) => (
-                  <li key={ph.id} className="group flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm">
-                    <Phone className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-                    <span className="flex-1 truncate">{ph.phone_number}</span>
-                    <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-text-secondary">
-                      {PHONE_LABELS[ph.label] ?? ph.label}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleSetDefaultPhone(ph.id)}
-                      className="shrink-0 p-0.5 rounded hover:bg-gray-100 transition-colors"
-                      title={ph.is_default ? 'Standaard telefoonnummer' : 'Instellen als standaard'}
-                    >
-                      <Star className={`h-3.5 w-3.5 ${ph.is_default ? 'fill-amber-400 text-amber-400' : 'text-gray-300 group-hover:text-gray-400'}`} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRemovePhone(ph.id)}
-                      className="shrink-0 p-0.5 rounded hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                      title="Verwijderen"
-                    >
-                      <X className="h-3.5 w-3.5 text-red-400 hover:text-red-600" />
-                    </button>
-                  </li>
+                  <PhoneRow
+                    key={ph.id}
+                    phoneNumber={ph.phone_number}
+                    label={PHONE_LABELS[ph.label] ?? ph.label}
+                    isDefault={ph.is_default}
+                    onSetDefault={() => handleSetDefaultPhone(ph.id)}
+                    onRemove={() => handleRemovePhone(ph.id)}
+                  />
                 ))}
-              </ul>
+              </nldd-list>
             )}
             <div className="flex items-center gap-2">
-              <input
-                type="tel"
-                value={newPhone}
-                onChange={(e) => { setNewPhone(e.target.value); setNewPhoneError(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddPhone(); } }}
-                placeholder="+31 6 12345678"
-                className="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text placeholder:text-text-secondary/50 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-              />
-              <select
-                value={newPhoneLabel}
-                onChange={(e) => setNewPhoneLabel(e.target.value)}
-                className="rounded-lg border border-border px-2 py-1.5 text-sm text-text bg-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-              >
-                {Object.entries(PHONE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={handleAddPhone}
+              <div className="flex-1">
+                <NewValueField
+                  type="tel"
+                  value={newPhone}
+                  onChange={(v) => { setNewPhone(v); setNewPhoneError(''); }}
+                  onSubmit={handleAddPhone}
+                  placeholder="+31 6 12345678"
+                  accessibleLabel="Nieuw telefoonnummer"
+                />
+              </div>
+              <nldd-dropdown width="140px">
+                <select
+                  aria-label="Type telefoonnummer"
+                  value={newPhoneLabel}
+                  onChange={(e) => setNewPhoneLabel(e.target.value)}
+                >
+                  {Object.entries(PHONE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </nldd-dropdown>
+              <NlddIconButton
+                icon="plus"
+                accessibleLabel="Telefoonnummer toevoegen"
+                variant="secondary"
                 disabled={!newPhone.trim() || addPhoneMutation.isPending}
-                className="flex items-center justify-center h-8 w-8 rounded-lg border border-border hover:bg-gray-50 transition-colors disabled:opacity-40"
-                title="Toevoegen"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
+                onClick={handleAddPhone}
+              />
             </div>
             {newPhoneError && (
               <p className="mt-1 text-xs text-red-600">{newPhoneError}</p>
@@ -632,28 +712,27 @@ export function PersonEditForm({
               {displayApiKey ? (
                 <>
                   <div className="flex items-center gap-2">
+                    {/* nldd-text-field has no password type; this is a
+                        read-only display, not a real form field, so a plain
+                        masked input stands in. */}
                     <input
                       type={showKey ? 'text' : 'password'}
                       readOnly
                       value={displayApiKey}
                       className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary"
                     />
-                    <button
-                      type="button"
+                    <NlddIconButton
+                      icon={showKey ? 'eye-slash' : 'eye'}
+                      accessibleLabel={showKey ? 'Verberg API key' : 'Toon API key'}
+                      variant="secondary"
                       onClick={() => setShowKey(!showKey)}
-                      className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
-                      title={showKey ? 'Verberg API key' : 'Toon API key'}
-                    >
-                      {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </button>
-                    <button
-                      type="button"
+                    />
+                    <NlddIconButton
+                      icon={copied ? 'check-mark' : 'copy'}
+                      accessibleLabel="Kopieer API key"
+                      variant="secondary"
                       onClick={handleCopyKey}
-                      className="flex items-center justify-center h-9 w-9 rounded-lg border border-border hover:bg-gray-50 transition-colors"
-                      title="Kopieer API key"
-                    >
-                      {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
-                    </button>
+                    />
                   </div>
                   <p className="mt-1 text-xs text-amber-600 font-medium">
                     Deze sleutel wordt slechts eenmaal getoond. Kopieer en bewaar deze veilig.
@@ -669,33 +748,29 @@ export function PersonEditForm({
                   />
                   {confirmRotate ? (
                     <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
+                      <NlddButton
+                        text="Bevestig"
+                        startIcon="refresh"
+                        variant="destructive"
+                        size="sm"
+                        loading={rotateApiKeyMutation.isPending}
                         onClick={handleRotateKey}
-                        disabled={rotateApiKeyMutation.isPending}
-                        className="flex items-center justify-center h-9 px-3 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 transition-colors text-sm gap-1.5 text-red-700 disabled:opacity-50"
-                      >
-                        <RefreshCw className={`h-3.5 w-3.5 ${rotateApiKeyMutation.isPending ? 'animate-spin' : ''}`} />
-                        Bevestig
-                      </button>
-                      <button
-                        type="button"
+                      />
+                      <NlddButton
+                        text="Annuleer"
+                        variant="neutral-transparent"
+                        size="sm"
                         onClick={() => setConfirmRotate(false)}
-                        className="flex items-center justify-center h-9 px-3 rounded-lg border border-border hover:bg-gray-50 transition-colors text-sm"
-                      >
-                        Annuleer
-                      </button>
+                      />
                     </div>
                   ) : (
-                    <button
-                      type="button"
+                    <NlddButton
+                      text="Roteer"
+                      startIcon="refresh"
+                      variant="secondary"
+                      size="sm"
                       onClick={handleRotateKey}
-                      className="flex items-center justify-center h-9 px-3 rounded-lg border border-border hover:bg-gray-50 transition-colors text-sm gap-1.5"
-                      title="Genereer nieuwe API key (de oude wordt ongeldig)"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      Roteer
-                    </button>
+                    />
                   )}
                 </div>
               ) : (
@@ -755,22 +830,21 @@ export function PersonEditForm({
           />
         )}
         {!editData && orgEenheidId && !isAgent && (
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">
-              Dienstverband
-            </label>
-            <select
-              value={dienstverband}
-              onChange={(e) => setDienstverband(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-text bg-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-            >
-              {Object.entries(DIENSTVERBAND_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <nldd-form-field label="Dienstverband">
+            <nldd-dropdown>
+              <select
+                aria-label="Dienstverband"
+                value={dienstverband}
+                onChange={(e) => setDienstverband(e.target.value)}
+              >
+                {Object.entries(DIENSTVERBAND_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </nldd-dropdown>
+          </nldd-form-field>
         )}
       </form>
     </Modal>

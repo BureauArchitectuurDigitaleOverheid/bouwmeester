@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
-import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { Badge } from '@/components/common/Badge';
+import { Icon } from '@/components/nldd/Icon';
+import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import type { OrganisatieEenheidTreeNode } from '@/types';
 import { formatOrganisatieType, ORGANISATIE_TYPE_BADGE_COLORS } from '@/types';
 
@@ -62,112 +63,109 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
     }
   };
 
+  const toggleRef = useRef<HTMLElement>(null);
+  const selectRef = useRef<HTMLElement>(null);
+  const addRef = useRef<HTMLElement>(null);
+  useNlddEvent(toggleRef, 'click', () => setExpanded(!expanded));
+  useNlddEvent(selectRef, 'click', () => onSelect(node.id));
+  useNlddEvent(addRef, 'click', () => onAdd(node.id));
+
+  const title = isHistorisch
+    ? `Opgeheven per ${node.geldig_tot}`
+    : node.bron === 'tooi'
+      ? 'Synced uit TOOI-waardelijsten (KOOP/Logius). Read-only.'
+      : node.bron === 'synthetisch'
+        ? 'Synthetische groep, beheerd door het systeem.'
+        : node.bron === 'organogram_scrape'
+          ? 'Synced uit rijksoverheid.nl/organogram. Read-only.'
+          : undefined;
+
   return (
     <div>
+      {/* Kept as a plain div rather than nldd-list/type="tree": this row is a
+          native HTML5 drag-and-drop target for reparenting a person (own
+          onDragOver/onDrop), which is independent from and would entangle
+          with the tree type's own roving-tabindex keyboard and disclosure
+          model. Rows are still list-items built from segments and cells, per
+          the fallback the conversion brief calls for when the mapping isn't
+          clean. */}
       <div
         className={clsx(
-          'group flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors text-sm',
-          isSelected
-            ? 'bg-primary-50 text-primary-700 font-medium'
-            : 'text-text hover:bg-gray-50',
-          dragOver && 'ring-2 ring-primary-500 bg-primary-50/50',
-          isHistorisch && 'text-text-secondary line-through opacity-60',
+          dragOver && 'ring-2 ring-primary-500 bg-primary-50/50 rounded-lg',
+          isHistorisch && 'opacity-60',
         )}
-        title={
-          isHistorisch
-            ? `Opgeheven per ${node.geldig_tot}`
-            : node.bron === 'tooi'
-              ? 'Synced uit TOOI-waardelijsten (KOOP/Logius). Read-only.'
-              : node.bron === 'synthetisch'
-                ? 'Synthetische groep, beheerd door het systeem.'
-                : node.bron === 'organogram_scrape'
-                  ? 'Synced uit rijksoverheid.nl/organogram. Read-only.'
-                  : undefined
-        }
-        style={{ paddingLeft: `${depth * 16 + 8}px` }}
-        onClick={() => onSelect(node.id)}
+        style={{ paddingLeft: `${depth * 16}px` }}
+        title={title}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        {/* Expand toggle */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setExpanded(!expanded);
-          }}
-          className={clsx(
-            'flex items-center justify-center h-5 w-5 rounded shrink-0 transition-colors',
-            hasChildren ? 'hover:bg-gray-200' : 'invisible',
-          )}
-        >
-          {hasChildren &&
-            (effectiveExpanded ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            ))}
-        </button>
-
-        {/* Name + afkorting + manager + total person count */}
-        <span className="truncate flex-1">
-          {node.afkorting && (
-            <span className="text-text-secondary font-normal mr-1">{node.afkorting}</span>
-          )}
-          {node.naam}
-          {node.manager && (
-            <span className="text-text-secondary font-normal text-xs"> — {node.manager.naam}</span>
-          )}
-          {(() => {
-            // Synthetische groepen tonen aantal directe children, niet personen
-            if (node.bron === 'synthetisch' && node.children.length > 0) {
-              return (
-                <span className="text-text-secondary font-normal"> ({node.children.length})</span>
-              );
-            }
-            const total = getTotalPersonenCount(node);
-            return total > 0 ? (
-              <span className="text-text-secondary font-normal"> ({total})</span>
-            ) : null;
-          })()}
-        </span>
-
-        {/* Vaste rechter-kolom: type-badge rechts uitgelijnd + add-button. */}
-        <div className="flex items-center gap-1 shrink-0 w-52 justify-end">
-          {node.bron === 'fcc_import' && (
-            <Badge
-              variant="amber"
-              className="text-[10px] px-1.5 py-0 shrink-0"
-              title="Auto-aangemaakt door FCC-import"
-            >
-              FCC
-            </Badge>
-          )}
-
-          <Badge
-            variant={ORGANISATIE_TYPE_BADGE_COLORS[node.type] || 'gray'}
-            className="text-xs px-2 py-0.5 shrink-0"
+        <nldd-list-item selected={orUndef(isSelected)} className="group">
+          <nldd-list-item-segment
+            ref={toggleRef}
+            button
+            disclosure={hasChildren ? true : undefined}
+            expanded={hasChildren ? effectiveExpanded : undefined}
+            accessible-label={effectiveExpanded ? 'Inklappen' : 'Uitklappen'}
+            className={hasChildren ? undefined : 'invisible'}
           >
-            {formatOrganisatieType(node.type)}
-          </Badge>
+            <Icon name="ChevronRight" size="xs" />
+          </nldd-list-item-segment>
 
-          {/* Add child button — niet voor synthetische groepen */}
-          {node.bron !== 'synthetisch' ? (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onAdd(node.id);
-              }}
-              className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-5 w-5 rounded hover:bg-gray-200 shrink-0 transition-opacity"
-              title="Subeenheid toevoegen"
-            >
-              <Plus className="h-3 w-3" />
-            </button>
-          ) : (
-            // Placeholder zodat synth-rijen dezelfde breedte hebben (badges blijven uitgelijnd)
-            <span className="h-5 w-5 shrink-0" aria-hidden />
-          )}
-        </div>
+          <nldd-list-item-segment ref={selectRef} button width="full" accessible-label={node.naam}>
+            <nldd-text-cell width="full" color={isHistorisch ? 'secondary' : 'content'}>
+              <span className={isHistorisch ? 'line-through' : undefined}>
+                {node.afkorting && (
+                  <span className="text-text-secondary font-normal mr-1">{node.afkorting}</span>
+                )}
+                {node.naam}
+                {node.manager && (
+                  <span className="text-text-secondary font-normal text-xs"> — {node.manager.naam}</span>
+                )}
+                {(() => {
+                  // Synthetische groepen tonen aantal directe children, niet personen
+                  if (node.bron === 'synthetisch' && node.children.length > 0) {
+                    return (
+                      <span className="text-text-secondary font-normal"> ({node.children.length})</span>
+                    );
+                  }
+                  const total = getTotalPersonenCount(node);
+                  return total > 0 ? (
+                    <span className="text-text-secondary font-normal"> ({total})</span>
+                  ) : null;
+                })()}
+              </span>
+            </nldd-text-cell>
+          </nldd-list-item-segment>
+
+          {/* Vaste rechter-kolom: type-badge rechts uitgelijnd + add-button. */}
+          <div className="flex items-center gap-1 shrink-0 w-52 justify-end">
+            {node.bron === 'fcc_import' && (
+              <Badge variant="amber" title="Auto-aangemaakt door FCC-import">
+                FCC
+              </Badge>
+            )}
+
+            <Badge variant={ORGANISATIE_TYPE_BADGE_COLORS[node.type] || 'gray'}>
+              {formatOrganisatieType(node.type)}
+            </Badge>
+
+            {/* Add child button — niet voor synthetische groepen */}
+            {node.bron !== 'synthetisch' ? (
+              <nldd-list-item-segment
+                ref={addRef}
+                button
+                accessible-label="Subeenheid toevoegen"
+                className="opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <Icon name="Plus" size="xs" />
+              </nldd-list-item-segment>
+            ) : (
+              // Placeholder zodat synth-rijen dezelfde breedte hebben (badges blijven uitgelijnd)
+              <span className="h-5 w-5 shrink-0" aria-hidden />
+            )}
+          </div>
+        </nldd-list-item>
       </div>
 
       {/* Children */}

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Search, Users } from 'lucide-react';
 import { PersonCard } from './PersonCard';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -36,13 +35,11 @@ export function PersonList({ people, isLoading, onPersonClick }: PersonListProps
   return (
     <div className="space-y-4">
       {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+      <div className="max-w-sm">
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Zoek personen..."
-          className="pl-9"
         />
       </div>
 
@@ -55,7 +52,7 @@ export function PersonList({ people, isLoading, onPersonClick }: PersonListProps
         </div>
       ) : (
         <EmptyState
-          icon={<Users className="h-16 w-16" />}
+          icon="users"
           title="Geen personen gevonden"
           description={
             searchQuery

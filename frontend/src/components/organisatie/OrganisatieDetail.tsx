@@ -1,11 +1,12 @@
-import { Pencil, Trash2, Plus, Users, Building2, User, Bot, ChevronDown, ChevronRight } from 'lucide-react';
 import { useState, useCallback } from 'react';
 import { clsx } from 'clsx';
 import { Button } from '@/components/common/Button';
 import { Badge } from '@/components/common/Badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { EmptyState } from '@/components/common/EmptyState';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
+import { Icon } from '@/components/nldd/Icon';
 import { useOrganisatieEenheid, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
 import { formatOrganisatieType, ORGANISATIE_TYPE_BADGE_COLORS, formatFunctie } from '@/types';
 import type { Person, OrganisatieEenheidPersonenGroup } from '@/types';
@@ -150,20 +151,15 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Group header */}
+      {/* Group header. A plain button rather than NlddButton: the label is a
+          composite of an icon, a badge, a name and a count, none of which
+          nldd-button's text/icon slots can carry together. */}
       <button
         className="flex items-center gap-2 w-full text-left"
         onClick={() => setExpanded(!expanded)}
       >
-        {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-        )}
-        <Badge
-          variant={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}
-          className="text-xs px-2 py-0.5"
-        >
+        <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size="sm" className="text-text-secondary shrink-0" />
+        <Badge variant={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}>
           {formatOrganisatieType(group.eenheid.type)}
         </Badge>
         <span className="text-sm font-medium text-text truncate">{group.eenheid.naam}</span>
@@ -247,12 +243,7 @@ export function OrganisatieDetail({
   }
 
   if (!eenheid) {
-    return (
-      <div className="text-center py-12 text-text-secondary">
-        <Building2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-        <p className="text-sm">Eenheid niet gevonden.</p>
-      </div>
-    );
+    return <EmptyState icon="apartment-building" title="Eenheid niet gevonden" />;
   }
 
   return (
@@ -345,20 +336,10 @@ export function OrganisatieDetail({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Pencil className="h-3.5 w-3.5" />}
-            onClick={onEdit}
-          >
+          <Button variant="secondary" size="sm" icon="pencil" onClick={onEdit}>
             Bewerken
           </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            icon={<Trash2 className="h-3.5 w-3.5" />}
-            onClick={onDelete}
-          >
+          <Button variant="danger" size="sm" icon="trash" onClick={onDelete}>
             Verwijderen
           </Button>
         </div>
@@ -366,28 +347,13 @@ export function OrganisatieDetail({
 
       {/* Action buttons */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<Plus className="h-3.5 w-3.5" />}
-          onClick={onAddChild}
-        >
+        <Button variant="secondary" size="sm" icon="plus" onClick={onAddChild}>
           Subeenheid toevoegen
         </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<User className="h-3.5 w-3.5" />}
-          onClick={onAddPerson}
-        >
+        <Button variant="secondary" size="sm" icon="person" onClick={onAddPerson}>
           Persoon toevoegen
         </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<Bot className="h-3.5 w-3.5" />}
-          onClick={onAddAgent}
-        >
+        <Button variant="secondary" size="sm" icon="sparkles" onClick={onAddAgent}>
           Agent toevoegen
         </Button>
       </div>
@@ -395,7 +361,7 @@ export function OrganisatieDetail({
       {/* People — recursive grouped view */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <Users className="h-4 w-4 text-text-secondary" />
+          <Icon name="Users" size="sm" className="text-text-secondary" />
           <h3 className="text-sm font-semibold text-text">
             Personen ({personenCount}){agentCount > 0 && ` · Agents (${agentCount})`}
           </h3>

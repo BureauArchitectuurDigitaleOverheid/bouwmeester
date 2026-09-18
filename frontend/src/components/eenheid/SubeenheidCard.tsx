@@ -1,5 +1,5 @@
-import { Building2, AlertTriangle } from 'lucide-react';
 import { Card } from '@/components/common/Card';
+import { Icon } from '@/components/nldd/Icon';
 import { formatOrganisatieType } from '@/types';
 import type { EenheidSubeenheidStats } from '@/types';
 
@@ -14,7 +14,7 @@ export function SubeenheidCard({ sub, onSelect }: SubeenheidCardProps) {
       <div className="space-y-2">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-text-secondary shrink-0" />
+            <Icon name="Building2" size="md" className="text-text-secondary" />
             <div>
               <p className="font-medium text-text">{sub.eenheid_naam}</p>
               <p className="text-xs text-text-secondary">
@@ -24,7 +24,7 @@ export function SubeenheidCard({ sub, onSelect }: SubeenheidCardProps) {
           </div>
           {sub.overdue_count > 0 && (
             <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-              <AlertTriangle className="h-3 w-3" />
+              <Icon name="AlertTriangle" size="xs" />
               {sub.overdue_count}
             </span>
           )}

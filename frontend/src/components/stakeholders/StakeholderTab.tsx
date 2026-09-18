@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/common/Badge';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   useStakeholderAssessments,
   useCreateStakeholderAssessment,
@@ -11,14 +12,12 @@ import {
   useDeleteStakeholderAssessment,
 } from '@/hooks/useStakeholderAssessments';
 import { usePeople } from '@/hooks/usePeople';
-import {
-  STAKEHOLDER_HOUDING_LABELS,
-  STAKEHOLDER_HOUDING_COLORS,
-} from '@/types';
+import { STAKEHOLDER_HOUDING_LABELS } from '@/types';
 import type {
   StakeholderAssessment,
   StakeholderHouding,
   StakeholderScopeType,
+  BadgeVariant,
 } from '@/types';
 
 interface StakeholderTabProps {
@@ -36,6 +35,23 @@ const HOUDING_OPTIONS: StakeholderHouding[] = [
 ];
 
 const SCORE_OPTIONS = [1, 2, 3, 4, 5];
+
+/**
+ * Houding -> Badge variant, replacing the pre-existing STAKEHOLDER_HOUDING_COLORS
+ * (raw Tailwind bg-/text- classes from `@/types`). That constant painted nothing
+ * once Badge moved to nldd-tag: the wrapper only takes a semantic/Rijkshuisstijl
+ * `variant`, and forwarding arbitrary Tailwind classes as `className` no longer
+ * has anything to attach to. Pre-existing bug, not introduced by this
+ * conversion — flagged rather than fixed at the source, since `@/types` is
+ * outside this pass's scope.
+ */
+const HOUDING_BADGE_VARIANT: Record<StakeholderHouding, BadgeVariant> = {
+  tegen: 'red',
+  kritisch: 'orange',
+  neutraal: 'slate',
+  welwillend: 'emerald',
+  voorstander: 'green',
+};
 
 export function StakeholderTab({
   scopeType,
@@ -94,54 +110,56 @@ export function StakeholderTab({
           Nog geen stakeholders geregistreerd.
         </p>
       ) : (
-        <ul className="divide-y divide-border rounded-xl border border-border">
+        <nldd-list type="form" variant="box-tinted" accessible-label="Stakeholders">
           {assessments.map((a) => (
-            <li key={a.id} className="px-3 py-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-medium text-sm text-text">
-                  {a.person_naam}
+            <nldd-list-item key={a.id}>
+              <div className="w-full py-1 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-medium text-sm text-text">
+                    {a.person_naam}
+                  </div>
+                  {!readOnly && (
+                    <NlddIconButton
+                      icon="trash"
+                      accessibleLabel="Stakeholder verwijderen"
+                      variant="neutral-transparent"
+                      size="sm"
+                      onClick={() => handleDelete(a)}
+                    />
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <ScoreSelect
+                    label="Belang"
+                    value={a.belang}
+                    onChange={(v) => handleUpdate(a, { belang: v })}
+                    disabled={readOnly}
+                  />
+                  <HoudingSelect
+                    value={a.houding}
+                    onChange={(v) => handleUpdate(a, { houding: v })}
+                    disabled={readOnly}
+                  />
+                  <ScoreSelect
+                    label="Invloed"
+                    value={a.invloed}
+                    onChange={(v) => handleUpdate(a, { invloed: v })}
+                    disabled={readOnly}
+                  />
                 </div>
                 {!readOnly && (
-                  <button
-                    onClick={() => handleDelete(a)}
-                    className="p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 transition-colors"
-                    title="Verwijderen"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <NoteEditor
+                    value={a.notitie}
+                    onPersist={(value) => handleUpdate(a, { notitie: value })}
+                  />
+                )}
+                {readOnly && a.notitie && (
+                  <RichTextDisplay content={a.notitie} fallback="" />
                 )}
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <ScoreSelect
-                  label="Belang"
-                  value={a.belang}
-                  onChange={(v) => handleUpdate(a, { belang: v })}
-                  disabled={readOnly}
-                />
-                <HoudingSelect
-                  value={a.houding}
-                  onChange={(v) => handleUpdate(a, { houding: v })}
-                  disabled={readOnly}
-                />
-                <ScoreSelect
-                  label="Invloed"
-                  value={a.invloed}
-                  onChange={(v) => handleUpdate(a, { invloed: v })}
-                  disabled={readOnly}
-                />
-              </div>
-              {!readOnly && (
-                <NoteEditor
-                  value={a.notitie}
-                  onPersist={(value) => handleUpdate(a, { notitie: value })}
-                />
-              )}
-              {readOnly && a.notitie && (
-                <RichTextDisplay content={a.notitie} fallback="" />
-              )}
-            </li>
+            </nldd-list-item>
           ))}
-        </ul>
+        </nldd-list>
       )}
 
       {!readOnly && (
@@ -175,24 +193,25 @@ function ScoreSelect({
   disabled?: boolean;
 }) {
   return (
-    <label className="flex flex-col gap-0.5">
-      <span className="text-xs text-text-secondary">{label}</span>
-      <select
-        value={value ?? ''}
-        onChange={(e) =>
-          onChange(e.target.value === '' ? null : Number(e.target.value))
-        }
-        disabled={disabled}
-        className="text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-50"
-      >
-        <option value="">—</option>
-        {SCORE_OPTIONS.map((n) => (
-          <option key={n} value={n}>
-            {n}
-          </option>
-        ))}
-      </select>
-    </label>
+    <nldd-form-field label={label}>
+      <nldd-dropdown size="sm" {...(disabled ? { disabled: true } : {})}>
+        <select
+          aria-label={label}
+          value={value ?? ''}
+          onChange={(e) =>
+            onChange(e.target.value === '' ? null : Number(e.target.value))
+          }
+          disabled={disabled}
+        >
+          <option value="">—</option>
+          {SCORE_OPTIONS.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </nldd-dropdown>
+    </nldd-form-field>
   );
 }
 
@@ -210,7 +229,7 @@ function HoudingSelect({
       <div className="flex flex-col gap-0.5">
         <span className="text-xs text-text-secondary">Houding</span>
         {value ? (
-          <Badge className={STAKEHOLDER_HOUDING_COLORS[value]}>
+          <Badge variant={HOUDING_BADGE_VARIANT[value]}>
             {STAKEHOLDER_HOUDING_LABELS[value]}
           </Badge>
         ) : (
@@ -220,27 +239,28 @@ function HoudingSelect({
     );
   }
   return (
-    <label className="flex flex-col gap-0.5">
-      <span className="text-xs text-text-secondary">Houding</span>
-      <select
-        value={value ?? ''}
-        onChange={(e) =>
-          onChange(
-            e.target.value === ''
-              ? null
-              : (e.target.value as StakeholderHouding),
-          )
-        }
-        className="text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
-      >
-        <option value="">—</option>
-        {HOUDING_OPTIONS.map((h) => (
-          <option key={h} value={h}>
-            {STAKEHOLDER_HOUDING_LABELS[h]}
-          </option>
-        ))}
-      </select>
-    </label>
+    <nldd-form-field label="Houding">
+      <nldd-dropdown size="sm">
+        <select
+          aria-label="Houding"
+          value={value ?? ''}
+          onChange={(e) =>
+            onChange(
+              e.target.value === ''
+                ? null
+                : (e.target.value as StakeholderHouding),
+            )
+          }
+        >
+          <option value="">—</option>
+          {HOUDING_OPTIONS.map((h) => (
+            <option key={h} value={h}>
+              {STAKEHOLDER_HOUDING_LABELS[h]}
+            </option>
+          ))}
+        </select>
+      </nldd-dropdown>
+    </nldd-form-field>
   );
 }
 
@@ -255,6 +275,7 @@ function NoteEditor({
   // Sync from server only when not actively editing.
   const [draft, setDraft] = useState(value ?? '');
   const [focused, setFocused] = useState(false);
+  const ref = useRef<HTMLElement & { value?: string }>(null);
 
   useEffect(() => {
     if (!focused) {
@@ -262,21 +283,23 @@ function NoteEditor({
     }
   }, [value, focused]);
 
+  useNlddValue(ref, draft);
+  useNlddEvent(ref, 'input', (e) => setDraft(eventValue(e)));
+  useNlddEvent(ref, 'focus', () => setFocused(true));
+  useNlddEvent(ref, 'blur', () => {
+    setFocused(false);
+    const next = draft.trim() ? draft : null;
+    if (next !== (value ?? null)) {
+      onPersist(next);
+    }
+  });
+
   return (
-    <textarea
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onFocus={() => setFocused(true)}
-      onBlur={() => {
-        setFocused(false);
-        const next = draft.trim() ? draft : null;
-        if (next !== (value ?? null)) {
-          onPersist(next);
-        }
-      }}
+    <nldd-multi-line-text-field
+      ref={ref}
       placeholder="Notitie (optioneel)"
       rows={2}
-      className="w-full text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+      accessible-label="Notitie"
     />
   );
 }
