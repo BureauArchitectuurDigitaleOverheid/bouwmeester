@@ -213,7 +213,7 @@ export function CreatableSelect({
           <nldd-validation-item id={MESSAGE_ID}>{message}</nldd-validation-item>
         </nldd-validation-list>
       ) : (
-        createLabel && <nldd-form-field-help-text text={createLabel} />
+        createLabel && <nldd-form-field-help-text>{createLabel}</nldd-form-field-help-text>
       )}
     </nldd-form-field>
   );

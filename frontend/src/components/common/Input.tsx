@@ -78,7 +78,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             <nldd-validation-item id={ERROR_ID}>{error}</nldd-validation-item>
           </nldd-validation-list>
         ) : (
-          helperText && <nldd-form-field-help-text text={helperText} />
+          helperText && <nldd-form-field-help-text>{helperText}</nldd-form-field-help-text>
         )}
       </nldd-form-field>
     );

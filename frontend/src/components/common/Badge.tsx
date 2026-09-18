@@ -46,6 +46,17 @@ export function Badge({ children, variant = 'gray', dot = false, className, titl
   // fall back to the slot for rich content.
   const text = typeof children === 'string' ? children : undefined;
 
+  // The tag paints itself from `color`; a Tailwind color class passed through
+  // `className` now lands on the host and does nothing, because the visible
+  // surface lives in the shadow root. That fails silently — the badge simply
+  // renders in the default color — so say it out loud in development.
+  if (import.meta.env.DEV && className && /\b(bg|text|border|ring)-/.test(className)) {
+    console.warn(
+      `<Badge className="${className}"> — color utilities no longer apply; ` +
+        'the tag paints from `color`. Use the `variant` prop instead.',
+    );
+  }
+
   return (
     <nldd-tag
       color={VARIANT_COLORS[variant]}

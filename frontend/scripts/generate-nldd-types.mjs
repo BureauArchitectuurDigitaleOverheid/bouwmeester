@@ -39,11 +39,40 @@ for (const m of vueTypes.matchAll(
   imports.set(m[1], m[2]);
 }
 
-// `type NLDDButtonProps = { ... };` — non-greedy up to the closing brace at
-// the same indentation, which is how the generator formats every block.
+// `type NLDDButtonProps = { ... };` — non-greedy up to the closing brace at the
+// same indentation, which is how the generator formats every block.
+//
+// The `(?:\n([\s\S]*?))?` is load-bearing: some components have an EMPTY props
+// block (`= {\n\t};`). A pattern that demands at least one line in between skips
+// those, and the non-greedy match then runs on and swallows the NEXT block —
+// which silently cost nldd-form-section its `text` / `supporting-text` props
+// until an agent noticed they were missing.
+// Matched line by line rather than with one multi-line regex. A non-greedy
+// `[\s\S]*?` gets this wrong: several components have an EMPTY props block
+// (`= {\n\t};`), the pattern prefers the shorter match there, and the scan then
+// runs past the NEXT block and drops it. That silently cost nldd-form-section,
+// nldd-button-group, nldd-document-tab-bar and nldd-menu-group all of their
+// props until an agent noticed `text` was missing from form-section.
 const propBlocks = new Map();
-for (const m of vueTypes.matchAll(/\ttype (\w+)Props = \{\n([\s\S]*?)\n\t\};/g)) {
-  propBlocks.set(m[1], m[2]);
+{
+  const lines = vueTypes.split('\n');
+  let name = null;
+  let body = [];
+  for (const line of lines) {
+    const start = line.match(/^\ttype (\w+)Props = \{$/);
+    if (start) {
+      name = start[1];
+      body = [];
+      continue;
+    }
+    if (name === null) continue;
+    if (line === '\t};') {
+      propBlocks.set(name, body.join('\n'));
+      name = null;
+      continue;
+    }
+    body.push(line);
+  }
 }
 
 // `'nldd-button': DefineComponent<NLDDButtonProps>;`

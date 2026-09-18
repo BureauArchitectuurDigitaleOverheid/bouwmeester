@@ -343,12 +343,12 @@ declare module 'react' {
 				'disabled'?: NLDDButtonBar['disabled'];
 			};
 			'nldd-button-bar-divider': NlddElement & {
+			};
+			'nldd-button-group': NlddElement & {
 				/** Button group size: 'sm' | 'md' (default: 'md') */
 				'size'?: NLDDButtonGroup['size'];
 				/** Layout direction: 'horizontal' | 'vertical' (default: 'vertical') */
 				'orientation'?: NLDDButtonGroup['orientation'];
-			};
-			'nldd-button-group': NlddElement & {
 			};
 			'nldd-card': NlddElement & {
 				/** Surface color of the card: `base` (default) on a plain page background, `tinted` when the card should stand out against a base surface */
@@ -701,14 +701,14 @@ declare module 'react' {
 				'hide-above'?: NLDDDescriptionCell['hideAbove'];
 			};
 			'nldd-divider': NlddElement & {
+			};
+			'nldd-document-tab-bar': NlddElement & {
 				/** Accessible name for the navigation landmark */
 				'accessible-label'?: NLDDDocumentTabBar['accessibleLabel'];
 				/** Renders a nav landmark instead of tablist; use when items have hrefs */
 				'navigation'?: NLDDDocumentTabBar['navigation'];
 				/** Translation overrides; unset keys fall back to Dutch. Available keys: 'components.document-tab-bar.overflow-action' (default: 'Meer') */
 				'translations'?: NLDDDocumentTabBar['translations'];
-			};
-			'nldd-document-tab-bar': NlddElement & {
 			};
 			'nldd-document-tab-bar-item': NlddElement & {
 				/** Selected state (managed by nldd-document-tab-bar) */
@@ -797,12 +797,12 @@ declare module 'react' {
 				'optional-label'?: NLDDFormField['optionalLabel'];
 			};
 			'nldd-form-field-help-text': NlddElement & {
+			};
+			'nldd-form-section': NlddElement & {
 				/** Heading text (rendered in the `<legend>`). */
 				'text'?: NLDDFormSection['text'];
 				/** Short description under the heading. Keep it to roughly 80 characters or less (see the a11y note). */
 				'supporting-text'?: NLDDFormSection['supportingText'];
-			};
-			'nldd-form-section': NlddElement & {
 			};
 			'nldd-full-bleed-section': NlddElement & {
 				/** Body max-width: 'full' removes the constraint so the section spans the full available width. Any CSS length (e.g. '480px') overrides the default max-width. */
@@ -1191,10 +1191,10 @@ declare module 'react' {
 				'expanded'?: NLDDMenuBarItem['expanded'];
 			};
 			'nldd-menu-divider': NlddElement & {
-				/** Group title text shown above the items. */
-				'text'?: NLDDMenuGroup['text'];
 			};
 			'nldd-menu-group': NlddElement & {
+				/** Group title text shown above the items. */
+				'text'?: NLDDMenuGroup['text'];
 			};
 			'nldd-menu-item': NlddElement & {
 				/** Display text. Supports **bold** markdown syntax. */
