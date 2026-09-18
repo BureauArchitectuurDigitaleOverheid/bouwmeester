@@ -227,17 +227,30 @@ async def _sync_tk(
         key = (person.id, van)
         bestaand_plc = plc_per_key.get(key)
         if bestaand_plc is None:
-            session.add(
-                PersonOrganisatieEenheid(
-                    person_id=person.id,
-                    organisatie_eenheid_id=eenheid.id,
-                    dienstverband="extern",
-                    functietitel=functietitel,
-                    bron="tk_odata",
-                    start_datum=van,
-                    eind_datum=tot,
-                )
+            # uq_active_placement staat per (person, eenheid, bron) maar één
+            # open rij toe. Een tweede open zetel-record voor dezelfde persoon
+            # (zelfde termijn, andere Van-datum) zou daar op stuklopen, dus
+            # laten we de bestaande open rij staan en slaan we dit record over.
+            if tot is None and any(
+                p.person_id == person.id and p.eind_datum is None
+                for p in plc_per_key.values()
+            ):
+                stats.onveranderd += 1
+                continue
+            nieuw_plc = PersonOrganisatieEenheid(
+                person_id=person.id,
+                organisatie_eenheid_id=eenheid.id,
+                dienstverband="extern",
+                functietitel=functietitel,
+                bron="tk_odata",
+                start_datum=van,
+                eind_datum=tot,
             )
+            session.add(nieuw_plc)
+            # Meteen registreren: een tweede feed-record voor dezelfde persoon
+            # in dezelfde run moet deze rij zien, anders ontstaan er alsnog
+            # twee open plaatsingen.
+            plc_per_key[key] = nieuw_plc
             stats.new_placements += 1
             session.add(
                 TooiSyncLog(

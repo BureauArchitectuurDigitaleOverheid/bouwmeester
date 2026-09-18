@@ -6,6 +6,9 @@ const LOOP_LABELS: Record<string, string> = {
   mattermost_websocket: 'Mattermost: websocket (kanaal-meelezen + DM-koppeling)',
   opdracht_task: 'Opdracht-taken (deadlines, budget)',
   fcc_sync: 'Fortes Change Cloud sync',
+  overheidsorganisaties_daily: 'Overheidsorganisaties: dagelijks (TK-leden, kabinet, ABD)',
+  overheidsorganisaties_weekly: 'Overheidsorganisaties: wekelijks (TOOI, RIO, organogram)',
+  worker_singleton: 'Worker-singleton (lock)',
 };
 
 function formatAge(seconds: number | null): string {
@@ -16,12 +19,13 @@ function formatAge(seconds: number | null): string {
   return `${Math.round(seconds / 86400)} dagen geleden`;
 }
 
-function HealthBadge({ health }: { health: WorkerHealth }) {
+function HealthBadge({ health, one_shot = false }: { health: WorkerHealth; one_shot?: boolean }) {
   const config: Record<WorkerHealth, { Icon: typeof CheckCircle2; cls: string; label: string }> = {
     healthy: {
       Icon: CheckCircle2,
       cls: 'bg-green-100 text-green-800 border-green-200',
-      label: 'Draait',
+      // Een lock "draait" niet, die is gehouden.
+      label: one_shot ? 'Actief' : 'Draait',
     },
     stale: {
       Icon: AlertTriangle,
@@ -52,6 +56,7 @@ function HealthBadge({ health }: { health: WorkerHealth }) {
 
 function WorkerRow({ worker }: { worker: WorkerHeartbeat }) {
   const label = LOOP_LABELS[worker.loop_name] ?? worker.loop_name;
+  const age = formatAge(worker.seconds_since_last_tick);
   return (
     <tr className="border-t border-border align-top">
       <td className="py-2 pr-4">
@@ -59,9 +64,15 @@ function WorkerRow({ worker }: { worker: WorkerHeartbeat }) {
         <div className="font-mono text-xs text-text-secondary">{worker.loop_name}</div>
       </td>
       <td className="py-2 pr-4">
-        <HealthBadge health={worker.health} />
+        <HealthBadge health={worker.health} one_shot={worker.one_shot} />
       </td>
-      <td className="py-2 pr-4 text-sm">{formatAge(worker.seconds_since_last_tick)}</td>
+      <td className="py-2 pr-4 text-sm">
+        {/* Een one-shot tickt per ontwerp maar één keer, dus de leeftijd is
+            "sinds wanneer", niet een achterstallige hartslag. */}
+        {worker.one_shot && worker.seconds_since_last_tick !== null
+          ? `sinds ${age.replace(/ geleden$/, '')}`
+          : age}
+      </td>
       <td className="py-2 pr-4 text-sm text-text-secondary">
         {worker.status === 'never_started' ? (
           <span className="text-red-700">Nooit gestart</span>
@@ -97,7 +108,7 @@ export function WorkerHealthTable() {
     );
   }
 
-  const anyDown = data.workers.some((w) => w.health === 'down');
+  const downWorkers = data.workers.filter((w) => w.health === 'down');
 
   return (
     <div className="space-y-3">
@@ -109,13 +120,14 @@ export function WorkerHealthTable() {
         </p>
       </div>
 
-      {anyDown ? (
+      {downWorkers.length > 0 ? (
         <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
           <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
           <div>
-            Een of meer worker-loops draaien niet. Functionaliteit zoals
-            Mattermost-meelezen of FCC-sync werkt nu mogelijk niet. Check de
-            container-logs voor de oorzaak.
+            {downWorkers.length === 1 ? 'Deze loop draait niet: ' : 'Deze loops draaien niet: '}
+            {downWorkers.map((w) => LOOP_LABELS[w.loop_name] ?? w.loop_name).join(', ')}. De
+            bijbehorende functionaliteit werkt nu mogelijk niet. Check de container-logs voor de
+            oorzaak.
           </div>
         </div>
       ) : null}

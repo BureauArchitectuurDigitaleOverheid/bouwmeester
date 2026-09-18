@@ -115,6 +115,8 @@ export interface WorkerHeartbeat {
   started_at: string | null;
   seconds_since_last_tick: number | null;
   health: WorkerHealth;
+  /** Tickt per ontwerp één keer (worker_singleton); leeftijd zegt niets over gezondheid. */
+  one_shot: boolean;
 }
 
 export interface WorkerHealthResponse {

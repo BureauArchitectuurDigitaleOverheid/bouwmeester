@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     ENABLED_IMPORT_TYPES: list[str] = ["motie", "kamervraag", "toezegging"]
     OPDRACHT_TASK_INTERVAL_SECONDS: int = 86400
 
+    # Overheidsorganisatie-syncs. Daily = fast-changing (TK-leden, kabinet,
+    # ABD); weekly = slow-changing (TOOI, CSV, RIO, organogram).
+    OVERHEIDSORG_DAILY_INTERVAL_SECONDS: int = 24 * 3600
+    OVERHEIDSORG_WEEKLY_INTERVAL_SECONDS: int = 7 * 24 * 3600
+
     # FCC (Fortes Change Cloud) integration
     FCC_ODATA_URL: str = ""
     FCC_API_KEY: str = ""

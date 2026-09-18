@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.services.abd_scrape import (
     AbdBenoeming,
     _resolveer_organisatie,
@@ -206,3 +207,69 @@ async def test_sync_abd_idempotent(db_session: AsyncSession, schone_org_db):
     assert s1.new_placements == 1
     assert s2.new_placements == 0
     assert s2.onveranderd == 1
+
+
+async def test_sync_abd_promotie_sluit_oude_plaatsing(
+    db_session: AsyncSession, schone_org_db
+):
+    """Nieuwe functie in dezelfde eenheid volgt de oude op.
+
+    uq_active_placement kijkt niet naar functietitel, dus twee open
+    abd_scrape-rijen op dezelfde persoon+eenheid botsen. Een promotie is
+    ook inhoudelijk een opvolging, geen tweede gelijktijdige functie.
+    """
+    bzk = OrganisatieEenheid(
+        naam="ministerie van Binnenlandse Zaken en Koninkrijksrelaties",
+        type="ministerie",
+        bron="tooi",
+        tooi_uri="https://identifier.overheid.nl/tooi/id/ministerie/mnre1034",
+    )
+    db_session.add(bzk)
+    await db_session.flush()
+
+    def _fetcher(functietitel: str, ingang: date):
+        async def mock_fetcher():
+            return [
+                AbdBenoeming(
+                    naam="Test Persoon",
+                    functietitel=functietitel,
+                    organisatie_hint="BZK",
+                    nieuws_url="https://example.com/test",
+                    publicatiedatum=date(2026, 5, 9),
+                    ingangsdatum=ingang,
+                )
+            ]
+
+        return mock_fetcher
+
+    await sync_abd(
+        db_session,
+        fetcher=_fetcher("directeur Test", date(2026, 6, 1)),
+        commit=False,
+    )
+    # Promotie binnen dezelfde eenheid. Voor de fix knalde deze flush op
+    # uq_active_placement.
+    stats = await sync_abd(
+        db_session,
+        fetcher=_fetcher("directeur-generaal Test", date(2027, 1, 1)),
+        commit=False,
+    )
+
+    assert stats.new_placements == 1
+    assert stats.verlopen_plaatsingen == 1
+
+    plaatsingen = (
+        (
+            await db_session.execute(
+                select(PersonOrganisatieEenheid).where(
+                    PersonOrganisatieEenheid.organisatie_eenheid_id == bzk.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    open_rijen = [p for p in plaatsingen if p.eind_datum is None]
+    assert len(plaatsingen) == 2
+    assert len(open_rijen) == 1
+    assert open_rijen[0].functietitel == "directeur-generaal Test"
