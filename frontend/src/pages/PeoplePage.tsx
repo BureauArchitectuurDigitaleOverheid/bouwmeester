@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus } from 'lucide-react';
-import { Button } from '@/components/common/Button';
 import { PersonList } from '@/components/people/PersonList';
 import { PersonEditForm } from '@/components/people/PersonEditForm';
+import { NlddButton } from '@/components/nldd/NlddLink';
 import { usePeople } from '@/hooks/usePeople';
 import { usePersonFormSubmit } from '@/hooks/usePersonFormSubmit';
 import type { Person } from '@/types';
@@ -59,18 +58,9 @@ export function PeoplePage() {
     <div className="space-y-6">
       {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <p className="text-sm text-text-secondary">
-            Overzicht van alle betrokken personen.
-          </p>
-        </div>
+        <nldd-text color="secondary">Overzicht van alle betrokken personen.</nldd-text>
         <div className="flex items-center gap-2 shrink-0">
-          <Button
-            icon={<Plus className="h-4 w-4" />}
-            onClick={handleAddPerson}
-          >
-            <span className="hidden sm:inline">Persoon toevoegen</span>
-          </Button>
+          <NlddButton text="Persoon toevoegen" startIcon="plus" onClick={handleAddPerson} />
         </div>
       </div>
 

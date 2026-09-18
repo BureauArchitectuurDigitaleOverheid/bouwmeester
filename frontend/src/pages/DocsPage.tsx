@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
+import { useNlddEvent } from '@/components/nldd/events';
 
 interface DocTab {
   id: string;
@@ -14,6 +15,7 @@ export function DocsPage() {
   const [loading, setLoading] = useState(true);
   const [tabsLoading, setTabsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const tabBarRef = useRef<HTMLElement>(null);
 
   const tabParam = searchParams.get('tab');
 
@@ -61,49 +63,44 @@ export function DocsPage() {
     setSearchParams({ tab: tabId });
   };
 
+  // The bar reports the activated nldd-tab-bar-item element, not a value; the
+  // tab id travels alongside on a data attribute so it can be read back here.
+  useNlddEvent(tabBarRef, 'tabchange', (e) => {
+    const detail = (e as CustomEvent<{ item?: HTMLElement }>).detail;
+    const tabId = detail?.item?.dataset.tabId;
+    if (tabId) handleTabChange(tabId);
+  });
+
   if (tabsLoading) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-center py-12">
-          <div className="text-sm text-text-secondary">Laden...</div>
-        </div>
-      </div>
+      <nldd-container max-width="800px" horizontal-alignment="center" padding-block="32">
+        <nldd-activity-indicator size="32" />
+      </nldd-container>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* Tabs */}
+    <nldd-container max-width="800px" gap="24">
       {tabs.length > 1 && (
-        <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto scrollbar-hide">
+        <nldd-tab-bar ref={tabBarRef} variant="text" accessible-label="Documentatie-onderdelen">
           {tabs.map((tab) => (
-            <button
+            <nldd-tab-bar-item
               key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'border-primary-600 text-primary-700'
-                  : 'border-transparent text-text-secondary hover:text-text hover:border-gray-300'
-              }`}
-            >
-              {tab.label}
-            </button>
+              text={tab.label}
+              current={tab.id === activeTab ? true : undefined}
+              data-tab-id={tab.id}
+            />
           ))}
-        </div>
+        </nldd-tab-bar>
       )}
 
-      {/* Content */}
       {loading && (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-sm text-text-secondary">Laden...</div>
-        </div>
+        <nldd-container horizontal-alignment="center" padding-block="32">
+          <nldd-activity-indicator size="32" />
+        </nldd-container>
       )}
-      {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <nldd-banner variant="critical" size="sm" text={error} />}
       {!loading && !error && <MarkdownRenderer content={content} />}
-    </div>
+    </nldd-container>
   );
 }

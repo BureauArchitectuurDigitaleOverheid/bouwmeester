@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { Plus, X, Users } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useCallback, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   useSamenwerkingsverbanden,
   useCreateSamenwerkingsverband,
@@ -11,10 +10,14 @@ import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import {
   SAMENWERKINGSVERBAND_TYPE_LABELS,
   SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS,
   SAMENWERKINGSVERBAND_TYPE_OPTIONS,
+  type Samenwerkingsverband,
   type SamenwerkingsverbandCreate,
 } from '@/types';
 
@@ -22,6 +25,75 @@ const ALL_TYPE_OPTIONS: SelectOption[] = [
   { value: '', label: 'Alle types' },
   ...SAMENWERKINGSVERBAND_TYPE_OPTIONS,
 ];
+
+/** True when the click asked for something other than plain navigation. */
+function isModifiedClick(event: MouseEvent): boolean {
+  return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button === 1;
+}
+
+interface SamenwerkingsverbandCardProps {
+  swv: Samenwerkingsverband;
+}
+
+/**
+ * `nldd-card href` renders a real `<a>`, which is what we want for
+ * middle-click/cmd-click, but a plain click still needs to go through
+ * react-router rather than a full page load — same pattern as
+ * `NlddListItemLink` in components/nldd/NlddLink.tsx.
+ */
+function SamenwerkingsverbandCard({ swv }: SamenwerkingsverbandCardProps) {
+  const ref = useRef<HTMLElement>(null);
+  const navigate = useNavigate();
+  const to = `/samenwerkingsverbanden/${swv.id}`;
+
+  const onClick = useCallback(
+    (event: Event) => {
+      const mouse = event as MouseEvent;
+      if (isModifiedClick(mouse)) return;
+      event.preventDefault();
+      navigate(to);
+    },
+    [navigate, to],
+  );
+  useNlddEvent(ref, 'click', onClick);
+
+  return (
+    <nldd-card ref={ref} href={to} accessible-label={swv.naam}>
+      <div className="flex items-center justify-between mb-2">
+        <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
+          {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}
+        </Badge>
+        <div className="flex items-center gap-1 text-xs text-text-secondary">
+          <Icon name="users" size="xs" />
+          {swv.aantal_leden}
+        </div>
+      </div>
+      <h3 className="text-sm font-semibold text-text truncate">{swv.naam}</h3>
+      {swv.eind_datum && (
+        <p className="mt-1 text-xs text-text-secondary">
+          Eindigt {new Date(swv.eind_datum).toLocaleDateString('nl-NL')}
+        </p>
+      )}
+    </nldd-card>
+  );
+}
+
+/** Reads `checked` off an nldd-checkbox-field's `change` detail. */
+function checkedValue(event: Event): boolean {
+  return Boolean((event as CustomEvent<{ checked?: boolean }>).detail?.checked);
+}
+
+function ActiefOnlyCheckbox({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', useCallback((e: Event) => onChange(checkedValue(e)), [onChange]));
+  return <nldd-checkbox-field ref={ref} label="Alleen actieve" checked={orUndef(checked)} />;
+}
 
 export function SamenwerkingsverbandenPage() {
   const [typeFilter, setTypeFilter] = useState('');
@@ -79,19 +151,13 @@ export function SamenwerkingsverbandenPage() {
               searchable={false}
             />
           </div>
-          <label className="flex items-center gap-2 pb-2 text-sm text-text-secondary">
-            <input
-              type="checkbox"
-              checked={actiefOnly}
-              onChange={(e) => setActiefOnly(e.target.checked)}
-              className="rounded border-border"
-            />
-            Alleen actieve
-          </label>
+          <div className="pb-2">
+            <ActiefOnlyCheckbox checked={actiefOnly} onChange={setActiefOnly} />
+          </div>
         </div>
         <Button
           variant="primary"
-          icon={<Plus className="h-4 w-4" />}
+          icon="plus"
           onClick={() => { resetForm(); setShowForm(true); }}
         >
           Nieuw samenwerkingsverband
@@ -102,9 +168,13 @@ export function SamenwerkingsverbandenPage() {
         <div className="bg-surface rounded-xl border border-border p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-text">Nieuw samenwerkingsverband</h3>
-            <button onClick={resetForm} className="text-text-secondary hover:text-text transition-colors">
-              <X className="h-4 w-4" />
-            </button>
+            <NlddIconButton
+              icon="close"
+              accessibleLabel="Sluiten"
+              variant="neutral-transparent"
+              size="sm"
+              onClick={resetForm}
+            />
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -141,7 +211,7 @@ export function SamenwerkingsverbandenPage() {
               onChange={(v) => setForm((f) => ({ ...f, beschrijving: v }))}
               rows={3}
             />
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <nldd-text size="sm" color="critical">{error}</nldd-text>}
             <div className="flex items-center gap-2 justify-end">
               <Button variant="secondary" onClick={resetForm} type="button">Annuleren</Button>
               <Button type="submit" loading={createMutation.isPending}>Aanmaken</Button>
@@ -159,27 +229,7 @@ export function SamenwerkingsverbandenPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {data.map((swv) => (
-            <Link
-              key={swv.id}
-              to={`/samenwerkingsverbanden/${swv.id}`}
-              className="block rounded-xl border border-border bg-surface p-4 hover:border-primary-300 hover:shadow-sm transition-all"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
-                  {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}
-                </Badge>
-                <div className="flex items-center gap-1 text-xs text-text-secondary">
-                  <Users className="h-3 w-3" />
-                  {swv.aantal_leden}
-                </div>
-              </div>
-              <h3 className="text-sm font-semibold text-text truncate">{swv.naam}</h3>
-              {swv.eind_datum && (
-                <p className="mt-1 text-xs text-text-secondary">
-                  Eindigt {new Date(swv.eind_datum).toLocaleDateString('nl-NL')}
-                </p>
-              )}
-            </Link>
+            <SamenwerkingsverbandCard key={swv.id} swv={swv} />
           ))}
         </div>
       )}

@@ -1,12 +1,14 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Columns3, LayoutGrid, GitFork, Clock, Search, X, Settings, Inbox, Globe } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Modal } from '@/components/common/Modal';
 import { ViewToggle } from '@/components/common/ViewToggle';
 import type { ViewToggleOption } from '@/components/common/ViewToggle';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePeople } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
@@ -30,11 +32,11 @@ import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 type LeadViewMode = 'inbox' | 'kanban' | 'list' | 'graph' | 'timeline';
 
 const VIEW_OPTIONS: ViewToggleOption<LeadViewMode>[] = [
-  { value: 'inbox', label: 'Inbox', icon: <Inbox className="h-3.5 w-3.5" /> },
-  { value: 'kanban', label: 'Bord', icon: <Columns3 className="h-3.5 w-3.5" /> },
-  { value: 'list', label: 'Lijst', icon: <LayoutGrid className="h-3.5 w-3.5" /> },
-  { value: 'timeline', label: 'Tijdlijn', icon: <Clock className="h-3.5 w-3.5" /> },
-  { value: 'graph', label: 'Netwerk', icon: <GitFork className="h-3.5 w-3.5" /> },
+  { value: 'inbox', label: 'Inbox', icon: <Icon name="inbox" size="sm" /> },
+  { value: 'kanban', label: 'Bord', icon: <Icon name="columns-3" size="sm" /> },
+  { value: 'list', label: 'Lijst', icon: <Icon name="square-grid-2x2" size="sm" /> },
+  { value: 'timeline', label: 'Tijdlijn', icon: <Icon name="clock" size="sm" /> },
+  { value: 'graph', label: 'Netwerk', icon: <Icon name="git-fork" size="sm" /> },
 ];
 
 const NEXT_ACTION_OPTIONS: SelectOption[] = [
@@ -51,6 +53,47 @@ const STAGE_OPTIONS: SelectOption[] = [
     label: LEAD_STAGE_LABELS[s],
   })),
 ];
+
+/**
+ * Controlled `nldd-text-field` for the new-initiatief naam field, wired
+ * directly rather than through the shared `Input` component: `Input`'s
+ * `onChange` is not forwarded to its underlying nldd element (see the
+ * conversion report), so it silently no-ops on every keystroke there.
+ */
+function InitiatiefNaamField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement & { focus?: () => void }>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  useEffect(() => {
+    ref.current?.focus?.();
+  }, []);
+  return (
+    <nldd-text-field
+      ref={ref}
+      value={value}
+      placeholder="Naam van het initiatief"
+      required
+      accessible-label="Naam"
+    />
+  );
+}
+
+/**
+ * Link to the initiatief's public page. `nldd-link` has no icon-only mode
+ * (it is always a self-describing, visibly labelled link, unlike
+ * nldd-icon-button) and no arbitrary color attribute, so the "this is live"
+ * emphasis that the old emerald icon carried is dropped rather than faked.
+ */
+function PublicPageLink({ slug }: { slug: string }) {
+  return (
+    <nldd-link
+      href={`/c/${slug}`}
+      target="_blank"
+      size="xs"
+      start-icon="globe"
+      text={`/c/${slug}`}
+    />
+  );
+}
 
 export function LeadsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -186,45 +229,34 @@ export function LeadsPage() {
               {ini.naam}
             </button>
           ))}
-          <button
+          <NlddIconButton
+            icon="plus"
+            accessibleLabel="Nieuw initiatief"
+            variant="neutral-transparent"
+            size="sm"
             onClick={() => setShowCreateInitiatief(true)}
-            className="rounded-full w-7 h-7 flex items-center justify-center border border-dashed border-gray-300 text-text-secondary hover:border-gray-400 hover:text-text transition-colors"
-            title="Nieuw initiatief"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+          />
           {selectedInitiatiefId && (
-            <button
+            <NlddIconButton
+              icon="gear"
+              accessibleLabel="Initiatief beheren"
+              variant="neutral-transparent"
+              size="sm"
               onClick={() => setEditInitiatiefId(selectedInitiatiefId)}
-              className="rounded-full w-7 h-7 flex items-center justify-center text-text-secondary hover:text-text hover:bg-gray-100 transition-colors"
-              title="Initiatief beheren"
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </button>
+            />
           )}
           {(() => {
             if (!selectedInitiatiefId) return null;
             const sel = initiatieven?.find((i) => i.id === selectedInitiatiefId);
             if (!sel?.public_page_enabled || !sel.slug) return null;
             return (
-              <a
-                href={`/c/${sel.slug}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-full w-7 h-7 flex items-center justify-center text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 transition-colors"
-                title={`Open publieke pagina /c/${sel.slug}`}
-              >
-                <Globe className="h-3.5 w-3.5" />
-              </a>
+              <PublicPageLink slug={sel.slug} />
             );
           })()}
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
-          <Button
-            icon={<Plus className="h-4 w-4" />}
-            onClick={() => setShowIntake(true)}
-          >
+          <Button icon="plus" onClick={() => setShowIntake(true)}>
             <span className="hidden sm:inline">Nieuwe lead</span>
           </Button>
         </div>
@@ -233,13 +265,11 @@ export function LeadsPage() {
       {/* Shared filter bar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
         {/* Search */}
-        <div className="relative w-full sm:w-56">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+        <div className="w-full sm:w-56">
           <Input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Zoek in leads..."
-            className="pl-9"
           />
         </div>
 
@@ -266,19 +296,22 @@ export function LeadsPage() {
 
         {/* Tag */}
         {supportsTag && (
-          <div className="relative w-full sm:w-44">
-            <Input
-              value={filterTag}
-              onChange={(e) => setFilterTag(e.target.value)}
-              placeholder="Filter op tag..."
-            />
+          <div className="flex items-end gap-1 w-full sm:w-44">
+            <div className="flex-1">
+              <Input
+                value={filterTag}
+                onChange={(e) => setFilterTag(e.target.value)}
+                placeholder="Filter op tag..."
+              />
+            </div>
             {filterTag && (
-              <button
+              <NlddIconButton
+                icon="close"
+                accessibleLabel="Tag-filter wissen"
+                variant="neutral-transparent"
+                size="sm"
                 onClick={() => setFilterTag('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-text-secondary hover:text-text"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+              />
             )}
           </div>
         )}
@@ -313,12 +346,9 @@ export function LeadsPage() {
 
         {/* Clear filters */}
         {hasActiveFilters && (
-          <button
-            onClick={clearFilters}
-            className="text-sm text-text-secondary hover:text-text transition-colors whitespace-nowrap"
-          >
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
             Filters wissen
-          </button>
+          </Button>
         )}
       </div>
 
@@ -391,19 +421,12 @@ export function LeadsPage() {
           }
         >
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-text">
-                Naam <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
+            <nldd-form-field label="Naam">
+              <InitiatiefNaamField
                 value={createForm.naam}
-                onChange={(e) => setCreateForm({ ...createForm, naam: e.target.value })}
-                className="w-full rounded-xl border border-border px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
-                placeholder="Naam van het initiatief"
-                autoFocus
+                onChange={(v) => setCreateForm({ ...createForm, naam: v })}
               />
-            </div>
+            </nldd-form-field>
             <RichTextFormField
               label="Beschrijving"
               value={createForm.beschrijving || ''}
@@ -413,6 +436,9 @@ export function LeadsPage() {
             />
             <div className="space-y-1.5">
               <label className="block text-sm font-medium text-text">Kleur</label>
+              {/* Free-form hex swatch picker: no nldd primitive renders a circle
+                  that IS an arbitrary color (nldd-radio-button is a fixed dot
+                  glyph), same as InitiatiefDetailModal's EditForm. */}
               <div className="flex gap-2 flex-wrap">
                 {INITIATIEF_COLORS.map((color) => (
                   <button

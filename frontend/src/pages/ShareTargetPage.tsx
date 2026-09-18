@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Camera, Loader2, Lock, Share2 } from 'lucide-react';
-import { Button } from '@/components/common/Button';
+import { NlddButton } from '@/components/nldd/NlddLink';
 import { LeadIntakeDialog } from '@/components/leads/LeadIntakeDialog';
 import { useParseLeadIntake } from '@/hooks/useLeads';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -108,106 +107,92 @@ export function ShareTargetPage() {
   // No lead permission — show access denied
   if (received && !canCreateLeads) {
     return (
-      <div className="max-w-md mx-auto py-20 text-center space-y-6">
-        <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto">
-          <Lock className="h-8 w-8 text-amber-600" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-text mb-2">Geen toegang</h2>
-          <p className="text-sm text-text-secondary">
-            Je hebt geen rechten om leads aan te maken. Neem contact op met een beheerder.
-          </p>
-        </div>
-        <Button variant="secondary" onClick={() => navigate('/')}>
-          Naar startpagina
-        </Button>
-      </div>
+      <nldd-simple-section width="400px" horizontal-alignment="center" padding-block="80">
+        <nldd-inline-dialog
+          icon="lock-closed"
+          icon-color="warning"
+          text="Geen toegang"
+          supporting-text="Je hebt geen rechten om leads aan te maken. Neem contact op met een beheerder."
+        >
+          <div slot="actions">
+            <NlddButton text="Naar startpagina" variant="secondary" onClick={() => navigate('/')} />
+          </div>
+        </nldd-inline-dialog>
+      </nldd-simple-section>
     );
   }
 
   // Not a share — show instructions
   if (!received) {
     return (
-      <div className="max-w-md mx-auto py-20 text-center space-y-6">
-        <div className="w-16 h-16 rounded-2xl bg-primary-50 flex items-center justify-center mx-auto">
-          <Share2 className="h-8 w-8 text-primary-600" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-text mb-2">Deel naar Bouwmeester</h2>
-          <p className="text-sm text-text-secondary leading-relaxed">
-            Deel een afbeelding vanuit je telefoon (foto's, WhatsApp, e-mail)
-            via het deelmenu en kies Bouwmeester. De afbeelding wordt
-            automatisch geanalyseerd en omgezet naar een nieuwe lead.
-          </p>
-          <p className="text-xs text-text-secondary mt-4">
-            Vereist dat de app is geinstalleerd via "Toevoegen aan startscherm".
-          </p>
-        </div>
-        <Button variant="secondary" onClick={() => navigate('/leads')}>
-          Naar leads
-        </Button>
-      </div>
+      <nldd-simple-section width="400px" horizontal-alignment="center" padding-block="80">
+        <nldd-inline-dialog
+          icon="share"
+          icon-color="accent"
+          text="Deel naar Bouwmeester"
+          supporting-text="Deel een afbeelding vanuit je telefoon (foto's, WhatsApp, e-mail) via het deelmenu en kies Bouwmeester. De afbeelding wordt automatisch geanalyseerd en omgezet naar een nieuwe lead."
+        >
+          <nldd-text size="xs" color="secondary" horizontal-alignment="center">
+            Vereist dat de app is geinstalleerd via &quot;Toevoegen aan startscherm&quot;.
+          </nldd-text>
+          <div slot="actions">
+            <NlddButton text="Naar leads" variant="secondary" onClick={() => navigate('/leads')} />
+          </div>
+        </nldd-inline-dialog>
+      </nldd-simple-section>
     );
   }
 
   // Error state
   if (error) {
     return (
-      <div className="max-w-md mx-auto py-20 text-center space-y-6">
-        <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mx-auto">
-          <Camera className="h-8 w-8 text-red-500" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-text mb-2">Oeps</h2>
-          <p className="text-sm text-text-secondary">{error}</p>
-        </div>
-        <Button variant="secondary" onClick={() => navigate('/leads')}>
-          Naar leads
-        </Button>
-      </div>
+      <nldd-simple-section width="400px" horizontal-alignment="center" padding-block="80">
+        <nldd-inline-dialog variant="alert" text="Oeps" supporting-text={error}>
+          <div slot="actions">
+            <NlddButton text="Naar leads" variant="secondary" onClick={() => navigate('/leads')} />
+          </div>
+        </nldd-inline-dialog>
+      </nldd-simple-section>
     );
   }
 
   // Parsing state — show preview + spinner
   return (
     <>
-      <div className="max-w-md mx-auto py-12 text-center space-y-8">
-        {/* Image previews */}
-        {sharedData && sharedData.previews.length > 0 && (
-          <div className="flex justify-center gap-3">
-            {sharedData.previews.map((src, i) => (
-              <div
-                key={i}
-                className="w-32 h-32 rounded-2xl overflow-hidden border border-border shadow-sm"
-              >
-                <img
-                  src={src}
-                  alt={`Gedeelde afbeelding ${i + 1}`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
-          </div>
-        )}
+      <nldd-simple-section width="400px" horizontal-alignment="center" padding-block="48">
+        <nldd-container gap="32" horizontal-alignment="center">
+          {/* Image previews */}
+          {sharedData && sharedData.previews.length > 0 && (
+            <div className="flex justify-center gap-3">
+              {sharedData.previews.map((src, i) => (
+                <div
+                  key={i}
+                  className="w-32 h-32 rounded-2xl overflow-hidden border border-border shadow-sm"
+                >
+                  <img
+                    src={src}
+                    alt={`Gedeelde afbeelding ${i + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
-        {/* Status */}
-        {parsing && (
-          <div className="space-y-3">
-            <Loader2 className="h-8 w-8 text-primary-600 animate-spin mx-auto" />
-            <p className="text-sm font-medium text-text">Afbeelding analyseren...</p>
-            <p className="text-xs text-text-secondary">
-              Contactgegevens en organisatie worden herkend
-            </p>
-          </div>
-        )}
+          {/* Status */}
+          {parsing && (
+            <nldd-inline-dialog
+              variant="loading"
+              text="Afbeelding analyseren..."
+              supporting-text="Contactgegevens en organisatie worden herkend"
+            />
+          )}
 
-        {!parsing && !sharedData && !error && (
-          <div className="space-y-3">
-            <Loader2 className="h-6 w-6 text-text-secondary animate-spin mx-auto" />
-            <p className="text-sm text-text-secondary">Gedeelde data ophalen...</p>
-          </div>
-        )}
-      </div>
+          {!parsing && !sharedData && !error && (
+            <nldd-inline-dialog variant="loading" text="Gedeelde data ophalen..." />
+          )}
+        </nldd-container>
+      </nldd-simple-section>
 
       {/* Lead creation dialog with parsed data */}
       <LeadIntakeDialog

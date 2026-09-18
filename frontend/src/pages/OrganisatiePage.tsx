@@ -1,14 +1,18 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Building2, Search, X } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
+import { Input } from '@/components/common/Input';
+import { Select } from '@/components/common/Select';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { OrganisatieTree } from '@/components/organisatie/OrganisatieTree';
 import { OrganisatieDetail } from '@/components/organisatie/OrganisatieDetail';
 import { OrganisatieForm } from '@/components/organisatie/OrganisatieForm';
 import { PersonEditForm } from '@/components/people/PersonEditForm';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import {
   useOrganisatieTree,
   useCreateOrganisatieEenheid,
@@ -20,6 +24,23 @@ import { usePersonFormSubmit } from '@/hooks/usePersonFormSubmit';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { todayISO } from '@/utils/dates';
 import type { OrganisatieEenheid, OrganisatieEenheidCreate, OrganisatieEenheidUpdate, Person } from '@/types';
+
+/** Reads `checked` off an nldd-checkbox-field's `change` detail. */
+function checkedValue(event: Event): boolean {
+  return Boolean((event as CustomEvent<{ checked?: boolean }>).detail?.checked);
+}
+
+function HistorischCheckbox({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', useCallback((e: Event) => onChange(checkedValue(e)), [onChange]));
+  return <nldd-checkbox-field ref={ref} label="Historisch" checked={orUndef(checked)} />;
+}
 
 export function OrganisatiePage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -225,10 +246,7 @@ export function OrganisatiePage() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button
-            icon={<Plus className="h-4 w-4" />}
-            onClick={() => handleAdd(null)}
-          >
+          <Button icon="plus" onClick={() => handleAdd(null)}>
             <span className="hidden sm:inline">Eenheid toevoegen</span>
           </Button>
         </div>
@@ -236,7 +254,7 @@ export function OrganisatiePage() {
 
       {isEmpty ? (
         <EmptyState
-          icon={<Building2 className="h-16 w-16" />}
+          icon="apartment-building"
           title="Nog geen organisatie-eenheden"
           description="Begin met het opzetten van de organisatiestructuur door een top-niveau eenheid toe te voegen."
           action={
@@ -251,48 +269,39 @@ export function OrganisatiePage() {
           <div className="lg:col-span-1">
             <Card>
               <div className="p-2">
-                <div className="relative mb-2">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Zoek organisatie of afkorting..."
-                    className="w-full pl-8 pr-8 py-1.5 text-sm rounded border border-gray-200 focus:border-primary-500 focus:outline-none"
-                  />
+                <div className="flex items-end gap-1 mb-2">
+                  <div className="flex-1">
+                    <Input
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Zoek organisatie of afkorting..."
+                    />
+                  </div>
                   {searchTerm && (
-                    <button
+                    <NlddIconButton
+                      icon="close"
+                      accessibleLabel="Wis zoekterm"
+                      variant="neutral-transparent"
+                      size="sm"
                       onClick={() => setSearchTerm('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center text-text-secondary hover:text-text"
-                      title="Wis zoekterm"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    />
                   )}
                 </div>
                 <div className="flex items-center justify-between gap-2 mb-2 px-1">
-                  <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={includeHistorisch}
-                      onChange={(e) => setIncludeHistorisch(e.target.checked)}
-                      className="h-3 w-3"
+                  <HistorischCheckbox checked={includeHistorisch} onChange={setIncludeHistorisch} />
+                  <div className="w-40">
+                    <Select
+                      value={bronFilter}
+                      onChange={(e) => setBronFilter(e.target.value as typeof bronFilter)}
+                      title="Filter op bron"
+                      options={[
+                        { value: 'alle', label: 'Alle bronnen' },
+                        { value: 'handmatig', label: 'Alleen handmatig' },
+                        { value: 'tooi', label: 'Alleen TOOI' },
+                        { value: 'scrape', label: 'Alleen scrape/import' },
+                      ]}
                     />
-                    Historisch
-                  </label>
-                  <select
-                    value={bronFilter}
-                    onChange={(e) =>
-                      setBronFilter(e.target.value as typeof bronFilter)
-                    }
-                    className="text-xs rounded border border-gray-200 bg-white px-1 py-0.5"
-                    title="Filter op bron"
-                  >
-                    <option value="alle">Alle bronnen</option>
-                    <option value="handmatig">Alleen handmatig</option>
-                    <option value="tooi">Alleen TOOI</option>
-                    <option value="scrape">Alleen scrape/import</option>
-                  </select>
+                  </div>
                 </div>
                 <OrganisatieTree
                   tree={filteredTree}
@@ -328,8 +337,8 @@ export function OrganisatiePage() {
             ) : (
               <Card>
                 <div className="text-center py-12 text-text-secondary">
-                  <Building2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">Selecteer een eenheid in de boomstructuur.</p>
+                  <Icon name="apartment-building" size="32" style={{ opacity: 0.3 }} aria-hidden="true" />
+                  <p className="text-sm mt-3">Selecteer een eenheid in de boomstructuur.</p>
                 </div>
               </Card>
             )}

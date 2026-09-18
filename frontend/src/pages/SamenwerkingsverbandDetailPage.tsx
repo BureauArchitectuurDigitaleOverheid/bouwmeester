@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Pencil, Trash2, Plus, X, Users } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   useSamenwerkingsverband,
   useUpdateSamenwerkingsverband,
@@ -19,6 +18,9 @@ import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { useNlddEvent } from '@/components/nldd/events';
 import {
   SAMENWERKINGSVERBAND_TYPE_LABELS,
   SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS,
@@ -27,6 +29,28 @@ import {
   type SamenwerkingsverbandLidUpdate,
   type SamenwerkingsverbandUpdate,
 } from '@/types';
+
+/** True when the click asked for something other than plain navigation. */
+function isModifiedClick(event: MouseEvent): boolean {
+  return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button === 1;
+}
+
+/** `nldd-link` that navigates through the router instead of a full page load. */
+function BackLink({ to, text }: { to: string; text: string }) {
+  const ref = useRef<HTMLElement>(null);
+  const navigate = useNavigate();
+  const onClick = useCallback(
+    (event: Event) => {
+      const mouse = event as MouseEvent;
+      if (isModifiedClick(mouse)) return;
+      event.preventDefault();
+      navigate(to);
+    },
+    [navigate, to],
+  );
+  useNlddEvent(ref, 'click', onClick);
+  return <nldd-link ref={ref} href={to} size="sm" start-icon="arrow-left" text={text} />;
+}
 
 export function SamenwerkingsverbandDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -187,27 +211,16 @@ export function SamenwerkingsverbandDetailPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <Link
-          to="/samenwerkingsverbanden"
-          className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text transition-colors"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Terug naar overzicht
-        </Link>
+        <BackLink to="/samenwerkingsverbanden" text="Terug naar overzicht" />
         {!editing && (
           <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<Pencil className="h-3.5 w-3.5" />}
-              onClick={startEdit}
-            >
+            <Button variant="ghost" size="sm" icon="pencil" onClick={startEdit}>
               Bewerken
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              icon={<Trash2 className="h-3.5 w-3.5" />}
+              icon="trash"
               onClick={() => setConfirmDelete(true)}
             >
               Verwijderen
@@ -270,8 +283,8 @@ export function SamenwerkingsverbandDetailPage() {
                   <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
                     {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}
                   </Badge>
-                  <span className="text-xs text-text-secondary">
-                    <Users className="inline h-3 w-3 mr-1" />
+                  <span className="text-xs text-text-secondary inline-flex items-center gap-1">
+                    <Icon name="users" size="xs" />
                     {swv.aantal_leden} {swv.aantal_leden === 1 ? 'lid' : 'leden'}
                   </span>
                 </div>
@@ -297,12 +310,7 @@ export function SamenwerkingsverbandDetailPage() {
       <div className="bg-surface rounded-xl border border-border p-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-text">Leden</h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={<Plus className="h-3.5 w-3.5" />}
-            onClick={() => setShowAddLid(true)}
-          >
+          <Button variant="ghost" size="sm" icon="plus" onClick={() => setShowAddLid(true)}>
             Toevoegen
           </Button>
         </div>
@@ -347,97 +355,97 @@ export function SamenwerkingsverbandDetailPage() {
         )}
 
         {swv.leden.length === 0 ? (
-          <p className="text-sm text-text-secondary italic">Nog geen leden.</p>
+          <nldd-inline-dialog text="Nog geen leden." />
         ) : (
-          <ul className="space-y-1">
+          <nldd-list type="list" variant="box-tinted">
             {swv.leden.map((lid) => {
               const isEditing = editingLidId === lid.id;
               if (isEditing) {
                 return (
-                  <li
-                    key={lid.id}
-                    className="rounded-lg border border-border bg-gray-50 p-3 space-y-3"
-                  >
-                    <div className="text-sm font-medium text-text">{lid.person_naam}</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <Input
-                        label="Rol"
-                        value={lidEditForm.rol}
-                        onChange={(e) =>
-                          setLidEditForm((f) => ({ ...f, rol: e.target.value }))
-                        }
-                        placeholder="bv. trekker, voorzitter"
-                      />
-                      <Input
-                        label="Startdatum"
-                        type="date"
-                        value={lidEditForm.start_datum}
-                        onChange={(e) =>
-                          setLidEditForm((f) => ({ ...f, start_datum: e.target.value }))
-                        }
-                      />
-                      <Input
-                        label="Einddatum"
-                        type="date"
-                        value={lidEditForm.eind_datum}
-                        onChange={(e) =>
-                          setLidEditForm((f) => ({ ...f, eind_datum: e.target.value }))
-                        }
-                      />
+                  <nldd-list-item key={lid.id}>
+                    <div className="w-full py-2 space-y-3">
+                      <div className="text-sm font-medium text-text">{lid.person_naam}</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <Input
+                          label="Rol"
+                          value={lidEditForm.rol}
+                          onChange={(e) =>
+                            setLidEditForm((f) => ({ ...f, rol: e.target.value }))
+                          }
+                          placeholder="bv. trekker, voorzitter"
+                        />
+                        <Input
+                          label="Startdatum"
+                          type="date"
+                          value={lidEditForm.start_datum}
+                          onChange={(e) =>
+                            setLidEditForm((f) => ({ ...f, start_datum: e.target.value }))
+                          }
+                        />
+                        <Input
+                          label="Einddatum"
+                          type="date"
+                          value={lidEditForm.eind_datum}
+                          onChange={(e) =>
+                            setLidEditForm((f) => ({ ...f, eind_datum: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 justify-end">
+                        <Button variant="secondary" size="sm" onClick={cancelEditLid}>
+                          Annuleren
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleSaveLid}
+                          loading={updateLidMutation.isPending}
+                        >
+                          Opslaan
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 justify-end">
-                      <Button variant="secondary" size="sm" onClick={cancelEditLid}>
-                        Annuleren
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={handleSaveLid}
-                        loading={updateLidMutation.isPending}
-                      >
-                        Opslaan
-                      </Button>
-                    </div>
-                  </li>
+                  </nldd-list-item>
                 );
               }
               return (
-                <li
-                  key={lid.id}
-                  className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex-1 flex items-center gap-2 text-sm">
-                    <span className="font-medium text-text">{lid.person_naam}</span>
-                    {lid.person_expertise && (
-                      <Badge variant="indigo">{lid.person_expertise}</Badge>
-                    )}
-                    {lid.rol && (
-                      <span className="text-xs text-text-secondary">— {lid.rol}</span>
-                    )}
+                <nldd-list-item key={lid.id} className="group">
+                  <div className="flex items-center gap-2 w-full">
+                    <div className="flex-1 flex items-center gap-2 text-sm">
+                      <span className="font-medium text-text">{lid.person_naam}</span>
+                      {lid.person_expertise && (
+                        <Badge variant="indigo">{lid.person_expertise}</Badge>
+                      )}
+                      {lid.rol && (
+                        <span className="text-xs text-text-secondary">— {lid.rol}</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-text-secondary">
+                      sinds {new Date(lid.start_datum).toLocaleDateString('nl-NL')}
+                      {lid.eind_datum && (
+                        <> · tot {new Date(lid.eind_datum).toLocaleDateString('nl-NL')}</>
+                      )}
+                    </span>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <NlddIconButton
+                        icon="pencil"
+                        accessibleLabel="Bewerken"
+                        variant="neutral-transparent"
+                        size="sm"
+                        onClick={() => startEditLid(lid)}
+                      />
+                      <NlddIconButton
+                        icon="close"
+                        accessibleLabel="Verwijderen"
+                        variant="neutral-transparent"
+                        size="sm"
+                        onClick={() => setConfirmRemoveLidId(lid.id)}
+                      />
+                    </div>
                   </div>
-                  <span className="text-xs text-text-secondary">
-                    sinds {new Date(lid.start_datum).toLocaleDateString('nl-NL')}
-                    {lid.eind_datum && (
-                      <> · tot {new Date(lid.eind_datum).toLocaleDateString('nl-NL')}</>
-                    )}
-                  </span>
-                  <button
-                    onClick={() => startEditLid(lid)}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-secondary hover:text-text hover:bg-gray-100 transition-all"
-                    title="Bewerken"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setConfirmRemoveLidId(lid.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-secondary hover:text-red-600 hover:bg-red-50 transition-all"
-                    title="Verwijderen"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </li>
+                </nldd-list-item>
               );
             })}
-          </ul>
+          </nldd-list>
         )}
       </div>
 
