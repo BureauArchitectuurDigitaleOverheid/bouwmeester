@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
-import { Calendar } from 'lucide-react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
-import { Button } from '@/components/common/Button';
+import { NlddButton } from '@/components/nldd/NlddLink';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
+import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import { useLeads, useMergeLeads, useDeleteLead } from '@/hooks/useLeads';
 import { useLeadColumns } from '@/hooks/useLeadColumns';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
@@ -126,25 +126,24 @@ export function LeadListView({
 
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
-          <span className="text-sm font-medium text-amber-800">
+          <nldd-text size="sm" weight="medium" color="warning">
             {selectedIds.size} lead{selectedIds.size !== 1 ? 's' : ''} geselecteerd
-          </span>
+          </nldd-text>
           {selectedIds.size === 2 && (
-            <Button size="sm" onClick={() => setShowMergeDialog(true)}>
-              Samenvoegen
-            </Button>
+            <NlddButton size="sm" text="Samenvoegen" onClick={() => setShowMergeDialog(true)} />
           )}
-          <Button
+          <NlddButton
             size="sm"
-            variant="ghost"
-            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            variant="critical-transparent"
+            text="Verwijderen"
             onClick={() => setShowBulkDeleteConfirm(true)}
-          >
-            Verwijderen
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
-            Deselecteren
-          </Button>
+          />
+          <NlddButton
+            variant="neutral-transparent"
+            size="sm"
+            text="Deselecteren"
+            onClick={() => setSelectedIds(new Set())}
+          />
         </div>
       )}
 
@@ -154,138 +153,34 @@ export function LeadListView({
           description="Er zijn nog geen leads, of de huidige filters geven geen resultaten."
         />
       ) : (
-        <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-gray-50/50">
-                  <th className="w-10 px-4 py-3">
-                    <span className="sr-only">Selecteer</span>
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">
-                    Titel
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">
-                    Organisatie
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">
-                    Initiatief
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">
-                    Fase
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">
-                    Verantwoordelijke
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">
-                    Volgende actie
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">
-                    Tags
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-text-secondary">
-                    Aangemaakt
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedLeads.map((lead: Lead) => {
-                  const overdue =
-                    lead.next_action_date && isOverdue(lead.next_action_date);
-                  return (
-                    <tr
-                      key={lead.id}
-                      onClick={() => openLeadDetail(lead.id)}
-                      className="border-b border-border last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors"
-                    >
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(lead.id)}
-                          onChange={() => toggleSelect(lead.id)}
-                          className="rounded border-border text-primary-600 focus:ring-primary-400"
-                        />
-                      </td>
-                      <td className="px-4 py-3 font-medium text-text max-w-[260px] truncate">
-                        {lead.title}
-                      </td>
-                      <td className="px-4 py-3 text-text-secondary truncate max-w-[180px]">
-                        {lead.organisatie_eenheid?.naam ??
-                          lead.organization ??
-                          '-'}
-                      </td>
-                      <td className="px-4 py-3">
-                        {lead.initiatief ? (
-                          <span
-                            className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium text-white whitespace-nowrap"
-                            style={{ backgroundColor: lead.initiatief.kleur || '#6B7280' }}
-                          >
-                            {lead.initiatief.naam}
-                          </span>
-                        ) : (
-                          <span className="text-text-secondary">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {(() => {
-                          const col = columnsBySlug.get(lead.stage);
-                          return (
-                            <span
-                              className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
-                                col?.color ?? 'bg-gray-100 text-gray-800'
-                              }`}
-                            >
-                              {col?.name ?? lead.stage}
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-4 py-3 text-text-secondary truncate max-w-[150px]">
-                        {lead.assignee?.naam ?? '-'}
-                      </td>
-                      <td className="px-4 py-3">
-                        {lead.next_action_date ? (
-                          <span
-                            className={`inline-flex items-center gap-1 text-xs ${
-                              overdue
-                                ? 'text-red-600 font-medium'
-                                : 'text-text-secondary'
-                            }`}
-                          >
-                            <Calendar className="h-3 w-3" />
-                            {formatDateShort(lead.next_action_date)}
-                          </span>
-                        ) : (
-                          <span className="text-text-secondary">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {lead.tags.slice(0, 3).map((tag) => (
-                            <span
-                              key={tag}
-                              className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-text-secondary"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                          {lead.tags.length > 3 && (
-                            <span className="text-[10px] text-text-secondary">
-                              +{lead.tags.length - 3}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-text-secondary whitespace-nowrap">
-                        <span title={formatDateShort(lead.created_at)}>{timeAgo(lead.created_at)}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <nldd-table
+          columns="40px minmax(180px,1.4fr) minmax(120px,1fr) 140px 140px 140px 120px minmax(120px,1fr) 100px"
+          sm-columns="40px 1fr"
+          md-columns="40px 1.4fr 1fr 140px"
+          accessible-label="Leads"
+        >
+          <nldd-table-row slot="header">
+            <nldd-text-cell />
+            <nldd-text-cell text="Titel" />
+            <nldd-text-cell text="Organisatie" hide-below="md" />
+            <nldd-text-cell text="Initiatief" hide-below="lg" />
+            <nldd-text-cell text="Fase" hide-below="lg" />
+            <nldd-text-cell text="Verantwoordelijke" hide-below="lg" />
+            <nldd-text-cell text="Volgende actie" hide-below="lg" />
+            <nldd-text-cell text="Tags" hide-below="lg" />
+            <nldd-text-cell text="Aangemaakt" hide-below="lg" />
+          </nldd-table-row>
+          {sortedLeads.map((lead: Lead) => (
+            <LeadListRow
+              key={lead.id}
+              lead={lead}
+              column={columnsBySlug.get(lead.stage)}
+              selected={selectedIds.has(lead.id)}
+              onToggleSelect={() => toggleSelect(lead.id)}
+              onOpen={() => openLeadDetail(lead.id)}
+            />
+          ))}
+        </nldd-table>
       )}
 
       {showMergeDialog && (
@@ -296,34 +191,26 @@ export function LeadListView({
           size="md"
         >
           <div className="space-y-4">
-            <p className="text-sm text-text-secondary">
+            <nldd-text size="sm" color="secondary">
               Kies de lead die je wilt behouden. De andere lead wordt hierin samengevoegd
               (activiteiten, contacten, tags en bijlagen worden overgenomen).
-            </p>
+            </nldd-text>
             {Array.from(selectedIds).map((id) => {
               const lead = allLeads.find((l) => l.id === id);
               if (!lead) return null;
               return (
-                <button
+                <MergeCandidateCard
                   key={id}
-                  onClick={async () => {
+                  lead={lead}
+                  stageName={columnsBySlug.get(lead.stage)?.name ?? lead.stage}
+                  disabled={mergeMutation.isPending}
+                  onPick={async () => {
                     const otherId = Array.from(selectedIds).find((x) => x !== id)!;
                     await mergeMutation.mutateAsync({ sourceId: otherId, targetId: id });
                     setShowMergeDialog(false);
                     setSelectedIds(new Set());
                   }}
-                  disabled={mergeMutation.isPending}
-                  className="w-full text-left p-4 rounded-lg border border-border hover:border-primary-400 hover:bg-primary-50/50 transition-colors disabled:opacity-50"
-                >
-                  <div className="font-medium">{lead.title}</div>
-                  <div className="text-sm text-text-secondary">
-                    {lead.organization ?? 'geen organisatie'} -{' '}
-                    {columnsBySlug.get(lead.stage)?.name ?? lead.stage}
-                  </div>
-                  <div className="text-xs text-primary-600 mt-1">
-                    ← Deze behouden
-                  </div>
-                </button>
+                />
               );
             })}
           </div>
@@ -347,5 +234,106 @@ export function LeadListView({
         {selectedIds.size} lead{selectedIds.size !== 1 ? 's' : ''} verwijderen?
       </ConfirmDialog>
     </div>
+  );
+}
+
+interface LeadListRowProps {
+  lead: Lead;
+  column: LeadColumn | undefined;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onOpen: () => void;
+}
+
+/**
+ * One lead row. The checkbox is its own segment (stopping its click from
+ * opening the lead), the rest of the row opens the detail panel.
+ */
+function LeadListRow({ lead, column, selected, onToggleSelect, onOpen }: LeadListRowProps) {
+  const checkboxRef = useRef<HTMLElement>(null);
+  const rowRef = useRef<HTMLElement>(null);
+  useNlddEvent(checkboxRef, 'change', onToggleSelect);
+  useNlddEvent(rowRef, 'click', useCallback(() => onOpen(), [onOpen]));
+
+  const overdue = lead.next_action_date && isOverdue(lead.next_action_date);
+
+  return (
+    <nldd-table-row>
+      <nldd-text-cell>
+        <nldd-checkbox ref={checkboxRef} checked={orUndef(selected)} accessible-label={`Selecteer ${lead.title}`} />
+      </nldd-text-cell>
+      <nldd-title-cell ref={rowRef} text={lead.title} style={{ cursor: 'pointer' }} />
+      <nldd-text-cell text={lead.organisatie_eenheid?.naam ?? lead.organization ?? '-'} hide-below="md" />
+      <nldd-text-cell hide-below="lg">
+        {lead.initiatief ? (
+          <span
+            className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium text-white whitespace-nowrap"
+            style={{ backgroundColor: lead.initiatief.kleur || '#6B7280' }}
+          >
+            {lead.initiatief.naam}
+          </span>
+        ) : (
+          '-'
+        )}
+      </nldd-text-cell>
+      <nldd-text-cell hide-below="lg">
+        {/* column.color is a raw Tailwind chip class tied to per-initiatief
+            lead-column data, not one of the five semantic roles (same call as
+            LeadMetricsBar/LeadKanbanBoard) — kept as a styled span. */}
+        <span
+          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
+            column?.color ?? 'bg-gray-100 text-gray-800'
+          }`}
+        >
+          {column?.name ?? lead.stage}
+        </span>
+      </nldd-text-cell>
+      <nldd-text-cell text={lead.assignee?.naam ?? '-'} hide-below="lg" />
+      <nldd-text-cell hide-below="lg">
+        {lead.next_action_date ? (
+          <span className={`inline-flex items-center gap-1 ${overdue ? 'text-red-600 font-medium' : ''}`}>
+            <nldd-icon name="calendar" size="16" aria-hidden="true" />
+            {formatDateShort(lead.next_action_date)}
+          </span>
+        ) : (
+          '-'
+        )}
+      </nldd-text-cell>
+      <nldd-text-cell hide-below="lg">
+        <div className="flex flex-wrap gap-1">
+          {lead.tags.slice(0, 3).map((tag) => (
+            <nldd-tag key={tag} text={tag} color="neutral" size="sm" />
+          ))}
+          {lead.tags.length > 3 && (
+            <nldd-text size="xs" color="secondary">+{lead.tags.length - 3}</nldd-text>
+          )}
+        </div>
+      </nldd-text-cell>
+      <nldd-text-cell hide-below="lg" title={formatDateShort(lead.created_at)}>
+        {timeAgo(lead.created_at)}
+      </nldd-text-cell>
+    </nldd-table-row>
+  );
+}
+
+interface MergeCandidateCardProps {
+  lead: Lead;
+  stageName: string;
+  disabled: boolean;
+  onPick: () => void;
+}
+
+function MergeCandidateCard({ lead, stageName, disabled, onPick }: MergeCandidateCardProps) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', useCallback(() => onPick(), [onPick]));
+
+  return (
+    <nldd-card ref={ref} button {...(disabled ? { 'aria-disabled': true } : {})} accessible-label={lead.title} className="block w-full text-left p-4">
+      <nldd-text-cell
+        text={lead.title}
+        supporting-text={`${lead.organization ?? 'geen organisatie'} - ${stageName}`}
+      />
+      <nldd-text size="xs" color="accent">← Deze behouden</nldd-text>
+    </nldd-card>
   );
 }

@@ -1,18 +1,8 @@
 import { useState } from 'react';
-import {
-  GitBranch,
-  GitPullRequest,
-  CircleDot,
-  Github,
-  Play,
-  ExternalLink,
-  Pencil,
-  Trash2,
-  Check,
-  X,
-  Plus,
-} from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { Button } from '@/components/common/Button';
+import { Input } from '@/components/common/Input';
 import { DetailSection } from '@/components/common/DetailSection';
 import { ApiError } from '@/api/client';
 import {
@@ -27,13 +17,15 @@ interface Props {
   links: LeadGitHubLink[];
 }
 
-const TYPE_ICONS: Record<GitHubLinkType, React.ReactNode> = {
-  branch: <GitBranch className="h-3.5 w-3.5 text-text-secondary shrink-0" />,
-  pull_request: <GitPullRequest className="h-3.5 w-3.5 text-text-secondary shrink-0" />,
-  issue: <CircleDot className="h-3.5 w-3.5 text-text-secondary shrink-0" />,
-  repo: <Github className="h-3.5 w-3.5 text-text-secondary shrink-0" />,
-  workflow_run: <Play className="h-3.5 w-3.5 text-text-secondary shrink-0" />,
-  other: <ExternalLink className="h-3.5 w-3.5 text-text-secondary shrink-0" />,
+/** nldd-icon names. `repo` has no dedicated glyph in the closed set, so it
+ *  falls back to the nearest honest neighbour (a code/terminal icon). */
+const TYPE_ICONS: Record<GitHubLinkType, string> = {
+  branch: 'git-branch',
+  pull_request: 'git-pull-request',
+  issue: 'circle',
+  repo: 'terminal',
+  workflow_run: 'media-play',
+  other: 'external-link',
 };
 
 const TYPE_LABELS: Record<GitHubLinkType, string> = {
@@ -116,38 +108,35 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
   return (
     <DetailSection
       title="GitHub-werk"
-      icon={<Github className="h-3.5 w-3.5" />}
+      icon={<Icon name="terminal" size="sm" />}
       count={links.length}
       separated
       action={
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<Plus className="h-3.5 w-3.5" />}
-          onClick={() => setShowForm((v) => !v)}
-        >
+        <Button variant="ghost" size="sm" icon="plus" onClick={() => setShowForm((v) => !v)}>
           Link toevoegen
         </Button>
       }
     >
       {showForm && (
         <div className="mb-3 space-y-2 rounded-lg border border-border bg-gray-50 p-3">
-          <input
+          <Input
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://github.com/owner/repo/pull/123"
-            className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
             autoFocus
           />
-          <input
+          <Input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Titel (optioneel)"
-            className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
           />
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          {error && (
+            <nldd-validation-list>
+              <nldd-validation-item>{error}</nldd-validation-item>
+            </nldd-validation-list>
+          )}
           <div className="flex justify-end gap-2">
             <Button
               variant="ghost"
@@ -161,12 +150,7 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
             >
               Annuleren
             </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={submit}
-              disabled={addLink.isPending}
-            >
+            <Button variant="primary" size="sm" onClick={submit} disabled={addLink.isPending}>
               Toevoegen
             </Button>
           </div>
@@ -174,86 +158,85 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
       )}
 
       {links.length > 0 ? (
-        <div className="space-y-1">
-          {links.map((link) => {
-            const ref = shortRef(link);
-            const display =
-              link.title ??
-              (ref ? `${link.owner}/${link.repo} ${ref}` : `${link.owner}/${link.repo}`);
-            return (
-              <div
-                key={link.id}
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-gray-50"
-              >
-                {TYPE_ICONS[link.link_type]}
-                {editingId === link.id ? (
-                  <>
-                    <input
-                      type="text"
-                      value={editingTitle}
-                      onChange={(e) => setEditingTitle(e.target.value)}
-                      className="flex-1 rounded-md border border-border px-1.5 py-0.5 text-sm"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => saveEdit(link)}
-                      className="p-1 text-text-secondary hover:text-green-600"
-                      title="Opslaan"
-                    >
-                      <Check className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setEditingId(null)}
-                      className="p-1 text-text-secondary hover:text-red-500"
-                      title="Annuleren"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex-1 truncate text-primary-700 hover:underline"
-                      title={link.url}
-                    >
-                      {display}
-                    </a>
-                    <span className="text-[10px] uppercase tracking-wider text-text-secondary px-1.5 py-0.5 rounded bg-gray-100">
-                      {TYPE_LABELS[link.link_type]}
-                    </span>
-                    <button
-                      onClick={() => startEdit(link)}
-                      className="p-1 text-text-secondary hover:text-primary-600"
-                      title="Titel bewerken"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() =>
-                        deleteLink.mutate({ leadId, linkId: link.id })
-                      }
-                      className="p-1 text-text-secondary hover:text-red-500"
-                      title="Verwijderen"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <nldd-list variant="simple" dividers="never" accessible-label="GitHub-werk">
+          {links.map((link) => (
+            <GitHubLinkRow
+              key={link.id}
+              link={link}
+              editing={editingId === link.id}
+              editingTitle={editingTitle}
+              onEditingTitleChange={setEditingTitle}
+              onStartEdit={() => startEdit(link)}
+              onCancelEdit={() => setEditingId(null)}
+              onSaveEdit={() => saveEdit(link)}
+              onDelete={() => deleteLink.mutate({ leadId, linkId: link.id })}
+            />
+          ))}
+        </nldd-list>
       ) : (
         !showForm && (
-          <p className="text-sm text-text-secondary">
+          <nldd-text size="sm" color="secondary">
             Nog geen GitHub-werk gekoppeld. Plak een URL van een branch, PR of
             issue.
-          </p>
+          </nldd-text>
         )
       )}
     </DetailSection>
+  );
+}
+
+interface GitHubLinkRowProps {
+  link: LeadGitHubLink;
+  editing: boolean;
+  editingTitle: string;
+  onEditingTitleChange: (value: string) => void;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: () => void;
+  onDelete: () => void;
+}
+
+function GitHubLinkRow({
+  link,
+  editing,
+  editingTitle,
+  onEditingTitleChange,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
+}: GitHubLinkRowProps) {
+  const ref = shortRef(link);
+  const display =
+    link.title ?? (ref ? `${link.owner}/${link.repo} ${ref}` : `${link.owner}/${link.repo}`);
+
+  if (editing) {
+    return (
+      <nldd-list-item>
+        <nldd-icon-cell icon={TYPE_ICONS[link.link_type]} size="16" />
+        <nldd-text-cell width="full">
+          <Input
+            type="text"
+            value={editingTitle}
+            onChange={(e) => onEditingTitleChange(e.target.value)}
+            autoFocus
+          />
+        </nldd-text-cell>
+        <NlddIconButton icon="check-mark" accessibleLabel="Opslaan" variant="neutral-transparent" size="sm" onClick={onSaveEdit} />
+        <NlddIconButton icon="close" accessibleLabel="Annuleren" variant="neutral-transparent" size="sm" onClick={onCancelEdit} />
+      </nldd-list-item>
+    );
+  }
+
+  return (
+    <nldd-list-item>
+      <nldd-icon-cell icon={TYPE_ICONS[link.link_type]} size="16" />
+      <nldd-list-item-segment href={link.url} target="_blank" rel="noreferrer" width="full" accessible-label={display}>
+        {display}
+      </nldd-list-item-segment>
+      <nldd-tag text={TYPE_LABELS[link.link_type]} color="neutral" size="sm" />
+      <NlddIconButton icon="pencil" accessibleLabel="Titel bewerken" variant="neutral-transparent" size="sm" onClick={onStartEdit} />
+      <NlddIconButton icon="trash" accessibleLabel="Verwijderen" variant="neutral-transparent" size="sm" onClick={onDelete} />
+    </nldd-list-item>
   );
 }

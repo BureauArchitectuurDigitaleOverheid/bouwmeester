@@ -1,4 +1,3 @@
-import { AlertTriangle } from 'lucide-react';
 import { useLeadMetrics } from '@/hooks/useLeads';
 import { LEAD_STAGE_ORDER, LEAD_STAGE_LABELS, LEAD_STAGE_COLORS } from '@/types';
 
@@ -9,12 +8,17 @@ export function LeadMetricsBar() {
 
   return (
     <div className="flex items-center gap-3 flex-wrap text-sm">
-      <span className="font-medium text-text">
+      <nldd-text size="sm" weight="medium">
         {metrics.total} {metrics.total === 1 ? 'lead' : 'leads'}
-      </span>
+      </nldd-text>
 
       <span className="text-border">|</span>
 
+      {/* LEAD_STAGE_COLORS holds raw Tailwind chip classes for seven stages,
+          not one of the five semantic roles; collapsing them would lose the
+          per-stage distinctness, and src/types is off-limits to edit in this
+          pass. The chip stays a styled span rather than an nldd-tag with a
+          guessed color. */}
       {LEAD_STAGE_ORDER.map((stage) => {
         const count = metrics.by_stage[stage] ?? 0;
         if (count === 0) return null;
@@ -31,10 +35,10 @@ export function LeadMetricsBar() {
       {metrics.stale_count > 0 && (
         <>
           <span className="text-border">|</span>
-          <span className="inline-flex items-center gap-1 text-xs text-red-600 font-medium">
-            <AlertTriangle className="h-3.5 w-3.5" />
+          <nldd-text size="xs" weight="medium" color="critical" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+            <nldd-icon name="exclamation-triangle" size="16" aria-hidden="true" />
             {metrics.stale_count} inactief
-          </span>
+          </nldd-text>
         </>
       )}
     </div>

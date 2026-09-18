@@ -1,25 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
-import {
-  Trash2,
-  Pencil,
-  User,
-  Calendar,
-  Paperclip,
-  Download,
-  X,
-  Plus,
-  Link as LinkIcon,
-  ExternalLink,
-  MessageSquare,
-  Phone,
-  Mail,
-  FileText,
-  Upload,
-  ZoomIn,
-} from 'lucide-react';
+import { useCallback, useState, useRef, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Button } from '@/components/common/Button';
+import { Input } from '@/components/common/Input';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { Icon } from '@/components/nldd/Icon';
+import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
@@ -65,7 +51,7 @@ import {
   ENGAGEMENT_TYPE_LABELS,
   ENGAGEMENT_TYPE_COLORS,
 } from '@/types';
-import type { LeadUpdate, LeadActivityCreate, EngagementType } from '@/types';
+import type { LeadUpdate, LeadActivityCreate, EngagementType, LeadAttachment } from '@/types';
 
 /** Stages where a lead can publicly appear; mirrors the backend filter in
  *  public_initiatief.py — keep in sync. */
@@ -115,13 +101,14 @@ interface LeadDetailPanelProps {
   zIndex?: number;
 }
 
-const ACTIVITY_ICONS: Record<LeadActivityType, React.ReactNode> = {
-  [LeadActivityType.NOTE]: <MessageSquare className="h-3.5 w-3.5" />,
-  [LeadActivityType.STAGE_CHANGE]: <FileText className="h-3.5 w-3.5" />,
-  [LeadActivityType.MEETING]: <User className="h-3.5 w-3.5" />,
-  [LeadActivityType.CALL]: <Phone className="h-3.5 w-3.5" />,
-  [LeadActivityType.EMAIL]: <Mail className="h-3.5 w-3.5" />,
-  [LeadActivityType.EVALUATIE]: <FileText className="h-3.5 w-3.5" />,
+/** nldd-icon names for each activity type. */
+const ACTIVITY_ICONS: Record<LeadActivityType, string> = {
+  [LeadActivityType.NOTE]: 'message-rectangle-text',
+  [LeadActivityType.STAGE_CHANGE]: 'file-text',
+  [LeadActivityType.MEETING]: 'person',
+  [LeadActivityType.CALL]: 'at',
+  [LeadActivityType.EMAIL]: 'envelope',
+  [LeadActivityType.EVALUATIE]: 'file-text',
 };
 
 export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPanelProps) {
@@ -342,22 +329,10 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             onClose={onClose}
             actions={
               <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon={<Pencil className="h-4 w-4" />}
-                  onClick={startEditing}
-                  disabled={!lead}
-                >
+                <Button variant="secondary" size="sm" icon="pencil" onClick={startEditing} disabled={!lead}>
                   Bewerken
                 </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  icon={<Trash2 className="h-4 w-4" />}
-                  onClick={handleDelete}
-                  disabled={!lead}
-                >
+                <Button variant="danger" size="sm" icon="trash" onClick={handleDelete} disabled={!lead}>
                   Verwijderen
                 </Button>
               </div>
@@ -375,15 +350,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       ) : editing ? (
         /* Edit mode */
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Titel</label>
-            <input
-              type="text"
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-            />
-          </div>
+          <Input label="Titel" type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
           <div className="grid grid-cols-2 gap-4">
             <div>
               <CreatableSelect
@@ -421,15 +388,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               />
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Organisatie</label>
-            <input
-              type="text"
-              value={editOrganization}
-              onChange={(e) => setEditOrganization(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-            />
-          </div>
+          <Input label="Organisatie" type="text" value={editOrganization} onChange={(e) => setEditOrganization(e.target.value)} />
           <div>
             <CreatableSelect
               label="Initiatief"
@@ -449,34 +408,15 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               createLabel="Nieuw initiatief"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Volgende actie</label>
-            <input
-              type="text"
-              value={editNextAction}
-              onChange={(e) => setEditNextAction(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Actiedatum</label>
-            <input
-              type="date"
-              value={editNextActionDate}
-              onChange={(e) => setEditNextActionDate(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Tags</label>
-            <input
-              type="text"
-              value={editTags}
-              onChange={(e) => setEditTags(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:border-primary-400"
-              placeholder="Komma-gescheiden tags"
-            />
-          </div>
+          <Input label="Volgende actie" type="text" value={editNextAction} onChange={(e) => setEditNextAction(e.target.value)} />
+          <Input label="Actiedatum" type="date" value={editNextActionDate} onChange={(e) => setEditNextActionDate(e.target.value)} />
+          <Input
+            label="Tags"
+            type="text"
+            value={editTags}
+            onChange={(e) => setEditTags(e.target.value)}
+            placeholder="Komma-gescheiden tags"
+          />
           {(() => {
             const selectedInit = initiatieven?.find((i) => i.id === editInitiatiefId);
             if (!selectedInit?.funnel_enabled) return null;
@@ -488,60 +428,14 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               selectedInit.score_positie_label || 'Positie / omgeving';
             return (
               <div className="space-y-3 rounded-lg border border-border p-3 bg-gray-50/50">
-                <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold">
+                <nldd-text size="xs" weight="medium" color="secondary" className="uppercase tracking-wider">
                   Funnel-afweging
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-text mb-1">
-                    Engagement type
-                  </label>
-                  <select
-                    value={editEngagementType}
-                    onChange={(e) =>
-                      setEditEngagementType(
-                        (e.target.value || '') as EngagementType | '',
-                      )
-                    }
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:border-primary-400"
-                  >
-                    <option value="">—</option>
-                    {(
-                      Object.keys(ENGAGEMENT_TYPE_LABELS) as EngagementType[]
-                    ).map((k) => (
-                      <option key={k} value={k}>
-                        {ENGAGEMENT_TYPE_LABELS[k]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                </nldd-text>
+                <EngagementTypeDropdown value={editEngagementType} onChange={setEditEngagementType} />
                 <div className="grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      [labelStrategisch, editScoreStrategisch, setEditScoreStrategisch],
-                      [labelPolitiek, editScorePolitiek, setEditScorePolitiek],
-                      [labelPositie, editScorePositie, setEditScorePositie],
-                    ] as const
-                  ).map(([label, value, setter], idx) => (
-                    <label key={idx} className="flex flex-col gap-0.5">
-                      <span className="text-xs text-text-secondary">{label}</span>
-                      <select
-                        value={value}
-                        onChange={(e) =>
-                          setter(
-                            e.target.value === '' ? '' : Number(e.target.value),
-                          )
-                        }
-                        className="text-sm rounded-lg border border-border px-2 py-1 bg-white"
-                      >
-                        <option value="">—</option>
-                        {[1, 2, 3, 4, 5].map((n) => (
-                          <option key={n} value={n}>
-                            {n}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ))}
+                  <ScoreDropdown label={labelStrategisch} value={editScoreStrategisch} onChange={setEditScoreStrategisch} />
+                  <ScoreDropdown label={labelPolitiek} value={editScorePolitiek} onChange={setEditScorePolitiek} />
+                  <ScoreDropdown label={labelPositie} value={editScorePositie} onChange={setEditScorePositie} />
                 </div>
               </div>
             );
@@ -557,58 +451,39 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             return (
               <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-xs text-emerald-900 uppercase tracking-wider font-semibold">
+                  <nldd-text size="xs" weight="medium" color="success" className="uppercase tracking-wider">
                     Publicatie op /c/{linkedInit.slug}
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-emerald-900 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editPublicVisible}
-                      onChange={(e) => setEditPublicVisible(e.target.checked)}
-                      className="h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    Publiek tonen
-                  </label>
+                  </nldd-text>
+                  <PublicVisibleSwitch checked={editPublicVisible} onChange={setEditPublicVisible} />
                 </div>
                 {editPublicVisible && !status.visible && (
-                  <div className="rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5 text-xs text-amber-900">
-                    <strong>Nog niet zichtbaar:</strong> {status.reason}
-                  </div>
+                  <nldd-inline-dialog
+                    variant="alert"
+                    size="md"
+                    text="Nog niet zichtbaar"
+                    supporting-text={status.reason ?? undefined}
+                  />
                 )}
-                <p className="text-xs text-emerald-800/80">
+                <nldd-text size="xs" color="secondary">
                   Schrijf een externe titel en samenvatting. Alleen die tekst
                   verschijnt op de publieke pagina, nooit het interne titel- of
                   beschrijvingsveld.
-                </p>
-                <div>
-                  <label className="block text-sm font-medium text-text mb-1">
-                    Publieke titel
-                  </label>
-                  <input
-                    type="text"
-                    value={editPublicTitle}
-                    onChange={(e) => setEditPublicTitle(e.target.value)}
-                    placeholder="Bijv. 'Pilot bij Gemeente Utrecht'"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-text mb-1">
-                    Publieke samenvatting
-                  </label>
-                  <textarea
-                    value={editPublicSummary}
-                    onChange={(e) => setEditPublicSummary(e.target.value)}
-                    placeholder="Korte tekst voor buitenstaanders. Geen interne details, geen namen van conflicten."
-                    rows={3}
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400"
-                  />
-                </div>
-                <p className="text-xs text-text-secondary">
+                </nldd-text>
+                <Input
+                  label="Publieke titel"
+                  type="text"
+                  value={editPublicTitle}
+                  onChange={(e) => setEditPublicTitle(e.target.value)}
+                  placeholder="Bijv. 'Pilot bij Gemeente Utrecht'"
+                />
+                <nldd-form-field label="Publieke samenvatting">
+                  <PublicSummaryField value={editPublicSummary} onChange={setEditPublicSummary} />
+                </nldd-form-field>
+                <nldd-text size="xs" color="secondary">
                   Verschijnt alleen als de stage actief is (eerste gesprek, interne
                   check, follow-up of in the pocket) én "Publiek tonen" aan staat én
                   de titel ingevuld is.
-                </p>
+                </nldd-text>
               </div>
             );
           })()}
@@ -622,14 +497,18 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       ) : (
         /* View mode */
         <div className="space-y-5">
-          {/* Stage badge + next action */}
+          {/* Stage badge + next action.
+              LEAD_STAGE_COLORS is a raw Tailwind chip class per lead stage
+              (7 stages), not one of the five semantic roles, and src/types is
+              off-limits to edit — kept as a styled span, same call as
+              LeadMetricsBar/LeadListView. */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${LEAD_STAGE_COLORS[lead.stage]}`}>
               {LEAD_STAGE_LABELS[lead.stage]}
             </span>
             {lead.next_action_date && (
               <span className={`inline-flex items-center gap-1 text-sm ${overdue ? 'text-red-600 font-medium bg-red-50 rounded-md px-2 py-0.5' : 'text-text-secondary'}`}>
-                <Calendar className="h-4 w-4" />
+                <nldd-icon name="calendar" size="16" aria-hidden="true" />
                 {formatDateLong(lead.next_action_date)}
               </span>
             )}
@@ -655,7 +534,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 label: 'Toegewezen aan',
                 value: lead.assignee ? (
                   <span className="inline-flex items-center gap-1.5 text-text">
-                    <User className="h-4 w-4 text-text-secondary" />
+                    <Icon name="person" size="md" />
                     {lead.assignee.naam}
                   </span>
                 ) : (
@@ -666,7 +545,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 label: 'Binnengebracht door',
                 value: lead.brought_by ? (
                   <span className="inline-flex items-center gap-1.5 text-text">
-                    <User className="h-4 w-4 text-text-secondary" />
+                    <Icon name="person" size="md" />
                     {lead.brought_by.naam}
                   </span>
                 ) : (
@@ -693,7 +572,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               {
                 label: 'Aangemaakt',
                 value: formatDateLong(lead.created_at),
-                icon: <Calendar className="h-4 w-4" />,
+                icon: <Icon name="calendar" size="md" />,
               },
             ]}
           />
@@ -721,6 +600,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                   {lead.engagement_type && (
                     <div className="text-sm">
                       <span className="text-text-secondary">Engagement: </span>
+                      {/* ENGAGEMENT_TYPE_COLORS is a raw Tailwind chip class in
+                          src/types (off-limits to edit), not one of the five
+                          semantic roles — kept as a styled span. */}
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ENGAGEMENT_TYPE_COLORS[lead.engagement_type]}`}
                       >
@@ -731,7 +613,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                   <div className="grid grid-cols-3 gap-2 text-sm">
                     {labels.map(([label, value], idx) => (
                       <div key={idx} className="text-text">
-                        <div className="text-xs text-text-secondary">{label}</div>
+                        <nldd-text size="xs" color="secondary">{label}</nldd-text>
                         <div className="font-medium">
                           {value != null ? `${value}/5` : '—'}
                         </div>
@@ -769,7 +651,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                         <Badge variant="green">
                           <span className="inline-flex items-center gap-1 group-hover:underline">
                             Zichtbaar op /c/{linkedInit.slug}
-                            <ExternalLink className="h-3 w-3" />
+                            <Icon name="external-link" size="xs" />
                           </span>
                         </Badge>
                       </a>
@@ -778,9 +660,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                     )}
                   </div>
                   {!status.visible && status.reason && (
-                    <p className="text-xs text-text-secondary">
+                    <nldd-text size="xs" color="secondary">
                       {status.reason}
-                    </p>
+                    </nldd-text>
                   )}
                   {lead.public_title && (
                     <div className="text-sm">
@@ -791,9 +673,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                     </div>
                   )}
                   {lead.public_summary && (
-                    <div className="text-sm text-text-secondary whitespace-pre-wrap">
+                    <nldd-text size="sm" color="secondary" className="whitespace-pre-wrap block">
                       {lead.public_summary}
-                    </div>
+                    </nldd-text>
                   )}
                 </div>
               </DetailSection>
@@ -816,7 +698,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           {/* Bijlagen */}
           <DetailSection
             title="Bijlagen"
-            icon={<Paperclip className="h-3.5 w-3.5" />}
+            icon={<Icon name="paperclip" size="sm" />}
             count={lead.attachments.length}
             separated
             action={
@@ -828,90 +710,26 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                   ref={fileInputRef}
                   onChange={handleFileUpload}
                 />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={<Upload className="h-3.5 w-3.5" />}
-                  onClick={() => fileInputRef.current?.click()}
-                >
+                <Button variant="ghost" size="sm" icon="upload" onClick={() => fileInputRef.current?.click()}>
                   Uploaden
                 </Button>
               </label>
             }
           >
             {lead.attachments.length > 0 ? (
-              <div className="space-y-1">
+              <nldd-list variant="simple" dividers="never" accessible-label="Bijlagen">
                 {lead.attachments.map((att) => (
-                  <div key={att.id}>
-                    <div className={`flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-gray-50 ${!att.bestand_beschikbaar ? 'opacity-50' : ''}`}>
-                      {att.soort === 'link' ? (
-                        <ExternalLink className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-                      ) : (
-                        <Paperclip className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-                      )}
-                      {att.soort === 'link' && att.url ? (
-                        <a
-                          href={att.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex-1 truncate text-primary-700 hover:underline"
-                          title={att.url}
-                        >
-                          {att.bestandsnaam ?? att.url}
-                        </a>
-                      ) : (
-                        <span className="flex-1 truncate text-text">{att.bestandsnaam ?? '(naamloos)'}</span>
-                      )}
-                      {att.source === 'mattermost' && (
-                        <span className="text-[10px] uppercase tracking-wider text-text-secondary px-1.5 py-0.5 rounded bg-gray-100">
-                          via mm
-                        </span>
-                      )}
-                      {att.soort === 'file' && !att.bestand_beschikbaar ? (
-                        <span className="text-xs text-red-500">Bestand niet beschikbaar</span>
-                      ) : att.soort === 'file' ? (
-                        <>
-                          <span className="text-xs text-text-secondary">{Math.round((att.bestandsgrootte ?? 0) / 1024)} KB</span>
-                          <a
-                            href={getLeadAttachmentDownloadUrl(lead.id, att.id)}
-                            className="p-1 text-text-secondary hover:text-primary-600 transition-colors"
-                            title="Downloaden"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                          </a>
-                        </>
-                      ) : null}
-                      <button
-                        onClick={() => deleteAttachment.mutate({ leadId: lead.id, attachmentId: att.id })}
-                        className="p-1 text-text-secondary hover:text-red-500 transition-colors"
-                        title="Verwijderen"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    {att.soort === 'file' && att.bestand_beschikbaar && att.content_type?.startsWith('image/') && (
-                      <button
-                        onClick={() => setLightboxSrc({
-                          src: getLeadAttachmentDownloadUrl(lead.id, att.id),
-                          alt: att.bestandsnaam ?? 'bijlage',
-                        })}
-                        className="relative group mt-2 ml-2 block"
-                      >
-                        <img
-                          src={getLeadAttachmentDownloadUrl(lead.id, att.id)}
-                          alt={att.bestandsnaam ?? 'bijlage'}
-                          className="rounded-lg border border-border max-h-48 object-contain"
-                        />
-                        <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                          <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md" />
-                        </div>
-                      </button>
-                    )}
-                  </div>
+                  <AttachmentRow
+                    key={att.id}
+                    attachment={att}
+                    downloadUrl={getLeadAttachmentDownloadUrl(lead.id, att.id)}
+                    onDelete={() => deleteAttachment.mutate({ leadId: lead.id, attachmentId: att.id })}
+                    onZoom={(src, alt) => setLightboxSrc({ src, alt })}
+                  />
                 ))}
-              </div>
+              </nldd-list>
             ) : (
-              <p className="text-sm text-text-secondary">Geen bijlagen</p>
+              <nldd-text size="sm" color="secondary">Geen bijlagen</nldd-text>
             )}
           </DetailSection>
 
@@ -920,42 +738,29 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           {/* Externe contactpersonen */}
           <DetailSection
             title="Externe contactpersonen"
-            icon={<User className="h-3.5 w-3.5" />}
+            icon={<Icon name="person" size="sm" />}
             count={lead.contacts.length}
             separated
             action={
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<Plus className="h-3.5 w-3.5" />}
-                onClick={() => setShowAddContact(true)}
-              >
+              <Button variant="ghost" size="sm" icon="plus" onClick={() => setShowAddContact(true)}>
                 Toevoegen
               </Button>
             }
           >
             {lead.contacts.length > 0 ? (
-              <div className="space-y-1">
+              <nldd-list variant="simple" dividers="never" accessible-label="Externe contactpersonen">
                 {lead.contacts.map((contact) => (
-                  <div key={contact.id} className="flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-gray-50">
-                    <User className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-                    <span className="flex-1 text-text">{contact.person_naam}</span>
-                    {contact.person_expertise && (
-                      <Badge variant="indigo">{contact.person_expertise}</Badge>
-                    )}
-                    <Badge variant="gray">{LEAD_CONTACT_ROL_LABELS[contact.rol] ?? contact.rol}</Badge>
-                    <button
-                      onClick={() => removeContact.mutate({ leadId: lead.id, contactId: contact.id })}
-                      className="p-1 text-text-secondary hover:text-red-500 transition-colors"
-                      title="Verwijderen"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  <ContactRow
+                    key={contact.id}
+                    naam={contact.person_naam}
+                    expertise={contact.person_expertise}
+                    rolLabel={LEAD_CONTACT_ROL_LABELS[contact.rol] ?? contact.rol}
+                    onRemove={() => removeContact.mutate({ leadId: lead.id, contactId: contact.id })}
+                  />
                 ))}
-              </div>
+              </nldd-list>
             ) : (
-              <p className="text-sm text-text-secondary">Geen externe contactpersonen</p>
+              <nldd-text size="sm" color="secondary">Geen externe contactpersonen</nldd-text>
             )}
 
             <AddLeadContactModal
@@ -967,46 +772,35 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           {/* Gelinkte nodes */}
           <DetailSection
             title="Gelinkte nodes"
-            icon={<LinkIcon className="h-3.5 w-3.5" />}
+            icon={<Icon name="link" size="sm" />}
             count={lead.linked_nodes.length}
             separated
             action={
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<Plus className="h-3.5 w-3.5" />}
-                onClick={() => setShowLinkNode(true)}
-              >
+              <Button variant="ghost" size="sm" icon="plus" onClick={() => setShowLinkNode(true)}>
                 Koppelen
               </Button>
             }
           >
             {lead.linked_nodes.length > 0 ? (
-              <div className="space-y-1">
+              <nldd-list variant="simple" dividers="never" accessible-label="Gelinkte nodes">
                 {lead.linked_nodes.map((ln) => (
-                  <div key={ln.id} className="flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-gray-50">
-                    <LinkIcon className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-                    <span className="flex-1 text-text">{ln.node_title}</span>
-                    <Badge variant="gray">{ln.node_type}</Badge>
-                    <button
-                      onClick={() => unlinkNode.mutate({ leadId: lead.id, linkId: ln.id })}
-                      className="p-1 text-text-secondary hover:text-red-500 transition-colors"
-                      title="Ontkoppelen"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  <LinkedNodeRow
+                    key={ln.id}
+                    title={ln.node_title}
+                    nodeType={ln.node_type}
+                    onUnlink={() => unlinkNode.mutate({ leadId: lead.id, linkId: ln.id })}
+                  />
                 ))}
-              </div>
+              </nldd-list>
             ) : (
-              <p className="text-sm text-text-secondary">Geen gelinkte nodes</p>
+              <nldd-text size="sm" color="secondary">Geen gelinkte nodes</nldd-text>
             )}
           </DetailSection>
 
           {/* Activiteiten */}
           <DetailSection
             title="Activiteiten"
-            icon={<MessageSquare className="h-3.5 w-3.5" />}
+            icon={<Icon name="message-rectangle-text" size="sm" />}
             count={lead.activities.length}
             separated
           >
@@ -1020,19 +814,17 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               />
               {activityType === LeadActivityType.EVALUATIE && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <textarea
+                  <ActivityTextArea
                     value={activityUitkomst}
-                    onChange={(e) => setActivityUitkomst(e.target.value)}
+                    onChange={setActivityUitkomst}
                     placeholder="Uitkomst van de evaluatie..."
-                    rows={2}
-                    className="text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                    accessibleLabel="Uitkomst van de evaluatie"
                   />
-                  <textarea
+                  <ActivityTextArea
                     value={activityVervolgacties}
-                    onChange={(e) => setActivityVervolgacties(e.target.value)}
+                    onChange={setActivityVervolgacties}
                     placeholder="Vervolgacties / wat moet er nu gebeuren..."
-                    rows={2}
-                    className="text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                    accessibleLabel="Vervolgacties"
                   />
                 </div>
               )}
@@ -1070,7 +862,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                   return (
                   <div key={activity.id} className="group flex gap-2.5">
                     <div className="mt-0.5 flex items-center justify-center h-6 w-6 rounded-full bg-gray-100 text-text-secondary shrink-0">
-                      {ACTIVITY_ICONS[activity.activity_type]}
+                      <nldd-icon name={ACTIVITY_ICONS[activity.activity_type]} size="16" aria-hidden="true" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 text-xs text-text-secondary">
@@ -1102,15 +894,14 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                         )}
                         <span>{timeAgo(activity.created_at)}</span>
                         {canDelete && (
-                          <button
-                            type="button"
+                          <NlddIconButton
+                            icon="trash"
+                            accessibleLabel="Activiteit verwijderen"
+                            variant="neutral-transparent"
+                            size="sm"
                             onClick={() => setActivityToDelete(activity.id)}
-                            className="ml-auto text-text-secondary sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 hover:text-red-600 focus:outline-none transition-opacity"
-                            aria-label="Activiteit verwijderen"
-                            title="Verwijderen"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                            className="ml-auto sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
+                          />
                         )}
                       </div>
                       <div className="mt-0.5">
@@ -1120,9 +911,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                         <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {activity.uitkomst && (
                             <div className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-1.5 text-xs">
-                              <div className="font-semibold text-emerald-800 mb-0.5">
+                              <nldd-text size="xs" weight="medium" color="success" className="block mb-0.5">
                                 Uitkomst
-                              </div>
+                              </nldd-text>
                               <div className="text-text whitespace-pre-wrap">
                                 {activity.uitkomst}
                               </div>
@@ -1130,9 +921,9 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                           )}
                           {activity.vervolgacties && (
                             <div className="rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5 text-xs">
-                              <div className="font-semibold text-amber-800 mb-0.5">
+                              <nldd-text size="xs" weight="medium" color="warning" className="block mb-0.5">
                                 Vervolgacties
-                              </div>
+                              </nldd-text>
                               <div className="text-text whitespace-pre-wrap">
                                 {activity.vervolgacties}
                               </div>
@@ -1146,7 +937,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 })}
               </div>
             ) : (
-              <p className="text-sm text-text-secondary">Nog geen activiteiten</p>
+              <nldd-text size="sm" color="secondary">Nog geen activiteiten</nldd-text>
             )}
           </DetailSection>
 
@@ -1209,5 +1000,225 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       />
     )}
     </>
+  );
+}
+
+function EngagementTypeDropdown({
+  value,
+  onChange,
+}: {
+  value: EngagementType | '';
+  onChange: (value: EngagementType | '') => void;
+}) {
+  return (
+    <nldd-form-field label="Engagement type">
+      <nldd-dropdown accessible-label="Engagement type" width="full">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value as EngagementType | '')}
+        >
+          <option value="">—</option>
+          {(Object.keys(ENGAGEMENT_TYPE_LABELS) as EngagementType[]).map((k) => (
+            <option key={k} value={k}>
+              {ENGAGEMENT_TYPE_LABELS[k]}
+            </option>
+          ))}
+        </select>
+      </nldd-dropdown>
+    </nldd-form-field>
+  );
+}
+
+function ScoreDropdown({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | '';
+  onChange: (value: number | '') => void;
+}) {
+  return (
+    <nldd-form-field label={label}>
+      <nldd-dropdown accessible-label={label} width="full">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+        >
+          <option value="">—</option>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </nldd-dropdown>
+    </nldd-form-field>
+  );
+}
+
+/** Reads `checked` off an nldd-switch-field's `change` detail. */
+function checkedValue(event: Event): boolean {
+  return Boolean((event as CustomEvent<{ checked?: boolean }>).detail?.checked);
+}
+
+function PublicVisibleSwitch({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', useCallback((e: Event) => onChange(checkedValue(e)), [onChange]));
+
+  return <nldd-switch-field ref={ref} checked={orUndef(checked)} label="Publiek tonen" />;
+}
+
+function PublicSummaryField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+
+  return (
+    <nldd-multi-line-text-field
+      ref={ref}
+      value={value}
+      placeholder="Korte tekst voor buitenstaanders. Geen interne details, geen namen van conflicten."
+      rows={3}
+      accessible-label="Publieke samenvatting"
+      width="full"
+    />
+  );
+}
+
+interface ActivityTextAreaProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  accessibleLabel: string;
+}
+
+function ActivityTextArea({ value, onChange, placeholder, accessibleLabel }: ActivityTextAreaProps) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+
+  return (
+    <nldd-multi-line-text-field
+      ref={ref}
+      value={value}
+      placeholder={placeholder}
+      rows={2}
+      accessible-label={accessibleLabel}
+      width="full"
+    />
+  );
+}
+
+interface AttachmentRowProps {
+  attachment: LeadAttachment;
+  downloadUrl: string;
+  onDelete: () => void;
+  onZoom: (src: string, alt: string) => void;
+}
+
+function AttachmentRow({ attachment: att, downloadUrl, onDelete, onZoom }: AttachmentRowProps) {
+  const isImage = att.soort === 'file' && att.bestand_beschikbaar && att.content_type?.startsWith('image/');
+
+  return (
+    <nldd-list-item>
+      <div className={`w-full space-y-2 px-1 py-1 ${!att.bestand_beschikbaar ? 'opacity-50' : ''}`}>
+        <div className="flex items-center gap-2">
+          <nldd-icon name={att.soort === 'link' ? 'external-link' : 'paperclip'} size="16" aria-hidden="true" />
+          {att.soort === 'link' && att.url ? (
+            <a
+              href={att.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 truncate text-primary-700 hover:underline"
+              title={att.url}
+            >
+              {att.bestandsnaam ?? att.url}
+            </a>
+          ) : (
+            <nldd-text size="sm" className="flex-1 truncate">{att.bestandsnaam ?? '(naamloos)'}</nldd-text>
+          )}
+          {att.source === 'mattermost' && (
+            <nldd-tag text="via mm" color="neutral" size="sm" />
+          )}
+          {att.soort === 'file' && !att.bestand_beschikbaar ? (
+            <nldd-text size="xs" color="critical">Bestand niet beschikbaar</nldd-text>
+          ) : att.soort === 'file' ? (
+            <>
+              <nldd-text size="xs" color="secondary">{Math.round((att.bestandsgrootte ?? 0) / 1024)} KB</nldd-text>
+              <NlddIconButton
+                icon="download"
+                accessibleLabel="Downloaden"
+                variant="neutral-transparent"
+                size="sm"
+                onClick={() => window.open(downloadUrl, '_blank')}
+              />
+            </>
+          ) : null}
+          <NlddIconButton
+            icon="close"
+            accessibleLabel="Verwijderen"
+            variant="neutral-transparent"
+            size="sm"
+            onClick={onDelete}
+          />
+        </div>
+        {isImage && (
+          <button
+            type="button"
+            onClick={() => onZoom(downloadUrl, att.bestandsnaam ?? 'bijlage')}
+            className="relative group ml-2 block"
+          >
+            <img
+              src={downloadUrl}
+              alt={att.bestandsnaam ?? 'bijlage'}
+              className="rounded-lg border border-border max-h-48 object-contain"
+            />
+            <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+              <nldd-icon
+                name="magnifier"
+                size="24"
+                className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                aria-hidden="true"
+              />
+            </div>
+          </button>
+        )}
+      </div>
+    </nldd-list-item>
+  );
+}
+
+interface ContactRowProps {
+  naam: string;
+  expertise: string | null | undefined;
+  rolLabel: string;
+  onRemove: () => void;
+}
+
+function ContactRow({ naam, expertise, rolLabel, onRemove }: ContactRowProps) {
+  return (
+    <nldd-list-item>
+      <nldd-icon-cell icon="person" size="16" />
+      <nldd-text-cell text={naam} width="full" />
+      {expertise && <nldd-tag text={expertise} color="donkerblauw" size="sm" />}
+      <nldd-tag text={rolLabel} color="neutral" size="sm" />
+      <NlddIconButton icon="trash" accessibleLabel="Verwijderen" variant="neutral-transparent" size="sm" onClick={onRemove} />
+    </nldd-list-item>
+  );
+}
+
+interface LinkedNodeRowProps {
+  title: string;
+  nodeType: string;
+  onUnlink: () => void;
+}
+
+function LinkedNodeRow({ title, nodeType, onUnlink }: LinkedNodeRowProps) {
+  return (
+    <nldd-list-item>
+      <nldd-icon-cell icon="link" size="16" />
+      <nldd-text-cell text={title} width="full" />
+      <nldd-tag text={nodeType} color="neutral" size="sm" />
+      <NlddIconButton icon="close" accessibleLabel="Ontkoppelen" variant="neutral-transparent" size="sm" onClick={onUnlink} />
+    </nldd-list-item>
   );
 }

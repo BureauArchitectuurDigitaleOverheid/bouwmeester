@@ -1,18 +1,10 @@
-import { useMemo, useState } from 'react';
-import {
-  Plus,
-  Trash2,
-  ArrowUp,
-  ArrowDown,
-  Eye,
-  EyeOff,
-  Globe,
-  Check,
-  X,
-} from 'lucide-react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/common/Button';
+import { Select } from '@/components/common/Select';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import {
   useCreateLeadColumn,
   useDeleteLeadColumn,
@@ -132,145 +124,45 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-text-secondary">
+      <nldd-text size="xs" color="secondary">
         Eigenaren beheren hier de funnel-kolommen voor dit initiatief. Slug
         blijft vast na aanmaken zodat bestaande leads gekoppeld blijven.
         "Actieve fase" telt mee voor de overdue-filter; "Publiek zichtbaar"
         toont casuses op de publieke pagina.
-      </p>
+      </nldd-text>
 
-      <ul className="divide-y divide-border rounded-xl border border-border">
-        {sortedColumns.map((col, idx) => {
-          const isFirst = idx === 0;
-          const isLast = idx === sortedColumns.length - 1;
-          return (
-            <li key={col.id} className="px-3 py-2.5 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${col.color}`}
-                  >
-                    {col.slug}
-                  </span>
-                  {editing === col.id ? (
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      onBlur={commitEdit}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitEdit();
-                        if (e.key === 'Escape') setEditing(null);
-                      }}
-                      autoFocus
-                      className="flex-1 text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => startEdit(col)}
-                      className="text-sm font-medium text-text hover:text-primary-700 truncate text-left"
-                      title="Klik om te hernoemen"
-                    >
-                      {col.name}
-                    </button>
-                  )}
-                  <span className="text-xs text-text-secondary tabular-nums">
-                    {col.lead_count} {col.lead_count === 1 ? 'lead' : 'leads'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => moveColumn(col, 'up')}
-                    disabled={isFirst || reorderMutation.isPending}
-                    className="p-1 rounded hover:bg-gray-100 text-text-secondary disabled:opacity-30"
-                    title="Omhoog"
-                  >
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveColumn(col, 'down')}
-                    disabled={isLast || reorderMutation.isPending}
-                    className="p-1 rounded hover:bg-gray-100 text-text-secondary disabled:opacity-30"
-                    title="Omlaag"
-                  >
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeletingId(col.id)}
-                    disabled={sortedColumns.length <= 1}
-                    className="p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 disabled:opacity-30 disabled:hover:text-text-secondary"
-                    title={
-                      sortedColumns.length <= 1
-                        ? 'Laatste kolom kan niet weg'
-                        : 'Verwijderen'
-                    }
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 flex-wrap pl-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => toggleActive(col)}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
-                    col.is_active_stage
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}
-                  title="Telt mee voor overdue/stale-filter"
-                >
-                  {col.is_active_stage ? (
-                    <Check className="h-3 w-3" />
-                  ) : (
-                    <X className="h-3 w-3" />
-                  )}
-                  Actieve fase
-                </button>
-                <button
-                  type="button"
-                  onClick={() => togglePublic(col)}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
-                    col.is_public_visible
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}
-                  title="Toont casuses op publieke pagina"
-                >
-                  {col.is_public_visible ? (
-                    <Eye className="h-3 w-3" />
-                  ) : (
-                    <EyeOff className="h-3 w-3" />
-                  )}
-                  Publiek zichtbaar
-                </button>
-                <div className="flex items-center gap-1">
-                  <Globe className="h-3 w-3 text-text-secondary" />
-                  <ColorSwatches
-                    selected={col.color}
-                    onSelect={(color) => setColor(col, color)}
-                  />
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      <nldd-list variant="box-tinted" dividers="always" accessible-label="Funnel-kolommen">
+        {sortedColumns.map((col, idx) => (
+          <ColumnRow
+            key={col.id}
+            col={col}
+            isFirst={idx === 0}
+            isLast={idx === sortedColumns.length - 1}
+            reordering={reorderMutation.isPending}
+            canDelete={sortedColumns.length > 1}
+            editing={editing === col.id}
+            editName={editName}
+            onEditNameChange={setEditName}
+            onStartEdit={() => startEdit(col)}
+            onCommitEdit={commitEdit}
+            onCancelEdit={() => setEditing(null)}
+            onMoveUp={() => moveColumn(col, 'up')}
+            onMoveDown={() => moveColumn(col, 'down')}
+            onDelete={() => setDeletingId(col.id)}
+            onToggleActive={() => toggleActive(col)}
+            onTogglePublic={() => togglePublic(col)}
+            onSetColor={(color) => setColor(col, color)}
+          />
+        ))}
+      </nldd-list>
 
       {adding ? (
         <div className="rounded-xl border border-border p-3 space-y-2">
-          <input
-            type="text"
+          <nldd-text-field
             value={draftName}
-            onChange={(e) => setDraftName(e.target.value)}
+            onChange={(e) => setDraftName((e.target as HTMLInputElement).value)}
             placeholder="Kolomnaam (bv. Strategisch)"
-            className="w-full text-sm rounded-lg border border-border px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary"
+            accessible-label="Kolomnaam"
             autoFocus
           />
           <div className="flex items-center justify-between gap-2">
@@ -298,12 +190,7 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
           </div>
         </div>
       ) : (
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<Plus className="h-3.5 w-3.5" />}
-          onClick={() => setAdding(true)}
-        >
+        <Button variant="secondary" size="sm" icon="plus" onClick={() => setAdding(true)}>
           Kolom toevoegen
         </Button>
       )}
@@ -333,18 +220,12 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
                   {deletingColumn.lead_count === 1 ? 'lead' : 'leads'}. Kies een
                   doel-kolom waar ze heen gaan:
                 </p>
-                <select
+                <Select
                   value={moveTarget}
                   onChange={(e) => setMoveTarget(e.target.value)}
-                  className="w-full text-sm rounded-lg border border-border px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="">— Kies kolom —</option>
-                  {otherColumns.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="— Kies kolom —"
+                  options={otherColumns.map((c) => ({ value: c.id, label: c.name }))}
+                />
               </div>
             ) : (
               <p className="text-sm text-text-secondary">
@@ -355,6 +236,178 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
         )}
       </ConfirmDialog>
     </div>
+  );
+}
+
+interface ColumnRowProps {
+  col: LeadColumn;
+  isFirst: boolean;
+  isLast: boolean;
+  reordering: boolean;
+  canDelete: boolean;
+  editing: boolean;
+  editName: string;
+  onEditNameChange: (value: string) => void;
+  onStartEdit: () => void;
+  onCommitEdit: () => void;
+  onCancelEdit: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onDelete: () => void;
+  onToggleActive: () => void;
+  onTogglePublic: () => void;
+  onSetColor: (color: string) => void;
+}
+
+/**
+ * One column row: a segmented `nldd-list-item` (rename control, reorder and
+ * delete icon buttons) plus a second line of toggle chips. The chips stay
+ * plain buttons rather than nldd-tag: they are two-state toggles the user
+ * clicks to flip, not status labels, and nldd-tag has no click semantics.
+ */
+function ColumnRow({
+  col,
+  isFirst,
+  isLast,
+  reordering,
+  canDelete,
+  editing,
+  editName,
+  onEditNameChange,
+  onStartEdit,
+  onCommitEdit,
+  onCancelEdit,
+  onMoveUp,
+  onMoveDown,
+  onDelete,
+  onToggleActive,
+  onTogglePublic,
+  onSetColor,
+}: ColumnRowProps) {
+  const nameFieldRef = useRef<HTMLElement>(null);
+  const renameTriggerRef = useRef<HTMLElement>(null);
+
+  useNlddEvent(nameFieldRef, 'input', (e) => onEditNameChange(eventValue(e)));
+  useNlddEvent(
+    nameFieldRef,
+    'blur',
+    useCallback(() => onCommitEdit(), [onCommitEdit]),
+  );
+  useNlddEvent(renameTriggerRef, 'click', onStartEdit);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') onCommitEdit();
+    if (e.key === 'Escape') onCancelEdit();
+  };
+
+  return (
+    <nldd-list-item>
+      <div className="flex flex-col gap-2 py-1 w-full">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${col.color}`}>
+              {col.slug}
+            </span>
+            {editing ? (
+              <nldd-text-field
+                ref={nameFieldRef}
+                value={editName}
+                onKeyDown={handleKeyDown}
+                autoFocus
+                accessible-label="Kolomnaam"
+                style={{ flex: 1 }}
+              />
+            ) : (
+              <nldd-list-item-segment ref={renameTriggerRef} button accessible-label={`${col.name} hernoemen`}>
+                {col.name}
+              </nldd-list-item-segment>
+            )}
+            <nldd-text size="xs" color="secondary" className="tabular-nums">
+              {col.lead_count} {col.lead_count === 1 ? 'lead' : 'leads'}
+            </nldd-text>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <NlddIconButton
+              icon="chevron-up"
+              accessibleLabel="Omhoog"
+              variant="neutral-transparent"
+              size="sm"
+              disabled={isFirst || reordering}
+              onClick={onMoveUp}
+            />
+            <NlddIconButton
+              icon="chevron-down"
+              accessibleLabel="Omlaag"
+              variant="neutral-transparent"
+              size="sm"
+              disabled={isLast || reordering}
+              onClick={onMoveDown}
+            />
+            <NlddIconButton
+              icon="trash"
+              accessibleLabel={canDelete ? 'Verwijderen' : 'Laatste kolom kan niet weg'}
+              variant="neutral-transparent"
+              size="sm"
+              disabled={!canDelete}
+              onClick={onDelete}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap pl-1 text-xs">
+          <ToggleChip
+            active={col.is_active_stage}
+            activeIcon="check-mark"
+            inactiveIcon="close"
+            label="Actieve fase"
+            title="Telt mee voor overdue/stale-filter"
+            activeClassName="bg-emerald-100 text-emerald-800"
+            onToggle={onToggleActive}
+          />
+          <ToggleChip
+            active={col.is_public_visible}
+            activeIcon="eye"
+            inactiveIcon="eye-slash"
+            label="Publiek zichtbaar"
+            title="Toont casuses op publieke pagina"
+            activeClassName="bg-blue-100 text-blue-800"
+            onToggle={onTogglePublic}
+          />
+          <div className="flex items-center gap-1">
+            <nldd-icon name="globe" size="16" color="secondary-content" aria-hidden="true" />
+            <ColorSwatches selected={col.color} onSelect={onSetColor} />
+          </div>
+        </div>
+      </div>
+    </nldd-list-item>
+  );
+}
+
+interface ToggleChipProps {
+  active: boolean;
+  activeIcon: string;
+  inactiveIcon: string;
+  label: string;
+  title: string;
+  activeClassName: string;
+  onToggle: () => void;
+}
+
+function ToggleChip({ active, activeIcon, inactiveIcon, label, title, activeClassName, onToggle }: ToggleChipProps) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onToggle);
+
+  return (
+    <nldd-list-item-segment
+      ref={ref}
+      button
+      title={title}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${active ? activeClassName : 'bg-gray-100 text-gray-600'}`}
+    >
+      <nldd-icon name={active ? activeIcon : inactiveIcon} size="16" aria-hidden="true" />
+      {label}
+    </nldd-list-item-segment>
   );
 }
 

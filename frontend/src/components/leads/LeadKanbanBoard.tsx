@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Plus } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { NlddButton } from '@/components/nldd/NlddLink';
 import { LeadCard } from './LeadCard';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { LeadIntakeDialog } from './LeadIntakeDialog';
@@ -300,13 +300,14 @@ export function LeadKanbanBoard({
                 )}
               </div>
 
-              <button
+              <NlddButton
+                text="Nieuwe lead"
+                startIcon="plus"
+                variant="neutral-transparent"
+                size="sm"
                 onClick={() => setShowIntake(true)}
-                className="flex items-center justify-center gap-1 px-3 py-2 text-xs text-text-secondary hover:text-text hover:bg-gray-100/80 transition-colors rounded-b-xl"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Nieuwe lead
-              </button>
+                className="w-full rounded-t-none"
+              />
             </div>
           </div>
         ))}
