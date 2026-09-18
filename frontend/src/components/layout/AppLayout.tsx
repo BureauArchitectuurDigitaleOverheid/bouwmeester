@@ -63,8 +63,14 @@ function PlacementBanner() {
 export function AppLayout() {
   const isMobile = useIsMobile();
   const location = useLocation();
-  const { mobileSidebarOpen, setMobileSidebarOpen, chatOpen, searchModalOpen, setSearchModalOpen } =
-    useUIStore();
+  const {
+    mobileSidebarOpen,
+    setMobileSidebarOpen,
+    sidebarOpen,
+    chatOpen,
+    searchModalOpen,
+    setSearchModalOpen,
+  } = useUIStore();
   const { isDragging } = useGlobalFileDropContext();
   const splitViewRef = useRef<HTMLElement>(null);
 
@@ -127,7 +133,19 @@ export function AppLayout() {
              replaces the fixed-position overlay this layout used to hand-roll. */
           primary-sidebar-as-sheet={orUndef(isMobile)}
         >
-          <nldd-split-view-pane slot="primary-sidebar" has-content background="tinted">
+          {/* The split view sizes its sidebar pane itself, so collapsing used to
+              hide the labels without the pane getting any narrower — the sidebar
+              just went empty. The width is set here instead, on the pane. */}
+          <nldd-split-view-pane
+            slot="primary-sidebar"
+            has-content
+            background="tinted"
+            style={{
+              width: sidebarOpen || isMobile ? '240px' : '64px',
+              minWidth: sidebarOpen || isMobile ? '240px' : '64px',
+              transition: 'width 200ms ease, min-width 200ms ease',
+            }}
+          >
             <Sidebar mobile={isMobile} />
           </nldd-split-view-pane>
 

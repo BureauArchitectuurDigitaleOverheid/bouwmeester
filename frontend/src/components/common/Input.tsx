@@ -1,4 +1,5 @@
-import { forwardRef, type InputHTMLAttributes } from 'react';
+import { forwardRef, useCallback, useRef, type ChangeEvent, type InputHTMLAttributes } from 'react';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -20,32 +21,92 @@ const TEXT_TYPES = new Set(['text', 'email', 'tel', 'url']);
  * `nldd-date-field` a date. Routing here keeps every existing `<Input type=...>`
  * call site working while each one gets the right keyboard and controls.
  *
+ * `onChange` is bridged by hand and NOT spread onto the element. These are
+ * custom elements, so React's synthetic onChange never fires for them and the
+ * value arrives in `event.detail` rather than on `event.target.value`. An
+ * earlier version of this file dropped the handler entirely, which left every
+ * `<Input onChange=...>` in the app silently ignoring what the user typed.
+ *
  * Two behaviours change for the better: the field associates its own label (the
  * old `id || label.toLowerCase()` fallback could collide between two fields with
  * the same label), and it marks what is OPTIONAL instead of starring what is
  * required, per the design system's convention.
  */
-export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helperText, className, id, type = 'text', required, disabled, ...props }, ref) => {
+export const Input = forwardRef<HTMLElement, InputProps>(
+  (
+    {
+      label,
+      error,
+      helperText,
+      className,
+      id,
+      type = 'text',
+      required,
+      disabled,
+      onChange,
+      placeholder,
+      name,
+      value,
+      autoComplete,
+      readOnly,
+      ...rest
+    },
+    ref,
+  ) => {
+    const innerRef = useRef<HTMLElement>(null);
+
+    // Hand the caller something shaped like the change event it expects, so the
+    // existing `e.target.value` call sites keep working untouched.
+    const relay = useCallback(
+      (event: Event) => {
+        if (!onChange) return;
+        const next = eventValue(event);
+        const target = { value: next, name: name ?? '' } as EventTarget & HTMLInputElement;
+        onChange({
+          ...(event as unknown as ChangeEvent<HTMLInputElement>),
+          target,
+          currentTarget: target,
+        });
+      },
+      [onChange, name],
+    );
+
+    // `input` fires per keystroke, which is what a controlled React field wants.
+    useNlddEvent(innerRef, 'input', onChange ? relay : undefined);
+
+    const setRefs = useCallback(
+      (el: HTMLElement | null) => {
+        innerRef.current = el;
+        if (typeof ref === 'function') ref(el);
+        else if (ref) (ref as React.MutableRefObject<HTMLElement | null>).current = el;
+      },
+      [ref],
+    );
+
     // Shared across all three elements. `value` is deliberately left out: the
     // number field takes a number where the others take a string.
     const shared = {
-      ref: ref as React.Ref<HTMLElement>,
+      ref: setRefs,
       className,
       ...(id ? { 'input-id': id } : {}),
       ...(required ? { required: true as const } : {}),
       ...(disabled ? { disabled: true as const } : {}),
+      ...(readOnly ? { readonly: true as const } : {}),
       ...(error ? { invalid: true as const, unmet: ERROR_ID } : {}),
-      ...(label ? {} : { 'accessible-label': props.placeholder ?? '' }),
-      ...(props.placeholder ? { placeholder: props.placeholder } : {}),
-      ...(props.name ? { name: props.name } : {}),
+      ...(label ? {} : { 'accessible-label': placeholder ?? '' }),
+      ...(placeholder ? { placeholder } : {}),
+      ...(name ? { name } : {}),
+      ...(autoComplete ? { autocomplete: autoComplete } : {}),
+      ...(rest.maxLength !== undefined ? { maxlength: rest.maxLength } : {}),
+      ...(rest.minLength !== undefined ? { minlength: rest.minLength } : {}),
     };
 
-    const stringValue = props.value !== undefined ? String(props.value) : undefined;
+    const stringValue = value !== undefined ? String(value) : undefined;
 
     let field;
     if (type === 'number') {
-      const numeric = stringValue === undefined || stringValue === '' ? undefined : Number(stringValue);
+      const numeric =
+        stringValue === undefined || stringValue === '' ? undefined : Number(stringValue);
       field = (
         <nldd-number-field
           {...shared}
@@ -58,7 +119,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       // Only the four types the element supports reach its `type`; anything else
       // (password, search, ...) falls back to a plain text field rather than
       // landing an attribute the element does not understand.
-      const textType = TEXT_TYPES.has(type) && type !== 'text' ? (type as 'email' | 'tel' | 'url') : undefined;
+      const textType =
+        TEXT_TYPES.has(type) && type !== 'text' ? (type as 'email' | 'tel' | 'url') : undefined;
       field = (
         <nldd-text-field
           {...shared}

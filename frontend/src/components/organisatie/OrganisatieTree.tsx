@@ -138,8 +138,11 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
             </nldd-text-cell>
           </nldd-list-item-segment>
 
-          {/* Vaste rechter-kolom: type-badge rechts uitgelijnd + add-button. */}
-          <div className="flex items-center gap-1 shrink-0 w-52 justify-end">
+          {/* Rechter kolom: type-badge rechts uitgelijnd + add-button.
+              Geen vaste breedte: de boom staat in een smal paneel, en een
+              shrink-0 kolom van 208px liet voor de naam zo weinig over dat die
+              per letter afbrak. */}
+          <div className="flex shrink-0 items-center justify-end gap-1">
             {node.bron === 'fcc_import' && (
               <Badge variant="amber" title="Auto-aangemaakt door FCC-import">
                 FCC
