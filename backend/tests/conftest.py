@@ -29,6 +29,21 @@ settings = get_settings()
 
 
 @pytest.fixture(autouse=True)
+def _reset_mattermost_hint_cache():
+    """Leeg de in-process rate-limit-cache van de Mattermost-ingest.
+
+    ``_unlinked_hint_sent_at`` is module-level state. Zonder deze reset
+    bepaalt de testvolgorde of een test die een mention in een ongekoppeld
+    kanaal verwerkt nog een uitleg-reply ziet.
+    """
+    from bouwmeester.services import mattermost_ingest_service
+
+    mattermost_ingest_service._unlinked_hint_sent_at.clear()
+    yield
+    mattermost_ingest_service._unlinked_hint_sent_at.clear()
+
+
+@pytest.fixture(autouse=True)
 async def _dispose_global_engine():
     """Dispose the module-level engine after each test.
 
