@@ -71,6 +71,10 @@ logger = logging.getLogger(__name__)
 # opleveren. Eén uitleg per kanaal per uur is genoeg om het misverstand weg
 # te nemen zonder het kanaal vol te zetten.
 _UNLINKED_HINT_COOLDOWN_SECONDS = 3600
+# Kortere cooldown na een mislukte poging: snel genoeg om een tijdelijke
+# storing te overleven, lang genoeg om niet te hameren op een kanaal waar
+# de bot structureel niet mag posten.
+_UNLINKED_HINT_RETRY_SECONDS = 300
 _UNLINKED_HINT_CACHE_CAP = 256
 
 # channel_id -> monotonic timestamp van de laatste uitleg-reply. In-process:
@@ -93,9 +97,18 @@ def _claim_unlinked_hint(channel_id: str) -> bool:
     return True
 
 
-def _release_unlinked_hint(channel_id: str) -> None:
-    """Geef een claim terug als de uitleg uiteindelijk niet geplaatst is."""
-    _unlinked_hint_sent_at.pop(channel_id, None)
+def _backoff_unlinked_hint(channel_id: str) -> None:
+    """Zet de claim terug op een korte cooldown na een mislukte poging.
+
+    Niet volledig vrijgeven: in een kanaal waar de bot permanent niet mag
+    posten (403) zou elke mention anders een nieuwe API-call en een volledige
+    stacktrace in de logs opleveren.
+    """
+    _unlinked_hint_sent_at[channel_id] = (
+        time.monotonic()
+        - _UNLINKED_HINT_COOLDOWN_SECONDS
+        + _UNLINKED_HINT_RETRY_SECONDS
+    )
 
 
 def message_mentions_bot(message: str, bot_username: str | None) -> bool:
@@ -107,10 +120,15 @@ def message_mentions_bot(message: str, bot_username: str | None) -> bool:
     """
     if not bot_username or not message:
         return False
-    # Rechts mag geen username-teken volgen: `\b` alleen is niet genoeg,
-    # want `-`, `.` en `_` zijn geldige username-tekens maar tellen voor
+    # Rechts mag geen langere username volgen. `\b` alleen is niet genoeg,
+    # want `.`, `-` en `_` zijn geldige username-tekens maar tellen voor
     # `\b` als grens — dan zou `@bouwmeester-test` ook matchen.
-    pattern = rf"(?<![\w@])@{re.escape(bot_username)}(?![\w.\-])"
+    #
+    # `.` en `-` sluiten we alleen uit als er een woordteken achteraan komt,
+    # anders zou een mention aan het eind van een zin ("leg dit vast
+    # @bouwmeester.") niet matchen. Dat is juist het natuurlijkste geval, en
+    # een Mattermost-username mag sowieso niet op een punt eindigen.
+    pattern = rf"(?<![\w@])@{re.escape(bot_username)}(?![\w]|[.\-]\w)"
     return re.search(pattern, message, re.IGNORECASE) is not None
 
 
@@ -227,7 +245,12 @@ class MattermostIngestService:
             return
 
         message = post.get("message") or ""
-        mentions_bot = message_mentions_bot(message, self.bot_username)
+        # Zonder bekende bot-user-id kunnen we eigen posts niet herkennen
+        # (zie de skip hierboven). Dan geen replies plaatsen: de bot zou
+        # zijn eigen bevestigingen als gebruikersberichten inlezen.
+        mentions_bot = bool(self.bot_user_id) and message_mentions_bot(
+            message, self.bot_username
+        )
 
         link_repo = MattermostChannelLinkRepository(self.session)
         channel_link = await link_repo.get_by_channel_id(channel_id)
@@ -398,10 +421,13 @@ class MattermostIngestService:
             channel_id=channel_id, root_post_id=root_id or post_id
         )
         if not sent:
-            # Niets geplaatst (Mattermost uit of API-fout): de claim weer
-            # vrijgeven, anders zwijgen we een uur zonder dat er ooit een
-            # uitleg is verschenen.
-            _release_unlinked_hint(channel_id)
+            # Niets geplaatst (Mattermost uit of API-fout). De volledige
+            # claim vasthouden zou een uur zwijgen zonder dat er ooit een
+            # uitleg verscheen; 'm helemaal vrijgeven zou in een kanaal waar
+            # de bot structureel niet mág posten elke mention opnieuw laten
+            # proberen. Dus een korte cooldown: een tijdelijke storing is zo
+            # weer over, een permanente 403 floodt de logs niet vol.
+            _backoff_unlinked_hint(channel_id)
 
     async def _reply_not_linked(self, *, channel_id: str, root_post_id: str) -> bool:
         """Leg in een ongekoppeld kanaal uit dat we niet meelezen.
@@ -480,6 +506,12 @@ class MattermostIngestService:
             text = (
                 ":mag: Gezien, maar ik zie hier geen nieuwe lead in. Maak "
                 "hem handmatig aan in Bouwmeester als dat wel zo is."
+            )
+        elif skipped_reason == "stale_initiatief":
+            text = (
+                ":warning: Dit kanaal is gekoppeld aan een initiatief dat "
+                "niet meer bestaat. Koppel het opnieuw met "
+                "`/bouwmeester koppel initiatief <naam>`."
             )
         else:
             text = ":eyes: Gezien. Ik heb hier verder niets mee gedaan."

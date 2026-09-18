@@ -206,7 +206,19 @@ class MattermostService:
             resp = await client.get("/api/v4/users/me")
             resp.raise_for_status()
             data = resp.json()
-            return data.get("id"), data.get("username")
+            user_id = data.get("id") or None
+            username = data.get("username") or None
+            if user_id is None:
+                # Zonder user-id werkt de anti-feedback-loop-check niet en
+                # zou de bot zijn eigen replies als gebruikersberichten
+                # inlezen. Dan liever ook de username laten vallen, zodat
+                # hij helemaal niet op mentions reageert.
+                logger.error(
+                    "Mattermost /users/me gaf geen user-id terug; "
+                    "mention-afhandeling blijft uit"
+                )
+                return None, None
+            return user_id, username
         except httpx.HTTPError:
             logger.exception("Failed to get bot identity")
             return None, None

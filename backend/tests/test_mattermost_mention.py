@@ -65,10 +65,8 @@ def _fake_mattermost(monkeypatch):
         "bouwmeester.services.mattermost_service.MattermostService",
         FakeMattermostService,
     )
-    # Cooldown-cache leeg per test, anders lekt state tussen tests.
-    ingest_module._unlinked_hint_sent_at.clear()
+    # De cache wordt globaal geleegd door een autouse-fixture in conftest.
     yield
-    ingest_module._unlinked_hint_sent_at.clear()
 
 
 @pytest.fixture
@@ -109,6 +107,19 @@ class TestMentionDetection:
 
     def test_negeert_andere_username_met_prefix(self):
         assert not message_mentions_bot("@bouwmeester-test hallo", BOT)
+
+    def test_mention_aan_eind_van_zin(self):
+        """Een punt achter de mention hoort gewoon te tellen.
+
+        "Leg dit vast @bouwmeester." is de natuurlijkste Nederlandse
+        zinsbouw; die negeren zou precies de stilte terugbrengen die deze
+        wijziging moet weghalen. Een Mattermost-username mag niet op een
+        punt eindigen, dus dit is nooit een andere gebruiker.
+        """
+        assert message_mentions_bot("Dit moet je vastleggen @bouwmeester.", BOT)
+        assert message_mentions_bot("Hoi @bouwmeester...", BOT)
+        assert message_mentions_bot("@bouwmeester, kijk even", BOT)
+        assert message_mentions_bot("kan @bouwmeester-", BOT)
 
     def test_negeert_email_achtige_string(self):
         assert not message_mentions_bot("mail naar foo@bouwmeester.nl", BOT)
@@ -153,7 +164,7 @@ async def test_mention_slaat_ruisfilter_over(db_session, sample_lead, monkeypatc
 
     monkeypatch.setattr(MattermostIngestService, "_is_noise", always_noise)
 
-    ingest = MattermostIngestService(db_session, bot_username=BOT)
+    ingest = MattermostIngestService(db_session, bot_user_id=_id(), bot_username=BOT)
     await ingest.ingest_post(
         {
             "id": _id(),
@@ -186,7 +197,7 @@ async def test_zonder_mention_blijft_ruis_ruis(db_session, sample_lead, monkeypa
 
     monkeypatch.setattr(MattermostIngestService, "_is_noise", always_noise)
 
-    ingest = MattermostIngestService(db_session, bot_username=BOT)
+    ingest = MattermostIngestService(db_session, bot_user_id=_id(), bot_username=BOT)
     await ingest.ingest_post(
         {
             "id": _id(),
@@ -220,7 +231,7 @@ async def test_mention_bevestigt_in_thread(db_session, sample_lead, monkeypatch)
 
     monkeypatch.setattr(MattermostIngestService, "_is_noise", never_noise)
 
-    ingest = MattermostIngestService(db_session, bot_username=BOT)
+    ingest = MattermostIngestService(db_session, bot_user_id=_id(), bot_username=BOT)
     await ingest.ingest_post(
         {
             "id": _id(),
@@ -240,7 +251,7 @@ async def test_mention_legt_uit_dat_notities_uitstaan(db_session, sample_lead):
     cid = _id()
     await _link_lead_channel(db_session, sample_lead, cid, auto_note=False)
 
-    ingest = MattermostIngestService(db_session, bot_username=BOT)
+    ingest = MattermostIngestService(db_session, bot_user_id=_id(), bot_username=BOT)
     await ingest.ingest_post(
         {
             "id": _id(),
@@ -262,7 +273,7 @@ async def test_mention_legt_uit_dat_notities_uitstaan(db_session, sample_lead):
 
 async def test_mention_in_ongekoppeld_kanaal_legt_uit(db_session):
     """Het scenario uit de screenshot: bot lijkt stuk, is het niet."""
-    ingest = MattermostIngestService(db_session, bot_username=BOT)
+    ingest = MattermostIngestService(db_session, bot_user_id=_id(), bot_username=BOT)
     await ingest.ingest_post(
         {
             "id": _id(),
@@ -281,7 +292,7 @@ async def test_mention_in_ongekoppeld_kanaal_legt_uit(db_session):
 
 async def test_geen_mention_in_ongekoppeld_kanaal_blijft_stil(db_session):
     """Zonder mention zwijgt de bot in een ongekoppeld kanaal."""
-    ingest = MattermostIngestService(db_session, bot_username=BOT)
+    ingest = MattermostIngestService(db_session, bot_user_id=_id(), bot_username=BOT)
     await ingest.ingest_post(
         {
             "id": _id(),
@@ -297,7 +308,7 @@ async def test_geen_mention_in_ongekoppeld_kanaal_blijft_stil(db_session):
 async def test_uitleg_is_gerateremd_per_kanaal(db_session):
     """Herhaalde mentions in hetzelfde kanaal leveren één uitleg op."""
     cid = _id()
-    ingest = MattermostIngestService(db_session, bot_username=BOT)
+    ingest = MattermostIngestService(db_session, bot_user_id=_id(), bot_username=BOT)
     for _ in range(3):
         await ingest.ingest_post(
             {
@@ -313,7 +324,7 @@ async def test_uitleg_is_gerateremd_per_kanaal(db_session):
 
 async def test_ander_kanaal_krijgt_eigen_uitleg(db_session):
     """De rem geldt per kanaal, niet globaal."""
-    ingest = MattermostIngestService(db_session, bot_username=BOT)
+    ingest = MattermostIngestService(db_session, bot_user_id=_id(), bot_username=BOT)
     for _ in range(2):
         await ingest.ingest_post(
             {
@@ -343,11 +354,12 @@ async def test_bot_reageert_niet_op_zichzelf(db_session):
     assert FakeMattermostService.replies == []
 
 
-async def test_mislukte_uitleg_blokkeert_volgende_poging_niet(db_session, monkeypatch):
-    """Een niet-geplaatste uitleg mag de rem niet een uur laten hangen.
+async def test_mislukte_uitleg_krijgt_korte_cooldown(db_session, monkeypatch):
+    """Een mislukte uitleg mag niet een uur blokkeren, maar ook niet hameren.
 
-    De claim wordt vóór het posten gezet; als het posten dan faalt zou het
-    kanaal een uur stil blijven zonder dat er ooit iets verschenen is.
+    Volledig vrijgeven zou in een kanaal waar de bot permanent niet mag
+    posten elke mention opnieuw laten proberen; de volle cooldown houden zou
+    een uur zwijgen zonder dat er ooit iets verscheen. Dus een korte rem.
     """
 
     class FailingService(FakeMattermostService):
@@ -360,7 +372,7 @@ async def test_mislukte_uitleg_blokkeert_volgende_poging_niet(db_session, monkey
     )
 
     cid = _id()
-    ingest = MattermostIngestService(db_session, bot_username=BOT)
+    ingest = MattermostIngestService(db_session, bot_user_id=_id(), bot_username=BOT)
     await ingest.ingest_post(
         {
             "id": _id(),
@@ -370,10 +382,27 @@ async def test_mislukte_uitleg_blokkeert_volgende_poging_niet(db_session, monkey
             "message": "@bouwmeester?",
         }
     )
-    # Claim moet weer vrij zijn.
-    assert cid not in ingest_module._unlinked_hint_sent_at
+    # Claim staat er nog (geen hamer-loop), maar op een korte cooldown.
+    assert cid in ingest_module._unlinked_hint_sent_at
 
-    # En een volgende poging mag het dus opnieuw proberen.
+    # Direct daarna nog een mention: die wordt nog tegengehouden.
+    await ingest.ingest_post(
+        {
+            "id": _id(),
+            "channel_id": cid,
+            "user_id": _id(),
+            "create_at": 1_700_000_000_000,
+            "message": "@bouwmeester?",
+        }
+    )
+    assert FakeMattermostService.replies == []
+
+    # Na het verstrijken van de korte cooldown mag het weer.
+    ingest_module._unlinked_hint_sent_at[cid] = (
+        ingest_module._unlinked_hint_sent_at[cid]
+        - ingest_module._UNLINKED_HINT_RETRY_SECONDS
+        - 1
+    )
     monkeypatch.setattr(
         "bouwmeester.services.mattermost_service.MattermostService",
         FakeMattermostService,
@@ -388,3 +417,40 @@ async def test_mislukte_uitleg_blokkeert_volgende_poging_niet(db_session, monkey
         }
     )
     assert len(FakeMattermostService.replies) == 1
+
+
+async def test_geen_bot_user_id_geen_replies(db_session):
+    """Zonder bekende bot-user-id reageren we nergens op.
+
+    De anti-feedback-loop-skip in ``ingest_post`` hangt op ``bot_user_id``.
+    Is die onbekend (bv. ``/users/me`` gaf geen id terug), dan herkennen we
+    eigen posts niet en zou de bot zijn eigen bevestigingen als
+    gebruikersberichten inlezen. Dan liever helemaal niets doen.
+    """
+    ingest = MattermostIngestService(db_session, bot_user_id=None, bot_username=BOT)
+    await ingest.ingest_post(
+        {
+            "id": _id(),
+            "channel_id": _id(),
+            "user_id": _id(),
+            "create_at": 1_700_000_000_000,
+            "message": "@bouwmeester hallo",
+        }
+    )
+    assert FakeMattermostService.replies == []
+
+
+def test_cursief_gemarkeerde_mention_telt_niet():
+    """``_@bouwmeester_`` wordt genegeerd, en dat is bewust.
+
+    ``_`` is een geldig teken in een Mattermost-username, dus zouden we het
+    als grens behandelen dan matcht ``@bouwmeester_test`` ook — een andere
+    gebruiker. Consistent met ``_MENTION_RE`` in de mention-renderer.
+    """
+    assert not message_mentions_bot("_@bouwmeester_", BOT)
+    assert not message_mentions_bot("@bouwmeester_test", BOT)
+
+
+def test_vetgedrukte_en_geciteerde_mention_tellen_wel():
+    assert message_mentions_bot("**@bouwmeester** kijk hier", BOT)
+    assert message_mentions_bot("> @bouwmeester in een quote", BOT)
