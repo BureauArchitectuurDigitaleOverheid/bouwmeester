@@ -78,6 +78,51 @@ async def _opdracht_task_loop(settings) -> None:  # type: ignore[no-untyped-def]
         await asyncio.sleep(settings.OPDRACHT_TASK_INTERVAL_SECONDS)
 
 
+async def _mattermost_retry_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Bied Mattermost-posts opnieuw aan die de LLM niet kon beoordelen.
+
+    Bij een VLAM-storing komt de lead-classificatie niet door en wordt de
+    post weggeschreven als ``llm_unavailable``. Zonder deze loop blijft zo'n
+    bericht definitief liggen, want ``ingest_post`` slaat alles over wat al
+    een ``mattermost_post_link`` heeft. Een echte lead die tijdens een
+    storing langskwam zou dus nooit meer opgepikt worden.
+    """
+    interval_seconds = getattr(settings, "MATTERMOST_RETRY_INTERVAL_SECONDS", 900)
+    await health_tick("mattermost_retry", status="starting")
+    while True:
+        try:
+            async with async_session() as session:
+                from bouwmeester.services.mattermost_ingest_service import (
+                    MattermostIngestService,
+                )
+                from bouwmeester.services.mattermost_service import MattermostService
+
+                mm = MattermostService(session)
+                try:
+                    bot_user_id, bot_username = await mm.get_bot_identity()
+                finally:
+                    await mm.close()
+
+                ingest = MattermostIngestService(
+                    session,
+                    bot_user_id=bot_user_id,
+                    bot_username=bot_username,
+                )
+                processed, leads = await ingest.retry_llm_unavailable()
+                await session.commit()
+            await health_tick(
+                "mattermost_retry",
+                detail=f"{processed} herverwerkt, {leads} suggesties",
+            )
+        except Exception as exc:
+            logger.exception("Error in Mattermost retry cycle")
+            await health_tick(
+                "mattermost_retry", status="error", detail=_short_error(exc)
+            )
+
+        await asyncio.sleep(interval_seconds)
+
+
 async def _fcc_sync_loop(settings) -> None:  # type: ignore[no-untyped-def]
     """Bidirectional sync with Fortes Change Cloud."""
     await health_tick("fcc_sync", status="starting")
@@ -347,6 +392,7 @@ async def main() -> None:
         asyncio.create_task(_mattermost_websocket_loop(settings)),
         asyncio.create_task(_opdracht_task_loop(settings)),
         asyncio.create_task(_fcc_sync_loop(settings)),
+        asyncio.create_task(_mattermost_retry_loop(settings)),
         asyncio.create_task(_overheidsorganisaties_dagelijks_loop(settings)),
         asyncio.create_task(_overheidsorganisaties_wekelijks_loop(settings)),
     ]

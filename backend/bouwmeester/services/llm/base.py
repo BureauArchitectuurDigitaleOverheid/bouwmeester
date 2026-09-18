@@ -70,6 +70,14 @@ class LeadCandidateClassification(BaseModel):
     proposed_description: str
     match_existing_lead_id: str | None
     reasoning: str
+    failed: bool = False
+    """True als de LLM-call zelf mislukte (netwerk, parse-fout).
+
+    Zonder dit is een onbereikbare LLM niet te onderscheiden van een echt
+    oordeel "dit is geen lead": beide geven ``is_lead=False``. Dat verschil
+    is wél belangrijk — een mislukte call betekent dat het bericht opnieuw
+    beoordeeld moet worden, en de gebruiker hoort niet te horen dat er geen
+    lead in zit terwijl er niemand gekeken heeft."""
 
 
 class BaseLLMService(ABC):
@@ -352,4 +360,5 @@ class BaseLLMService(ABC):
                 proposed_description="",
                 match_existing_lead_id=None,
                 reasoning="LLM-call mislukt",
+                failed=True,
             )

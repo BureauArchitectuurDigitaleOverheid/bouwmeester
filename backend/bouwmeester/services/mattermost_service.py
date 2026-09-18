@@ -684,6 +684,21 @@ class MattermostService:
                 break
         return results
 
+    async def get_post(self, post_id: str) -> dict | None:
+        """Haal één post op. ``None`` als hij niet (meer) bestaat.
+
+        Gebruikt door de herverwerking van posts die eerder door een
+        onbereikbare LLM niet beoordeeld konden worden.
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.get(f"/api/v4/posts/{post_id}")
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError:
+            logger.warning("Kon Mattermost-post %s niet ophalen", post_id)
+            return None
+
     async def get_channel_posts_since(
         self, channel_id: str, since: int, *, per_page: int = 60
     ) -> list[dict]:

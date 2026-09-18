@@ -6,6 +6,7 @@ const LOOP_LABELS: Record<string, string> = {
   mattermost_websocket: 'Mattermost: websocket (kanaal-meelezen + DM-koppeling)',
   opdracht_task: 'Opdracht-taken (deadlines, budget)',
   fcc_sync: 'Fortes Change Cloud sync',
+  mattermost_retry: 'Mattermost: herverwerking na LLM-storing',
   overheidsorganisaties_daily: 'Overheidsorganisaties: dagelijks (TK-leden, kabinet, ABD)',
   overheidsorganisaties_weekly: 'Overheidsorganisaties: wekelijks (TOOI, RIO, organogram)',
   worker_singleton: 'Worker-singleton (lock)',

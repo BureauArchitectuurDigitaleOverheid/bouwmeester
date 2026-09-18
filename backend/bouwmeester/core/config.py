@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     MATTERMOST_NOTIFICATION_CHANNEL_ID: str = ""
     # Token to verify incoming slash commands
     MATTERMOST_WEBHOOK_TOKEN: str = ""
+    # Herverwerking van posts die tijdens een LLM-storing niet beoordeeld
+    # konden worden. Kort interval: een storing mag niet lang een gat in de
+    # leads laten.
+    MATTERMOST_RETRY_INTERVAL_SECONDS: int = 900
     MATTERMOST_LINK_CODE_TTL_MINUTES: int = 10
     MATTERMOST_LINK_CODE_LENGTH: int = 8
 

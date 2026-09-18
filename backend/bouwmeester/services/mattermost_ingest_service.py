@@ -215,7 +215,13 @@ class MattermostIngestService:
         self.bot_username = bot_username
         self.mm_base_url = mm_base_url.rstrip("/") if mm_base_url else None
 
-    async def ingest_post(self, post: dict, *, channel_type: str | None = None) -> None:
+    async def ingest_post(
+        self,
+        post: dict,
+        *,
+        channel_type: str | None = None,
+        reply_to_mentions: bool = True,
+    ) -> None:
         """Verwerk één Mattermost-post.
 
         De caller is verantwoordelijk voor commit/rollback van de session.
@@ -367,7 +373,7 @@ class MattermostIngestService:
         # Wie de bot expliciet aanspreekt hoort te zien dát er iets gebeurd
         # is. Bij een lead-suggestie post ``_create_suggested_lead`` al een
         # eigen reply met knoppen — die niet dubbelen.
-        if mentions_bot and suggested_lead_id is None:
+        if mentions_bot and suggested_lead_id is None and reply_to_mentions:
             await self._reply_mention_ack(
                 channel_id=channel_id,
                 root_post_id=root_id or post_id,
@@ -428,6 +434,88 @@ class MattermostIngestService:
             # proberen. Dus een korte cooldown: een tijdelijke storing is zo
             # weer over, een permanente 403 floodt de logs niet vol.
             _backoff_unlinked_hint(channel_id)
+
+    async def retry_llm_unavailable(self, *, max_posts: int = 50) -> tuple[int, int]:
+        """Bied posts opnieuw aan die de LLM eerder niet kon beoordelen.
+
+        Bij een VLAM-storing kwam ``classify_mattermost_lead_candidate`` niet
+        door, en werd de post weggeschreven met
+        ``skipped_reason="llm_unavailable"``. Zonder herverwerking is zo'n
+        bericht definitief verloren: ``ingest_post`` slaat elke post over die
+        al een ``mattermost_post_link`` heeft. Een echte lead die tijdens een
+        storing langskwam zou dus nooit meer opgepikt worden.
+
+        Returns ``(aantal_opnieuw_verwerkt, aantal_leads)``.
+        """
+        from bouwmeester.services.llm import DataSensitivity
+        from bouwmeester.services.llm.factory import get_llm_service_for
+
+        # Geen provider geconfigureerd: niets te proberen. Let op: dit zegt
+        # alleen iets over de configuratie, niet over bereikbaarheid. Ligt
+        # VLAM eruit, dan komen de posts gewoon opnieuw als
+        # ``llm_unavailable`` terug en blijven ze in de wachtrij staan tot
+        # de volgende ronde. Dat is precies de bedoeling.
+        if (
+            await get_llm_service_for(DataSensitivity.CONFIDENTIAL, self.session)
+            is None
+        ):
+            return 0, 0
+
+        stmt = (
+            select(MattermostPostLink)
+            .where(MattermostPostLink.skipped_reason == "llm_unavailable")
+            .order_by(MattermostPostLink.created_at)
+            .limit(max_posts)
+        )
+        pending = list((await self.session.execute(stmt)).scalars().all())
+        if not pending:
+            return 0, 0
+
+        from bouwmeester.services.mattermost_service import MattermostService
+
+        service = MattermostService(self.session)
+        processed = 0
+        leads = 0
+        try:
+            if not await service.is_enabled():
+                return 0, 0
+            for link in pending:
+                post = await service.get_post(link.post_id)
+                if post is None:
+                    # Post verwijderd in Mattermost: niets meer te doen,
+                    # markeren zodat we 'm niet elke ronde opnieuw ophalen.
+                    link.skipped_reason = "post_gone"
+                    continue
+                # De idempotency-rij weghalen zodat ingest_post 'm als nieuw
+                # ziet. Flush vóór de her-ingest, anders botst de insert.
+                await self.session.delete(link)
+                await self.session.flush()
+                # Geen mention-bevestiging bij een herkansing: bij een lange
+                # storing zou elke ronde opnieuw ":eyes: Gezien" in de thread
+                # posten. De gebruiker heeft die bevestiging al gehad toen
+                # het bericht binnenkwam; wat hij nog mist is de suggestie,
+                # en die komt via _post_suggestion_reply wél door.
+                await self.ingest_post(post, reply_to_mentions=False)
+                processed += 1
+                refreshed = (
+                    await self.session.execute(
+                        select(MattermostPostLink).where(
+                            MattermostPostLink.post_id == post["id"]
+                        )
+                    )
+                ).scalar_one_or_none()
+                if refreshed is not None and refreshed.suggested_lead_id is not None:
+                    leads += 1
+        finally:
+            await service.close()
+
+        if processed:
+            logger.info(
+                "Herverwerkt na LLM-storing: %d posts, %d nieuwe lead-suggesties",
+                processed,
+                leads,
+            )
+        return processed, leads
 
     async def _reply_not_linked(self, *, channel_id: str, root_post_id: str) -> bool:
         """Leg in een ongekoppeld kanaal uit dat we niet meelezen.
@@ -845,6 +933,12 @@ class MattermostIngestService:
             channel_display_name=channel_display_name,
             recent_leads=recent,
         )
+        if result.failed:
+            # Onbereikbare of stukke LLM is geen oordeel. Als "no_lead"
+            # afdoen zou de post definitief afgeschreven zijn en de
+            # gebruiker te horen krijgen dat er niets in zit, terwijl er
+            # niemand gekeken heeft.
+            return None, "llm_unavailable"
         if not result.is_lead:
             return None, "no_lead"
 
