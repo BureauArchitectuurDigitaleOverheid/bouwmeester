@@ -194,6 +194,12 @@ async def _sync_tk(
     plc_per_key: dict[tuple[uuid.UUID, date], PersonOrganisatieEenheid] = {
         (p.person_id, p.start_datum): p for p in huidige_plaatsingen
     }
+    # Aparte index op de open rijen. uq_active_placement staat per
+    # (person, eenheid, bron) maar één open rij toe, en zonder deze index
+    # zouden we daar per record lineair voor moeten scannen.
+    open_per_person: dict[uuid.UUID, PersonOrganisatieEenheid] = {
+        p.person_id: p for p in huidige_plaatsingen if p.eind_datum is None
+    }
 
     for record in feed:
         persoon = record.get("Persoon") or {}
@@ -227,17 +233,34 @@ async def _sync_tk(
         key = (person.id, van)
         bestaand_plc = plc_per_key.get(key)
         if bestaand_plc is None:
-            session.add(
-                PersonOrganisatieEenheid(
-                    person_id=person.id,
-                    organisatie_eenheid_id=eenheid.id,
-                    dienstverband="extern",
-                    functietitel=functietitel,
-                    bron="tk_odata",
-                    start_datum=van,
-                    eind_datum=tot,
-                )
+            # Een tweede open zetel-record voor dezelfde persoon (andere
+            # Van-datum) zou op uq_active_placement stuklopen. De nieuwste
+            # Van-datum wint: die is de actuele termijn. De oudere rij
+            # sluiten we af op de startdatum van de nieuwe.
+            open_plc = open_per_person.get(person.id)
+            if tot is None and open_plc is not None:
+                if open_plc.start_datum >= van:
+                    # Bestaande open rij is even nieuw of nieuwer: overslaan.
+                    stats.onveranderd += 1
+                    continue
+                open_plc.eind_datum = van
+                stats.geupdate_plaatsingen += 1
+            nieuw_plc = PersonOrganisatieEenheid(
+                person_id=person.id,
+                organisatie_eenheid_id=eenheid.id,
+                dienstverband="extern",
+                functietitel=functietitel,
+                bron="tk_odata",
+                start_datum=van,
+                eind_datum=tot,
             )
+            session.add(nieuw_plc)
+            # Meteen registreren: een tweede feed-record voor dezelfde persoon
+            # in dezelfde run moet deze rij zien, anders ontstaan er alsnog
+            # twee open plaatsingen.
+            plc_per_key[key] = nieuw_plc
+            if tot is None:
+                open_per_person[person.id] = nieuw_plc
             stats.new_placements += 1
             session.add(
                 TooiSyncLog(
@@ -259,9 +282,33 @@ async def _sync_tk(
                 bestaand_plc.eind_datum != tot
                 or bestaand_plc.functietitel != functietitel
             ):
+                # Een upstream-correctie kan TotEnMet weghalen, waardoor een
+                # afgesloten rij heropent. Staat er dan al een andere open rij
+                # voor deze persoon, dan botsen ze op uq_active_placement. De
+                # nieuwste Van-datum is de actuele termijn en blijft open.
+                ander_open = open_per_person.get(person.id)
+                if (
+                    tot is None
+                    and ander_open is not None
+                    and ander_open is not bestaand_plc
+                ):
+                    if ander_open.start_datum >= van:
+                        # De andere rij is actueler; deze niet heropenen.
+                        stats.onveranderd += 1
+                        continue
+                    ander_open.eind_datum = van
+                    stats.geupdate_plaatsingen += 1
+
                 bestaand_plc.eind_datum = tot
                 bestaand_plc.functietitel = functietitel
                 stats.geupdate_plaatsingen += 1
+                # De open/dicht-status van deze rij is net veranderd, dus de
+                # index meeveranderen — anders ziet een volgend record een
+                # verouderd beeld.
+                if tot is None:
+                    open_per_person[person.id] = bestaand_plc
+                elif open_per_person.get(person.id) is bestaand_plc:
+                    del open_per_person[person.id]
             else:
                 stats.onveranderd += 1
 

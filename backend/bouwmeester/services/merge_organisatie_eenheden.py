@@ -63,13 +63,21 @@ _PARTIAL_UNIQUE_BY_FK: list[tuple[str, str]] = [
 
 # Tables with a partial unique 'one active row per (fk, group_col)'
 # (WHERE eind_datum IS NULL). E.g. person_organisatie_eenheid:
-# uq_active_placement on (person_id, organisatie_eenheid_id) WHERE
+# uq_active_placement on (person_id, organisatie_eenheid_id, bron) WHERE
 # eind_datum IS NULL. Per group_col-value on source: if target has an
 # active row for that group, close source's active row instead of
 # letting two collide. Historical rows are rewritten as-is.
-_PARTIAL_UNIQUE_PER_GROUP: list[tuple[str, str, str, str]] = [
-    # (table, fk_col, group_col, eind_col)
-    ("person_organisatie_eenheid", "organisatie_eenheid_id", "person_id", "eind_datum"),
+# extra_group_cols moet elke extra indexkolom bevatten (hier: bron), anders
+# sluit de merge rijen die sinds de bron-scoping naast elkaar mogen bestaan.
+_PARTIAL_UNIQUE_PER_GROUP: list[tuple[str, str, str, str, tuple[str, ...]]] = [
+    # (table, fk_col, group_col, eind_col, extra_group_cols)
+    (
+        "person_organisatie_eenheid",
+        "organisatie_eenheid_id",
+        "person_id",
+        "eind_datum",
+        ("bron",),
+    ),
 ]
 
 
@@ -177,15 +185,23 @@ async def _close_source_active_per_group(
     eind_col: str,
     source_id: uuid.UUID,
     target_id: uuid.UUID,
+    extra_group_cols: tuple[str, ...] = (),
 ) -> int:
     """Close source's active row PER group_col-value if target has one.
 
-    For person_organisatie_eenheid: partial unique (person_id, OE_id) WHERE
-    eind_datum IS NULL. Per person: if target already has an active placement
-    AND source has an active placement, close the source's eind_datum to
-    today so they don't collide on rewrite. Historical placements on source
-    (eind_datum already set) are kept and just get their OE_id rewritten.
+    For person_organisatie_eenheid: partial unique
+    (person_id, OE_id, bron) WHERE eind_datum IS NULL. Per person: if target
+    already has an active placement AND source has an active placement, close
+    the source's eind_datum to today so they don't collide on rewrite.
+    Historical placements on source (eind_datum already set) are kept and just
+    get their OE_id rewritten.
+
+    ``extra_group_cols`` moet elke extra kolom van de partiële index bevatten.
+    Zonder ``bron`` zou een open abd_scrape-plaatsing gesloten worden omdat de
+    target toevallig een open tk_odata-plaatsing heeft, terwijl die twee sinds
+    de bron-scoping naast elkaar mogen bestaan. Dat is stille historie-verlies.
     """
+    extra_match = "".join(f" AND tgt.{col} = {table}.{col}" for col in extra_group_cols)
     sql = text(
         f"UPDATE {table} SET {eind_col} = CURRENT_DATE "  # noqa: S608
         f"WHERE {fk_col} = :source_id "
@@ -195,6 +211,7 @@ async def _close_source_active_per_group(
         f"  WHERE tgt.{fk_col} = :target_id "
         f"  AND tgt.{eind_col} IS NULL "
         f"  AND tgt.{group_col} = {table}.{group_col}"
+        f"{extra_match}"
         f")"
     )
     result = await session.execute(
@@ -390,10 +407,17 @@ async def merge_organisatie_eenheden(
                 session, fk.table, fk.column, source_id, target_id
             )
 
-        for ptable, pfk, pgroup, peind in _PARTIAL_UNIQUE_PER_GROUP:
+        for ptable, pfk, pgroup, peind, pextra in _PARTIAL_UNIQUE_PER_GROUP:
             if fk.table == ptable and fk.column == pfk:
                 await _close_source_active_per_group(
-                    session, ptable, pfk, pgroup, peind, source_id, target_id
+                    session,
+                    ptable,
+                    pfk,
+                    pgroup,
+                    peind,
+                    source_id,
+                    target_id,
+                    extra_group_cols=pextra,
                 )
 
         await _dedupe_before_rewrite(session, fk, source_id, target_id)

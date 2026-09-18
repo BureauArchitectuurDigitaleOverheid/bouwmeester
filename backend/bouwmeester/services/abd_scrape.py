@@ -92,6 +92,7 @@ class AbdSyncStats:
     nieuwe_personen: int = 0
     new_placements: int = 0
     onveranderd: int = 0
+    verlopen_plaatsingen: int = 0
     geen_org_match: int = 0
     fouten: list[str] = field(default_factory=list)
 
@@ -400,7 +401,9 @@ async def sync_abd(
     """Scrape ABD-benoemingen en koppel ze aan personen + organisaties.
 
     Idempotent: bij elk record wordt op (Person.naam + functietitel + eenheid)
-    gecheckt of de plaatsing al bestaat. Bestaat hij: niets doen.
+    gecheckt of de plaatsing al bestaat. Bestaat hij: niets doen. Is er wel
+    een actieve plaatsing in dezelfde eenheid met een andere functietitel,
+    dan geldt de benoeming als opvolging en wordt de oude afgesloten.
     """
     sync_run_id = uuid.uuid4()
     stats = AbdSyncStats(sync_run_id=sync_run_id)
@@ -452,13 +455,49 @@ async def sync_abd(
             stats.onveranderd += 1
             continue
 
+        # Andere functietitel binnen dezelfde eenheid: dit is een promotie of
+        # functiewissel, geen tweede gelijktijdige functie. De oude plaatsing
+        # sluiten we af — anders botsen twee actieve abd_scrape-rijen op
+        # uq_active_placement (die kijkt niet naar functietitel).
+        ingangsdatum = b.ingangsdatum or b.publicatiedatum
+        vorige = (
+            (
+                await session.execute(
+                    select(PersonOrganisatieEenheid).where(
+                        PersonOrganisatieEenheid.person_id == person.id,
+                        PersonOrganisatieEenheid.organisatie_eenheid_id == eenheid.id,
+                        PersonOrganisatieEenheid.bron == "abd_scrape",
+                        PersonOrganisatieEenheid.eind_datum.is_(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for oude in vorige:
+            # De nieuwsfeed staat niet gegarandeerd chronologisch, dus een
+            # oudere benoeming kan na een nieuwere langskomen. Nooit vóór de
+            # startdatum afsluiten — dat zou een omgekeerde periode opleveren.
+            oude.eind_datum = max(ingangsdatum, oude.start_datum)
+            stats.verlopen_plaatsingen += 1
+            session.add(
+                TooiSyncLog(
+                    sync_run_id=sync_run_id,
+                    bron="abd_scrape",
+                    action="soft_delete",
+                    person_id=oude.person_id,
+                    organisatie_eenheid_id=oude.organisatie_eenheid_id,
+                    note=(f"opgevolgd door nieuwe ABD-benoeming '{b.functietitel}'"),
+                )
+            )
+
         plc = PersonOrganisatieEenheid(
             person_id=person.id,
             organisatie_eenheid_id=eenheid.id,
             dienstverband="extern",
             functietitel=b.functietitel,
             bron="abd_scrape",
-            start_datum=b.ingangsdatum or b.publicatiedatum,
+            start_datum=ingangsdatum,
         )
         session.add(plc)
         stats.new_placements += 1
@@ -486,10 +525,11 @@ async def sync_abd(
         await session.flush()
     log.info(
         "ABD-scrape run=%s: +%d personen, +%d plaatsingen, "
-        "%d onveranderd, %d zonder org-match",
+        "%d afgesloten, %d onveranderd, %d zonder org-match",
         sync_run_id,
         stats.nieuwe_personen,
         stats.new_placements,
+        stats.verlopen_plaatsingen,
         stats.onveranderd,
         stats.geen_org_match,
     )

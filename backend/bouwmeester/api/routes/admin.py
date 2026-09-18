@@ -13,6 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import AdminUser
+from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import get_db
 from bouwmeester.core.encryption import decrypt_value, encrypt_value
 from bouwmeester.core.query_utils import normalize_email
@@ -774,30 +775,72 @@ async def version_info(admin: AdminUser) -> dict[str, str]:
 # Worker health
 # ---------------------------------------------------------------------------
 
-# Per-loop expected cadence in seconds. If last_tick_at is older than this
-# we mark the loop "stale"; older than 4× we mark it "down". These numbers
-# err on the side of "noisy when broken" rather than "quiet when broken".
-_WORKER_EXPECTED_CADENCE_SEC = {
-    "parlementair": 900,  # TK_POLL_INTERVAL_SECONDS default 15min
-    "mattermost_websocket": 90,  # idle-heartbeat is once per 60s
-    "opdracht_task": 86400,  # daily — give it 4× before declaring down
-    "fcc_sync": 600,  # FCC_POLL_INTERVAL_SECONDS default 10min
-}
+# Loops that tick exactly once and then stay silent by design. Their age says
+# nothing about health, so age-based classification would always eventually
+# call them down. `worker_singleton` ticks when the instance wins the lock and
+# never again — a 15-day-old "lock verkregen" row is the healthy case.
+_ONE_SHOT_LOOPS = frozenset({"worker_singleton"})
 
-# Loop names we expect to see. If a row never appears, the loop never started
-# (worker process probably crashed before `await health_tick("…", "starting")`).
-_EXPECTED_LOOPS = list(_WORKER_EXPECTED_CADENCE_SEC.keys())
+# Fallback cadence for a heartbeat row we don't recognise (a loop added
+# without updating the map below). Deliberately short so it shows up.
+_UNKNOWN_LOOP_CADENCE_SEC = 300.0
 
 
-def _classify_health(status: str, seconds_since: float, expected_cadence: float) -> str:
+def _worker_expected_cadence_sec() -> dict[str, float]:
+    """Per-loop expected cadence in seconds, read from the same settings the
+    loops themselves sleep on.
+
+    Hardcoding these drifted once already: the map claimed a 15-minute
+    parlementair cadence while ``TK_POLL_INTERVAL_SECONDS`` defaulted to an
+    hour, so a perfectly healthy loop showed up as "Vertraagd". Deriving them
+    keeps the two in step. If ``last_tick_at`` is older than the cadence we
+    mark the loop "stale"; older than 4× we mark it "down".
+    """
+    settings = get_settings()
+    return {
+        "parlementair": float(settings.TK_POLL_INTERVAL_SECONDS),
+        "mattermost_websocket": 90.0,  # idle-heartbeat is once per 60s
+        "opdracht_task": float(settings.OPDRACHT_TASK_INTERVAL_SECONDS),
+        "fcc_sync": float(settings.FCC_POLL_INTERVAL_SECONDS),
+        "overheidsorganisaties_daily": float(
+            settings.OVERHEIDSORG_DAILY_INTERVAL_SECONDS
+        ),
+        "overheidsorganisaties_weekly": float(
+            settings.OVERHEIDSORG_WEEKLY_INTERVAL_SECONDS
+        ),
+    }
+
+
+def _expected_loops() -> list[str]:
+    """Loop names we expect a heartbeat row for. If a row never appears, the
+    loop never started (worker process probably crashed before
+    ``await health_tick("…", "starting")``). One-shot entries are listed too
+    so their absence is still visible."""
+    return [*_worker_expected_cadence_sec(), *sorted(_ONE_SHOT_LOOPS)]
+
+
+def _classify_health(
+    status: str,
+    seconds_since: float,
+    expected_cadence: float,
+    *,
+    one_shot: bool = False,
+) -> str:
     """Map (status, age) to a coarse health bucket for the UI."""
     if status == "disabled":
         return "disabled"
+    if one_shot:
+        # A one-shot ticks once and then stays silent by design, so its age
+        # carries no signal at all — only the status does.
+        return "healthy" if status == "ok" else "stale"
+    # Age first: a loop that stopped ticking is "down" whatever its last
+    # status said. An error tick that never refreshes means the process died
+    # right after writing it, and that has to reach the red banner.
     if seconds_since > expected_cadence * 4:
         return "down"
-    if seconds_since > expected_cadence:
-        return "stale"
     if status in ("error", "reconnecting"):
+        return "stale"
+    if seconds_since > expected_cadence:
         return "stale"
     return "healthy"
 
@@ -819,10 +862,12 @@ async def workers_health(
         .all()
     )
     by_name = {row.loop_name: row for row in rows}
+    cadences = _worker_expected_cadence_sec()
 
     out: list[WorkerHeartbeatResponse] = []
-    for name in _EXPECTED_LOOPS:
-        cadence = _WORKER_EXPECTED_CADENCE_SEC[name]
+    for name in _expected_loops():
+        one_shot = name in _ONE_SHOT_LOOPS
+        cadence = cadences.get(name, _UNKNOWN_LOOP_CADENCE_SEC)
         row = by_name.get(name)
         if row is None:
             out.append(
@@ -834,6 +879,7 @@ async def workers_health(
                     started_at=None,
                     seconds_since_last_tick=None,
                     health="down",
+                    one_shot=one_shot,
                 )
             )
             continue
@@ -851,14 +897,18 @@ async def workers_health(
                 if row.started_at.tzinfo is None
                 else row.started_at,
                 seconds_since_last_tick=seconds_since,
-                health=_classify_health(row.status, seconds_since, cadence),
+                health=_classify_health(
+                    row.status, seconds_since, cadence, one_shot=one_shot
+                ),
+                one_shot=one_shot,
             )
         )
 
     # Surface any unexpected loop names too — future-proofing if someone adds
-    # a loop without updating _EXPECTED_LOOPS.
+    # a loop without updating the cadence map.
+    known = set(_expected_loops())
     for name, row in by_name.items():
-        if name in _EXPECTED_LOOPS:
+        if name in known:
             continue
         last = row.last_tick_at
         if last.tzinfo is None:
@@ -874,7 +924,9 @@ async def workers_health(
                 if row.started_at.tzinfo is None
                 else row.started_at,
                 seconds_since_last_tick=seconds_since,
-                health=_classify_health(row.status, seconds_since, 300.0),
+                health=_classify_health(
+                    row.status, seconds_since, _UNKNOWN_LOOP_CADENCE_SEC
+                ),
             )
         )
 
