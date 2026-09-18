@@ -1,40 +1,111 @@
-import { createContext, useCallback, useContext, useState } from 'react';
-import { X } from 'lucide-react';
+import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { useNlddEvent } from '@/components/nldd/events';
+
+/** An action offered alongside the message, e.g. undoing what just happened. */
+export interface ToastAction {
+  label: string;
+  onAction: () => void;
+}
 
 interface Toast {
   id: number;
   message: string;
   variant: 'error' | 'success' | 'warning';
+  action?: ToastAction;
 }
 
 interface ToastContextValue {
-  showError: (message: string) => void;
-  showSuccess: (message: string) => void;
-  showWarning: (message: string) => void;
+  showError: (message: string, action?: ToastAction) => void;
+  showSuccess: (message: string, action?: ToastAction) => void;
+  showWarning: (message: string, action?: ToastAction) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 let nextId = 0;
 
+/** Our variants in the design system's terms. */
+const VARIANTS = {
+  error: 'critical',
+  warning: 'warning',
+  success: 'success',
+} as const;
+
+/**
+ * One notification.
+ *
+ * The element runs its own clock and dismisses itself, then fires `dismiss` for
+ * the consumer to remove it — so the timers this provider used to keep are gone.
+ * A `critical` notification ignores the clock and waits for the user, which is
+ * why an error no longer disappears on its own.
+ */
+function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  const actionRef = useRef<HTMLElement>(null);
+
+  useNlddEvent(
+    ref,
+    'dismiss',
+    useCallback(() => onDismiss(toast.id), [onDismiss, toast.id]),
+  );
+
+  useNlddEvent(
+    actionRef,
+    'click',
+    useCallback(() => {
+      toast.action?.onAction();
+      onDismiss(toast.id);
+    }, [toast, onDismiss]),
+  );
+
+  return (
+    <nldd-notification
+      ref={ref}
+      variant={VARIANTS[toast.variant]}
+      text={toast.message}
+      duration={toast.variant === 'warning' ? 8000 : 5000}
+    >
+      {toast.action && (
+        <div slot="actions">
+          <nldd-button
+            ref={actionRef}
+            variant="inherit-tinted"
+            size="sm"
+            text={toast.action.label}
+          />
+        </div>
+      )}
+    </nldd-notification>
+  );
+}
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const addToast = useCallback((message: string, variant: Toast['variant']) => {
-    const id = nextId++;
-    setToasts((prev) => [...prev, { id, message, variant }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, variant === 'warning' ? 8000 : 5000);
-  }, []);
-
-  const showError = useCallback((message: string) => addToast(message, 'error'), [addToast]);
-  const showSuccess = useCallback((message: string) => addToast(message, 'success'), [addToast]);
-  const showWarning = useCallback((message: string) => addToast(message, 'warning'), [addToast]);
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const addToast = useCallback(
+    (message: string, variant: Toast['variant'], action?: ToastAction) => {
+      const id = nextId++;
+      setToasts((prev) => [...prev, { id, message, variant, action }]);
+    },
+    [],
+  );
+
+  const showError = useCallback(
+    (message: string, action?: ToastAction) => addToast(message, 'error', action),
+    [addToast],
+  );
+  const showSuccess = useCallback(
+    (message: string, action?: ToastAction) => addToast(message, 'success', action),
+    [addToast],
+  );
+  const showWarning = useCallback(
+    (message: string, action?: ToastAction) => addToast(message, 'warning', action),
+    [addToast],
+  );
 
   return (
     <ToastContext.Provider value={{ showError, showSuccess, showWarning }}>
@@ -42,24 +113,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {toasts.length > 0 && (
         <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
           {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm shadow-lg animate-in slide-in-from-right ${
-                toast.variant === 'error'
-                  ? 'bg-red-50 text-red-800 border border-red-200'
-                  : toast.variant === 'warning'
-                    ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                    : 'bg-green-50 text-green-800 border border-green-200'
-              }`}
-            >
-              <span className="flex-1">{toast.message}</span>
-              <button
-                onClick={() => dismiss(toast.id)}
-                className="shrink-0 p-0.5 rounded hover:bg-black/5"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            <ToastItem key={toast.id} toast={toast} onDismiss={dismiss} />
           ))}
         </div>
       )}

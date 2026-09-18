@@ -1,4 +1,4 @@
-import { FileText, Users, BookOpen } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
 import { Modal } from './Modal';
 import { Button } from './Button';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
@@ -18,7 +18,7 @@ export function FileActionChooser() {
     <Modal open={showChooser} onClose={handleClose} title="Bestand ontvangen" size="sm">
       <div className="space-y-4">
         <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-text-secondary">
-          <FileText className="h-4 w-4 shrink-0" />
+          <Icon name="file-text" className="shrink-0" />
           <span className="truncate">
             {chooserFiles.length === 1
               ? chooserFiles[0].name
@@ -34,7 +34,7 @@ export function FileActionChooser() {
             className="w-full flex items-center gap-3 rounded-lg border border-border px-4 py-3 text-left hover:bg-gray-50 transition-colors"
           >
             <div className="rounded-lg bg-blue-50 p-2">
-              <Users className="h-5 w-5 text-blue-600" />
+              <Icon name="users" size="lg" className="text-blue-600" />
             </div>
             <div>
               <p className="text-sm font-medium text-text">Nieuwe lead aanmaken</p>
@@ -47,7 +47,7 @@ export function FileActionChooser() {
             className="w-full flex items-center gap-3 rounded-lg border border-border px-4 py-3 text-left hover:bg-gray-50 transition-colors"
           >
             <div className="rounded-lg bg-emerald-50 p-2">
-              <BookOpen className="h-5 w-5 text-emerald-600" />
+              <Icon name="book" size="lg" className="text-emerald-600" />
             </div>
             <div>
               <p className="text-sm font-medium text-text">Bron toevoegen aan corpus</p>

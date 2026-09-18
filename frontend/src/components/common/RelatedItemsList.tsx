@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
 import { Badge } from './Badge';
 import type { BadgeVariant } from '@/types';
 
@@ -56,7 +56,11 @@ export function RelatedItemsList({
               {item.secondaryText}
             </span>
           )}
-          <ArrowRight className="h-3.5 w-3.5 text-gray-300 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <Icon
+            name="arrow-right"
+            size="sm"
+            className="shrink-0 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100"
+          />
         </button>
       ))}
       {hasMore && (

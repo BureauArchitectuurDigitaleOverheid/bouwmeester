@@ -1,4 +1,4 @@
-import { Link as LinkIcon } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
 import { Badge } from '@/components/common/Badge';
 import { useReferences } from '@/hooks/useMentions';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
@@ -18,7 +18,7 @@ export function ReferencesList({ targetId }: ReferencesListProps) {
   return (
     <div>
       <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
-        <LinkIcon className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
+        <Icon name="link" size="sm" className="mr-1 -mt-0.5 inline" />
         Verwijzingen ({references.length})
       </h4>
       <div className="space-y-1">

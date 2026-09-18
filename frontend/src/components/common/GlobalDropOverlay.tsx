@@ -1,4 +1,4 @@
-import { Upload } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
 import { useLocation } from 'react-router-dom';
 
 interface GlobalDropOverlayProps {
@@ -21,7 +21,7 @@ export function GlobalDropOverlay({ visible }: GlobalDropOverlayProps) {
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 backdrop-blur-sm pointer-events-none">
       <div className="flex flex-col items-center gap-3 rounded-2xl bg-white px-10 py-8 shadow-xl border border-border">
         <div className="rounded-full bg-primary-100 p-4">
-          <Upload className="h-8 w-8 text-primary-600" />
+          <Icon name="upload" size="32" className="text-primary-600" />
         </div>
         <p className="text-base font-medium text-text">{message}</p>
       </div>

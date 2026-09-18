@@ -1,4 +1,4 @@
-import { Sparkles, Loader2 } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
 
 interface AiActionButtonProps {
   label: string;
@@ -30,9 +30,9 @@ export function AiActionButton({
       }`}
     >
       {loading ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <nldd-activity-indicator size="16" />
       ) : (
-        <Sparkles className="h-3.5 w-3.5" />
+        <Icon name="sparkles" size="sm" />
       )}
       {label}
     </button>
