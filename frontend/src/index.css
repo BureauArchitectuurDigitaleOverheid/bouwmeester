@@ -142,6 +142,19 @@
   box-sizing: border-box;
 }
 
+/* The design system's reset gives `html` and `body` a height of 100% when an
+ * nldd-app-view is on the page, because it assumes the app-view is a child of
+ * body. React mounts into #root in between, and that div gets no height of its
+ * own, so the app-view had nothing to fill and the whole application rendered at
+ * zero height: present in the DOM, invisible on screen.
+ *
+ * Only applied when an app-view is actually inside #root, so the pages that
+ * render outside the shell (login, access denied, the public page) keep their
+ * own document flow. */
+#root:has(nldd-app-view) {
+  height: 100%;
+}
+
 body {
   margin: 0;
   font-family: var(--font-family-sans);
