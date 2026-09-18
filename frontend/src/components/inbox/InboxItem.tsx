@@ -1,7 +1,7 @@
-import { FileText, CheckSquare, Bell, MessageSquare, MessageCircle } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
+import { Icon } from '@/components/nldd/Icon';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
@@ -16,10 +16,10 @@ interface InboxItemProps {
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
-  task: <CheckSquare className="h-4 w-4" />,
-  node: <FileText className="h-4 w-4" />,
-  notification: <Bell className="h-4 w-4" />,
-  message: <MessageSquare className="h-4 w-4" />,
+  task: <Icon name="check-list" size="md" />,
+  node: <Icon name="file-text" size="md" />,
+  notification: <Icon name="bell" size="md" />,
+  message: <Icon name="message-rectangle-text" size="md" />,
 };
 
 
@@ -53,7 +53,7 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
             item.read ? 'bg-gray-100 text-gray-400' : 'bg-primary-50 text-primary-700'
           }`}
         >
-          {typeIcons[item.type] || <Bell className="h-4 w-4" />}
+          {typeIcons[item.type] || <Icon name="bell" size="md" />}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -61,13 +61,11 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
             {!item.read && (
               <span className="h-2 w-2 rounded-full bg-accent-500 shrink-0" />
             )}
-            <h4
-              className={`text-sm truncate ${
-                item.read ? 'text-text-secondary font-normal' : 'text-text font-medium'
-              }`}
-            >
-              {item.title}
-            </h4>
+            <div className="truncate">
+              <nldd-text size="sm" weight={item.read ? 'regular' : 'medium'} {...(item.read ? { color: 'secondary' } : {})}>
+                {item.title}
+              </nldd-text>
+            </div>
           </div>
 
           {item.description && (
@@ -82,7 +80,7 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
             </Badge>
             {item.reply_count != null && item.reply_count > 0 && (
               <span className="flex items-center gap-1 text-xs text-primary-600">
-                <MessageCircle className="h-3 w-3" />
+                <Icon name="message-rectangle-text" size="xs" />
                 {item.reply_count} {item.reply_count === 1 ? 'reactie' : 'reacties'}
               </span>
             )}

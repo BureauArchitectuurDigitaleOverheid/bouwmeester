@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Plus, LayoutList, Columns3, User } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
 import { Button } from '@/components/common/Button';
 import { ViewToggle } from '@/components/common/ViewToggle';
 import type { ViewToggleOption } from '@/components/common/ViewToggle';
@@ -26,9 +26,9 @@ import type { SelectOption } from '@/components/common/CreatableSelect';
 type ViewMode = 'list' | 'board' | 'personal';
 
 const VIEW_OPTIONS: ViewToggleOption<ViewMode>[] = [
-  { value: 'list', label: 'Lijst', icon: <LayoutList className="h-3.5 w-3.5" /> },
-  { value: 'board', label: 'Bord', icon: <Columns3 className="h-3.5 w-3.5" /> },
-  { value: 'personal', label: 'Persoonlijk', icon: <User className="h-3.5 w-3.5" /> },
+  { value: 'list', label: 'Lijst', icon: <Icon name="list" size="sm" /> },
+  { value: 'board', label: 'Bord', icon: <Icon name="columns-3" size="sm" /> },
+  { value: 'personal', label: 'Persoonlijk', icon: <Icon name="person" size="sm" /> },
 ];
 
 const VIEW_STORAGE_KEY = 'tasks-view-mode';
@@ -138,7 +138,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
           <ViewToggle value={viewMode} onChange={handleViewChange} options={VIEW_OPTIONS} />
 
           <Button
-            icon={<Plus className="h-4 w-4" />}
+            icon="plus"
             onClick={() => setShowCreateForm(true)}
           >
             <span className="hidden sm:inline">Nieuwe taak</span>

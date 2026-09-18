@@ -15,11 +15,14 @@ const BOARD_COLUMNS: TaskStatus[] = [
   TaskStatus.DONE,
 ];
 
-const COLUMN_COLORS: Record<TaskStatus, string> = {
-  [TaskStatus.OPEN]: 'border-t-blue-400',
-  [TaskStatus.IN_PROGRESS]: 'border-t-amber-400',
-  [TaskStatus.DONE]: 'border-t-emerald-400',
-  [TaskStatus.CANCELLED]: 'border-t-gray-400',
+/** Column accent, using the semantic roles rather than literal colors. */
+type NlddTagColor = NonNullable<React.ComponentProps<'nldd-tag'>['color']>;
+
+const COLUMN_TAG_COLOR: Record<TaskStatus, NlddTagColor> = {
+  [TaskStatus.OPEN]: 'accent',
+  [TaskStatus.IN_PROGRESS]: 'warning',
+  [TaskStatus.DONE]: 'success',
+  [TaskStatus.CANCELLED]: 'neutral',
 };
 
 export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
@@ -70,17 +73,15 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
           onDragOver={(e) => handleDragOver(e, status)}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, status)}
-          className={`rounded-xl border border-border bg-gray-50/50 border-t-4 w-[85vw] shrink-0 snap-center md:w-auto md:shrink md:flex-1 ${COLUMN_COLORS[status]} transition-colors ${
+          className={`rounded-xl border border-border bg-gray-50/50 w-[85vw] shrink-0 snap-center md:w-auto md:shrink md:flex-1 transition-colors ${
             dragOverColumn === status ? 'bg-primary-50/50 border-primary-200' : ''
           }`}
         >
           <div className="px-4 py-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-text">
+            <nldd-text size="sm" weight="bold">
               {TASK_STATUS_LABELS[status]}
-            </h3>
-            <span className="text-xs text-text-secondary bg-white rounded-full px-2 py-0.5 border border-border">
-              {tasksByStatus[status]?.length ?? 0}
-            </span>
+            </nldd-text>
+            <nldd-badge color={COLUMN_TAG_COLOR[status]} number={tasksByStatus[status]?.length ?? 0} decorative />
           </div>
 
           <div className="px-3 pb-3 space-y-2 min-h-[100px]">
@@ -96,8 +97,10 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
             ))}
 
             {(tasksByStatus[status]?.length ?? 0) === 0 && (
-              <div className="flex items-center justify-center h-[100px] text-xs text-text-secondary">
-                Sleep taken hierheen
+              <div className="flex items-center justify-center h-[100px]">
+                <nldd-text size="xs" color="secondary">
+                  Sleep taken hierheen
+                </nldd-text>
               </div>
             )}
           </div>

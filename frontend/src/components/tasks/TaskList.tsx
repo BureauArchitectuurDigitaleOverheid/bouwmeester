@@ -1,7 +1,6 @@
 import { TaskCard } from './TaskCard';
 import { EmptyState } from '@/components/common/EmptyState';
 import { TaskStatus, TASK_STATUS_LABELS } from '@/types';
-import { CheckSquare } from 'lucide-react';
 import type { Task } from '@/types';
 
 interface TaskListProps {
@@ -13,7 +12,7 @@ export function TaskList({ tasks, onEditTask }: TaskListProps) {
   if (tasks.length === 0) {
     return (
       <EmptyState
-        icon={<CheckSquare className="h-16 w-16" />}
+        icon="check-list"
         title="Geen taken gevonden"
         description="Er zijn geen taken die voldoen aan de huidige filters."
       />
@@ -47,9 +46,11 @@ export function TaskList({ tasks, onEditTask }: TaskListProps) {
 
         return (
           <div key={status}>
-            <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
-              {TASK_STATUS_LABELS[status]} ({groupTasks.length})
-            </h3>
+            <div className="mb-2 uppercase tracking-wider">
+              <nldd-text size="xs" weight="bold" color="secondary">
+                {TASK_STATUS_LABELS[status]} ({groupTasks.length})
+              </nldd-text>
+            </div>
             <div className="space-y-2">
               {groupTasks.map((task) => (
                 <TaskCard key={task.id} task={task} onEdit={onEditTask} />

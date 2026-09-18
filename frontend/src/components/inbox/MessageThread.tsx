@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Send, ArrowLeft, Smile } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { Button } from '@/components/common/Button';
@@ -58,7 +59,7 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
               onClick={() => setShowPicker(!showPicker)}
               className="p-1 rounded-full bg-surface border border-border shadow-sm text-text-secondary hover:text-text hover:bg-gray-50 transition-colors"
             >
-              <Smile className="h-4 w-4" />
+              <Icon name="face-smiling" size="sm" />
             </button>
             {showPicker && (
               <EmojiPicker
@@ -148,24 +149,26 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
       <div className="relative w-full max-w-2xl mx-4 bg-surface rounded-2xl shadow-xl border border-border animate-in fade-in zoom-in-95 flex flex-col max-h-[80vh]">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
-          <button
+          <NlddIconButton
+            icon="arrow-left"
+            variant="neutral-transparent"
+            size="sm"
+            accessibleLabel="Terug"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+          />
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold text-text truncate">{parentMessage.title}</h3>
             <p className="text-xs text-text-secondary">
               {replies ? `${replies.length} ${replies.length === 1 ? 'reactie' : 'reacties'}` : 'Laden...'}
             </p>
           </div>
-          <button
+          <NlddIconButton
+            icon="close"
+            variant="neutral-transparent"
+            size="sm"
+            accessibleLabel="Sluiten"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          />
         </div>
 
         {/* Messages */}
@@ -208,7 +211,7 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
               onClick={handleSendReply}
               disabled={!replyText.trim() || replyMutation.isPending || !currentPerson}
               loading={replyMutation.isPending}
-              icon={<Send className="h-3.5 w-3.5" />}
+              icon="paper-plane"
             >
               Verstuur
             </Button>

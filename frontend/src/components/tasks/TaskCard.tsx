@@ -1,6 +1,7 @@
-import { CheckCircle2, Circle, Clock, AlertTriangle, User, Bot, Building2, ListTree } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { Card } from '@/components/common/Card';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { useUpdateTask } from '@/hooks/useTasks';
 import {
   TaskStatus,
@@ -20,8 +21,8 @@ interface TaskCardProps {
 }
 
 const priorityIcons: Record<TaskPriority, React.ReactNode> = {
-  [TaskPriority.KRITIEK]: <AlertTriangle className="h-3.5 w-3.5" />,
-  [TaskPriority.HOOG]: <AlertTriangle className="h-3.5 w-3.5" />,
+  [TaskPriority.KRITIEK]: <Icon name="exclamation-triangle" size="sm" />,
+  [TaskPriority.HOOG]: <Icon name="exclamation-triangle" size="sm" />,
   [TaskPriority.NORMAAL]: null,
   [TaskPriority.LAAG]: null,
 };
@@ -35,8 +36,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
   const subtasks = task.subtasks ?? [];
   const doneSubtasks = subtasks.filter((s) => s.status === TaskStatus.DONE).length;
 
-  const handleToggleDone = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggleDone = () => {
     updateTask.mutate({
       id: task.id,
       data: {
@@ -56,20 +56,15 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
     >
       <div className="flex items-start gap-3">
         {/* Checkbox */}
-        <button
-          onClick={handleToggleDone}
-          className={`mt-0.5 shrink-0 transition-colors ${
-            isDone
-              ? 'text-emerald-500 hover:text-emerald-600'
-              : 'text-text-secondary hover:text-primary-700'
-          }`}
-        >
-          {isDone ? (
-            <CheckCircle2 className="h-5 w-5" />
-          ) : (
-            <Circle className="h-5 w-5" />
-          )}
-        </button>
+        <div className="mt-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <NlddIconButton
+            icon={isDone ? 'check-mark-circle' : 'circle'}
+            variant="neutral-transparent"
+            size="sm"
+            accessibleLabel={isDone ? 'Markeer als niet afgerond' : 'Markeer als afgerond'}
+            onClick={handleToggleDone}
+          />
+        </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
@@ -108,7 +103,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
                   isOverdue ? 'text-red-600 font-medium' : 'text-text-secondary'
                 }`}
               >
-                <Clock className="h-3 w-3" />
+                <Icon name="clock" size="xs" />
                 {formatDateShort(task.due_date)}
               </span>
             )}
@@ -116,9 +111,9 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             {task.assignee && (
               <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
                 {task.assignee.is_agent ? (
-                  <Bot className="h-3 w-3 text-violet-500" />
+                  <Icon name="sparkles" size="xs" className="text-violet-500" />
                 ) : (
-                  <User className="h-3 w-3" />
+                  <Icon name="person" size="xs" />
                 )}
                 {task.assignee.naam}
               </span>
@@ -126,7 +121,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
 
             {task.organisatie_eenheid && (
               <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
-                <Building2 className="h-3 w-3" />
+                <Icon name="apartment-building" size="xs" />
                 {task.organisatie_eenheid.naam}
               </span>
             )}
@@ -137,7 +132,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
 
             {subtasks.length > 0 && (
               <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
-                <ListTree className="h-3 w-3" />
+                <Icon name="tree-structure" size="xs" />
                 {doneSubtasks}/{subtasks.length}
               </span>
             )}

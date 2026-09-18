@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Trash2 } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
@@ -103,7 +102,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
             <div>
               {showDeleteConfirm ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-red-600">Weet je het zeker?</span>
+                  <nldd-text size="sm" color="critical">Weet je het zeker?</nldd-text>
                   <Button
                     variant="danger"
                     size="sm"
@@ -125,7 +124,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowDeleteConfirm(true)}
-                  icon={<Trash2 className="h-4 w-4" />}
+                  icon="trash"
                 >
                   Verwijderen
                 </Button>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, User, Bot, Calendar, Link as LinkIcon, Pencil, Building2, ListTree, Plus, CheckCircle2, Circle, FileSearch, ChevronUp, ChevronDown, ClipboardList, CheckSquare } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
@@ -82,7 +83,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
         size="lg"
         zIndex={zIndex}
         accentColor={accentColor}
-        headerIcon={<CheckSquare className="h-5 w-5" />}
+        headerIcon={<Icon name="check-list" size="md" />}
         entityLabel="Taak"
         backLabel={taskParentLabel ?? undefined}
         onBack={taskParentLabel ? onClose : undefined}
@@ -93,7 +94,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
               <Button
                 variant="secondary"
                 size="sm"
-                icon={<Pencil className="h-4 w-4" />}
+                icon="pencil"
                 onClick={() => setShowEdit(true)}
                 disabled={!task}
               >
@@ -129,7 +130,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                       : 'text-text-secondary'
                   }`}
                 >
-                  <Clock className="h-4 w-4" />
+                  <Icon name="clock" size="md" />
                   {formatDateLong(task.due_date)}
                 </span>
               )}
@@ -151,9 +152,9 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                   value: task.assignee ? (
                     <span className="inline-flex items-center gap-1.5 text-text">
                       {task.assignee.is_agent ? (
-                        <Bot className="h-4 w-4 text-violet-500" />
+                        <Icon name="sparkles" size="md" className="text-violet-500" />
                       ) : (
-                        <User className="h-4 w-4 text-text-secondary" />
+                        <Icon name="person" size="md" />
                       )}
                       {task.assignee.naam}
                     </span>
@@ -165,7 +166,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                   label: 'Verantwoordelijke eenheid',
                   value: task.organisatie_eenheid ? (
                     <span className="inline-flex items-center gap-1.5 text-text">
-                      <Building2 className="h-4 w-4 text-text-secondary" />
+                      <Icon name="apartment-building" size="md" />
                       {task.organisatie_eenheid.naam}
                     </span>
                   ) : (
@@ -179,7 +180,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                       onClick={() => openNodeDetail(task.node_id!, task.title)}
                       className="inline-flex items-start gap-1.5 text-primary-600 hover:text-primary-800 hover:underline transition-colors text-left"
                     >
-                      <LinkIcon className="h-4 w-4 shrink-0 mt-0.5" />
+                      <Icon name="link" size="md" className="shrink-0 mt-0.5" />
                       {task.node.title}
                     </button>
                   ) : (
@@ -195,7 +196,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                             onClick={() => openOpdrachtDetail(task.opdracht!.id, task.title)}
                             className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 hover:underline transition-colors text-sm text-left"
                           >
-                            <ClipboardList className="h-4 w-4 shrink-0" />
+                            <Icon name="clipboard-bullet-list" size="md" className="shrink-0" />
                             {task.opdracht!.titel}
                           </button>
                         ),
@@ -214,7 +215,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                             }}
                             className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 hover:underline transition-colors text-sm"
                           >
-                            <FileSearch className="h-4 w-4" />
+                            <Icon name="file-text" size="md" />
                             Ga naar beoordeling
                           </button>
                         ),
@@ -224,7 +225,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                 {
                   label: 'Aangemaakt',
                   value: formatDateLong(task.created_at),
-                  icon: <Calendar className="h-4 w-4" />,
+                  icon: <Icon name="calendar" size="md" />,
                 },
               ]}
             />
@@ -232,13 +233,13 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
             {/* Subtasks */}
             <DetailSection
               title="Subtaken"
-              icon={<ListTree className="h-3.5 w-3.5" />}
+              icon={<Icon name="tree-structure" size="sm" />}
               count={subtasks.length}
               action={
                 <Button
                   variant="ghost"
                   size="sm"
-                  icon={<Plus className="h-3.5 w-3.5" />}
+                  icon="plus"
                   onClick={() => setShowSubtaskCreate(true)}
                 >
                   Subtaak toevoegen
@@ -255,31 +256,31 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                         className="flex items-center gap-1 w-full"
                       >
                         <div className="flex flex-col shrink-0">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleMoveSubtask(idx, 'up'); }}
+                          <NlddIconButton
+                            icon="chevron-up"
+                            variant="neutral-transparent"
+                            size="xs"
+                            accessibleLabel="Omhoog"
                             disabled={idx === 0 || reorderSubtasks.isPending}
-                            className="p-0.5 text-text-secondary hover:text-text disabled:opacity-25 disabled:cursor-default transition-colors"
-                            title="Omhoog"
-                          >
-                            <ChevronUp className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleMoveSubtask(idx, 'down'); }}
+                            onClick={() => handleMoveSubtask(idx, 'up')}
+                          />
+                          <NlddIconButton
+                            icon="chevron-down"
+                            variant="neutral-transparent"
+                            size="xs"
+                            accessibleLabel="Omlaag"
                             disabled={idx === subtasks.length - 1 || reorderSubtasks.isPending}
-                            className="p-0.5 text-text-secondary hover:text-text disabled:opacity-25 disabled:cursor-default transition-colors"
-                            title="Omlaag"
-                          >
-                            <ChevronDown className="h-3.5 w-3.5" />
-                          </button>
+                            onClick={() => handleMoveSubtask(idx, 'down')}
+                          />
                         </div>
                         <button
                           onClick={() => openTaskDetail(sub.id, task.title)}
                           className="flex items-center gap-2 flex-1 min-w-0 px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
                         >
                           {subDone ? (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                            <Icon name="check-mark-circle" size="md" className="text-emerald-500 shrink-0" />
                           ) : (
-                            <Circle className="h-4 w-4 text-text-secondary shrink-0" />
+                            <Icon name="circle" size="md" className="text-text-secondary shrink-0" />
                           )}
                           <span className={`text-sm flex-1 ${subDone ? 'text-text-secondary line-through' : 'text-text'}`}>
                             {sub.title}

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { SmilePlus } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
 import { EmojiPicker } from './EmojiPicker';
 import type { ReactionSummary } from '@/types';
 
@@ -38,7 +38,7 @@ export function ReactionBar({ reactions, onReact }: ReactionBarProps) {
         onClick={() => setPickerOpen(!pickerOpen)}
         className="inline-flex items-center justify-center w-6 h-6 rounded-full text-text-secondary hover:bg-gray-100 transition-colors"
       >
-        <SmilePlus className="h-3.5 w-3.5" />
+        <Icon name="face-smiling-badge-plus" size="sm" />
       </button>
       {pickerOpen && (
         <EmojiPicker
