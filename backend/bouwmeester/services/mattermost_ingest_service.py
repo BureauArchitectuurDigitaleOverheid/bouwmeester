@@ -93,6 +93,11 @@ def _claim_unlinked_hint(channel_id: str) -> bool:
     return True
 
 
+def _release_unlinked_hint(channel_id: str) -> None:
+    """Geef een claim terug als de uitleg uiteindelijk niet geplaatst is."""
+    _unlinked_hint_sent_at.pop(channel_id, None)
+
+
 def message_mentions_bot(message: str, bot_username: str | None) -> bool:
     """True als ``message`` de bot expliciet aanspreekt met ``@username``.
 
@@ -389,23 +394,29 @@ class MattermostIngestService:
         )
         if not _claim_unlinked_hint(channel_id):
             return
-        await self._reply_not_linked(
+        sent = await self._reply_not_linked(
             channel_id=channel_id, root_post_id=root_id or post_id
         )
+        if not sent:
+            # Niets geplaatst (Mattermost uit of API-fout): de claim weer
+            # vrijgeven, anders zwijgen we een uur zonder dat er ooit een
+            # uitleg is verschenen.
+            _release_unlinked_hint(channel_id)
 
-    async def _reply_not_linked(self, *, channel_id: str, root_post_id: str) -> None:
+    async def _reply_not_linked(self, *, channel_id: str, root_post_id: str) -> bool:
         """Leg in een ongekoppeld kanaal uit dat we niet meelezen.
 
-        Fouten zijn niet fataal — een gemiste uitleg mag nooit de ingest
-        van andere posts breken.
+        Returns ``True`` als de uitleg daadwerkelijk geplaatst is. Fouten
+        zijn niet fataal — een gemiste uitleg mag nooit de ingest van andere
+        posts breken.
         """
         from bouwmeester.services.mattermost_service import MattermostService
 
         service = MattermostService(self.session)
         try:
             if not await service.is_enabled():
-                return
-            await service.reply_to_post(
+                return False
+            data = await service.reply_to_post(
                 channel_id,
                 root_post_id,
                 ":wave: Ik lees in dit kanaal niet mee, dus ik pik hier niets "
@@ -414,11 +425,14 @@ class MattermostIngestService:
                 "berichten voortaan mee. Met `/bouwmeester kanaal` zie je de "
                 "huidige koppeling.",
             )
+            # reply_to_post swallowt HTTP-fouten en geeft dan None terug.
+            return data is not None
         except Exception:
             logger.exception(
                 "Kon uitleg-reply in ongekoppeld kanaal %s niet plaatsen",
                 channel_id,
             )
+            return False
         finally:
             await service.close()
 

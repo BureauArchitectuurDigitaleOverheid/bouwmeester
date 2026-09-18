@@ -341,3 +341,50 @@ async def test_bot_reageert_niet_op_zichzelf(db_session):
         }
     )
     assert FakeMattermostService.replies == []
+
+
+async def test_mislukte_uitleg_blokkeert_volgende_poging_niet(db_session, monkeypatch):
+    """Een niet-geplaatste uitleg mag de rem niet een uur laten hangen.
+
+    De claim wordt vóór het posten gezet; als het posten dan faalt zou het
+    kanaal een uur stil blijven zonder dat er ooit iets verschenen is.
+    """
+
+    class FailingService(FakeMattermostService):
+        async def reply_to_post(self, channel_id, root_id, message, *, props=None):
+            return None  # reply_to_post swallowt HTTP-fouten en geeft None
+
+    monkeypatch.setattr(
+        "bouwmeester.services.mattermost_service.MattermostService",
+        FailingService,
+    )
+
+    cid = _id()
+    ingest = MattermostIngestService(db_session, bot_username=BOT)
+    await ingest.ingest_post(
+        {
+            "id": _id(),
+            "channel_id": cid,
+            "user_id": _id(),
+            "create_at": 1_700_000_000_000,
+            "message": "@bouwmeester?",
+        }
+    )
+    # Claim moet weer vrij zijn.
+    assert cid not in ingest_module._unlinked_hint_sent_at
+
+    # En een volgende poging mag het dus opnieuw proberen.
+    monkeypatch.setattr(
+        "bouwmeester.services.mattermost_service.MattermostService",
+        FakeMattermostService,
+    )
+    await ingest.ingest_post(
+        {
+            "id": _id(),
+            "channel_id": cid,
+            "user_id": _id(),
+            "create_at": 1_700_000_000_000,
+            "message": "@bouwmeester?",
+        }
+    )
+    assert len(FakeMattermostService.replies) == 1
