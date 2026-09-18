@@ -47,7 +47,10 @@ export default defineConfig({
       },
       workbox: {
         importScripts: ['sw-share-target.js'],
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
+        // 5 MB: the main chunk carries mermaid, reactflow and the NLDD design
+        // system. Below this the chunk silently drops out of the precache and
+        // the app stops working offline.
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         globIgnores: ['config.js'],
         navigateFallback: 'index.html',
@@ -61,23 +64,6 @@ export default defineConfig({
               expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 },
               networkTimeoutSeconds: 5,
               cacheableResponse: { statuses: [200] },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-stylesheets',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-webfonts',
-              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              cacheableResponse: { statuses: [0, 200] },
             },
           },
           {

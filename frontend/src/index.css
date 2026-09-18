@@ -1,37 +1,141 @@
 @import "tailwindcss";
 
+/* NLDD design system: components + tokens/fonts.
+ * Imported here rather than in main.tsx so the cascade order is explicit:
+ * the design system's :root variables land before our @theme bridge below. */
+@import "@nldd/design-system/styles";
+
+/* Migration bridge: every Tailwind theme token resolves to an NLDD primitive.
+ *
+ * Tailwind 4 compiles `bg-primary-900` to `background-color: var(--color-primary-900)`,
+ * and custom properties are late-bound, so pointing these at `--primitives-*`
+ * makes unconverted screens follow the house style without touching them.
+ *
+ * Two rules when editing this block:
+ *
+ * 1. Map by ROLE, not by hex similarity. The NLDD scale flips between schemes:
+ *    `accent-700` is dark text in light mode and light text in dark mode. Picking
+ *    a step because its light-mode hex matches our old color will invert in dark mode.
+ * 2. Never wrap a primitive in `light-dark()`. Each one already is a `light-dark()`
+ *    pair; wrapping it again with the mirrored step cancels out and you get the same
+ *    color in both schemes (dark text on a dark background).
+ *
+ * Role mapping: our `primary` navy -> NLDD `accent` (lintblauw), our orange
+ * `accent` -> NLDD `warning` (oranje). Both are Rijkshuisstijl colors.
+ */
 @theme {
-  --color-primary-50: #e8edf4;
-  --color-primary-100: #c5d1e3;
-  --color-primary-200: #9fb3d0;
-  --color-primary-300: #7895bd;
-  --color-primary-400: #5b7eaf;
-  --color-primary-500: #3e67a1;
-  --color-primary-600: #365a8e;
-  --color-primary-700: #2c4a75;
-  --color-primary-800: #233b5e;
-  --color-primary-900: #1E3A5F;
-  --color-primary-950: #0f1e32;
+  /* Navy -> accent (lintblauw). Ascending steps = darker in light mode. */
+  --color-primary-50: var(--primitives-color-accent-25);
+  --color-primary-100: var(--primitives-color-accent-100);
+  --color-primary-200: var(--primitives-color-accent-200);
+  --color-primary-300: var(--primitives-color-accent-300);
+  --color-primary-400: var(--primitives-color-accent-400);
+  --color-primary-500: var(--primitives-color-accent-500);
+  --color-primary-600: var(--primitives-color-accent-600);
+  --color-primary-700: var(--primitives-color-accent-700);
+  --color-primary-800: var(--primitives-color-accent-800);
+  --color-primary-900: var(--primitives-color-accent-900);
+  --color-primary-950: var(--primitives-color-accent-950);
 
-  --color-accent-50: #fdf0e2;
-  --color-accent-100: #fadab7;
-  --color-accent-200: #f6c288;
-  --color-accent-300: #f2a958;
-  --color-accent-400: #ef9634;
-  --color-accent-500: #E17000;
-  --color-accent-600: #d06700;
-  --color-accent-700: #b85b00;
-  --color-accent-800: #a04f00;
-  --color-accent-900: #7a3d00;
+  /* Orange -> warning (oranje). */
+  --color-accent-50: var(--primitives-color-warning-25);
+  --color-accent-100: var(--primitives-color-warning-100);
+  --color-accent-200: var(--primitives-color-warning-200);
+  --color-accent-300: var(--primitives-color-warning-300);
+  --color-accent-400: var(--primitives-color-warning-400);
+  --color-accent-500: var(--primitives-color-warning-500);
+  --color-accent-600: var(--primitives-color-warning-600);
+  --color-accent-700: var(--primitives-color-warning-700);
+  --color-accent-800: var(--primitives-color-warning-800);
+  --color-accent-900: var(--primitives-color-warning-900);
 
-  --color-surface: #ffffff;
-  --color-background: #F8F9FA;
-  --color-text: #1A1A2E;
-  --color-text-secondary: #64748b;
-  --color-border: #e2e8f0;
-  --color-border-hover: #cbd5e1;
+  /* Surfaces and text.
+   *
+   * These point at `--primitives-*` and NOT at `--semantics-surfaces-*`, even
+   * though the semantic names read better. The semantic tokens are themselves
+   * `light-dark(...)` wrappers around neutral primitives, and each primitive is
+   * a `light-dark()` pair too, so referencing them here nests the function:
+   * `light-dark(light-dark(white, black), light-dark(grey, grey))`. That
+   * collapses to the outer light branch, and `surface` and `background` both
+   * render pure white — every card loses its contrast against the page.
+   * Verified in the browser before this was corrected. */
+  --color-surface: var(--primitives-color-neutral-0);
+  --color-background: var(--primitives-color-neutral-25);
+  --color-text: var(--primitives-color-neutral-900);
+  --color-text-secondary: var(--primitives-color-neutral-700);
+  --color-border: var(--primitives-color-neutral-50);
+  --color-border-hover: var(--primitives-color-neutral-200);
 
-  --font-family-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  /* Raw palette families that unconverted screens use directly
+   * (bg-gray-50, text-red-600, ...). Mapping the semantic ones keeps status
+   * colors in the house palette; purple/cyan/rose/indigo are left on the
+   * Tailwind defaults because they only appear in Badge, which is reimplemented
+   * against the five NLDD roles. */
+  --color-gray-50: var(--primitives-color-neutral-25);
+  --color-gray-100: var(--primitives-color-neutral-50);
+  --color-gray-200: var(--primitives-color-neutral-100);
+  --color-gray-300: var(--primitives-color-neutral-200);
+  --color-gray-400: var(--primitives-color-neutral-400);
+  --color-gray-500: var(--primitives-color-neutral-500);
+  --color-gray-600: var(--primitives-color-neutral-600);
+  --color-gray-700: var(--primitives-color-neutral-700);
+  --color-gray-800: var(--primitives-color-neutral-800);
+  --color-gray-900: var(--primitives-color-neutral-900);
+
+  --color-red-50: var(--primitives-color-critical-25);
+  --color-red-100: var(--primitives-color-critical-100);
+  --color-red-200: var(--primitives-color-critical-200);
+  --color-red-500: var(--primitives-color-critical-500);
+  --color-red-600: var(--primitives-color-critical-600);
+  --color-red-700: var(--primitives-color-critical-700);
+  --color-red-800: var(--primitives-color-critical-800);
+
+  --color-amber-50: var(--primitives-color-warning-25);
+  --color-amber-100: var(--primitives-color-warning-100);
+  --color-amber-200: var(--primitives-color-warning-200);
+  --color-amber-500: var(--primitives-color-warning-500);
+  --color-amber-600: var(--primitives-color-warning-600);
+  --color-amber-700: var(--primitives-color-warning-700);
+  --color-amber-800: var(--primitives-color-warning-800);
+
+  --color-emerald-50: var(--primitives-color-success-25);
+  --color-emerald-100: var(--primitives-color-success-100);
+  --color-emerald-200: var(--primitives-color-success-200);
+  --color-emerald-500: var(--primitives-color-success-500);
+  --color-emerald-600: var(--primitives-color-success-600);
+  --color-emerald-700: var(--primitives-color-success-700);
+  --color-emerald-800: var(--primitives-color-success-800);
+
+  --color-green-50: var(--primitives-color-success-25);
+  --color-green-100: var(--primitives-color-success-100);
+  --color-green-500: var(--primitives-color-success-500);
+  --color-green-600: var(--primitives-color-success-600);
+  --color-green-700: var(--primitives-color-success-700);
+
+  --color-blue-50: var(--primitives-color-accent-25);
+  --color-blue-100: var(--primitives-color-accent-100);
+  --color-blue-200: var(--primitives-color-accent-200);
+  --color-blue-500: var(--primitives-color-accent-500);
+  --color-blue-600: var(--primitives-color-accent-600);
+  --color-blue-700: var(--primitives-color-accent-700);
+  --color-blue-800: var(--primitives-color-accent-800);
+
+  --color-slate-50: var(--primitives-color-neutral-25);
+  --color-slate-100: var(--primitives-color-neutral-50);
+  --color-slate-200: var(--primitives-color-neutral-100);
+  --color-slate-500: var(--primitives-color-neutral-500);
+  --color-slate-600: var(--primitives-color-neutral-600);
+  --color-slate-700: var(--primitives-color-neutral-700);
+
+  --font-family-sans: var(--primitives-font-family-sans-serif);
+}
+
+/* Dark mode arrives free with the NLDD palette, but screens that still carry
+ * Tailwind utilities are light-only (hard-coded bg-white, text-gray-*). Forcing
+ * the light scheme keeps every interim release coherent. Remove this once the
+ * last Tailwind-styled screen is converted. */
+:root {
+  color-scheme: light;
 }
 
 * {
@@ -41,7 +145,6 @@
 body {
   margin: 0;
   font-family: var(--font-family-sans);
-  background-color: var(--color-background);
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -75,13 +178,20 @@ body {
   display: none;
 }
 
-/* Smooth transitions for interactive elements */
-button, a, input, select, textarea {
+/* Smooth transitions for interactive elements.
+ * Scoped away from nldd-* elements: `transition: all` fights the components'
+ * own animations, notably the slotted <select> inside nldd-dropdown. */
+button:not(nldd-app-view *),
+a:not(nldd-app-view *),
+input:not(nldd-app-view *),
+select:not(nldd-app-view *),
+textarea:not(nldd-app-view *) {
   transition: all 0.15s ease-in-out;
 }
 
-/* Focus styles */
-*:focus-visible {
+/* Focus styles for our own markup only. NLDD components draw their own focus
+ * ring inside their shadow root; without this exclusion both render at once. */
+*:focus-visible:not(:is([class*="nldd-"], nldd-app-view, nldd-app-view *)) {
   outline: 2px solid var(--color-primary-500);
   outline-offset: 2px;
   border-radius: 4px;
