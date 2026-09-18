@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
-import { Send, Paperclip, X, FileText, Loader2 } from 'lucide-react';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useChat } from '@/contexts/ChatContext';
 import { useToast } from '@/contexts/ToastContext';
 import { chatAttachmentPreviewUrl, isImageContentType } from '@/api/chat';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import type { ChatMention } from '@/api/chat';
 
 const ACCEPTED_TYPES = 'image/*,.pdf,.doc,.docx,.odt,.txt';
@@ -164,7 +165,7 @@ export function ChatInput() {
 
   return (
     <div
-      className={`border-t border-border p-3 bg-white ${isDragging ? 'ring-2 ring-primary-400 ring-inset' : ''}`}
+      className={`border-t border-border p-3 ${isDragging ? 'ring-2 ring-primary-400 ring-inset' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -184,23 +185,23 @@ export function ChatInput() {
                   className="w-8 h-8 object-cover rounded"
                 />
               ) : (
-                <FileText className="w-4 h-4 text-gray-500 shrink-0" />
+                <Icon name="file-text" size="md" className="text-gray-500 shrink-0" />
               )}
               <span className="truncate max-w-[120px]" title={att.bestandsnaam}>
                 {att.bestandsnaam}
               </span>
-              <button
+              <NlddIconButton
+                icon="close"
+                accessibleLabel="Verwijderen"
+                variant="neutral-transparent"
+                size="xs"
                 onClick={() => removeAttachment(att.id)}
-                className="ml-0.5 p-0.5 rounded-full hover:bg-gray-200 text-gray-400 hover:text-gray-600"
-                title="Verwijderen"
-              >
-                <X className="w-3 h-3" />
-              </button>
+              />
             </div>
           ))}
           {uploadingCount > 0 && (
             <div className="flex items-center gap-1.5 bg-gray-100 rounded-lg px-2 py-1.5 text-xs text-gray-500">
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <nldd-activity-indicator size="16" />
               <span>Uploaden...</span>
             </div>
           )}
@@ -214,14 +215,14 @@ export function ChatInput() {
         role="group"
       >
         {/* File picker button */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
+        <NlddIconButton
+          icon="paperclip"
+          accessibleLabel="Bestand toevoegen"
+          variant="neutral-transparent"
+          size="md"
           disabled={isLoading}
-          className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
-          title="Bestand toevoegen"
-        >
-          <Paperclip className="w-4 h-4" />
-        </button>
+          onClick={() => fileInputRef.current?.click()}
+        />
         <input
           ref={fileInputRef}
           type="file"
@@ -242,14 +243,14 @@ export function ChatInput() {
             autoFocus
           />
         </div>
-        <button
-          onClick={handleSend}
+        <NlddIconButton
+          icon="paper-plane"
+          accessibleLabel="Versturen"
+          variant="primary"
+          size="md"
           disabled={isLoading || uploadingCount > 0}
-          className="p-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
-          title="Versturen"
-        >
-          <Send className="w-4 h-4" />
-        </button>
+          onClick={handleSend}
+        />
       </div>
       <style>{`
         .chat-editor .rich-text-editor {

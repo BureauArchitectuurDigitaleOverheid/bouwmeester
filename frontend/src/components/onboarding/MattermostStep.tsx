@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { MattermostLinkSection } from '@/components/settings/MattermostLinkSection';
 import { useMattermostLinkStatus } from '@/hooks/useMattermost';
 import { useAuth } from '@/contexts/AuthContext';
-import { Check } from 'lucide-react';
+import { NlddButton } from '@/components/nldd/NlddLink';
 
 export function MattermostStep({ onComplete }: { onComplete: () => void }) {
   const { person: authPerson } = useAuth();
@@ -22,32 +22,23 @@ export function MattermostStep({ onComplete }: { onComplete: () => void }) {
 
   if (linked) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 text-center">
-        <div className="flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-3">
-          <Check className="h-6 w-6 text-green-600" />
-        </div>
-        <h3 className="text-base font-semibold text-text mb-1">Mattermost gekoppeld</h3>
-        <p className="text-sm text-text-secondary mb-4">
-          Je ontvangt nu notificaties in Mattermost.
-        </p>
-        <button
-          onClick={onComplete}
-          className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors"
-        >
-          Doorgaan
-        </button>
-      </div>
+      <nldd-container gap="12" horizontal-alignment="center" padding-block="32" style={{ textAlign: 'center' }}>
+        <nldd-inline-dialog variant="success" text="Mattermost gekoppeld" supporting-text="Je ontvangt nu notificaties in Mattermost." />
+        <NlddButton text="Doorgaan" onClick={onComplete} />
+      </nldd-container>
     );
   }
 
   return (
-    <div>
-      <h3 className="text-base font-semibold text-text mb-1">Koppel Mattermost</h3>
-      <p className="text-sm text-text-secondary mb-4">
-        Koppel je Mattermost-account om notificaties over taken en dossiers
-        direct te ontvangen. Je kunt dit ook later doen via Instellingen.
-      </p>
+    <nldd-container gap="16">
+      <nldd-container gap="4">
+        <nldd-text weight="medium">Koppel Mattermost</nldd-text>
+        <nldd-text size="sm" color="secondary">
+          Koppel je Mattermost-account om notificaties over taken en dossiers direct te ontvangen. Je kunt
+          dit ook later doen via Instellingen.
+        </nldd-text>
+      </nldd-container>
       <MattermostLinkSection compact />
-    </div>
+    </nldd-container>
   );
 }

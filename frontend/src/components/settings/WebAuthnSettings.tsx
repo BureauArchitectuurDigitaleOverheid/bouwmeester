@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Fingerprint, Trash2, Plus, Loader2 } from 'lucide-react';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import {
   listCredentials,
@@ -12,6 +11,9 @@ import {
   setStoredPersonId,
 } from '@/api/webauthn';
 import { useAuth } from '@/contexts/AuthContext';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { Icon } from '@/components/nldd/Icon';
 
 export function WebAuthnSettings() {
   const { person } = useAuth();
@@ -61,99 +63,86 @@ export function WebAuthnSettings() {
 
   if (!isWebAuthnAvailable()) {
     return (
-      <div className="rounded-xl border border-border bg-surface p-6">
-        <h2 className="text-base font-semibold text-text mb-2">Biometrische inlog</h2>
-        <p className="text-sm text-text-secondary">
-          Je browser ondersteunt geen biometrische inlog (WebAuthn). Gebruik een moderne browser om deze functie te gebruiken.
-        </p>
-      </div>
+      <nldd-card>
+        <div className="p-6">
+          <nldd-text weight="medium">Biometrische inlog</nldd-text>
+          <nldd-text size="sm" color="secondary">
+            Je browser ondersteunt geen biometrische inlog (WebAuthn). Gebruik een moderne browser om deze
+            functie te gebruiken.
+          </nldd-text>
+        </div>
+      </nldd-card>
     );
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-6">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-primary-100">
-          <Fingerprint className="h-5 w-5 text-primary-700" />
-        </div>
-        <div>
-          <h2 className="text-base font-semibold text-text">Biometrische inlog</h2>
-          <p className="text-sm text-text-secondary">
-            Gebruik Face ID, vingerafdruk of Windows Hello om snel opnieuw in te loggen.
-          </p>
-        </div>
-      </div>
+    <nldd-card>
+      <div className="p-6">
+        <nldd-container layout="row" gap="12" style={{ alignItems: 'center', marginBottom: '16px' }}>
+          <Icon name="key" size="lg" />
+          <nldd-container gap="2">
+            <nldd-text weight="medium">Biometrische inlog</nldd-text>
+            <nldd-text size="sm" color="secondary">
+              Gebruik Face ID, vingerafdruk of Windows Hello om snel opnieuw in te loggen.
+            </nldd-text>
+          </nldd-container>
+        </nldd-container>
 
-      {error && (
-        <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700">
-          {success}
-        </div>
-      )}
-
-      {queryError && (
-        <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-          Credentials konden niet worden opgehaald. Probeer de pagina te vernieuwen.
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="flex items-center gap-2 text-sm text-text-secondary py-4">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Laden...
-        </div>
-      ) : (
-        <>
-          {credentials && credentials.length > 0 && (
-            <div className="mb-4 space-y-2">
-              {credentials.map((cred) => (
-                <div
-                  key={cred.id}
-                  className="flex items-center justify-between rounded-lg border border-border px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <Fingerprint className="h-4 w-4 text-text-secondary" />
-                    <div>
-                      <p className="text-sm font-medium text-text">{cred.label}</p>
-                      <p className="text-xs text-text-secondary">
-                        Geregistreerd {new Date(cred.created_at).toLocaleDateString('nl-NL')}
-                        {cred.last_used_at && (
-                          <> &middot; Laatst gebruikt {new Date(cred.last_used_at).toLocaleDateString('nl-NL')}</>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setDeleteCredId(cred.id)}
-                    disabled={deleteMutation.isPending}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Verwijderen
-                  </button>
-                </div>
-              ))}
-            </div>
+        <nldd-container gap="12">
+          {error && <nldd-banner variant="critical" size="sm" text={error} />}
+          {success && <nldd-banner variant="success" size="sm" text={success} />}
+          {queryError && (
+            <nldd-banner
+              variant="critical"
+              size="sm"
+              text="Credentials konden niet worden opgehaald. Probeer de pagina te vernieuwen."
+            />
           )}
 
-          <button
-            onClick={() => registerMutation.mutate()}
-            disabled={registerMutation.isPending}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50"
-          >
-            {registerMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
-            Registreer biometrische inlog
-          </button>
-        </>
-      )}
+          {isLoading ? (
+            <nldd-activity-indicator size="20" show-text text="Laden..." />
+          ) : (
+            <>
+              {credentials && credentials.length > 0 && (
+                <nldd-list variant="box-tinted" dividers="always" accessible-label="Biometrische inlogmethoden">
+                  {credentials.map((cred) => (
+                    <nldd-list-item key={cred.id}>
+                      <nldd-icon-cell icon="key" size="20" />
+                      <nldd-text-cell
+                        text={cred.label}
+                        supporting-text={
+                          `Geregistreerd ${new Date(cred.created_at).toLocaleDateString('nl-NL')}` +
+                          (cred.last_used_at
+                            ? ` · Laatst gebruikt ${new Date(cred.last_used_at).toLocaleDateString('nl-NL')}`
+                            : '')
+                        }
+                      />
+                      <nldd-cell horizontal-alignment="right">
+                        <NlddIconButton
+                          icon="trash"
+                          accessibleLabel="Verwijderen"
+                          variant="critical-transparent"
+                          size="sm"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => setDeleteCredId(cred.id)}
+                        />
+                      </nldd-cell>
+                    </nldd-list-item>
+                  ))}
+                </nldd-list>
+              )}
+
+              <NlddButton
+                text="Registreer biometrische inlog"
+                startIcon="plus"
+                loading={registerMutation.isPending}
+                disabled={registerMutation.isPending}
+                onClick={() => registerMutation.mutate()}
+              />
+            </>
+          )}
+        </nldd-container>
+      </div>
       <ConfirmDialog
         open={!!deleteCredId}
         onClose={() => setDeleteCredId(null)}
@@ -169,6 +158,6 @@ export function WebAuthnSettings() {
       >
         <p>Weet je zeker dat je deze biometrische inlog wilt verwijderen?</p>
       </ConfirmDialog>
-    </div>
+    </nldd-card>
   );
 }

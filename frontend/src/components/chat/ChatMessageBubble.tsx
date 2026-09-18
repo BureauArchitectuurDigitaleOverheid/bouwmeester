@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FileText } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
+import { Icon } from '@/components/nldd/Icon';
 import { ChatActionCard } from './ChatActionCard';
 import { ChatPendingActionCard } from './ChatPendingActionCard';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
@@ -24,6 +25,12 @@ function fixNumberedBoldHeadings(text: string): string {
   );
 }
 
+/**
+ * Rendered through a portal to `document.body`: this component lives inside
+ * the split view's inspector pane, and an overlay left as a light-DOM sibling
+ * there gets slotted into the main pane and steals its height instead of
+ * covering the viewport.
+ */
 function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -33,7 +40,7 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}
@@ -44,7 +51,8 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
         className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-xl"
         onClick={(e) => e.stopPropagation()}
       />
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -108,7 +116,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                       isUser ? 'bg-primary-700/50' : 'bg-gray-200'
                     }`}
                   >
-                    <FileText className="w-3.5 h-3.5 shrink-0" />
+                    <Icon name="file-text" size="sm" />
                     <span className="truncate max-w-[100px]">{att.bestandsnaam}</span>
                   </div>
                 ),

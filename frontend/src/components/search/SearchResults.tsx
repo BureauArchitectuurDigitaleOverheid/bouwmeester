@@ -1,5 +1,5 @@
+import { Fragment, useCallback, useRef } from 'react';
 import DOMPurify from 'dompurify';
-import { FileQuestion, Search as SearchIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -8,6 +8,7 @@ import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { richTextToPlain } from '@/utils/richtext';
+import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import {
   SEARCH_RESULT_TYPE_LABELS,
   SEARCH_RESULT_TYPE_COLORS,
@@ -95,79 +96,76 @@ interface FilterChipsProps {
 
 export function FilterChips({ activeTypes, onToggle, allowedTypes, className = '' }: FilterChipsProps) {
   const visibleTypes = allowedTypes ?? ALL_RESULT_TYPES;
+  const ref = useRef<HTMLElement>(null);
+
+  // Each nldd-toggle-button fires its own `change` ({ selected, value }), which
+  // bubbles to the group; `value` is the SearchResultType that was toggled.
+  const handleChange = useCallback(
+    (event: Event) => {
+      const value = (event as CustomEvent<{ value?: string }>).detail?.value;
+      if (value) onToggle(value as SearchResultType);
+    },
+    [onToggle],
+  );
+  useNlddEvent(ref, 'change', handleChange);
+
   return (
-    <div className={`flex flex-wrap gap-1.5 ${className}`}>
+    <nldd-toggle-button-group ref={ref} type="checkbox" size="sm" className={className}>
       {visibleTypes.map((type) => {
         const isActive = activeTypes.length === 0 || activeTypes.includes(type);
         return (
-          <button
+          <nldd-toggle-button
             key={type}
-            onClick={() => onToggle(type)}
-            className={`px-2.5 py-1 text-xs font-medium rounded-full border transition-colors duration-150 ${
-              isActive
-                ? 'bg-primary-50 border-primary-300 text-primary-700'
-                : 'bg-white border-border text-text-secondary hover:border-border-hover'
-            }`}
-          >
-            {SEARCH_RESULT_TYPE_LABELS[type]}
-          </button>
+            value={type}
+            text={SEARCH_RESULT_TYPE_LABELS[type]}
+            selected={orUndef(isActive)}
+          />
         );
       })}
-    </div>
+    </nldd-toggle-button-group>
   );
 }
 
-interface ResultItemProps {
-  result: SearchResult;
-  selected?: boolean;
-  compact?: boolean;
-  onClick: () => void;
-}
+/**
+ * A single search hit inside the command-palette listbox.
+ *
+ * Rendered as an `nldd-list-item` option: the list's own search input drives
+ * ArrowUp/Down/Home/End/Enter, and Enter triggers this row's inner action
+ * (the button `onClick` below) without DOM focus ever leaving the input — see
+ * `nldd-list type="listbox"` in list.js.
+ */
+export function ResultItem({ result, onClick }: { result: SearchResult; onClick: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onClick);
 
-export function ResultItem({ result, selected, compact, onClick }: ResultItemProps) {
-  if (compact) {
-    return (
-      <button
-        data-selected={selected}
-        onClick={onClick}
-        className={`w-full text-left px-5 py-2.5 transition-colors ${
-          selected ? 'bg-primary-50' : 'hover:bg-gray-50'
-        }`}
-      >
-        <ResultItemContent result={result} compact />
-      </button>
-    );
-  }
-  return null;
+  return (
+    <nldd-list-item ref={ref} button size="md">
+      <ResultItemContent result={result} compact />
+    </nldd-list-item>
+  );
 }
 
 function ResultItemContent({ result, compact }: { result: SearchResult; compact?: boolean }) {
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex items-start gap-3 w-full">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
-          <Badge
-            variant={SEARCH_RESULT_TYPE_COLORS[result.result_type]}
-            dot
-          >
+          <Badge variant={SEARCH_RESULT_TYPE_COLORS[result.result_type]} dot>
             {SEARCH_RESULT_TYPE_LABELS[result.result_type]}
           </Badge>
           {result.subtitle && (
-            <span className="text-xs text-text-secondary">
-              {formatSubtitle(result)}
-            </span>
+            <span className="text-xs text-text-secondary">{formatSubtitle(result)}</span>
           )}
         </div>
-        <h4 className="text-sm font-medium text-text">
-          {result.title}
-        </h4>
+        <h4 className="text-sm font-medium text-text">{result.title}</h4>
         {result.description && (
           <p className={`text-xs text-text-secondary mt-0.5 ${compact ? 'line-clamp-1' : 'line-clamp-2'}`}>
             {richTextToPlain(result.description)}
           </p>
         )}
-        {result.highlights && result.highlights.length > 0 && (
-          compact ? (
+        {result.highlights &&
+          result.highlights.length > 0 &&
+          (compact ? (
             <p
               className="text-xs text-text-secondary mt-0.5 italic line-clamp-1"
               dangerouslySetInnerHTML={{
@@ -190,8 +188,7 @@ function ResultItemContent({ result, compact }: { result: SearchResult; compact?
                 />
               ))}
             </div>
-          )
-        )}
+          ))}
       </div>
       {result.score > 0 && (
         <span className="text-xs text-text-secondary shrink-0">
@@ -208,21 +205,15 @@ interface SearchResultsListProps {
   isLoading: boolean;
   isFetched: boolean;
   onResultClick: (result: SearchResult) => void;
-  /** For modal: keyboard-selected index */
-  selectedIndex?: number;
-  /** For modal: render compact items without Card wrapper */
-  compact?: boolean;
 }
 
-export function SearchResultsList({
-  query,
-  data,
-  isLoading,
-  isFetched,
-  onResultClick,
-  selectedIndex,
-  compact,
-}: SearchResultsListProps) {
+/**
+ * Full-page results (SearchPage): plain result cards, no listbox semantics.
+ * The command-palette rendering for SearchModal's `nldd-list type="listbox"`
+ * lives in `ResultItem` / `GroupedListboxRows` instead, since a listbox owns
+ * its own search field and active-option handling that this page doesn't use.
+ */
+export function SearchResultsList({ query, data, isLoading, isFetched, onResultClick }: SearchResultsListProps) {
   const results = data?.results ?? [];
   const grouped = groupResults(results);
 
@@ -231,17 +222,9 @@ export function SearchResultsList({
   }
 
   if (query.length >= 2 && isFetched && results.length === 0) {
-    if (compact) {
-      return (
-        <div className="flex flex-col items-center py-10 text-text-secondary">
-          <FileQuestion className="h-10 w-10 mb-2 opacity-40" />
-          <p className="text-sm">Geen resultaten voor &ldquo;{query}&rdquo;</p>
-        </div>
-      );
-    }
     return (
       <EmptyState
-        icon={<FileQuestion className="h-16 w-16" />}
+        icon="question-mark-circle"
         title="Geen resultaten"
         description={`Geen resultaten gevonden voor "${query}". Probeer een andere zoekterm.`}
       />
@@ -249,46 +232,24 @@ export function SearchResultsList({
   }
 
   if (results.length > 0) {
-    let resultIndex = 0;
     return (
-      <div className={compact ? 'py-2' : 'space-y-6'}>
-        {!compact && (
-          <p className="text-sm text-text-secondary">
-            {data?.total ?? results.length} resultaten voor &ldquo;{data?.query ?? query}&rdquo;
-          </p>
-        )}
+      <div className="space-y-6">
+        <p className="text-sm text-text-secondary">
+          {data?.total ?? results.length} resultaten voor &ldquo;{data?.query ?? query}&rdquo;
+        </p>
         {Object.entries(grouped).map(([resultType, groupResults]) => (
           <div key={resultType}>
-            <div className={compact ? 'px-5 pt-3 pb-1' : ''}>
-              <span className={`text-xs font-semibold text-text-secondary uppercase tracking-wider ${compact ? 'text-[10px]' : 'mb-2 block'}`}>
-                {SEARCH_RESULT_TYPE_LABELS[resultType as SearchResultType]} ({groupResults.length})
-              </span>
-            </div>
-            <div className={compact ? '' : 'space-y-2'}>
-              {groupResults.map((result) => {
-                const currentIndex = resultIndex++;
-                const isSelected = selectedIndex !== undefined && currentIndex === selectedIndex;
-                if (compact) {
-                  return (
-                    <ResultItem
-                      key={`${result.result_type}-${result.id}`}
-                      result={result}
-                      selected={isSelected}
-                      compact
-                      onClick={() => onResultClick(result)}
-                    />
-                  );
-                }
-                return (
-                  <div
-                    key={`${result.result_type}-${result.id}`}
-                    className="group bg-surface rounded-xl border border-border shadow-sm overflow-hidden hover:shadow-md hover:border-border-hover transition-all duration-200 cursor-pointer px-3 py-3 sm:px-5 sm:py-4"
-                    onClick={() => onResultClick(result)}
-                  >
-                    <ResultItemContent result={result} />
-                  </div>
-                );
-              })}
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2 block">
+              {SEARCH_RESULT_TYPE_LABELS[resultType as SearchResultType]} ({groupResults.length})
+            </span>
+            <div className="space-y-2">
+              {groupResults.map((result) => (
+                <ResultCard
+                  key={`${result.result_type}-${result.id}`}
+                  result={result}
+                  onClick={() => onResultClick(result)}
+                />
+              ))}
             </div>
           </div>
         ))}
@@ -297,21 +258,62 @@ export function SearchResultsList({
   }
 
   if (query.length < 2 && !isFetched) {
-    if (compact) {
-      return (
-        <div className="flex flex-col items-center py-10 text-text-secondary">
-          <SearchIcon className="h-10 w-10 mb-2 opacity-20" />
-          <p className="text-sm">Voer minimaal 2 tekens in om te zoeken.</p>
-        </div>
-      );
-    }
     return (
-      <div className="text-center py-12 text-text-secondary">
-        <SearchIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
-        <p className="text-sm">Voer minimaal 2 tekens in om te zoeken.</p>
+      <div className="text-center py-12">
+        <nldd-icon name="magnifier" size="40" style={{ opacity: 0.3 }} aria-hidden="true" />
+        <p className="text-sm text-text-secondary mt-3">Voer minimaal 2 tekens in om te zoeken.</p>
       </div>
     );
   }
 
   return null;
+}
+
+function ResultCard({ result, onClick }: { result: SearchResult; onClick: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onClick);
+  return (
+    <nldd-card ref={ref} button>
+      <ResultItemContent result={result} />
+    </nldd-card>
+  );
+}
+
+/**
+ * Grouped rows for the command-palette listbox (SearchModal): a plain-text
+ * group label between runs of `nldd-list-item` options, all inside the same
+ * `nldd-list type="listbox"` so arrow-key navigation and the active option
+ * span every group. `nldd-list` has no built-in group heading for listbox
+ * rows, and its keyboard/active-option logic queries `:scope > nldd-list-item`
+ * directly, so the label has to sit as a direct-child sibling of the items
+ * rather than wrap them in a container div — that would hide them from it.
+ */
+export function GroupedListboxRows({
+  results,
+  onResultClick,
+}: {
+  results: SearchResult[];
+  onResultClick: (result: SearchResult) => void;
+}) {
+  const grouped = groupResults(results);
+  return (
+    <>
+      {Object.entries(grouped).map(([resultType, groupResults]) => (
+        <Fragment key={resultType}>
+          <div className="px-5 pt-3 pb-1" role="presentation">
+            <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
+              {SEARCH_RESULT_TYPE_LABELS[resultType as SearchResultType]} ({groupResults.length})
+            </span>
+          </div>
+          {groupResults.map((result) => (
+            <ResultItem
+              key={`${result.result_type}-${result.id}`}
+              result={result}
+              onClick={() => onResultClick(result)}
+            />
+          ))}
+        </Fragment>
+      ))}
+    </>
+  );
 }

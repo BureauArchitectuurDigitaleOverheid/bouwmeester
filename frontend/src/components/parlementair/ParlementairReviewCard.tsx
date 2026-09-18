@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { ChevronDown, ChevronUp, Check, X, ExternalLink, Users, Calendar, Plus, Trash2, Link, Undo2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import clsx from 'clsx';
 import { Badge } from '@/components/common/Badge';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
+import { Select } from '@/components/common/Select';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import type { SelectOption } from '@/components/common/CreatableSelect';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   useApproveSuggestedEdge,
   useRejectSuggestedEdge,
@@ -40,12 +42,142 @@ import { NodeDetailModal } from '@/components/nodes/NodeDetailModal';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 import { formatDateLong } from '@/utils/dates';
-import type { CompleteReviewData } from '@/types';
+import type { CompleteReviewData, NodeTagResponse, Tag } from '@/types';
 
 interface FollowUpTaskRow {
   title: string;
   assignee_id: string;
   deadline: string;
+}
+
+/**
+ * An `nldd-link` that stops its click from bubbling into a clickable ancestor
+ * row (the card header toggles `expanded` on click). Click has to go through
+ * `useNlddEvent` rather than a React `onClick` prop for consistency with the
+ * rest of this codebase's nldd bindings.
+ */
+function ExternalDocLink({
+  href,
+  label,
+  iconOnly,
+}: {
+  href: string;
+  label: string;
+  iconOnly?: boolean;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', useCallback((e: Event) => e.stopPropagation(), []));
+
+  return (
+    <nldd-link
+      ref={ref}
+      href={href}
+      target="_blank"
+      size={iconOnly ? undefined : 'xs'}
+      {...(iconOnly ? { 'accessible-label': label } : { text: label, 'end-icon': 'external-link' })}
+    >
+      {iconOnly && <Icon name="external-link" size="sm" />}
+    </nldd-link>
+  );
+}
+
+/**
+ * A node title that opens `NodeDetailModal` on click. `nldd-link` is `href`-
+ * only (a real navigation target), which this isn't — it opens a modal — so
+ * this is `Button` (the converted `nldd-button` wrapper) at its smallest
+ * ghost styling instead of a raw `<button>`.
+ */
+function NlddButtonLink({ text, onClick }: { text: string; onClick: () => void }) {
+  return (
+    <Button variant="ghost" size="sm" onClick={onClick} className="truncate">
+      {text}
+    </Button>
+  );
+}
+
+/** A controlled `nldd-text-field` for a follow-up task's title. */
+function FollowUpTitleField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddValue(ref, value);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return <nldd-text-field ref={ref} placeholder="Omschrijving taak..." accessible-label="Omschrijving taak" />;
+}
+
+/** A controlled `nldd-date-field` for a follow-up task's deadline. */
+function FollowUpDeadlineField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddValue(ref, value);
+  useNlddEvent(ref, 'change', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return <nldd-date-field ref={ref} accessible-label="Deadline" />;
+}
+
+interface TagTokenFieldProps {
+  nodeTags: NodeTagResponse[] | undefined;
+  allTags: Tag[] | undefined;
+  onAdd: (tagId: string) => void;
+  onAddNew: (tagName: string) => void;
+  onRemove: (tagId: string) => void;
+}
+
+/**
+ * `nldd-token-field` for the corpus node's tags: chips are the existing tags
+ * (dismissible), the slotted menu is every known tag (the field hides options
+ * already present as tokens itself, see `_hideSelectedMenuItems` in
+ * token-field.js), and `allow-custom` lets a typed name that matches nothing
+ * create a new tag. This replaces ~70 lines of hand-rolled dropdown state
+ * (highlight index, click-outside, arrow keys) that the element owns itself.
+ *
+ * `.values` is a live property, not a reflected attribute — like
+ * `CreatableSelect`'s `.text`, it is written imperatively only when it has
+ * actually diverged from the tags this node has, to avoid fighting the
+ * element's own state while the user is mid-selection.
+ */
+function TagTokenField({ nodeTags, allTags, onAdd, onAddNew, onRemove }: TagTokenFieldProps) {
+  const ref = useRef<HTMLElement & { values?: string[] }>(null);
+  const currentIds = useMemo(() => (nodeTags ?? []).map((nt) => nt.tag.id), [nodeTags]);
+  const tagById = useMemo(() => new Map((allTags ?? []).map((t) => [t.id, t])), [allTags]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const current = el.values ?? [];
+    if (current.length !== currentIds.length || !currentIds.every((id) => current.includes(id))) {
+      el.values = currentIds;
+    }
+  }, [currentIds]);
+
+  const handleChange = useCallback(
+    (event: Event) => {
+      const nextValues = (event as CustomEvent<{ values?: string[] }>).detail?.values ?? [];
+      const added = nextValues.find((v) => !currentIds.includes(v));
+      const removedId = currentIds.find((id) => !nextValues.includes(id));
+      if (removedId) {
+        onRemove(removedId);
+      } else if (added) {
+        // A known tag id commits as itself; free text (no matching menu item,
+        // hence no id) commits as its own typed name.
+        if (tagById.has(added)) onAdd(added);
+        else onAddNew(added);
+      }
+    },
+    [currentIds, tagById, onAdd, onAddNew, onRemove],
+  );
+  useNlddEvent(ref, 'change', handleChange);
+
+  return (
+    <nldd-token-field
+      ref={ref}
+      placeholder="Tag zoeken of toevoegen..."
+      allow-custom
+      accessible-label="Tags"
+    >
+      <nldd-menu>
+        {(allTags ?? []).map((tag) => (
+          <nldd-menu-item key={tag.id} value={tag.id} text={tag.name} />
+        ))}
+      </nldd-menu>
+    </nldd-token-field>
+  );
 }
 
 interface ParlementairReviewCardProps {
@@ -60,14 +192,8 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   const [showAddEdge, setShowAddEdge] = useState(false);
   const [newEdgeTargetId, setNewEdgeTargetId] = useState('');
   const [newEdgeTypeId, setNewEdgeTypeId] = useState('');
-  const [tagInput, setTagInput] = useState('');
-  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
   const [modalNodeId, setModalNodeId] = useState<string | null>(null);
-  const [tagHighlightIdx, setTagHighlightIdx] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
-  const tagContainerRef = useRef<HTMLDivElement>(null);
-  const tagInputRef = useRef<HTMLInputElement>(null);
-  const tagListRef = useRef<HTMLUListElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -167,80 +293,6 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
     [createNode],
   );
 
-  // Tag search logic
-  const existingTagIds = new Set((nodeTags ?? []).map((nt) => nt.tag.id));
-  const debouncedQuery = tagInput.trim().toLowerCase();
-  const tagSearchResults = (allTags ?? []).filter(
-    (t) => !existingTagIds.has(t.id) && t.name.toLowerCase().includes(debouncedQuery),
-  ).slice(0, 10);
-  const showCreateTag = debouncedQuery.length > 0 &&
-    !tagSearchResults.some((t) => t.name.toLowerCase() === debouncedQuery);
-  const tagTotalItems = tagSearchResults.length + (showCreateTag ? 1 : 0);
-
-  useEffect(() => { setTagHighlightIdx(0); }, [tagInput]);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (tagContainerRef.current && !tagContainerRef.current.contains(e.target as Node)) {
-        setTagDropdownOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    if (tagDropdownOpen && tagListRef.current) {
-      const el = tagListRef.current.children[tagHighlightIdx] as HTMLElement | undefined;
-      el?.scrollIntoView({ block: 'nearest' });
-    }
-  }, [tagHighlightIdx, tagDropdownOpen]);
-
-  const handleSelectTag = useCallback((tagId: string) => {
-    if (!corpusNodeId) return;
-    addTag.mutate({ nodeId: corpusNodeId, data: { tag_id: tagId } });
-    setTagInput('');
-    setTagDropdownOpen(false);
-  }, [addTag, corpusNodeId]);
-
-  const handleCreateTag = useCallback(() => {
-    if (!tagInput.trim() || !corpusNodeId) return;
-    addTag.mutate({ nodeId: corpusNodeId, data: { tag_name: tagInput.trim() } });
-    setTagInput('');
-    setTagDropdownOpen(false);
-  }, [addTag, corpusNodeId, tagInput]);
-
-  const handleTagKeyDown = (e: React.KeyboardEvent) => {
-    if (!tagDropdownOpen) {
-      if (tagInput.trim() && (e.key === 'ArrowDown' || e.key === 'Enter')) {
-        setTagDropdownOpen(true);
-        e.preventDefault();
-      }
-      return;
-    }
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        if (tagTotalItems > 0) setTagHighlightIdx((i) => (i + 1) % tagTotalItems);
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        if (tagTotalItems > 0) setTagHighlightIdx((i) => (i - 1 + tagTotalItems) % tagTotalItems);
-        break;
-      case 'Enter':
-        e.preventDefault();
-        if (showCreateTag && tagHighlightIdx === tagSearchResults.length) {
-          handleCreateTag();
-        } else if (tagSearchResults[tagHighlightIdx]) {
-          handleSelectTag(tagSearchResults[tagHighlightIdx].id);
-        }
-        break;
-      case 'Escape':
-        setTagDropdownOpen(false);
-        break;
-    }
-  };
-
   const handleCompleteSubmit = () => {
     const data: CompleteReviewData = {
       eigenaar_id: eigenaarId,
@@ -339,15 +391,15 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             <span className="text-xs text-text-secondary">{item.zaak_nummer}</span>
             {item.datum && (
               <span className="text-xs text-text-secondary flex items-center gap-0.5">
-                <Calendar className="h-3 w-3 shrink-0" />
+                <Icon name="calendar" size="xs" />
                 {formatDateLong(item.datum)}
               </span>
             )}
             {item.deadline && (
-              <span className="text-xs text-orange-600 flex items-center gap-0.5">
-                <Calendar className="h-3 w-3 shrink-0" />
+              <nldd-text size="xs" color="warning" className="flex items-center gap-0.5">
+                <Icon name="calendar" size="xs" />
                 Deadline: {formatDateLong(item.deadline)}
-              </span>
+              </nldd-text>
             )}
             {item.ministerie && (
               <span className="text-xs text-text-secondary">{item.ministerie}</span>
@@ -356,16 +408,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           <div className="flex items-center gap-2 mb-1">
             <h3 className="text-sm font-semibold text-text">{item.onderwerp}</h3>
             {item.document_url && (
-              <a
-                href={item.document_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary-600 hover:text-primary-700 shrink-0"
-                title="Bekijk op tweedekamer.nl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
+              <ExternalDocLink href={item.document_url} label="Bekijk op tweedekamer.nl" iconOnly />
             )}
           </div>
           <p className="text-xs text-text-secondary">Zaak: {item.titel}</p>
@@ -378,7 +421,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             </span>
           )}
           <div className="p-1 rounded hover:bg-gray-100 transition-colors">
-            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size="md" />
           </div>
         </div>
       </div>
@@ -388,24 +431,17 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           {/* Quick links bar */}
           <div className="flex items-center gap-3">
             {item.corpus_node_id && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="external-link"
                 onClick={() => navigate(`/nodes/${item.corpus_node_id}`)}
-                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 transition-colors"
               >
-                <ExternalLink className="h-3 w-3" />
                 Bekijk node
-              </button>
+              </Button>
             )}
             {item.document_url && (
-              <a
-                href={item.document_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 transition-colors"
-              >
-                <ExternalLink className="h-3 w-3" />
-                Bekijk op tweedekamer.nl
-              </a>
+              <ExternalDocLink href={item.document_url} label="Bekijk op tweedekamer.nl" />
             )}
           </div>
 
@@ -413,7 +449,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           {item.indieners && item.indieners.length > 0 && (
             <div>
               <h4 className="text-xs font-medium text-text mb-1.5 flex items-center gap-1">
-                <Users className="h-3.5 w-3.5" />
+                <Icon name="users" size="sm" />
                 Indieners
               </h4>
               <div className="flex flex-wrap gap-1">
@@ -458,76 +494,15 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
 
           {/* Tags on corpus node */}
           {corpusNodeId && (
-            <div>
+            <div className="max-w-xs">
               <h4 className="text-xs font-medium text-text mb-1.5">Tags</h4>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {nodeTags?.map((nt) => (
-                  <span
-                    key={nt.id}
-                    className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 px-2.5 py-0.5 text-xs font-medium"
-                  >
-                    {nt.tag.name}
-                    <button
-                      onClick={() => removeTag.mutate({ nodeId: corpusNodeId, tagId: nt.tag.id })}
-                      className="hover:text-red-500 transition-colors ml-0.5"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-                {(!nodeTags || nodeTags.length === 0) && (
-                  <span className="text-xs text-text-secondary">Geen tags</span>
-                )}
-              </div>
-              <div className="relative max-w-xs" ref={tagContainerRef}>
-                <input
-                  ref={tagInputRef}
-                  type="text"
-                  value={tagInput}
-                  onChange={(e) => {
-                    setTagInput(e.target.value);
-                    if (e.target.value.trim()) setTagDropdownOpen(true);
-                    else setTagDropdownOpen(false);
-                  }}
-                  onFocus={() => { if (tagInput.trim()) setTagDropdownOpen(true); }}
-                  onKeyDown={handleTagKeyDown}
-                  placeholder="Tag zoeken of toevoegen..."
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
-                />
-                {tagDropdownOpen && tagTotalItems > 0 && (
-                  <ul
-                    ref={tagListRef}
-                    className="absolute z-50 mt-1 w-full max-h-48 overflow-auto rounded-xl border border-border bg-white shadow-lg py-1"
-                  >
-                    {tagSearchResults.map((tag, idx) => (
-                      <li
-                        key={tag.id}
-                        onClick={() => handleSelectTag(tag.id)}
-                        onMouseEnter={() => setTagHighlightIdx(idx)}
-                        className={clsx(
-                          'px-3 py-1.5 text-sm cursor-pointer transition-colors',
-                          tagHighlightIdx === idx ? 'bg-primary-50 text-primary-700' : 'text-text hover:bg-gray-50',
-                        )}
-                      >
-                        {tag.name}
-                      </li>
-                    ))}
-                    {showCreateTag && (
-                      <li
-                        onClick={handleCreateTag}
-                        onMouseEnter={() => setTagHighlightIdx(tagSearchResults.length)}
-                        className={clsx(
-                          'px-3 py-1.5 text-sm cursor-pointer transition-colors flex items-center gap-1.5 border-t border-border',
-                          tagHighlightIdx === tagSearchResults.length ? 'bg-primary-50 text-primary-700' : 'text-primary-600 hover:bg-gray-50',
-                        )}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        Nieuwe tag: &quot;{tagInput.trim()}&quot;
-                      </li>
-                    )}
-                  </ul>
-                )}
-              </div>
+              <TagTokenField
+                nodeTags={nodeTags}
+                allTags={allTags}
+                onAdd={(tagId) => addTag.mutate({ nodeId: corpusNodeId, data: { tag_id: tagId } })}
+                onAddNew={(tagName) => addTag.mutate({ nodeId: corpusNodeId, data: { tag_name: tagName } })}
+                onRemove={(tagId) => removeTag.mutate({ nodeId: corpusNodeId, tagId })}
+              />
             </div>
           )}
 
@@ -544,161 +519,135 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
 
             {/* Suggested edges list */}
             {sortedSuggestedEdges.length > 0 && (
-              <div className="space-y-1.5 mb-2">
+              <nldd-list type="list" variant="box-tinted" dividers="always" className="mb-2">
                 {sortedSuggestedEdges.map((edge) => (
-                  <div
-                    key={edge.id}
-                    className={clsx(
-                      'flex items-start gap-2 p-2 rounded-lg bg-gray-50',
-                      edge.status === 'rejected' && 'opacity-50',
-                    )}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        {edge.status === 'pending' ? (
-                          <select
-                            value={edge.edge_type_id}
-                            onChange={(e) => {
-                              updateSuggestedEdge.mutate({
-                                id: edge.id,
-                                data: { edge_type_id: e.target.value },
-                              });
-                            }}
-                            className="text-xs rounded-md border border-border bg-white px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
-                          >
-                            {Object.keys(EDGE_TYPE_VOCABULARY).map((key) => (
-                              <option key={key} value={key}>
-                                {edgeLabel(key)}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <Badge variant="slate">
-                            {edgeLabel(edge.edge_type_id)}
-                          </Badge>
-                        )}
-                      </div>
-                      {edge.target_node && (
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <Badge
-                            variant={NODE_TYPE_COLORS[edge.target_node.node_type]}
-                            dot
-                          >
-                            {nodeLabel(edge.target_node.node_type)}
-                          </Badge>
-                          <button
-                            onClick={() => setModalNodeId(edge.target_node_id)}
-                            className="text-sm text-text hover:text-primary-700 truncate transition-colors"
-                          >
-                            {edge.target_node.title}
-                          </button>
+                  <nldd-list-item key={edge.id} style={edge.status === 'rejected' ? { opacity: 0.5 } : undefined}>
+                    <div className="flex items-start gap-2 w-full py-1">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          {edge.status === 'pending' ? (
+                            <Select
+                              value={edge.edge_type_id}
+                              onChange={(e) =>
+                                updateSuggestedEdge.mutate({
+                                  id: edge.id,
+                                  data: { edge_type_id: e.target.value },
+                                })
+                              }
+                              options={Object.keys(EDGE_TYPE_VOCABULARY).map((key) => ({
+                                value: key,
+                                label: edgeLabel(key),
+                              }))}
+                            />
+                          ) : (
+                            <Badge variant="slate">{edgeLabel(edge.edge_type_id)}</Badge>
+                          )}
                         </div>
-                      )}
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-xs text-text-secondary">
-                          {Math.round(edge.confidence * 100)}% match
-                        </span>
-                        {edge.reason && (
-                          <span className="text-xs text-text-secondary truncate">
-                            — {edge.reason}
+                        {edge.target_node && (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <Badge variant={NODE_TYPE_COLORS[edge.target_node.node_type]} dot>
+                              {nodeLabel(edge.target_node.node_type)}
+                            </Badge>
+                            <NlddButtonLink
+                              text={edge.target_node.title}
+                              onClick={() => setModalNodeId(edge.target_node_id)}
+                            />
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-xs text-text-secondary">
+                            {Math.round(edge.confidence * 100)}% match
                           </span>
+                          {edge.reason && (
+                            <span className="text-xs text-text-secondary truncate">
+                              — {edge.reason}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Actions on the right */}
+                      <div className="flex items-center gap-0.5 shrink-0 mt-1">
+                        {edge.status === 'pending' && (
+                          <>
+                            <NlddIconButton
+                              icon="check-mark"
+                              accessibleLabel="Goedkeuren"
+                              variant="neutral-transparent"
+                              size="sm"
+                              onClick={() => approveEdge.mutate(edge.id)}
+                            />
+                            <NlddIconButton
+                              icon="trash"
+                              accessibleLabel="Afwijzen"
+                              variant="neutral-transparent"
+                              size="sm"
+                              onClick={() => rejectEdge.mutate(edge.id)}
+                            />
+                          </>
+                        )}
+                        {edge.status !== 'pending' && (
+                          <NlddIconButton
+                            icon="undo"
+                            accessibleLabel="Ongedaan maken"
+                            variant="neutral-transparent"
+                            size="sm"
+                            onClick={() => resetEdge.mutate(edge.id)}
+                          />
                         )}
                       </div>
                     </div>
-
-                    {/* Actions on the right */}
-                    <div className="flex items-center gap-0.5 shrink-0 mt-1">
-                      {edge.status === 'pending' && (
-                        <>
-                          <button
-                            onClick={() => approveEdge.mutate(edge.id)}
-                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-100 transition-colors"
-                            title="Goedkeuren"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => rejectEdge.mutate(edge.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Afwijzen"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </>
-                      )}
-                      {edge.status !== 'pending' && (
-                        <button
-                          onClick={() => resetEdge.mutate(edge.id)}
-                          className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                          title="Ongedaan maken"
-                        >
-                          <Undo2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  </nldd-list-item>
                 ))}
-              </div>
+              </nldd-list>
             )}
 
             {/* Manually added edges */}
             {manualEdges.length > 0 && (
-              <div className="space-y-1.5 mb-2">
+              <nldd-list type="list" variant="box-tinted" dividers="always" className="mb-2">
                 {manualEdges.map((edge) => {
                   const isOutgoing = edge.from_node_id === corpusNodeId;
                   const otherNode = isOutgoing ? edge.to_node : edge.from_node;
                   const otherNodeId = isOutgoing ? edge.to_node_id : edge.from_node_id;
                   return (
-                    <div
-                      key={edge.id}
-                      className="flex items-start gap-2 p-2 rounded-lg bg-gray-50"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <Badge variant="slate">
-                            {edgeLabel(edge.edge_type_id)}
-                          </Badge>
-                        </div>
-                        {otherNode && (
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <Badge
-                              variant={NODE_TYPE_COLORS[otherNode.node_type]}
-                              dot
-                            >
-                              {nodeLabel(otherNode.node_type)}
-                            </Badge>
-                            <button
-                              onClick={() => setModalNodeId(otherNodeId)}
-                              className="text-sm text-text hover:text-primary-700 truncate transition-colors"
-                            >
-                              {otherNode.title}
-                            </button>
+                    <nldd-list-item key={edge.id}>
+                      <div className="flex items-start gap-2 w-full py-1">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="slate">{edgeLabel(edge.edge_type_id)}</Badge>
                           </div>
-                        )}
+                          {otherNode && (
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <Badge variant={NODE_TYPE_COLORS[otherNode.node_type]} dot>
+                                {nodeLabel(otherNode.node_type)}
+                              </Badge>
+                              <NlddButtonLink
+                                text={otherNode.title}
+                                onClick={() => setModalNodeId(otherNodeId)}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <NlddIconButton
+                          icon="trash"
+                          accessibleLabel="Verwijderen"
+                          variant="neutral-transparent"
+                          size="sm"
+                          onClick={() => deleteEdge.mutate(edge.id)}
+                        />
                       </div>
-                      <button
-                        onClick={() => deleteEdge.mutate(edge.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0 mt-1"
-                        title="Verwijderen"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    </nldd-list-item>
                   );
                 })}
-              </div>
+              </nldd-list>
             )}
 
             {/* Add edge toggle */}
             {!showAddEdge && (
               corpusNodeId ? (
-                <button
-                  onClick={() => setShowAddEdge(true)}
-                  className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 transition-colors"
-                >
-                  <Plus className="h-3 w-3" />
+                <Button variant="ghost" size="sm" icon="plus" onClick={() => setShowAddEdge(true)}>
                   Verbinding toevoegen
-                </button>
+                </Button>
               ) : (
                 <p className="text-xs text-text-secondary">
                   Geen corpus-node gekoppeld — verbindingen kunnen niet worden toegevoegd.
@@ -710,7 +659,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             {showAddEdge && corpusNodeId && (
               <div className="p-3 rounded-lg border border-border bg-gray-50/50 space-y-2">
                 <div className="flex items-center gap-2 text-xs font-medium text-text">
-                  <Link className="h-3.5 w-3.5" />
+                  <Icon name="link" size="sm" />
                   Nieuwe verbinding
                 </div>
                 <div className="space-y-2">
@@ -730,9 +679,9 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                   />
                 </div>
                 {createEdge.isError && (
-                  <p className="text-xs text-red-600">
+                  <nldd-text size="xs" color="critical">
                     {(createEdge.error as { body?: { detail?: string } })?.body?.detail || 'Fout bij aanmaken verbinding'}
-                  </p>
+                  </nldd-text>
                 )}
                 <div className="flex items-center gap-2">
                   <Button
@@ -769,12 +718,9 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                   {followUpTasks.map((task, index) => (
                     <div key={index} className="flex items-start gap-2 p-2 rounded-lg bg-gray-50 border border-border">
                       <div className="flex-1 space-y-2">
-                        <input
-                          type="text"
+                        <FollowUpTitleField
                           value={task.title}
-                          onChange={(e) => updateTaskRow(index, 'title', e.target.value)}
-                          placeholder="Omschrijving taak..."
-                          className="w-full rounded-lg border border-border px-3 py-1.5 text-sm"
+                          onChange={(v) => updateTaskRow(index, 'title', v)}
                         />
                         <div className="flex gap-2">
                           <div className="flex-1">
@@ -785,32 +731,26 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                               placeholder="Toewijzen aan..."
                             />
                           </div>
-                          <input
-                            type="date"
+                          <FollowUpDeadlineField
                             value={task.deadline}
-                            onChange={(e) => updateTaskRow(index, 'deadline', e.target.value)}
-                            className="rounded-lg border border-border px-3 py-1.5 text-sm"
+                            onChange={(v) => updateTaskRow(index, 'deadline', v)}
                           />
                         </div>
                       </div>
-                      <button
+                      <NlddIconButton
+                        icon="trash"
+                        accessibleLabel="Verwijderen"
+                        variant="neutral-transparent"
+                        size="sm"
                         onClick={() => removeTaskRow(index)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors mt-1"
-                        title="Verwijderen"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      />
                     </div>
                   ))}
                 </div>
               )}
-              <button
-                onClick={addTaskRow}
-                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 transition-colors"
-              >
-                <Plus className="h-3 w-3" />
+              <Button variant="ghost" size="sm" icon="plus" onClick={addTaskRow}>
                 Taak toevoegen
-              </button>
+              </Button>
             </div>
           )}
 
@@ -854,7 +794,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
               <Button
                 size="sm"
                 variant="ghost"
-                icon={<Undo2 className="h-3.5 w-3.5" />}
+                icon="undo"
                 onClick={() => reopenItem.mutate(item.id)}
                 disabled={reopenItem.isPending}
                 loading={reopenItem.isPending}
