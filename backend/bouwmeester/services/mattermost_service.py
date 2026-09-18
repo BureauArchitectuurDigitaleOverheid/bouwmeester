@@ -194,6 +194,23 @@ class MattermostService:
             logger.exception("Failed to get bot user ID")
             return None
 
+    async def get_bot_identity(self) -> tuple[str | None, str | None]:
+        """Get the bot's ``(user_id, username)`` in één call.
+
+        De username hebben we nodig om ``@bouwmeester``-vermeldingen in
+        kanaalberichten te herkennen; die is per installatie anders, dus
+        hardcoden kan niet.
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.get("/api/v4/users/me")
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("id"), data.get("username")
+        except httpx.HTTPError:
+            logger.exception("Failed to get bot identity")
+            return None, None
+
     async def get_bot_dm_url(self) -> str | None:
         """Build a browser URL for DMing the bot: {base}/{team}/messages/@{username}."""
         client = await self._get_client()

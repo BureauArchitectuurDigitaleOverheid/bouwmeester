@@ -103,6 +103,7 @@ class MattermostWebsocketService:
         self._seq = 0
         self._stop = False
         self._bot_user_id: str | None = None
+        self._bot_username: str | None = None
         self._mm_base_url: str | None = None
         self._last_dm_recovery_ms: int | None = None
         self._recent_dm_post_ids: OrderedDict[str, None] = OrderedDict()
@@ -234,7 +235,7 @@ class MattermostWebsocketService:
         async with async_session() as session:
             service = MattermostService(session)
             try:
-                self._bot_user_id = await service.get_bot_user_id()
+                self._bot_user_id, self._bot_username = await service.get_bot_identity()
             finally:
                 await service.close()
 
@@ -497,6 +498,7 @@ class MattermostWebsocketService:
         ingest = MattermostIngestService(
             session,
             bot_user_id=self._bot_user_id,
+            bot_username=self._bot_username,
             mm_base_url=self._mm_base_url,
         )
         await ingest.ingest_post(post, channel_type=channel_type)
