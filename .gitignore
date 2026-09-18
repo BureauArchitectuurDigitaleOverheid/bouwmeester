@@ -67,3 +67,9 @@ backend/scripts/admin_emails.json
 
 # Alembic
 alembic/versions/__pycache__/
+
+# Playwright
+/frontend/test-results/
+/frontend/playwright-report/
+/frontend/blob-report/
+/frontend/.playwright/
