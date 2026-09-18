@@ -1,6 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, User, ChevronDown, Check, LogOut, Menu, Eye, EyeOff } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { useNlddEvent } from '@/components/nldd/events';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -92,41 +95,30 @@ export function Header() {
 
   const initials = currentPerson ? getInitials(currentPerson.naam) : null;
 
-  return (
-    <header className="flex items-center justify-between h-16 px-4 md:px-6 bg-surface border-b border-border shrink-0 sticky top-0 z-30">
-      {/* Left: Hamburger + Title / Breadcrumbs */}
-      <div className="flex items-center gap-2 min-w-0 shrink">
-        <button
-          onClick={toggleMobileSidebar}
-          className="md:hidden flex items-center justify-center h-9 w-9 -ml-1 rounded-lg text-text-secondary hover:bg-gray-100 hover:text-text transition-colors shrink-0"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-        {breadcrumbs ? (
-          <nav className="flex items-center gap-1.5 text-sm min-w-0">
-            {breadcrumbs.map((crumb, i) => (
-              <span key={i} className="flex items-center gap-1.5">
-                {i > 0 && <span className="text-text-secondary">/</span>}
-                {crumb.href ? (
-                  <button
-                    onClick={() => navigate(crumb.href!)}
-                    className="text-text-secondary hover:text-text transition-colors"
-                  >
-                    {crumb.label}
-                  </button>
-                ) : (
-                  <span className="text-text font-medium truncate">{crumb.label}</span>
-                )}
-              </span>
-            ))}
-          </nav>
-        ) : (
-          <h1 className="text-lg font-semibold text-text truncate">{title}</h1>
-        )}
-      </div>
+  // `back-href` would trigger a full page load, so the bar fires `back` instead
+  // and the router handles it. Bound here only: the event bubbles, and binding
+  // it on an ancestor as well would run the handler twice for one press.
+  const barRef = useRef<HTMLElement>(null);
+  const handleBack = useCallback(() => navigate('/corpus'), [navigate]);
+  useNlddEvent(barRef, 'back', breadcrumbs ? handleBack : undefined);
 
-      {/* Right: Actions */}
-      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+  return (
+    // The bar renders the h1 itself and, on a detail page, the back affordance
+    // that used to be a hand-rolled breadcrumb trail.
+    <nldd-top-title-bar
+      ref={barRef}
+      text={title}
+      {...(breadcrumbs ? { 'back-text': 'Corpus' } : {})}
+    >
+      <div slot="toolbar" className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        {/* Only shown while the sidebar is a sheet; above lg the pane is visible. */}
+        <span className="lg:hidden">
+          <NlddIconButton
+            icon="menu"
+            accessibleLabel="Navigatie openen"
+            onClick={toggleMobileSidebar}
+          />
+        </span>
         {/* Vocabulary toggle */}
         <div className="hidden sm:flex items-center h-9 rounded-xl border border-border text-xs overflow-hidden">
           {(Object.keys(VOCABULARY_LABELS) as VocabularyId[]).map((id) => (
@@ -146,33 +138,29 @@ export function Header() {
 
         {/* Admin view-as-non-admin toggle */}
         {realIsAdmin && (
-          <button
+          <NlddIconButton
+            icon={viewAsNonAdmin ? 'eye-slash' : 'eye'}
+            variant={viewAsNonAdmin ? 'neutral-tinted' : 'neutral-transparent'}
+            size="sm"
+            accessibleLabel={
+              viewAsNonAdmin ? 'Terug naar beheerweergave' : 'Bekijk als medewerker'
+            }
             onClick={toggleViewAsNonAdmin}
-            className={`flex items-center justify-center h-7 w-7 rounded-lg transition-all ${
-              viewAsNonAdmin
-                ? 'bg-amber-100 text-amber-700 border border-amber-300'
-                : 'text-text-secondary hover:text-text hover:bg-gray-100'
-            }`}
-            title={viewAsNonAdmin ? 'Terug naar beheerweergave' : 'Bekijk als medewerker'}
-          >
-            {viewAsNonAdmin ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          </button>
+          />
         )}
 
         {/* Notification bell */}
         <NotificationBell />
 
         {/* Search shortcut */}
-        <button
+        <NlddButton
+          variant="neutral-base"
+          size="sm"
+          startIcon="magnifier"
+          text="Zoeken"
+          accessibleLabel="Zoeken (sneltoets /)"
           onClick={() => useUIStore.getState().setSearchModalOpen(true)}
-          className="flex items-center justify-center gap-2 h-9 px-2.5 sm:px-3 rounded-xl border border-border text-sm text-text-secondary hover:border-border-hover hover:text-text transition-all"
-        >
-          <Search className="h-4 w-4" />
-          <span className="hidden sm:inline">Zoeken...</span>
-          <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] font-medium text-text-secondary">
-            /
-          </kbd>
-        </button>
+        />
 
         {/* Dev-mode person picker (only when OIDC is not configured) */}
         {!oidcConfigured ? (
@@ -182,14 +170,14 @@ export function Header() {
               className="flex items-center gap-1.5 h-9 px-2 rounded-xl border border-border hover:border-border-hover transition-all"
             >
               <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary-100 text-primary-700 text-[11px] font-medium">
-                {initials || <User className="h-3.5 w-3.5" />}
+                {initials || <Icon name="person" size="sm" />}
               </div>
               {currentPerson && (
                 <span className="text-sm text-text hidden sm:inline max-w-[120px] truncate">
                   {currentPerson.naam}
                 </span>
               )}
-              <ChevronDown className="h-3.5 w-3.5 text-text-secondary" />
+              <Icon name="chevron-down" size="sm" className="text-text-secondary" />
             </button>
 
             {showDevPicker && (
@@ -225,7 +213,7 @@ export function Header() {
                         )}
                       </div>
                       {currentPerson?.id === person.id && (
-                        <Check className="h-4 w-4 text-primary-600 shrink-0" />
+                        <Icon name="check-mark" className="shrink-0 text-primary-600" />
                       )}
                     </button>
                   ))}
@@ -239,7 +227,7 @@ export function Header() {
         ) : (
           <div className="flex items-center gap-1.5 h-9 px-2 rounded-xl border border-border">
             <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary-100 text-primary-700 text-[11px] font-medium">
-              {initials || <User className="h-3.5 w-3.5" />}
+              {initials || <Icon name="person" size="sm" />}
             </div>
             {currentPerson && (
               <span className="text-sm text-text hidden sm:inline max-w-[120px] truncate">
@@ -251,16 +239,15 @@ export function Header() {
 
         {/* Logout button */}
         {authenticated && (
-          <button
+          <NlddButton
+            variant="neutral-base"
+            size="sm"
+            startIcon="logout"
+            text="Uitloggen"
             onClick={logout}
-            className="flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-xl border border-border text-sm text-text-secondary hover:border-border-hover hover:text-text transition-all"
-            title="Uitloggen"
-          >
-            <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">Uitloggen</span>
-          </button>
+          />
         )}
       </div>
-    </header>
+    </nldd-top-title-bar>
   );
 }

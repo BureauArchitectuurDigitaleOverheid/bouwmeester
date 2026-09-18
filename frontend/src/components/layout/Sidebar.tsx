@@ -1,24 +1,5 @@
 import { useMemo } from 'react';
-import { NavLink } from 'react-router-dom';
-import { clsx } from 'clsx';
-import {
-  Inbox,
-  Network,
-  CheckSquare,
-  Search,
-  Building2,
-  Users,
-  ScrollText,
-  History,
-  Settings,
-  Shield,
-  PanelLeftClose,
-  PanelLeftOpen,
-  BookOpen,
-  Banknote,
-  Funnel,
-  Handshake,
-} from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import logoImg from '/logo.png?url';
 import { useUIStore } from '@/store/ui';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,9 +7,20 @@ import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { formatOrganisatieType } from '@/types';
+import { NlddListItemLink } from '@/components/nldd/NlddLink';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 
 interface SidebarProps {
+  /** Rendered inside the split view's own sheet on narrow screens. */
   mobile?: boolean;
+}
+
+interface NavItem {
+  to: string;
+  /** An nldd-icon name; the cells take a name, not an <Icon> element. */
+  icon: string;
+  label: string;
+  permission?: string;
 }
 
 export function Sidebar({ mobile }: SidebarProps) {
@@ -37,8 +29,9 @@ export function Sidebar({ mobile }: SidebarProps) {
   const { currentPerson } = useCurrentPerson();
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
   const { hasPermission, hasAnyPermission } = usePermissions();
+  const location = useLocation();
 
-  // On mobile the sidebar is always expanded (with labels)
+  // Inside the sheet the sidebar is always expanded (with labels).
   const expanded = mobile || sidebarOpen;
 
   const eenheidLabel = useMemo(() => {
@@ -48,31 +41,39 @@ export function Sidebar({ mobile }: SidebarProps) {
   }, [managedEenheden]);
 
   const navItems = useMemo(() => {
-    const items: { to: string; icon: typeof Inbox; label: string; permission?: string }[] = [
-      { to: '/', icon: Inbox, label: 'Inbox' },
-      { to: '/corpus', icon: Network, label: 'Corpus', permission: 'node:read' },
-      { to: '/tasks', icon: CheckSquare, label: 'Taken', permission: 'task:read' },
-      { to: '/organisatie', icon: Building2, label: 'Organisatie', permission: 'org:read' },
-      { to: '/eenheid-overzicht', icon: Users, label: eenheidLabel, permission: 'org:read' },
-      { to: '/opdrachten', icon: Banknote, label: 'Opdrachten', permission: 'opdracht:read' },
-      { to: '/leads', icon: Funnel, label: 'Leads', permission: 'lead:read' },
+    const items: NavItem[] = [
+      { to: '/', icon: 'inbox', label: 'Inbox' },
+      { to: '/corpus', icon: 'network-structure', label: 'Corpus', permission: 'node:read' },
+      { to: '/tasks', icon: 'check-list', label: 'Taken', permission: 'task:read' },
+      {
+        to: '/organisatie',
+        icon: 'apartment-building',
+        label: 'Organisatie',
+        permission: 'org:read',
+      },
+      { to: '/eenheid-overzicht', icon: 'users', label: eenheidLabel, permission: 'org:read' },
+      { to: '/opdrachten', icon: 'euro-sign', label: 'Opdrachten', permission: 'opdracht:read' },
+      {
+        to: '/leads',
+        icon: 'chart-x-y-axis-line',
+        label: 'Leads',
+        permission: 'lead:read',
+      },
       {
         to: '/samenwerkingsverbanden',
-        icon: Handshake,
+        icon: 'handshake',
         label: 'Samenwerkingsverbanden',
         permission: 'samenwerkingsverband:read',
       },
-      { to: '/parlementair', icon: ScrollText, label: 'Kamerstukken', permission: 'node:read' },
-      { to: '/search', icon: Search, label: 'Zoeken' },
-      { to: '/docs', icon: BookOpen, label: 'Handleiding' },
+      { to: '/parlementair', icon: 'file-text', label: 'Kamerstukken', permission: 'node:read' },
+      { to: '/search', icon: 'magnifier', label: 'Zoeken' },
+      { to: '/docs', icon: 'book', label: 'Handleiding' },
     ];
     return items.filter((item) => !item.permission || hasPermission(item.permission));
   }, [eenheidLabel, hasPermission]);
 
   const bottomNavItems = useMemo(() => {
-    const items = [
-      { to: '/instellingen', icon: Settings, label: 'Instellingen' },
-    ];
+    const items: NavItem[] = [{ to: '/instellingen', icon: 'gear', label: 'Instellingen' }];
     const canAdmin = hasAnyPermission(
       'whitelist:manage',
       'people:manage',
@@ -83,105 +84,82 @@ export function Sidebar({ mobile }: SidebarProps) {
     );
     const isManager = (authPerson?.managed_eenheden?.length ?? 0) > 0;
     if (hasPermission('audit:read')) {
-      items.push({ to: '/auditlog', icon: History, label: 'Auditlog' });
+      items.push({ to: '/auditlog', icon: 'clock-arrow-counter-clockwise', label: 'Auditlog' });
     }
     if (canAdmin) {
-      items.push({ to: '/admin', icon: Shield, label: 'Beheer' });
+      items.push({ to: '/admin', icon: 'shield', label: 'Beheer' });
     } else if (isManager) {
-      items.push({ to: '/admin?tab=placements', icon: Shield, label: 'Beheer' });
+      items.push({ to: '/admin?tab=placements', icon: 'shield', label: 'Beheer' });
     }
     return items;
   }, [authPerson?.managed_eenheden, hasPermission, hasAnyPermission]);
 
-  const handleNavClick = () => {
-    if (mobile) {
-      setMobileSidebarOpen(false);
-    }
+  /** Match the previous NavLink behaviour: exact for "/", prefix for the rest. */
+  const isCurrent = (to: string) => {
+    const path = to.split('?')[0];
+    if (path === '/') return location.pathname === '/';
+    return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
 
+  const closeSheet = () => {
+    if (mobile) setMobileSidebarOpen(false);
+  };
+
+  const renderItems = (items: NavItem[]) =>
+    items.map((item) => (
+      <NlddListItemLink
+        key={item.to}
+        to={item.to}
+        current={isCurrent(item.to)}
+        onNavigate={closeSheet}
+      >
+        <nldd-icon-cell icon={item.icon} size="20" />
+        {/* Collapsed, the row is the icon alone; the label lives in the tooltip
+            the icon cell provides via its accessible name. Never put bare text
+            in a row — a cell sets the type scale and color. */}
+        {expanded ? <nldd-text-cell text={item.label} /> : null}
+      </NlddListItemLink>
+    ));
+
   return (
-    <aside
-      className={clsx(
-        'flex flex-col bg-primary-900 text-white transition-all duration-300 ease-in-out',
-        mobile ? 'w-72 h-full' : 'h-screen sticky top-0',
-        !mobile && (expanded ? 'w-60' : 'w-16'),
-      )}
-    >
-      {/* Logo / Brand + Collapse toggle */}
-      <div className={clsx(
-        'flex items-center border-b border-white/10 shrink-0',
-        expanded ? 'gap-3 px-4 h-16' : 'flex-col gap-1 px-2 py-3',
-      )}>
-        <img src={logoImg} alt="Bouwmeester" className="h-8 w-8 rounded-lg shrink-0" />
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center gap-3 px-3 py-3">
+        <img src={logoImg} alt="" className="h-8 w-8 shrink-0 rounded-lg" />
         {expanded && (
-          <span className="text-base font-semibold tracking-tight whitespace-nowrap flex-1">
+          <span className="flex-1 truncate text-base font-semibold tracking-tight">
             Bouwmeester
           </span>
         )}
         {!mobile && (
-          <button
+          <NlddIconButton
+            icon={sidebarOpen ? 'chevron-left-to-line' : 'chevron-right-to-line'}
+            variant="neutral-transparent"
+            size="sm"
+            accessibleLabel={sidebarOpen ? 'Zijbalk inklappen' : 'Zijbalk uitklappen'}
             onClick={toggleSidebar}
-            className={clsx(
-              'flex items-center justify-center rounded-lg text-white/50 hover:bg-white/8 hover:text-white/80 transition-all duration-150 shrink-0',
-              expanded ? 'h-8 w-8' : 'h-8 w-8',
-            )}
-          >
-            {expanded ? (
-              <PanelLeftClose className="h-5 w-5" />
-            ) : (
-              <PanelLeftOpen className="h-5 w-5" />
-            )}
-          </button>
+          />
         )}
       </div>
 
-      {/* Main navigation */}
-      <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            onClick={handleNavClick}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-3 px-3 py-3 md:py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
-                isActive
-                  ? 'bg-white/15 text-white'
-                  : 'text-white/65 hover:bg-white/8 hover:text-white/90',
-                !expanded && 'justify-center px-0',
-              )
-            }
-          >
-            <item.icon className="h-5 w-5 shrink-0" />
-            {expanded && <span>{item.label}</span>}
-          </NavLink>
-        ))}
-      </nav>
+      <nldd-list
+        type="navigation"
+        variant="simple"
+        dividers="never"
+        accessible-label="Hoofdnavigatie"
+        style={{ flex: 1, overflowY: 'auto' }}
+      >
+        {renderItems(navItems)}
+      </nldd-list>
 
-      {/* Bottom navigation — Auditlog & Beheer */}
-      <div className="px-2 py-3 border-t border-white/10 shrink-0 space-y-0.5">
-        {bottomNavItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={handleNavClick}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-3 px-3 py-3 md:py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
-                isActive
-                  ? 'bg-white/15 text-white'
-                  : 'text-white/65 hover:bg-white/8 hover:text-white/90',
-                !expanded && 'justify-center px-0',
-              )
-            }
-          >
-            <item.icon className="h-5 w-5 shrink-0" />
-            {expanded && <span>{item.label}</span>}
-          </NavLink>
-        ))}
-
-      </div>
-    </aside>
+      <nldd-list
+        type="navigation"
+        variant="simple"
+        dividers="never"
+        accessible-label="Beheer en instellingen"
+        style={{ flexShrink: 0 }}
+      >
+        {renderItems(bottomNavItems)}
+      </nldd-list>
+    </div>
   );
 }
