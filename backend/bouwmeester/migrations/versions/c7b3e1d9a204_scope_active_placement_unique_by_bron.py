@@ -39,7 +39,7 @@ def upgrade() -> None:
     op.execute(
         """
         UPDATE person_organisatie_eenheid p
-        SET eind_datum = CURRENT_DATE
+        SET eind_datum = GREATEST(CURRENT_DATE, p.start_datum)
         WHERE p.eind_datum IS NULL
           AND EXISTS (
               SELECT 1
@@ -63,12 +63,19 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Going back to the narrower key means cross-bron duplicates must be
-    # closed first, or the old index cannot be built.
+    # Going back to de smallere sleutel betekent dat kruis-bron-duplicaten
+    # eerst dicht moeten, anders kan de oude index niet gebouwd worden.
+    #
+    # Hier wint de NIEUWSTE start_datum, niet de oudste. Een ex-Kamerlid dat
+    # bewindspersoon is geworden heeft een oude open tk_odata-rij en een
+    # nieuwe open kabinet_yaml-rij; de oudste openhouden zou de actuele
+    # ministersplaatsing sluiten en de verlopen zetel bewaren. De volgende
+    # kabinet-sync ziet dan geen open kabinet_yaml-rij, voegt er een toe en
+    # loopt meteen weer vast op de zojuist herstelde smalle index.
     op.execute(
         """
         UPDATE person_organisatie_eenheid p
-        SET eind_datum = CURRENT_DATE
+        SET eind_datum = GREATEST(CURRENT_DATE, p.start_datum)
         WHERE p.eind_datum IS NULL
           AND EXISTS (
               SELECT 1
@@ -76,7 +83,7 @@ def downgrade() -> None:
               WHERE q.eind_datum IS NULL
                 AND q.person_id = p.person_id
                 AND q.organisatie_eenheid_id = p.organisatie_eenheid_id
-                AND (q.start_datum, q.id) < (p.start_datum, p.id)
+                AND (q.start_datum, q.id) > (p.start_datum, p.id)
           )
         """
     )

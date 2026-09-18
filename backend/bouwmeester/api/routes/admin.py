@@ -829,13 +829,17 @@ def _classify_health(
     """Map (status, age) to a coarse health bucket for the UI."""
     if status == "disabled":
         return "disabled"
-    if status in ("error", "reconnecting"):
-        return "stale"
     if one_shot:
-        # Age carries no signal; only the status does.
+        # A one-shot ticks once and then stays silent by design, so its age
+        # carries no signal at all — only the status does.
         return "healthy" if status == "ok" else "stale"
+    # Age first: a loop that stopped ticking is "down" whatever its last
+    # status said. An error tick that never refreshes means the process died
+    # right after writing it, and that has to reach the red banner.
     if seconds_since > expected_cadence * 4:
         return "down"
+    if status in ("error", "reconnecting"):
+        return "stale"
     if seconds_since > expected_cadence:
         return "stale"
     return "healthy"

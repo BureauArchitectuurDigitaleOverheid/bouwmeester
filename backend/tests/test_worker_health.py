@@ -54,12 +54,21 @@ class TestClassifyHealth:
             == "stale"
         )
 
-    def test_error_beats_age(self):
-        # An old *and* errored row is more useful as "stale" (we know why)
-        # than as "down" (we don't).
+    def test_dead_loop_is_down_even_when_last_status_was_error(self):
+        # Each loop ticks "error" and keeps looping, so a live-but-failing
+        # loop refreshes its timestamp and reads "stale". A row that stays
+        # frozen on an error tick means the process died right after writing
+        # it — that has to reach "down" and fire the red banner, otherwise a
+        # crashed worker hides behind its own last error message.
         assert (
             _classify_health("error", seconds_since=99999, expected_cadence=60)
-            == "stale"
+            == "down"
+        )
+
+    def test_recent_error_is_still_stale(self):
+        # Fresh error tick: the loop is alive and retrying.
+        assert (
+            _classify_health("error", seconds_since=5, expected_cadence=60) == "stale"
         )
 
 

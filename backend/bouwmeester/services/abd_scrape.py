@@ -475,7 +475,10 @@ async def sync_abd(
             .all()
         )
         for oude in vorige:
-            oude.eind_datum = ingangsdatum
+            # De nieuwsfeed staat niet gegarandeerd chronologisch, dus een
+            # oudere benoeming kan na een nieuwere langskomen. Nooit vóór de
+            # startdatum afsluiten — dat zou een omgekeerde periode opleveren.
+            oude.eind_datum = max(ingangsdatum, oude.start_datum)
             stats.verlopen_plaatsingen += 1
             session.add(
                 TooiSyncLog(

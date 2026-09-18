@@ -273,3 +273,62 @@ async def test_sync_abd_promotie_sluit_oude_plaatsing(
     assert len(plaatsingen) == 2
     assert len(open_rijen) == 1
     assert open_rijen[0].functietitel == "directeur-generaal Test"
+
+
+async def test_sync_abd_out_of_order_geeft_geen_omgekeerde_periode(
+    db_session: AsyncSession, schone_org_db
+):
+    """Een oudere benoeming na een nieuwere mag geen eind_datum < start_datum geven.
+
+    De ABD-nieuwsfeed staat niet gegarandeerd chronologisch.
+    """
+    bzk = OrganisatieEenheid(
+        naam="ministerie van Binnenlandse Zaken en Koninkrijksrelaties",
+        type="ministerie",
+        bron="tooi",
+        tooi_uri="https://identifier.overheid.nl/tooi/id/ministerie/mnre1034",
+    )
+    db_session.add(bzk)
+    await db_session.flush()
+
+    def _fetcher(functietitel: str, ingang: date):
+        async def mock_fetcher():
+            return [
+                AbdBenoeming(
+                    naam="Test Persoon",
+                    functietitel=functietitel,
+                    organisatie_hint="BZK",
+                    nieuws_url="https://example.com/test",
+                    publicatiedatum=date(2026, 5, 9),
+                    ingangsdatum=ingang,
+                )
+            ]
+
+        return mock_fetcher
+
+    # Eerst de nieuwe functie, daarna pas de oudere benoeming.
+    await sync_abd(
+        db_session,
+        fetcher=_fetcher("directeur-generaal Test", date(2027, 1, 1)),
+        commit=False,
+    )
+    await sync_abd(
+        db_session, fetcher=_fetcher("directeur Test", date(2026, 1, 1)), commit=False
+    )
+
+    plaatsingen = (
+        (
+            await db_session.execute(
+                select(PersonOrganisatieEenheid).where(
+                    PersonOrganisatieEenheid.organisatie_eenheid_id == bzk.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for p in plaatsingen:
+        if p.eind_datum is not None:
+            assert p.eind_datum >= p.start_datum, (
+                f"omgekeerde periode: {p.start_datum} - {p.eind_datum}"
+            )
