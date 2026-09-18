@@ -1,6 +1,5 @@
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Play, ChevronRight, ChevronDown } from 'lucide-react';
 import {
   getSyncStatus,
   getSyncLog,
@@ -9,9 +8,9 @@ import {
   SYNC_LABELS,
   type SyncEndpoint,
 } from '@/api/syncStatus';
-import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { NlddButton } from '@/components/nldd/NlddLink';
 
 const ENDPOINTS: SyncEndpoint[] = [
   'tooi',
@@ -38,6 +37,12 @@ const ENDPOINT_NAAR_BRON: Record<SyncEndpoint, string> = {
   'historische-kabinetten': 'kabinet',
   'onderwijsinstellingen': 'onderwijs',
   'wikidata-qid': 'wikidata',
+};
+
+const LOG_ACTION_COLOR: Record<string, 'success' | 'warning' | 'critical' | 'neutral'> = {
+  add: 'success',
+  soft_delete: 'warning',
+  conflict: 'critical',
 };
 
 function relatieveTijd(iso: string): string {
@@ -108,20 +113,19 @@ export function SyncStatusManager() {
           <h2 className="text-lg font-semibold mb-1">
             Sync-status overheidsorganisaties
           </h2>
-          <p className="text-sm text-text-secondary">
-            Per externe bron: laatste sync-tijdstip + handmatige trigger.
-            Worker draait dagelijks (TK + kabinet + ABD) en wekelijks
-            (TOOI + RIO + CSV + organogram).
-          </p>
+          <nldd-text size="sm" color="secondary">
+            Per externe bron: laatste sync-tijdstip + handmatige trigger. Worker draait dagelijks
+            (TK + kabinet + ABD) en wekelijks (TOOI + RIO + CSV + organogram).
+          </nldd-text>
         </div>
-        <Button
+        <NlddButton
           variant="primary"
-          icon={<RefreshCw className={busyEndpoint === 'all' ? 'animate-spin h-4 w-4' : 'h-4 w-4'} />}
+          text="Alles syncen"
+          startIcon="refresh"
+          loading={busyEndpoint === 'all'}
           onClick={() => runAllMutation.mutate()}
           disabled={busyEndpoint !== null}
-        >
-          Alles syncen
-        </Button>
+        />
       </div>
 
       {data && (
@@ -147,116 +151,89 @@ export function SyncStatusManager() {
         </div>
       )}
 
-      <Card>
-        <table className="w-full">
-          <thead className="border-b border-border">
-            <tr className="text-xs text-text-secondary text-left">
-              <th className="px-4 py-2">Bron</th>
-              <th className="px-4 py-2">Laatste run</th>
-              <th className="px-4 py-2 w-24"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {ENDPOINTS.map((ep) => {
-              const bron = ENDPOINT_NAAR_BRON[ep];
-              const laatste = data?.laatste_run_per_bron[bron];
-              const isExpanded = expandedBron === bron;
-              return (
-                <Fragment key={ep}>
-                  <tr className="border-b border-border last:border-0">
-                    <td className="px-4 py-2 text-sm">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedBron(isExpanded ? null : bron)
-                        }
-                        className="flex items-center gap-1 hover:text-primary-600"
-                      >
-                        {isExpanded ? (
-                          <ChevronDown className="h-3 w-3" />
-                        ) : (
-                          <ChevronRight className="h-3 w-3" />
-                        )}
-                        {SYNC_LABELS[ep]}
-                      </button>
-                    </td>
-                    <td className="px-4 py-2 text-sm text-text-secondary">
-                      {laatste
-                        ? `${relatieveTijd(laatste)} (${new Date(laatste).toLocaleString('nl-NL')})`
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        icon={
-                          busyEndpoint === ep ? (
-                            <RefreshCw className="animate-spin h-3.5 w-3.5" />
-                          ) : (
-                            <Play className="h-3.5 w-3.5" />
-                          )
-                        }
-                        onClick={() => runMutation.mutate(ep)}
-                        disabled={busyEndpoint !== null}
-                      >
-                        Run
-                      </Button>
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr className="border-b border-border">
-                      <td colSpan={3} className="px-4 py-2 bg-gray-50">
-                        <div className="text-xs text-text-secondary mb-2">
-                          Recente log-entries (laatste 30):
+      <nldd-table
+        columns="minmax(200px,1fr) minmax(160px,1fr) 96px"
+        accessible-label="Sync-status per bron"
+      >
+        <nldd-table-row slot="header">
+          <nldd-text-cell text="Bron" />
+          <nldd-text-cell text="Laatste run" />
+          <nldd-text-cell />
+        </nldd-table-row>
+        {ENDPOINTS.map((ep) => {
+          const bron = ENDPOINT_NAAR_BRON[ep];
+          const laatste = data?.laatste_run_per_bron[bron];
+          const isExpanded = expandedBron === bron;
+          return (
+            <nldd-table-row key={ep}>
+              <nldd-text-cell>
+                <NlddButton
+                  variant="neutral-transparent"
+                  size="sm"
+                  text={SYNC_LABELS[ep]}
+                  startIcon={isExpanded ? 'chevron-down' : 'chevron-right'}
+                  onClick={() => setExpandedBron(isExpanded ? null : bron)}
+                />
+              </nldd-text-cell>
+              <nldd-text-cell
+                text={
+                  laatste
+                    ? `${relatieveTijd(laatste)} (${new Date(laatste).toLocaleString('nl-NL')})`
+                    : '—'
+                }
+                color="secondary"
+              />
+              <nldd-text-cell>
+                <NlddButton
+                  variant="secondary"
+                  size="sm"
+                  text="Run"
+                  startIcon={busyEndpoint === ep ? 'refresh' : 'media-play'}
+                  loading={busyEndpoint === ep}
+                  onClick={() => runMutation.mutate(ep)}
+                  disabled={busyEndpoint !== null}
+                />
+              </nldd-text-cell>
+              {isExpanded && (
+                <div style={{ gridColumn: '1 / -1' }} className="px-4 py-2 bg-gray-50">
+                  <div className="text-xs text-text-secondary mb-2">
+                    Recente log-entries (laatste 30):
+                  </div>
+                  {logEntries.length === 0 ? (
+                    <div className="text-xs text-text-secondary italic">
+                      Geen entries.
+                    </div>
+                  ) : (
+                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                      {logEntries.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="text-xs flex items-start gap-2"
+                        >
+                          <span className="text-text-secondary shrink-0 w-32">
+                            {new Date(entry.created_at).toLocaleString('nl-NL')}
+                          </span>
+                          <nldd-tag
+                            text={entry.action}
+                            color={LOG_ACTION_COLOR[entry.action] ?? 'neutral'}
+                            size="sm"
+                          />
+                          <span className="truncate">
+                            {entry.note ||
+                              (entry.after && typeof entry.after.naam === 'string'
+                                ? entry.after.naam
+                                : entry.tooi_uri || '—')}
+                          </span>
                         </div>
-                        {logEntries.length === 0 ? (
-                          <div className="text-xs text-text-secondary italic">
-                            Geen entries.
-                          </div>
-                        ) : (
-                          <div className="space-y-1 max-h-60 overflow-y-auto">
-                            {logEntries.map((entry) => (
-                              <div
-                                key={entry.id}
-                                className="text-xs flex items-start gap-2"
-                              >
-                                <span className="text-text-secondary shrink-0 w-32">
-                                  {new Date(entry.created_at).toLocaleString(
-                                    'nl-NL',
-                                  )}
-                                </span>
-                                <span
-                                  className={`shrink-0 px-1 rounded text-[10px] ${
-                                    entry.action === 'add'
-                                      ? 'bg-green-100 text-green-700'
-                                      : entry.action === 'soft_delete'
-                                        ? 'bg-amber-100 text-amber-700'
-                                        : entry.action === 'conflict'
-                                          ? 'bg-red-100 text-red-700'
-                                          : 'bg-gray-100 text-text-secondary'
-                                  }`}
-                                >
-                                  {entry.action}
-                                </span>
-                                <span className="truncate">
-                                  {entry.note ||
-                                    (entry.after && typeof entry.after.naam === 'string'
-                                      ? entry.after.naam
-                                      : entry.tooi_uri || '—')}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
+                      ))}
+                    </div>
                   )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+                </div>
+              )}
+            </nldd-table-row>
+          );
+        })}
+      </nldd-table>
     </div>
   );
 }

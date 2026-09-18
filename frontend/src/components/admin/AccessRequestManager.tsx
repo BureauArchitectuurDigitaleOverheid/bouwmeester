@@ -1,6 +1,21 @@
-import { useState } from 'react';
-import { Check, X } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { useAccessRequests, useReviewAccessRequest } from '@/hooks/useAdmin';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { EmptyState } from '@/components/common/EmptyState';
+
+const STATUS_COLOR = {
+  pending: 'warning',
+  approved: 'success',
+  denied: 'critical',
+} as const;
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'In afwachting',
+  approved: 'Goedgekeurd',
+  denied: 'Afgewezen',
+};
 
 export function AccessRequestManager() {
   const [filter, setFilter] = useState<string>('pending');
@@ -8,6 +23,11 @@ export function AccessRequestManager() {
   const reviewRequest = useReviewAccessRequest();
   const [denyId, setDenyId] = useState<string | null>(null);
   const [denyReason, setDenyReason] = useState('');
+  const filterRef = useRef<HTMLElement>(null);
+  const denyReasonRef = useRef<HTMLElement>(null);
+
+  useNlddEvent(filterRef, 'change', (e) => setFilter(eventValue(e)));
+  useNlddEvent(denyReasonRef, 'input', (e) => setDenyReason(eventValue(e)));
 
   const handleApprove = (id: string) => {
     reviewRequest.mutate({ id, action: 'approve' });
@@ -21,137 +41,115 @@ export function AccessRequestManager() {
   };
 
   if (isLoading) {
-    return <div className="text-sm text-text-secondary py-8 text-center">Laden...</div>;
+    return <nldd-activity-indicator size="32" style={{ margin: '2rem auto', display: 'block' }} />;
   }
 
   return (
     <div className="space-y-4">
       {/* Filter */}
-      <div className="flex gap-2">
-        {[
-          { value: 'pending', label: 'In afwachting' },
-          { value: '', label: 'Alle' },
-        ].map((opt) => (
-          <button
-            key={opt.value}
-            onClick={() => setFilter(opt.value)}
-            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-              filter === opt.value
-                ? 'bg-primary-100 text-primary-700 font-medium'
-                : 'text-text-secondary hover:bg-gray-100'
-            }`}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
+      <nldd-toggle-button-group ref={filterRef} type="radio" accessible-label="Filter op status">
+        <nldd-toggle-button text="In afwachting" value="pending" selected={filter === 'pending' ? true : undefined} />
+        <nldd-toggle-button text="Alle" value="" selected={filter === '' ? true : undefined} />
+      </nldd-toggle-button-group>
 
       {/* Request list */}
-      <div className="border border-border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-border">
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary">Naam</th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary">E-mailadres</th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden sm:table-cell">Datum</th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden sm:table-cell">Status</th>
-              <th className="w-24 px-4 py-2.5"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {requests?.map((req) => (
-              <tr key={req.id} className="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-2.5 text-text font-medium">{req.naam}</td>
-                <td className="px-4 py-2.5 text-text break-all">{req.email}</td>
-                <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
-                  {new Date(req.requested_at).toLocaleDateString('nl-NL', {
-                    day: 'numeric',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </td>
-                <td className="px-4 py-2.5 hidden sm:table-cell">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                      req.status === 'pending'
-                        ? 'bg-amber-100 text-amber-700'
-                        : req.status === 'approved'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700'
-                    }`}
-                  >
-                    {req.status === 'pending' ? 'In afwachting' : req.status === 'approved' ? 'Goedgekeurd' : 'Afgewezen'}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5">
-                  {req.status === 'pending' && (
-                    <>
-                      {denyId === req.id ? (
-                        <div className="flex flex-col gap-1">
-                          <input
-                            type="text"
-                            value={denyReason}
-                            onChange={(e) => setDenyReason(e.target.value)}
-                            placeholder="Reden (optioneel)"
-                            className="px-2 py-1 text-xs rounded border border-border focus:outline-none focus:border-primary-400"
-                            autoFocus
-                          />
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => handleDeny(req.id)}
-                              disabled={reviewRequest.isPending}
-                              className="px-2 py-0.5 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-                            >
-                              Afwijzen
-                            </button>
-                            <button
-                              onClick={() => { setDenyId(null); setDenyReason(''); }}
-                              className="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-text hover:bg-gray-300 transition-colors"
-                            >
-                              Annuleren
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleApprove(req.id)}
-                            disabled={reviewRequest.isPending}
-                            className="p-1 rounded hover:bg-green-50 text-text-secondary hover:text-green-600 transition-colors"
-                            title="Goedkeuren"
-                          >
-                            <Check className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => { setDenyId(req.id); setDenyReason(''); }}
-                            className="p-1 rounded hover:bg-red-50 text-text-secondary hover:text-red-600 transition-colors"
-                            title="Afwijzen"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
-                    </>
+      <nldd-table
+        columns="minmax(160px,1fr) minmax(200px,1fr) 140px 140px 96px"
+        sm-columns="1fr 1fr 96px"
+        accessible-label="Toegangsverzoeken"
+      >
+        <nldd-table-row slot="header">
+          <nldd-text-cell text="Naam" />
+          <nldd-text-cell text="E-mailadres" />
+          <nldd-text-cell text="Datum" hide-below="md" />
+          <nldd-text-cell text="Status" hide-below="md" />
+          <nldd-text-cell />
+        </nldd-table-row>
+        {requests?.map((req) => (
+          <nldd-table-row key={req.id}>
+            <nldd-title-cell text={req.naam} />
+            <nldd-text-cell text={req.email} />
+            <nldd-text-cell
+              text={new Date(req.requested_at).toLocaleDateString('nl-NL', {
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+              color="secondary"
+              hide-below="md"
+            />
+            <nldd-text-cell hide-below="md">
+              <nldd-tag text={STATUS_LABEL[req.status] ?? req.status} color={STATUS_COLOR[req.status as keyof typeof STATUS_COLOR] ?? 'neutral'} size="sm" />
+            </nldd-text-cell>
+            <nldd-text-cell>
+              {req.status === 'pending' && (
+                <>
+                  {denyId === req.id ? (
+                    <div className="flex flex-col gap-1">
+                      <nldd-text-field
+                        ref={denyReasonRef}
+                        value={denyReason}
+                        placeholder="Reden (optioneel)"
+                        size="sm"
+                        accessible-label="Reden voor afwijzen"
+                      />
+                      <div className="flex gap-1">
+                        <NlddButton
+                          text="Afwijzen"
+                          variant="destructive"
+                          size="xs"
+                          disabled={reviewRequest.isPending}
+                          onClick={() => handleDeny(req.id)}
+                        />
+                        <NlddButton
+                          text="Annuleren"
+                          variant="neutral-tinted"
+                          size="xs"
+                          onClick={() => { setDenyId(null); setDenyReason(''); }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <NlddIconButton
+                        icon="check-mark"
+                        accessibleLabel="Goedkeuren"
+                        variant="neutral-transparent"
+                        size="sm"
+                        onClick={() => handleApprove(req.id)}
+                        disabled={reviewRequest.isPending}
+                      />
+                      <NlddIconButton
+                        icon="close"
+                        accessibleLabel="Afwijzen"
+                        variant="neutral-transparent"
+                        size="sm"
+                        onClick={() => { setDenyId(req.id); setDenyReason(''); }}
+                      />
+                    </div>
                   )}
-                  {req.status === 'denied' && req.deny_reason && (
-                    <span className="text-xs text-text-secondary" title={req.deny_reason}>
-                      {req.deny_reason.length > 20 ? `${req.deny_reason.slice(0, 20)}...` : req.deny_reason}
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {(!requests || requests.length === 0) && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-text-secondary">
-                  {filter === 'pending' ? 'Geen openstaande verzoeken' : 'Geen verzoeken gevonden'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                </>
+              )}
+              {req.status === 'denied' && req.deny_reason && (
+                <nldd-text
+                  size="xs"
+                  color="secondary"
+                  title={req.deny_reason}
+                >
+                  {req.deny_reason.length > 20 ? `${req.deny_reason.slice(0, 20)}...` : req.deny_reason}
+                </nldd-text>
+              )}
+            </nldd-text-cell>
+          </nldd-table-row>
+        ))}
+        <div slot="empty">
+          <EmptyState
+            icon="inbox"
+            title={filter === 'pending' ? 'Geen openstaande verzoeken' : 'Geen verzoeken gevonden'}
+          />
+        </div>
+      </nldd-table>
     </div>
   );
 }

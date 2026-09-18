@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
-import { Check, X } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { Icon } from '@/components/nldd/Icon';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { useEdgeSchemaRules, useCreateEdgeSchemaRule, useDeleteEdgeSchemaRule } from '@/hooks/useEdgeTypes';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
@@ -29,6 +30,8 @@ export function EdgeSchemaManager() {
   const { edgeLabel } = useVocabulary();
 
   const [selectedEdgeType, setSelectedEdgeType] = useState(EDGE_TYPE_IDS[0] ?? '');
+  const edgeTypeRef = useRef<HTMLElement>(null);
+  useNlddEvent(edgeTypeRef, 'change', (e) => setSelectedEdgeType(eventValue(e)));
 
   // Build a lookup: `${from}_${to}_${edgeType}` -> rule.id
   const ruleMap = useMemo(() => {
@@ -61,28 +64,33 @@ export function EdgeSchemaManager() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-text-secondary">
-        Beheer welke relatiestypes zijn toegestaan tussen knooppunttypen. Als er geen regels zijn gedefinieerd, zijn alle verbindingen toegestaan.
-        Momenteel {ruleCount} {ruleCount === 1 ? 'regel' : 'regels'} actief.
-      </p>
+      <nldd-text size="sm" color="secondary">
+        Beheer welke relatiestypes zijn toegestaan tussen knooppunttypen. Als er geen regels zijn
+        gedefinieerd, zijn alle verbindingen toegestaan. Momenteel {ruleCount}{' '}
+        {ruleCount === 1 ? 'regel' : 'regels'} actief.
+      </nldd-text>
 
       {/* Edge type selector */}
-      <div>
-        <label className="block text-sm font-medium text-text mb-1">Relatietype</label>
-        <select
-          value={selectedEdgeType}
-          onChange={(e) => setSelectedEdgeType(e.target.value)}
-          className="w-full max-w-xs rounded-lg border border-border bg-white px-3 py-2 text-sm text-text focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-        >
-          {EDGE_TYPE_IDS.map((id) => (
-            <option key={id} value={id}>
-              {edgeLabel(id)}
-            </option>
-          ))}
-        </select>
-      </div>
+      <nldd-form-field label="Relatietype">
+        <nldd-dropdown ref={edgeTypeRef} width="320px">
+          <select value={selectedEdgeType}>
+            {EDGE_TYPE_IDS.map((id) => (
+              <option key={id} value={id}>
+                {edgeLabel(id)}
+              </option>
+            ))}
+          </select>
+        </nldd-dropdown>
+      </nldd-form-field>
 
-      {/* Matrix */}
+      {/*
+        This is a from-type x to-type cross-tab matrix (10x10 toggle cells), not
+        a record list, so nldd-table's per-record column model does not fit: the
+        first column needs to stay sticky while scrolling, which nldd-table has
+        no attribute for. Left as a native <table> per the conversion brief's
+        escape hatch ("if a component fights you, you are probably using the
+        wrong one"); the interactive cells and card chrome are converted.
+      */}
       <Card padding={false}>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -126,7 +134,7 @@ export function EdgeSchemaManager() {
                               : `${NODE_TYPE_LABELS[fromType]} → ${NODE_TYPE_LABELS[toType]}: ${edgeLabel(selectedEdgeType)} (klik om toe te voegen)`
                           }
                         >
-                          {isActive ? <Check className="h-4 w-4" /> : <X className="h-3.5 w-3.5" />}
+                          <Icon name={isActive ? 'check-mark' : 'close'} size={isActive ? 'md' : 'sm'} />
                         </button>
                       </td>
                     );

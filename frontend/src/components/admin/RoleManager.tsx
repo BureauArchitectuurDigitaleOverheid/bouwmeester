@@ -1,5 +1,4 @@
-import { useState, useMemo } from 'react';
-import { Plus, Trash2, ChevronDown, ChevronRight, Shield, Merge } from 'lucide-react';
+import { useRef, useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePeople, useMergePersons } from '@/hooks/usePeople';
 import { useAuth } from '@/contexts/AuthContext';
@@ -23,6 +22,10 @@ import type { PersonResourcePermission } from '@/hooks/useResourcePermissions';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { apiGet, apiPost } from '@/api/client';
 import { queryKeys } from '@/hooks/queryKeys';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { EmptyState } from '@/components/common/EmptyState';
 
 function AssignmentRow({
   assignment,
@@ -38,52 +41,57 @@ function AssignmentRow({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
-    <tr className="hover:bg-white/50 transition-colors">
-      <td className="px-4 py-1.5 text-text text-sm">
-        {assignment.role_naam || assignment.role_id}
-      </td>
-      <td className="px-4 py-1.5 text-text-secondary text-sm hidden sm:table-cell">
-        {assignment.organisatie_eenheid_naam || '-'}
-      </td>
-      <td className="px-4 py-1.5 text-text-secondary text-sm hidden md:table-cell">
-        {new Date(assignment.start_datum).toLocaleDateString('nl-NL')}
-      </td>
-      <td className="px-4 py-1.5 text-text-secondary text-sm hidden md:table-cell">
-        {assignment.eind_datum
-          ? new Date(assignment.eind_datum).toLocaleDateString('nl-NL')
-          : '-'}
-      </td>
-      <td className="px-4 py-2">
+    <nldd-table-row>
+      <nldd-text-cell text={assignment.role_naam || assignment.role_id} size="sm" />
+      <nldd-text-cell
+        text={assignment.organisatie_eenheid_naam || '-'}
+        color="secondary"
+        size="sm"
+        hide-below="md"
+      />
+      <nldd-text-cell
+        text={new Date(assignment.start_datum).toLocaleDateString('nl-NL')}
+        color="secondary"
+        size="sm"
+        hide-below="lg"
+      />
+      <nldd-text-cell
+        text={assignment.eind_datum ? new Date(assignment.eind_datum).toLocaleDateString('nl-NL') : '-'}
+        color="secondary"
+        size="sm"
+        hide-below="lg"
+      />
+      <nldd-text-cell>
         {!canRevoke ? null : confirmDelete ? (
           <div className="flex items-center gap-1">
-            <button
+            <NlddButton
+              text="Ja"
+              variant="destructive"
+              size="xs"
+              disabled={revoking}
               onClick={() => {
                 onRevoke(assignment.id);
                 setConfirmDelete(false);
               }}
-              disabled={revoking}
-              className="px-2 py-0.5 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-            >
-              Ja
-            </button>
-            <button
+            />
+            <NlddButton
+              text="Nee"
+              variant="neutral-tinted"
+              size="xs"
               onClick={() => setConfirmDelete(false)}
-              className="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-text hover:bg-gray-300 transition-colors"
-            >
-              Nee
-            </button>
+            />
           </div>
         ) : (
-          <button
+          <NlddIconButton
+            icon="trash"
+            accessibleLabel="Intrekken"
+            variant="neutral-transparent"
+            size="sm"
             onClick={() => setConfirmDelete(true)}
-            className="p-1 rounded hover:bg-red-50 text-text-secondary hover:text-red-600 transition-colors"
-            title="Intrekken"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          />
         )}
-      </td>
-    </tr>
+      </nldd-text-cell>
+    </nldd-table-row>
   );
 }
 
@@ -107,6 +115,11 @@ function PersonRolesPanel({
   const [selectedOrgId, setSelectedOrgId] = useState('');
   const [startDatum, setStartDatum] = useState('');
   const [eindDatum, setEindDatum] = useState('');
+
+  const startDatumRef = useRef<HTMLElement>(null);
+  const eindDatumRef = useRef<HTMLElement>(null);
+  useNlddEvent(startDatumRef, 'input', (e) => setStartDatum(eventValue(e)));
+  useNlddEvent(eindDatumRef, 'input', (e) => setEindDatum(eventValue(e)));
 
   const selectedRole = roles?.find((r) => r.id === selectedRoleId);
   const isSystemLevel = selectedRole?.level === 'system';
@@ -164,8 +177,8 @@ function PersonRolesPanel({
   if (isLoading) {
     return (
       <div className="bg-gray-50 border-l-3 border-l-primary-300 py-3 px-2">
-        <div className="px-4 py-2 text-sm text-text-secondary animate-pulse">
-          Laden...
+        <div className="px-4 py-2">
+          <nldd-activity-indicator size="16" />
         </div>
       </div>
     );
@@ -180,151 +193,124 @@ function PersonRolesPanel({
       </div>
       {/* Current assignments table */}
       {assignments && assignments.length > 0 ? (
-        <table className="w-full text-sm">
-          <thead>
-            <tr>
-              <th className="text-left px-4 py-1.5 font-medium text-text-secondary text-xs">
-                Rol
-              </th>
-              <th className="text-left px-4 py-1.5 font-medium text-text-secondary text-xs hidden sm:table-cell">
-                Eenheid
-              </th>
-              <th className="text-left px-4 py-1.5 font-medium text-text-secondary text-xs hidden md:table-cell">
-                Vanaf
-              </th>
-              <th className="text-left px-4 py-1.5 font-medium text-text-secondary text-xs hidden md:table-cell">
-                Tot
-              </th>
-              <th className="w-10 px-4 py-1.5"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {assignments.map((a) => {
-              const roleRank = roles?.find((r) => r.id === a.role_id)?.rank ?? 0;
-              const canRevoke =
-                !(isSelf && a.role_id === 'super_admin') &&
-                (isAdmin || roleRank < myMaxRank);
-              return (
-                <AssignmentRow
-                  key={a.id}
-                  assignment={a}
-                  onRevoke={handleRevoke}
-                  revoking={revokeRole.isPending}
-                  canRevoke={canRevoke}
-                />
-              );
-            })}
-          </tbody>
-        </table>
+        <nldd-table
+          columns="minmax(120px,1fr) 140px 100px 100px 48px"
+          sm-columns="1fr 48px"
+          md-columns="1fr 140px 48px"
+          accessible-label="Roltoewijzingen"
+          background="tinted"
+        >
+          <nldd-table-row slot="header">
+            <nldd-text-cell text="Rol" size="sm" />
+            <nldd-text-cell text="Eenheid" size="sm" hide-below="md" />
+            <nldd-text-cell text="Vanaf" size="sm" hide-below="lg" />
+            <nldd-text-cell text="Tot" size="sm" hide-below="lg" />
+            <nldd-text-cell />
+          </nldd-table-row>
+          {assignments.map((a) => {
+            const roleRank = roles?.find((r) => r.id === a.role_id)?.rank ?? 0;
+            const canRevoke =
+              !(isSelf && a.role_id === 'super_admin') &&
+              (isAdmin || roleRank < myMaxRank);
+            return (
+              <AssignmentRow
+                key={a.id}
+                assignment={a}
+                onRevoke={handleRevoke}
+                revoking={revokeRole.isPending}
+                canRevoke={canRevoke}
+              />
+            );
+          })}
+        </nldd-table>
       ) : (
-        <div className="px-4 py-2 text-sm text-text-secondary">
-          Geen rollen.
+        <div className="px-4 py-2">
+          <nldd-text size="sm" color="secondary">Geen rollen.</nldd-text>
         </div>
       )}
 
       {/* Add role button / form — directly after roles */}
       {!showForm ? (
         <div className="px-4 py-1.5">
-          <button
+          <NlddButton
+            text="Rol toewijzen"
+            startIcon="plus"
+            variant="neutral-transparent"
+            size="sm"
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Rol toewijzen
-          </button>
+          />
         </div>
       ) : (
-        <form
-          onSubmit={handleAssign}
-          className="px-4 py-3 space-y-3"
-        >
+        <form onSubmit={handleAssign} className="px-4 py-3 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Role selector */}
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">
-                Rol
-              </label>
-              <select
-                value={selectedRoleId}
-                onChange={(e) => {
-                  setSelectedRoleId(e.target.value);
-                  // Reset org when switching to system role
-                  const role = roles?.find((r) => r.id === e.target.value);
-                  if (role?.level === 'system') setSelectedOrgId('');
-                }}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400 bg-white"
-                required
-              >
-                <option value="">Kies een rol...</option>
-                {assignableRoles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.naam}
-                    {role.description ? ` - ${role.description}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Org unit selector (hidden for system roles) */}
-            {!isSystemLevel && (
-              <div>
-                <label className="block text-xs font-medium text-text-secondary mb-1">
-                  Organisatie-eenheid
-                </label>
+            <nldd-form-field label="Rol">
+              <nldd-dropdown size="sm">
                 <select
-                  value={selectedOrgId}
-                  onChange={(e) => setSelectedOrgId(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400 bg-white"
-                  required={!!selectedRoleId && !isSystemLevel}
+                  value={selectedRoleId}
+                  onChange={(e) => {
+                    setSelectedRoleId(e.target.value);
+                    // Reset org when switching to system role
+                    const role = roles?.find((r) => r.id === e.target.value);
+                    if (role?.level === 'system') setSelectedOrgId('');
+                  }}
+                  required
                 >
-                  <option value="">Kies een eenheid...</option>
-                  {scopedOrgUnits.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.naam}
+                  <option value="">Kies een rol...</option>
+                  {assignableRoles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.naam}
+                      {role.description ? ` - ${role.description}` : ''}
                     </option>
                   ))}
                 </select>
-              </div>
+              </nldd-dropdown>
+            </nldd-form-field>
+
+            {/* Org unit selector (hidden for system roles) */}
+            {!isSystemLevel && (
+              <nldd-form-field label="Organisatie-eenheid">
+                <nldd-dropdown size="sm">
+                  <select
+                    value={selectedOrgId}
+                    onChange={(e) => setSelectedOrgId(e.target.value)}
+                    required={!!selectedRoleId && !isSystemLevel}
+                  >
+                    <option value="">Kies een eenheid...</option>
+                    {scopedOrgUnits.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.naam}
+                      </option>
+                    ))}
+                  </select>
+                </nldd-dropdown>
+              </nldd-form-field>
             )}
 
             {/* Start date */}
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">
-                Startdatum (optioneel)
-              </label>
-              <input
-                type="date"
-                value={startDatum}
-                onChange={(e) => setStartDatum(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400 bg-white"
-              />
-            </div>
+            <nldd-form-field label="Startdatum" optional>
+              <nldd-date-field ref={startDatumRef} value={startDatum} size="sm" />
+            </nldd-form-field>
 
             {/* End date */}
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">
-                Einddatum (optioneel)
-              </label>
-              <input
-                type="date"
-                value={eindDatum}
-                onChange={(e) => setEindDatum(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400 bg-white"
-              />
-            </div>
+            <nldd-form-field label="Einddatum" optional>
+              <nldd-date-field ref={eindDatumRef} value={eindDatum} size="sm" />
+            </nldd-form-field>
           </div>
 
           <div className="flex gap-2">
-            <button
+            <NlddButton
               type="submit"
+              text="Toewijzen"
+              startIcon="plus"
+              size="sm"
               disabled={assignRole.isPending || !selectedRoleId}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Toewijzen
-            </button>
-            <button
+            />
+            <NlddButton
               type="button"
+              text="Annuleren"
+              variant="neutral-tinted"
+              size="sm"
               onClick={() => {
                 setShowForm(false);
                 setSelectedRoleId('');
@@ -332,10 +318,7 @@ function PersonRolesPanel({
                 setStartDatum('');
                 setEindDatum('');
               }}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-200 text-text hover:bg-gray-300 transition-colors"
-            >
-              Annuleren
-            </button>
+            />
           </div>
         </form>
       )}
@@ -366,47 +349,46 @@ function ResourcePermissionRow({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
-    <tr className="hover:bg-white/50 transition-colors">
-      <td className="px-4 py-1.5 text-text text-sm">
-        {rp.resource_name}
-      </td>
-      <td className="px-4 py-1.5 text-text-secondary text-sm hidden sm:table-cell">
-        {RESOURCE_TYPE_LABELS[rp.resource_type] || rp.resource_type}
-      </td>
-      <td className="px-4 py-1.5 text-text-secondary text-sm">
-        {rp.rol}
-      </td>
-      <td className="px-4 py-2">
+    <nldd-table-row>
+      <nldd-text-cell text={rp.resource_name} size="sm" />
+      <nldd-text-cell
+        text={RESOURCE_TYPE_LABELS[rp.resource_type] || rp.resource_type}
+        color="secondary"
+        size="sm"
+        hide-below="md"
+      />
+      <nldd-text-cell text={rp.rol} color="secondary" size="sm" />
+      <nldd-text-cell>
         {confirmDelete ? (
           <div className="flex items-center gap-1">
-            <button
+            <NlddButton
+              text="Ja"
+              variant="destructive"
+              size="xs"
+              disabled={removing}
               onClick={() => {
                 onRemove(rp.id);
                 setConfirmDelete(false);
               }}
-              disabled={removing}
-              className="px-2 py-0.5 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-            >
-              Ja
-            </button>
-            <button
+            />
+            <NlddButton
+              text="Nee"
+              variant="neutral-tinted"
+              size="xs"
               onClick={() => setConfirmDelete(false)}
-              className="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-text hover:bg-gray-300 transition-colors"
-            >
-              Nee
-            </button>
+            />
           </div>
         ) : (
-          <button
+          <NlddIconButton
+            icon="trash"
+            accessibleLabel="Verwijderen"
+            variant="neutral-transparent"
+            size="sm"
             onClick={() => setConfirmDelete(true)}
-            className="p-1 rounded hover:bg-red-50 text-text-secondary hover:text-red-600 transition-colors"
-            title="Verwijderen"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          />
         )}
-      </td>
-    </tr>
+      </nldd-text-cell>
+    </nldd-table-row>
   );
 }
 
@@ -516,142 +498,126 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
         </h4>
       </div>
       {hasPerms && (
-        <table className="w-full text-sm">
-          <thead>
-            <tr>
-              <th className="text-left px-4 py-1.5 font-medium text-text-secondary text-xs">
-                Naam
-              </th>
-              <th className="text-left px-4 py-1.5 font-medium text-text-secondary text-xs hidden sm:table-cell">
-                Type
-              </th>
-              <th className="text-left px-4 py-1.5 font-medium text-text-secondary text-xs">
-                Rol
-              </th>
-              <th className="w-10 px-4 py-1.5"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {perms.map((rp) => (
-              <ResourcePermissionRow
-                key={rp.id}
-                rp={rp}
-                onRemove={(id) => removeRp.mutate(id)}
-                removing={removeRp.isPending}
-              />
-            ))}
-          </tbody>
-        </table>
+        <nldd-table
+          columns="minmax(120px,1fr) 140px 100px 48px"
+          sm-columns="1fr 48px"
+          md-columns="1fr 100px 48px"
+          accessible-label="Resource permissies"
+          background="tinted"
+        >
+          <nldd-table-row slot="header">
+            <nldd-text-cell text="Naam" size="sm" />
+            <nldd-text-cell text="Type" size="sm" hide-below="lg" />
+            <nldd-text-cell text="Rol" size="sm" hide-below="md" />
+            <nldd-text-cell />
+          </nldd-table-row>
+          {perms.map((rp) => (
+            <ResourcePermissionRow
+              key={rp.id}
+              rp={rp}
+              onRemove={(id) => removeRp.mutate(id)}
+              removing={removeRp.isPending}
+            />
+          ))}
+        </nldd-table>
       )}
       {!hasPerms && !showForm && (
-        <div className="px-4 py-2 text-sm text-text-secondary">
-          Geen resource permissies.
+        <div className="px-4 py-2">
+          <nldd-text size="sm" color="secondary">Geen resource permissies.</nldd-text>
         </div>
       )}
 
       {!canManageRp ? null : !showForm ? (
         <div className="px-4 py-1.5">
-          <button
+          <NlddButton
+            text="Resource permissie toevoegen"
+            startIcon="plus"
+            variant="neutral-transparent"
+            size="sm"
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Resource permissie toevoegen
-          </button>
+          />
         </div>
       ) : (
-        <form
-          onSubmit={handleAdd}
-          className="px-4 py-3 space-y-3"
-        >
+        <form onSubmit={handleAdd} className="px-4 py-3 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_1fr] gap-3">
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">
-                Resource type
-              </label>
-              <select
-                value={selectedResourceType}
-                onChange={(e) => {
-                  setSelectedResourceType(e.target.value);
-                  setSelectedResourceId('');
-                }}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400 bg-white"
-                required
-              >
-                <option value="">Kies type...</option>
-                {RESOURCE_TYPE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <nldd-form-field label="Resource type">
+              <nldd-dropdown size="sm">
+                <select
+                  value={selectedResourceType}
+                  onChange={(e) => {
+                    setSelectedResourceType(e.target.value);
+                    setSelectedResourceId('');
+                  }}
+                  required
+                >
+                  <option value="">Kies type...</option>
+                  {RESOURCE_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </nldd-dropdown>
+            </nldd-form-field>
 
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">
-                Resource
-              </label>
-              <select
-                value={selectedResourceId}
-                onChange={(e) => setSelectedResourceId(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400 bg-white"
-                required
-                disabled={!selectedResourceType}
-              >
-                <option value="">
-                  {selectedResourceType
-                    ? 'Kies resource...'
-                    : 'Kies eerst type'}
-                </option>
-                {resourceOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
+            <nldd-form-field label="Resource">
+              <nldd-dropdown size="sm">
+                <select
+                  value={selectedResourceId}
+                  onChange={(e) => setSelectedResourceId(e.target.value)}
+                  required
+                  disabled={!selectedResourceType}
+                >
+                  <option value="">
+                    {selectedResourceType ? 'Kies resource...' : 'Kies eerst type'}
                   </option>
-                ))}
-              </select>
-            </div>
+                  {resourceOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </nldd-dropdown>
+            </nldd-form-field>
 
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">
-                Rol
-              </label>
-              <select
-                value={selectedRol}
-                onChange={(e) => setSelectedRol(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400 bg-white"
-                required
-              >
-                <option value="">Kies rol...</option>
-                {RESOURCE_ROLE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <nldd-form-field label="Rol">
+              <nldd-dropdown size="sm">
+                <select
+                  value={selectedRol}
+                  onChange={(e) => setSelectedRol(e.target.value)}
+                  required
+                >
+                  <option value="">Kies rol...</option>
+                  {RESOURCE_ROLE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </nldd-dropdown>
+            </nldd-form-field>
           </div>
 
           <div className="flex gap-2">
-            <button
+            <NlddButton
               type="submit"
+              text="Toevoegen"
+              startIcon="plus"
+              size="sm"
               disabled={
                 addPermission.isPending ||
                 !selectedResourceType ||
                 !selectedResourceId ||
                 !selectedRol
               }
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Toevoegen
-            </button>
-            <button
+            />
+            <NlddButton
               type="button"
+              text="Annuleren"
+              variant="neutral-tinted"
+              size="sm"
               onClick={resetForm}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-gray-200 text-text hover:bg-gray-300 transition-colors"
-            >
-              Annuleren
-            </button>
+            />
           </div>
         </form>
       )}
@@ -669,6 +635,10 @@ export function RoleManager() {
   const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
   const [showMergeConfirm, setShowMergeConfirm] = useState(false);
   const merge = useMergePersons();
+  const searchRef = useRef<HTMLElement>(null);
+  const mergeTargetGroupRef = useRef<HTMLElement>(null);
+
+  useNlddEvent(searchRef, 'input', (e) => setSearchQuery(eventValue(e)));
 
   const filteredPeople = useMemo(() => {
     if (!people) return [];
@@ -701,6 +671,11 @@ export function RoleManager() {
     [people, selectedIds],
   );
 
+  useNlddEvent(mergeTargetGroupRef, 'change', (e) => {
+    const id = eventValue(e);
+    if (id) setMergeTargetId(id);
+  });
+
   const handleMerge = async () => {
     if (!mergeTargetId || selectedIds.size < 2) return;
     const sourceIds = [...selectedIds].filter((id) => id !== mergeTargetId);
@@ -711,177 +686,137 @@ export function RoleManager() {
   };
 
   if (loadingPeople || loadingRoles) {
-    return (
-      <div className="text-sm text-text-secondary py-8 text-center">
-        Laden...
-      </div>
-    );
+    return <nldd-activity-indicator size="32" style={{ margin: '2rem auto', display: 'block' }} />;
   }
 
   return (
     <div className="space-y-4">
       {/* Description */}
-      <div className="flex items-start gap-2 text-sm text-text-secondary">
-        <Shield className="h-4 w-4 mt-0.5 shrink-0 text-primary-500" />
-        <span>
-          Beheer roltoewijzingen per persoon. Klik op een persoon om rollen te
-          bekijken, toe te wijzen of in te trekken.
+      <div className="flex items-start gap-2">
+        <nldd-icon name="shield" size="16" color="accent" style={{ marginTop: '2px' }} />
+        <nldd-text size="sm" color="secondary">
+          Beheer roltoewijzingen per persoon. Klik op een persoon om rollen te bekijken, toe te
+          wijzen of in te trekken.
           {roles && roles.length > 0 && (
-            <>
-              {' '}
-              Beschikbare rollen:{' '}
-              {roles.map((r) => r.naam).join(', ')}.
-            </>
+            <> Beschikbare rollen: {roles.map((r) => r.naam).join(', ')}.</>
           )}
-        </span>
+        </nldd-text>
       </div>
 
       {/* Search */}
-      <input
-        type="text"
+      <nldd-text-field
+        ref={searchRef}
         value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
         placeholder="Zoek op naam, e-mail of functie..."
-        className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
+        accessible-label="Zoek personen"
       />
 
       {/* Merge bar */}
       {selectedIds.size >= 2 && !showMergeConfirm && (
         <div className="flex items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2.5">
-          <span className="text-sm text-text">
-            {selectedIds.size} personen geselecteerd
-          </span>
-          <button
+          <nldd-text size="sm">{selectedIds.size} personen geselecteerd</nldd-text>
+          <NlddButton
+            text="Samenvoegen"
+            startIcon="git-merge"
+            size="sm"
             onClick={() => setShowMergeConfirm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
-          >
-            <Merge className="h-3.5 w-3.5" />
-            Samenvoegen
-          </button>
-          <button
+          />
+          <NlddButton
+            text="Deselecteren"
+            variant="neutral-transparent"
+            size="sm"
             onClick={() => {
               setSelectedIds(new Set());
               setMergeTargetId(null);
             }}
-            className="text-sm text-text-secondary hover:text-text transition-colors"
-          >
-            Deselecteren
-          </button>
+          />
         </div>
       )}
 
       {/* Merge confirmation */}
       {showMergeConfirm && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3">
-          <p className="text-sm font-medium text-amber-800">
+          <nldd-text size="sm" weight="medium" color="warning">
             Welke persoon wil je behouden? Alle referenties van de andere worden overgeheveld.
-          </p>
-          <div className="space-y-1">
+          </nldd-text>
+          <nldd-radio-button-group
+            ref={mergeTargetGroupRef}
+            name="merge-target"
+            accessible-label="Te behouden persoon"
+          >
             {selectedPeople.map((p) => (
-              <label
+              <nldd-radio-button-field
                 key={p.id}
-                className={`flex items-center gap-2 text-sm px-2 py-1.5 rounded cursor-pointer ${
-                  mergeTargetId === p.id
-                    ? 'bg-white border border-primary-200'
-                    : 'hover:bg-amber-100/50'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="merge-target"
-                  checked={mergeTargetId === p.id}
-                  onChange={() => setMergeTargetId(p.id)}
-                  className="accent-primary-600"
-                />
-                <span>
-                  {p.naam}
-                  {p.email && <span className="text-text-secondary ml-1">({p.email})</span>}
-                  {p.functie && <span className="text-text-secondary ml-1">- {formatFunctie(p.functie)}</span>}
-                </span>
-                {mergeTargetId === p.id && (
-                  <span className="ml-auto text-xs text-primary-600 font-medium">behouden</span>
-                )}
-              </label>
+                value={p.id}
+                checked={mergeTargetId === p.id ? true : undefined}
+                label={`${p.naam}${p.email ? ` (${p.email})` : ''}${p.functie ? ` - ${formatFunctie(p.functie)}` : ''}`}
+              />
             ))}
-          </div>
+          </nldd-radio-button-group>
           <div className="flex gap-2">
-            <button
-              onClick={handleMerge}
+            <NlddButton
+              text={merge.isPending ? 'Samenvoegen...' : 'Bevestig samenvoegen'}
+              startIcon="git-merge"
+              variant="destructive"
+              size="sm"
               disabled={merge.isPending || !mergeTargetId}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-            >
-              <Merge className="h-3.5 w-3.5" />
-              {merge.isPending ? 'Samenvoegen...' : 'Bevestig samenvoegen'}
-            </button>
-            <button
-              onClick={() => setShowMergeConfirm(false)}
+              onClick={handleMerge}
+            />
+            <NlddButton
+              text="Annuleren"
+              variant="neutral-tinted"
+              size="sm"
               disabled={merge.isPending}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              Annuleren
-            </button>
+              onClick={() => setShowMergeConfirm(false)}
+            />
           </div>
         </div>
       )}
 
       {/* People list with expandable role panels */}
-      <div className="border border-border rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-border">
-              <th className="w-8 px-3 py-2.5"></th>
-              <th className="w-8 px-1 py-2.5"></th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary">
-                Naam
-              </th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden sm:table-cell">
-                E-mail
-              </th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden md:table-cell">
-                Functie
-              </th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden lg:table-cell">
-                Laatst actief
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredPeople.map((person) => {
-              const isExpanded = expandedPersonId === person.id;
-              return (
-                <PersonRow
-                  key={person.id}
-                  personId={person.id}
-                  naam={person.naam}
-                  email={person.email}
-                  functie={person.functie}
-                  lastSeenAt={person.last_seen_at}
-                  isAgent={person.is_agent}
-                  isExpanded={isExpanded}
-                  isSelf={authPerson?.id === person.id}
-                  selected={selectedIds.has(person.id)}
-                  onToggleSelect={() => toggleSelected(person.id)}
-                  onToggle={() =>
-                    setExpandedPersonId(isExpanded ? null : person.id)
-                  }
-                />
-              );
-            })}
-            {filteredPeople.length === 0 && (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-4 py-8 text-center text-text-secondary"
-                >
-                  {searchQuery
-                    ? 'Geen personen gevonden'
-                    : 'Geen personen beschikbaar'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* `selectable` because the rows carry a selection checkbox: without it
+          the table deliberately omits aria-selected, so assistive technology is
+          not told about a selection state it would otherwise announce. */}
+      <nldd-table
+        columns="48px minmax(140px,1fr) 200px 160px 140px"
+        sm-columns="48px 1fr 140px"
+        md-columns="48px 1fr 200px 140px"
+        accessible-label="Personen en roltoewijzingen"
+        selectable
+      >
+        <nldd-table-row slot="header">
+          <nldd-text-cell />
+          <nldd-text-cell text="Naam" />
+          <nldd-text-cell text="E-mail" hide-below="md" />
+          <nldd-text-cell text="Functie" hide-below="lg" />
+          <nldd-text-cell text="Laatst actief" />
+        </nldd-table-row>
+        {filteredPeople.map((person) => {
+          const isExpanded = expandedPersonId === person.id;
+          return (
+            <PersonRow
+              key={person.id}
+              personId={person.id}
+              naam={person.naam}
+              email={person.email}
+              functie={person.functie}
+              lastSeenAt={person.last_seen_at}
+              isAgent={person.is_agent}
+              isExpanded={isExpanded}
+              isSelf={authPerson?.id === person.id}
+              selected={selectedIds.has(person.id)}
+              onToggleSelect={() => toggleSelected(person.id)}
+              onToggle={() => setExpandedPersonId(isExpanded ? null : person.id)}
+            />
+          );
+        })}
+        <div slot="empty">
+          <EmptyState
+            icon="magnifier"
+            title={searchQuery ? 'Geen personen gevonden' : 'Geen personen beschikbaar'}
+          />
+        </div>
+      </nldd-table>
     </div>
   );
 }
@@ -912,58 +847,43 @@ function PersonRow({
   onToggle: () => void;
 }) {
   const online = isPersonOnline({ last_seen_at: lastSeenAt, is_agent: isAgent });
+  const checkboxRef = useRef<HTMLElement>(null);
+  useNlddEvent(checkboxRef, 'change', onToggleSelect);
 
   return (
-    <>
-      <tr
-        className="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors cursor-pointer"
-      >
-        <td className="px-3 py-2.5 text-text-secondary" onClick={onToggle}>
-          {isExpanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )}
-        </td>
-        <td className="px-1 py-2.5">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={onToggleSelect}
-            onClick={(e) => e.stopPropagation()}
-            className="accent-primary-600 h-3.5 w-3.5"
-          />
-        </td>
-        <td className="px-4 py-2.5 text-text" onClick={onToggle}>
-          {naam}
-          {isSelf && (
-            <span className="ml-1.5 text-xs text-text-secondary">(jij)</span>
-          )}
-        </td>
-        <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell" onClick={onToggle}>
-          {email || '-'}
-        </td>
-        <td className="px-4 py-2.5 text-text-secondary hidden md:table-cell" onClick={onToggle}>
-          {formatFunctie(functie) || '-'}
-        </td>
-        <td className="px-4 py-2.5 text-text-secondary hidden lg:table-cell" onClick={onToggle}>
-          {online ? (
-            <span className="inline-flex items-center gap-1.5 text-green-600">
-              <span className="block h-2 w-2 rounded-full bg-green-500" />
-              Nu actief
-            </span>
-          ) : (
-            formatRelativeTime(lastSeenAt)
-          )}
-        </td>
-      </tr>
+    // `selected` both highlights the row and, because the table is `selectable`,
+    // drives its aria-selected.
+    <nldd-table-row selected={selected ? true : undefined}>
+      <nldd-text-cell>
+        <nldd-checkbox
+          ref={checkboxRef}
+          checked={selected ? true : undefined}
+          accessible-label={`${naam} selecteren voor samenvoegen`}
+        />
+      </nldd-text-cell>
+      <nldd-text-cell>
+        <NlddButton
+          variant="neutral-transparent"
+          size="sm"
+          text={isSelf ? `${naam} (jij)` : naam}
+          startIcon={isExpanded ? 'chevron-down' : 'chevron-right'}
+          onClick={onToggle}
+        />
+      </nldd-text-cell>
+      <nldd-text-cell text={email || '-'} color="secondary" hide-below="md" />
+      <nldd-text-cell text={formatFunctie(functie) || '-'} color="secondary" hide-below="lg" />
+      <nldd-text-cell>
+        {online ? (
+          <nldd-tag text="Nu actief" color="success" size="sm" />
+        ) : (
+          <nldd-text size="sm" color="secondary">{formatRelativeTime(lastSeenAt)}</nldd-text>
+        )}
+      </nldd-text-cell>
       {isExpanded && (
-        <tr className="border-b-2 border-primary-200">
-          <td colSpan={6} className="p-0">
-            <PersonRolesPanel personId={personId} />
-          </td>
-        </tr>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <PersonRolesPanel personId={personId} />
+        </div>
       )}
-    </>
+    </nldd-table-row>
   );
 }
