@@ -1,5 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
-import { Download, ChevronDown } from 'lucide-react';
+import { useId } from 'react';
 import { Button } from '@/components/common/Button';
 import { exportNodesUrl, exportEdgesUrl, exportCorpusUrl, exportArchimateUrl } from '@/api/import-export';
 
@@ -9,70 +8,21 @@ interface ExportButtonProps {
 }
 
 export function ExportButton({ nodeType, hideLabel }: ExportButtonProps) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleExport = (url: string) => {
-    window.open(url, '_blank');
-    setOpen(false);
-  };
+  const triggerId = useId();
 
   return (
-    <div className="relative" ref={menuRef}>
-      <Button
-        variant="secondary"
-        onClick={() => setOpen(!open)}
-        icon={<Download className="h-4 w-4" />}
-      >
+    <>
+      <Button id={triggerId} variant="secondary" icon="download">
         <span className={hideLabel ? 'hidden sm:inline' : undefined}>Exporteren</span>
-        <ChevronDown className={`h-3 w-3 ${hideLabel ? 'sm:ml-1' : 'ml-1'}`} />
       </Button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 w-64 rounded-xl border border-border bg-surface shadow-lg">
-          <div className="py-1">
-            <button
-              onClick={() => handleExport(exportNodesUrl(nodeType))}
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text hover:bg-gray-50 transition-colors whitespace-nowrap"
-            >
-              <Download className="h-4 w-4 text-text-secondary" />
-              Nodes als CSV
-            </button>
-            <button
-              onClick={() => handleExport(exportEdgesUrl())}
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text hover:bg-gray-50 transition-colors whitespace-nowrap"
-            >
-              <Download className="h-4 w-4 text-text-secondary" />
-              Edges als CSV
-            </button>
-            <div className="border-t border-border my-1" />
-            <button
-              onClick={() => handleExport(exportCorpusUrl())}
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text hover:bg-gray-50 transition-colors whitespace-nowrap"
-            >
-              <Download className="h-4 w-4 text-text-secondary" />
-              Volledig corpus als JSON
-            </button>
-            <button
-              onClick={() => handleExport(exportArchimateUrl())}
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text hover:bg-gray-50 transition-colors whitespace-nowrap"
-            >
-              <Download className="h-4 w-4 text-text-secondary" />
-              ArchiMate XML
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+      <nldd-menu anchor={triggerId} accessible-label="Exportopties">
+        <nldd-menu-item text="Nodes als CSV" icon="download" href={exportNodesUrl(nodeType)} />
+        <nldd-menu-item text="Edges als CSV" icon="download" href={exportEdgesUrl()} />
+        <nldd-menu-divider />
+        <nldd-menu-item text="Volledig corpus als JSON" icon="download" href={exportCorpusUrl()} />
+        <nldd-menu-item text="ArchiMate XML" icon="download" href={exportArchimateUrl()} />
+      </nldd-menu>
+    </>
   );
 }

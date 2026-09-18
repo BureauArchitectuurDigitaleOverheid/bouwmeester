@@ -1,16 +1,36 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, ArrowRight } from 'lucide-react';
-import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { EmptyState } from '@/components/common/EmptyState';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { useNlddEvent } from '@/components/nldd/events';
 import { AddEdgeForm } from './AddEdgeForm';
 import { useEdges, useDeleteEdge } from '@/hooks/useEdges';
 import { NODE_TYPE_COLORS } from '@/types';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { useVocabulary } from '@/contexts/VocabularyContext';
+
+/** An `nldd-list-item-segment[button]` with its click bridged to React. */
+function ClickableSegment({
+  onClick,
+  width,
+  children,
+}: {
+  onClick: () => void;
+  width?: 'fit-content' | 'full';
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onClick);
+  return (
+    <nldd-list-item-segment ref={ref} button width={width}>
+      {children}
+    </nldd-list-item-segment>
+  );
+}
 
 interface EdgeListProps {
   nodeId: string;
@@ -37,7 +57,7 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
         <Button
           variant="secondary"
           size="sm"
-          icon={<Plus className="h-4 w-4" />}
+          icon="plus"
           onClick={() => setShowAddForm(true)}
         >
           Verbinding toevoegen
@@ -45,57 +65,54 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
       </div>
 
       {edges.length > 0 ? (
-        <div className="space-y-2">
+        <nldd-list variant="box-tinted" dividers="always">
           {edges.map((edge) => {
             const connectedNode =
               edge.from_node_id === nodeId ? edge.to_node : edge.from_node;
             const direction = edge.from_node_id === nodeId ? 'outgoing' : 'incoming';
 
             return (
-              <Card key={edge.id} padding={false}>
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+              <nldd-list-item key={edge.id}>
+                <ClickableSegment
+                  width="full"
+                  onClick={() => connectedNode && navigate(`/nodes/${connectedNode.id}`)}
+                >
+                  <nldd-title-cell
+                    overline={edgeLabel(edge.edge_type_id)}
+                    text={connectedNode?.title ?? ''}
+                  >
+                    <div slot="overline" className="flex items-center gap-2">
                       <Badge variant="slate">{edgeLabel(edge.edge_type_id)}</Badge>
-                      <ArrowRight
-                        className={`h-3.5 w-3.5 text-text-secondary ${
-                          direction === 'incoming' ? 'rotate-180' : ''
-                        }`}
-                      />
+                      <Icon name={direction === 'incoming' ? 'arrow-left' : 'arrow-right'} size="xs" />
                     </div>
                     {connectedNode && (
-                      <button
-                        onClick={() => navigate(`/nodes/${connectedNode.id}`)}
-                        className="text-sm text-text hover:text-primary-700 transition-colors text-left"
-                      >
-                        <Badge
-                          variant={NODE_TYPE_COLORS[connectedNode.node_type]}
-                          className="mr-2"
-                          title={nodeAltLabel(connectedNode.node_type)}
-                        >
+                      <span className="inline-flex items-center gap-2">
+                        <Badge variant={NODE_TYPE_COLORS[connectedNode.node_type]} title={nodeAltLabel(connectedNode.node_type)}>
                           {nodeLabel(connectedNode.node_type)}
                         </Badge>
                         {connectedNode.title}
-                      </button>
+                      </span>
                     )}
-                    {edge.description && (
-                      <div className="mt-1">
-                        <RichTextDisplay content={edge.description} />
-                      </div>
-                    )}
-                  </div>
-
-                  <button
+                  </nldd-title-cell>
+                  {edge.description && (
+                    <nldd-description-cell>
+                      <RichTextDisplay content={edge.description} />
+                    </nldd-description-cell>
+                  )}
+                </ClickableSegment>
+                <nldd-list-item-segment width="fit-content">
+                  <NlddIconButton
+                    icon="trash"
+                    variant="critical-transparent"
+                    size="sm"
+                    accessibleLabel="Verbinding verwijderen"
                     onClick={() => deleteEdge.mutate(edge.id)}
-                    className="p-1.5 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </Card>
+                  />
+                </nldd-list-item-segment>
+              </nldd-list-item>
             );
           })}
-        </div>
+        </nldd-list>
       ) : (
         <EmptyState
           title="Geen verbindingen"

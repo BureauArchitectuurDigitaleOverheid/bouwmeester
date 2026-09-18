@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
+import { Input } from '@/components/common/Input';
+import { Select } from '@/components/common/Select';
 import { useCreateNode } from '@/hooks/useNodes';
 import { INSTRUMENT_TYPE_LABELS, NodeType, type CorpusNode } from '@/types';
 
@@ -65,36 +67,22 @@ export function NieuwInstrumentDialog({ open, initialTitle, onClose, onCreated }
       }
     >
       <form id="nieuw-instrument-form" onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">Titel *</label>
-          <input
-            type="text"
-            value={titel}
-            onChange={e => setTitel(e.target.value)}
-            required
-            autoFocus
-            className="w-full px-3 py-2 text-sm rounded-lg border border-border"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">Type *</label>
-          <select
-            value={type}
-            onChange={e => setType(e.target.value)}
-            required
-            className="w-full px-3 py-2 text-sm rounded-lg border border-border"
-          >
-            <option value="">Kies type...</option>
-            {Object.entries(INSTRUMENT_TYPE_LABELS).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
-            ))}
-          </select>
-        </div>
-        {error && (
-          <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
-            {error}
-          </div>
-        )}
+        <Input
+          label="Titel"
+          value={titel}
+          onChange={e => setTitel(e.target.value)}
+          required
+          autoFocus
+        />
+        <Select
+          label="Type"
+          value={type}
+          onChange={e => setType(e.target.value)}
+          placeholder="Kies type..."
+          required
+          options={Object.entries(INSTRUMENT_TYPE_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+        />
+        {error && <nldd-banner variant="critical" size="sm" text={error} />}
       </form>
     </Modal>
   );

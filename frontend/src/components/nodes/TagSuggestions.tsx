@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Check, Plus } from 'lucide-react';
 import { AiActionButton } from '@/components/common/AiActionButton';
+import { NlddButton } from '@/components/nldd/NlddLink';
 import { suggestTags } from '@/api/llm';
 import type { TagSuggestionResponse } from '@/types';
 
@@ -70,19 +70,17 @@ export function TagSuggestions({
         disabled={!title.trim()}
       />
 
-      {error && (
-        <p className="text-xs text-red-500">{error}</p>
-      )}
+      {error && <nldd-text size="xs" color="critical">{error}</nldd-text>}
 
       {result && !hasResults && (
-        <p className="text-xs text-text-secondary">Geen suggesties gevonden.</p>
+        <nldd-text size="xs" color="secondary">Geen suggesties gevonden.</nldd-text>
       )}
 
       {result && hasResults && (
         <div className="space-y-2">
           {filteredMatched.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-text-secondary mb-1">Bestaande tags</p>
+              <nldd-text size="xs" color="secondary" className="mb-1 block">Bestaande tags</nldd-text>
               <div className="flex flex-wrap gap-1.5">
                 {filteredMatched.map((tag) => (
                   <TagChip
@@ -98,7 +96,7 @@ export function TagSuggestions({
 
           {result.suggested_new_tags.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-text-secondary mb-1">Nieuwe tags</p>
+              <nldd-text size="xs" color="secondary" className="mb-1 block">Nieuwe tags</nldd-text>
               <div className="flex flex-wrap gap-1.5">
                 {result.suggested_new_tags.map((tag) => (
                   <TagChip
@@ -130,22 +128,16 @@ function TagChip({
   onAccept: () => void;
 }) {
   if (accepted) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2.5 py-0.5 text-xs font-medium">
-        <Check className="h-3 w-3" />
-        {name}
-      </span>
-    );
+    return <nldd-tag text={name} icon="check-mark" color="success" size="sm" />;
   }
 
   return (
-    <button
-      type="button"
+    <NlddButton
+      text={name}
+      variant="neutral-tinted"
+      size="xs"
+      startIcon={isNew ? 'plus' : 'check-mark'}
       onClick={onAccept}
-      className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-600 hover:bg-primary-50 hover:text-primary-700 px-2.5 py-0.5 text-xs font-medium transition-colors"
-    >
-      {isNew ? <Plus className="h-3 w-3" /> : <Check className="h-3 w-3" />}
-      {name}
-    </button>
+    />
   );
 }

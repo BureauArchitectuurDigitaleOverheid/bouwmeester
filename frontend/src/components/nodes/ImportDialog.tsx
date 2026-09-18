@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { FileUpload } from '@/components/common/FileUpload';
+import { Select } from '@/components/common/Select';
 import { importNodes, importEdges, importPolitiekeInputs } from '@/api/import-export';
 import type { ImportResult } from '@/types';
-import { Upload, CheckCircle, AlertTriangle } from 'lucide-react';
 
 type ImportType = 'nodes' | 'edges' | 'politieke-inputs';
 
@@ -84,7 +84,7 @@ export function ImportDialog({ open, onClose, onSuccess }: ImportDialogProps) {
               onClick={handleImport}
               loading={loading}
               disabled={!selectedFile}
-              icon={<Upload className="h-4 w-4" />}
+              icon="upload"
             >
               Importeren
             </Button>
@@ -94,39 +94,32 @@ export function ImportDialog({ open, onClose, onSuccess }: ImportDialogProps) {
     >
       <div className="space-y-4">
         {/* Import type selector */}
-        <div>
-          <label className="block text-sm font-medium text-text mb-1.5">
-            Type import
-          </label>
-          <select
-            value={importType}
-            onChange={(e) => {
-              setImportType(e.target.value as ImportType);
-              setResult(null);
-              setError(null);
-            }}
-            className="w-full rounded-xl border border-border px-3 py-2 text-sm text-text bg-white focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-          >
-            {(Object.entries(IMPORT_TYPE_LABELS) as [ImportType, string][]).map(
-              ([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ),
-            )}
-          </select>
-        </div>
+        <Select
+          label="Type import"
+          value={importType}
+          onChange={(e) => {
+            setImportType(e.target.value as ImportType);
+            setResult(null);
+            setError(null);
+          }}
+          options={(Object.entries(IMPORT_TYPE_LABELS) as [ImportType, string][]).map(
+            ([value, label]) => ({ value, label }),
+          )}
+        />
 
         {/* CSV format hint */}
-        <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
-          <p className="text-sm font-medium text-blue-800 mb-1">Verwacht CSV-formaat</p>
-          <p className="text-xs text-blue-700 font-mono">
-            {importType === 'nodes' && 'title, node_type, description, status'}
-            {importType === 'edges' && 'from_node_title, to_node_title, edge_type_id, description'}
-            {importType === 'politieke-inputs' &&
-              'title, type, referentie, datum, description, status'}
-          </p>
-        </div>
+        <nldd-banner
+          variant="accent"
+          size="sm"
+          text="Verwacht CSV-formaat"
+          supporting-text={
+            importType === 'nodes'
+              ? 'title, node_type, description, status'
+              : importType === 'edges'
+                ? 'from_node_title, to_node_title, edge_type_id, description'
+                : 'title, type, referentie, datum, description, status'
+          }
+        />
 
         {/* File upload */}
         <FileUpload
@@ -136,45 +129,33 @@ export function ImportDialog({ open, onClose, onSuccess }: ImportDialogProps) {
         />
 
         {/* Error message */}
-        {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          </div>
-        )}
+        {error && <nldd-banner variant="critical" size="sm" text={error} />}
 
         {/* Result summary */}
         {result && (
-          <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
-              <p className="text-sm font-medium text-green-800">Import voltooid</p>
-            </div>
+          <nldd-banner variant="success" size="sm" text="Import voltooid">
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div>
-                <span className="text-green-700">Geimporteerd:</span>{' '}
-                <span className="font-medium text-green-800">{result.imported}</span>
+                <span>Geimporteerd:</span>{' '}
+                <span className="font-medium">{result.imported}</span>
               </div>
               <div>
-                <span className="text-amber-700">Overgeslagen:</span>{' '}
-                <span className="font-medium text-amber-800">{result.skipped}</span>
+                <span>Overgeslagen:</span>{' '}
+                <span className="font-medium">{result.skipped}</span>
               </div>
             </div>
             {result.errors.length > 0 && (
-              <div className="mt-2">
-                <p className="text-xs font-medium text-red-700 mb-1">Fouten:</p>
-                <ul className="max-h-32 overflow-y-auto space-y-0.5">
+              <div className="max-h-32 overflow-y-auto">
+                <nldd-list dividers="never">
                   {result.errors.map((err, i) => (
-                    <li key={i} className="text-xs text-red-600">
-                      {err}
-                    </li>
+                    <nldd-list-item key={i}>
+                      <nldd-text-cell size="sm" color="critical" text={err} />
+                    </nldd-list-item>
                   ))}
-                </ul>
+                </nldd-list>
               </div>
             )}
-          </div>
+          </nldd-banner>
         )}
       </div>
     </Modal>

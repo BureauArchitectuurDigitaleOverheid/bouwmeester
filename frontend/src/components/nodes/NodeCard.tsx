@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowRight, Compass, Link as LinkIcon, Wallet } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
+import { Icon } from '@/components/nldd/Icon';
 import type { CorpusNode, NodeStatus } from '@/types';
 import { NODE_TYPE_COLORS, NODE_STATUS_LABELS, NodeType } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
@@ -46,20 +46,20 @@ export function NodeCard({ node }: NodeCardProps) {
           )}
         </div>
 
-        <ArrowRight className="h-4 w-4 text-text-secondary shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <Icon name="arrow-right" size="md" className="shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
 
       {/* Footer info */}
       <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border">
         {node.edge_count !== undefined && (
           <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
-            <LinkIcon className="h-3 w-3" />
+            <Icon name="link" size="xs" />
             {node.edge_count} verbindingen
           </span>
         )}
         {node.financieel_summary && node.financieel_summary.totaal_budget > 0 && (
           <span className="inline-flex items-center gap-1 text-xs text-text-secondary" title={`Budget: ${formatCurrency(node.financieel_summary.totaal_budget)} — Gerealiseerd: ${formatCurrency(node.financieel_summary.totaal_gerealiseerd)}`}>
-            <Wallet className="h-3 w-3" />
+            <Icon name="euro-sign" size="xs" />
             {formatCurrencyCompact(node.financieel_summary.totaal_budget)}
           </span>
         )}
@@ -72,7 +72,7 @@ export function NodeCard({ node }: NodeCardProps) {
             }`}
             title={`Beleidskompas: ${node.beleidskompas_progress.completed_steps} van ${node.beleidskompas_progress.total_steps} stappen compleet`}
           >
-            <Compass className="h-3 w-3" />
+            <Icon name="signpost" size="xs" />
             {node.beleidskompas_progress.completed_steps}/{node.beleidskompas_progress.total_steps}
           </span>
         )}

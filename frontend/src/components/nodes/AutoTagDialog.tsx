@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { Check, Plus, Sparkles } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
+import { useNlddEvent } from '@/components/nldd/events';
 
 interface AutoTagDialogProps {
   open: boolean;
@@ -61,7 +61,7 @@ export function AutoTagDialog({
           <Button
             onClick={handleAcceptAll}
             disabled={selected.size === 0}
-            icon={<Sparkles className="h-3.5 w-3.5" />}
+            icon="sparkles"
           >
             Toevoegen ({selected.size})
           </Button>
@@ -121,24 +121,15 @@ function TagChip({
   selected: boolean;
   onToggle: () => void;
 }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', onToggle);
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
-        selected
-          ? 'bg-primary-100 text-primary-700 ring-1 ring-primary-300'
-          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-      }`}
-    >
-      {selected ? (
-        <Check className="h-3 w-3" />
-      ) : isNew ? (
-        <Plus className="h-3 w-3" />
-      ) : (
-        <Check className="h-3 w-3 opacity-30" />
-      )}
-      {name}
-    </button>
+    <nldd-toggle-button
+      ref={ref}
+      text={name}
+      icon={selected ? 'check-mark' : isNew ? 'plus' : 'check-mark'}
+      selected={selected ? true : undefined}
+      size="sm"
+    />
   );
 }

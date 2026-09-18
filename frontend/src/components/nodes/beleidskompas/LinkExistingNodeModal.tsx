@@ -1,14 +1,34 @@
-import { useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { useNodes } from '@/hooks/useNodes';
 import { createEdge } from '@/api/edges';
 import { queryKeys } from '@/hooks/queryKeys';
 import { NODE_TYPE_LABELS, NODE_TYPE_COLORS, type NodeType } from '@/types';
 import { useToast } from '@/contexts/ToastContext';
 import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
+
+/** An `nldd-list-item[button]` row with its click bridged to React. */
+function ClickableListItem({
+  disabled,
+  onClick,
+  children,
+}: {
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', disabled ? undefined : onClick);
+  return (
+    <nldd-list-item ref={ref} button disabled={disabled ? true : undefined}>
+      {children}
+    </nldd-list-item>
+  );
+}
 
 interface LinkExistingNodeModalProps {
   open: boolean;
@@ -24,6 +44,8 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excl
   const [isLinking, setIsLinking] = useState(false);
   const queryClient = useQueryClient();
   const { showError } = useToast();
+  const searchRef = useRef<HTMLElement>(null);
+  useNlddEvent(searchRef, 'input', (e) => setSearch(eventValue(e)));
 
   // Debounce search input
   useEffect(() => {
@@ -68,36 +90,33 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excl
       }
     >
       <div className="space-y-4">
-        <input
-          type="text"
+        <nldd-search-field
+          ref={searchRef}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
           placeholder={`Zoek ${NODE_TYPE_LABELS[nodeType].toLowerCase()}...`}
-          className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
-          autoFocus
         />
 
         {isLoading ? (
-          <p className="text-sm text-text-secondary text-center py-4">Laden...</p>
+          <nldd-inline-dialog variant="loading" text="Laden..." />
         ) : filteredNodes.length === 0 ? (
-          <p className="text-sm text-text-secondary text-center py-4">
-            Geen {NODE_TYPE_LABELS[nodeType].toLowerCase()} gevonden.
-          </p>
+          <nldd-inline-dialog
+            icon="question-mark-circle"
+            text={`Geen ${NODE_TYPE_LABELS[nodeType].toLowerCase()} gevonden.`}
+          />
         ) : (
-          <div className="max-h-72 overflow-y-auto space-y-1">
-            {filteredNodes.map((node) => (
-              <button
-                key={node.id}
-                onClick={() => handleLink(node.id)}
-                disabled={isLinking}
-                className="flex items-center gap-2 w-full p-2.5 rounded-lg hover:bg-gray-50 transition-colors text-left disabled:opacity-50"
-              >
-                <Badge variant={NODE_TYPE_COLORS[nodeType]} dot>
-                  {NODE_TYPE_LABELS[nodeType]}
-                </Badge>
-                <span className="text-sm text-text truncate flex-1">{node.title}</span>
-              </button>
-            ))}
+          <div className="max-h-72 overflow-y-auto">
+            <nldd-list variant="box-tinted" dividers="always">
+              {filteredNodes.map((node) => (
+                <ClickableListItem key={node.id} disabled={isLinking} onClick={() => handleLink(node.id)}>
+                  <nldd-text-cell width="fit-content">
+                    <Badge variant={NODE_TYPE_COLORS[nodeType]} dot>
+                      {NODE_TYPE_LABELS[nodeType]}
+                    </Badge>
+                  </nldd-text-cell>
+                  <nldd-text-cell text={node.title} />
+                </ClickableListItem>
+              ))}
+            </nldd-list>
           </div>
         )}
       </div>

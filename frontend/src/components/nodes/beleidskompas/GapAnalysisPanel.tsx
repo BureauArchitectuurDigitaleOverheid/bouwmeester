@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, Lightbulb, Sparkles } from 'lucide-react';
 import { AiActionButton } from '@/components/common/AiActionButton';
+import { Icon } from '@/components/nldd/Icon';
 import { analyzeGaps } from '@/api/llm';
 import { NODE_TYPE_LABELS, type GapAnalysisResponse, type NodeType } from '@/types';
 
@@ -38,17 +38,17 @@ export function GapAnalysisPanel({ dossierId }: GapAnalysisPanelProps) {
         />
       </div>
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <nldd-text size="xs" color="critical">{error}</nldd-text>}
 
       {result && (
         <div className="space-y-3">
           {/* Score */}
           <div className="flex items-center gap-2">
-            {result.completed_count === result.total_steps ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-            ) : (
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-            )}
+            <Icon
+              name={result.completed_count === result.total_steps ? 'check-mark-circle' : 'exclamation-triangle'}
+              size="md"
+              className={result.completed_count === result.total_steps ? 'text-emerald-500' : 'text-amber-500'}
+            />
             <span className="text-sm font-medium text-text">
               {result.completed_count}/{result.total_steps} stappen voltooid
             </span>
@@ -58,44 +58,36 @@ export function GapAnalysisPanel({ dossierId }: GapAnalysisPanelProps) {
           {result.gaps.length > 0 && (
             <div className="space-y-1.5">
               {result.gaps.map((gap) => (
-                <div
+                <nldd-inline-dialog
                   key={gap.step_number}
-                  className="flex items-start gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200"
-                >
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-amber-800">
-                      Stap {gap.step_number}: {gap.step_question}
-                    </p>
-                    <p className="text-xs text-amber-700">
-                      Ontbreekt:{' '}
-                      {gap.missing_types
-                        .map((t) => NODE_TYPE_LABELS[t as NodeType] ?? t)
-                        .join(', ')}
-                    </p>
-                  </div>
-                </div>
+                  variant="alert"
+                  size="md"
+                  horizontal-alignment="left"
+                  text={`Stap ${gap.step_number}: ${gap.step_question}`}
+                  supporting-text={`Ontbreekt: ${gap.missing_types.map((t) => NODE_TYPE_LABELS[t as NodeType] ?? t).join(', ')}`}
+                />
               ))}
             </div>
           )}
 
           {/* LLM narrative */}
           {result.narrative && (
-            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-slate-500" />
-                <span className="text-xs font-medium text-slate-600">AI-analyse</span>
-              </div>
-              <p className="text-xs text-slate-700 leading-relaxed">{result.narrative}</p>
-            </div>
+            <nldd-inline-dialog
+              size="md"
+              horizontal-alignment="left"
+              icon="sparkles"
+              icon-color="accent"
+              text="AI-analyse"
+              supporting-text={result.narrative}
+            />
           )}
 
           {/* Recommendations */}
           {result.recommendations.length > 0 && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5">
-                <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
-                <span className="text-xs font-medium text-text-secondary">Aanbevelingen</span>
+                <Icon name="lightbulb" size="sm" className="text-amber-500" />
+                <nldd-text size="xs" color="secondary" weight="medium">Aanbevelingen</nldd-text>
               </div>
               <ul className="space-y-1 ml-5">
                 {result.recommendations.map((rec, i) => (

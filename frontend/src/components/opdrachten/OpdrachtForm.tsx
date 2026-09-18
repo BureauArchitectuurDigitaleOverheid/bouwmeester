@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, Plus } from 'lucide-react';
 import { useCreateOpdracht, useUpdateOpdracht, useAddOpdrachtNodeKoppeling, useRemoveOpdrachtNodeKoppeling } from '@/hooks/useOpdrachten';
 import { useNodes } from '@/hooks/useNodes';
 import { queryKeys } from '@/hooks/queryKeys';
@@ -9,6 +8,10 @@ import { useOrganisatieFlat, useCreateOrganisatieEenheid } from '@/hooks/useOrga
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
+import { Input } from '@/components/common/Input';
+import { Select } from '@/components/common/Select';
+import { Button } from '@/components/common/Button';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { buildPersonOptions } from '@/utils/personOptions';
 import { Badge } from '@/components/common/Badge';
 import { NieuwInstrumentDialog } from './NieuwInstrumentDialog';
@@ -210,24 +213,28 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Basic info */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">Type *</label>
-          <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="w-full px-3 py-2 text-sm rounded-lg border border-border">
-            {Object.entries(OPDRACHT_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">Status</label>
-          <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full px-3 py-2 text-sm rounded-lg border border-border">
-            {Object.entries(OPDRACHT_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        </div>
+        <Select
+          label="Type"
+          required
+          value={form.type}
+          onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+          options={Object.entries(OPDRACHT_TYPE_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+        />
+        <Select
+          label="Status"
+          value={form.status}
+          onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+          options={Object.entries(OPDRACHT_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+        />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-text mb-1">Titel *</label>
-        <input type="text" value={form.titel} onChange={e => setForm(f => ({ ...f, titel: e.target.value }))} required className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
-      </div>
+      <Input
+        label="Titel"
+        type="text"
+        value={form.titel}
+        onChange={e => setForm(f => ({ ...f, titel: e.target.value }))}
+        required
+      />
 
       <RichTextFormField
         label="Beschrijving"
@@ -279,57 +286,85 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
         />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-text mb-1">Referentie</label>
-        <input type="text" value={form.referentie} onChange={e => setForm(f => ({ ...f, referentie: e.target.value }))} className="w-full px-3 py-2 text-sm rounded-lg border border-border" placeholder="Intern kenmerk" />
-      </div>
+      <Input
+        label="Referentie"
+        type="text"
+        value={form.referentie}
+        onChange={e => setForm(f => ({ ...f, referentie: e.target.value }))}
+        placeholder="Intern kenmerk"
+      />
 
       {/* Financial */}
       <div className="border-t border-border pt-4">
         <h3 className="text-sm font-semibold text-text mb-3">Financieel</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Begrotingsjaar *</label>
-            <input type="number" value={form.begrotingsjaar} onChange={e => setForm(f => ({ ...f, begrotingsjaar: Number(e.target.value) }))} min={2020} max={2035} required className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Budget</label>
-            <input type="number" value={form.budget} onChange={e => setForm(f => ({ ...f, budget: e.target.value }))} min={0} step="0.01" className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Gerealiseerd</label>
-            <input type="number" value={form.gerealiseerd} onChange={e => setForm(f => ({ ...f, gerealiseerd: e.target.value }))} min={0} step="0.01" className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
-          </div>
+          <Input
+            label="Begrotingsjaar"
+            type="number"
+            value={form.begrotingsjaar}
+            onChange={e => setForm(f => ({ ...f, begrotingsjaar: Number(e.target.value) }))}
+            min={2020}
+            max={2035}
+            required
+          />
+          <Input
+            label="Budget"
+            type="number"
+            value={form.budget}
+            onChange={e => setForm(f => ({ ...f, budget: e.target.value }))}
+            min={0}
+            step="0.01"
+          />
+          <Input
+            label="Gerealiseerd"
+            type="number"
+            value={form.gerealiseerd}
+            onChange={e => setForm(f => ({ ...f, gerealiseerd: e.target.value }))}
+            min={0}
+            step="0.01"
+          />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Kostensoort</label>
-            <select value={form.kostensoort} onChange={e => setForm(f => ({ ...f, kostensoort: e.target.value }))} className="w-full px-3 py-2 text-sm rounded-lg border border-border">
-              <option value="">-</option>
-              {Object.entries(KOSTENSOORT_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Volgend jaar benodigd</label>
-            <input type="number" value={form.volgend_jaar_benodigd} onChange={e => setForm(f => ({ ...f, volgend_jaar_benodigd: e.target.value }))} min={0} step="0.01" className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Volgend jaar aangevraagd</label>
-            <input type="number" value={form.volgend_jaar_aangevraagd} onChange={e => setForm(f => ({ ...f, volgend_jaar_aangevraagd: e.target.value }))} min={0} step="0.01" className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
-          </div>
+          <Select
+            label="Kostensoort"
+            value={form.kostensoort}
+            onChange={e => setForm(f => ({ ...f, kostensoort: e.target.value }))}
+            placeholder="-"
+            options={Object.entries(KOSTENSOORT_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+          />
+          <Input
+            label="Volgend jaar benodigd"
+            type="number"
+            value={form.volgend_jaar_benodigd}
+            onChange={e => setForm(f => ({ ...f, volgend_jaar_benodigd: e.target.value }))}
+            min={0}
+            step="0.01"
+          />
+          <Input
+            label="Volgend jaar aangevraagd"
+            type="number"
+            value={form.volgend_jaar_aangevraagd}
+            onChange={e => setForm(f => ({ ...f, volgend_jaar_aangevraagd: e.target.value }))}
+            min={0}
+            step="0.01"
+          />
         </div>
       </div>
 
       {/* Dates */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">Startdatum</label>
-          <input type="date" value={form.startdatum} onChange={e => setForm(f => ({ ...f, startdatum: e.target.value }))} className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">Einddatum</label>
-          <input type="date" value={form.einddatum} onChange={e => setForm(f => ({ ...f, einddatum: e.target.value }))} className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
-        </div>
+        <Input
+          label="Startdatum"
+          type="date"
+          value={form.startdatum}
+          onChange={e => setForm(f => ({ ...f, startdatum: e.target.value }))}
+        />
+        <Input
+          label="Einddatum"
+          type="date"
+          value={form.einddatum}
+          onChange={e => setForm(f => ({ ...f, einddatum: e.target.value }))}
+        />
       </div>
 
       {/* Subsidie-specific */}
@@ -337,14 +372,18 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
         <div className="border-t border-border pt-4">
           <h3 className="text-sm font-semibold text-text mb-3">Subsidie-specifiek</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">Subsidieregeling</label>
-              <input type="text" value={form.subsidieregeling} onChange={e => setForm(f => ({ ...f, subsidieregeling: e.target.value }))} className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">Beschikking nummer</label>
-              <input type="text" value={form.beschikking_nummer} onChange={e => setForm(f => ({ ...f, beschikking_nummer: e.target.value }))} className="w-full px-3 py-2 text-sm rounded-lg border border-border" />
-            </div>
+            <Input
+              label="Subsidieregeling"
+              type="text"
+              value={form.subsidieregeling}
+              onChange={e => setForm(f => ({ ...f, subsidieregeling: e.target.value }))}
+            />
+            <Input
+              label="Beschikking nummer"
+              type="text"
+              value={form.beschikking_nummer}
+              onChange={e => setForm(f => ({ ...f, beschikking_nummer: e.target.value }))}
+            />
           </div>
         </div>
       )}
@@ -354,29 +393,27 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
         <div className="border-t border-border pt-4">
           <h3 className="text-sm font-semibold text-text mb-3">Gekoppelde nodes</h3>
           {koppelingen.length > 0 && (
-            <div className="space-y-1 mb-3">
+            <nldd-list variant="box-tinted" dividers="never" className="mb-3">
               {koppelingen.map(k => (
-                <div key={k.id} className="flex items-center gap-2 p-1.5 rounded-lg bg-gray-50">
+                <nldd-list-item key={k.id}>
                   {k.node_type && (
-                    <Badge variant={NODE_TYPE_COLORS[k.node_type as NodeType] ?? 'gray'} dot>
-                      {k.node_type}
-                    </Badge>
+                    <nldd-text-cell width="fit-content">
+                      <Badge variant={NODE_TYPE_COLORS[k.node_type as NodeType] ?? 'gray'} dot>
+                        {k.node_type}
+                      </Badge>
+                    </nldd-text-cell>
                   )}
-                  <span className="text-sm text-text truncate">{k.node_title || k.node_id}</span>
-                  {k.relatie_type && (
-                    <span className="text-xs text-text-secondary">{k.relatie_type}</span>
-                  )}
-                  <button
-                    type="button"
+                  <nldd-text-cell text={k.node_title || k.node_id} overline={k.relatie_type ?? undefined} />
+                  <NlddIconButton
+                    icon="trash"
+                    variant="neutral-transparent"
+                    size="sm"
+                    accessibleLabel="Koppeling verwijderen"
                     onClick={() => handleRemoveKoppeling(k.id)}
-                    className="ml-auto shrink-0 p-1 rounded hover:bg-gray-200 transition-colors"
-                    title="Koppeling verwijderen"
-                  >
-                    <X className="h-3.5 w-3.5 text-text-secondary" />
-                  </button>
-                </div>
+                  />
+                </nldd-list-item>
               ))}
-            </div>
+            </nldd-list>
           )}
           <div className="flex items-end gap-2">
             <div className="flex-1">
@@ -389,49 +426,40 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
               />
             </div>
             <div className="w-40">
-              <label className="block text-sm font-medium text-text mb-1">Relatie</label>
-              <select
+              <Select
+                label="Relatie"
                 value={newKoppelingRelatie}
                 onChange={e => setNewKoppelingRelatie(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border"
-              >
-                <option value="gerelateerd">Gerelateerd</option>
-                <option value="levert_aan">Levert aan</option>
-                <option value="onderdeel_van">Onderdeel van</option>
-              </select>
+                options={[
+                  { value: 'gerelateerd', label: 'Gerelateerd' },
+                  { value: 'levert_aan', label: 'Levert aan' },
+                  { value: 'onderdeel_van', label: 'Onderdeel van' },
+                ]}
+              />
             </div>
-            <button
+            <Button
               type="button"
-              onClick={handleAddKoppeling}
+              icon="plus"
               disabled={!newKoppelingNodeId || addKoppeling.isPending}
-              className="px-3 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors flex items-center gap-1"
+              onClick={handleAddKoppeling}
             >
-              <Plus className="h-4 w-4" />
               Toevoegen
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {/* Error feedback */}
-      {error && (
-        <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <nldd-banner variant="critical" size="sm" text={error} />}
 
       {/* Submit */}
       <div className="flex justify-end gap-3 pt-4 border-t border-border">
-        <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-gray-50 transition-colors">
+        <Button type="button" variant="secondary" onClick={onClose}>
           Annuleren
-        </button>
-        <button
-          type="submit"
-          disabled={createMutation.isPending || updateMutation.isPending}
-          className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
-        >
+        </Button>
+        <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
           {isEdit ? 'Opslaan' : 'Aanmaken'}
-        </button>
+        </Button>
       </div>
     </form>
   );
