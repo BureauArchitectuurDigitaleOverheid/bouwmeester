@@ -29,3 +29,31 @@ export function renderWithProviders(
 }
 
 export { render };
+
+/**
+ * Find an nldd element whose text lives in an attribute rather than in a text
+ * node.
+ *
+ * Several design system components take their label as `text` /
+ * `supporting-text` and render it inside their shadow root, which jsdom does not
+ * build. `getByText` therefore finds nothing even though the label is right
+ * there on the element. Use this instead:
+ *
+ *   expect(getByNlddText('Geen resultaten')).toBeInTheDocument();
+ */
+export function getByNlddText(text: string, container: HTMLElement = document.body) {
+  const match = Array.from(container.querySelectorAll('*')).find(
+    (el) =>
+      el.tagName.toLowerCase().startsWith('nldd-') &&
+      (el.getAttribute('text') === text || el.getAttribute('supporting-text') === text),
+  );
+  if (!match) {
+    throw new Error(
+      `No nldd-* element with text or supporting-text "${text}". ` +
+        `Present: ${Array.from(container.querySelectorAll('[text]'))
+          .map((el) => `${el.tagName.toLowerCase()}[text="${el.getAttribute('text')}"]`)
+          .join(', ') || '(none)'}`,
+    );
+  }
+  return match as HTMLElement;
+}

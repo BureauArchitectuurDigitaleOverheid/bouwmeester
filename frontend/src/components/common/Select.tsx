@@ -1,6 +1,4 @@
 import { forwardRef, type SelectHTMLAttributes } from 'react';
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 
 interface SelectOption {
   value: string;
@@ -14,36 +12,26 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   placeholder?: string;
 }
 
-export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, options, placeholder, className, id, ...props }, ref) => {
-    const selectId = id || label?.toLowerCase().replace(/\s+/g, '-');
+/** Id linking the field's `unmet` to the validation item that explains it. */
+const ERROR_ID = 'select-error';
 
-    return (
-      <div className="space-y-1.5">
-        {label && (
-          <label
-            htmlFor={selectId}
-            className="block text-sm font-medium text-text"
-          >
-            {label}
-          </label>
-        )}
-        <select
-          ref={ref}
-          id={selectId}
-          className={twMerge(
-            clsx(
-              'block w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-text',
-              'transition-colors duration-150',
-              'focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500',
-              error
-                ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500'
-                : 'border-border hover:border-border-hover',
-              className,
-            ),
-          )}
-          {...props}
-        >
+/**
+ * `nldd-dropdown` behind the previous API.
+ *
+ * The dropdown is a visual shell around a real `<select>`, which stays slotted
+ * as a child. That is deliberate on the design system's part: the browser keeps
+ * ownership of the keyboard, the form value and the native picker on mobile, so
+ * the ref and every `<select>` prop keep working as before.
+ */
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(
+  ({ label, error, options, placeholder, className, id, required, disabled, ...props }, ref) => {
+    const dropdown = (
+      <nldd-dropdown
+        className={className}
+        {...(disabled ? { disabled: true } : {})}
+        {...(error ? { invalid: true, unmet: ERROR_ID } : {})}
+      >
+        <select ref={ref} id={id} required={required} disabled={disabled} {...props}>
           {placeholder && (
             <option value="" disabled>
               {placeholder}
@@ -55,8 +43,20 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             </option>
           ))}
         </select>
-        {error && <p className="text-xs text-red-600">{error}</p>}
-      </div>
+      </nldd-dropdown>
+    );
+
+    if (!label) return dropdown;
+
+    return (
+      <nldd-form-field label={label} {...(required ? {} : { optional: true })}>
+        {dropdown}
+        {error && (
+          <nldd-validation-list>
+            <nldd-validation-item id={ERROR_ID}>{error}</nldd-validation-item>
+          </nldd-validation-list>
+        )}
+      </nldd-form-field>
     );
   },
 );

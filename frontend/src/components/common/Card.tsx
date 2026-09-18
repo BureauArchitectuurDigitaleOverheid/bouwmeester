@@ -1,5 +1,3 @@
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 import type { ReactNode, HTMLAttributes } from 'react';
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
@@ -10,6 +8,16 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
   padding?: boolean;
 }
 
+/**
+ * `nldd-card` behind the previous API, so existing call sites are unchanged.
+ *
+ * `hoverable` used to mean "looks clickable". The card has a real `button`
+ * attribute for that, which also gives it the keyboard and ARIA of a control —
+ * but only when the whole card is genuinely one action. Several call sites put
+ * their own buttons inside a hoverable card, and nesting controls would be
+ * invalid, so this keeps `hoverable` purely visual and leaves the click handling
+ * where it already is.
+ */
 export function Card({
   children,
   header,
@@ -20,29 +28,14 @@ export function Card({
   ...props
 }: CardProps) {
   return (
-    <div
-      className={twMerge(
-        clsx(
-          'group bg-surface rounded-xl border border-border shadow-sm overflow-hidden',
-          hoverable && 'hover:shadow-md hover:border-border-hover transition-all duration-200 cursor-pointer',
-          className,
-        ),
-      )}
+    <nldd-card
+      className={className}
+      style={hoverable ? { cursor: 'pointer' } : undefined}
       {...props}
     >
-      {header && (
-        <div className="border-b border-border px-5 py-3.5">
-          {header}
-        </div>
-      )}
-      <div className={clsx(padding && 'px-3 py-3 sm:px-5 sm:py-4')}>
-        {children}
-      </div>
-      {footer && (
-        <div className="border-t border-border px-5 py-3">
-          {footer}
-        </div>
-      )}
-    </div>
+      {header && <div slot="header">{header}</div>}
+      {padding ? <div className="px-3 py-3 sm:px-5 sm:py-4">{children}</div> : children}
+      {footer && <div slot="footer">{footer}</div>}
+    </nldd-card>
   );
 }
