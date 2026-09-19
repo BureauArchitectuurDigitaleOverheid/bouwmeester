@@ -187,8 +187,13 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
           </Badge>
           {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
         </nldd-container>
+        {/* h2, not h1: `nldd-top-title-bar` in the app header renders the
+            page's h1 and nothing here anchors it away (`collapse-anchor` is
+            unused across the app). Measured on this route: two visible h1s,
+            "Bouwmeester" from the bar and this one, plus a level skip
+            straight to the h3 section headings below. */}
         <nldd-title size={1}>
-          <h1>{node.title}</h1>
+          <h2>{node.title}</h2>
           <span slot="end">
             <nldd-container layout="row" gap="8" vertical-alignment="center">
               <Button variant="secondary" size="sm" icon="pencil" onClick={() => setShowEditForm(true)}>

@@ -282,7 +282,9 @@ export function SamenwerkingsverbandDetailPage() {
             <nldd-container gap="12">
               <nldd-container layout="row" width="full" gap="12" horizontal-alignment="right">
                 <nldd-container gap="4" width="full">
-                  <nldd-title size={3}><h1>{swv.naam}</h1></nldd-title>
+                  {/* h2: the app header's title bar already renders this
+                      route's h1 ("Samenwerkingsverbanden"). */}
+                  <nldd-title size={3}><h2>{swv.naam}</h2></nldd-title>
                   <nldd-container layout="row" gap="8" vertical-alignment="center">
                     <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
                       {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}

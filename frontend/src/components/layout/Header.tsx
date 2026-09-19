@@ -28,6 +28,10 @@ const pageTitles: Record<string, string> = {
   '/leads': 'Leads',
   '/samenwerkingsverbanden': 'Samenwerkingsverbanden',
   '/share-target': 'Nieuwe lead',
+  // A node detail page lives under Corpus. Without an entry the bar fell back
+  // to "Bouwmeester", which named the app rather than the page and left the
+  // route's only real title to an h2 in the body.
+  '/nodes': 'Corpus',
 };
 
 /**
