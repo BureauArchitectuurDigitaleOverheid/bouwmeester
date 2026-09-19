@@ -227,7 +227,13 @@ export function LeadsPage() {
     <nldd-container gap="16">
       {/* Page header */}
       <nldd-toolbar label="Leadacties">
-        <nldd-toolbar-item slot="start" priority={1}>
+        {/* `min-width` is what makes a toolbar item fluid, per its own docs:
+            "Setting it (or width or max-width) makes the item fluid so it grows
+            to fill the available space." Without it the item measures its
+            content, a wrap container inside measures its parent, and the two
+            collapse to zero width — the pills then stacked one per line and the
+            row grew from 64 to 198 pixels tall. */}
+        <nldd-toolbar-item slot="start" priority={1} min-width="320px">
           {/* Initiative pills: per-initiatief color is an arbitrary hex on
               the record, not one of nldd-tag's closed color names, so this
               stays a styled button rather than a guessed tag color (same

@@ -135,11 +135,11 @@ export function SamenwerkingsverbandenPage() {
   return (
     <nldd-container gap="24" max-width="1024px">
       <nldd-toolbar label="Samenwerkingsverbandacties">
-        <nldd-toolbar-item slot="start" priority={1}>
-          {/* No width="fit-content" on a wrap row: wrap needs a width to decide
-              where to break, fit-content waits for the children, and the whole
-              subtree collapses to zero — including children with an explicit
-              width. It renders nothing while taking up height. */}
+        {/* `min-width` makes the item fluid, per its own docs, and that is what
+            gives the wrap row below a width to break against. Without it the
+            item measures its content, the row measures the item, and both end
+            at zero: the filters rendered nothing while taking up 223 pixels. */}
+        <nldd-toolbar-item slot="start" priority={1} min-width="464px">
           <nldd-container layout="wrap" gap="12" vertical-alignment="bottom">
             <nldd-container width="256px">
               <Input

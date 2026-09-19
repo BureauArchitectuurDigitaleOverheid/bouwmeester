@@ -45,6 +45,19 @@ for (const mod of manifest.modules ?? []) {
  * is invisible there. The registry module is the runtime source of truth and is
  * itself generated, so it cannot drift from what actually renders.
  */
+/**
+ * Elements that take their width from their parent rather than their content.
+ * `nldd-container layout="wrap"` has to know how wide it may get before it can
+ * decide where to break, and a segmented control is a grid that fills its box.
+ */
+const MEASURES_PARENT = new Set(['nldd-container', 'nldd-segmented-control']);
+
+/**
+ * Elements that size themselves to their content, so a child from the set above
+ * finds nothing to measure against.
+ */
+const SIZES_TO_CONTENT = new Set(['nldd-toolbar-item']);
+
 const iconNames = new Set();
 {
   const iconDir = path.join(pkgRoot, 'dist/components/content/icon');
@@ -174,7 +187,12 @@ for (const file of files) {
   // expression. So the stack is abandoned as soon as a tag looks like that, and
   // the remaining slots in that file are skipped rather than blamed on the
   // wrong parent. A missed check beats a false accusation.
-  const tagRe = /<(\/?)(nldd-[a-z-]+)((?:[^>"'{]|"[^"]*"|'[^']*'|\{[^{}]*\})*)>/g;
+  // `\{(?:[^{}]|\{[^{}]*\})*\}` allows ONE level of nesting inside a JSX
+  // expression, which covers `style={{ ... }}` and a template literal holding
+  // `${x}`. Without it a single `<nldd-link href={`/c/${slug}`}>` made the
+  // whole file unscannable, and the file skipped every structural check — the
+  // one that had the bug, in the case that prompted this.
+  const tagRe = /<(\/?)(nldd-[a-z-]+)((?:[^>"'{]|"[^"]*"|'[^']*'|\{(?:[^{}]|\{[^{}]*\})*\})*)>/g;
 
   // An open tag the regex cannot consume (a nested `style={{ ... }}` object,
   // say) is skipped entirely, which silently leaves the wrong element on the
@@ -182,6 +200,9 @@ for (const file of files) {
   // counted first; if the scanner sees fewer, the parent tracking is not
   // trustworthy here and the slot check is skipped for this file. A missed
   // check beats a false accusation.
+  /** The open tag's attributes, per stack depth, for the collapse check below. */
+  const attrsByDepth = [];
+
   const openTagCount = (source.match(/<nldd-[a-z-]+/g) ?? []).length;
   const scannedCount = [...source.matchAll(tagRe)].filter((m) => !m[1]).length;
   const stackIsReliable = scannedCount === openTagCount;
@@ -208,7 +229,38 @@ for (const file of files) {
       }
     }
 
-    if (!selfClosing) stack.push(tag);
+    // A width-less parent holding a child that measures ITS parent. The two
+    // wait on each other and both end at zero: the element renders nothing
+    // while keeping its height, so a filter row or a set of pills disappears
+    // and leaves a gap. This cost six visible bugs in one afternoon — stacked
+    // pills on Leads, invisible filters on Samenwerkingsverbanden, a view
+    // toggle painting on top of a button on Taken.
+    //
+    // A container or toolbar-item needs a measure of its own: `min-width`, a
+    // fixed `width`, or `max-width`. `width="fit-content"` is NOT one, since
+    // that is the "measure my content" mode that starts the deadlock.
+    if (stackIsReliable && MEASURES_PARENT.has(tag)) {
+      const parent = stack[stack.length - 1];
+      if (parent && SIZES_TO_CONTENT.has(parent)) {
+        const parentAttrs = attrsByDepth[stack.length - 1] ?? '';
+        const hasOwnMeasure =
+          /\bmin-width="/.test(parentAttrs) ||
+          /\bmax-width="/.test(parentAttrs) ||
+          /\bwidth="(?!fit-content")/.test(parentAttrs);
+        if (!hasOwnMeasure) {
+          const line = source.slice(0, m.index).split('\n').length;
+          problems.push(
+            `${rel}:${line} <${parent}> holds a <${tag}> but has no width of its own; ` +
+              'both collapse to zero. Give the parent a min-width.',
+          );
+        }
+      }
+    }
+
+    if (!selfClosing) {
+      attrsByDepth[stack.length] = attrText;
+      stack.push(tag);
+    }
   }
 }
 
