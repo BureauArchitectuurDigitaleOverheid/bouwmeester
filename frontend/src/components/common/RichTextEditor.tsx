@@ -36,9 +36,15 @@ interface Candidate {
   icon?: string;
 }
 
-/** `@`: people and organisational units. */
+/**
+ * `@`: people and organisational units.
+ *
+ * No guard on an empty query: the element opens its list the moment the
+ * trigger is typed, and returning nothing there means pressing `@` appears to
+ * do nothing at all. The endpoints answer a blank query with their first page,
+ * which is the right thing to show.
+ */
 async function searchPeopleAndOrgs(query: string): Promise<Candidate[]> {
-  if (!query.trim()) return [];
   try {
     const [people, orgs] = await Promise.all([
       apiGet<Person[]>('/api/people/search', { q: query, limit: 8 }),
@@ -67,7 +73,6 @@ async function searchPeopleAndOrgs(query: string): Promise<Candidate[]> {
 
 /** `#`: corpus nodes and tasks. */
 async function searchMentionables(query: string): Promise<Candidate[]> {
-  if (!query.trim()) return [];
   try {
     const results = await apiGet<MentionSearchResult[]>('/api/mentions/search', {
       q: query,

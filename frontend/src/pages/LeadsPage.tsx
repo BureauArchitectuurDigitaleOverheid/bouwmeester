@@ -224,21 +224,31 @@ export function LeadsPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {/* Initiative pills */}
+      <nldd-container layout="row" gap="12" vertical-alignment="center" horizontal-alignment="left">
+        <nldd-container layout="wrap" gap="6" width="fit-content">
+          {/* Initiative pills: per-initiatief color is an arbitrary hex on
+              the record, not one of nldd-tag's closed color names, so this
+              stays a styled button rather than a guessed tag color (same
+              call as the initiatief chips in LeadListView/LeadDetailPanel). */}
           {initiatieven?.map((ini) => (
             <button
               key={ini.id}
               onClick={() => setSelectedInitiatiefId(ini.id)}
-              className={`rounded-full px-3 py-1 text-xs font-medium text-white transition-all ${
-                selectedInitiatiefId === ini.id
-                  ? 'ring-2 ring-offset-2 ring-gray-400 shadow-sm'
-                  : 'opacity-40 hover:opacity-70'
-              }`}
-              style={{ backgroundColor: ini.kleur || '#6B7280' }}
+              style={{
+                borderRadius: '9999px',
+                padding: '4px 12px',
+                fontSize: '12px',
+                fontWeight: 500,
+                color: 'white',
+                backgroundColor: ini.kleur || '#6B7280',
+                opacity: selectedInitiatiefId === ini.id ? 1 : 0.4,
+                boxShadow:
+                  selectedInitiatiefId === ini.id
+                    ? '0 0 0 2px white, 0 0 0 4px var(--primitives-color-neutral-400), 0 1px 2px rgba(0,0,0,0.1)'
+                    : 'none',
+              }}
             >
               {ini.naam}
             </button>
@@ -267,25 +277,30 @@ export function LeadsPage() {
               <PublicPageLink slug={sel.slug} />
             );
           })()}
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        </nldd-container>
+        {/* No width="fit-content": a row container that sizes to its content
+            gives a grid child nothing to measure, and nldd-segmented-control is
+            one. Both then collapse to zero width while the selected item keeps
+            painting its filled box, which lands on top of the button beside it
+            as a second blue square. The wrap above already sizes this row. */}
+        <nldd-container layout="row" gap="8" vertical-alignment="center" horizontal-alignment="right">
           <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
           <Button icon="plus" onClick={() => setShowIntake(true)}>
-            <span className="hidden sm:inline">Nieuwe lead</span>
+            Nieuwe lead
           </Button>
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-container>
 
       {/* Shared filter bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+      <nldd-container layout="wrap" gap="12" vertical-alignment="center">
         {/* Search */}
-        <div className="w-full sm:w-56">
+        <nldd-container width="fit-content" min-width="224px">
           <LeadsSearchField value={searchInput} onChange={setSearchInput} />
-        </div>
+        </nldd-container>
 
         {/* Assignee */}
         {supportsAssignee && (
-          <div className="w-full sm:w-48">
+          <nldd-container width="fit-content" min-width="192px">
             <CreatableSelect
               value={filterAssignee}
               onChange={setFilterAssignee}
@@ -301,19 +316,19 @@ export function LeadsPage() {
               placeholder="Alle personen"
               onClear={filterAssignee ? () => setFilterAssignee('') : undefined}
             />
-          </div>
+          </nldd-container>
         )}
 
         {/* Tag */}
         {supportsTag && (
-          <div className="flex items-end gap-1 w-full sm:w-44">
-            <div className="flex-1">
+          <nldd-container layout="row" gap="4" width="fit-content" min-width="176px">
+            <nldd-container width="full">
               <Input
                 value={filterTag}
                 onChange={(e) => setFilterTag(e.target.value)}
                 placeholder="Filter op tag..."
               />
-            </div>
+            </nldd-container>
             {filterTag && (
               <NlddIconButton
                 icon="close"
@@ -323,12 +338,12 @@ export function LeadsPage() {
                 onClick={() => setFilterTag('')}
               />
             )}
-          </div>
+          </nldd-container>
         )}
 
         {/* Next action */}
         {supportsNextAction && (
-          <div className="w-full sm:w-40">
+          <nldd-container width="fit-content" min-width="160px">
             <CreatableSelect
               value={nextActionFilter}
               onChange={setNextActionFilter}
@@ -337,12 +352,12 @@ export function LeadsPage() {
               searchable={false}
               onClear={nextActionFilter ? () => setNextActionFilter('') : undefined}
             />
-          </div>
+          </nldd-container>
         )}
 
         {/* Stage */}
         {supportsStage && (
-          <div className="w-full sm:w-40">
+          <nldd-container width="fit-content" min-width="160px">
             <CreatableSelect
               value={filterStage}
               onChange={setFilterStage}
@@ -351,7 +366,7 @@ export function LeadsPage() {
               searchable={false}
               onClear={filterStage ? () => setFilterStage('') : undefined}
             />
-          </div>
+          </nldd-container>
         )}
 
         {/* Clear filters */}
@@ -360,7 +375,7 @@ export function LeadsPage() {
             Filters wissen
           </Button>
         )}
-      </div>
+      </nldd-container>
 
       {/* View content */}
       {viewMode === 'inbox' ? (
@@ -430,7 +445,7 @@ export function LeadsPage() {
             </>
           }
         >
-          <div className="space-y-4">
+          <nldd-container gap="16">
             <nldd-form-field label="Naam">
               <InitiatiefNaamField
                 value={createForm.naam}
@@ -444,28 +459,29 @@ export function LeadsPage() {
               rows={3}
               placeholder="Korte beschrijving..."
             />
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-text">Kleur</label>
+            <nldd-form-field label="Kleur">
               {/* Free-form hex swatch picker: no nldd primitive renders a circle
                   that IS an arbitrary color (nldd-radio-button is a fixed dot
                   glyph), same as InitiatiefDetailModal's EditForm. */}
-              <div className="flex gap-2 flex-wrap">
+              <nldd-container layout="wrap" gap="8">
                 {INITIATIEF_COLORS.map((color) => (
                   <button
                     key={color}
                     type="button"
                     onClick={() => setCreateForm({ ...createForm, kleur: color })}
-                    className={`h-8 w-8 rounded-full border-2 transition-all ${
-                      createForm.kleur === color
-                        ? 'border-primary-500 scale-110'
-                        : 'border-transparent hover:scale-105'
-                    }`}
-                    style={{ backgroundColor: color }}
+                    style={{
+                      height: '32px',
+                      width: '32px',
+                      borderRadius: '9999px',
+                      border: `2px solid ${createForm.kleur === color ? 'var(--primitives-color-accent-75)' : 'transparent'}`,
+                      transform: createForm.kleur === color ? 'scale(1.1)' : 'scale(1)',
+                      backgroundColor: color,
+                    }}
                   />
                 ))}
-              </div>
-            </div>
-          </div>
+              </nldd-container>
+            </nldd-form-field>
+          </nldd-container>
         </Modal>
       )}
 
@@ -477,6 +493,6 @@ export function LeadsPage() {
           onClose={() => setEditInitiatiefId(null)}
         />
       )}
-    </div>
+    </nldd-container>
   );
 }

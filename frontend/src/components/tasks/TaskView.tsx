@@ -137,7 +137,12 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
             previous layout; the container's own wrap now reflows both groups instead
             of the bespoke xl breakpoint reordering, which nldd-container has no
             equivalent for). */}
-        <nldd-container layout="row" gap="8" width="fit-content">
+        {/* No width="fit-content" here. The wrap above already sizes its
+            children, and fit-content on a row holding a grid child (which is
+            what nldd-segmented-control is) collapses both to zero width: the
+            control kept painting its selected item, which then landed on top
+            of the button beside it as a second blue square. */}
+        <nldd-container layout="row" gap="8">
           <ViewToggle value={viewMode} onChange={handleViewChange} options={VIEW_OPTIONS} />
 
           <Button
