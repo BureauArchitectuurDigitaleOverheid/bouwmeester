@@ -200,36 +200,34 @@ export function ParlementairPage() {
   const eitherPending = triggerImport.isPending || reprocess.isPending;
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <p className="text-sm text-text-secondary">
-          Beheer geïmporteerde kamerstukken uit de Tweede en Eerste Kamer.
-        </p>
-        <div className="flex items-center gap-2">
-          <div>
-            <Button
-              id={reprocessMenuTriggerId}
-              variant="secondary"
-              icon="undo"
-              loading={reprocess.isPending}
-              disabled={eitherPending}
-              title="Herverwerk kamerstukken die nog geen koppelingen hebben via LLM-matching"
-            >
-              <span className="hidden sm:inline">
-                {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk kamerstukken'}
-              </span>
-              <span className="sm:hidden">
-                {reprocess.isPending ? 'Laden...' : 'Herverwerk'}
-              </span>
-            </Button>
-            <nldd-menu anchor={reprocessMenuTriggerId} accessible-label="Herverwerkopties">
-              <MenuItem text="Alle kamerstukken" onClick={handleReprocessAll} />
-              {REPROCESS_TYPES.map((t) => (
-                <MenuItem key={t} text={REPROCESS_TYPE_PLURALS[t]} onClick={() => handleReprocessType(t)} />
-              ))}
-            </nldd-menu>
-          </div>
+      <nldd-toolbar label="Kamerstukacties">
+        <nldd-toolbar-item slot="start" priority={1}>
+          <nldd-text size="sm" color="secondary">
+            Beheer geïmporteerde kamerstukken uit de Tweede en Eerste Kamer.
+          </nldd-text>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end">
+          <Button
+            id={reprocessMenuTriggerId}
+            variant="secondary"
+            icon="undo"
+            loading={reprocess.isPending}
+            disabled={eitherPending}
+            title="Herverwerk kamerstukken die nog geen koppelingen hebben via LLM-matching"
+          >
+            {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk kamerstukken'}
+          </Button>
+          <nldd-menu anchor={reprocessMenuTriggerId}>
+            <MenuItem text="Alle kamerstukken" onClick={handleReprocessAll} />
+            {REPROCESS_TYPES.map((t) => (
+              <MenuItem key={t} text={REPROCESS_TYPE_PLURALS[t]} onClick={() => handleReprocessType(t)} />
+            ))}
+          </nldd-menu>
+          <nldd-menu-item slot="overflow" text="Herverwerk kamerstukken" icon="undo" />
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end" priority={2}>
           <Button
             icon="refresh"
             loading={triggerImport.isPending}
@@ -237,30 +235,26 @@ export function ParlementairPage() {
             disabled={eitherPending}
             title="Haal nieuwe kamerstukken op uit de Tweede en Eerste Kamer"
           >
-            <span className="hidden sm:inline">
-              {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
-            </span>
-            <span className="sm:hidden">
-              {triggerImport.isPending ? 'Laden...' : 'Importeren'}
-            </span>
+            {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
           </Button>
-        </div>
-      </div>
+          <nldd-menu-item slot="overflow" text="Importeer nieuwe kamerstukken" icon="refresh" />
+        </nldd-toolbar-item>
+      </nldd-toolbar>
 
       {/* Filter bar (matching Corpus page layout) */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-        <div className="w-full sm:w-56">
+      <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+        <nldd-container width="fit-content" min-width="224px">
           <ParlementairSearchField value={searchInput} onChange={setSearchInput} />
-        </div>
-        <div className="w-full sm:w-52">
+        </nldd-container>
+        <nldd-container width="fit-content" min-width="208px">
           <MultiSelect
             value={enabledTypes}
             onChange={handleTypesChange}
             options={parlementairTypeOptions}
             allLabel="Alle typen"
           />
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-container>
 
       {/* Status tabs */}
       <StatusTabBar value={statusFilter} onChange={setStatusFilter} />
@@ -278,7 +272,7 @@ export function ParlementairPage() {
           }
         />
       ) : (
-        <div className="space-y-3">
+        <nldd-container gap="12">
           {filteredImports.map((item) => (
             <ParlementairReviewCard
               key={item.id}
@@ -286,7 +280,7 @@ export function ParlementairPage() {
               defaultExpanded={item.id === highlightItemId}
             />
           ))}
-        </div>
+        </nldd-container>
       )}
 
       <ConfirmDialog
@@ -303,6 +297,6 @@ export function ParlementairPage() {
             : `Alle ongekoppelde ${(REPROCESS_TYPE_PLURALS[reprocessConfirm ?? ''] ?? reprocessConfirm ?? '').toLowerCase()} herverwerken via LLM-matching? Dit kan even duren.`}
         </p>
       </ConfirmDialog>
-    </div>
+    </nldd-container>
   );
 }

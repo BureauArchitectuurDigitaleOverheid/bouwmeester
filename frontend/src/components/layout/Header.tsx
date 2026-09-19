@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { NlddButton } from '@/components/nldd/NlddLink';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
@@ -29,6 +29,37 @@ const pageTitles: Record<string, string> = {
   '/samenwerkingsverbanden': 'Samenwerkingsverbanden',
   '/share-target': 'Nieuwe lead',
 };
+
+/**
+ * Breakpoint helpers.
+ *
+ * nldd-container has no responsive visibility: `hide-above` / `hide-below` are
+ * attributes of the CELL components, and on a container they are silently
+ * ignored, which is how three of these ended up doing nothing. A matchMedia
+ * hook is honest about being app-level logic rather than pretending the
+ * container supports it.
+ */
+function useWiderThan(px: number): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia(`(min-width: ${px}px)`).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${px}px)`);
+    const onChange = () => setMatches(mq.matches);
+    mq.addEventListener('change', onChange);
+    setMatches(mq.matches);
+    return () => mq.removeEventListener('change', onChange);
+  }, [px]);
+  return matches;
+}
+
+function ShowAbove({ width, slot, children }: { width: number; slot?: string; children: ReactNode }) {
+  if (!useWiderThan(width)) return null;
+  return slot ? <span slot={slot}>{children}</span> : <>{children}</>;
+}
+
+function ShowBelow({ width, slot, children }: { width: number; slot?: string; children: ReactNode }) {
+  if (useWiderThan(width)) return null;
+  return slot ? <span slot={slot}>{children}</span> : <>{children}</>;
+}
 
 /** The vocabulary choice, as one control rather than a row of buttons. */
 function VocabularySwitch({
@@ -141,24 +172,25 @@ export function Header() {
       text={title}
       {...(breadcrumbs ? { 'back-text': 'Corpus' } : {})}
     >
-      <nldd-container slot="toolbar" layout="row" gap="8" vertical-alignment="center" width="fit-content">
+      <>
         {/* Only shown while the sidebar is a sheet; above lg the pane is visible. */}
-        <nldd-container width="fit-content" hide-above="lg">
+        <ShowBelow width={1024} slot="toolbar">
           <NlddIconButton
             icon="menu"
             accessibleLabel="Navigatie openen"
             onClick={toggleMobileSidebar}
           />
-        </nldd-container>
+        </ShowBelow>
         {/* Vocabulary toggle. A segmented control rather than a row of buttons:
             it is one choice out of a set, so the items are radios and the
             arrow keys move between them. */}
-        <nldd-container width="fit-content" hide-below="sm">
+        <ShowAbove width={640} slot="toolbar">
           <VocabularySwitch value={vocabularyId} onChange={setVocabularyId} />
-        </nldd-container>
+        </ShowAbove>
 
         {/* Admin view-as-non-admin toggle */}
         {realIsAdmin && (
+          <span slot="toolbar">
           <NlddIconButton
             icon={viewAsNonAdmin ? 'eye-slash' : 'eye'}
             variant={viewAsNonAdmin ? 'neutral-tinted' : 'neutral-transparent'}
@@ -168,54 +200,61 @@ export function Header() {
             }
             onClick={toggleViewAsNonAdmin}
           />
+          </span>
         )}
 
         {/* Notification bell */}
-        <NotificationBell />
+        <span slot="toolbar"><NotificationBell /></span>
 
         {/* Search shortcut */}
-        <NlddButton
-          variant="neutral-base"
-          size="sm"
-          startIcon="magnifier"
-          text="Zoeken"
-          accessibleLabel="Zoeken (sneltoets /)"
-          onClick={() => useUIStore.getState().setSearchModalOpen(true)}
-        />
+        <span slot="toolbar">
+          <NlddButton
+            variant="neutral-base"
+            size="sm"
+            startIcon="magnifier"
+            text="Zoeken"
+            accessibleLabel="Zoeken (sneltoets /)"
+            onClick={() => useUIStore.getState().setSearchModalOpen(true)}
+          />
+        </span>
 
         {/* Dev-mode person picker (only when OIDC is not configured) */}
         {!oidcConfigured ? (
-          <DevPersonPicker
-            people={people}
-            currentPerson={currentPerson}
-            onPick={setDevPersonId}
-          />
+          <span slot="toolbar">
+            <DevPersonPicker
+              people={people}
+              currentPerson={currentPerson}
+              onPick={setDevPersonId}
+            />
+          </span>
         ) : (
-          <nldd-container layout="row" gap="8" vertical-alignment="center" width="fit-content">
+          <nldd-container slot="toolbar" layout="row" gap="8" vertical-alignment="center" width="fit-content">
             <nldd-avatar
               size="24"
               {...(currentPerson ? { name: currentPerson.naam } : { icon: 'person' })}
               decorative
             />
             {currentPerson && (
-              <nldd-container width="fit-content" hide-below="sm">
+              <ShowAbove width={640}>
                 <nldd-text size="sm">{currentPerson.naam}</nldd-text>
-              </nldd-container>
+              </ShowAbove>
             )}
           </nldd-container>
         )}
 
         {/* Logout button */}
         {authenticated && (
-          <NlddButton
-            variant="neutral-base"
-            size="sm"
-            startIcon="logout"
-            text="Uitloggen"
-            onClick={logout}
-          />
+          <span slot="toolbar">
+            <NlddButton
+              variant="neutral-base"
+              size="sm"
+              startIcon="logout"
+              text="Uitloggen"
+              onClick={logout}
+            />
+          </span>
         )}
-      </nldd-container>
+      </>
     </nldd-top-title-bar>
   );
 }

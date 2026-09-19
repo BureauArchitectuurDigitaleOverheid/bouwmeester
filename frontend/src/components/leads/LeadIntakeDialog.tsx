@@ -28,6 +28,7 @@ import { INITIATIEF_COLORS, formatFunctie } from '@/types';
 import { useLeadColumns } from '@/hooks/useLeadColumns';
 import type { LeadParseResult } from '@/types';
 import { buildPersonOptions } from '@/utils/personOptions';
+import { leadColumnTagColor } from './stageColors';
 
 interface LeadIntakeDialogProps {
   open: boolean;
@@ -511,56 +512,64 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
       size="xl"
     >
       {step === 'input' && (
-        <div className="space-y-4">
+        <nldd-container gap="16">
           {(initiatieven?.length ?? 0) !== 1 && (
-            <div>
-              <CreatableSelect
-                label="Voor welk initiatief is deze lead?"
-                value={initiatiefId}
-                onChange={setInitiatiefId}
-                options={initiatieven?.map((i) => ({
-                  value: i.id,
-                  label: i.naam,
-                })) ?? []}
-                placeholder="Selecteer initiatief..."
-                onCreate={async (name) => {
-                  const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
-                  const result = await createInitiatiefMutation.mutateAsync({ naam: name, kleur });
-                  return result.id;
-                }}
-                createLabel="Nieuw initiatief"
-              />
-            </div>
+            <CreatableSelect
+              label="Voor welk initiatief is deze lead?"
+              value={initiatiefId}
+              onChange={setInitiatiefId}
+              options={initiatieven?.map((i) => ({
+                value: i.id,
+                label: i.naam,
+              })) ?? []}
+              placeholder="Selecteer initiatief..."
+              onCreate={async (name) => {
+                const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
+                const result = await createInitiatiefMutation.mutateAsync({ naam: name, kleur });
+                return result.id;
+              }}
+              createLabel="Nieuw initiatief"
+            />
           )}
 
           {emailParsing && (
-            <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2">
-              <LoadingSpinner className="h-4 w-4" />
-              <nldd-text size="sm" color="accent">E-mail wordt gelezen...</nldd-text>
-            </div>
+            <nldd-card background="tinted">
+              <nldd-container layout="row" gap="8" vertical-alignment="center" padding="8" padding-inline="12">
+                <LoadingSpinner className="h-4 w-4" />
+                <nldd-text size="sm" color="accent">E-mail wordt gelezen...</nldd-text>
+              </nldd-container>
+            </nldd-card>
           )}
 
           {parsedEmail && !emailParsing && (
-            <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2">
-              <nldd-icon name="envelope" size="16" color="accent" aria-hidden="true" />
-              <nldd-text size="sm" color="accent" className="truncate">
-                E-mail van {parsedEmail.senderName || parsedEmail.senderEmail}
-                {parsedEmail.subject ? `: ${parsedEmail.subject}` : ''}
-                {parsedEmail.date ? ` (${parsedEmail.date})` : ''}
-              </nldd-text>
-            </div>
+            <nldd-card background="tinted">
+              <nldd-container layout="row" gap="8" vertical-alignment="center" padding="8" padding-inline="12">
+                <nldd-icon name="envelope" size="16" color="accent" aria-hidden="true" />
+                <nldd-text size="sm" color="accent">
+                  E-mail van {parsedEmail.senderName || parsedEmail.senderEmail}
+                  {parsedEmail.subject ? `: ${parsedEmail.subject}` : ''}
+                  {parsedEmail.date ? ` (${parsedEmail.date})` : ''}
+                </nldd-text>
+              </nldd-container>
+            </nldd-card>
           )}
 
+          {/* The dashed drop-zone border and its drag-active highlight are
+              driven by live drag state, not a fixed variant, and there is no
+              nldd-container border/dashed-outline attribute — kept as
+              inline style rather than a static Tailwind class. */}
           <div
             onPaste={handlePaste}
             onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
             onDragLeave={() => setDragActive(false)}
             onDrop={handleDrop}
-            className={`relative rounded-xl border-2 border-dashed transition-colors ${
-              dragActive
-                ? 'border-primary-400 bg-primary-50/50'
-                : 'border-border'
-            }`}
+            style={{
+              position: 'relative',
+              borderRadius: '12px',
+              border: `2px dashed ${dragActive ? 'var(--primitives-color-accent-300)' : 'var(--primitives-color-neutral-300)'}`,
+              backgroundColor: dragActive ? 'var(--primitives-color-accent-25)' : 'transparent',
+              transition: 'colors 150ms',
+            }}
           >
             <nldd-multi-line-text-field
               ref={rawTextFieldRef}
@@ -572,49 +581,62 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
               width="full"
             />
             {dragActive && (
-              <div className="absolute inset-0 flex items-center justify-center bg-primary-50/80 rounded-xl pointer-events-none">
-                <div className="flex items-center gap-2 text-primary-600 font-medium text-sm">
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'var(--primitives-color-accent-25)',
+                  opacity: 0.9,
+                  borderRadius: '12px',
+                  pointerEvents: 'none',
+                }}
+              >
+                <nldd-container layout="row" gap="8" vertical-alignment="center" width="fit-content">
                   <nldd-icon name="upload" size="20" aria-hidden="true" />
-                  Sleep bestanden hierheen
-                </div>
+                  <nldd-text size="sm" weight="medium" color="accent">Sleep bestanden hierheen</nldd-text>
+                </nldd-container>
               </div>
             )}
           </div>
 
           {files.length > 0 && (
-            <div className="space-y-1">
+            <nldd-container gap="2">
               {files.map((file, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-1.5"
-                >
-                  {file.type.startsWith('image/') ? (
-                    <img
-                      src={URL.createObjectURL(file)}
-                      alt={file.name}
-                      className="h-8 w-8 rounded object-cover"
+                <nldd-card key={i} background="tinted">
+                  <nldd-container layout="row" gap="8" vertical-alignment="center" padding="6" padding-inline="12">
+                    {file.type.startsWith('image/') ? (
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={file.name}
+                        style={{ height: '32px', width: '32px', borderRadius: '6px', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <nldd-icon name="file-text" size="16" aria-hidden="true" />
+                    )}
+                    <nldd-text size="sm" color="secondary" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {file.name}
+                    </nldd-text>
+                    <NlddIconButton
+                      icon="close"
+                      accessibleLabel="Bestand verwijderen"
+                      variant="neutral-transparent"
+                      size="sm"
+                      onClick={() => removeFile(i)}
                     />
-                  ) : (
-                    <nldd-icon name="file-text" size="16" aria-hidden="true" />
-                  )}
-                  <nldd-text size="sm" color="secondary" className="flex-1 truncate">{file.name}</nldd-text>
-                  <NlddIconButton
-                    icon="close"
-                    accessibleLabel="Bestand verwijderen"
-                    variant="neutral-transparent"
-                    size="sm"
-                    onClick={() => removeFile(i)}
-                  />
-                </div>
+                  </nldd-container>
+                </nldd-card>
               ))}
-            </div>
+            </nldd-container>
           )}
 
           <input
             ref={fileInputRef}
             type="file"
             multiple
-            className="hidden"
+            hidden
             onChange={(e) => {
               if (e.target.files) {
                 addFiles(Array.from(e.target.files));
@@ -622,7 +644,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
             }}
           />
 
-          <div className="flex items-center justify-between gap-2">
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
             <Button
               variant="ghost"
               size="sm"
@@ -631,7 +653,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
             >
               Bestand toevoegen
             </Button>
-            <div className="flex items-center gap-3">
+            <nldd-container layout="row" gap="12" horizontal-alignment="right">
               <Button
                 variant="ghost"
                 onClick={handleSkipParse}
@@ -646,31 +668,35 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
               >
                 Analyseren met VLAM
               </Button>
-            </div>
-          </div>
-        </div>
+            </nldd-container>
+          </nldd-container>
+        </nldd-container>
       )}
 
       {step === 'parsing' && (
-        <div className="flex flex-col items-center justify-center py-12 gap-3">
+        <nldd-container gap="12" horizontal-alignment="center" padding="48" style={{ textAlign: 'center' }}>
           <LoadingSpinner />
-          <p className="text-sm text-text-secondary">VLAM analyseert je invoer...</p>
-        </div>
+          <nldd-text size="sm" color="secondary">VLAM analyseert je invoer...</nldd-text>
+        </nldd-container>
       )}
 
       {step === 'confirm' && (
-        <div className="space-y-4">
+        <nldd-container gap="16">
           {parseResult && (
-            <nldd-text size="xs" color="secondary" className="block bg-gray-50 rounded-lg px-3 py-2">
-              VLAM heeft de volgende velden voorgesteld. Pas aan waar nodig.
-            </nldd-text>
+            <nldd-card background="tinted">
+              <nldd-container padding="8" padding-inline="12">
+                <nldd-text size="xs" color="secondary">
+                  VLAM heeft de volgende velden voorgesteld. Pas aan waar nodig.
+                </nldd-text>
+              </nldd-container>
+            </nldd-card>
           )}
 
           {/* Two-column layout */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+          <nldd-container layout="grid" column-count={1} md-column-count={2} gap="16">
             {/* LEFT COLUMN: Lead info */}
-            <div className="space-y-4">
-              <nldd-text size="xs" weight="medium" color="secondary" className="uppercase tracking-wide">Lead</nldd-text>
+            <nldd-container gap="16">
+              <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.03em' }}>Lead</nldd-text>
 
               <Input
                 label="Titel"
@@ -683,11 +709,8 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
               />
 
               {duplicates && duplicates.length > 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <nldd-text size="sm" weight="medium" color="warning" className="block mb-1">
-                    Vergelijkbare leads gevonden:
-                  </nldd-text>
-                  <div className="space-y-1">
+                <nldd-banner variant="warning" size="sm" text="Vergelijkbare leads gevonden:">
+                  <nldd-container gap="4">
                     {duplicates.map((d) => (
                       <DuplicateLeadLink
                         key={d.id}
@@ -696,25 +719,25 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                         onOpen={() => { openLeadDetail(d.id); handleClose(); }}
                       />
                     ))}
-                  </div>
-                </div>
+                  </nldd-container>
+                </nldd-banner>
               )}
 
               <nldd-form-field label="Status">
-                <div className="flex flex-wrap gap-1.5">
+                <nldd-container layout="wrap" gap="6">
                   {sortedStageColumns.map((c) => (
                     <StagePill
                       key={c.id}
                       name={c.name}
-                      colorClass={c.color}
+                      color={c.color}
                       active={stage === c.slug}
                       onSelect={() => setStage(c.slug)}
                     />
                   ))}
-                </div>
+                </nldd-container>
               </nldd-form-field>
 
-              <div className="grid grid-cols-2 gap-3">
+              <nldd-container layout="grid" column-count={2} gap="12">
                 <Input
                   label="Datum"
                   type="date"
@@ -729,7 +752,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                   placeholder="Naam van de organisatie"
                   autoComplete="organization"
                 />
-              </div>
+              </nldd-container>
 
               <RichTextFormField
                 label="Beschrijving"
@@ -742,7 +765,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
               <nldd-form-field label="Tags">
                 {/* Selected tags as removable chips */}
                 {selectedTags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
+                  <nldd-container layout="wrap" gap="6" padding-bottom="8">
                     {selectedTags.map((tag) => (
                       <RemovableTagChip
                         key={tag}
@@ -750,11 +773,11 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                         onRemove={() => setSelectedTags((prev) => prev.filter((t) => t !== tag))}
                       />
                     ))}
-                  </div>
+                  </nldd-container>
                 )}
 
                 {/* Search input for adding tags */}
-                <div className="relative" ref={tagContainerRef}>
+                <div style={{ position: 'relative' }} ref={tagContainerRef}>
                   <TagSearchField
                     value={tagSearch}
                     onChange={(v) => {
@@ -773,7 +796,12 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
 
                   {/* Dropdown with matching existing tags */}
                   {tagDropdownOpen && tagSearch && filteredTags.length > 0 && (
-                    <nldd-list variant="box-tinted" dividers="never" className="absolute z-10 mt-1 w-full max-h-40 overflow-y-auto" accessible-label="Tag-suggesties">
+                    <nldd-list
+                      variant="box-tinted"
+                      dividers="never"
+                      accessible-label="Tag-suggesties"
+                      style={{ position: 'absolute', zIndex: 10, marginTop: '4px', width: '100%', maxHeight: '160px', overflowY: 'auto' }}
+                    >
                       {filteredTags.slice(0, 10).map((tag) => (
                         <TagSuggestionItem
                           key={tag.id}
@@ -789,11 +817,11 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                   )}
                 </div>
               </nldd-form-field>
-            </div>
+            </nldd-container>
 
             {/* RIGHT COLUMN: People */}
-            <div className="space-y-4">
-              <nldd-text size="xs" weight="medium" color="secondary" className="uppercase tracking-wide">Personen</nldd-text>
+            <nldd-container gap="16">
+              <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.03em' }}>Personen</nldd-text>
 
               <CreatableSelect
                 label="Binnengebracht door"
@@ -813,18 +841,21 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
               />
 
               {contacts.map((contact, index) => (
-                <div key={index} className="space-y-4">
+                <nldd-container key={index} gap="16">
                   {index > 0 && (
-                    <div className="flex items-center justify-between pt-2 border-t border-border">
-                      <nldd-text size="xs" weight="medium" color="secondary">Extra externe contactpersoon</nldd-text>
-                      <NlddIconButton
-                        icon="close"
-                        accessibleLabel="Verwijderen"
-                        variant="neutral-transparent"
-                        size="sm"
-                        onClick={() => setContacts(prev => prev.filter((_, i) => i !== index))}
-                      />
-                    </div>
+                    <>
+                      <nldd-divider />
+                      <nldd-container layout="row" gap="8" vertical-alignment="center">
+                        <nldd-text size="xs" weight="medium" color="secondary">Extra externe contactpersoon</nldd-text>
+                        <NlddIconButton
+                          icon="close"
+                          accessibleLabel="Verwijderen"
+                          variant="neutral-transparent"
+                          size="sm"
+                          onClick={() => setContacts(prev => prev.filter((_, i) => i !== index))}
+                        />
+                      </nldd-container>
+                    </>
                   )}
 
                   <CreatableSelect
@@ -867,7 +898,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                       onAddExtraExpertise={addExtraExpertise}
                     />
                   )}
-                </div>
+                </nldd-container>
               ))}
 
               {contacts.length < 2 && (
@@ -879,8 +910,8 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                   onClick={() => setContacts(prev => [...prev, emptyContact()])}
                 />
               )}
-            </div>
-          </div>
+            </nldd-container>
+          </nldd-container>
 
           {/* Files + buttons below both columns */}
           {files.length > 0 && (
@@ -889,7 +920,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
             </nldd-text>
           )}
 
-          <div className="flex items-center justify-end gap-2 pt-4">
+          <nldd-container layout="row" gap="8" horizontal-alignment="right" padding-top="16">
             <Button variant="ghost" onClick={() => setStep('input')}>
               Terug
             </Button>
@@ -900,8 +931,8 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
             >
               Lead aanmaken
             </Button>
-          </div>
-        </div>
+          </nldd-container>
+        </nldd-container>
       )}
     </Modal>
   );
@@ -909,29 +940,24 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
 
 interface StagePillProps {
   name: string;
-  colorClass: string;
+  color: string;
   active: boolean;
   onSelect: () => void;
 }
 
 /**
- * A stage's color (`colorClass`) is a raw Tailwind chip class tied to
- * per-initiatief lead-column data (same shape as LEAD_STAGE_COLORS), not one
- * of the five semantic roles — kept as a styled span rather than nldd-tag.
+ * A stage's color comes from the same closed set as ColumnsManager's swatch
+ * picker; this is a click-to-select choice, not a status label, so it stays
+ * a segment (nldd-tag has no click semantics) with an nldd-tag inside for
+ * the color and text, same pattern as ColumnsManager's ToggleChip.
  */
-function StagePill({ name, colorClass, active, onSelect }: StagePillProps) {
+function StagePill({ name, color, active, onSelect }: StagePillProps) {
   const ref = useRef<HTMLElement>(null);
   useNlddEvent(ref, 'click', onSelect);
 
   return (
-    <nldd-list-item-segment
-      ref={ref}
-      button
-      className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-        active ? `${colorClass} ring-2 ring-offset-1 ring-current` : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
-      }`}
-    >
-      {name}
+    <nldd-list-item-segment ref={ref} button>
+      <nldd-tag text={name} color={active ? leadColumnTagColor(color) : 'neutral'} size="sm" />
     </nldd-list-item-segment>
   );
 }
@@ -943,14 +969,11 @@ interface DuplicateLeadLinkProps {
 }
 
 function DuplicateLeadLink({ title, detail, onOpen }: DuplicateLeadLinkProps) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onOpen);
-
   return (
-    <div className="text-sm">
-      <NlddButton variant="neutral-transparent" size="xs" text={title} onClick={onOpen} className="p-0 h-auto" />
-      <nldd-text size="sm" color="secondary" className="ml-1">({detail})</nldd-text>
-    </div>
+    <nldd-container layout="row" gap="4" vertical-alignment="center">
+      <NlddButton variant="neutral-transparent" size="xs" text={title} onClick={onOpen} />
+      <nldd-text size="sm" color="secondary">({detail})</nldd-text>
+    </nldd-container>
   );
 }
 
@@ -970,7 +993,17 @@ function RemovableTagChip({ tag, onRemove }: RemovableTagChipProps) {
   return (
     <span
       title={tag}
-      className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 px-2.5 py-0.5 text-xs font-medium"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        borderRadius: '9999px',
+        padding: '2px 10px',
+        fontSize: '12px',
+        fontWeight: 500,
+        backgroundColor: 'var(--primitives-color-neutral-100)',
+        color: 'var(--primitives-color-neutral-700)',
+      }}
     >
       {display}
       <NlddIconButton
@@ -1030,7 +1063,7 @@ function TagSuggestionItem({ name, onSelect }: TagSuggestionItemProps) {
   useNlddEvent(ref, 'click', onSelect);
 
   return (
-    <nldd-list-item ref={ref} button accessible-label={name}>
+    <nldd-list-item ref={ref} button>
       <nldd-text-cell text={name} />
     </nldd-list-item>
   );

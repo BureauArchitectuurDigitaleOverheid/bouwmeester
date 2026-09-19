@@ -20,7 +20,7 @@ export function ExportButton({ nodeType, hideLabel }: ExportButtonProps) {
         <span className={hideLabel ? 'hidden sm:inline' : undefined}>Exporteren</span>
       </Button>
 
-      <nldd-menu anchor={triggerId} accessible-label="Exportopties">
+      <nldd-menu anchor={triggerId}>
         <nldd-menu-item text="Nodes als CSV" icon="download" href={exportNodesUrl(nodeType)} />
         <nldd-menu-item text="Edges als CSV" icon="download" href={exportEdgesUrl()} />
         <nldd-menu-divider />

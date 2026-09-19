@@ -159,7 +159,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
             filter still wraps to its own line on a narrow screen because of the
             parent's layout="wrap", it just isn't forced to 100% while doing so. */}
         <nldd-container layout="wrap" gap="8" vertical-alignment="center">
-          <nldd-container min-width="176px">
+          <nldd-container width="fit-content" min-width="176px">
             <CreatableSelect
               value={statusFilter}
               onChange={setStatusFilter}
@@ -169,7 +169,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
             />
           </nldd-container>
 
-          <nldd-container min-width="176px">
+          <nldd-container width="fit-content" min-width="176px">
             <CreatableSelect
               value={priorityFilter}
               onChange={setPriorityFilter}
@@ -179,7 +179,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
             />
           </nldd-container>
 
-          <nldd-container min-width="208px">
+          <nldd-container width="fit-content" min-width="208px">
             <CreatableSelect
               value={personFilter}
               onChange={setPersonFilter}
@@ -188,7 +188,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
             />
           </nldd-container>
 
-          <nldd-container min-width="208px">
+          <nldd-container width="fit-content" min-width="208px">
             <CreatableSelect
               value={eenheidFilter}
               onChange={setEenheidFilter}

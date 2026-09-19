@@ -83,6 +83,38 @@ for (const file of files) {
 
     // Nothing here; slots are checked against their real parent below.
 
+    // An attribute the element does not have. Unlike a wrong prop in React,
+    // a stray attribute on a custom element is not an error: it lands in the
+    // DOM and the component never reads it. `hide-above` on an nldd-container
+    // is the case that prompted this — it is real on the CELL components, so
+    // it looks right, and on a container it silently does nothing.
+    //
+    // The generated types catch this for a literal attribute, but only where
+    // the element is written directly; a wrapper component that spreads props
+    // slips past, and so does anything typed loosely.
+    for (const am of attrText.matchAll(/(?:^|\s)([a-z][a-z0-9-]*)=/g)) {
+      const name = am[1];
+      if (spec.attrs.size === 0) break;
+      // React/JSX and global HTML attributes are not the component's business.
+      if (
+        spec.attrs.has(name) ||
+        name === 'class' ||
+        name === 'slot' ||
+        name === 'style' ||
+        name === 'id' ||
+        name === 'key' ||
+        name === 'ref' ||
+        name === 'title' ||
+        name === 'hidden' ||
+        name === 'role' ||
+        name.startsWith('data-') ||
+        name.startsWith('aria-')
+      ) {
+        continue;
+      }
+      problems.push(`${rel}:${line} ${tag} has no attribute "${name}"`);
+    }
+
     // `class` instead of `className`. The generated types allow `class`,
     // because a custom element really does take that attribute, but React does
     // not apply it: it is not in React's known-attribute list for this element,

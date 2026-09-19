@@ -370,10 +370,10 @@ export function OpdrachtenPage() {
 
       {/* Filter bar */}
       <nldd-container layout="wrap" gap="8">
-        <nldd-container min-width="224px">
+        <nldd-container width="fit-content" min-width="224px">
           <OpdrachtenSearchField value={searchInput} onChange={setSearchInput} />
         </nldd-container>
-        <nldd-container min-width="176px">
+        <nldd-container width="fit-content" min-width="176px">
           <MultiSelect
             value={typeFilter}
             onChange={setTypeFilter}
@@ -381,7 +381,7 @@ export function OpdrachtenPage() {
             allLabel="Alle typen"
           />
         </nldd-container>
-        <nldd-container min-width="176px">
+        <nldd-container width="fit-content" min-width="176px">
           <MultiSelect
             value={statusFilter}
             onChange={setStatusFilter}
@@ -389,7 +389,7 @@ export function OpdrachtenPage() {
             allLabel="Alle statussen"
           />
         </nldd-container>
-        <nldd-container min-width="160px">
+        <nldd-container width="fit-content" min-width="160px">
           <CreatableSelect
             value={apiFilters.begrotingsjaar ? String(apiFilters.begrotingsjaar) : ''}
             onChange={(v) =>
@@ -406,7 +406,7 @@ export function OpdrachtenPage() {
             }
           />
         </nldd-container>
-        <nldd-container min-width="208px">
+        <nldd-container width="fit-content" min-width="208px">
           <CreatableSelect
             value={apiFilters.opdrachtnemer_eenheid_id ?? ''}
             onChange={(v) =>
@@ -422,7 +422,7 @@ export function OpdrachtenPage() {
             }
           />
         </nldd-container>
-        <nldd-container min-width="192px">
+        <nldd-container width="fit-content" min-width="192px">
           <CreatableSelect
             value={apiFilters.verantwoordelijke_id === currentPerson?.id ? MY_OPDRACHTEN_SENTINEL : (apiFilters.verantwoordelijke_id ?? '')}
             onChange={(v) => {
@@ -439,7 +439,7 @@ export function OpdrachtenPage() {
             }
           />
         </nldd-container>
-        <nldd-container min-width="192px">
+        <nldd-container width="fit-content" min-width="192px">
           <CreatableSelect
             value={apiFilters.instrument_id ?? ''}
             onChange={(v) =>
