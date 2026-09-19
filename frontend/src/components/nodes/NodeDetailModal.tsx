@@ -56,10 +56,9 @@ interface NodeDetailModalProps {
   nodeId: string | null;
   open: boolean;
   onClose: () => void;
-  zIndex?: number;
 }
 
-export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailModalProps) {
+export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps) {
   const { data: node, isLoading } = useNode(nodeId ?? undefined);
   const { data: stakeholders } = useNodeStakeholders(nodeId ?? undefined);
   const { data: neighbors } = useNodeNeighbors(nodeId ?? undefined);
@@ -126,7 +125,6 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
         onClose={onClose}
         title={isLoading ? 'Laden...' : node?.title ?? 'Node niet gevonden'}
         size="lg"
-        zIndex={zIndex}
         accentColor={accentColor}
         headerIcon={node ? NODE_TYPE_ICONS[node.node_type] : undefined}
         entityLabel={node ? nodeLabel(node.node_type) : undefined}

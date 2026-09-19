@@ -133,7 +133,6 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
         mode === 'create' ? 'Nieuwe contactpersoon' : 'Externe contactpersoon toevoegen'
       }
       size="md"
-      zIndex={60}
       closeable={!isPending}
       footer={
         mode === 'create' ? (

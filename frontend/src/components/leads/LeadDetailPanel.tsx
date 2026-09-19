@@ -97,7 +97,6 @@ interface LeadDetailPanelProps {
   leadId: string | null;
   open: boolean;
   onClose: () => void;
-  zIndex?: number;
 }
 
 /** nldd-icon names for each activity type. */
@@ -110,7 +109,7 @@ const ACTIVITY_ICONS: Record<LeadActivityType, string> = {
   [LeadActivityType.EVALUATIE]: 'file-text',
 };
 
-export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPanelProps) {
+export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps) {
   const { data: lead, isLoading } = useLead(leadId);
   const { data: people } = usePeople();
   const { data: initiatieven } = useInitiatieven();
@@ -315,7 +314,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       onClose={onClose}
       title={isLoading ? 'Laden...' : lead?.title ?? 'Lead niet gevonden'}
       size="lg"
-      zIndex={zIndex}
       entityLabel="Lead"
       footer={
         editing ? (
@@ -980,7 +978,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           <DetailSection title="Mattermost" separated>
             <MattermostChannelsSection
               scope={{ type: 'lead', id: lead.id }}
-              parentZIndex={zIndex}
             />
           </DetailSection>
         </nldd-container>

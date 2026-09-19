@@ -4,7 +4,16 @@ import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
 export interface ViewToggleOption<T extends string> {
   value: T;
   label: string;
-  /** An nldd-icon name. A ReactNode is still accepted from unconverted callers. */
+  /**
+   * An `<Icon />` element, which is what all eleven call sites pass today, or
+   * a bare nldd-icon name.
+   *
+   * The name is the shorter route: `nldd-segmented-control-item` has its own
+   * `icon` attribute, and these call sites already use real design-system
+   * names, so `icon: 'list'` would drop the wrapper. Left as it is because
+   * the wrapper works and eleven working call sites are not worth the churn
+   * inside this PR.
+   */
   icon: ReactNode | string;
 }
 

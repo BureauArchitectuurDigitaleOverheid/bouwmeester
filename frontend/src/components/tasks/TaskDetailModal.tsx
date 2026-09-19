@@ -31,7 +31,6 @@ interface TaskDetailModalProps {
   taskId: string | null;
   open: boolean;
   onClose: () => void;
-  zIndex?: number;
 }
 
 interface DetailLinkActionProps {
@@ -145,7 +144,7 @@ function SubtaskRow({
   );
 }
 
-export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailModalProps) {
+export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps) {
   const { data: task, isLoading } = useTask(taskId);
   const [showEdit, setShowEdit] = useState(false);
   const [showSubtaskCreate, setShowSubtaskCreate] = useState(false);
@@ -194,7 +193,6 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
         onClose={onClose}
         title={isLoading ? 'Laden...' : task?.title ?? 'Taak niet gevonden'}
         size="lg"
-        zIndex={zIndex}
         accentColor={accentColor}
         headerIcon={<Icon name="check-list" size="md" />}
         entityLabel="Taak"

@@ -29,10 +29,9 @@ interface Props {
   /** z-index van de parent-modal (lead/initiatief detail). De picker
    *  opent met +10 bovenop deze waarde zodat hij niet achter de
    *  parent-modal verdwijnt. */
-  parentZIndex?: number;
 }
 
-export function MattermostChannelsSection({ scope, parentZIndex }: Props) {
+export function MattermostChannelsSection({ scope }: Props) {
   const initiatiefQuery = useInitiatiefChannels(
     scope.type === 'initiatief' ? scope.id : undefined,
   );
@@ -116,7 +115,6 @@ export function MattermostChannelsSection({ scope, parentZIndex }: Props) {
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         scope={scope}
-        zIndex={(parentZIndex ?? 50) + 10}
       />
       </nldd-container>
     </nldd-card>
@@ -182,7 +180,6 @@ function ChannelPickerModal({
   open,
   onClose,
   scope,
-  zIndex,
 }: {
   open: boolean;
   onClose: () => void;
@@ -228,7 +225,7 @@ function ChannelPickerModal({
   useNlddEvent(searchRef, 'input', (e) => setQ(eventValue(e)));
 
   return (
-    <Modal open={open} onClose={onClose} title="Kanaal koppelen" zIndex={zIndex}>
+    <Modal open={open} onClose={onClose} title="Kanaal koppelen">
       <nldd-container gap="12">
         <nldd-text size="xs" color="secondary">
           Zoek een kanaal waar de Bouwmeester-bot al lid van is. Niet

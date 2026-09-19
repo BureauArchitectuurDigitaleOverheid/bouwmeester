@@ -50,7 +50,6 @@ export function NieuwInstrumentDialog({ open, initialTitle, onClose, onCreated }
       onClose={onClose}
       title="Nieuw instrument"
       size="sm"
-      zIndex={60}
       footer={
         <>
           <Button variant="secondary" type="button" onClick={onClose}>

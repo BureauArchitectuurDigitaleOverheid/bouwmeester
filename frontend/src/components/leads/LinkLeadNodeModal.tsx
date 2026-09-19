@@ -144,7 +144,6 @@ export function LinkLeadNodeModal({ leadId, onClose }: Props) {
       onClose={resetAndClose}
       title="Node koppelen"
       size="sm"
-      zIndex={60}
       footer={
         <>
           <Button variant="secondary" onClick={resetAndClose}>

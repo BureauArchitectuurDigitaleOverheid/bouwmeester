@@ -80,10 +80,9 @@ interface OpdrachtDetailModalProps {
   opdrachtId: string | null;
   open: boolean;
   onClose: () => void;
-  zIndex?: number;
 }
 
-export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: OpdrachtDetailModalProps) {
+export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetailModalProps) {
   const { data: opdracht, isLoading } = useOpdracht(opdrachtId ?? undefined);
   const { data: tasks = [] } = useTasksByOpdracht(opdrachtId);
   const deleteMutation = useDeleteOpdracht();
@@ -135,7 +134,6 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
         onClose={() => { setShowEdit(false); onClose(); }}
         title="Opdracht bewerken"
         size="lg"
-        zIndex={zIndex}
       >
         <OpdrachtForm
           opdracht={opdracht}
@@ -207,7 +205,6 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
         onClose={onClose}
         title={isLoading ? 'Laden...' : opdracht?.titel ?? 'Opdracht niet gevonden'}
         size="lg"
-        zIndex={zIndex}
         accentColor={accentColor}
         headerIcon={<Icon name="clipboard-bullet-list" size="lg" />}
         entityLabel={opdracht ? (OPDRACHT_TYPE_LABELS[opdracht.type as OpdrachtType] || opdracht.type) : undefined}

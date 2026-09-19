@@ -38,12 +38,6 @@ interface ModalProps {
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   closeable?: boolean;
-  /**
-   * @deprecated Ignored. nldd-window is a native `<dialog>`, so stacking is the
-   * browser's top layer: the last one opened is on top, by definition. The old
-   * hand-managed z-index could not express that and had to be passed by hand.
-   */
-  zIndex?: number;
   headerIcon?: ReactNode;
   entityLabel?: string;
   accentColor?: BadgeVariant;

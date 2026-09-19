@@ -157,7 +157,6 @@ export function CommunityEdgeModal({ pendingConnection, onClose }: Props) {
       onClose={resetAndClose}
       title={title}
       size="sm"
-      zIndex={60}
       footer={
         route.kind === 'invalid' ? (
           <Button variant="secondary" onClick={resetAndClose}>
