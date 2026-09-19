@@ -71,8 +71,16 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "claude-haiku-4-5-20251001"
     LLM_PROVIDER: str = "claude"  # "claude" or "vlam"
     VLAM_API_KEY: str = ""
-    VLAM_BASE_URL: str = ""
     VLAM_MODEL_ID: str = ""
+    # Het platform (ZAD-dienst `vlam`) injecteert dit adres van de interne
+    # VLAM-proxy in elk component dat de dienst afneemt. Het is het
+    # basisadres zonder pad, en het gaat vóór op VLAM_BASE_URL: het platform
+    # weet waar de proxy staat, een handmatige waarde kan verouderen.
+    VLAM_API_URL: str = ""
+    # Handmatig ingesteld adres, voor lokaal draaien of een directe
+    # VLAM-endpoint buiten het cluster (dan wel via VPN, want vlam-api
+    # .rijksweb.nl is niet publiek resolvebaar).
+    VLAM_BASE_URL: str = ""
     ENABLED_IMPORT_TYPES: list[str] = ["motie", "kamervraag", "toezegging"]
     OPDRACHT_TASK_INTERVAL_SECONDS: int = 86400
 
