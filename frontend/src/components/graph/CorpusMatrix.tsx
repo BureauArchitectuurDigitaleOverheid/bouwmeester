@@ -112,31 +112,31 @@ export function CorpusMatrix({
   const totalCells = allRowNodes.length * allColNodes.length;
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-text-secondary">
+    <nldd-container gap="12">
+      <nldd-text size="xs" color="secondary">
         {rowNodes.length}{isTruncated && allRowNodes.length > MAX_MATRIX_DIMENSION ? ` van ${allRowNodes.length}` : ''} rijen
         {' '}&times;{' '}
         {colNodes.length}{isTruncated && allColNodes.length > MAX_MATRIX_DIMENSION ? ` van ${allColNodes.length}` : ''} kolommen
         {' '}&middot;{' '}
         {connectionCount} {connectionCount === 1 ? 'relatie' : 'relaties'}
         {sameType && ' (symmetrische matrix — zelfde type rij en kolom)'}
-      </p>
+      </nldd-text>
 
       {isTruncated && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="matrix-notice matrix-notice-warning">
           {pendingExpand ? (
             <span>
               Volledige matrix ({allRowNodes.length}&times;{allColNodes.length} = {totalCells.toLocaleString('nl-NL')} cellen) kan de browser vertragen.{' '}
               <button
                 onClick={() => setShowFullMatrix(true)}
-                className="underline font-medium hover:text-amber-900"
+                className="link-hover-underline matrix-notice-action"
               >
                 Toch tonen
               </button>
               {' '}of{' '}
               <button
                 onClick={() => setPendingExpand(false)}
-                className="underline font-medium hover:text-amber-900"
+                className="link-hover-underline matrix-notice-action"
               >
                 annuleren
               </button>.
@@ -147,7 +147,7 @@ export function CorpusMatrix({
               Gebruik de zoekbalk om te filteren, of{' '}
               <button
                 onClick={() => totalCells > 10000 ? setPendingExpand(true) : setShowFullMatrix(true)}
-                className="underline font-medium hover:text-amber-900"
+                className="link-hover-underline matrix-notice-action"
               >
                 toon alles ({allRowNodes.length}&times;{allColNodes.length})
               </button>.
@@ -157,12 +157,12 @@ export function CorpusMatrix({
       )}
 
       {showFullMatrix && !isTruncated && allRowNodes.length > MAX_MATRIX_DIMENSION && (
-        <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+        <div className="matrix-notice matrix-notice-info">
           <span>
             Volledige matrix wordt getoond.{' '}
             <button
               onClick={() => setShowFullMatrix(false)}
-              className="underline font-medium hover:text-blue-900"
+              className="link-hover-underline matrix-notice-action"
             >
               Beperk tot {MAX_MATRIX_DIMENSION}&times;{MAX_MATRIX_DIMENSION}
             </button>
@@ -171,25 +171,25 @@ export function CorpusMatrix({
       )}
 
       <Card padding={false}>
-        <div className="overflow-auto max-h-[calc(100vh-280px)]">
-          <table className="text-xs border-collapse" role="grid" aria-label="Relatiematrix">
-            <thead className="sticky top-0 z-20">
+        <div className="matrix-scroll-area">
+          <table className="matrix-table" role="grid" aria-label="Relatiematrix">
+            <thead className="matrix-thead">
               <tr role="row">
-                <th className="sticky left-0 z-30 bg-gray-50 border-b border-r border-border min-w-[180px] max-w-[220px] px-3 py-2" role="columnheader" />
+                <th className="matrix-corner-cell" role="columnheader" />
                 {colNodes.map((col: CorpusNode, colIdx: number) => (
                   <th
                     key={col.id}
-                    className="bg-gray-50 border-b border-border px-1 py-2 font-medium text-center min-w-[40px]"
+                    className="matrix-header-cell"
                     role="columnheader"
                     aria-colindex={colIdx + 2}
                   >
                     <button
                       onClick={() => openNodeDetail(col.id)}
-                      className="block w-full hover:text-primary-600 transition-colors"
+                      className="matrix-header-button"
                       title={col.title}
                     >
                       <span
-                        className="writing-mode-vertical inline-block max-h-[140px] overflow-hidden text-ellipsis whitespace-nowrap"
+                        className="matrix-header-label"
                         style={{
                           writingMode: 'vertical-rl',
                           transform: 'rotate(180deg)',
@@ -207,10 +207,10 @@ export function CorpusMatrix({
               {rowNodes.map((row: CorpusNode, rowIdx: number) => (
                 <tr key={row.id} className="group" role="row" aria-rowindex={rowIdx + 2}>
                   {/* Row header — opaque bg prevents bleed-through on horizontal scroll */}
-                  <td className="sticky left-0 z-10 bg-white group-hover:bg-gray-50 border-r border-border px-3 py-1.5 min-w-[180px] max-w-[220px]" role="rowheader">
+                  <td className="matrix-row-header group-hover-bg" role="rowheader">
                     <button
                       onClick={() => openNodeDetail(row.id)}
-                      className="text-left truncate block w-full hover:text-primary-600 font-medium transition-colors"
+                      className="matrix-row-header-button truncate"
                       title={row.title}
                       style={{ color: rowColor }}
                     >
@@ -231,21 +231,21 @@ export function CorpusMatrix({
                     return (
                       <td
                         key={col.id}
-                        className={`border-b border-border/50 px-1 py-1.5 text-center group-hover:bg-gray-50/50 ${isDiagonal ? 'bg-gray-100' : ''}`}
+                        className={`matrix-cell group-hover-bg ${isDiagonal ? 'matrix-cell-diagonal' : ''}`}
                         role="gridcell"
                         aria-label={hasEdge ? tooltip : undefined}
                       >
                         {isDiagonal ? (
-                          <span className="inline-block h-6 w-6 text-gray-300">&mdash;</span>
+                          <span className="matrix-dot-slot matrix-diagonal-mark">&mdash;</span>
                         ) : hasEdge ? (
                           <button
                             onClick={() => openNodeDetail(row.id)}
-                            className="inline-flex items-center justify-center h-6 w-6 rounded-full transition-colors hover:ring-2 hover:ring-primary-300"
+                            className="matrix-dot-button"
                             title={tooltip}
                             aria-label={tooltip}
                           >
                             <span
-                              className="block h-3 w-3 rounded-full"
+                              className="matrix-dot"
                               style={{
                                 backgroundColor:
                                   cellEdges.length === 1
@@ -256,7 +256,7 @@ export function CorpusMatrix({
                             />
                           </button>
                         ) : (
-                          <span className="inline-block h-6 w-6" />
+                          <span className="matrix-dot-slot" />
                         )}
                       </td>
                     );
@@ -267,6 +267,6 @@ export function CorpusMatrix({
           </table>
         </div>
       </Card>
-    </div>
+    </nldd-container>
   );
 }

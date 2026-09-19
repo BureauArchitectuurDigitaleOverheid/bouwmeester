@@ -4,9 +4,8 @@ import type { EngagementType } from '@/types';
 /**
  * Local nldd-tag color per lead stage.
  *
- * `LEAD_STAGE_COLORS` in `src/types` holds raw Tailwind chip classes for the
- * seven stages and is off-limits to edit in this pass (Tailwind-removal
- * scope). This is the presentation-side replacement: the five mid-funnel
+ * `LEAD_STAGE_COLORS` in `src/types` is the default column color per stage,
+ * mirroring the backend. This is the presentation-side map: the five mid-funnel
  * stages get a distinguishing Rijkshuisstijl hue, since they are just
  * visually distinct labels, while the two stages that carry real structural
  * meaning ("won", "parked") get a semantic role instead, since that meaning

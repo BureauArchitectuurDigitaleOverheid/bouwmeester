@@ -58,12 +58,11 @@ const STATUS_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_STATUS_LABEL
   ([value, label]) => ({ value, label }),
 );
 
-/** FCC "traffic light" dots: an arbitrary per-value color from FCC's own raw
- * data, not one of the five semantic roles, so kept as plain styled spans
- * (same call as LeadListRow's per-initiatief/column chips). `FCC_TRAFFIC_LIGHT_COLORS`
- * (src/types) still yields a Tailwind background class per value; that map is
- * out of scope here, so the dot itself stays a plain styled span rather than
- * inventing a parallel nldd-token mapping for the same values. */
+/** FCC "traffic light" dots. Green, orange and red carry their usual meaning,
+ * so `FCC_TRAFFIC_LIGHT_COLORS` (src/types) yields a design-system color token
+ * per value and the dot paints from it. It used to yield a Tailwind class,
+ * which after the migration rendered nothing at all: three invisible dots that
+ * only a title attribute gave away. */
 function FccTrafficLights({ opdracht }: { opdracht: Opdracht }) {
   if (!opdracht.fcc_raw_data) return null;
   return (
@@ -73,8 +72,15 @@ function FccTrafficLights({ opdracht }: { opdracht: Opdracht }) {
         return val ? (
           <span
             key={key}
-            className={FCC_TRAFFIC_LIGHT_COLORS[val as FccTrafficLight] || 'bg-gray-300'}
-            style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '9999px' }}
+            style={{
+              display: 'inline-block',
+              width: '8px',
+              height: '8px',
+              borderRadius: '9999px',
+              background:
+                FCC_TRAFFIC_LIGHT_COLORS[val as FccTrafficLight] ??
+                'var(--primitives-color-neutral-300)',
+            }}
             title={`${label}: ${val}`}
           />
         ) : null;

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, memo, type CSSProperties } from 'react';
 import {
   Building2,
   User,
@@ -38,7 +38,6 @@ import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import {
   LEAD_STAGE_LABELS,
-  LEAD_STAGE_COLORS,
   LeadStage,
   NODE_TYPE_HEX_COLORS,
   NodeType,
@@ -46,6 +45,7 @@ import {
   SAMENWERKINGSVERBAND_TYPE_LABELS,
 } from '@/types';
 import type { CommunityGraphNode, CommunityGraphEdge } from '@/types';
+import { stageTagColor } from './stageColors';
 
 // ---- Hex colors per lead stage (for graph nodes) ----
 const LEAD_STAGE_HEX: Record<string, string> = {
@@ -56,6 +56,22 @@ const LEAD_STAGE_HEX: Record<string, string> = {
   in_the_pocket: '#34D399',
   koelkast: '#9CA3AF',
 };
+
+/** `stageTagColor` gives an nldd-tag color name, which is also a valid
+ * Rijkshuisstijl/semantic token segment (`--primitives-color-<name>-500` or
+ * `--semantics-content-<name>-color` for the two semantic roles). This node
+ * card renders its own chip with inline styles, matching the rest of
+ * CommunityGraphNodeComponent's badges (all inline-styled — an nldd-tag
+ * inside a reactflow-positioned node card would still need its host sized and
+ * placed by hand, so there is no component win here), so the color has to
+ * resolve to a CSS value rather than an nldd-tag `color` attribute. */
+function stageTagColorVar(stage: string): string {
+  const name = stageTagColor(stage);
+  if (name === 'success' || name === 'warning' || name === 'critical' || name === 'accent') {
+    return `var(--semantics-content-${name}-color)`;
+  }
+  return `var(--primitives-color-${name}-500)`;
+}
 
 const PERSON_INTERN_COLOR = '#EC4899';
 const PERSON_EXTERN_COLOR = '#F97316';
@@ -192,9 +208,21 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
       // slug zelf getoond — een per-graph-node lookup van de actieve
       // LeadColumn lijst zou hier overkill zijn.
       const fallbackKey = data.stage as LeadStage;
+      const stageColor = stageTagColorVar(fallbackKey);
       return (
         <span
-          className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium mb-1 ${LEAD_STAGE_COLORS[fallbackKey] ?? 'bg-gray-100 text-gray-800'}`}
+          style={{
+            display: 'inline-block',
+            borderRadius: '9999px',
+            padding: '2px 8px',
+            fontSize: '10px',
+            fontWeight: 500,
+            marginBottom: '4px',
+            color: stageColor,
+            // A light tint of the stage color as the chip background, same
+            // idea as the person/org badges below (a hex color + low opacity).
+            backgroundColor: `color-mix(in srgb, ${stageColor} 16%, transparent)`,
+          }}
         >
           {LEAD_STAGE_LABELS[fallbackKey] ?? data.stage}
         </span>
@@ -207,9 +235,9 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
       const functieLabel = formatFunctie(data.functie);
       const label = functieLabel ? `${roleLabel} · ${functieLabel}` : roleLabel;
       return (
-        <div className="mb-1">
-          <div className="flex items-center gap-1">
-            <PersonIcon className="h-3 w-3" style={{ color }} />
+        <div style={{ marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <PersonIcon style={{ height: '12px', width: '12px', color }} />
             <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
               {label}
             </span>
@@ -232,8 +260,8 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
           : 'Intern'
         : orgTypeLabel;
       return (
-        <div className="flex items-center gap-1 mb-1 min-w-0">
-          <Building2 className="h-3 w-3 shrink-0" style={{ color: badgeColor }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px', minWidth: 0 }}>
+          <Building2 style={{ height: '12px', width: '12px', flexShrink: 0, color: badgeColor }} />
           <span
             style={{
               color: badgeColor,
@@ -253,8 +281,8 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
     }
     if (data.nodeType === 'corpus_node') {
       return (
-        <div className="flex items-center gap-1 mb-1">
-          <FileText className="h-3 w-3" style={{ color }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+          <FileText style={{ height: '12px', width: '12px', color }} />
           <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
             {data.corpusNodeType?.replace(/_/g, ' ') ?? 'Node'}
           </span>
@@ -266,8 +294,8 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
         ? SAMENWERKINGSVERBAND_TYPE_LABELS[data.swvType] ?? data.swvType
         : 'Verband';
       return (
-        <div className="flex items-center gap-1 mb-1">
-          <Handshake className="h-3 w-3" style={{ color }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+          <Handshake style={{ height: '12px', width: '12px', color }} />
           <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
             {typeLabel}
           </span>
@@ -416,15 +444,19 @@ interface NodeTypeToggle {
   key: CommunityNodeType;
   label: string;
   icon: React.ReactNode;
-  activeColor: string;
+  /** A Rijkshuisstijl color-scale name; the chip reads its 500 step as
+   *  foreground and a tint of it as background (see `.node-type-toggle`). */
+  activeColorScale: string;
 }
 
+const ICON_SIZE_SM: CSSProperties = { height: '14px', width: '14px' };
+
 const NODE_TYPE_TOGGLES: NodeTypeToggle[] = [
-  { key: 'lead', label: 'Leads', icon: <Lightbulb className="h-3.5 w-3.5" />, activeColor: 'bg-blue-100 text-blue-800' },
-  { key: 'person', label: 'Personen', icon: <User className="h-3.5 w-3.5" />, activeColor: 'bg-pink-100 text-pink-800' },
-  { key: 'organisation', label: 'Organisaties', icon: <Building2 className="h-3.5 w-3.5" />, activeColor: 'bg-teal-100 text-teal-800' },
-  { key: 'samenwerkingsverband', label: 'Verbanden', icon: <Handshake className="h-3.5 w-3.5" />, activeColor: 'bg-purple-100 text-purple-800' },
-  { key: 'corpus_node', label: 'Beleidsnodes', icon: <FileText className="h-3.5 w-3.5" />, activeColor: 'bg-gray-100 text-gray-700' },
+  { key: 'lead', label: 'Leads', icon: <Lightbulb style={ICON_SIZE_SM} />, activeColorScale: 'hemelblauw' },
+  { key: 'person', label: 'Personen', icon: <User style={ICON_SIZE_SM} />, activeColorScale: 'roze' },
+  { key: 'organisation', label: 'Organisaties', icon: <Building2 style={ICON_SIZE_SM} />, activeColorScale: 'groen' },
+  { key: 'samenwerkingsverband', label: 'Verbanden', icon: <Handshake style={ICON_SIZE_SM} />, activeColorScale: 'paars' },
+  { key: 'corpus_node', label: 'Beleidsnodes', icon: <FileText style={ICON_SIZE_SM} />, activeColorScale: 'neutral' },
 ];
 
 // ---- Inner component ----
@@ -687,20 +719,22 @@ function CommunityGraphInner({
   }
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       <LeadMetricsBar />
 
       {/* Node type toggles + focus indicator */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="node-type-toggle-row">
         {NODE_TYPE_TOGGLES.map((toggle) => {
           const active = enabledTypes.has(toggle.key);
           return (
             <button
               key={toggle.key}
               onClick={() => toggleType(toggle.key)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                active ? toggle.activeColor : 'bg-gray-50 text-gray-400'
-              }`}
+              className="node-type-toggle"
+              style={active ? {
+                color: `var(--primitives-color-${toggle.activeColorScale}-800)`,
+                backgroundColor: `var(--primitives-color-${toggle.activeColorScale}-100)`,
+              } : undefined}
             >
               {toggle.icon}
               {toggle.label}
@@ -710,10 +744,10 @@ function CommunityGraphInner({
         {focusedNodeId && (
           <button
             onClick={() => setFocusedNodeId(null)}
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium bg-purple-100 text-purple-800 hover:bg-purple-200 transition-colors ml-auto"
+            className="node-type-toggle node-type-toggle-focus"
             title="Toon weer alle nodes"
           >
-            <X className="h-3.5 w-3.5" />
+            <X style={ICON_SIZE_SM} />
             Focus opheffen
           </button>
         )}
@@ -721,7 +755,7 @@ function CommunityGraphInner({
 
       {/* Graph canvas */}
       <div
-        className="bg-white rounded-xl border border-border shadow-sm overflow-hidden"
+        className="graph-canvas-frame"
         style={{ height: 'calc(100vh - 320px)', minHeight: isMobile ? '300px' : '500px' }}
       >
         <ReactFlow
@@ -771,7 +805,7 @@ function CommunityGraphInner({
         leadId={addContactLeadId}
         onClose={() => setAddContactLeadId(null)}
       />
-    </div>
+    </nldd-container>
   );
 }
 

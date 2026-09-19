@@ -448,3 +448,228 @@
 .draggable-card:active {
   cursor: grabbing;
 }
+
+/* # Relatiematrix (CorpusMatrix)
+ *
+ * A real `<table role="grid">`, not something an nldd-* component models: it
+ * needs a sticky header row AND a sticky first column at once, plus per-cell
+ * borders on a grid that can run to 100x100. No component in the design
+ * system does two independent sticky axes on a native table, so this stays
+ * hand-built CSS on plain table elements.
+ */
+.matrix-scroll-area {
+  overflow: auto;
+  max-height: calc(100vh - 280px);
+}
+
+.matrix-table {
+  /* Same step nldd-text size="xs" uses (see text.styles.js). */
+  font-size: var(--primitives-font-size-80);
+  border-collapse: collapse;
+}
+
+/* Sticky header row, above the sticky corner/row-header column (z-index 2)
+ * so a header cell wins over a row header sliding underneath it. */
+.matrix-thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* Corner cell: sticky on both axes (header row AND first column), so it has
+ * to sit above everything else in the table (z-index 3). */
+.matrix-corner-cell {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background-color: var(--semantics-surfaces-tinted-background-color);
+  border-bottom: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+  border-right: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+  min-width: 180px;
+  max-width: 220px;
+  padding: 8px 12px;
+}
+
+.matrix-header-cell {
+  background-color: var(--semantics-surfaces-tinted-background-color);
+  border-bottom: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+  padding: 8px 4px;
+  font-weight: 500;
+  text-align: center;
+  min-width: 40px;
+}
+
+.matrix-header-button {
+  display: block;
+  width: 100%;
+  transition: color 150ms;
+}
+
+.matrix-header-button:hover {
+  color: var(--semantics-buttons-accent-transparent-content-color);
+}
+
+.matrix-header-label {
+  display: inline-block;
+  max-height: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Row header: sticky on the left only (z-index 1, below the corner cell).
+ * Opaque background prevents cell content from bleeding through underneath
+ * it on horizontal scroll. */
+.matrix-row-header {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--semantics-surfaces-base-background-color);
+  border-right: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+  padding: 6px 12px;
+  min-width: 180px;
+  max-width: 220px;
+}
+
+.matrix-row-header-button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-weight: 500;
+  transition: color 150ms;
+}
+
+.matrix-row-header-button:hover {
+  color: var(--semantics-buttons-accent-transparent-content-color);
+}
+
+/* Row/cell hover highlight — `.group` is the `<tr>`, this is any cell that
+ * should shade along with the hovered row (row header included). */
+.group:hover .group-hover-bg {
+  background-color: var(--semantics-surfaces-tinted-background-color);
+}
+
+.matrix-cell {
+  border-bottom: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+  padding: 6px 4px;
+  text-align: center;
+}
+
+.matrix-cell-diagonal {
+  background-color: var(--primitives-color-neutral-100);
+}
+
+.matrix-dot-slot {
+  display: inline-block;
+  height: 24px;
+  width: 24px;
+}
+
+.matrix-diagonal-mark {
+  color: var(--primitives-color-neutral-300);
+}
+
+.matrix-dot-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  width: 24px;
+  border-radius: 9999px;
+  transition: box-shadow 150ms;
+}
+
+.matrix-dot-button:hover {
+  box-shadow: 0 0 0 2px var(--primitives-color-accent-300);
+}
+
+.matrix-dot {
+  display: block;
+  height: 12px;
+  width: 12px;
+  border-radius: 9999px;
+}
+
+/* Truncation banners above the matrix (dimension cap warning / full-matrix
+ * notice). Two color roles, on tokens rather than a fixed amber/blue. */
+.matrix-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: var(--primitives-corner-radius-lg);
+  border: var(--semantics-surfaces-border-width) solid;
+  padding: 8px 12px;
+  font-size: var(--primitives-font-size-80);
+}
+
+.matrix-notice-warning {
+  border-color: var(--primitives-color-oranje-200);
+  background-color: var(--primitives-color-oranje-25);
+  color: var(--primitives-color-oranje-800);
+}
+
+.matrix-notice-info {
+  border-color: var(--primitives-color-hemelblauw-200);
+  background-color: var(--primitives-color-hemelblauw-25);
+  color: var(--primitives-color-hemelblauw-800);
+}
+
+.matrix-notice-action {
+  font-weight: 500;
+}
+
+/* # Community graph node-type filter chips (LeadGraphView)
+ *
+ * A row of toggle pills above the reactflow canvas plus one "clear focus"
+ * pill pushed to the row's far end. Each toggle carries its own active-state
+ * color (a Rijkshuisstijl scale name picked per node type) as an inline style
+ * from the component, since that color varies per button; this class holds
+ * only the shape and the inactive/hover states that are the same for all of
+ * them.
+ */
+.node-type-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.node-type-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 9999px;
+  padding: 4px 12px;
+  font-size: var(--primitives-font-size-80);
+  font-weight: 500;
+  color: var(--semantics-content-secondary-color);
+  background-color: var(--semantics-surfaces-tinted-background-color);
+  transition: color 150ms, background-color 150ms;
+}
+
+.node-type-toggle-focus {
+  margin-left: auto;
+  color: var(--primitives-color-paars-800);
+  background-color: var(--primitives-color-paars-100);
+}
+
+.node-type-toggle-focus:hover {
+  background-color: var(--primitives-color-paars-200);
+}
+
+/* # ReactFlow canvas frame
+ *
+ * The card-like wrapper around a reactflow canvas (CorpusGraph, LeadGraphView):
+ * white surface, rounded corners, a border, a light shadow, clipped so the
+ * canvas doesn't draw past the rounded corners. Not nldd-card: that component
+ * insets its content with its own padding, and a reactflow canvas has to fill
+ * the frame edge to edge with zero inset for pan/zoom to feel right.
+ */
+.graph-canvas-frame {
+  background-color: var(--semantics-surfaces-base-background-color);
+  border-radius: var(--primitives-corner-radius-xl);
+  border: var(--semantics-surfaces-border-width) solid var(--semantics-surfaces-base-border-color);
+  /* Same token nldd-card itself uses for its shadow. */
+  box-shadow: var(--components-card-box-shadow);
+  overflow: hidden;
+}

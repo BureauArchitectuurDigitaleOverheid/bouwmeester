@@ -38,25 +38,43 @@ const stillOnTailwind = /^\s*@import\s+["']tailwindcss["']/m.test(
 );
 
 /**
- * Files whose classes are somebody else's to define.
+ * Class names reactflow itself defines and reads.
  *
- * The graph views hand their class names to reactflow, which ships its own
- * stylesheet; those were excluded from the migration for the same reason.
+ * There used to be a file-level exclusion here for the graph views, on the
+ * reasoning that their classes belong to reactflow. That was wrong, and it hid
+ * 112 dead classes across six files: `bg-purple-100` and `h-3.5` on our own
+ * markup are our utilities, not reactflow's, and reactflow's stylesheet has
+ * nothing to say about them. Only the handful of names reactflow genuinely
+ * owns are exempt, by name rather than by file.
  */
-const NOT_OURS = /(graph\/|LeadGraphView|CommunityEdgeModal|reactflow)/;
+const REACTFLOW_OWNED = /^(react-flow|nodrag|nopan|nowheel|selectable|draggable|connectable|dragging|selected|updating|valid|source|target)(__|--|$)/;
 
 const files = [];
 (function walk(dir) {
   for (const entry of readdirSync(dir)) {
     const full = path.join(dir, entry);
     if (statSync(full).isDirectory()) walk(full);
-    else if (full.endsWith('.tsx') && !full.endsWith('.test.tsx')) files.push(full);
+    // .ts as well as .tsx: the class names that survived longest were not in
+    // markup at all but in the lookup tables in src/types/index.ts, which this
+    // walk never opened.
+    else if (/\.tsx?$/.test(full) && !full.includes('.test.') && !full.endsWith('.d.ts'))
+      files.push(full);
   }
 })(SRC);
 
+/**
+ * The shape of a Tailwind utility.
+ *
+ * Used for the second pass below, which reads bare string literals rather than
+ * attributes. There the check has to be narrow: a lookup table full of Dutch
+ * labels is also a bag of strings, and only things that look like utilities
+ * should be judged against our stylesheets.
+ */
+const TAILWIND_SHAPED =
+  /^(bg|text|border|ring|shadow|rounded|p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|w|h|min-w|max-w|min-h|max-h|gap|space|flex|grid|col|row|items|justify|self|order|font|leading|tracking|opacity|z|inset|overflow|cursor|transition|duration|ease|animate|hover|focus|active|disabled|group|sm|md|lg|xl|divide|whitespace|break|truncate|object|aspect|uppercase|lowercase|capitalize|underline|italic)([-:]|$)/;
+
 const unbacked = new Map();
 for (const file of files) {
-  if (NOT_OURS.test(file)) continue;
   const source = readFileSync(file, 'utf8');
   const rel = path.relative(SRC, file);
 
@@ -73,7 +91,33 @@ for (const file of files) {
       if (!cls || !/^[a-zA-Z][\w:./[\]%-]*$/.test(cls)) continue;
       // A variant (`hover:`, `sm:`, `group-hover:`) needs its own rule; the
       // bare name existing is not enough, so check the whole thing.
-      if (defined.has(cls)) continue;
+      if (defined.has(cls) || REACTFLOW_OWNED.test(cls)) continue;
+      if (!unbacked.has(cls)) unbacked.set(cls, `${rel}:${line}`);
+    }
+  }
+
+  // Second pass: class lists that never appear in an attribute.
+  //
+  // The FCC traffic lights were three invisible dots for exactly this reason.
+  // Their color came from a `Record<..., string>` in src/types holding
+  // `bg-emerald-500`, reached the span through a variable, and so never met
+  // the regex above. Const maps, ternaries and lookup tables are where the
+  // longest-lived Tailwind hides, because nothing about them looks like markup.
+  // Comments first. `h-4 w-4` inside a doc comment explaining what the old
+  // lucide sizing looked like is prose, not markup, and reporting it trains
+  // people to ignore this check.
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:])\/\/[^\n]*/g, (m0, p1) => p1 + ' '.repeat(m0.length - p1.length));
+
+  for (const m of code.matchAll(/['"`]([a-z][\w:./[\]%-]*(?:\s+[a-z-][\w:./[\]%-]*)+)['"`]/g)) {
+    const parts = m[1].split(/\s+/);
+    // Mostly utilities, so a sentence of prose is not mistaken for markup.
+    if (parts.filter((p) => TAILWIND_SHAPED.test(p)).length < parts.length * 0.7) continue;
+    const line = source.slice(0, m.index).split('\n').length;
+    for (const cls of parts) {
+      if (defined.has(cls) || REACTFLOW_OWNED.test(cls)) continue;
+      if (!TAILWIND_SHAPED.test(cls)) continue;
       if (!unbacked.has(cls)) unbacked.set(cls, `${rel}:${line}`);
     }
   }
