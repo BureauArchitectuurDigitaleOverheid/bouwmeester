@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.services.llm.base import BaseLLMService, DataSensitivity
+from bouwmeester.services.llm.vlam_endpoint import resolve_vlam_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +82,13 @@ async def _ensure_services(db: AsyncSession) -> None:
 
         _claude_cache = ClaudeLLMService(api_key=api_key, model=model)
 
-    # Build VLAM
+    # Build VLAM. Het platform-adres (ZAD-dienst `vlam`) gaat vóór op een
+    # handmatig ingestelde URL; zie resolve_vlam_base_url.
     vlam_key = config.get("VLAM_API_KEY") or settings.VLAM_API_KEY
-    vlam_url = config.get("VLAM_BASE_URL") or settings.VLAM_BASE_URL
+    vlam_url = resolve_vlam_base_url(
+        config.get("VLAM_API_URL") or settings.VLAM_API_URL,
+        config.get("VLAM_BASE_URL") or settings.VLAM_BASE_URL,
+    )
     vlam_model = config.get("VLAM_MODEL_ID") or settings.VLAM_MODEL_ID
     if vlam_key and vlam_url:
         from bouwmeester.services.llm.vlam_service import VlamLLMService

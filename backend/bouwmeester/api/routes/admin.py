@@ -335,7 +335,10 @@ _DEFAULT_CONFIG = [
     {
         "key": "VLAM_BASE_URL",
         "value": "",
-        "description": "VLAM API base-URL (OpenAI-compatible endpoint)",
+        "description": (
+            "VLAM API base-URL, handmatig. Alleen nodig zonder de "
+            "ZAD-dienst 'vlam' — die levert VLAM_API_URL en die gaat voor."
+        ),
         "is_secret": False,
     },
     {
