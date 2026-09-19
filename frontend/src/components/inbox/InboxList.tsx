@@ -37,21 +37,19 @@ export function InboxList({ items, onOpenThread, onMarkRead }: InboxListProps) {
   );
 
   return (
-    <div className="space-y-6">
+    <nldd-container layout="stack" gap="24">
       {Object.entries(grouped).map(([type, groupItems]) => (
-        <div key={type}>
-          <div className="mb-2 uppercase tracking-wider">
-            <nldd-text size="xs" weight="bold" color="secondary">
-              {GROUP_LABELS[type] ?? type} ({groupItems.length})
-            </nldd-text>
-          </div>
-          <div className="space-y-2">
+        <nldd-container key={type} layout="stack" gap="8">
+          <nldd-text size="xs" weight="bold" color="secondary">
+            {GROUP_LABELS[type] ?? type} ({groupItems.length})
+          </nldd-text>
+          <nldd-container layout="stack" gap="8">
             {groupItems.map((item) => (
               <InboxItemCard key={item.id} item={item} onOpenThread={onOpenThread} onMarkRead={onMarkRead} />
             ))}
-          </div>
-        </div>
+          </nldd-container>
+        </nldd-container>
       ))}
-    </div>
+    </nldd-container>
   );
 }

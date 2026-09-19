@@ -83,32 +83,34 @@ export function TaskPersonalView({ tasks, onEditTask }: TaskPersonalViewProps) {
   }, [tasks]);
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {groups.map((group) =>
         group.tasks.length > 0 ? (
           <section key={group.key}>
-            <div className="flex items-center gap-2 mb-3">
+            <nldd-container layout="row" gap="8" vertical-alignment="center" padding-bottom="12">
               {group.icon}
               <nldd-text size="sm" weight="bold" {...(group.headerColor ? { color: group.headerColor } : {})}>
                 {group.label}
               </nldd-text>
               <nldd-badge color="neutral" number={group.tasks.length} decorative />
-            </div>
-            <div className="space-y-2">
+            </nldd-container>
+            <nldd-container gap="8">
               {group.tasks.map((task) => (
                 <TaskCard key={task.id} task={task} onEdit={onEditTask} />
               ))}
-            </div>
+            </nldd-container>
           </section>
         ) : null,
       )}
 
       {/* Empty state when no tasks at all */}
       {groups.every((g) => g.tasks.length === 0) && (
-        <nldd-text size="sm" color="secondary" className="block py-4 text-center italic">
-          Geen taken gevonden.
-        </nldd-text>
+        <nldd-container padding-block="16" horizontal-alignment="center">
+          <nldd-text size="sm" color="secondary">
+            Geen taken gevonden.
+          </nldd-text>
+        </nldd-container>
       )}
-    </div>
+    </nldd-container>
   );
 }

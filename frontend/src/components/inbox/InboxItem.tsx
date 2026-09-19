@@ -47,49 +47,68 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
 
   return (
     <Card hoverable={isClickable} onClick={handleClick}>
-      <div className="flex items-start gap-3">
+      <nldd-container layout="row" gap="12" vertical-alignment="top">
+        {/* A 32px square icon badge with a read/unread background: nldd-container
+            has no fixed-height attribute (only width/min-width/max-width) and no
+            border-radius, so the box itself stays a plain styled div. The
+            background/color are still tokens, not hex values. */}
         <div
-          className={`flex items-center justify-center h-8 w-8 rounded-lg shrink-0 ${
-            item.read ? 'bg-gray-100 text-gray-400' : 'bg-primary-50 text-primary-700'
-          }`}
+          className="flex items-center justify-center h-8 w-8 rounded-lg shrink-0"
+          style={
+            item.read
+              ? { background: 'var(--primitives-color-neutral-50)', color: 'var(--primitives-color-neutral-400)' }
+              : { background: 'var(--primitives-color-accent-25)', color: 'var(--primitives-color-accent-700)' }
+          }
         >
           {typeIcons[item.type] || <Icon name="bell" size="md" />}
         </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
+        <nldd-container layout="stack" gap="0" min-width="0" width="full">
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
             {!item.read && (
-              <span className="h-2 w-2 rounded-full bg-accent-500 shrink-0" />
+              // A plain unread dot: nldd-badge is the design system's dot/count
+              // overlay, but it anchors to a corner of ITS sibling (see
+              // PersonAvatar's online dot) rather than sitting inline in a row,
+              // which is what this needs.
+              <span
+                className="h-2 w-2 rounded-full shrink-0"
+                style={{ background: 'var(--primitives-color-warning-500)' }}
+              />
             )}
+            {/* nldd-text has no truncate/ellipsis attribute, so the wrapper
+                providing it stays plain CSS. */}
             <div className="truncate">
               <nldd-text size="sm" weight={item.read ? 'regular' : 'medium'} {...(item.read ? { color: 'secondary' } : {})}>
                 {item.title}
               </nldd-text>
             </div>
-          </div>
+          </nldd-container>
 
           {item.description && (
+            // line-clamp-2 has no design-system equivalent either.
             <div className="text-xs line-clamp-2 mb-2">
               <RichTextDisplay content={item.description} fallback="" />
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
             <Badge variant={INBOX_TYPE_COLORS[item.type] ?? 'gray'}>
               {(item.notification_type && NOTIFICATION_TYPE_LABELS[item.notification_type]) || item.type}
             </Badge>
             {item.reply_count != null && item.reply_count > 0 && (
-              <span className="flex items-center gap-1 text-xs text-primary-600">
+              <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
                 <Icon name="message-rectangle-text" size="xs" />
-                {item.reply_count} {item.reply_count === 1 ? 'reactie' : 'reacties'}
-              </span>
+                <nldd-text size="xs" color="accent">
+                  {item.reply_count} {item.reply_count === 1 ? 'reactie' : 'reacties'}
+                </nldd-text>
+              </nldd-container>
             )}
-            <span className="text-xs text-text-secondary">
+            <nldd-text size="xs" color="secondary">
               {formatDateTimeShort(item.created_at)}
-            </span>
-          </div>
-        </div>
-      </div>
+            </nldd-text>
+          </nldd-container>
+        </nldd-container>
+      </nldd-container>
     </Card>
   );
 }

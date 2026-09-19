@@ -68,7 +68,10 @@ function EmailRow({ email, isDefault, onSetDefault, onRemove }: EmailRowProps) {
         button
         accessible-label={isDefault ? 'Standaard e-mailadres' : 'Instellen als standaard'}
       >
-        <Icon name="Star" size="sm" className={isDefault ? 'text-amber-500' : 'text-text-secondary'} />
+        {/* The Icon wrapper has no color prop, so the raw element is used
+            here to reach nldd-icon's own `color`: 'warning' for the starred
+            default, unset (inherits secondary) otherwise. */}
+        <nldd-icon name="star" size="16" {...(isDefault ? { color: 'warning' } : {})} aria-hidden="true" />
       </nldd-list-item-segment>
       <nldd-list-item-segment ref={removeRef} button accessible-label="E-mailadres verwijderen">
         <Icon name="X" size="sm" />
@@ -99,7 +102,7 @@ function PhoneRow({ phoneNumber, label, isDefault, onSetDefault, onRemove }: Pho
         button
         accessible-label={isDefault ? 'Standaard telefoonnummer' : 'Instellen als standaard'}
       >
-        <Icon name="Star" size="sm" className={isDefault ? 'text-amber-500' : 'text-text-secondary'} />
+        <nldd-icon name="star" size="16" {...(isDefault ? { color: 'warning' } : {})} aria-hidden="true" />
       </nldd-list-item-segment>
       <nldd-list-item-segment ref={removeRef} button accessible-label="Telefoonnummer verwijderen">
         <Icon name="X" size="sm" />
@@ -540,7 +543,8 @@ export function PersonEditForm({
         label-alignment inheritance for any nldd-form-field/-section inside.
       */}
       <nldd-form>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit}>
+      <nldd-container gap="16">
         {/* Naam field: search+select in create mode for non-agents, plain Input otherwise */}
         {isCreateMode && !isAgent ? (
           <CreatableSelect
@@ -618,12 +622,12 @@ export function PersonEditForm({
 
         {/* Email management — edit mode, non-agent */}
         {!isAgent && isEditMode && (
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">E-mailadressen</label>
+          <nldd-container gap="8">
+            <nldd-text weight="medium">E-mailadressen</nldd-text>
             {personEmails.length === 0 ? (
-              <p className="text-sm text-text-secondary italic mb-2">Geen e-mailadressen</p>
+              <nldd-text size="sm" color="secondary">Geen e-mailadressen</nldd-text>
             ) : (
-              <nldd-list variant="box-tinted" accessible-label="E-mailadressen" className="mb-2">
+              <nldd-list variant="box-tinted" accessible-label="E-mailadressen">
                 {personEmails.map((em) => (
                   <EmailRow
                     key={em.id}
@@ -635,8 +639,8 @@ export function PersonEditForm({
                 ))}
               </nldd-list>
             )}
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
+            <nldd-container layout="row" gap="8" vertical-alignment="center">
+              <nldd-container width="full">
                 <NewValueField
                   type="email"
                   value={newEmail}
@@ -645,7 +649,7 @@ export function PersonEditForm({
                   placeholder="Nieuw e-mailadres..."
                   accessibleLabel="Nieuw e-mailadres"
                 />
-              </div>
+              </nldd-container>
               <NlddIconButton
                 icon="plus"
                 accessibleLabel="E-mailadres toevoegen"
@@ -653,21 +657,21 @@ export function PersonEditForm({
                 disabled={!newEmail.trim() || addEmailMutation.isPending}
                 onClick={handleAddEmail}
               />
-            </div>
+            </nldd-container>
             {newEmailError && (
-              <p className="mt-1 text-xs text-red-600">{newEmailError}</p>
+              <nldd-text size="xs" color="critical">{newEmailError}</nldd-text>
             )}
-          </div>
+          </nldd-container>
         )}
 
         {/* Phone management — edit mode, non-agent */}
         {!isAgent && isEditMode && (
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Telefoonnummers</label>
+          <nldd-container gap="8">
+            <nldd-text weight="medium">Telefoonnummers</nldd-text>
             {personPhones.length === 0 ? (
-              <p className="text-sm text-text-secondary italic mb-2">Geen telefoonnummers</p>
+              <nldd-text size="sm" color="secondary">Geen telefoonnummers</nldd-text>
             ) : (
-              <nldd-list variant="box-tinted" accessible-label="Telefoonnummers" className="mb-2">
+              <nldd-list variant="box-tinted" accessible-label="Telefoonnummers">
                 {personPhones.map((ph) => (
                   <PhoneRow
                     key={ph.id}
@@ -680,8 +684,8 @@ export function PersonEditForm({
                 ))}
               </nldd-list>
             )}
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
+            <nldd-container layout="row" gap="8" vertical-alignment="center">
+              <nldd-container width="full">
                 <NewValueField
                   type="tel"
                   value={newPhone}
@@ -690,7 +694,7 @@ export function PersonEditForm({
                   placeholder="+31 6 12345678"
                   accessibleLabel="Nieuw telefoonnummer"
                 />
-              </div>
+              </nldd-container>
               <nldd-dropdown width="140px">
                 <select
                   aria-label="Type telefoonnummer"
@@ -709,23 +713,25 @@ export function PersonEditForm({
                 disabled={!newPhone.trim() || addPhoneMutation.isPending}
                 onClick={handleAddPhone}
               />
-            </div>
+            </nldd-container>
             {newPhoneError && (
-              <p className="mt-1 text-xs text-red-600">{newPhoneError}</p>
+              <nldd-text size="xs" color="critical">{newPhoneError}</nldd-text>
             )}
-          </div>
+          </nldd-container>
         )}
 
         {isAgent && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">API Key</label>
+            <nldd-container gap="4">
+              <nldd-text size="sm" weight="medium">API Key</nldd-text>
               {displayApiKey ? (
                 <>
-                  <div className="flex items-center gap-2">
+                  <nldd-container layout="row" gap="8" vertical-alignment="center">
                     {/* nldd-text-field has no password type; this is a
                         read-only display, not a real form field, so a plain
-                        masked input stands in. */}
+                        masked input stands in. The monospace/border styling
+                        is intentionally left as CSS: there is no design-system
+                        input variant for a read-only secret display. */}
                     <input
                       type={showKey ? 'text' : 'password'}
                       readOnly
@@ -744,13 +750,14 @@ export function PersonEditForm({
                       variant="secondary"
                       onClick={handleCopyKey}
                     />
-                  </div>
-                  <p className="mt-1 text-xs text-amber-600 font-medium">
+                  </nldd-container>
+                  <nldd-text size="xs" weight="bold" color="warning">
                     Deze sleutel wordt slechts eenmaal getoond. Kopieer en bewaar deze veilig.
-                  </p>
+                  </nldd-text>
                 </>
               ) : editData ? (
-                <div className="flex items-center gap-2">
+                <nldd-container layout="row" gap="8" vertical-alignment="center">
+                  {/* Same read-only-secret exception as above. */}
                   <input
                     type="text"
                     readOnly
@@ -758,7 +765,7 @@ export function PersonEditForm({
                     className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary/50"
                   />
                   {confirmRotate ? (
-                    <div className="flex items-center gap-1.5">
+                    <nldd-container layout="row" gap="6" vertical-alignment="center">
                       <NlddButton
                         text="Bevestig"
                         startIcon="refresh"
@@ -773,7 +780,7 @@ export function PersonEditForm({
                         size="sm"
                         onClick={() => setConfirmRotate(false)}
                       />
-                    </div>
+                    </nldd-container>
                   ) : (
                     <NlddButton
                       text="Roteer"
@@ -783,13 +790,13 @@ export function PersonEditForm({
                       onClick={handleRotateKey}
                     />
                   )}
-                </div>
+                </nldd-container>
               ) : (
-                <p className="text-sm text-text-secondary">
+                <nldd-text size="sm" color="secondary">
                   API key wordt automatisch gegenereerd na aanmaken.
-                </p>
+                </nldd-text>
               )}
-            </div>
+            </nldd-container>
             <RichTextFormField
               label="Beschrijving"
               value={description}
@@ -857,6 +864,7 @@ export function PersonEditForm({
             </nldd-dropdown>
           </nldd-form-field>
         )}
+      </nldd-container>
       </form>
       </nldd-form>
     </Modal>

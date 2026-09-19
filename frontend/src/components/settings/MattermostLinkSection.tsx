@@ -56,9 +56,9 @@ export function MattermostLinkSection({ compact = false }: { compact?: boolean }
   };
 
   const content = (
-    <>
+    <nldd-container gap="16">
       {!compact && (
-        <nldd-container layout="row" gap="12" style={{ alignItems: 'center', marginBottom: '16px' }}>
+        <nldd-container layout="row" gap="12" vertical-alignment="center">
           <Icon name="message-rectangle-text" size="lg" />
           <nldd-container gap="2">
             <nldd-text weight="medium">Mattermost koppeling</nldd-text>
@@ -145,14 +145,14 @@ export function MattermostLinkSection({ compact = false }: { compact?: boolean }
           )}
         </nldd-container>
       )}
-    </>
+    </nldd-container>
   );
 
   if (compact) return content;
 
   return (
     <nldd-card>
-      <div className="p-6">{content}</div>
+      <nldd-container padding="24">{content}</nldd-container>
     </nldd-card>
   );
 }

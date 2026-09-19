@@ -8,8 +8,8 @@ export function VocabularySettings() {
 
   return (
     <nldd-card>
-      <div className="p-6">
-        <nldd-container layout="row" gap="12" style={{ alignItems: 'center', marginBottom: '16px' }}>
+      <nldd-container padding="24" gap="16">
+        <nldd-container layout="row" gap="12" vertical-alignment="center">
           <Icon name="book" size="lg" />
           <nldd-container gap="2">
             <nldd-text weight="medium">Vocabulaire</nldd-text>
@@ -29,7 +29,7 @@ export function VocabularySettings() {
             />
           ))}
         </nldd-container>
-      </div>
+      </nldd-container>
     </nldd-card>
   );
 }

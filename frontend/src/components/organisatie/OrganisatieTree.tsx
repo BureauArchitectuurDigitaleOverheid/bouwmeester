@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { clsx } from 'clsx';
 import { Badge } from '@/components/common/Badge';
 import { Icon } from '@/components/nldd/Icon';
 import { orUndef, useNlddEvent } from '@/components/nldd/events';
@@ -90,11 +89,13 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
           the fallback the conversion brief calls for when the mapping isn't
           clean. */}
       <div
-        className={clsx(
-          dragOver && 'ring-2 ring-primary-500 bg-primary-50/50 rounded-lg',
-          isHistorisch && 'opacity-60',
-        )}
-        style={{ paddingLeft: `${depth * 16}px` }}
+        style={{
+          paddingLeft: `${depth * 16}px`,
+          borderRadius: dragOver ? '8px' : undefined,
+          boxShadow: dragOver ? '0 0 0 2px var(--primitives-color-accent-500)' : undefined,
+          background: dragOver ? 'var(--primitives-color-accent-25)' : undefined,
+          opacity: isHistorisch ? 0.6 : undefined,
+        }}
         title={title}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -141,8 +142,9 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
           {/* Rechter kolom: type-badge rechts uitgelijnd + add-button.
               Geen vaste breedte: de boom staat in een smal paneel, en een
               shrink-0 kolom van 208px liet voor de naam zo weinig over dat die
-              per letter afbrak. */}
-          <div className="flex shrink-0 items-center justify-end gap-1">
+              per letter afbrak. shrink-0 blijft staan (nldd-container heeft
+              geen flex-shrink attribuut), de rest converteert. */}
+          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content" className="shrink-0">
             {node.bron === 'fcc_import' && (
               <Badge variant="amber" title="Auto-aangemaakt door FCC-import">
                 FCC
@@ -167,7 +169,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
               // Placeholder zodat synth-rijen dezelfde breedte hebben (badges blijven uitgelijnd)
               <span className="h-5 w-5 shrink-0" aria-hidden />
             )}
-          </div>
+          </nldd-container>
         </nldd-list-item>
       </div>
 
@@ -207,7 +209,7 @@ interface OrganisatieTreeProps {
 
 export function OrganisatieTree({ tree, selectedId, onSelect, onAdd, onDropPerson, searchTerm, expandedByDefaultIds }: OrganisatieTreeProps) {
   return (
-    <div className="space-y-0.5">
+    <nldd-container gap="2">
       {tree.map((node) => (
         <TreeNode
           key={node.id}
@@ -220,6 +222,6 @@ export function OrganisatieTree({ tree, selectedId, onSelect, onAdd, onDropPerso
           expandedByDefaultIds={expandedByDefaultIds}
         />
       ))}
-    </div>
+    </nldd-container>
   );
 }

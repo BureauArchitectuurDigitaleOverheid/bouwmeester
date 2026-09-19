@@ -153,17 +153,20 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
     >
       {/* Group header. A plain button rather than NlddButton: the label is a
           composite of an icon, a badge, a name and a count, none of which
-          nldd-button's text/icon slots can carry together. */}
+          nldd-button's text/icon slots can carry together (its children only
+          reach the `text` slot, not a default slot for arbitrary content). */}
       <button
         className="flex items-center gap-2 w-full text-left"
         onClick={() => setExpanded(!expanded)}
       >
-        <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size="sm" className="text-text-secondary shrink-0" />
+        <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size="sm" />
         <Badge variant={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}>
           {formatOrganisatieType(group.eenheid.type)}
         </Badge>
-        <span className="text-sm font-medium text-text truncate">{group.eenheid.naam}</span>
-        <span className="text-xs text-text-secondary">({totalCount})</span>
+        <nldd-text size="sm" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {group.eenheid.naam}
+        </nldd-text>
+        <nldd-text size="xs" color="secondary">({totalCount})</nldd-text>
       </button>
 
       {expanded && (
@@ -247,37 +250,40 @@ export function OrganisatieDetail({
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <nldd-container gap="24">
+      {/* Header. The sm-and-up side-by-side vs. stacked-below-sm split has no
+          nldd-container equivalent (layout is one fixed mode, not responsive),
+          so the two top-level rows keep their plain flex wrapper; everything
+          inside converts. */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Badge
-              variant={ORGANISATIE_TYPE_BADGE_COLORS[eenheid.type] || 'gray'}
-              dot
-            >
-              {formatOrganisatieType(eenheid.type)}
-            </Badge>
-          </div>
-          <h2 className="text-xl font-semibold text-text">{eenheid.naam}</h2>
+        <nldd-container gap="4">
+          <Badge
+            variant={ORGANISATIE_TYPE_BADGE_COLORS[eenheid.type] || 'gray'}
+            dot
+          >
+            {formatOrganisatieType(eenheid.type)}
+          </Badge>
+          <nldd-title size={4}><h2>{eenheid.naam}</h2></nldd-title>
           {eenheid.manager && (
-            <p className="text-sm text-text-secondary mt-0.5">
+            <nldd-text size="sm" color="secondary">
               {eenheid.manager.naam}{eenheid.manager.functie ? ` — ${formatFunctie(eenheid.manager.functie)}` : ''}
-            </p>
+            </nldd-text>
           )}
           {eenheid.beschrijving && (
-            <div className="mt-1">
-              <RichTextDisplay content={eenheid.beschrijving} fallback="" />
-            </div>
+            <RichTextDisplay content={eenheid.beschrijving} fallback="" />
           )}
-          {/* Externe-data velden uit TOOI/Ministeries.csv/handmatig */}
+          {/* Externe-data velden uit TOOI/Ministeries.csv/handmatig. A <dl> is
+              the correct semantic element for this label/value list, and
+              nldd-text doesn't replace dt/dd — only the grid/spacing utilities
+              that arranged them convert, via inline style since nldd-container
+              doesn't do a two-column label/value CSS grid. */}
           {(eenheid.afkorting ||
             eenheid.oin ||
             eenheid.fte_aantal ||
             eenheid.website ||
             eenheid.kvk_nummer ||
             eenheid.tooi_uri) && (
-            <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
+            <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
               {eenheid.afkorting && (
                 <>
                   <dt className="text-text-secondary">Afkorting</dt>
@@ -300,14 +306,7 @@ export function OrganisatieDetail({
                 <>
                   <dt className="text-text-secondary">Website</dt>
                   <dd>
-                    <a
-                      href={eenheid.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary-600 hover:underline truncate block max-w-[400px]"
-                    >
-                      {eenheid.website}
-                    </a>
+                    <nldd-link href={eenheid.website} target="_blank" text={eenheid.website} size="xs" style={{ maxWidth: '400px', display: 'block' }} />
                   </dd>
                 </>
               )}
@@ -321,32 +320,25 @@ export function OrganisatieDetail({
                 <>
                   <dt className="text-text-secondary">TOOI</dt>
                   <dd>
-                    <a
-                      href={eenheid.tooi_uri}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary-600 hover:underline font-mono text-[10px] truncate block max-w-[400px]"
-                    >
-                      {eenheid.tooi_uri}
-                    </a>
+                    <nldd-link href={eenheid.tooi_uri} target="_blank" text={eenheid.tooi_uri} size="xs" className="font-mono" style={{ maxWidth: '400px', display: 'block' }} />
                   </dd>
                 </>
               )}
             </dl>
           )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
+        </nldd-container>
+        <nldd-container layout="row" gap="8" width="fit-content">
           <Button variant="secondary" size="sm" icon="pencil" onClick={onEdit}>
             Bewerken
           </Button>
           <Button variant="danger" size="sm" icon="trash" onClick={onDelete}>
             Verwijderen
           </Button>
-        </div>
+        </nldd-container>
       </div>
 
       {/* Action buttons */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <nldd-container layout="wrap" gap="8">
         <Button variant="secondary" size="sm" icon="plus" onClick={onAddChild}>
           Subeenheid toevoegen
         </Button>
@@ -356,21 +348,21 @@ export function OrganisatieDetail({
         <Button variant="secondary" size="sm" icon="sparkles" onClick={onAddAgent}>
           Agent toevoegen
         </Button>
-      </div>
+      </nldd-container>
 
       {/* People — recursive grouped view */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Icon name="Users" size="sm" className="text-text-secondary" />
-          <h3 className="text-sm font-semibold text-text">
-            Personen ({personenCount}){agentCount > 0 && ` · Agents (${agentCount})`}
-          </h3>
-        </div>
+      <nldd-container gap="12">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <Icon name="Users" size="sm" />
+          <nldd-title size={6}>
+            <h3>Personen ({personenCount}){agentCount > 0 && ` · Agents (${agentCount})`}</h3>
+          </nldd-title>
+        </nldd-container>
 
         {!personenGroup || totalCount === 0 ? (
-          <p className="text-sm text-text-secondary">
+          <nldd-text size="sm" color="secondary">
             Geen personen of agents gekoppeld aan deze eenheid.
-          </p>
+          </nldd-text>
         ) : (
           <PersonGroupSection
             group={personenGroup}
@@ -380,7 +372,7 @@ export function OrganisatieDetail({
             onDropPerson={onDropPerson}
           />
         )}
-      </div>
-    </div>
+      </nldd-container>
+    </nldd-container>
   );
 }

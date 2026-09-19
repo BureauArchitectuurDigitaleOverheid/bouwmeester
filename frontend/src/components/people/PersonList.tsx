@@ -43,23 +43,25 @@ export function PersonList({ people, isLoading, onPersonClick }: PersonListProps
   });
 
   if (isLoading) {
-    return <LoadingSpinner className="py-12" />;
+    return (
+      <nldd-container padding-block="48">
+        <LoadingSpinner />
+      </nldd-container>
+    );
   }
 
   return (
-    <div className="space-y-4">
-      {/* Search */}
-      <div className="max-w-sm">
+    <nldd-container gap="16">
+      <nldd-container max-width="384px">
         <PersonSearchField value={searchQuery} onChange={setSearchQuery} />
-      </div>
+      </nldd-container>
 
-      {/* Grid */}
       {filteredPeople.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <nldd-container layout="grid" column-count={1} sm-column-count={2} lg-column-count={3} gap="16">
           {filteredPeople.map((person) => (
             <PersonCard key={person.id} person={person} onClick={onPersonClick} />
           ))}
-        </div>
+        </nldd-container>
       ) : (
         <EmptyState
           icon="users"
@@ -71,6 +73,6 @@ export function PersonList({ people, isLoading, onPersonClick }: PersonListProps
           }
         />
       )}
-    </div>
+    </nldd-container>
   );
 }

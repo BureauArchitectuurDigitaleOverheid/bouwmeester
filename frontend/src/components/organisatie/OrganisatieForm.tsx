@@ -158,7 +158,8 @@ export function OrganisatieForm({
         inheritance for the fields.
       */}
       <nldd-form>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit}>
+      <nldd-container layout="stack" gap="16">
         <Input
           label="Naam"
           value={naam}
@@ -199,6 +200,7 @@ export function OrganisatieForm({
         )}
 
         <RichTextFormField label="Beschrijving" value={beschrijving} onChange={setBeschrijving} />
+      </nldd-container>
       </form>
       </nldd-form>
     </Modal>

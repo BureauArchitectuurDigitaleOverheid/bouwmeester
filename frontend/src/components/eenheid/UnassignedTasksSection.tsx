@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/common/Badge';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { Icon } from '@/components/nldd/Icon';
-import { useNlddEvent } from '@/components/nldd/events';
+import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import { useUpdateTask } from '@/hooks/useTasks';
 import { useOrganisatieFlat, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -52,6 +52,42 @@ interface UnassignedTasksSectionProps {
   selectedEenheidId: string;
 }
 
+interface DisclosureHeaderProps {
+  icon: string;
+  label: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+}
+
+/**
+ * A section header that opens/closes a group of rows below it. This is the
+ * disclosure-row shape from the list-with-rows pattern (a `button` row with
+ * cells), not `NlddButton`: that wrapper's children only reach the button's
+ * `text` slot, which cannot hold a chevron + icon + label + count tag — it
+ * has no default slot for arbitrary content.
+ */
+function DisclosureHeader({ icon, label, count, open, onToggle }: DisclosureHeaderProps) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onToggle);
+
+  return (
+    <nldd-list-item ref={ref} button expanded={orUndef(open)}>
+      <nldd-icon-cell icon={open ? 'chevron-down' : 'chevron-right'} size="16" />
+      <nldd-spacer-cell size="8" />
+      <nldd-icon-cell icon={icon} size="16" />
+      <nldd-spacer-cell size="8" />
+      {/* nldd-text-cell has no weight attribute; **bold** in `text` is how the
+          cell expresses inline emphasis. */}
+      <nldd-text-cell text={`**${label}**`} color="secondary" width="fit-content" />
+      <nldd-spacer-cell size="8" />
+      <nldd-cell>
+        <nldd-tag text={String(count)} color="warning" size="sm" />
+      </nldd-cell>
+    </nldd-list-item>
+  );
+}
+
 function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: { task: Task; showPersonAssign: boolean; selectedEenheidId: string; personOptions: SelectOption[] }) {
   const { openTaskDetail } = useTaskDetail();
   const updateTask = useUpdateTask();
@@ -93,8 +129,14 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
   useNlddEvent(titleRef, 'click', () => openTaskDetail(task.id));
 
   return (
+    // A row-with-controls in a card, not a nldd-list row: each task carries two
+    // live CreatableSelect dropdowns rather than a fixed action set, which the
+    // list/segment composition (list-with-rows.md) is not meant for. The
+    // md-and-up side-by-side vs. stacked-below-md layout has no nldd-container
+    // equivalent (layout is one fixed mode, not responsive), so the outer
+    // flex/border/hover chrome stays plain CSS; everything inside converts.
     <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 py-2.5 px-4 border-b border-border last:border-0 hover:bg-gray-50/50">
-      <div className="flex-1 min-w-0">
+      <nldd-container width="full" min-width="0" gap="4">
         {/* nldd-button rather than the NlddButton wrapper: this needs
             width="full" + left alignment, which the wrapper does not expose. */}
         <nldd-button
@@ -105,7 +147,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
           width="full"
           horizontal-alignment="left"
         />
-        <div className="flex items-center gap-2 mt-1">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
           <Badge
             variant={TASK_PRIORITY_COLORS[task.priority]}
             dot
@@ -113,17 +155,17 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
             {TASK_PRIORITY_LABELS[task.priority]}
           </Badge>
           {task.due_date && (
-            <span
-              className={`inline-flex items-center gap-1 text-xs ${
-                isOverdue ? 'text-red-600 font-medium' : 'text-text-secondary'
-              }`}
-            >
+            <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
               <Icon name="Clock" size="xs" />
-              {formatDateShort(task.due_date)}
-            </span>
+              <nldd-text size="xs" color={isOverdue ? 'critical' : 'secondary'} weight={isOverdue ? 'bold' : 'regular'}>
+                {formatDateShort(task.due_date)}
+              </nldd-text>
+            </nldd-container>
           )}
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-container>
+      {/* Same md-breakpoint caveat as the outer row: nldd-container's width is
+          not responsive, so the two selects keep their plain-CSS wrapper. */}
       <div className="flex items-center gap-2 shrink-0">
         <div className="w-full md:w-56">
           <CreatableSelect
@@ -183,72 +225,80 @@ export function UnassignedTasksSection({
   if (totalCount === 0) return null;
 
   return (
-    <div className="bg-surface rounded-xl border border-border shadow-sm">
-      <div className="flex items-center gap-3 px-5 py-4">
-        <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-amber-100 text-amber-600">
+    <nldd-card>
+      <nldd-container layout="row" gap="12" vertical-alignment="center" padding="20">
+        {/* Fixed 40px square icon badge: same case as InboxItem's type icon —
+            nldd-container has no fixed-height/border-radius attributes, so the
+            box stays plain CSS. The color is a warning token, not a hex value. */}
+        <div
+          className="flex items-center justify-center h-10 w-10 rounded-lg shrink-0"
+          style={{ background: 'var(--primitives-color-warning-100)', color: 'var(--primitives-color-warning-600)' }}
+        >
           <Icon name="AlertTriangle" size="lg" />
         </div>
-        <div>
-          <h2 className="text-base font-semibold text-text">Onverdeeld</h2>
-          <p className="text-sm text-text-secondary">
+        <nldd-container gap="0">
+          <nldd-text size="md" weight="bold">Onverdeeld</nldd-text>
+          <nldd-text size="sm" color="secondary">
             {totalCount} {totalCount === 1 ? 'taak' : 'taken'} zonder toewijzing
-          </p>
-        </div>
-      </div>
+          </nldd-text>
+        </nldd-container>
+      </nldd-container>
 
       {/* No unit section */}
       {noUnitCount > 0 && (
-        <div className="border-t border-border">
-          <button
-            onClick={() => setNoUnitOpen(!noUnitOpen)}
-            className="flex items-center gap-2 w-full px-5 py-3 text-sm font-medium text-text-secondary hover:bg-gray-50"
-          >
-            <Icon name={noUnitOpen ? 'ChevronDown' : 'ChevronRight'} size="sm" />
-            <Icon name="Building2" size="sm" />
-            Geen eenheid
-            <nldd-tag text={String(noUnitCount)} color="warning" size="sm" />
-          </button>
+        <nldd-container>
+          <nldd-divider />
+          <DisclosureHeader
+            icon="apartment-building"
+            label="Geen eenheid"
+            count={noUnitCount}
+            open={noUnitOpen}
+            onToggle={() => setNoUnitOpen(!noUnitOpen)}
+          />
           {noUnitOpen && (
-            <div>
+            <nldd-container>
               {noUnitTasks.map((task) => (
                 <TaskRow key={task.id} task={task} showPersonAssign={false} selectedEenheidId={selectedEenheidId} personOptions={personOptions} />
               ))}
               {noUnitCount > noUnitTasks.length && (
-                <p className="px-5 py-2 text-xs text-text-secondary">
-                  En nog {noUnitCount - noUnitTasks.length} meer...
-                </p>
+                <nldd-container padding="20" padding-block="8">
+                  <nldd-text size="xs" color="secondary">
+                    En nog {noUnitCount - noUnitTasks.length} meer...
+                  </nldd-text>
+                </nldd-container>
               )}
-            </div>
+            </nldd-container>
           )}
-        </div>
+        </nldd-container>
       )}
 
       {/* No person section — only at afdeling/team level */}
       {showNoPersonSection && noPersonCount > 0 && (
-        <div className="border-t border-border">
-          <button
-            onClick={() => setNoPersonOpen(!noPersonOpen)}
-            className="flex items-center gap-2 w-full px-5 py-3 text-sm font-medium text-text-secondary hover:bg-gray-50"
-          >
-            <Icon name={noPersonOpen ? 'ChevronDown' : 'ChevronRight'} size="sm" />
-            <Icon name="User" size="sm" />
-            Geen persoon
-            <nldd-tag text={String(noPersonCount)} color="warning" size="sm" />
-          </button>
+        <nldd-container>
+          <nldd-divider />
+          <DisclosureHeader
+            icon="person"
+            label="Geen persoon"
+            count={noPersonCount}
+            open={noPersonOpen}
+            onToggle={() => setNoPersonOpen(!noPersonOpen)}
+          />
           {noPersonOpen && (
-            <div>
+            <nldd-container>
               {noPersonTasks.map((task) => (
                 <TaskRow key={task.id} task={task} showPersonAssign={isPersonLevel} selectedEenheidId={selectedEenheidId} personOptions={personOptions} />
               ))}
               {noPersonCount > noPersonTasks.length && (
-                <p className="px-5 py-2 text-xs text-text-secondary">
-                  En nog {noPersonCount - noPersonTasks.length} meer...
-                </p>
+                <nldd-container padding="20" padding-block="8">
+                  <nldd-text size="xs" color="secondary">
+                    En nog {noPersonCount - noPersonTasks.length} meer...
+                  </nldd-text>
+                </nldd-container>
               )}
-            </div>
+            </nldd-container>
           )}
-        </div>
+        </nldd-container>
       )}
-    </div>
+    </nldd-card>
   );
 }

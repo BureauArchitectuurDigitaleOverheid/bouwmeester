@@ -130,24 +130,36 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
   }, [tasks, statusFilter, priorityFilter, personFilter, eenheidFilter, currentPerson]);
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Toolbar */}
-      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
-        {/* View toggle + New task (above filters on mobile/tablet, right on xl) */}
-        <div className="flex items-center gap-2 shrink-0 order-first xl:order-last">
+      <nldd-container layout="wrap" gap="12" horizontal-alignment="left" vertical-alignment="center">
+        {/* View toggle + New task (above filters on mobile/tablet, right on xl in the
+            previous layout; the container's own wrap now reflows both groups instead
+            of the bespoke xl breakpoint reordering, which nldd-container has no
+            equivalent for). */}
+        <nldd-container layout="row" gap="8" width="fit-content">
           <ViewToggle value={viewMode} onChange={handleViewChange} options={VIEW_OPTIONS} />
 
           <Button
             icon="plus"
             onClick={() => setShowCreateForm(true)}
           >
+            {/* This className is not styling: Button's own responsive-label logic
+                (see components/common/Button.tsx) reads "hidden sm:inline" to find
+                the text it should fall back to as the accessible name when the
+                label itself is hidden below sm. It is a marker Button parses, not
+                a Tailwind utility rendered here — left as-is on purpose. */}
             <span className="hidden sm:inline">Nieuwe taak</span>
           </Button>
-        </div>
+        </nldd-container>
 
-        {/* Filters */}
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
-          <div className="w-full sm:w-44">
+        {/* Filters. nldd-container's `width` has no responsive variants (unlike
+            `gap`/`padding`/`column-count`), so the previous "full width under sm,
+            fixed width from sm" behaviour collapses to a plain min-width: each
+            filter still wraps to its own line on a narrow screen because of the
+            parent's layout="wrap", it just isn't forced to 100% while doing so. */}
+        <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+          <nldd-container min-width="176px">
             <CreatableSelect
               value={statusFilter}
               onChange={setStatusFilter}
@@ -155,9 +167,9 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
               placeholder="Alle statussen"
               searchable={false}
             />
-          </div>
+          </nldd-container>
 
-          <div className="w-full sm:w-44">
+          <nldd-container min-width="176px">
             <CreatableSelect
               value={priorityFilter}
               onChange={setPriorityFilter}
@@ -165,27 +177,27 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
               placeholder="Alle prioriteiten"
               searchable={false}
             />
-          </div>
+          </nldd-container>
 
-          <div className="w-full sm:w-52">
+          <nldd-container min-width="208px">
             <CreatableSelect
               value={personFilter}
               onChange={setPersonFilter}
               options={personOptions}
               placeholder="Alle personen"
             />
-          </div>
+          </nldd-container>
 
-          <div className="w-full sm:w-52">
+          <nldd-container min-width="208px">
             <CreatableSelect
               value={eenheidFilter}
               onChange={setEenheidFilter}
               options={eenheidOptions}
               placeholder="Alle eenheden"
             />
-          </div>
-        </div>
-      </div>
+          </nldd-container>
+        </nldd-container>
+      </nldd-container>
 
       {/* Content */}
       {viewMode === 'list' ? (
@@ -202,6 +214,6 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
         onClose={() => setShowCreateForm(false)}
         nodeId={defaultNodeId}
       />
-    </div>
+    </nldd-container>
   );
 }

@@ -101,83 +101,92 @@ export function StakeholderTab({
     deleteMutation.mutate({ id: a.id, scopeType, scopeId });
   };
 
-  if (isLoading) return <LoadingSpinner className="py-6" />;
+  if (isLoading) {
+    return (
+      <nldd-container padding-block="24">
+        <LoadingSpinner />
+      </nldd-container>
+    );
+  }
 
   return (
-    <div className="space-y-3">
+    <nldd-container gap="12">
       {assessments.length === 0 ? (
-        <p className="text-sm text-text-secondary">
+        <nldd-text size="sm" color="secondary">
           Nog geen stakeholders geregistreerd.
-        </p>
+        </nldd-text>
       ) : (
         <nldd-list type="form" variant="box-tinted" accessible-label="Stakeholders">
           {assessments.map((a) => (
             <nldd-list-item key={a.id}>
-              <div className="w-full py-1 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-medium text-sm text-text">
-                    {a.person_naam}
-                  </div>
+              {/* A row this complex (name, delete action, three selects, a
+                  note editor) is more than text-cell can carry, so it goes in
+                  a single full-width nldd-cell per the "multiple paragraphs
+                  or markup in a row" guidance from the list-with-rows pattern. */}
+              <nldd-cell width="full">
+                <nldd-container gap="8" padding-block="4">
+                  <nldd-container layout="row" gap="8" vertical-alignment="center">
+                    <nldd-text weight="medium" size="sm">{a.person_naam}</nldd-text>
+                    <nldd-spacer size="flexible" />
+                    {!readOnly && (
+                      <NlddIconButton
+                        icon="trash"
+                        accessibleLabel="Stakeholder verwijderen"
+                        variant="neutral-transparent"
+                        size="sm"
+                        onClick={() => handleDelete(a)}
+                      />
+                    )}
+                  </nldd-container>
+                  <nldd-container layout="grid" column-count={3} gap="8">
+                    <ScoreSelect
+                      label="Belang"
+                      value={a.belang}
+                      onChange={(v) => handleUpdate(a, { belang: v })}
+                      disabled={readOnly}
+                    />
+                    <HoudingSelect
+                      value={a.houding}
+                      onChange={(v) => handleUpdate(a, { houding: v })}
+                      disabled={readOnly}
+                    />
+                    <ScoreSelect
+                      label="Invloed"
+                      value={a.invloed}
+                      onChange={(v) => handleUpdate(a, { invloed: v })}
+                      disabled={readOnly}
+                    />
+                  </nldd-container>
                   {!readOnly && (
-                    <NlddIconButton
-                      icon="trash"
-                      accessibleLabel="Stakeholder verwijderen"
-                      variant="neutral-transparent"
-                      size="sm"
-                      onClick={() => handleDelete(a)}
+                    <NoteEditor
+                      value={a.notitie}
+                      onPersist={(value) => handleUpdate(a, { notitie: value })}
                     />
                   )}
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <ScoreSelect
-                    label="Belang"
-                    value={a.belang}
-                    onChange={(v) => handleUpdate(a, { belang: v })}
-                    disabled={readOnly}
-                  />
-                  <HoudingSelect
-                    value={a.houding}
-                    onChange={(v) => handleUpdate(a, { houding: v })}
-                    disabled={readOnly}
-                  />
-                  <ScoreSelect
-                    label="Invloed"
-                    value={a.invloed}
-                    onChange={(v) => handleUpdate(a, { invloed: v })}
-                    disabled={readOnly}
-                  />
-                </div>
-                {!readOnly && (
-                  <NoteEditor
-                    value={a.notitie}
-                    onPersist={(value) => handleUpdate(a, { notitie: value })}
-                  />
-                )}
-                {readOnly && a.notitie && (
-                  <RichTextDisplay content={a.notitie} fallback="" />
-                )}
-              </div>
+                  {readOnly && a.notitie && (
+                    <RichTextDisplay content={a.notitie} fallback="" />
+                  )}
+                </nldd-container>
+              </nldd-cell>
             </nldd-list-item>
           ))}
         </nldd-list>
       )}
 
       {!readOnly && (
-        <div className="flex items-start gap-2">
-          <div className="flex-1">
-            <CreatableSelect
-              value={addValue}
-              onChange={(v) => {
-                setAddValue(v);
-                if (v) handleAdd(v);
-              }}
-              options={availableOptions}
-              placeholder="Persoon toevoegen..."
-            />
-          </div>
-        </div>
+        <nldd-container width="full">
+          <CreatableSelect
+            value={addValue}
+            onChange={(v) => {
+              setAddValue(v);
+              if (v) handleAdd(v);
+            }}
+            options={availableOptions}
+            placeholder="Persoon toevoegen..."
+          />
+        </nldd-container>
       )}
-    </div>
+    </nldd-container>
   );
 }
 
@@ -226,16 +235,16 @@ function HoudingSelect({
 }) {
   if (disabled) {
     return (
-      <div className="flex flex-col gap-0.5">
-        <span className="text-xs text-text-secondary">Houding</span>
+      <nldd-container gap="2">
+        <nldd-text size="xs" color="secondary">Houding</nldd-text>
         {value ? (
           <Badge variant={HOUDING_BADGE_VARIANT[value]}>
             {STAKEHOLDER_HOUDING_LABELS[value]}
           </Badge>
         ) : (
-          <span className="text-sm text-text-secondary">—</span>
+          <nldd-text size="sm" color="secondary">—</nldd-text>
         )}
-      </div>
+      </nldd-container>
     );
   }
   return (

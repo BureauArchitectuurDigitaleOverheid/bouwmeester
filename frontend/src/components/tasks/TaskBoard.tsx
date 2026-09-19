@@ -66,8 +66,19 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
   };
 
   return (
+    // Left as a plain div, deliberately: this frame is a horizontal-scroll
+    // snap carousel on narrow screens that becomes a fixed 3-column grid at
+    // md, with negative-margin edge-to-edge bleed below md. nldd-container's
+    // `layout` is one fixed mode (no responsive stack->grid switch) and it has
+    // no scroll-snap or negative-margin equivalent, so there is no component
+    // composition that reproduces this without a full custom scroller
+    // component, which is out of scope for a chrome-only pass.
     <div className="-mx-4 px-4 md:mx-0 md:px-0 flex gap-4 min-h-[400px] overflow-x-auto pb-2 snap-x snap-mandatory md:grid md:grid-cols-3 md:overflow-x-visible md:snap-none md:pb-0">
       {BOARD_COLUMNS.map((status) => (
+        // Left as a plain div: this is the native HTML5 drag-and-drop target
+        // (onDragOver/onDragLeave/onDrop), which the brief calls out to leave
+        // alone. The drag-over highlight is likewise plain CSS state, not
+        // something nldd-container/nldd-card can express as a boolean prop.
         <div
           key={status}
           onDragOver={(e) => handleDragOver(e, status)}
@@ -77,15 +88,19 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
             dragOverColumn === status ? 'bg-primary-50/50 border-primary-200' : ''
           }`}
         >
-          <div className="px-4 py-3 flex items-center justify-between">
+          <nldd-container layout="row" gap="8" vertical-alignment="center" padding="16" padding-bottom="12">
             <nldd-text size="sm" weight="bold">
               {TASK_STATUS_LABELS[status]}
             </nldd-text>
+            {/* Pushes the count badge to the far edge, the container-level
+                equivalent of nldd-spacer-cell in a row of cells. */}
+            <nldd-spacer size="flexible" direction="horizontal" />
             <nldd-badge color={COLUMN_TAG_COLOR[status]} number={tasksByStatus[status]?.length ?? 0} decorative />
-          </div>
+          </nldd-container>
 
-          <div className="px-3 pb-3 space-y-2 min-h-[100px]">
+          <nldd-container gap="8" padding-inline="12" padding-bottom="12">
             {tasksByStatus[status]?.map((task) => (
+              // Plain div: this is the native drag SOURCE (draggable + onDragStart).
               <div
                 key={task.id}
                 draggable
@@ -97,13 +112,16 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
             ))}
 
             {(tasksByStatus[status]?.length ?? 0) === 0 && (
-              <div className="flex items-center justify-center h-[100px]">
+              // nldd-container has no min-height attribute (only nldd-cell and
+              // a few section components do), so the empty-column height stays
+              // an inline style rather than a Tailwind class.
+              <nldd-container layout="row" horizontal-alignment="center" vertical-alignment="center" style={{ minHeight: '100px' }}>
                 <nldd-text size="xs" color="secondary">
                   Sleep taken hierheen
                 </nldd-text>
-              </div>
+              </nldd-container>
             )}
-          </div>
+          </nldd-container>
         </div>
       ))}
     </div>

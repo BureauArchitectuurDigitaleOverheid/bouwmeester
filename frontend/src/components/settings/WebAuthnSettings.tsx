@@ -64,21 +64,21 @@ export function WebAuthnSettings() {
   if (!isWebAuthnAvailable()) {
     return (
       <nldd-card>
-        <div className="p-6">
+        <nldd-container padding="24" gap="4">
           <nldd-text weight="medium">Biometrische inlog</nldd-text>
           <nldd-text size="sm" color="secondary">
             Je browser ondersteunt geen biometrische inlog (WebAuthn). Gebruik een moderne browser om deze
             functie te gebruiken.
           </nldd-text>
-        </div>
+        </nldd-container>
       </nldd-card>
     );
   }
 
   return (
     <nldd-card>
-      <div className="p-6">
-        <nldd-container layout="row" gap="12" style={{ alignItems: 'center', marginBottom: '16px' }}>
+      <nldd-container padding="24" gap="16">
+        <nldd-container layout="row" gap="12" vertical-alignment="center">
           <Icon name="key" size="lg" />
           <nldd-container gap="2">
             <nldd-text weight="medium">Biometrische inlog</nldd-text>
@@ -142,7 +142,7 @@ export function WebAuthnSettings() {
             </>
           )}
         </nldd-container>
-      </div>
+      </nldd-container>
       <ConfirmDialog
         open={!!deleteCredId}
         onClose={() => setDeleteCredId(null)}

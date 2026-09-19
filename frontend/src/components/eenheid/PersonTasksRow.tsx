@@ -26,20 +26,22 @@ function ExpandedPersonTasks({ person }: { person: EenheidPersonTaskStats }) {
   const handleTaskClick = (task: Task) => openTaskDetail(task.id);
 
   return (
-    <div style={{ gridColumn: '1 / -1' }} className="px-3 md:px-5 py-3 bg-gray-50/50">
-      {isLoading && <LoadingSpinner className="py-4" />}
-      {tasks && tasks.length === 0 && (
-        <nldd-text size="sm" color="secondary">
-          Geen taken gevonden.
-        </nldd-text>
-      )}
-      {tasks && tasks.length > 0 && (
-        <div className="space-y-2">
-          {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} onEdit={handleTaskClick} compact />
-          ))}
-        </div>
-      )}
+    <div style={{ gridColumn: '1 / -1' }}>
+      <nldd-container padding="12" gap="8">
+        {isLoading && <LoadingSpinner className="py-4" />}
+        {tasks && tasks.length === 0 && (
+          <nldd-text size="sm" color="secondary">
+            Geen taken gevonden.
+          </nldd-text>
+        )}
+        {tasks && tasks.length > 0 && (
+          <nldd-container layout="stack" gap="8">
+            {tasks.map((task) => (
+              <TaskCard key={task.id} task={task} onEdit={handleTaskClick} compact />
+            ))}
+          </nldd-container>
+        )}
+      </nldd-container>
     </div>
   );
 }
@@ -48,7 +50,7 @@ export function PersonTasksRow({ person, isExpanded, onToggle }: PersonTasksRowP
   return (
     <nldd-table-row selected={orUndef(isExpanded)}>
       <nldd-cell>
-        <div className="flex items-center gap-1">
+        <nldd-container layout="row" gap="4" vertical-alignment="center">
           <NlddIconButton
             icon={isExpanded ? 'chevron-down' : 'chevron-right'}
             accessibleLabel={isExpanded ? 'Taken verbergen' : 'Taken tonen'}
@@ -57,7 +59,7 @@ export function PersonTasksRow({ person, isExpanded, onToggle }: PersonTasksRowP
             onClick={onToggle}
           />
           <nldd-text-cell text={person.person_naam} />
-        </div>
+        </nldd-container>
       </nldd-cell>
       <nldd-text-cell text={String(person.open_count)} horizontal-alignment="right" hide-below="lg" />
       <nldd-text-cell

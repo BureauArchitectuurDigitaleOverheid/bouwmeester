@@ -25,19 +25,24 @@ export function PersonAvatar({ person, size = '40' }: PersonAvatarProps) {
   const online = isPersonOnline(person);
 
   return (
-    <div className="relative shrink-0" style={{ width: `${size}px`, height: `${size}px` }}>
+    // The badge anchors to this box with absolute positioning, which is layout
+    // math a component can't express — nldd-container has no relative/absolute
+    // concept, so this one div stays plain CSS (inline style, no className).
+    <div style={{ position: 'relative', flexShrink: 0, width: `${size}px`, height: `${size}px` }}>
       <nldd-avatar
         name={person.naam}
         size={size}
         {...(person.is_agent ? { icon: 'sparkles', color: 'inherit' } : {})}
       />
       {online && (
+        // Same reason: the online dot is pinned to a corner of the avatar box,
+        // not laid out relative to a sibling.
         <nldd-badge
           color="success"
           icon="circle-filled-extra-small"
           pulse
           decorative
-          className="absolute bottom-0 right-0"
+          style={{ position: 'absolute', bottom: 0, right: 0 }}
         />
       )}
     </div>

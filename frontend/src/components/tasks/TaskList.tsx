@@ -39,26 +39,24 @@ export function TaskList({ tasks, onEditTask }: TaskListProps) {
   ];
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {statusOrder.map((status) => {
         const groupTasks = groupedTasks[status];
         if (!groupTasks || groupTasks.length === 0) return null;
 
         return (
-          <div key={status}>
-            <div className="mb-2 uppercase tracking-wider">
-              <nldd-text size="xs" weight="bold" color="secondary">
-                {TASK_STATUS_LABELS[status]} ({groupTasks.length})
-              </nldd-text>
-            </div>
-            <div className="space-y-2">
+          <nldd-container key={status} gap="8">
+            <nldd-text size="xs" weight="bold" color="secondary">
+              {TASK_STATUS_LABELS[status]} ({groupTasks.length})
+            </nldd-text>
+            <nldd-container gap="8">
               {groupTasks.map((task) => (
                 <TaskCard key={task.id} task={task} onEdit={onEditTask} />
               ))}
-            </div>
-          </div>
+            </nldd-container>
+          </nldd-container>
         );
       })}
-    </div>
+    </nldd-container>
   );
 }

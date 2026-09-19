@@ -11,30 +11,38 @@ interface SubeenheidCardProps {
 export function SubeenheidCard({ sub, onSelect }: SubeenheidCardProps) {
   return (
     <Card hoverable onClick={() => onSelect(sub.eenheid_id)}>
-      <div className="space-y-2">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2">
-            <Icon name="Building2" size="md" className="text-text-secondary" />
-            <div>
-              <p className="font-medium text-text">{sub.eenheid_naam}</p>
-              <p className="text-xs text-text-secondary">
+      <nldd-container layout="stack" gap="8">
+        <nldd-container layout="row" gap="8" vertical-alignment="top" horizontal-alignment="left">
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            <Icon name="Building2" size="md" />
+            <nldd-container layout="stack" gap="0">
+              <nldd-text weight="medium">{sub.eenheid_naam}</nldd-text>
+              <nldd-text size="xs" color="secondary">
                 {formatOrganisatieType(sub.eenheid_type)}
-              </p>
-            </div>
-          </div>
+              </nldd-text>
+            </nldd-container>
+          </nldd-container>
           {sub.overdue_count > 0 && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-              <Icon name="AlertTriangle" size="xs" />
-              {sub.overdue_count}
-            </span>
+            <nldd-tag
+              text={String(sub.overdue_count)}
+              icon="exclamation-triangle"
+              color="critical"
+              size="sm"
+            />
           )}
-        </div>
-        <div className="flex gap-4 text-sm text-text-secondary">
-          <span>Open: {sub.open_count}</span>
-          <span>In uitvoering: {sub.in_progress_count}</span>
-          <span>Afgerond: {sub.done_count}</span>
-        </div>
-      </div>
+        </nldd-container>
+        <nldd-container layout="row" gap="16">
+          <nldd-text size="sm" color="secondary">
+            Open: {sub.open_count}
+          </nldd-text>
+          <nldd-text size="sm" color="secondary">
+            In uitvoering: {sub.in_progress_count}
+          </nldd-text>
+          <nldd-text size="sm" color="secondary">
+            Afgerond: {sub.done_count}
+          </nldd-text>
+        </nldd-container>
+      </nldd-container>
     </Card>
   );
 }

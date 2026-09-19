@@ -54,13 +54,14 @@ export function OnboardingWizard({
   let footer: ReactNode = null;
   if (current.dismissible) {
     footer = (
-      <div className="flex items-center justify-between w-full">
+      <nldd-container layout="row" vertical-alignment="center" width="full">
         <NlddButton
           text="Later"
           variant="neutral-transparent"
           disabled={dismissMutation.isPending}
           onClick={() => handleDismiss(false)}
         />
+        <nldd-spacer size="flexible" direction="horizontal" />
         <NlddButton
           text="Niet meer tonen"
           variant="neutral-transparent"
@@ -68,7 +69,7 @@ export function OnboardingWizard({
           disabled={dismissMutation.isPending}
           onClick={() => handleDismiss(true)}
         />
-      </div>
+      </nldd-container>
     );
   }
 
@@ -102,7 +103,10 @@ export function OnboardingWizard({
       closeable={false}
       footer={footer}
     >
-      <div className="min-h-[350px]">
+      {/* No nldd-container attribute sets a min-height (only the cell family does),
+          so this stays a plain div. It reserves vertical space between steps of
+          differing height, purely a layout dimension, not a color or utility class. */}
+      <div style={{ minHeight: '350px' }}>
         <StepComponent onComplete={handleComplete} />
       </div>
     </Modal>

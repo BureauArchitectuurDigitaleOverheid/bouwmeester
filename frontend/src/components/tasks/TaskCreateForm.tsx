@@ -122,7 +122,8 @@ export function TaskCreateForm({
           and label-alignment inheritance for the fields.
         */}
         <nldd-form>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit}>
+        <nldd-container gap="16">
           <Input
             label="Titel"
             value={title}
@@ -198,6 +199,7 @@ export function TaskCreateForm({
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
           />
+        </nldd-container>
         </form>
         </nldd-form>
       </Modal>

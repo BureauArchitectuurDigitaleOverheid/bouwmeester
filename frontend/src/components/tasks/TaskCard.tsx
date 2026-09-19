@@ -54,9 +54,9 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
       hoverable={!!onEdit}
       onClick={onEdit ? handleCardClick : undefined}
     >
-      <div className="flex items-start gap-3">
+      <nldd-container layout="row" gap="12" vertical-alignment="top">
         {/* Checkbox */}
-        <div className="mt-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div onClick={(e) => e.stopPropagation()}>
           <NlddIconButton
             icon={isDone ? 'check-mark-circle' : 'circle'}
             variant="neutral-transparent"
@@ -67,22 +67,18 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-w-0">
-          <p
-            className={`text-sm font-medium ${
-              isDone ? 'text-text-secondary line-through' : 'text-text'
-            }`}
-          >
+        <nldd-container width="full" gap="4">
+          <nldd-text size="sm" weight="medium" color={isDone ? 'secondary' : 'content'}>
             {task.title}
-          </p>
+          </nldd-text>
 
           {!compact && task.description && (
-            <p className="text-xs text-text-secondary mt-0.5 line-clamp-1">
+            <nldd-text size="xs" color="secondary">
               {richTextToPlain(task.description)}
-            </p>
+            </nldd-text>
           )}
 
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <nldd-container layout="wrap" gap="8" vertical-alignment="center">
             <Badge
               variant={TASK_PRIORITY_COLORS[task.priority]}
               dot
@@ -98,32 +94,30 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {task.due_date && (
-              <span
-                className={`inline-flex items-center gap-1 text-xs ${
-                  isOverdue ? 'text-red-600 font-medium' : 'text-text-secondary'
-                }`}
-              >
+              <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
                 <Icon name="clock" size="xs" />
-                {formatDateShort(task.due_date)}
-              </span>
+                <nldd-text size="xs" color={isOverdue ? 'critical' : 'secondary'} weight={isOverdue ? 'bold' : 'regular'}>
+                  {formatDateShort(task.due_date)}
+                </nldd-text>
+              </nldd-container>
             )}
 
             {task.assignee && (
-              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+              <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
                 {task.assignee.is_agent ? (
-                  <Icon name="sparkles" size="xs" className="text-violet-500" />
+                  <nldd-icon name="sparkles" size="16" color="paars" aria-hidden="true" />
                 ) : (
                   <Icon name="person" size="xs" />
                 )}
-                {task.assignee.naam}
-              </span>
+                <nldd-text size="xs" color="secondary">{task.assignee.naam}</nldd-text>
+              </nldd-container>
             )}
 
             {task.organisatie_eenheid && (
-              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+              <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
                 <Icon name="apartment-building" size="xs" />
-                {task.organisatie_eenheid.naam}
-              </span>
+                <nldd-text size="xs" color="secondary">{task.organisatie_eenheid.naam}</nldd-text>
+              </nldd-container>
             )}
 
             {task.work_type && (
@@ -131,14 +125,14 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {subtasks.length > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+              <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
                 <Icon name="tree-structure" size="xs" />
-                {doneSubtasks}/{subtasks.length}
-              </span>
+                <nldd-text size="xs" color="secondary">{doneSubtasks}/{subtasks.length}</nldd-text>
+              </nldd-container>
             )}
-          </div>
-        </div>
-      </div>
+          </nldd-container>
+        </nldd-container>
+      </nldd-container>
     </Card>
   );
 }
