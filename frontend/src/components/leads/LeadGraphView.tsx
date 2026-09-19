@@ -665,7 +665,7 @@ function CommunityGraphInner({
   }, []);
 
   if (isLoading) {
-    return <LoadingSpinner className="py-8" />;
+    return <LoadingSpinner padding="32" />;
   }
 
   if (error) {

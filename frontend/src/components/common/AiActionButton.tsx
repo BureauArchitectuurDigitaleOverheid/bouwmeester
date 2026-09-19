@@ -1,4 +1,5 @@
-import { Icon } from '@/components/nldd/Icon';
+import { useCallback, useRef } from 'react';
+import { orUndef, useNlddEvent } from '@/components/nldd/events';
 
 interface AiActionButtonProps {
   label: string;
@@ -20,21 +21,20 @@ export function AiActionButton({
   disabled = false,
   compact = false,
 }: AiActionButtonProps) {
+  const ref = useRef<HTMLElement>(null);
+  const handleClick = useCallback(() => onClick(), [onClick]);
+  useNlddEvent(ref, 'click', handleClick);
+
   return (
-    <button
+    <nldd-button
+      ref={ref}
       type="button"
-      onClick={onClick}
-      disabled={loading || disabled}
-      className={`inline-flex items-center gap-1.5 font-medium rounded-lg text-text-secondary hover:text-text hover-tinted transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-        compact ? 'px-2.5 py-1 text-xs' : 'px-3 py-1.5 text-xs border border-border'
-      }`}
-    >
-      {loading ? (
-        <nldd-activity-indicator size="16" />
-      ) : (
-        <Icon name="sparkles" size="sm" />
-      )}
-      {label}
-    </button>
+      variant={compact ? 'neutral-transparent' : 'secondary'}
+      size="xs"
+      text={label}
+      start-icon={loading ? undefined : 'sparkles'}
+      loading={orUndef(loading)}
+      {...(disabled ? { disabled: true } : {})}
+    />
   );
 }

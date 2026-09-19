@@ -45,7 +45,7 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
   const deleteEdge = useDeleteEdge();
 
   if (isLoading) {
-    return <LoadingSpinner className="py-8" />;
+    return <LoadingSpinner padding="32" />;
   }
 
   return (

@@ -169,12 +169,20 @@ export function ShareTargetPage() {
                 // arbitrary object-fit image crop, so this stays plain CSS.
                 <div
                   key={i}
-                  className="w-32 h-32 rounded-2xl overflow-hidden border border-border shadow-sm"
+                  style={{
+                    width: '128px',
+                    height: '128px',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    border: '1px solid var(--primitives-color-neutral-200)',
+                    boxShadow: 'var(--primitives-box-shadows-level-1)',
+                  }}
                 >
                   <img
                     src={src}
                     alt={`Gedeelde afbeelding ${i + 1}`}
-                    className="w-full h-full object-cover"
+                    className="object-cover"
+                    style={{ width: '100%', height: '100%' }}
                   />
                 </div>
               ))}

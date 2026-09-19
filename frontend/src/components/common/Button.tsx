@@ -28,15 +28,16 @@ const VARIANTS: Record<ButtonVariant, NlddButtonVariant> = {
 
 /**
  * Reads the text out of a child that is hidden below a breakpoint, e.g.
- * `<span className="hidden sm:inline">Nieuwe taak</span>`. Returns undefined
- * when there is no such child, so a button with a visible label is untouched.
+ * `<span className="hidden-below-sm">Nieuwe taak</span>` (utilities.css:
+ * `display: none` below `sm`, `inline` from `sm` up). Returns undefined when
+ * there is no such child, so a button with a visible label is untouched.
  */
 function findResponsivelyHiddenLabel(children: ReactNode): string | undefined {
   let found: string | undefined;
   Children.forEach(children, (child) => {
     if (found || !isValidElement(child)) return;
     const props = child.props as { className?: string; children?: ReactNode };
-    if (!props.className?.split(/\s+/).includes('hidden')) return;
+    if (!props.className?.split(/\s+/).includes('hidden-below-sm')) return;
     if (typeof props.children === 'string') found = props.children;
   });
   return found;
@@ -78,7 +79,7 @@ export function Button({
   // attribute so the button can measure and truncate them itself.
   const text = typeof children === 'string' ? children : undefined;
 
-  // A label hidden below a breakpoint (`<span className="hidden sm:inline">`)
+  // A label hidden below a breakpoint (`<span className="hidden-below-sm">`)
   // leaves an icon-only button with NO accessible name on a phone: a screen
   // reader announces nothing at all. Pull that text out and pass it as the
   // accessible name, so the button stays announceable at every width.

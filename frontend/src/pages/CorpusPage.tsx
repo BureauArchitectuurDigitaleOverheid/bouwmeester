@@ -201,7 +201,7 @@ export function CorpusPage() {
               the wrapper's own API contract, not decorative Tailwind (see
               common/Button.tsx). */}
           <Button icon="plus" onClick={() => setShowCreateForm(true)}>
-            <span className="hidden sm:inline">Nieuwe node</span>
+            <span className="hidden-below-sm">Nieuwe node</span>
           </Button>
           <nldd-menu-item slot="overflow" text="Nieuwe node" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>

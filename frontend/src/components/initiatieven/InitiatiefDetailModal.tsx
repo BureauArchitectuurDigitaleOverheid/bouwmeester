@@ -267,7 +267,7 @@ export function InitiatiefDetailModal({
         }
       >
         {isLoading || !detail ? (
-          <LoadingSpinner className="py-12" />
+          <LoadingSpinner padding="48" />
         ) : editing ? (
           <EditForm form={editForm} onChange={setEditForm} />
         ) : (

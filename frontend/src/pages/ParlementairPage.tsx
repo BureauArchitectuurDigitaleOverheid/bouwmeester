@@ -261,7 +261,7 @@ export function ParlementairPage() {
 
       {/* Content */}
       {isLoading ? (
-        <LoadingSpinner className="py-16" />
+        <LoadingSpinner padding="64" />
       ) : !filteredImports || filteredImports.length === 0 ? (
         <EmptyState
           title="Geen kamerstukken gevonden"

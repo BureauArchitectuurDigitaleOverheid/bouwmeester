@@ -44,13 +44,26 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
     // Full-viewport dimmed overlay behind a portalled image: no nldd component
     // renders an image lightbox, so this stays plain fixed-position CSS.
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 50,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'var(--semantics-overlays-backdrop-color)',
+      }}
       onClick={onClose}
     >
       <img
         src={src}
         alt={alt}
-        className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-xl"
+        style={{
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          borderRadius: '8px',
+          boxShadow: 'var(--primitives-box-shadows-level-4)',
+        }}
         onClick={(e) => e.stopPropagation()}
       />
     </div>,
@@ -92,8 +105,12 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
             color itself comes from the design system's own color tokens
             rather than a hardcoded or Tailwind palette value. */}
         <div
-          className="max-w-[85%] rounded-lg px-3 py-2 text-sm"
           style={{
+            maxWidth: '85%',
+            borderRadius: '8px',
+            paddingInline: '12px',
+            paddingBlock: '8px',
+            fontSize: '14px',
             backgroundColor: isUser
               ? 'var(--primitives-color-lintblauw-600)'
               : 'var(--primitives-color-coolgray-100)',
@@ -117,12 +134,13 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                         alt: att.bestandsnaam,
                       })
                     }
-                    className="block"
+                    style={{ display: 'block' }}
                   >
                     <img
                       src={chatAttachmentPreviewUrl(att.id)}
                       alt={att.bestandsnaam}
-                      className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                      className="object-cover hover-dim"
+                      style={{ width: '64px', height: '64px', borderRadius: '4px', cursor: 'pointer' }}
                     />
                   </button>
                 ) : (
@@ -132,8 +150,11 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                   // nldd-container's flex layout.
                   <div
                     key={att.id}
-                    className="rounded px-2 py-1 text-xs"
                     style={{
+                      borderRadius: '4px',
+                      paddingInline: '8px',
+                      paddingBlock: '4px',
+                      fontSize: '12px',
                       backgroundColor: isUser
                         ? 'color-mix(in oklch, var(--primitives-color-lintblauw-700) 50%, transparent)'
                         : 'var(--primitives-color-coolgray-200)',
@@ -143,7 +164,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                       <Icon name="file-text" size="sm" />
                       {/* truncate + fixed max-width: no nldd-text equivalent
                           for single-line ellipsis truncation. */}
-                      <span className="truncate max-w-[100px]">{att.bestandsnaam}</span>
+                      <span className="truncate" style={{ maxWidth: '100px' }}>{att.bestandsnaam}</span>
                     </nldd-container>
                   </div>
                 ),

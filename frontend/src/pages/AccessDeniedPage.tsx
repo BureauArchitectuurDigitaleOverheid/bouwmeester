@@ -128,7 +128,7 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
       <nldd-simple-section width="480px" horizontal-alignment="left" vertical-alignment="center">
         <nldd-container gap="24" horizontal-alignment="center" style={{ textAlign: 'center' }}>
           <nldd-container gap="12" horizontal-alignment="center">
-            <img src={logoImg} alt="Bouwmeester" className="h-20 w-20 rounded-full" />
+            <img src={logoImg} alt="Bouwmeester" style={{ width: '80px', height: '80px', borderRadius: '9999px' }} />
             <nldd-title size={3}>
               <h1>Bouwmeester</h1>
             </nldd-title>

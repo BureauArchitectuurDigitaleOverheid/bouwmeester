@@ -35,7 +35,7 @@ export function NodeList({ enabledNodeTypes, searchQuery }: NodeListProps) {
   return (
     <nldd-container gap="16">
       {isLoading ? (
-        <LoadingSpinner className="py-12" />
+        <LoadingSpinner padding="48" />
       ) : filteredNodes && filteredNodes.length > 0 ? (
         <nldd-container layout="grid" gap="16">
           {filteredNodes.map((node) => (

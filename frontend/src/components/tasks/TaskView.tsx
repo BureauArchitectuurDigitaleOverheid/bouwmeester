@@ -147,11 +147,11 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
         <nldd-toolbar-item slot="end" priority={2}>
           <Button icon="plus" onClick={() => setShowCreateForm(true)}>
             {/* This className is not styling: Button's own responsive-label logic
-                (see components/common/Button.tsx) reads "hidden sm:inline" to find
+                (see components/common/Button.tsx) reads "hidden-below-sm" to find
                 the text it should fall back to as the accessible name when the
                 label itself is hidden below sm. It is a marker Button parses, not
                 a Tailwind utility rendered here — left as-is on purpose. */}
-            <span className="hidden sm:inline">Nieuwe taak</span>
+            <span className="hidden-below-sm">Nieuwe taak</span>
           </Button>
           <nldd-menu-item slot="overflow" text="Nieuwe taak" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>

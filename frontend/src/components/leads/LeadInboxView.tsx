@@ -154,7 +154,7 @@ export function LeadInboxView({
   );
 
   if (isLoading) {
-    return <LoadingSpinner className="py-8" />;
+    return <LoadingSpinner padding="32" />;
   }
 
   if (filteredLeads.length === 0) {

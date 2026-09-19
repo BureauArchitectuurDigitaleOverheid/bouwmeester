@@ -53,12 +53,18 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
             border-radius, so the box itself stays a plain styled div. The
             background/color are still tokens, not hex values. */}
         <div
-          className="flex items-center justify-center h-8 w-8 rounded-lg shrink-0"
-          style={
-            item.read
+          className="shrink-0"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            ...(item.read
               ? { background: 'var(--primitives-color-neutral-50)', color: 'var(--primitives-color-neutral-400)' }
-              : { background: 'var(--primitives-color-accent-25)', color: 'var(--primitives-color-accent-700)' }
-          }
+              : { background: 'var(--primitives-color-accent-25)', color: 'var(--primitives-color-accent-700)' }),
+          }}
         >
           {typeIcons[item.type] || <Icon name="bell" size="md" />}
         </div>
@@ -71,8 +77,8 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
               // PersonAvatar's online dot) rather than sitting inline in a row,
               // which is what this needs.
               <span
-                className="h-2 w-2 rounded-full shrink-0"
-                style={{ background: 'var(--primitives-color-warning-500)' }}
+                className="shrink-0"
+                style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '9999px', background: 'var(--primitives-color-warning-500)' }}
               />
             )}
             {/* nldd-text has no truncate/ellipsis attribute, so the wrapper
@@ -85,8 +91,10 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
           </nldd-container>
 
           {item.description && (
-            // line-clamp-2 has no design-system equivalent either.
-            <div className="text-xs line-clamp-2 mb-2">
+            // line-clamp-2 has no design-system equivalent either; the 12px
+            // text size and bottom margin are inline since RichTextDisplay's
+            // own content isn't an nldd-text to size via props.
+            <div className="line-clamp-2" style={{ fontSize: '12px', marginBottom: '8px' }}>
               <RichTextDisplay content={item.description} fallback="" />
             </div>
           )}

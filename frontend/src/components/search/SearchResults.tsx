@@ -188,7 +188,8 @@ function ResultItemContent({ result, compact }: { result: SearchResult; compact?
             // directly on a custom element bypasses its slot rendering.
             // italic and line-clamp-1 also have no nldd-text equivalent.
             <p
-              className="text-xs text-text-secondary italic line-clamp-1"
+              className="line-clamp-1"
+              style={{ fontSize: '12px', color: 'var(--primitives-color-neutral-700)', fontStyle: 'italic' }}
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(result.highlights[0], {
                   ALLOWED_TAGS: ['mark'],
@@ -201,7 +202,7 @@ function ResultItemContent({ result, compact }: { result: SearchResult; compact?
                 // Same dangerouslySetInnerHTML/italic reasoning as above.
                 <p
                   key={i}
-                  className="text-xs text-text-secondary italic"
+                  style={{ fontSize: '12px', color: 'var(--primitives-color-neutral-700)', fontStyle: 'italic' }}
                   dangerouslySetInnerHTML={{
                     __html: DOMPurify.sanitize(h, {
                       ALLOWED_TAGS: ['mark'],
@@ -334,8 +335,11 @@ export function GroupedListboxRows({
               and any wrapper here is invisible to it the same way a div is. The
               10px size has no nldd-text step (xxs is 11-12px), so this label
               stays a plain span. */}
-          <div className="px-5 pt-3 pb-1" role="presentation">
-            <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
+          <div style={{ paddingInline: '20px', paddingTop: '12px', paddingBottom: '4px' }} role="presentation">
+            <span
+              className="uppercase tracking-wider"
+              style={{ fontSize: '10px', fontWeight: 600, color: 'var(--primitives-color-neutral-700)' }}
+            >
               {SEARCH_RESULT_TYPE_LABELS[resultType as SearchResultType]} ({groupResults.length})
             </span>
           </div>

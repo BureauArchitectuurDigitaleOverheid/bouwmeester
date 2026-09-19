@@ -1,8 +1,12 @@
-import { clsx } from 'clsx';
+type ContainerPadding = NonNullable<React.ComponentProps<'nldd-container'>['padding-block']>;
 
 interface LoadingSpinnerProps {
   size?: 'sm' | 'md' | 'lg';
-  className?: string;
+  /** Vertical padding around the centered indicator, as an nldd-container
+   *  spacer-scale step (e.g. '32'). Replaces the old `className="py-N"` call
+   *  sites now that Tailwind's arbitrary utility classes no longer compile to
+   *  real CSS. */
+  padding?: ContainerPadding;
 }
 
 /** nldd-activity-indicator sizes in the design system's spacer-aligned steps. */
@@ -12,10 +16,15 @@ const SIZES = {
   lg: '48',
 } as const;
 
-export function LoadingSpinner({ size = 'md', className }: LoadingSpinnerProps) {
+export function LoadingSpinner({ size = 'md', padding }: LoadingSpinnerProps) {
   return (
-    <div className={clsx('flex items-center justify-center', className)}>
+    <nldd-container
+      width="full"
+      horizontal-alignment="center"
+      vertical-alignment="center"
+      {...(padding ? { 'padding-block': padding } : {})}
+    >
       <nldd-activity-indicator size={SIZES[size]} />
-    </div>
+    </nldd-container>
   );
 }

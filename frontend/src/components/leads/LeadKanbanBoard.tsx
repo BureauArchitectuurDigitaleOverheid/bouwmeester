@@ -90,7 +90,7 @@ export function LeadKanbanBoard({
   }, [filteredLeads, visibleColumns]);
 
   if (isLoading || columnsLoading) {
-    return <LoadingSpinner className="py-8" />;
+    return <LoadingSpinner padding="32" />;
   }
 
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {

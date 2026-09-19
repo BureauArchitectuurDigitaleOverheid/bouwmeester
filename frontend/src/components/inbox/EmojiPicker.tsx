@@ -55,8 +55,22 @@ export function EmojiPicker({ onSelect, onClose, anchorRef }: EmojiPickerProps) 
     // top/left coordinates, so the panel and its emoji buttons stay plain CSS.
     <div
       ref={ref}
-      className="fixed bg-surface border border-border rounded-lg shadow-lg p-2 grid grid-cols-6 gap-1 z-[60] w-[220px]"
-      style={{ top: pos.top, left: pos.left, transform: 'translateY(-100%)' }}
+      style={{
+        position: 'fixed',
+        top: pos.top,
+        left: pos.left,
+        transform: 'translateY(-100%)',
+        backgroundColor: 'var(--primitives-color-neutral-0)',
+        border: '1px solid var(--primitives-color-neutral-200)',
+        borderRadius: '8px',
+        boxShadow: 'var(--primitives-box-shadows-level-3)',
+        padding: '8px',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(6, 1fr)',
+        gap: '4px',
+        zIndex: 60,
+        width: '220px',
+      }}
     >
       {EMOJIS.map((emoji) => (
         <button
@@ -65,7 +79,16 @@ export function EmojiPicker({ onSelect, onClose, anchorRef }: EmojiPickerProps) 
             onSelect(emoji);
             onClose();
           }}
-          className="w-8 h-8 flex items-center justify-center text-lg rounded hover-tinted transition-colors"
+          className="hover-tinted"
+          style={{
+            width: '32px',
+            height: '32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '18px',
+            borderRadius: '4px',
+          }}
         >
           {emoji}
         </button>

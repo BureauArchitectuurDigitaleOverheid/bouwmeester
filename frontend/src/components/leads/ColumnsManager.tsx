@@ -144,7 +144,7 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
   };
 
   if (isLoading) {
-    return <LoadingSpinner className="py-6" />;
+    return <LoadingSpinner padding="24" />;
   }
 
   return (

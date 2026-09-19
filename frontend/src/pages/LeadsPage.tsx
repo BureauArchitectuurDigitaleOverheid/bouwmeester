@@ -295,7 +295,7 @@ export function LeadsPage() {
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={2}>
           <Button icon="plus" onClick={() => setShowIntake(true)}>
-            <span className="hidden sm:inline">Nieuwe lead</span>
+            <span className="hidden-below-sm">Nieuwe lead</span>
           </Button>
           <nldd-menu-item slot="overflow" text="Nieuwe lead" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>

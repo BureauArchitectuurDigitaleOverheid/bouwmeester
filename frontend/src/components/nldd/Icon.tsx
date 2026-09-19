@@ -153,6 +153,13 @@ interface IconProps {
   size?: IconSize | NlddIconSize;
   /** Screen-reader label. Without one the icon is decorative and hidden. */
   label?: string;
+  /**
+   * An nldd-icon colour: a role ('secondary-content', 'critical', ...) or a
+   * Rijkshuisstijl name. Forwarded so a call site never has to reach for an
+   * inline style, which is how a hand-picked palette step ends up standing in
+   * for a role that already exists.
+   */
+  color?: NonNullable<React.ComponentProps<'nldd-icon'>['color']>;
   className?: string;
   style?: CSSProperties;
 }
@@ -181,7 +188,7 @@ type NlddIconSize =
  * move to `<Icon name="Trash2" />` without every name being decided up front,
  * and settle on `<Icon name="trash" />` later.
  */
-export function Icon({ name, size = 'md', label, className, style }: IconProps) {
+export function Icon({ name, size = 'md', label, color, className, style }: IconProps) {
   const resolved = (ICON_MAP as Record<string, string>)[name] ?? name;
   const px = size in ICON_SIZES ? ICON_SIZES[size as IconSize] : (size as NlddIconSize);
 
@@ -191,6 +198,7 @@ export function Icon({ name, size = 'md', label, className, style }: IconProps) 
       size={px}
       className={className}
       style={style}
+      {...(color ? { color } : {})}
       {...(label ? { 'accessible-label': label } : { 'aria-hidden': true })}
     />
   );

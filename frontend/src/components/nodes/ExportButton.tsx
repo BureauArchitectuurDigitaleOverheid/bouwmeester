@@ -17,7 +17,7 @@ export function ExportButton({ nodeType, hideLabel }: ExportButtonProps) {
             label and turn it into the button's accessible name on narrow
             screens (see findResponsivelyHiddenLabel in common/Button.tsx) —
             it is the wrapper's own API contract, not decorative Tailwind. */}
-        <span className={hideLabel ? 'hidden sm:inline' : undefined}>Exporteren</span>
+        <span className={hideLabel ? 'hidden-below-sm' : undefined}>Exporteren</span>
       </Button>
 
       <nldd-menu anchor={triggerId}>

@@ -159,8 +159,10 @@ export function AppLayout() {
                 <Header />
                 <PlacementBanner />
               </div>
-              <main id="main-content" className="p-4 md:p-6">
-                <Outlet />
+              <main id="main-content">
+                <nldd-container padding="16" md-padding="24">
+                  <Outlet />
+                </nldd-container>
               </main>
             </nldd-page>
           </nldd-split-view-pane>

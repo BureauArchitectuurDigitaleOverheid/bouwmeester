@@ -50,8 +50,15 @@ export function ReactionBar({ reactions, onReact }: ReactionBarProps) {
       <button
         ref={btnRef}
         onClick={() => setPickerOpen(!pickerOpen)}
-        className="inline-flex items-center justify-center w-6 h-6 rounded-full transition-colors"
-        style={{ color: 'var(--primitives-color-neutral-700)' }}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '24px',
+          height: '24px',
+          borderRadius: '9999px',
+          color: 'var(--primitives-color-neutral-700)',
+        }}
         aria-label="Reactie toevoegen"
       >
         <Icon name="face-smiling-badge-plus" size="sm" />

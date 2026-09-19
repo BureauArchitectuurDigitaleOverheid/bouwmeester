@@ -123,26 +123,26 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
                   text: nldd-text-cell's own color/text props apply to the
                   whole cell, not per-run, and nldd-text is a block-level
                   element that doesn't compose inline here. Plain spans with
-                  Tailwind text color/weight stay, same for line-through
-                  (no text-decoration equivalent). */}
-              <span className={isHistorisch ? 'line-through' : undefined}>
+                  inline color/weight stay (design-system tokens, not raw hex),
+                  same for line-through (no text-decoration equivalent). */}
+              <span style={isHistorisch ? { textDecoration: 'line-through' } : undefined}>
                 {node.afkorting && (
-                  <span className="text-text-secondary font-normal mr-1">{node.afkorting}</span>
+                  <span style={{ color: 'var(--primitives-color-neutral-700)', fontWeight: 400, marginRight: '4px' }}>{node.afkorting}</span>
                 )}
                 {node.naam}
                 {node.manager && (
-                  <span className="text-text-secondary font-normal text-xs"> — {node.manager.naam}</span>
+                  <span style={{ color: 'var(--primitives-color-neutral-700)', fontWeight: 400, fontSize: '12px' }}> — {node.manager.naam}</span>
                 )}
                 {(() => {
                   // Synthetische groepen tonen aantal directe children, niet personen
                   if (node.bron === 'synthetisch' && node.children.length > 0) {
                     return (
-                      <span className="text-text-secondary font-normal"> ({node.children.length})</span>
+                      <span style={{ color: 'var(--primitives-color-neutral-700)', fontWeight: 400 }}> ({node.children.length})</span>
                     );
                   }
                   const total = getTotalPersonenCount(node);
                   return total > 0 ? (
-                    <span className="text-text-secondary font-normal"> ({total})</span>
+                    <span style={{ color: 'var(--primitives-color-neutral-700)', fontWeight: 400 }}> ({total})</span>
                   ) : null;
                 })()}
               </span>
@@ -173,8 +173,9 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
                 accessible-label="Subeenheid toevoegen"
                 // group/group-hover reveal-on-row-hover has no nldd
                 // equivalent; `group` itself lives on the parent
-                // nldd-list-item above.
-                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                // nldd-list-item above. group-hover-reveal is the real CSS
+                // backing this in utilities.css.
+                className="group-hover-reveal"
               >
                 <Icon name="Plus" size="xs" />
               </nldd-list-item-segment>

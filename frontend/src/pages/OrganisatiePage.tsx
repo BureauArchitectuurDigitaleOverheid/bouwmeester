@@ -243,7 +243,7 @@ export function OrganisatiePage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner className="py-12" />;
+    return <LoadingSpinner padding="48" />;
   }
 
   const isEmpty = tree.length === 0;

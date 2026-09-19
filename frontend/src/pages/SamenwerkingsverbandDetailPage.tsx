@@ -440,7 +440,7 @@ export function SamenwerkingsverbandDetailPage() {
                         <> · tot {new Date(lid.eind_datum).toLocaleDateString('nl-NL')}</>
                       )}
                     </nldd-text>
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content" className="group-hover-reveal">
                       <NlddIconButton
                         icon="pencil"
                         accessibleLabel="Bewerken"
@@ -455,7 +455,7 @@ export function SamenwerkingsverbandDetailPage() {
                         size="sm"
                         onClick={() => setConfirmRemoveLidId(lid.id)}
                       />
-                    </div>
+                    </nldd-container>
                   </nldd-container>
                 </nldd-list-item>
               );

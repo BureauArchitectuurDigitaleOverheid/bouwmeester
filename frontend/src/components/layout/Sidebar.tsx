@@ -174,22 +174,29 @@ export function Sidebar({ mobile }: SidebarProps) {
     ));
 
   return (
-    <div className="flex h-full flex-col">
+    // Full-height flex column: no nldd-container height="full" equivalent
+    // for a column that has to fill the split view's sidebar pane exactly,
+    // so the outer shell stays plain CSS; everything inside converts.
+    <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       {/* Collapsed the pane is 64px, which does not fit a 32px logo and a 32px
           button beside each other. They stack there instead, so the toggle stays
           reachable — it is the only way back out. */}
-      <div
-        className={
-          expanded
-            ? 'flex shrink-0 items-center gap-3 px-3 py-3'
-            : 'flex shrink-0 flex-col items-center gap-2 px-2 py-3'
-        }
+      <nldd-container
+        layout={expanded ? 'row' : 'stack'}
+        gap={expanded ? '12' : '8'}
+        vertical-alignment="center"
+        horizontal-alignment={expanded ? undefined : 'center'}
+        padding-inline={expanded ? '12' : '8'}
+        padding-block="12"
+        className="shrink-0"
       >
-        <img src={logoImg} alt="" className="h-8 w-8 shrink-0 rounded-lg" />
+        <img src={logoImg} alt="" className="shrink-0" style={{ width: '32px', height: '32px', borderRadius: '8px' }} />
         {expanded && (
-          <span className="flex-1 truncate text-base font-semibold tracking-tight">
-            Bouwmeester
-          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <nldd-text size="md" weight="bold" className="truncate tracking-tight">
+              Bouwmeester
+            </nldd-text>
+          </div>
         )}
         {!mobile && (
           <NlddIconButton
@@ -200,27 +207,26 @@ export function Sidebar({ mobile }: SidebarProps) {
             onClick={toggleSidebar}
           />
         )}
-      </div>
+      </nldd-container>
 
       {/* `variant="simple"` is a bare strip with no chrome of its own, and an
           interactive row pulls itself 8px outward so the whole widened box is
           one hit area. Both are deliberate, and together they run the rows into
           the pane's edge, so the inset has to come from here: 20px absorbs the
-          row's -8px and leaves a 12px gutter. */}
-      {/* Collapsed, the glyph has to sit on the same vertical line as the logo
+          row's -8px and leaves a 12px gutter.
+          Collapsed, the glyph has to sit on the same vertical line as the logo
           and the toggle above it. A 20px glyph in a 64px pane needs 22px of
           padding to be centred, and the row's own -8px outward margin does not
           move its content, so that is the number here rather than the 12px the
-          expanded state uses. */}
-      <div
-        className={
-          expanded ? 'flex-1 overflow-y-auto px-5' : 'flex-1 overflow-y-auto px-[22px]'
-        }
-      >
+          expanded state uses.
+          The flex-grow/scroll region itself has no nldd-container equivalent
+          (no primitive for "grow to fill remaining column height and scroll
+          independently"), so that part stays plain CSS; the padding converts. */}
+      <div style={{ flex: 1, overflowY: 'auto', paddingLeft: expanded ? '20px' : '22px', paddingRight: expanded ? '20px' : '22px' }}>
         {renderGrouped(navItems)}
       </div>
 
-      <div className={expanded ? 'shrink-0 px-5 pb-2' : 'shrink-0 px-[22px] pb-2'}>
+      <div className="shrink-0" style={{ paddingLeft: expanded ? '20px' : '22px', paddingRight: expanded ? '20px' : '22px', paddingBottom: '8px' }}>
         <nldd-list
           type="navigation"
           variant="simple"

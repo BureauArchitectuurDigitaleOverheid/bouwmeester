@@ -42,6 +42,7 @@ import '@nldd/design-system/toolbar';
 import '@nldd/design-system/avatar';
 import '@nldd/design-system/icon';
 import '@nldd/design-system/identity';
+import '@nldd/design-system/image';
 import '@nldd/design-system/rich-text';
 import '@nldd/design-system/tag';
 import '@nldd/design-system/text';

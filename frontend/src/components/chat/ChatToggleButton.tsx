@@ -10,7 +10,16 @@ export function ChatToggleButton() {
     // Viewport-fixed floating action button: no nldd-container equivalent for
     // fixed/absolute positioning pinned to a screen corner with a z-index, so
     // this stays plain CSS.
-    <div className="fixed bottom-6 right-6 z-40 rounded-full shadow-lg">
+    <div
+      style={{
+        position: 'fixed',
+        bottom: '24px',
+        right: '24px',
+        zIndex: 40,
+        borderRadius: '9999px',
+        boxShadow: 'var(--semantics-overlays-box-shadow)',
+      }}
+    >
       <NlddIconButton
         icon="message-rectangle-text"
         accessibleLabel="AI Assistent"

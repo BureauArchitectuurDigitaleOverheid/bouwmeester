@@ -184,8 +184,7 @@ export function ChatInput() {
             // flex layout.
             <div
               key={att.id}
-              className="rounded-lg px-2 py-1.5 text-xs"
-              style={{ backgroundColor: 'var(--primitives-color-coolgray-100)' }}
+              style={{ borderRadius: '8px', paddingInline: '8px', paddingBlock: '6px', fontSize: '12px', backgroundColor: 'var(--primitives-color-coolgray-100)' }}
             >
               <nldd-container layout="row" gap="6" vertical-alignment="center">
                 {isImageContentType(att.content_type) ? (
@@ -194,14 +193,15 @@ export function ChatInput() {
                   <img
                     src={chatAttachmentPreviewUrl(att.id)}
                     alt={att.bestandsnaam}
-                    className="w-8 h-8 object-cover rounded"
+                    className="object-cover"
+                    style={{ width: '32px', height: '32px', borderRadius: '4px' }}
                   />
                 ) : (
                   <Icon name="file-text" size="md" />
                 )}
                 {/* truncate + fixed max-width: no nldd-text single-line
                     ellipsis equivalent. */}
-                <span className="truncate max-w-[120px]" title={att.bestandsnaam}>
+                <span className="truncate" style={{ maxWidth: '120px' }} title={att.bestandsnaam}>
                   {att.bestandsnaam}
                 </span>
                 <NlddIconButton
@@ -216,8 +216,7 @@ export function ChatInput() {
           ))}
           {uploadingCount > 0 && (
             <div
-              className="rounded-lg px-2 py-1.5 text-xs"
-              style={{ backgroundColor: 'var(--primitives-color-coolgray-100)' }}
+              style={{ borderRadius: '8px', paddingInline: '8px', paddingBlock: '6px', fontSize: '12px', backgroundColor: 'var(--primitives-color-coolgray-100)' }}
             >
               <nldd-container layout="row" gap="6" vertical-alignment="center">
                 <nldd-activity-indicator size="16" />

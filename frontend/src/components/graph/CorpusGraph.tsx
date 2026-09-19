@@ -341,7 +341,7 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
   }, []);
 
   if (isLoading) {
-    return <LoadingSpinner className="py-12" />;
+    return <LoadingSpinner padding="48" />;
   }
 
   if (error) {

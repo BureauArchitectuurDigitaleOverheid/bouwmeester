@@ -341,7 +341,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       }
     >
       {isLoading ? (
-        <LoadingSpinner className="py-8" />
+        <LoadingSpinner padding="32" />
       ) : !lead ? (
         <nldd-container horizontal-alignment="center" padding="32">
           <nldd-text size="sm" color="secondary">Lead niet gevonden.</nldd-text>
@@ -650,17 +650,23 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 <nldd-container gap="8">
                   <nldd-container layout="wrap" gap="8" vertical-alignment="center">
                     {status.visible ? (
-                      // `group-hover:underline` needs a real CSS group-hover
-                      // selector (the underline lives on a nested span, not
-                      // the link itself) — no nldd-* equivalent, kept as-is.
+                      // The underline lives on a nested span, not the link
+                      // itself, so it needs a real group/group-hover pair
+                      // (`.group` + `.group-hover-underline` in
+                      // utilities.css) rather than an nldd-link, which would
+                      // underline its own text, not the badge's.
                       <a
                         href={`/c/${linkedInit.slug}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 group"
+                        className="group"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                       >
                         <Badge variant="green">
-                          <span className="inline-flex items-center gap-1 group-hover:underline">
+                          <span
+                            className="group-hover-underline"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          >
                             Zichtbaar op /c/{linkedInit.slug}
                             <Icon name="external-link" size="xs" />
                           </span>
@@ -916,13 +922,17 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                         )}
                         <nldd-text size="xs" color="secondary">{timeAgo(activity.created_at)}</nldd-text>
                         {canDelete && (
+                          // Pushed to the end of the row and revealed only on
+                          // hover/focus of it (`group` on the wrapping div,
+                          // above the `sm` breakpoint) — real CSS classes in
+                          // utilities.css, no nldd-* equivalent for either.
                           <NlddIconButton
                             icon="trash"
                             accessibleLabel="Activiteit verwijderen"
                             variant="neutral-transparent"
                             size="sm"
                             onClick={() => setActivityToDelete(activity.id)}
-                            className="ml-auto sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
+                            className="margin-left-auto group-hover-reveal-above-sm"
                           />
                         )}
                       </nldd-container>
@@ -1163,14 +1173,14 @@ function AttachmentRow({ attachment: att, downloadUrl, onDelete, onZoom }: Attac
         <nldd-container layout="row" gap="8" vertical-alignment="center">
           <nldd-icon name={att.soort === 'link' ? 'external-link' : 'paperclip'} size="16" aria-hidden="true" />
           {att.soort === 'link' && att.url ? (
-            // `hover:underline` is a real link hover state, no nldd-* link
-            // primitive here (this is a bare href inside a row, not
-            // nldd-list-item-segment), kept as a narrow className.
+            // `.link-hover-underline` (utilities.css) is a real hover state;
+            // no nldd-* link primitive fits here (this is a bare href inside
+            // a row, not nldd-list-item-segment).
             <a
               href={att.url}
               target="_blank"
               rel="noreferrer"
-              className="hover:underline"
+              className="link-hover-underline"
               style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--primitives-color-accent-100)' }}
               title={att.url}
             >
@@ -1208,25 +1218,26 @@ function AttachmentRow({ attachment: att, downloadUrl, onDelete, onZoom }: Attac
         </nldd-container>
         {isImage && (
           // The hover-reveal zoom affordance over the thumbnail is a real
-          // CSS group-hover interaction with no nldd-* equivalent, kept as a
-          // narrow className pair (button + overlay).
+          // group/group-hover interaction — `group`, `.group-hover-dim-overlay`
+          // and `.group-hover-reveal` are real CSS in utilities.css, no
+          // nldd-* equivalent for any of the three.
           <button
             type="button"
             onClick={() => onZoom(downloadUrl, att.bestandsnaam ?? 'bijlage')}
-            className="relative group"
-            style={{ marginLeft: '8px', display: 'block' }}
+            className="group"
+            style={{ position: 'relative', marginLeft: '8px', display: 'block' }}
           >
             <img
               src={downloadUrl}
               alt={att.bestandsnaam ?? 'bijlage'}
               style={{ borderRadius: '8px', border: '1px solid var(--primitives-color-neutral-200)', maxHeight: '192px', objectFit: 'contain' }}
             />
-            <div className="group-hover:bg-black/20" style={{ position: 'absolute', inset: 0, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background-color 150ms' }}>
+            <div className="group-hover-dim-overlay" style={{ position: 'absolute', inset: 0, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <nldd-icon
                 name="magnifier"
                 size="24"
-                className="opacity-0 group-hover:opacity-100"
-                style={{ color: 'white', transition: 'opacity 150ms' }}
+                className="group-hover-reveal"
+                style={{ color: 'white' }}
                 aria-hidden="true"
               />
             </div>

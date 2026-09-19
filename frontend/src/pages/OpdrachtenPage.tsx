@@ -73,7 +73,8 @@ function FccTrafficLights({ opdracht }: { opdracht: Opdracht }) {
         return val ? (
           <span
             key={key}
-            className={`h-2 w-2 rounded-full ${FCC_TRAFFIC_LIGHT_COLORS[val as FccTrafficLight] || 'bg-gray-300'}`}
+            className={FCC_TRAFFIC_LIGHT_COLORS[val as FccTrafficLight] || 'bg-gray-300'}
+            style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '9999px' }}
             title={`${label}: ${val}`}
           />
         ) : null;
@@ -341,7 +342,7 @@ export function OpdrachtenPage() {
               {/* `Button` reads this exact className to detect a
                   responsively-hidden label and turn it into the accessible
                   name on narrow screens (see common/Button.tsx). */}
-              <span className="hidden sm:inline">{bulkMatch.isPending ? 'Matchen...' : 'Contacten & eenheden matchen'}</span>
+              <span className="hidden-below-sm">{bulkMatch.isPending ? 'Matchen...' : 'Contacten & eenheden matchen'}</span>
             </Button>
             <nldd-menu-item slot="overflow" text="Contacten & eenheden matchen" icon="sparkles"></nldd-menu-item>
           </nldd-toolbar-item>
@@ -355,14 +356,14 @@ export function OpdrachtenPage() {
               onClick={() => fccSync.mutate()}
               disabled={fccSync.isPending}
             >
-              <span className="hidden sm:inline">FCC Sync</span>
+              <span className="hidden-below-sm">FCC Sync</span>
             </Button>
             <nldd-menu-item slot="overflow" text="FCC Sync" icon="refresh"></nldd-menu-item>
           </nldd-toolbar-item>
         )}
         <nldd-toolbar-item slot="end" priority={4}>
           <Button icon="plus" onClick={() => openOpdrachtCreate()}>
-            <span className="hidden sm:inline">Nieuwe opdracht</span>
+            <span className="hidden-below-sm">Nieuwe opdracht</span>
           </Button>
           <nldd-menu-item slot="overflow" text="Nieuwe opdracht" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>

@@ -115,8 +115,10 @@ export function InboxPage() {
             styled div; the colors are the same accent step the design system
             itself uses, not an arbitrary Tailwind swatch. */}
         <div
-          className="rounded-2xl p-6 text-white"
           style={{
+            borderRadius: '16px',
+            padding: '24px',
+            color: 'white',
             background:
               'linear-gradient(to bottom right, var(--primitives-color-lintblauw-900), var(--primitives-color-lintblauw-700))',
           }}

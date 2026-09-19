@@ -5,6 +5,10 @@
  * the design system's :root variables land before our @theme bridge below. */
 @import "@nldd/design-system/styles";
 
+/* Our own utilities, after the design system so they can reference its tokens
+ * and win over anything it sets on a bare element. */
+@import "./utilities.css";
+
 /* Migration bridge: every Tailwind theme token resolves to an NLDD primitive.
  *
  * Tailwind 4 compiles `bg-primary-900` to `background-color: var(--color-primary-900)`,

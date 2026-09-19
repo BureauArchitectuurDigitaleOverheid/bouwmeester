@@ -104,7 +104,7 @@ function EventDescription({ event }: { event: LeadTimelineEvent }) {
       return (
         <nldd-container layout="wrap" gap="8" vertical-alignment="center" padding-top="8">
           {event.from_stage && <StageBadge stage={event.from_stage} />}
-          <Icon name="arrow-right" size="sm" className="text-text-secondary shrink-0" />
+          <Icon name="arrow-right" size="sm" color="secondary-content" style={{ flexShrink: 0 }} />
           {event.to_stage && <StageBadge stage={event.to_stage} />}
         </nldd-container>
       );
@@ -121,7 +121,7 @@ function EventDescription({ event }: { event: LeadTimelineEvent }) {
     case 'email':
       return (
         <nldd-container layout="row" gap="8" padding-top="8">
-          <Icon name={eventIconName(event.event_type)} size="sm" className="text-text-secondary shrink-0" />
+          <Icon name={eventIconName(event.event_type)} size="sm" color="secondary-content" style={{ flexShrink: 0 }} />
           {event.content ? (
             <nldd-text size="sm" color="secondary" style={{ ...clampStyle, flex: 1 }}>
               <RichTextDisplay content={event.content} fallback="" />
@@ -183,7 +183,7 @@ function TimelineEventCard({
             <nldd-container gap="2" width="full">
               <nldd-container layout="row" gap="8" vertical-alignment="center">
                 <nldd-text size="xs" color="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</nldd-text>
-                <Icon name={eventIconName(event.event_type)} size="sm" className="opacity-50" />
+                <Icon name={eventIconName(event.event_type)} size="sm" style={{ opacity: 0.5 }} />
               </nldd-container>
               <nldd-title-cell text={event.lead_title} size={6} />
               {event.organization && (
@@ -294,7 +294,7 @@ export function LeadTimelineView({
 
       {/* Timeline */}
       {isLoading ? (
-        <LoadingSpinner className="py-12" />
+        <LoadingSpinner padding="48" />
       ) : filteredEvents.length === 0 ? (
         <EmptyTimeline />
       ) : (

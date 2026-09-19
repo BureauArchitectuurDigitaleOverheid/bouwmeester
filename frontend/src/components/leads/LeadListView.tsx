@@ -106,7 +106,7 @@ export function LeadListView({
   }, [filteredLeads, stageIndex]);
 
   if (isLoading) {
-    return <LoadingSpinner className="py-8" />;
+    return <LoadingSpinner padding="32" />;
   }
 
   return (

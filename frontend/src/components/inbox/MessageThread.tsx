@@ -36,18 +36,36 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
   // react-button) converts to nldd-container below.
   return (
     <nldd-container layout="row" horizontal-alignment={isCurrentUser ? 'right' : 'left'}>
-      <div className="max-w-[80%]">
+      <div style={{ maxWidth: '80%' }}>
+        {/* The row holding the bubble and its hover-revealed react-button, in
+            reading order or reversed for the current user's own messages: no
+            nldd-container row-reverse equivalent, so this direction switch
+            stays plain CSS. */}
         <div
-          className={`relative flex items-start gap-1 ${isCurrentUser ? 'flex-row-reverse' : 'flex-row'}`}
+          style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '4px', flexDirection: isCurrentUser ? 'row-reverse' : 'row' }}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => { if (!showPicker) setHovered(false); }}
         >
+          {/* The chat bubble itself (asymmetric corner, sender-colored fill)
+              is not one of the nine design-system patterns, so it stays custom
+              markup, same call as ChatMessageBubble.tsx. Colors are tokens. */}
           <div
-            className={`rounded-2xl px-4 py-2.5 ${
-              isCurrentUser
-                ? 'bg-primary-600 text-white rounded-br-md'
-                : 'surface-tinted text-text rounded-bl-md'
-            }`}
+            style={{
+              borderRadius: '16px',
+              paddingInline: '16px',
+              paddingBlock: '10px',
+              ...(isCurrentUser
+                ? {
+                    backgroundColor: 'var(--primitives-color-accent-600)',
+                    color: 'var(--primitives-color-neutral-0)',
+                    borderBottomRightRadius: '6px',
+                  }
+                : {
+                    backgroundColor: 'var(--semantics-surfaces-tinted-background-color)',
+                    color: 'var(--primitives-color-neutral-900)',
+                    borderBottomLeftRadius: '6px',
+                  }),
+            }}
           >
             {!isCurrentUser && message.sender_name && (
               <nldd-text size="xs" weight="medium" style={{ opacity: 0.7, display: 'block', marginBottom: '4px' }}>
@@ -59,7 +77,7 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
                 renders arbitrary user content, and there is no "invert my
                 descendants' color" attribute on any nldd-* component. It only
                 applies on the filled (isCurrentUser) bubble. */}
-            <div className={`text-sm ${isCurrentUser ? '[&_*]:text-white [&_button]:bg-white/20 [&_button]:text-white [&_a]:text-white [&_a]:underline [&_a]:decoration-white/60 [&_a:hover]:!text-white [&_a:hover]:decoration-white' : ''}`}>
+            <div className={isCurrentUser ? '[&_*]:text-white [&_button]:bg-white/20 [&_button]:text-white [&_a]:text-white [&_a]:underline [&_a]:decoration-white/60 [&_a:hover]:!text-white [&_a:hover]:decoration-white' : undefined} style={{ fontSize: '14px' }}>
               <RichTextDisplay content={message.message} fallback="" />
             </div>
             <nldd-text size="xxs" style={{ display: 'block', marginTop: '4px', opacity: isCurrentUser ? 0.6 : 1 }} {...(isCurrentUser ? { color: 'inherit' } : { color: 'secondary' })}>
@@ -69,11 +87,19 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
           {/* EmojiPicker anchors itself via getBoundingClientRect on a real DOM
               button ref, so this trigger stays a native <button>, matching the
               documented exception in EmojiPicker.tsx/ReactionBar.tsx. */}
-          <div className={`shrink-0 pt-1 ${hovered || showPicker ? 'visible' : 'invisible'}`}>
+          <div className={`shrink-0 ${hovered || showPicker ? 'visible' : 'invisible'}`} style={{ paddingTop: '4px' }}>
             <button
               ref={smileRef}
               onClick={() => setShowPicker(!showPicker)}
-              className="p-1 rounded-full bg-surface border border-border shadow-sm text-text-secondary hover:text-text hover-tinted transition-colors"
+              className="hover-tinted"
+              style={{
+                padding: '4px',
+                borderRadius: '9999px',
+                backgroundColor: 'var(--primitives-color-neutral-0)',
+                border: '1px solid var(--primitives-color-neutral-200)',
+                boxShadow: 'var(--primitives-box-shadows-level-1)',
+                color: 'var(--primitives-color-neutral-700)',
+              }}
             >
               <Icon name="face-smiling" size="sm" />
             </button>

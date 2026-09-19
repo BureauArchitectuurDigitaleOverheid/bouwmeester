@@ -15,7 +15,7 @@ export function ChatMessageList() {
     // gives it and scroll independently, which nldd-container's height="auto"
     // block layout can't express — no nldd primitive for a flex-growing
     // scroll region, so the outer sizing stays plain CSS.
-    <div className="flex-1 overflow-y-auto">
+    <div style={{ flex: 1, overflowY: 'auto' }}>
       <nldd-container gap="12" padding="16">
         {messages.length === 0 && (
           <nldd-inline-dialog

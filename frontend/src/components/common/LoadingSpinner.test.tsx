@@ -33,8 +33,8 @@ describe('LoadingSpinner', () => {
     expect(container.querySelector('nldd-activity-indicator')).toHaveAttribute('size', '48');
   });
 
-  it('applies custom className', () => {
-    const { container } = render(<LoadingSpinner className="p-4" />);
-    expect(container.firstChild).toHaveClass('p-4');
+  it('applies the requested padding', () => {
+    const { container } = render(<LoadingSpinner padding="16" />);
+    expect(container.querySelector('nldd-container')).toHaveAttribute('padding-block', '16');
   });
 });

@@ -28,7 +28,7 @@ function ExpandedPersonTasks({ person }: { person: EenheidPersonTaskStats }) {
   return (
     <div style={{ gridColumn: '1 / -1' }}>
       <nldd-container padding="12" gap="8">
-        {isLoading && <LoadingSpinner className="py-4" />}
+        {isLoading && <LoadingSpinner padding="16" />}
         {tasks && tasks.length === 0 && (
           <nldd-text size="sm" color="secondary">
             Geen taken gevonden.

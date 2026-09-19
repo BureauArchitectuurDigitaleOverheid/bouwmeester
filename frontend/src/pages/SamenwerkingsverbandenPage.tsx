@@ -167,7 +167,7 @@ export function SamenwerkingsverbandenPage() {
             icon="plus"
             onClick={() => { resetForm(); setShowForm(true); }}
           >
-            <span className="hidden sm:inline">Nieuw samenwerkingsverband</span>
+            <span className="hidden-below-sm">Nieuw samenwerkingsverband</span>
           </Button>
           <nldd-menu-item slot="overflow" text="Nieuw samenwerkingsverband" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>

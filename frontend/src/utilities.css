@@ -1,0 +1,269 @@
+/**
+ * The handful of CSS utilities this app needs that the design system has no
+ * opinion about.
+ *
+ * Everything the design system DOES have an opinion about lives in its
+ * components: layout is nldd-container, type is nldd-text and nldd-title,
+ * color is an attribute. What is left here is line-box behaviour (how text
+ * clips and wraps), image fitting, and a few one-offs. Those are properties of
+ * a box, not of a design, which is why no component owns them.
+ *
+ * This file exists so `tailwindcss` can leave package.json. Each class below
+ * replaces exactly one Tailwind utility and nothing more; this is not a
+ * utility framework and should not grow into one. Before adding a class, check
+ * that no nldd-* attribute does the job.
+ */
+
+/* # Text clipping
+ *
+ * `text-overflow` needs `overflow: hidden` and a width to clip against, which
+ * is why the parent usually needs `min-width: 0` in a flex row. The design
+ * system leaves this alone deliberately: whether a name is cut off or wraps is
+ * the app's call, not the system's.
+ */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line-clamp-1,
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-1 {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.line-clamp-2 {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* # Whitespace
+ *
+ * `pre-wrap` is content, not styling: in a plain-text description the line
+ * breaks are the only structure there is.
+ */
+.whitespace-pre-wrap {
+  white-space: pre-wrap;
+}
+
+.whitespace-nowrap {
+  white-space: nowrap;
+}
+
+/* # Type treatments the system does not offer
+ *
+ * nldd-text has size, weight and color, but no case or letter-spacing. Both
+ * appear on the small all-caps section labels this app uses.
+ */
+.uppercase {
+  text-transform: uppercase;
+}
+
+.tracking-wider {
+  letter-spacing: 0.05em;
+}
+
+.tracking-tight {
+  letter-spacing: -0.015em;
+}
+
+.font-mono {
+  font-family: var(--primitives-font-family-monospace);
+}
+
+/* # Hover-dim
+ *
+ * A clickable image thumbnail (a chat attachment preview opening a lightbox)
+ * dims slightly on hover as its only affordance — it has no visible chrome
+ * of its own to change state. No nldd component wraps an arbitrary thumbnail
+ * this way.
+ */
+.hover-dim {
+  transition: opacity 150ms;
+}
+.hover-dim:hover {
+  opacity: 0.8;
+}
+
+/* # Images
+ *
+ * An avatar or thumbnail has to fill its box without distorting. nldd-avatar
+ * does this for a person; a pasted attachment is not a person.
+ */
+.object-cover {
+  object-fit: cover;
+}
+
+/* # Visibility without reflow
+ *
+ * `invisible` keeps the box so a hover-revealed control does not shift the row
+ * it sits in. `display: none` would, which is the whole point.
+ */
+.invisible {
+  visibility: hidden;
+}
+
+/* # Scroll snapping
+ *
+ * The task board scrolls one column at a time on a phone. No design-system
+ * component carries a scroll container of its own.
+ */
+.snap-x {
+  scroll-snap-type: x var(--_snap-strictness, proximity);
+}
+
+.snap-mandatory {
+  --_snap-strictness: mandatory;
+}
+
+.snap-center {
+  scroll-snap-align: center;
+}
+
+/* # Responsive stack-to-row
+ *
+ * A header that stacks its title block above its actions on a narrow screen,
+ * and sits them side by side from `sm` up. nldd-container's layout is one
+ * fixed mode (not responsive), so a header that needs to change shape at a
+ * breakpoint stays a plain flex div; this is that div's `sm`-and-up half.
+ * The narrow-screen (stacked) styles are the element's own inline style.
+ */
+@media (min-width: 640px) {
+  .sm-row-header {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+}
+
+/* Org-tree group card: 8px inset below `sm`, 12px from `sm` up. Same reason
+ * as .sm-row-header — this is a plain div (see OrganisatieDetail's
+ * PersonGroupSection), not an nldd-container, so its responsive padding has
+ * nowhere else to live. */
+.org-group-padding {
+  padding: 8px;
+}
+@media (min-width: 640px) {
+  .org-group-padding {
+    padding: 12px;
+  }
+}
+
+/* # Flex sizing
+ *
+ * nldd-container has no flex-shrink attribute, so a child that must not
+ * shrink inside a row (an avatar, an icon, a fixed-size badge column) needs
+ * this on the light-DOM element itself.
+ */
+.shrink-0 {
+  flex-shrink: 0;
+}
+
+/* # Hover-reveal within a group
+ *
+ * `group` marks the hoverable ancestor (a row, a card); `group-hover-reveal`
+ * is the child that stays invisible until that ancestor is hovered or has
+ * focus within it. Both class names have to exist as real CSS: Tailwind's
+ * `group`/`group-hover:*` utilities were compiled on the fly, and nothing
+ * else defines a `.group:hover .foo` rule once tailwindcss is gone.
+ */
+.group-hover-reveal {
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.group:hover .group-hover-reveal,
+.group:focus-within .group-hover-reveal {
+  opacity: 1;
+}
+
+/* Same idea, but only above the `sm` breakpoint: on a touch screen there is
+ * no hover, so the control stays visible there and only hides once a pointer
+ * can reveal it again. Used for a row action (e.g. a delete icon-button) that
+ * would otherwise sit permanently in a busy list. */
+@media (min-width: 640px) {
+  .group-hover-reveal-above-sm {
+    opacity: 0;
+    transition: opacity 150ms;
+  }
+  .group:hover .group-hover-reveal-above-sm,
+  .group:focus-within .group-hover-reveal-above-sm {
+    opacity: 1;
+  }
+}
+
+/* Pushes a single child to the end of a row without affecting its siblings —
+ * nldd-container's alignment attributes apply to all children at once, so a
+ * "last item flush right, rest left" row still needs this on the light-DOM
+ * child. */
+.margin-left-auto {
+  margin-left: auto;
+}
+
+/* A dark tint that fades in over an image thumbnail on hover/focus of the
+ * `.group` ancestor, the backdrop for a zoom or preview affordance that fades
+ * in on top of it (typically `.group-hover-reveal`). Black rather than a
+ * design-system token deliberately: it needs to read as a scrim over an
+ * arbitrary photo, not as a themed surface. */
+.group-hover-dim-overlay {
+  background-color: transparent;
+  transition: background-color 150ms;
+}
+.group:hover .group-hover-dim-overlay,
+.group:focus-within .group-hover-dim-overlay {
+  background-color: rgb(0 0 0 / 0.2);
+}
+
+/* # Responsive label inside a Button
+ *
+ * A label that only shows once there is room for it beside an icon: hidden
+ * below `sm`, inline from `sm` up. `Button.tsx` also reads this exact class
+ * name off a slotted `<span>` to pull the text out as the button's
+ * accessible name while it is visually hidden — see
+ * `findResponsivelyHiddenLabel`.
+ */
+.hidden-below-sm {
+  display: none;
+}
+@media (min-width: 640px) {
+  .hidden-below-sm {
+    display: inline;
+  }
+}
+
+/* # Underline on hover
+ *
+ * A link whose text underlines on hover/focus, either on itself
+ * (`link-hover-underline`, e.g. a bare href inside a list row where
+ * nldd-list-item-segment isn't in play) or on an ancestor `.group`
+ * (`group-hover-underline`, e.g. underlining a span nested inside the
+ * clickable element). No nldd-* component exposes this on its own text.
+ */
+.link-hover-underline:hover,
+.link-hover-underline:focus-visible {
+  text-decoration: underline;
+}
+.group:hover .group-hover-underline,
+.group:focus-within .group-hover-underline {
+  text-decoration: underline;
+}
+
+/* # Surfaces
+ *
+ * Two treatments our own markup still needs, on design-system tokens rather
+ * than a fixed grey. Classes and not inline style, because both describe a
+ * :hover state and a style attribute cannot express one.
+ */
+.surface-tinted {
+  background-color: var(--semantics-surfaces-tinted-background-color);
+}
+
+.hover-tinted:hover {
+  background-color: var(--semantics-buttons-neutral-base-is-hovered-background-color);
+}

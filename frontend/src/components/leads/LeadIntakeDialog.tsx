@@ -535,7 +535,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
           {emailParsing && (
             <nldd-card background="tinted">
               <nldd-container layout="row" gap="8" vertical-alignment="center" padding="8" padding-inline="12">
-                <LoadingSpinner className="h-4 w-4" />
+                <LoadingSpinner size="sm" />
                 <nldd-text size="sm" color="accent">E-mail wordt gelezen...</nldd-text>
               </nldd-container>
             </nldd-card>
@@ -608,10 +608,14 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                 <nldd-card key={i} background="tinted">
                   <nldd-container layout="row" gap="8" vertical-alignment="center" padding="6" padding-inline="12">
                     {file.type.startsWith('image/') ? (
-                      <img
+                      <nldd-image
                         src={URL.createObjectURL(file)}
                         alt={file.name}
-                        style={{ height: '32px', width: '32px', borderRadius: '6px', objectFit: 'cover' }}
+                        width="32"
+                        height={32}
+                        object-fit="cover"
+                        shape="rounded"
+                        loading="eager"
                       />
                     ) : (
                       <nldd-icon name="file-text" size="16" aria-hidden="true" />

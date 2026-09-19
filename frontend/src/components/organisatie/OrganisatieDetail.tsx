@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { clsx } from 'clsx';
 import { Button } from '@/components/common/Button';
 import { Badge } from '@/components/common/Badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -20,13 +19,15 @@ function managerLabelForType(orgType: string, functie?: string | null): string {
   return COORDINATOR_TYPES.has(orgType) ? 'Coördinator' : 'Manager';
 }
 
-// Tailwind bg classes for each badge color (green uses emerald in our design system)
-const BADGE_BG_CLASS: Record<string, string> = {
-  blue: 'bg-blue-50/40', purple: 'bg-purple-50/40', amber: 'bg-amber-50/40',
-  cyan: 'bg-cyan-50/40', green: 'bg-emerald-50/40', gray: 'bg-gray-50/40',
+// Rijkshuisstijl primitive per badge color, at 40% opacity against the page
+// background, mirroring Badge's own color families (see ORGANISATIE_TYPE_BADGE_COLORS).
+const BADGE_TINT_PRIMITIVE: Record<string, string> = {
+  blue: 'hemelblauw', purple: 'paars', amber: 'oranje',
+  cyan: 'lichtblauw', green: 'mintgroen', gray: 'coolgray',
 };
 function orgTypeBg(type: string): string {
-  return BADGE_BG_CLASS[ORGANISATIE_TYPE_BADGE_COLORS[type] ?? 'gray'] ?? '';
+  const primitive = BADGE_TINT_PRIMITIVE[ORGANISATIE_TYPE_BADGE_COLORS[type] ?? 'gray'] ?? 'coolgray';
+  return `color-mix(in oklch, var(--primitives-color-${primitive}-50) 40%, transparent)`;
 }
 
 function countAllPersonen(group: OrganisatieEenheidPersonenGroup): number {
@@ -142,14 +143,20 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
     // A plain div, not nldd-box: the drag-over ring highlight and the
     // per-org-type tint (orgTypeBg) are dynamic border/ring colors with no
     // nldd-box equivalent (only background="tinted"/"base"/"critical").
+    // The sm-and-up padding bump has no nldd-container equivalent for a plain
+    // div, so it stays a small responsive utility class; everything else is
+    // inline since it depends on drag state.
     <div
-      className={clsx(
-        'border rounded-lg p-2 sm:p-3 transition-all duration-150',
-        orgTypeBg(group.eenheid.type),
-        dragOver
-          ? 'border-primary-400 ring-2 ring-primary-200'
-          : 'border-border',
-      )}
+      className="org-group-padding"
+      style={{
+        borderRadius: '8px',
+        transition: 'all 150ms',
+        backgroundColor: orgTypeBg(group.eenheid.type),
+        border: dragOver
+          ? '1px solid var(--primitives-color-accent-400)'
+          : '1px solid var(--primitives-color-neutral-50)',
+        boxShadow: dragOver ? '0 0 0 2px var(--primitives-color-accent-200)' : undefined,
+      }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -178,10 +185,10 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
         </button>
 
         {expanded && (
-          // ml-1 (4px) stays inline: no nldd-container margin equivalent,
+          // 4px left margin stays inline: no nldd-container margin equivalent,
           // and padding-left here would also inset the nested group's own
           // border/background rather than just this list.
-          <div className="ml-1">
+          <div style={{ marginLeft: '4px' }}>
             <nldd-container gap="8">
               {/* Manager at top of group */}
               {managerPerson && (
@@ -256,7 +263,7 @@ export function OrganisatieDetail({
   const personenCount = totalCount - agentCount;
 
   if (isLoading) {
-    return <LoadingSpinner className="py-12" />;
+    return <LoadingSpinner padding="48" />;
   }
 
   if (!eenheid) {
@@ -268,8 +275,9 @@ export function OrganisatieDetail({
       {/* Header. The sm-and-up side-by-side vs. stacked-below-sm split has no
           nldd-container equivalent (layout is one fixed mode, not responsive),
           so the two top-level rows keep their plain flex wrapper; everything
-          inside converts. */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          inside converts. sm-row-header (utilities.css) carries the `sm`-and-up
+          half of the breakpoint switch. */}
+      <div className="sm-row-header" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <nldd-container gap="4">
           <Badge
             variant={ORGANISATIE_TYPE_BADGE_COLORS[eenheid.type] || 'gray'}
@@ -297,28 +305,28 @@ export function OrganisatieDetail({
             eenheid.website ||
             eenheid.kvk_nummer ||
             eenheid.tooi_uri) && (
-            <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
+            <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', columnGap: '16px', rowGap: '4px', fontSize: '12px' }}>
               {eenheid.afkorting && (
                 <>
-                  <dt className="text-text-secondary">Afkorting</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>Afkorting</dt>
                   <dd>{eenheid.afkorting}</dd>
                 </>
               )}
               {eenheid.oin && (
                 <>
-                  <dt className="text-text-secondary">OIN</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>OIN</dt>
                   <dd className="font-mono">{eenheid.oin}</dd>
                 </>
               )}
               {eenheid.fte_aantal != null && (
                 <>
-                  <dt className="text-text-secondary">FTE</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>FTE</dt>
                   <dd>{eenheid.fte_aantal}</dd>
                 </>
               )}
               {eenheid.website && (
                 <>
-                  <dt className="text-text-secondary">Website</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>Website</dt>
                   <dd>
                     <nldd-link href={eenheid.website} target="_blank" text={eenheid.website} size="xs" style={{ maxWidth: '400px', display: 'block' }} />
                   </dd>
@@ -326,13 +334,13 @@ export function OrganisatieDetail({
               )}
               {eenheid.kvk_nummer && (
                 <>
-                  <dt className="text-text-secondary">KvK</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>KvK</dt>
                   <dd className="font-mono">{eenheid.kvk_nummer}</dd>
                 </>
               )}
               {eenheid.tooi_uri && (
                 <>
-                  <dt className="text-text-secondary">TOOI</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>TOOI</dt>
                   <dd>
                     <nldd-link href={eenheid.tooi_uri} target="_blank" text={eenheid.tooi_uri} size="xs" className="font-mono" style={{ maxWidth: '400px', display: 'block' }} />
                   </dd>

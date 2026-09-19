@@ -111,10 +111,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={{ showError, showSuccess, showWarning }}>
       {children}
       {toasts.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
-          {toasts.map((toast) => (
-            <ToastItem key={toast.id} toast={toast} onDismiss={dismiss} />
-          ))}
+        // Viewport-fixed stack pinned to a corner: no nldd-container
+        // equivalent for fixed positioning with a z-index, so the outer box
+        // stays plain CSS; the stacking itself converts.
+        <div style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 100 }}>
+          <nldd-container gap="8">
+            {toasts.map((toast) => (
+              <ToastItem key={toast.id} toast={toast} onDismiss={dismiss} />
+            ))}
+          </nldd-container>
         </div>
       )}
     </ToastContext.Provider>
