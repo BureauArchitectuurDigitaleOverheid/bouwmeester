@@ -180,7 +180,7 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
 
   return (
     <DetailSection title="Updates" icon={<Icon name="megaphone" size="sm" />}>
-      <div className="flex items-center justify-between mb-2">
+      <nldd-container layout="row" gap="8" vertical-alignment="center" padding-bottom="8">
         <nldd-text size="xs" color="secondary">
           {posts.length === 0 ? 'Nog geen updates' : `${posts.length} totaal`}
         </nldd-text>
@@ -189,126 +189,130 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
             Nieuwe update
           </Button>
         )}
-      </div>
+      </nldd-container>
 
       {composing && (
-        <div className="rounded-xl border border-border p-3 mb-3 space-y-3">
-          {!editingId && (
-            <div className="space-y-2 rounded-lg bg-surface-subtle p-2">
-              <nldd-form-field label="Ruwe invoer (plak tekst, of upload bestand)">
-                <nldd-multi-line-text-field
-                  ref={rawTextRef}
-                  value={rawText}
-                  rows={4}
-                  placeholder="Plak hier een mailfragment, gespreksnotitie, of korte beschrijving..."
-                />
+        <nldd-card background="tinted">
+          <nldd-container gap="12" padding="12" padding-bottom="20">
+            {!editingId && (
+              <nldd-card>
+                <nldd-container gap="8" padding="8">
+                  <nldd-form-field label="Ruwe invoer (plak tekst, of upload bestand)">
+                    <nldd-multi-line-text-field
+                      ref={rawTextRef}
+                      value={rawText}
+                      rows={4}
+                      placeholder="Plak hier een mailfragment, gespreksnotitie, of korte beschrijving..."
+                    />
+                  </nldd-form-field>
+                  <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+                    <nldd-file-field ref={fileFieldRef} multiple accept=".pdf,.docx,.doc,.odt,.txt,image/*" accessible-label="Bestand toevoegen" />
+                    {files.length > 0 && (
+                      <nldd-text size="xs" color="secondary">
+                        {files.map((f) => f.name).join(', ')}
+                      </nldd-text>
+                    )}
+                  </nldd-container>
+                  <nldd-checkbox-field
+                    ref={includeAttachmentsRef}
+                    checked={orUndef(includeAttachments)}
+                    label="Neem bestaande bijlagen op deze lead mee (screenshots, documenten)"
+                  />
+                  <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon="sparkles"
+                      onClick={() => runExtract(false)}
+                      disabled={
+                        parseMutation.isPending ||
+                        (!rawText.trim() && files.length === 0 && !includeAttachments)
+                      }
+                    >
+                      AI: extract uit invoer
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon="sparkles"
+                      onClick={() => runExtract(true)}
+                      disabled={parseMutation.isPending}
+                      title="Genereer een update op basis van notities, contacten, recente activity én bestaande bijlagen op deze lead"
+                    >
+                      AI: uit lead-historie
+                    </Button>
+                    {parseMutation.isPending && (
+                      <nldd-text size="xs" color="secondary">Bezig...</nldd-text>
+                    )}
+                  </nldd-container>
+                  {error && (
+                    <nldd-validation-list>
+                      <nldd-validation-item>{error}</nldd-validation-item>
+                    </nldd-validation-list>
+                  )}
+                </nldd-container>
+              </nldd-card>
+            )}
+
+            <nldd-text-field ref={titelRef} value={draft.titel} placeholder="Titel" accessible-label="Titel" />
+
+            <RichTextFormField
+              label="Interne mailtekst (voor team)"
+              value={draft.body_internal}
+              onChange={(v) => setDraft({ ...draft, body_internal: v })}
+              rows={6}
+            />
+
+            <RichTextFormField
+              label="Publieke samenvatting (community-pagina)"
+              value={draft.body_public}
+              onChange={(v) => setDraft({ ...draft, body_public: v })}
+              rows={3}
+            />
+
+            <nldd-container gap="8">
+              <nldd-form-field label="Mail-onderwerp">
+                <nldd-text-field ref={mailSubjectRef} value={draft.mail_subject} />
               </nldd-form-field>
-              <div className="flex items-center gap-2 flex-wrap">
-                <nldd-file-field ref={fileFieldRef} multiple accept=".pdf,.docx,.doc,.odt,.txt,image/*" accessible-label="Bestand toevoegen" />
-                {files.length > 0 && (
-                  <nldd-text size="xs" color="secondary">
-                    {files.map((f) => f.name).join(', ')}
-                  </nldd-text>
-                )}
-              </div>
-              <nldd-checkbox-field
-                ref={includeAttachmentsRef}
-                checked={orUndef(includeAttachments)}
-                label="Neem bestaande bijlagen op deze lead mee (screenshots, documenten)"
+              <EmailListInput
+                label="To"
+                value={draft.mail_to}
+                onChange={(v) => setDraft({ ...draft, mail_to: v })}
               />
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon="sparkles"
-                  onClick={() => runExtract(false)}
-                  disabled={
-                    parseMutation.isPending ||
-                    (!rawText.trim() && files.length === 0 && !includeAttachments)
-                  }
-                >
-                  AI: extract uit invoer
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon="sparkles"
-                  onClick={() => runExtract(true)}
-                  disabled={parseMutation.isPending}
-                  title="Genereer een update op basis van notities, contacten, recente activity én bestaande bijlagen op deze lead"
-                >
-                  AI: uit lead-historie
-                </Button>
-                {parseMutation.isPending && (
-                  <nldd-text size="xs" color="secondary">Bezig...</nldd-text>
-                )}
-              </div>
-              {error && (
-                <nldd-validation-list>
-                  <nldd-validation-item>{error}</nldd-validation-item>
-                </nldd-validation-list>
-              )}
-            </div>
-          )}
+              <EmailListInput
+                label="Cc"
+                value={draft.mail_cc}
+                onChange={(v) => setDraft({ ...draft, mail_cc: v })}
+              />
+            </nldd-container>
 
-          <nldd-text-field ref={titelRef} value={draft.titel} placeholder="Titel" accessible-label="Titel" />
-
-          <RichTextFormField
-            label="Interne mailtekst (voor team)"
-            value={draft.body_internal}
-            onChange={(v) => setDraft({ ...draft, body_internal: v })}
-            rows={6}
-          />
-
-          <RichTextFormField
-            label="Publieke samenvatting (community-pagina)"
-            value={draft.body_public}
-            onChange={(v) => setDraft({ ...draft, body_public: v })}
-            rows={3}
-          />
-
-          <div className="grid grid-cols-1 gap-2">
-            <nldd-form-field label="Mail-onderwerp">
-              <nldd-text-field ref={mailSubjectRef} value={draft.mail_subject} />
-            </nldd-form-field>
-            <EmailListInput
-              label="To"
-              value={draft.mail_to}
-              onChange={(v) => setDraft({ ...draft, mail_to: v })}
-            />
-            <EmailListInput
-              label="Cc"
-              value={draft.mail_cc}
-              onChange={(v) => setDraft({ ...draft, mail_cc: v })}
-            />
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={cancel}>
-              Annuleren
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => handleSave(false)}
-              disabled={!draft.titel.trim() || parseMutation.isPending}
-            >
-              Opslaan als concept
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => handleSave(true)}
-              disabled={!draft.titel.trim() || parseMutation.isPending}
-            >
-              {editingId ? 'Opslaan + publiceren' : 'Direct publiceren'}
-            </Button>
-          </div>
-        </div>
+            <nldd-container layout="row" gap="8" horizontal-alignment="right">
+              <Button variant="secondary" size="sm" onClick={cancel}>
+                Annuleren
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleSave(false)}
+                disabled={!draft.titel.trim() || parseMutation.isPending}
+              >
+                Opslaan als concept
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleSave(true)}
+                disabled={!draft.titel.trim() || parseMutation.isPending}
+              >
+                {editingId ? 'Opslaan + publiceren' : 'Direct publiceren'}
+              </Button>
+            </nldd-container>
+          </nldd-container>
+        </nldd-card>
       )}
 
       {concepts.length > 0 && (
-        <div className="mb-3">
-          <nldd-text size="xs" color="secondary" className="mb-1 block">Concepten</nldd-text>
+        <nldd-container gap="4" padding-bottom="12">
+          <nldd-text size="xs" color="secondary">Concepten</nldd-text>
           <nldd-list variant="box-tinted" dividers="always" accessible-label="Conceptupdates">
             {concepts.map((post) => (
               <UpdateRow
@@ -326,12 +330,12 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
               />
             ))}
           </nldd-list>
-        </div>
+        </nldd-container>
       )}
 
       {published.length > 0 && (
-        <div>
-          <nldd-text size="xs" color="secondary" className="mb-1 block">Gepubliceerd</nldd-text>
+        <nldd-container gap="4">
+          <nldd-text size="xs" color="secondary">Gepubliceerd</nldd-text>
           <nldd-list variant="box-tinted" dividers="always" accessible-label="Gepubliceerde updates">
             {published.map((post) => (
               <UpdateRow
@@ -349,7 +353,7 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
               />
             ))}
           </nldd-list>
-        </div>
+        </nldd-container>
       )}
 
       <ConfirmDialog
@@ -397,18 +401,31 @@ function UpdateRow({
 
   return (
     <nldd-list-item>
-      <nldd-text-cell width="full">
-        <div className="text-sm font-medium truncate">{post.titel}</div>
-        <nldd-text size="xs" color="secondary">
-          {isPublished
-            ? `Gepubliceerd ${formatDateLong(post.published_at!)}${post.published_by_naam ? ` · ${post.published_by_naam}` : ''}`
-            : `Concept · ${formatDateLong(post.created_at)}`}
-        </nldd-text>
-        {post.body_public && (
-          <div className="text-xs text-text-secondary mt-1 line-clamp-2 whitespace-pre-wrap">
-            {post.body_public}
-          </div>
-        )}
+      <nldd-text-cell width="full" text={post.titel}>
+        <span slot="supporting-text">
+          <nldd-container gap="2">
+            <nldd-text size="xs" color="secondary">
+              {isPublished
+                ? `Gepubliceerd ${formatDateLong(post.published_at!)}${post.published_by_naam ? ` · ${post.published_by_naam}` : ''}`
+                : `Concept · ${formatDateLong(post.created_at)}`}
+            </nldd-text>
+            {post.body_public && (
+              <nldd-text
+                size="xs"
+                color="secondary"
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                {post.body_public}
+              </nldd-text>
+            )}
+          </nldd-container>
+        </span>
       </nldd-text-cell>
       <nldd-list-item-segment href={getLeadUpdateEmlUrl(leadId, post.id)} accessible-label="Download .eml voor Outlook" title="Download .eml — opent als nieuw concept in Outlook (Windows) met onderwerp en ontvangers ingevuld">
         <Icon name="envelope" size="sm" />

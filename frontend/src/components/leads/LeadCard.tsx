@@ -23,79 +23,96 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
     lead.score_positie != null;
 
   return (
-    <nldd-card ref={ref} button accessible-label={lead.title} className="block w-full text-left p-3 space-y-1.5">
-      <nldd-text size="sm" weight="medium" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-        {lead.title}
-      </nldd-text>
-
-      {lead.organization && (
-        <nldd-text size="xs" color="secondary" className="truncate block">
-          {lead.organisatie_eenheid?.naam ?? lead.organization}
+    <nldd-card ref={ref} button accessible-label={lead.title}>
+      <nldd-container gap="6" padding="12">
+        {/* nldd-text has no line-clamp attribute; a two-line title clamp on a
+            card is real CSS, not a Tailwind utility, so it stays inline. */}
+        <nldd-text
+          size="sm"
+          weight="medium"
+          style={{
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
+          {lead.title}
         </nldd-text>
-      )}
 
-      {lead.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 overflow-hidden max-h-[3.25rem]">
-          {lead.tags.slice(0, 3).map((tag) => (
-            <nldd-tag key={tag} text={tag} color="neutral" size="sm" />
-          ))}
-          {lead.tags.length > 3 && (
-            <nldd-text size="xs" color="secondary" className="shrink-0">
-              +{lead.tags.length - 3}
+        {lead.organization && (
+          <nldd-text size="xs" color="secondary" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {lead.organisatie_eenheid?.naam ?? lead.organization}
+          </nldd-text>
+        )}
+
+        {lead.tags.length > 0 && (
+          <nldd-container layout="wrap" gap="4" style={{ maxHeight: '3.25rem', overflow: 'hidden' }}>
+            {lead.tags.slice(0, 3).map((tag) => (
+              <nldd-tag key={tag} text={tag} color="neutral" size="sm" />
+            ))}
+            {lead.tags.length > 3 && (
+              <nldd-text size="xs" color="secondary">
+                +{lead.tags.length - 3}
+              </nldd-text>
+            )}
+          </nldd-container>
+        )}
+
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          {isInbox ? (
+            lead.brought_by && (
+              <nldd-text size="xs" color="secondary" style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                via {lead.brought_by.naam}
+              </nldd-text>
+            )
+          ) : (
+            <>
+              {lead.assignee && (
+                <nldd-text size="xs" color="secondary" style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {lead.assignee.naam}
+                </nldd-text>
+              )}
+              {contacts.length > 0 && (
+                <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content" title={contacts.join(', ')}>
+                  <nldd-icon name="users" size="16" aria-hidden="true" />
+                  <nldd-text size="xs" color="secondary">
+                    {contacts[0]}
+                    {contacts.length > 1 && ` +${contacts.length - 1}`}
+                  </nldd-text>
+                </nldd-container>
+              )}
+            </>
+          )}
+
+          {lead.next_action_date && (
+            <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content">
+              <nldd-icon name="calendar" size="16" aria-hidden="true" />
+              <nldd-text size="xs" color={overdue ? 'critical' : 'secondary'} weight={overdue ? 'medium' : 'regular'}>
+                {formatDateShort(lead.next_action_date)}
+              </nldd-text>
+            </nldd-container>
+          )}
+
+          {lead.attachment_count > 0 && (
+            <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content" horizontal-alignment="right">
+              <nldd-icon name="paperclip" size="16" aria-hidden="true" />
+              <nldd-text size="xs" color="secondary">{lead.attachment_count}</nldd-text>
+            </nldd-container>
+          )}
+
+          {hasFunnelScores && (
+            <nldd-text
+              size="xs"
+              color="secondary"
+              title={`Strategisch ${lead.score_strategisch} · Politiek ${lead.score_politiek} · Positie ${lead.score_positie}`}
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            >
+              {lead.score_strategisch}·{lead.score_politiek}·{lead.score_positie}
             </nldd-text>
           )}
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 text-xs text-text-secondary">
-        {isInbox ? (
-          lead.brought_by && (
-            <span className="truncate max-w-[120px]">via {lead.brought_by.naam}</span>
-          )
-        ) : (
-          <>
-            {lead.assignee && (
-              <span className="truncate max-w-[120px]">{lead.assignee.naam}</span>
-            )}
-            {contacts.length > 0 && (
-              <span className="inline-flex items-center gap-0.5" title={contacts.join(', ')}>
-                <nldd-icon name="users" size="16" aria-hidden="true" />
-                {contacts[0]}
-                {contacts.length > 1 && (
-                  <span className="text-[10px]">+{contacts.length - 1}</span>
-                )}
-              </span>
-            )}
-          </>
-        )}
-
-        {lead.next_action_date && (
-          <span
-            className={`inline-flex items-center gap-0.5 ${
-              overdue ? 'text-red-600 font-medium' : ''
-            }`}
-          >
-            <nldd-icon name="calendar" size="16" aria-hidden="true" />
-            {formatDateShort(lead.next_action_date)}
-          </span>
-        )}
-
-        {lead.attachment_count > 0 && (
-          <span className="inline-flex items-center gap-0.5 ml-auto">
-            <nldd-icon name="paperclip" size="16" aria-hidden="true" />
-            {lead.attachment_count}
-          </span>
-        )}
-
-        {hasFunnelScores && (
-          <span
-            className={`tabular-nums text-[10px] text-text-secondary ${lead.attachment_count > 0 ? '' : 'ml-auto'}`}
-            title={`Strategisch ${lead.score_strategisch} · Politiek ${lead.score_politiek} · Positie ${lead.score_positie}`}
-          >
-            {lead.score_strategisch}·{lead.score_politiek}·{lead.score_positie}
-          </span>
-        )}
-      </div>
+        </nldd-container>
+      </nldd-container>
     </nldd-card>
   );
 }

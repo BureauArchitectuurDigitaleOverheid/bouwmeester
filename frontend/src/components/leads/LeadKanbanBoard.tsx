@@ -8,26 +8,14 @@ import { useLeads, useMoveLead, useReorderLeads } from '@/hooks/useLeads';
 import { useLeadColumns } from '@/hooks/useLeadColumns';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import type { Lead, LeadColumn, LeadFilters } from '@/types';
+import { leadColumnTagColor } from './stageColors';
 
-// Static map: Tailwind v4 only sees classes that appear literally in source.
-// Building the border class via string interpolation purges it, so we list
-// each chip-class explicitly. Keep in sync with COLOR_PRESETS in
-// ColumnsManager.tsx.
-const COLOR_TO_BORDER: Record<string, string> = {
-  'bg-indigo-100 text-indigo-800': 'border-t-indigo-400',
-  'bg-blue-100 text-blue-800': 'border-t-blue-400',
-  'bg-yellow-100 text-yellow-800': 'border-t-yellow-400',
-  'bg-orange-100 text-orange-800': 'border-t-orange-400',
-  'bg-purple-100 text-purple-800': 'border-t-purple-400',
-  'bg-green-100 text-green-800': 'border-t-green-400',
-  'bg-gray-100 text-gray-800': 'border-t-gray-400',
-  'bg-pink-100 text-pink-800': 'border-t-pink-400',
-  'bg-red-100 text-red-800': 'border-t-red-400',
-  'bg-emerald-100 text-emerald-800': 'border-t-emerald-400',
-};
-
-function chipToBorder(color: string): string {
-  return COLOR_TO_BORDER[color] ?? 'border-t-gray-400';
+/** The column's top border picks up the same color as its nldd-tag, at the
+ *  "100" (solid-fill) primitive step, via a CSS custom property — not a
+ *  Tailwind border-color utility, since the color is one of a closed set
+ *  chosen at runtime, not a fixed class known at build time. */
+function columnBorderColorVar(color: string): string {
+  return `var(--primitives-color-${leadColumnTagColor(color)}-100)`;
 }
 
 interface LeadKanbanBoardProps {
@@ -210,105 +198,120 @@ export function LeadKanbanBoard({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <LeadMetricsBar />
-      </div>
+    <nldd-container gap="16">
+      <LeadMetricsBar />
 
-      <div className="-mx-4 px-4 md:mx-0 md:px-0 flex gap-3 min-h-[500px] overflow-x-auto pb-2 snap-x snap-mandatory md:snap-none md:pb-0">
+      {/* The board itself stays a plain scroll strip: nldd-container's
+          `layout="row"` has no per-child drop-target styling, and every
+          column below needs its own onDragOver/onDragLeave/onDrop, drawn
+          with inline style rather than static Tailwind classes since the
+          highlight is driven by live drag state, not a fixed variant.
+          Dropped from the original: `snap-x snap-mandatory` one-column-at-
+          a-time scrolling and the negative-margin full-bleed edge-to-edge
+          strip on mobile. Both were Tailwind responsive utilities with no
+          nldd-container equivalent (no scroll-snap or breakpoint-negative-
+          margin attribute); flagging in case that mobile behavior mattered
+          on its own rather than as a side effect of the old flex classes. */}
+      <div style={{ display: 'flex', gap: '12px', minHeight: '500px', overflowX: 'auto', paddingBottom: '8px' }}>
         {visibleColumns.map((col) => (
           <div
             key={col.id}
             onDragOver={(e) => handleColumnDragOver(e, col.slug)}
             onDragLeave={handleColumnDragLeave}
             onDrop={(e) => handleDrop(e, col.slug)}
-            className={`flex-none w-[85vw] sm:w-[320px] md:flex-1 md:min-w-[200px] snap-center ${
-              dragOverColumn === col.slug ? 'ring-2 ring-primary-300 ring-inset rounded-xl' : ''
-            }`}
+            style={{
+              flex: '1 1 0',
+              minWidth: '200px',
+              width: '320px',
+              borderRadius: 'var(--primitives-corner-radius-lg)',
+              outline: dragOverColumn === col.slug ? '2px solid var(--primitives-color-accent-300)' : 'none',
+              outlineOffset: '-2px',
+            }}
           >
-            <div
-              className={`rounded-xl border border-border bg-gray-50/50 min-h-full flex flex-col border-t-3 ${chipToBorder(col.color)}`}
-            >
-              <div className="flex items-center justify-between px-3 py-2.5">
-                <span
-                  className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${col.color}`}
-                >
-                  {col.name}
-                </span>
-                <span className="text-xs text-text-secondary tabular-nums">
-                  {leadsByStage[col.slug]?.length ?? 0}
-                </span>
-              </div>
+            <nldd-card>
+              <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', borderTop: `3px solid ${columnBorderColorVar(col.color)}` }}>
+                <nldd-container layout="row" gap="8" vertical-alignment="center" padding="12" padding-block="10">
+                  <nldd-tag text={col.name} color={leadColumnTagColor(col.color)} size="sm" />
+                  <nldd-text size="xs" color="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {leadsByStage[col.slug]?.length ?? 0}
+                  </nldd-text>
+                </nldd-container>
 
-              <div className="flex-1 px-2 pb-2">
-                {(leadsByStage[col.slug] ?? []).length > 0 ? (
-                  <>
-                    {(leadsByStage[col.slug] ?? []).map((lead, index) => {
-                      const indicatorAbove =
-                        dragOverSlot?.slug === col.slug &&
-                        dragOverSlot.index === index &&
-                        draggedLeadId !== lead.id;
-                      return (
-                        <div key={lead.id}>
-                          <div
-                            className={`h-1 my-1 rounded transition-colors ${
-                              indicatorAbove ? 'bg-primary-400' : ''
-                            }`}
-                          />
-                          <div
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, lead)}
-                            onDragEnd={handleDragEnd}
-                            onDragOver={(e) =>
-                              handleCardDragOver(e, col.slug, index)
-                            }
-                            onDrop={(e) => handleDrop(e, col.slug)}
-                            className={
-                              draggedLeadId === lead.id ? 'opacity-40' : ''
-                            }
-                          >
-                            <LeadCard
-                              lead={lead}
-                              onClick={() => openLeadDetail(lead.id)}
+                <nldd-container gap="0" padding-inline="8" padding-bottom="8">
+                  {(leadsByStage[col.slug] ?? []).length > 0 ? (
+                    <>
+                      {(leadsByStage[col.slug] ?? []).map((lead, index) => {
+                        const indicatorAbove =
+                          dragOverSlot?.slug === col.slug &&
+                          dragOverSlot.index === index &&
+                          draggedLeadId !== lead.id;
+                        return (
+                          <div key={lead.id}>
+                            <div
+                              style={{
+                                height: '4px',
+                                margin: '4px 0',
+                                borderRadius: '2px',
+                                backgroundColor: indicatorAbove ? 'var(--primitives-color-accent-100)' : 'transparent',
+                              }}
                             />
+                            <div
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, lead)}
+                              onDragEnd={handleDragEnd}
+                              onDragOver={(e) =>
+                                handleCardDragOver(e, col.slug, index)
+                              }
+                              onDrop={(e) => handleDrop(e, col.slug)}
+                              style={{ opacity: draggedLeadId === lead.id ? 0.4 : 1 }}
+                            >
+                              <LeadCard
+                                lead={lead}
+                                onClick={() => openLeadDetail(lead.id)}
+                              />
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                    {(() => {
-                      const lastIndex = (leadsByStage[col.slug] ?? []).length;
-                      const indicatorActive =
-                        dragOverSlot?.slug === col.slug &&
-                        dragOverSlot.index === lastIndex;
-                      return (
-                        <div
-                          className={`h-1 my-1 rounded transition-colors ${
-                            indicatorActive ? 'bg-primary-400' : ''
-                          }`}
-                        />
-                      );
-                    })()}
-                  </>
-                ) : (
-                  <div
-                    className={`text-xs text-text-secondary text-center py-6 rounded transition-colors ${
-                      dragOverColumn === col.slug ? 'bg-primary-50' : ''
-                    }`}
-                  >
-                    Sleep leads hierheen
-                  </div>
-                )}
-              </div>
+                        );
+                      })}
+                      {(() => {
+                        const lastIndex = (leadsByStage[col.slug] ?? []).length;
+                        const indicatorActive =
+                          dragOverSlot?.slug === col.slug &&
+                          dragOverSlot.index === lastIndex;
+                        return (
+                          <div
+                            style={{
+                              height: '4px',
+                              margin: '4px 0',
+                              borderRadius: '2px',
+                              backgroundColor: indicatorActive ? 'var(--primitives-color-accent-100)' : 'transparent',
+                            }}
+                          />
+                        );
+                      })()}
+                    </>
+                  ) : (
+                    <nldd-text
+                      size="xs"
+                      color="secondary"
+                      horizontal-alignment="center"
+                      style={{ padding: '24px 0', display: 'block' }}
+                    >
+                      Sleep leads hierheen
+                    </nldd-text>
+                  )}
+                </nldd-container>
 
-              <NlddButton
-                text="Nieuwe lead"
-                startIcon="plus"
-                variant="neutral-transparent"
-                size="sm"
-                onClick={() => setShowIntake(true)}
-                className="w-full rounded-t-none"
-              />
-            </div>
+                <NlddButton
+                  text="Nieuwe lead"
+                  startIcon="plus"
+                  variant="neutral-transparent"
+                  size="sm"
+                  onClick={() => setShowIntake(true)}
+                  width="full"
+                />
+              </div>
+            </nldd-card>
           </div>
         ))}
       </div>
@@ -318,6 +321,6 @@ export function LeadKanbanBoard({
         onClose={() => setShowIntake(false)}
         defaultInitiatiefId={initiatiefId}
       />
-    </div>
+    </nldd-container>
   );
 }

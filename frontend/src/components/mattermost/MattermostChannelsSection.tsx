@@ -47,17 +47,26 @@ export function MattermostChannelsSection({ scope, parentZIndex }: Props) {
 
   return (
     <nldd-card>
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="text-sm font-semibold flex items-center gap-1.5">
-          <Icon name="tag" size="md" />
-          Mattermost-kanalen
-        </h4>
+      <nldd-container gap="12">
+      <nldd-container layout="row" gap="8" vertical-alignment="center">
+        <nldd-container width="full">
+          <nldd-container layout="row" gap="6" vertical-alignment="center">
+            <Icon name="tag" size="md" />
+            <nldd-title size={4}>
+              <h4>Mattermost-kanalen</h4>
+            </nldd-title>
+          </nldd-container>
+        </nldd-container>
         <Button variant="secondary" size="sm" icon="plus" onClick={() => setPickerOpen(true)}>
           Kanaal koppelen
         </Button>
-      </div>
+      </nldd-container>
 
-      {query.isLoading && <LoadingSpinner className="py-6" />}
+      {query.isLoading && (
+        <nldd-container padding-block="24">
+          <LoadingSpinner />
+        </nldd-container>
+      )}
       {query.isError && (
         <nldd-inline-dialog
           variant="alert"
@@ -109,6 +118,7 @@ export function MattermostChannelsSection({ scope, parentZIndex }: Props) {
         scope={scope}
         zIndex={(parentZIndex ?? 50) + 10}
       />
+      </nldd-container>
     </nldd-card>
   );
 }
@@ -136,14 +146,14 @@ function ChannelRow({
 
   return (
     <nldd-list-item>
-      <div className="flex items-start justify-between gap-3 w-full py-1">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+      <nldd-container layout="row" width="full" gap="12" horizontal-alignment="right" vertical-alignment="top" padding="4">
+        <nldd-container width="full" min-width="0" gap="4">
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
             <nldd-icon-cell icon="tag" size="16" />
             <nldd-text-cell text={link.channel_display_name} width="fit-content" />
             {link.disabled_at && <nldd-tag color="critical" size="sm" text="uitgeschakeld" />}
-          </div>
-          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+          </nldd-container>
+          <nldd-container layout="wrap" gap="16">
             <nldd-checkbox-field
               ref={autoNoteRef}
               label="Berichten als notities"
@@ -154,8 +164,8 @@ function ChannelRow({
               label="Leads voorstellen"
               checked={orUndef(link.suggest_leads_enabled)}
             />
-          </div>
-        </div>
+          </nldd-container>
+        </nldd-container>
         <NlddIconButton
           icon="trash"
           accessibleLabel="Ontkoppelen"
@@ -163,7 +173,7 @@ function ChannelRow({
           size="sm"
           onClick={onDelete}
         />
-      </div>
+      </nldd-container>
     </nldd-list-item>
   );
 }
@@ -219,11 +229,11 @@ function ChannelPickerModal({
 
   return (
     <Modal open={open} onClose={onClose} title="Kanaal koppelen" zIndex={zIndex}>
-      <div className="space-y-3">
-        <p className="text-xs text-text-secondary">
+      <nldd-container gap="12">
+        <nldd-text size="xs" color="secondary">
           Zoek een kanaal waar de Bouwmeester-bot al lid van is. Niet
           gevonden? Voeg de bot eerst toe aan dat kanaal in Mattermost.
-        </p>
+        </nldd-text>
         <nldd-text-field
           ref={searchRef}
           value={q}
@@ -232,7 +242,11 @@ function ChannelPickerModal({
           accessible-label="Zoek op kanaalnaam"
         />
         {errorMsg && <nldd-inline-dialog variant="alert" text={errorMsg} />}
-        {search.isLoading && <LoadingSpinner className="py-4" />}
+        {search.isLoading && (
+          <nldd-container padding-block="16">
+            <LoadingSpinner />
+          </nldd-container>
+        )}
         {search.data && search.data.length === 0 && debounced.length >= 2 && (
           <nldd-inline-dialog text={`Geen kanalen gevonden voor "${debounced}".`} />
         )}
@@ -263,7 +277,7 @@ function ChannelPickerModal({
             }
           />
         )}
-        <div className="flex justify-end pt-2">
+        <nldd-container layout="row" horizontal-alignment="right" padding-top="8">
           <nldd-link
             href="https://docs.mattermost.com/welcome/managing-members.html"
             target="_blank"
@@ -271,8 +285,8 @@ function ChannelPickerModal({
             end-icon="external-link"
             text="Bot toevoegen aan kanaal"
           />
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-container>
     </Modal>
   );
 }
@@ -288,7 +302,7 @@ function ChannelSearchRow({
 }) {
   return (
     <nldd-list-item>
-      <div className="flex items-center justify-between gap-2 w-full">
+      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
         <nldd-text-cell
           text={channel.channel_display_name}
           supporting-text={channel.channel_name}
@@ -297,7 +311,7 @@ function ChannelSearchRow({
         <Button size="sm" variant="primary" icon="link" onClick={onPick} disabled={pending}>
           Koppelen
         </Button>
-      </div>
+      </nldd-container>
     </nldd-list-item>
   );
 }

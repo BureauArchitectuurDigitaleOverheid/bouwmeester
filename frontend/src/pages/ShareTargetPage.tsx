@@ -163,8 +163,10 @@ export function ShareTargetPage() {
         <nldd-container gap="32" horizontal-alignment="center">
           {/* Image previews */}
           {sharedData && sharedData.previews.length > 0 && (
-            <div className="flex justify-center gap-3">
+            <nldd-container layout="row" gap="12" horizontal-alignment="center">
               {sharedData.previews.map((src, i) => (
+                // A fixed-size rounded thumbnail crop: no nldd primitive covers an
+                // arbitrary object-fit image crop, so this stays plain CSS.
                 <div
                   key={i}
                   className="w-32 h-32 rounded-2xl overflow-hidden border border-border shadow-sm"
@@ -176,7 +178,7 @@ export function ShareTargetPage() {
                   />
                 </div>
               ))}
-            </div>
+            </nldd-container>
           )}
 
           {/* Status */}

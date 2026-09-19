@@ -156,7 +156,7 @@ export function LinkLeadNodeModal({ leadId, onClose }: Props) {
         </>
       }
     >
-      <div className="space-y-4">
+      <nldd-container gap="16">
         <CreatableSelect
           label="Node"
           value={nodeId}
@@ -179,10 +179,14 @@ export function LinkLeadNodeModal({ leadId, onClose }: Props) {
             searchable={false}
           />
         )}
-        <div className="border-t border-border pt-4 space-y-3">
-          <p className="text-xs text-text-secondary">
+        {/* nldd-divider has no top/bottom margin of its own; the gaps on
+            either side come from the surrounding nldd-container, not from
+            the divider itself. */}
+        <nldd-divider />
+        <nldd-container gap="12">
+          <nldd-text size="xs" color="secondary">
             Optioneel: voeg ook een externe contactpersoon toe aan deze lead.
-          </p>
+          </nldd-text>
           <CreatableSelect
             label="Externe contactpersoon"
             value={personId}
@@ -203,8 +207,8 @@ export function LinkLeadNodeModal({ leadId, onClose }: Props) {
               searchable={false}
             />
           )}
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-container>
     </Modal>
   );
 }

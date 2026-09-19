@@ -9,20 +9,39 @@ interface DetailSectionProps {
   children: ReactNode;
 }
 
-export function DetailSection({ title, icon, count, action, separated = false, children }: DetailSectionProps) {
+/**
+ * A titled block inside a detail view.
+ *
+ * The heading is a small, bold, secondary `nldd-text` rather than an
+ * `nldd-title`: these sit inside a modal that already has its own heading, and
+ * a second heading level here would make the document outline claim more
+ * structure than there is.
+ */
+export function DetailSection({
+  title,
+  icon,
+  count,
+  action,
+  separated = false,
+  children,
+}: DetailSectionProps) {
   return (
-    <div className={separated ? 'border-t border-border pt-4' : ''}>
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+    <nldd-container gap="8">
+      {separated && <nldd-divider />}
+      <nldd-container layout="row" gap="8" vertical-alignment="center">
+        <nldd-container layout="row" gap="6" vertical-alignment="center" width="fit-content">
           {icon}
-          {title}
-          {count != null && (
-            <span className="font-normal normal-case">({count})</span>
-          )}
-        </h4>
-        {action}
-      </div>
+          <nldd-text size="xs" weight="bold" color="secondary">
+            {count != null ? `${title} (${count})` : title}
+          </nldd-text>
+        </nldd-container>
+        {action && (
+          <nldd-container width="fit-content" horizontal-alignment="right">
+            {action}
+          </nldd-container>
+        )}
+      </nldd-container>
       {children}
-    </div>
+    </nldd-container>
   );
 }

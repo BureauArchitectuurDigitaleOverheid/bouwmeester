@@ -10,7 +10,7 @@ import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { Icon } from '@/components/nldd/Icon';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { Select } from '@/components/common/Select';
-import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
+import { eventValue, orUndef, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   useInitiatief,
   useUpdateInitiatief,
@@ -49,6 +49,18 @@ interface InitiatiefDetailModalProps {
   onClose: () => void;
   /** z-index van deze modal (default 50). Geneste modals krijgen +10. */
   zIndex?: number;
+}
+
+/** A section heading: an icon, an `<h4>` in `nldd-title`'s slot, and an optional count. */
+function SectionHeading({ icon, text }: { icon: string; text: string }) {
+  return (
+    <nldd-container layout="row" gap="6" vertical-alignment="center">
+      <Icon name={icon} size="sm" />
+      <nldd-title size={4}>
+        <h4>{text}</h4>
+      </nldd-title>
+    </nldd-container>
+  );
 }
 
 export function InitiatiefDetailModal({
@@ -202,7 +214,7 @@ export function InitiatiefDetailModal({
           <Button variant="danger" size="sm" icon="trash" onClick={() => setShowDeleteConfirm(true)}>
             Verwijderen
           </Button>
-          <div className="flex-1" />
+          <nldd-container width="full" />
         </>
       )}
       {canEdit && !editing && (
@@ -244,6 +256,9 @@ export function InitiatiefDetailModal({
         footer={footer}
         headerIcon={
           detail?.kleur ? (
+            // A free-form hex swatch, not a semantic color: there is no nldd
+            // primitive for "a dot that IS an arbitrary color" (see the color
+            // picker at the bottom of this file for the same reasoning).
             <span
               className="inline-block h-4 w-4 rounded-full"
               style={{ backgroundColor: detail.kleur }}
@@ -256,39 +271,34 @@ export function InitiatiefDetailModal({
         ) : editing ? (
           <EditForm form={editForm} onChange={setEditForm} />
         ) : (
-          <div className="space-y-6">
+          <nldd-container gap="24">
             {/* Description */}
             {detail.beschrijving && (
-              <div>
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">
+              <nldd-container gap="4">
+                <nldd-text size="xs" weight="bold" color="secondary">
                   Beschrijving
-                </h4>
+                </nldd-text>
                 <RichTextDisplay content={detail.beschrijving} />
-              </div>
+              </nldd-container>
             )}
 
             {/* Members */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
-                  <Icon name="users" size="sm" />
-                  Leden ({detail.members.length})
-                </h4>
-              </div>
+            <nldd-container gap="8">
+              <SectionHeading icon="users" text={`Leden (${detail.members.length})`} />
 
               {detail.members.length > 0 && (
-                <nldd-list type="list" variant="box-tinted" className="mb-3">
+                <nldd-list type="list" variant="box-tinted">
                   {detail.members.map((member) => (
                     <nldd-list-item key={member.person_id}>
-                      <div className="flex items-center justify-between w-full gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
+                      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
+                        <nldd-container layout="row" gap="8" vertical-alignment="center" width="fit-content">
                           <nldd-text-cell text={member.person_naam} width="fit-content" />
                           <Badge variant={member.rol === 'eigenaar' ? 'purple' : 'gray'}>
                             {INITIATIEF_ROL_LABELS[member.rol] ?? member.rol}
                           </Badge>
-                        </div>
+                        </nldd-container>
                         {isEigenaar && (
-                          <div className="flex items-center gap-1 shrink-0">
+                          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
                             {member.rol === 'eigenaar' ? (
                               eigenaarCount > 1 && (
                                 <Button
@@ -317,17 +327,17 @@ export function InitiatiefDetailModal({
                                 />
                               </>
                             )}
-                          </div>
+                          </nldd-container>
                         )}
-                      </div>
+                      </nldd-container>
                     </nldd-list-item>
                   ))}
                 </nldd-list>
               )}
 
               {isEigenaar && (
-                <div className="flex items-start gap-2">
-                  <div className="flex-1">
+                <nldd-container layout="row" gap="8" vertical-alignment="top">
+                  <nldd-container width="full">
                     <CreatableSelect
                       value={addMemberValue}
                       onChange={(val) => {
@@ -338,7 +348,7 @@ export function InitiatiefDetailModal({
                       placeholder="Lid toevoegen..."
                       emptyMessage="Geen personen gevonden"
                     />
-                  </div>
+                  </nldd-container>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -347,30 +357,24 @@ export function InitiatiefDetailModal({
                       if (addMemberValue) handleAddMember(addMemberValue);
                     }}
                     disabled={!addMemberValue}
-                    className="mt-0.5"
                   >
                     Toevoegen
                   </Button>
-                </div>
+                </nldd-container>
               )}
-            </div>
+            </nldd-container>
 
             {/* Eenheden */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
-                  <Icon name="apartment-building" size="sm" />
-                  Organisatie-eenheden ({detail.eenheden.length})
-                </h4>
-              </div>
+            <nldd-container gap="8">
+              <SectionHeading icon="apartment-building" text={`Organisatie-eenheden (${detail.eenheden.length})`} />
 
               {detail.eenheden.length > 0 && (
-                <nldd-list type="list" variant="box-tinted" className="mb-3">
+                <nldd-list type="list" variant="box-tinted">
                   {detail.eenheden.map((eenheid) => (
                     <nldd-list-item key={eenheid.eenheid_id}>
-                      <div className="flex items-center justify-between w-full gap-2">
+                      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
                         <nldd-text-cell text={eenheid.eenheid_naam} width="fit-content" />
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <nldd-container layout="row" gap="6" vertical-alignment="center" width="fit-content">
                           {isEigenaar ? (
                             <Select
                               value={eenheid.rol}
@@ -392,16 +396,16 @@ export function InitiatiefDetailModal({
                               onClick={() => handleRemoveEenheid(eenheid.eenheid_id)}
                             />
                           )}
-                        </div>
-                      </div>
+                        </nldd-container>
+                      </nldd-container>
                     </nldd-list-item>
                   ))}
                 </nldd-list>
               )}
 
               {isEigenaar && (
-                <div className="flex items-start gap-2">
-                  <div className="flex-1">
+                <nldd-container layout="row" gap="8" vertical-alignment="top">
+                  <nldd-container width="full">
                     <CreatableSelect
                       value={addEenheidValue}
                       onChange={(val) => {
@@ -412,7 +416,7 @@ export function InitiatiefDetailModal({
                       placeholder="Eenheid toevoegen..."
                       emptyMessage="Geen eenheden gevonden"
                     />
-                  </div>
+                  </nldd-container>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -421,56 +425,43 @@ export function InitiatiefDetailModal({
                       if (addEenheidValue) handleAddEenheid(addEenheidValue);
                     }}
                     disabled={!addEenheidValue}
-                    className="mt-0.5"
                   >
                     Toevoegen
                   </Button>
-                </div>
+                </nldd-container>
               )}
-            </div>
+            </nldd-container>
 
             {/* Stakeholders */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
-                  <Icon name="person" size="sm" />
-                  Stakeholders
-                </h4>
-              </div>
+            <nldd-container gap="8">
+              <SectionHeading icon="person" text="Stakeholders" />
               <StakeholderTab
                 scopeType="initiatief"
                 scopeId={detail.id}
                 readOnly={!canEdit}
               />
-            </div>
+            </nldd-container>
 
             {/* Mattermost-kanalen */}
-            <div>
-              <MattermostChannelsSection
-                scope={{ type: 'initiatief', id: detail.id }}
-                parentZIndex={zIndex}
-              />
-            </div>
+            <MattermostChannelsSection
+              scope={{ type: 'initiatief', id: detail.id }}
+              parentZIndex={zIndex}
+            />
 
             {/* Updates (publication posts) */}
             <UpdatesSection initiatief={detail} canEdit={canEdit} />
 
             {/* Funnel-kolommen — eigenaar only */}
             {isEigenaar && (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
-                    <Icon name="gear" size="sm" />
-                    Funnel-kolommen
-                  </h4>
-                </div>
+              <nldd-container gap="8">
+                <SectionHeading icon="gear" text="Funnel-kolommen" />
                 <ColumnsManager initiatiefId={detail.id} />
-              </div>
+              </nldd-container>
             )}
 
             {/* Settings — eigenaar only */}
             {isEigenaar && <SettingsSection initiatief={detail} />}
-          </div>
+          </nldd-container>
         )}
       </Modal>
 
@@ -531,160 +522,144 @@ function SettingsSection({ initiatief }: { initiatief: InitiatiefDetail }) {
   const publicUrl = initiatief.slug ? `/c/${initiatief.slug}` : null;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
-          <Icon name="gear" size="sm" />
-          Instellingen
-        </h4>
-      </div>
+    <nldd-container gap="8">
+      <SectionHeading icon="gear" text="Instellingen" />
 
-      <div className="space-y-4">
+      <nldd-container gap="16">
         {/* Publieke pagina */}
-        <div className="space-y-3 rounded-xl border border-border p-4">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary uppercase tracking-wider">
-            <Icon name="globe" size="sm" />
-            Publieke pagina
-          </div>
+        <nldd-card>
+          <nldd-container gap="12" padding="16">
+            <nldd-container layout="row" gap="6" vertical-alignment="center">
+              <Icon name="globe" size="sm" />
+              <nldd-text size="xs" weight="bold" color="secondary">
+                Publieke pagina
+              </nldd-text>
+            </nldd-container>
 
-          <ToggleRow
-            icon="globe"
-            label="Publieke pagina inschakelen"
-            description={
-              publicUrl
-                ? `Pagina bereikbaar via ${publicUrl} voor iedereen met de link.`
-                : 'Stel eerst een slug in om de pagina aan te kunnen zetten.'
-            }
-            enabled={initiatief.public_page_enabled}
-            onToggle={handlePublicToggle}
-            loading={settingsMutation.isPending}
-            disabled={!publicUrl}
-          />
+            <ToggleRow
+              icon="globe"
+              label="Publieke pagina inschakelen"
+              description={
+                publicUrl
+                  ? `Pagina bereikbaar via ${publicUrl} voor iedereen met de link.`
+                  : 'Stel eerst een slug in om de pagina aan te kunnen zetten.'
+              }
+              enabled={initiatief.public_page_enabled}
+              onToggle={handlePublicToggle}
+              loading={settingsMutation.isPending}
+              disabled={!publicUrl}
+            />
 
-          <div
-            className={`space-y-1.5 ${
-              initiatief.public_page_enabled || !initiatief.slug
-                ? ''
-                : 'opacity-60'
-            }`}
-          >
-            <label className="block text-sm font-medium text-text">
-              Slug{' '}
-              <span className="text-xs text-text-secondary">
-                (publieke URL-segment)
-              </span>
-            </label>
-            {initiatief.slug ? (
-              <div className="flex items-center gap-2 flex-wrap">
-                {initiatief.public_page_enabled ? (
-                  <nldd-link
-                    href={`/c/${initiatief.slug}`}
-                    target="_blank"
-                    size="sm"
-                    text={`/c/${initiatief.slug}`}
-                    end-icon="external-link"
-                  />
-                ) : (
-                  <code className="text-sm bg-gray-50 px-2 py-1 rounded">
-                    /c/{initiatief.slug}
-                  </code>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <p className="text-xs text-text-secondary">
-                  Nog geen slug ingesteld. Kies kleine letters, cijfers en
-                  streepjes (bv. <code>regelrecht</code>).
-                </p>
-                <div className="flex gap-2 items-start">
-                  <span className="inline-flex items-center h-9 px-2 rounded-l-lg border border-r-0 border-border bg-gray-50 text-sm text-text-secondary">
-                    /c/
-                  </span>
-                  <div className="flex-1">
-                    <SlugDraftField
-                      value={slugDraft}
-                      onChange={(v) => {
-                        setSlugDraft(v.toLowerCase());
-                        setSlugError(null);
-                      }}
+            <nldd-container gap="6" style={initiatief.public_page_enabled || !initiatief.slug ? undefined : { opacity: 0.6 }}>
+              <nldd-form-field label="Slug" supporting-label="publieke URL-segment">
+                {initiatief.slug ? (
+                  initiatief.public_page_enabled ? (
+                    <nldd-link
+                      href={`/c/${initiatief.slug}`}
+                      target="_blank"
+                      size="sm"
+                      text={`/c/${initiatief.slug}`}
+                      end-icon="external-link"
                     />
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      const trimmed = slugDraft.trim();
-                      if (!trimmed) return;
-                      try {
-                        await save({ slug: trimmed });
-                      } catch (err) {
-                        const msg =
-                          err instanceof Error ? err.message : 'Onbekende fout';
-                        setSlugError(msg);
-                      }
-                    }}
-                    disabled={!slugDraft.trim() || settingsMutation.isPending}
-                  >
-                    Instellen
-                  </Button>
-                </div>
-                {slugError && <nldd-text size="xs" color="critical">{slugError}</nldd-text>}
-              </div>
-            )}
-          </div>
-        </div>
+                  ) : (
+                    <nldd-text size="sm">/c/{initiatief.slug}</nldd-text>
+                  )
+                ) : (
+                  <nldd-container gap="6">
+                    <nldd-text size="xs" color="secondary">
+                      Nog geen slug ingesteld. Kies kleine letters, cijfers en
+                      streepjes (bv. <code>regelrecht</code>).
+                    </nldd-text>
+                    <nldd-container layout="row" gap="8" vertical-alignment="top">
+                      <nldd-text size="sm" color="secondary">/c/</nldd-text>
+                      <nldd-container width="full">
+                        <SlugDraftField
+                          value={slugDraft}
+                          onChange={(v) => {
+                            setSlugDraft(v.toLowerCase());
+                            setSlugError(null);
+                          }}
+                        />
+                      </nldd-container>
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          const trimmed = slugDraft.trim();
+                          if (!trimmed) return;
+                          try {
+                            await save({ slug: trimmed });
+                          } catch (err) {
+                            const msg =
+                              err instanceof Error ? err.message : 'Onbekende fout';
+                            setSlugError(msg);
+                          }
+                        }}
+                        disabled={!slugDraft.trim() || settingsMutation.isPending}
+                      >
+                        Instellen
+                      </Button>
+                    </nldd-container>
+                    {slugError && <nldd-text size="xs" color="critical">{slugError}</nldd-text>}
+                  </nldd-container>
+                )}
+              </nldd-form-field>
+            </nldd-container>
+          </nldd-container>
+        </nldd-card>
 
         {/* Funnel-afweging */}
-        <div className="space-y-3 rounded-xl border border-border p-4">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary uppercase tracking-wider">
-            <Icon name="person-badge-plus" size="sm" />
-            Funnel-afweging
-          </div>
+        <nldd-card>
+          <nldd-container gap="12" padding="16">
+            <nldd-container layout="row" gap="6" vertical-alignment="center">
+              <Icon name="person-badge-plus" size="sm" />
+              <nldd-text size="xs" weight="bold" color="secondary">
+                Funnel-afweging
+              </nldd-text>
+            </nldd-container>
 
-          <ToggleRow
-            icon="person-badge-plus"
-            label="Funnel-velden op leads tonen"
-            description="Engagement type + drie scores (strategisch/politiek/positie) op leads in dit initiatief."
-            enabled={initiatief.funnel_enabled}
-            onToggle={() =>
-              save({ funnel_enabled: !initiatief.funnel_enabled })
-            }
-            loading={settingsMutation.isPending}
-          />
+            <ToggleRow
+              icon="person-badge-plus"
+              label="Funnel-velden op leads tonen"
+              description="Engagement type + drie scores (strategisch/politiek/positie) op leads in dit initiatief."
+              enabled={initiatief.funnel_enabled}
+              onToggle={() =>
+                save({ funnel_enabled: !initiatief.funnel_enabled })
+              }
+              loading={settingsMutation.isPending}
+            />
 
-          {initiatief.funnel_enabled && (
-            <div className="space-y-2 pt-2 border-t border-border">
-              <p className="text-xs text-text-secondary">
-                Optionele eigen labels voor de drie funnel-scores. Leeg laten
-                gebruikt de standaard.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {(
-                  [
-                    ['score_strategisch_label', 'Strategisch belang'],
-                    ['score_politiek_label', 'Politiek belang'],
-                    ['score_positie_label', 'Positie / omgeving'],
-                  ] as const
-                ).map(([key, fallback]) => (
-                  <label key={key} className="flex flex-col gap-0.5">
-                    <span className="text-xs text-text-secondary">
-                      {fallback}
-                    </span>
-                    <ScoreLabelField
-                      value={scoreLabels[key]}
-                      placeholder={fallback}
-                      onCommit={(v) => {
-                        const next = { ...scoreLabels, [key]: v };
-                        setScoreLabels(next);
-                        persistLabels(next);
-                      }}
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+            {initiatief.funnel_enabled && (
+              <nldd-container gap="8" padding-top="8">
+                <nldd-text size="xs" color="secondary">
+                  Optionele eigen labels voor de drie funnel-scores. Leeg laten
+                  gebruikt de standaard.
+                </nldd-text>
+                <nldd-container layout="grid" column-count={1} sm-column-count={3} gap="8">
+                  {(
+                    [
+                      ['score_strategisch_label', 'Strategisch belang'],
+                      ['score_politiek_label', 'Politiek belang'],
+                      ['score_positie_label', 'Positie / omgeving'],
+                    ] as const
+                  ).map(([key, fallback]) => (
+                    <nldd-form-field key={key} label={fallback}>
+                      <ScoreLabelField
+                        value={scoreLabels[key]}
+                        placeholder={fallback}
+                        onCommit={(v) => {
+                          const next = { ...scoreLabels, [key]: v };
+                          setScoreLabels(next);
+                          persistLabels(next);
+                        }}
+                      />
+                    </nldd-form-field>
+                  ))}
+                </nldd-container>
+              </nldd-container>
+            )}
+          </nldd-container>
+        </nldd-card>
+      </nldd-container>
 
       <ConfirmDialog
         open={pendingPublic}
@@ -698,7 +673,7 @@ function SettingsSection({ initiatief }: { initiatief: InitiatiefDetail }) {
         naam, beschrijving en gepubliceerde updates van dit initiatief zien.
         Leads, scores en stakeholders blijven privé. Doorgaan?
       </ConfirmDialog>
-    </div>
+    </nldd-container>
   );
 }
 
@@ -712,7 +687,6 @@ function SlugDraftField({ value, onChange }: { value: string; onChange: (v: stri
       value={value}
       placeholder="regelrecht"
       accessible-label="Slug"
-      className="rounded-l-none"
     />
   );
 }
@@ -760,22 +734,21 @@ function ToggleRow({
   useNlddEvent(ref, 'change', useCallback(() => onToggle(), [onToggle]));
 
   return (
-    <div className="flex items-start justify-between gap-3">
-      <div className="flex items-start gap-2 min-w-0">
-        <Icon name={icon} size="sm" className="text-text-secondary mt-0.5" />
-        <div className="min-w-0">
-          <div className="text-sm font-medium text-text">{label}</div>
-          <div className="text-xs text-text-secondary">{description}</div>
-        </div>
-      </div>
+    <nldd-container layout="row" gap="12" horizontal-alignment="right" vertical-alignment="top">
+      <nldd-container layout="row" gap="8" vertical-alignment="top" width="fit-content">
+        <Icon name={icon} size="sm" />
+        <nldd-container gap="0" width="fit-content">
+          <nldd-text size="sm" weight="medium">{label}</nldd-text>
+          <nldd-text size="xs" color="secondary">{description}</nldd-text>
+        </nldd-container>
+      </nldd-container>
       <nldd-switch
         ref={ref}
-        checked={enabled ? true : undefined}
+        checked={orUndef(enabled)}
         {...(loading || disabled ? { disabled: true } : {})}
         accessible-label={label}
-        className="shrink-0"
       />
-    </div>
+    </nldd-container>
   );
 }
 
@@ -869,64 +842,63 @@ function UpdatesSection({
   };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
-          <Icon name="megaphone" size="sm" />
-          Updates ({posts.length})
-        </h4>
+    <nldd-container gap="8">
+      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
+        <SectionHeading icon="megaphone" text={`Updates (${posts.length})`} />
         {canEdit && !composing && (
           <Button variant="secondary" size="sm" onClick={startCompose}>
             Nieuwe update
           </Button>
         )}
-      </div>
+      </nldd-container>
 
       {composing && (
-        <div className="rounded-xl border border-border p-3 mb-3 space-y-2">
-          <UpdateTitleField
-            value={draft.titel}
-            onChange={(v) => setDraft({ ...draft, titel: v })}
-          />
-          <RichTextFormField
-            label="Inhoud"
-            value={draft.body}
-            onChange={(value) => setDraft({ ...draft, body: value })}
-            rows={4}
-          />
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setComposing(false);
-                setEditingId(null);
-              }}
-            >
-              Annuleren
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => handleSave(false)}
-              disabled={!draft.titel.trim()}
-            >
-              Opslaan als concept
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => handleSave(true)}
-              disabled={!draft.titel.trim()}
-            >
-              {editingId ? 'Opslaan + publiceren' : 'Direct publiceren'}
-            </Button>
-          </div>
-        </div>
+        <nldd-card>
+          <nldd-container gap="8" padding="12">
+            <UpdateTitleField
+              value={draft.titel}
+              onChange={(v) => setDraft({ ...draft, titel: v })}
+            />
+            <RichTextFormField
+              label="Inhoud"
+              value={draft.body}
+              onChange={(value) => setDraft({ ...draft, body: value })}
+              rows={4}
+            />
+            <nldd-container layout="row" gap="8" horizontal-alignment="right">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setComposing(false);
+                  setEditingId(null);
+                }}
+              >
+                Annuleren
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleSave(false)}
+                disabled={!draft.titel.trim()}
+              >
+                Opslaan als concept
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleSave(true)}
+                disabled={!draft.titel.trim()}
+              >
+                {editingId ? 'Opslaan + publiceren' : 'Direct publiceren'}
+              </Button>
+            </nldd-container>
+          </nldd-container>
+        </nldd-card>
       )}
 
       {concepts.length > 0 && (
-        <div className="mb-3">
-          <div className="text-xs text-text-secondary mb-1">Concepten</div>
+        <nldd-container gap="4">
+          <nldd-text size="xs" color="secondary">Concepten</nldd-text>
           <nldd-list type="list" variant="box-tinted">
             {concepts.map((post) => (
               <PostRow
@@ -940,12 +912,12 @@ function UpdatesSection({
               />
             ))}
           </nldd-list>
-        </div>
+        </nldd-container>
       )}
 
       {published.length > 0 ? (
-        <div>
-          <div className="text-xs text-text-secondary mb-1">Gepubliceerd</div>
+        <nldd-container gap="4">
+          <nldd-text size="xs" color="secondary">Gepubliceerd</nldd-text>
           <nldd-list type="list" variant="box-tinted">
             {published.map((post) => (
               <PostRow
@@ -959,13 +931,13 @@ function UpdatesSection({
               />
             ))}
           </nldd-list>
-        </div>
+        </nldd-container>
       ) : (
         concepts.length === 0 &&
         !composing && (
-          <p className="text-sm text-text-secondary">
-            Nog geen updates. Klik op "Nieuwe update" om iets te publiceren.
-          </p>
+          <nldd-text size="sm" color="secondary">
+            Nog geen updates. Klik op &quot;Nieuwe update&quot; om iets te publiceren.
+          </nldd-text>
         )
       )}
 
@@ -980,7 +952,7 @@ function UpdatesSection({
       >
         Weet je zeker dat je deze update wilt verwijderen?
       </ConfirmDialog>
-    </div>
+    </nldd-container>
   );
 }
 
@@ -1002,30 +974,30 @@ function PostRow({
   const isPublished = !!post.published_at;
   return (
     <nldd-list-item>
-      <div className="flex items-start justify-between gap-2 w-full py-1">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="top">
+        <nldd-container gap="4" width="full">
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
             <nldd-text-cell text={post.titel} width="fit-content" />
             {isPublished ? (
               <Badge variant="green">Gepubliceerd</Badge>
             ) : (
               <Badge variant="gray">Concept</Badge>
             )}
-          </div>
+          </nldd-container>
           {post.body && (
-            <div className="mt-1 text-sm text-text-secondary line-clamp-2">
+            <nldd-text size="sm" color="secondary">
               <RichTextDisplay content={post.body} />
-            </div>
+            </nldd-text>
           )}
           {isPublished && post.published_at && (
-            <div className="mt-1 text-xs text-text-secondary">
+            <nldd-text size="xs" color="secondary">
               {new Date(post.published_at).toLocaleString('nl-NL')}
               {post.published_by_naam && ` · ${post.published_by_naam}`}
-            </div>
+            </nldd-text>
           )}
-        </div>
+        </nldd-container>
         {canEdit && (
-          <div className="flex items-center gap-1 shrink-0">
+          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
             <NlddIconButton
               icon="pencil"
               accessibleLabel="Bewerken"
@@ -1057,9 +1029,9 @@ function PostRow({
               size="sm"
               onClick={onDelete}
             />
-          </div>
+          </nldd-container>
         )}
-      </div>
+      </nldd-container>
     </nldd-list-item>
   );
 }
@@ -1085,7 +1057,7 @@ function EditForm({
   onChange: (form: InitiatiefUpdate) => void;
 }) {
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       <nldd-form-field label="Naam">
         <NaamField value={form.naam || ''} onChange={(v) => onChange({ ...form, naam: v })} />
       </nldd-form-field>
@@ -1095,12 +1067,11 @@ function EditForm({
         onChange={(value) => onChange({ ...form, beschrijving: value })}
         rows={4}
       />
-      <div className="space-y-1.5">
-        <label className="block text-sm font-medium text-text">Kleur</label>
+      <nldd-form-field label="Kleur">
         {/* A free-form hex swatch picker, not a semantic radio: nldd-radio-button
             renders a fixed dot glyph rather than swapping its own fill to an
             arbitrary color, so there is no nldd primitive for "a circle that IS
-            the color". Left as a plain button grid. */}
+            the color". Left as a plain button grid with its own CSS. */}
         <div className="flex gap-2 flex-wrap">
           {INITIATIEF_COLORS.map((color) => (
             <button
@@ -1116,7 +1087,7 @@ function EditForm({
             />
           ))}
         </div>
-      </div>
-    </div>
+      </nldd-form-field>
+    </nldd-container>
   );
 }

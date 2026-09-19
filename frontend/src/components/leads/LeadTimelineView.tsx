@@ -9,12 +9,9 @@ import { useNlddEvent } from '@/components/nldd/events';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { useLeadTimeline } from '@/hooks/useLeads';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
-import {
-  LeadStage,
-  LEAD_STAGE_LABELS,
-  LEAD_STAGE_COLORS,
-} from '@/types';
+import { LeadStage, LEAD_STAGE_LABELS } from '@/types';
 import type { LeadTimelineEvent } from '@/types';
+import { stageTagColor } from './stageColors';
 
 // -- Period presets --
 type PeriodKey = 'week' | 'month' | 'quarter' | 'all';
@@ -79,72 +76,69 @@ function groupEventsByDate(events: LeadTimelineEvent[]): Map<string, LeadTimelin
 }
 
 // -- Stage badge --
-// LEAD_STAGE_COLORS holds raw Tailwind chip classes for seven stages, not one
-// of the five semantic roles; collapsing them would lose the per-stage
-// distinctness, and src/types is off-limits to edit in this pass (see the
-// same call in LeadMetricsBar.tsx). The chip stays a styled span rather than
-// an nldd-tag with a guessed color.
 function StageBadge({ stage }: { stage: string }) {
-  const stageKey = stage as LeadStage;
-  const colors = LEAD_STAGE_COLORS[stageKey] ?? 'bg-gray-100 text-gray-800';
-  const label = LEAD_STAGE_LABELS[stageKey] ?? stage;
-  return (
-    <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${colors}`}
-    >
-      {label}
-    </span>
-  );
+  const label = LEAD_STAGE_LABELS[stage as LeadStage] ?? stage;
+  return <nldd-tag text={label} color={stageTagColor(stage)} size="sm" />;
 }
 
 // -- Event description --
+/** Two-line clamp shared by the rich-text event bodies below. */
+const clampStyle: React.CSSProperties = {
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+};
+
 function EventDescription({ event }: { event: LeadTimelineEvent }) {
   switch (event.event_type) {
     case 'created':
       return (
-        <div className="mt-2 flex items-center gap-2 text-sm text-text-secondary">
-          <span>Nieuwe lead aangemaakt</span>
+        <nldd-container layout="row" gap="8" vertical-alignment="center" padding-top="8">
+          <nldd-text size="sm" color="secondary">Nieuwe lead aangemaakt</nldd-text>
           <StageBadge stage={event.stage} />
-        </div>
+        </nldd-container>
       );
 
     case 'stage_change':
       return (
-        <div className="mt-2 flex items-center gap-2 text-sm flex-wrap">
+        <nldd-container layout="wrap" gap="8" vertical-alignment="center" padding-top="8">
           {event.from_stage && <StageBadge stage={event.from_stage} />}
           <Icon name="arrow-right" size="sm" className="text-text-secondary shrink-0" />
           {event.to_stage && <StageBadge stage={event.to_stage} />}
-        </div>
+        </nldd-container>
       );
 
     case 'note':
       return event.content ? (
-        <div className="mt-2 line-clamp-2 [&_p]:m-0 [&_p]:leading-snug">
+        <nldd-text size="sm" style={{ ...clampStyle, display: '-webkit-box', marginTop: '8px' }}>
           <RichTextDisplay content={event.content} fallback="" />
-        </div>
+        </nldd-text>
       ) : null;
 
     case 'meeting':
     case 'call':
     case 'email':
       return (
-        <div className="mt-2 flex items-start gap-2 text-sm text-text-secondary">
-          <Icon name={eventIconName(event.event_type)} size="sm" />
+        <nldd-container layout="row" gap="8" padding-top="8">
+          <Icon name={eventIconName(event.event_type)} size="sm" className="text-text-secondary shrink-0" />
           {event.content ? (
-            <div className="line-clamp-2 flex-1 [&_p]:m-0 [&_p]:leading-snug">
+            <nldd-text size="sm" color="secondary" style={{ ...clampStyle, flex: 1 }}>
               <RichTextDisplay content={event.content} fallback="" />
-            </div>
+            </nldd-text>
           ) : (
-            <span className="line-clamp-2">{getActivityLabel(event.event_type)}</span>
+            <nldd-text size="sm" color="secondary" style={clampStyle}>
+              {getActivityLabel(event.event_type)}
+            </nldd-text>
           )}
-        </div>
+        </nldd-container>
       );
 
     default:
       return event.content ? (
-        <div className="mt-2 line-clamp-2 [&_p]:m-0 [&_p]:leading-snug">
+        <nldd-text size="sm" style={{ ...clampStyle, marginTop: '8px' }}>
           <RichTextDisplay content={event.content} fallback="" />
-        </div>
+        </nldd-text>
       ) : null;
   }
 }
@@ -184,34 +178,34 @@ function TimelineEventCard({
     <nldd-list-item>
       <nldd-timeline-track-cell status="past" variant="major" position="between" />
       <nldd-list-item-segment ref={ref} button width="full" accessible-label={event.lead_title}>
-        <div className="w-full text-left">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-0.5">
-                <nldd-text size="xs" color="secondary" className="tabular-nums">{time}</nldd-text>
+        <nldd-container width="full" gap="0">
+          <nldd-container layout="row" gap="8" vertical-alignment="top">
+            <nldd-container gap="2" width="full">
+              <nldd-container layout="row" gap="8" vertical-alignment="center">
+                <nldd-text size="xs" color="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</nldd-text>
                 <Icon name={eventIconName(event.event_type)} size="sm" className="opacity-50" />
-              </div>
+              </nldd-container>
               <nldd-title-cell text={event.lead_title} size={6} />
               {event.organization && (
-                <nldd-text size="sm" color="secondary" className="truncate block">
+                <nldd-text size="sm" color="secondary">
                   {event.organization}
                 </nldd-text>
               )}
-            </div>
+            </nldd-container>
             <StageBadge stage={event.stage} />
-          </div>
+          </nldd-container>
 
           <EventDescription event={event} />
 
           {(event.actor_naam || event.assignee_naam) && (
-            <div className="mt-2.5 flex items-center gap-3 text-xs text-text-secondary">
-              {event.actor_naam && <span>Door {event.actor_naam}</span>}
+            <nldd-container layout="row" gap="12" padding-top="10">
+              {event.actor_naam && <nldd-text size="xs" color="secondary">Door {event.actor_naam}</nldd-text>}
               {event.assignee_naam && event.assignee_naam !== event.actor_naam && (
-                <span className="opacity-60">Verantwoordelijk: {event.assignee_naam}</span>
+                <nldd-text size="xs" color="secondary">Verantwoordelijk: {event.assignee_naam}</nldd-text>
               )}
-            </div>
+            </nldd-container>
           )}
-        </div>
+        </nldd-container>
       </nldd-list-item-segment>
     </nldd-list-item>
   );
@@ -274,14 +268,12 @@ export function LeadTimelineView({
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <LeadMetricsBar />
-      </div>
+    <nldd-container gap="16">
+      <LeadMetricsBar />
 
       {/* Period selector + event count */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5">
+      <nldd-container layout="row" gap="12" vertical-alignment="center">
+        <nldd-container layout="row" gap="2" width="fit-content">
           {PERIOD_OPTIONS.map((opt) => (
             <NlddButton
               key={opt.value}
@@ -291,14 +283,14 @@ export function LeadTimelineView({
               onClick={() => setPeriod(opt.value)}
             />
           ))}
-        </div>
+        </nldd-container>
 
         {!isLoading && (
-          <nldd-text size="xs" color="secondary" className="ml-auto">
+          <nldd-text size="xs" color="secondary">
             {totalEvents} {totalEvents === 1 ? 'activiteit' : 'activiteiten'}
           </nldd-text>
         )}
-      </div>
+      </nldd-container>
 
       {/* Timeline */}
       {isLoading ? (
@@ -306,15 +298,28 @@ export function LeadTimelineView({
       ) : filteredEvents.length === 0 ? (
         <EmptyTimeline />
       ) : (
-        <div className="pb-8">
+        <nldd-container gap="8" padding-bottom="32">
           {Array.from(groupedEvents.entries()).map(([dateKey, dayEvents]) => (
-            <div key={dateKey} className="mb-2">
-              {/* Date header */}
-              <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm py-2.5">
-                <nldd-text size="sm" weight="medium" color="secondary" className="tracking-wide">
-                  {formatDateGroupLabel(dateKey)}
-                </nldd-text>
-              </div>
+            <nldd-container key={dateKey} gap="0">
+              {/* Date header stays sticky while its events scroll underneath;
+                  nldd-page's sticky-header is a page-level concept and does
+                  not apply to an in-flow label inside a scrolling list, so
+                  this is plain CSS rather than a Tailwind convenience. */}
+              <nldd-text
+                size="sm"
+                weight="medium"
+                color="secondary"
+                style={{
+                  display: 'block',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 20,
+                  padding: '10px 0',
+                  backgroundColor: 'var(--primitives-color-neutral-0)',
+                }}
+              >
+                {formatDateGroupLabel(dateKey)}
+              </nldd-text>
 
               {/* Events for this date */}
               <nldd-list variant="simple" dividers="never" accessible-label={`Activiteit op ${formatDateGroupLabel(dateKey)}`}>
@@ -326,37 +331,32 @@ export function LeadTimelineView({
                   />
                 ))}
               </nldd-list>
-            </div>
+            </nldd-container>
           ))}
 
           {/* Load more */}
           {hasMore && (
-            <div className="pt-4">
-              <NlddButton
-                text={`Meer laden (${filteredEvents.length - displayLimit} overig)`}
-                startIcon="chevron-down"
-                variant="secondary"
-                size="sm"
-                onClick={() => setDisplayLimit((prev) => prev + 50)}
-              />
-            </div>
+            <NlddButton
+              text={`Meer laden (${filteredEvents.length - displayLimit} overig)`}
+              startIcon="chevron-down"
+              variant="secondary"
+              size="sm"
+              onClick={() => setDisplayLimit((prev) => prev + 50)}
+            />
           )}
-        </div>
+        </nldd-container>
       )}
-    </div>
+    </nldd-container>
   );
 }
 
 function EmptyTimeline() {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-        <Icon name="calendar-event" size="xl" className="text-gray-400" />
-      </div>
-      <nldd-title-cell text="Nog geen activiteit" size={5} horizontal-alignment="center" />
-      <nldd-text size="sm" color="secondary" className="max-w-sm">
-        Maak een nieuwe lead aan om te beginnen. Alle activiteit verschijnt hier in chronologische volgorde.
-      </nldd-text>
-    </div>
+    <nldd-inline-dialog
+      icon="calendar-event"
+      text="Nog geen activiteit"
+      supporting-text="Maak een nieuwe lead aan om te beginnen. Alle activiteit verschijnt hier in chronologische volgorde."
+      heading-level={2}
+    />
   );
 }

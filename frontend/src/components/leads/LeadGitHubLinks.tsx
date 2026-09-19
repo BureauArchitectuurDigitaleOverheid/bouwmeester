@@ -118,43 +118,45 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
       }
     >
       {showForm && (
-        <div className="mb-3 space-y-2 rounded-lg border border-border bg-gray-50 p-3">
-          <Input
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://github.com/owner/repo/pull/123"
-            autoFocus
-          />
-          <Input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Titel (optioneel)"
-          />
-          {error && (
-            <nldd-validation-list>
-              <nldd-validation-item>{error}</nldd-validation-item>
-            </nldd-validation-list>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setShowForm(false);
-                setUrl('');
-                setTitle('');
-                setError(null);
-              }}
-            >
-              Annuleren
-            </Button>
-            <Button variant="primary" size="sm" onClick={submit} disabled={addLink.isPending}>
-              Toevoegen
-            </Button>
-          </div>
-        </div>
+        <nldd-card background="tinted">
+          <nldd-container gap="8" padding="12">
+            <Input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo/pull/123"
+              autoFocus
+            />
+            <Input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Titel (optioneel)"
+            />
+            {error && (
+              <nldd-validation-list>
+                <nldd-validation-item>{error}</nldd-validation-item>
+              </nldd-validation-list>
+            )}
+            <nldd-container layout="row" gap="8" horizontal-alignment="right">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowForm(false);
+                  setUrl('');
+                  setTitle('');
+                  setError(null);
+                }}
+              >
+                Annuleren
+              </Button>
+              <Button variant="primary" size="sm" onClick={submit} disabled={addLink.isPending}>
+                Toevoegen
+              </Button>
+            </nldd-container>
+          </nldd-container>
+        </nldd-card>
       )}
 
       {links.length > 0 ? (

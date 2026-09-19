@@ -166,7 +166,7 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
       }
     >
       {mode === 'select' ? (
-        <div className="space-y-4">
+        <nldd-container gap="16">
           <CreatableSelect
             label="Persoon"
             value={personId}
@@ -186,9 +186,9 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
             onCreate={handleCreateRol}
             createLabel="Nieuwe rol toevoegen"
           />
-        </div>
+        </nldd-container>
       ) : (
-        <div className="space-y-4">
+        <nldd-container gap="16">
           <NewContactPersonFields
             state={fields}
             onChange={setFields}
@@ -203,7 +203,7 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
             onCreate={handleCreateRol}
             createLabel="Nieuwe rol toevoegen"
           />
-        </div>
+        </nldd-container>
       )}
     </Modal>
   );

@@ -12,6 +12,7 @@ import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import type { Lead, LeadColumn, LeadFilters } from '@/types';
 import { isOverdue, formatDateShort, timeAgo } from '@/utils/dates';
+import { leadColumnTagColor } from './stageColors';
 
 const SORT_OPTIONS: SelectOption[] = [
   { value: '', label: 'Standaard' },
@@ -109,10 +110,10 @@ export function LeadListView({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+    <nldd-container gap="16">
+      <nldd-container layout="row" gap="16" vertical-alignment="center" horizontal-alignment="left">
         <LeadMetricsBar />
-        <div className="w-full sm:w-44">
+        <nldd-container width="fit-content" min-width="176px">
           <CreatableSelect
             value={sortBy}
             onChange={setSortBy}
@@ -121,30 +122,33 @@ export function LeadListView({
             searchable={false}
             onClear={sortBy ? () => setSortBy('') : undefined}
           />
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-container>
 
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2">
-          <nldd-text size="sm" weight="medium" color="warning">
-            {selectedIds.size} lead{selectedIds.size !== 1 ? 's' : ''} geselecteerd
-          </nldd-text>
-          {selectedIds.size === 2 && (
-            <NlddButton size="sm" text="Samenvoegen" onClick={() => setShowMergeDialog(true)} />
-          )}
-          <NlddButton
-            size="sm"
-            variant="critical-transparent"
-            text="Verwijderen"
-            onClick={() => setShowBulkDeleteConfirm(true)}
-          />
-          <NlddButton
-            variant="neutral-transparent"
-            size="sm"
-            text="Deselecteren"
-            onClick={() => setSelectedIds(new Set())}
-          />
-        </div>
+        <nldd-banner
+          variant="warning"
+          size="sm"
+          text={`${selectedIds.size} lead${selectedIds.size !== 1 ? 's' : ''} geselecteerd`}
+        >
+          <div slot="actions">
+            {selectedIds.size === 2 && (
+              <NlddButton size="sm" text="Samenvoegen" onClick={() => setShowMergeDialog(true)} />
+            )}
+            <NlddButton
+              size="sm"
+              variant="critical-transparent"
+              text="Verwijderen"
+              onClick={() => setShowBulkDeleteConfirm(true)}
+            />
+            <NlddButton
+              variant="neutral-transparent"
+              size="sm"
+              text="Deselecteren"
+              onClick={() => setSelectedIds(new Set())}
+            />
+          </div>
+        </nldd-banner>
       )}
 
       {sortedLeads.length === 0 ? (
@@ -190,7 +194,7 @@ export function LeadListView({
           title="Leads samenvoegen"
           size="md"
         >
-          <div className="space-y-4">
+          <nldd-container gap="16">
             <nldd-text size="sm" color="secondary">
               Kies de lead die je wilt behouden. De andere lead wordt hierin samengevoegd
               (activiteiten, contacten, tags en bijlagen worden overgenomen).
@@ -213,7 +217,7 @@ export function LeadListView({
                 />
               );
             })}
-          </div>
+          </nldd-container>
         </Modal>
       )}
 
@@ -233,7 +237,7 @@ export function LeadListView({
       >
         {selectedIds.size} lead{selectedIds.size !== 1 ? 's' : ''} verwijderen?
       </ConfirmDialog>
-    </div>
+    </nldd-container>
   );
 }
 
@@ -266,9 +270,20 @@ function LeadListRow({ lead, column, selected, onToggleSelect, onOpen }: LeadLis
       <nldd-text-cell text={lead.organisatie_eenheid?.naam ?? lead.organization ?? '-'} hide-below="md" />
       <nldd-text-cell hide-below="lg">
         {lead.initiatief ? (
+          // Per-initiatief color is an arbitrary hex stored on the record, not
+          // one of nldd-tag's closed color names, so this stays a styled span
+          // rather than a guessed tag color.
           <span
-            className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium text-white whitespace-nowrap"
-            style={{ backgroundColor: lead.initiatief.kleur || '#6B7280' }}
+            style={{
+              display: 'inline-block',
+              borderRadius: '9999px',
+              padding: '2px 8px',
+              fontSize: '10px',
+              fontWeight: 500,
+              color: 'white',
+              whiteSpace: 'nowrap',
+              backgroundColor: lead.initiatief.kleur || '#6B7280',
+            }}
           >
             {lead.initiatief.naam}
           </span>
@@ -277,37 +292,30 @@ function LeadListRow({ lead, column, selected, onToggleSelect, onOpen }: LeadLis
         )}
       </nldd-text-cell>
       <nldd-text-cell hide-below="lg">
-        {/* column.color is a raw Tailwind chip class tied to per-initiatief
-            lead-column data, not one of the five semantic roles (same call as
-            LeadMetricsBar/LeadKanbanBoard) — kept as a styled span. */}
-        <span
-          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
-            column?.color ?? 'bg-gray-100 text-gray-800'
-          }`}
-        >
-          {column?.name ?? lead.stage}
-        </span>
+        <nldd-tag text={column?.name ?? lead.stage} color={leadColumnTagColor(column?.color ?? 'neutral')} size="sm" />
       </nldd-text-cell>
       <nldd-text-cell text={lead.assignee?.naam ?? '-'} hide-below="lg" />
       <nldd-text-cell hide-below="lg">
         {lead.next_action_date ? (
-          <span className={`inline-flex items-center gap-1 ${overdue ? 'text-red-600 font-medium' : ''}`}>
+          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
             <nldd-icon name="calendar" size="16" aria-hidden="true" />
-            {formatDateShort(lead.next_action_date)}
-          </span>
+            <nldd-text size="sm" color={overdue ? 'critical' : 'content'} weight={overdue ? 'medium' : 'regular'}>
+              {formatDateShort(lead.next_action_date)}
+            </nldd-text>
+          </nldd-container>
         ) : (
           '-'
         )}
       </nldd-text-cell>
       <nldd-text-cell hide-below="lg">
-        <div className="flex flex-wrap gap-1">
+        <nldd-container layout="wrap" gap="4">
           {lead.tags.slice(0, 3).map((tag) => (
             <nldd-tag key={tag} text={tag} color="neutral" size="sm" />
           ))}
           {lead.tags.length > 3 && (
             <nldd-text size="xs" color="secondary">+{lead.tags.length - 3}</nldd-text>
           )}
-        </div>
+        </nldd-container>
       </nldd-text-cell>
       <nldd-text-cell hide-below="lg" title={formatDateShort(lead.created_at)}>
         {timeAgo(lead.created_at)}
@@ -328,12 +336,14 @@ function MergeCandidateCard({ lead, stageName, disabled, onPick }: MergeCandidat
   useNlddEvent(ref, 'click', useCallback(() => onPick(), [onPick]));
 
   return (
-    <nldd-card ref={ref} button {...(disabled ? { 'aria-disabled': true } : {})} accessible-label={lead.title} className="block w-full text-left p-4">
-      <nldd-text-cell
-        text={lead.title}
-        supporting-text={`${lead.organization ?? 'geen organisatie'} - ${stageName}`}
-      />
-      <nldd-text size="xs" color="accent">← Deze behouden</nldd-text>
+    <nldd-card ref={ref} button {...(disabled ? { 'aria-disabled': true } : {})} accessible-label={lead.title}>
+      <nldd-container padding="16">
+        <nldd-text-cell
+          text={lead.title}
+          supporting-text={`${lead.organization ?? 'geen organisatie'} - ${stageName}`}
+        />
+        <nldd-text size="xs" color="accent">← Deze behouden</nldd-text>
+      </nldd-container>
     </nldd-card>
   );
 }

@@ -119,20 +119,18 @@ export function AdminPage() {
   }
 
   return (
-    <div className="max-w-6xl">
+    <nldd-container max-width="1152px" gap="24">
       {/* Tab bar */}
-      <div className="mb-6 -mx-4 px-4 md:-mx-6 md:px-6 overflow-x-auto">
-        <nldd-tab-bar ref={tabBarRef} variant="text">
-          {tabs.map((tab) => (
-            <nldd-tab-bar-item
-              key={tab.id}
-              text={tab.label}
-              current={activeTab === tab.id ? true : undefined}
-              data-tab-id={tab.id}
-            />
-          ))}
-        </nldd-tab-bar>
-      </div>
+      <nldd-tab-bar ref={tabBarRef} variant="text">
+        {tabs.map((tab) => (
+          <nldd-tab-bar-item
+            key={tab.id}
+            text={tab.label}
+            current={activeTab === tab.id ? true : undefined}
+            data-tab-id={tab.id}
+          />
+        ))}
+      </nldd-tab-bar>
 
       {/* Tab content — only render if the tab is in the visible set */}
       {tabs.some((t) => t.id === activeTab) ? (
@@ -151,6 +149,6 @@ export function AdminPage() {
           {activeTab === 'system' && <SystemInfo />}
         </>
       ) : null}
-    </div>
+    </nldd-container>
   );
 }

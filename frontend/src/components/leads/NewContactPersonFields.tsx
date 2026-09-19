@@ -75,7 +75,7 @@ export function NewContactPersonFields({
   };
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       {!hideNaam && (
         <Input
           label="Naam"
@@ -87,7 +87,7 @@ export function NewContactPersonFields({
           disabled={disabled}
         />
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <nldd-container layout="grid" column-count={1} sm-column-count={2} gap="12">
         <Input
           label="E-mail"
           type="email"
@@ -106,8 +106,8 @@ export function NewContactPersonFields({
           autoComplete="tel"
           disabled={disabled}
         />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      </nldd-container>
+      <nldd-container layout="grid" column-count={1} sm-column-count={2} gap="12">
         <Input
           label="Functie"
           value={state.functie}
@@ -137,7 +137,7 @@ export function NewContactPersonFields({
           createLabel="Nieuwe expertise toevoegen"
           disabled={disabled}
         />
-      </div>
+      </nldd-container>
       <CascadingOrgSelect
         label="Organisatie-eenheid (optioneel)"
         value={state.organisatieEenheidId}
@@ -151,7 +151,7 @@ export function NewContactPersonFields({
           disabled={disabled}
         />
       )}
-    </div>
+    </nldd-container>
   );
 }
 

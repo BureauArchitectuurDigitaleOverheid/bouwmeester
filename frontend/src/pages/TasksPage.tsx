@@ -6,7 +6,11 @@ export function TasksPage() {
   const { data: tasks, isLoading } = useTasks();
 
   if (isLoading) {
-    return <LoadingSpinner className="py-8" />;
+    return (
+      <nldd-container padding="32">
+        <LoadingSpinner />
+      </nldd-container>
+    );
   }
 
   return <TaskView tasks={tasks ?? []} />;

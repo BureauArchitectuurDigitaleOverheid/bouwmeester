@@ -52,9 +52,9 @@ export function EenheidOverzichtPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Org unit selector */}
-      <div className="max-w-md">
+      <nldd-container max-width="448px">
         <CreatableSelect
           label="Organisatie-eenheid"
           value={selectedEenheidId}
@@ -62,7 +62,7 @@ export function EenheidOverzichtPage() {
           options={eenheidOptions}
           placeholder="Selecteer een eenheid..."
         />
-      </div>
+      </nldd-container>
 
       {!selectedEenheidId && (
         <EmptyState
@@ -73,7 +73,9 @@ export function EenheidOverzichtPage() {
       )}
 
       {selectedEenheidId && isLoading && (
-        <LoadingSpinner className="py-8" />
+        <nldd-container padding="32">
+          <LoadingSpinner />
+        </nldd-container>
       )}
 
       {selectedEenheidId && isError && (
@@ -85,7 +87,7 @@ export function EenheidOverzichtPage() {
       )}
 
       {selectedEenheidId && overview && (
-        <div className="space-y-6">
+        <nldd-container gap="24">
           {/* Section 1: Onverdeeld */}
           <UnassignedTasksSection
             noUnitTasks={overview.unassigned_no_unit}
@@ -97,8 +99,8 @@ export function EenheidOverzichtPage() {
           />
 
           {/* Section 2: Teamoverzicht */}
-          <div>
-            <nldd-container layout="row" gap="8" style={{ alignItems: 'center', marginBottom: '12px' }}>
+          <nldd-container gap="12">
+            <nldd-container layout="row" gap="8" vertical-alignment="center">
               <Icon name="users" />
               <nldd-title size={5}>
                 <h2>Teamoverzicht</h2>
@@ -131,18 +133,18 @@ export function EenheidOverzichtPage() {
                 ))}
               </nldd-table>
             )}
-          </div>
+          </nldd-container>
 
           {/* Section 3: Subeenheden */}
           {overview.by_subeenheid.length > 0 && (
-            <div>
-              <nldd-container layout="row" gap="8" style={{ alignItems: 'center', marginBottom: '12px' }}>
+            <nldd-container gap="12">
+              <nldd-container layout="row" gap="8" vertical-alignment="center">
                 <Icon name="apartment-building" />
                 <nldd-title size={5}>
                   <h2>Subeenheden</h2>
                 </nldd-title>
               </nldd-container>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <nldd-container layout="grid" sm-column-count={2} lg-column-count={3} gap="12">
                 {overview.by_subeenheid.map((sub) => (
                   <SubeenheidCard
                     key={sub.eenheid_id}
@@ -150,11 +152,11 @@ export function EenheidOverzichtPage() {
                     onSelect={handleSelectSubeenheid}
                   />
                 ))}
-              </div>
-            </div>
+              </nldd-container>
+            </nldd-container>
           )}
-        </div>
+        </nldd-container>
       )}
-    </div>
+    </nldd-container>
   );
 }

@@ -94,16 +94,20 @@ export function PublicInitiatiefPage() {
 
   return (
     <nldd-app-view background="tinted">
-      {/* Top accent stripe — subtiele kleur-identiteit per initiatief */}
-      <div aria-hidden className="h-1.5 w-full" style={{ backgroundColor: accent }} />
+      {/* Top accent stripe — subtiele kleur-identiteit per initiatief. An
+          arbitrary per-initiatief hex color, not a semantic role, so this
+          stays a plain styled div (same reasoning as the color swatches in
+          InitiatiefDetailModal / LeadsPage). */}
+      <div aria-hidden style={{ height: '6px', width: '100%', backgroundColor: accent }} />
 
       <nldd-full-bleed-section width="768px" padding-top="64" padding-bottom="48">
         <nldd-container gap="16">
-          <nldd-container layout="row" gap="8" style={{ alignItems: 'center' }}>
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            {/* Arbitrary per-initiatief accent color, not a semantic role — see
+                the top stripe above. */}
             <span
               aria-hidden
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ backgroundColor: accent }}
+              style={{ display: 'inline-block', height: '8px', width: '8px', borderRadius: '9999px', backgroundColor: accent }}
             />
             <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Community
@@ -208,31 +212,42 @@ function UpdateCard({
 
   return (
     <nldd-card>
-      <div className="relative px-6 py-6 sm:px-8 sm:py-7">
-        {/* Kleur-streepje links als verticale accent */}
-        <div
-          aria-hidden
-          className="absolute left-0 top-6 bottom-6 w-1 rounded-r-full"
-          style={{ backgroundColor: accent }}
-        />
-        <nldd-container layout="row" gap="8" style={{ alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' }}>
-          <nldd-text size="xs" weight="medium" color="secondary">
-            <time dateTime={update.published_at}>{formattedDate}</time>
-          </nldd-text>
-          {update.published_by_naam && (
-            <nldd-text size="xs" color="secondary">
-              · {update.published_by_naam}
+      {/* position: relative + the accent bar below are a decorative left
+          accent rail with an arbitrary per-initiatief color; there's no nldd
+          primitive for that, so this stays a plain positioned div. */}
+      <div style={{ position: 'relative' }}>
+        <nldd-container padding="24" sm-padding-inline="32" sm-padding-block="28">
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: '24px',
+              bottom: '24px',
+              width: '4px',
+              borderRadius: '0 9999px 9999px 0',
+              backgroundColor: accent,
+            }}
+          />
+          <nldd-container layout="wrap" gap="8" vertical-alignment="center" padding-bottom="12">
+            <nldd-text size="xs" weight="medium" color="secondary">
+              <time dateTime={update.published_at}>{formattedDate}</time>
             </nldd-text>
+            {update.published_by_naam && (
+              <nldd-text size="xs" color="secondary">
+                · {update.published_by_naam}
+              </nldd-text>
+            )}
+          </nldd-container>
+          <nldd-title size={3}>
+            <h3>{update.titel}</h3>
+          </nldd-title>
+          {update.body && (
+            <nldd-container padding-top="16">
+              <RichTextDisplay content={update.body} />
+            </nldd-container>
           )}
         </nldd-container>
-        <nldd-title size={3}>
-          <h3>{update.titel}</h3>
-        </nldd-title>
-        {update.body && (
-          <nldd-container padding-top="16">
-            <RichTextDisplay content={update.body} />
-          </nldd-container>
-        )}
       </div>
     </nldd-card>
   );
@@ -241,12 +256,12 @@ function UpdateCard({
 function CasusCard({ casus, accent }: { casus: PublicCasus; accent: string }) {
   return (
     <nldd-card>
-      <div className="p-5">
-        <nldd-container layout="row" gap="8" style={{ alignItems: 'center', marginBottom: '8px' }}>
+      <nldd-container padding="20">
+        <nldd-container layout="row" gap="8" vertical-alignment="center" padding-bottom="8">
+          {/* Arbitrary per-initiatief accent color, not a semantic role. */}
           <span
             aria-hidden
-            className="inline-block h-2 w-2 rounded-full"
-            style={{ backgroundColor: accent }}
+            style={{ display: 'inline-block', height: '8px', width: '8px', borderRadius: '9999px', backgroundColor: accent }}
           />
           <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Casus
@@ -266,7 +281,7 @@ function CasusCard({ casus, accent }: { casus: PublicCasus; accent: string }) {
           <nldd-container gap="12" padding-top="16" style={{ borderTop: '1px solid var(--color-border)' }}>
             {casus.updates.map((u, idx) => (
               <div key={idx}>
-                <nldd-container layout="row" gap="8" style={{ alignItems: 'baseline' }}>
+                <nldd-container layout="row" gap="8" vertical-alignment="center">
                   <nldd-text size="sm" weight="medium">
                     {u.titel}
                   </nldd-text>
@@ -287,7 +302,7 @@ function CasusCard({ casus, accent }: { casus: PublicCasus; accent: string }) {
             ))}
           </nldd-container>
         )}
-      </div>
+      </nldd-container>
     </nldd-card>
   );
 }

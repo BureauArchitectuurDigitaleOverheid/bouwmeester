@@ -8,6 +8,13 @@ import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { Select } from '@/components/common/Select';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useNlddEvent } from '@/components/nldd/events';
+
+/** An `nldd-link` with its click bridged to React, for an in-page action rather than navigation. */
+function ActionLink({ text, onClick }: { text: string; onClick: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onClick);
+  return <nldd-link ref={ref} text={text} />;
+}
 import {
   Activity,
   EVENT_TYPE_LABELS,
@@ -191,23 +198,16 @@ function DetailCell({
     (item.task_id && item.event_type.startsWith('task.')) || item.node_id;
 
   return (
-    <div className="space-y-1">
+    <nldd-container gap="4">
       {subject && (
-        <div className="font-medium text-text">
-          {isClickable ? (
-            <button
-              onClick={handleClick}
-              className="text-left hover:text-primary-600 hover:underline cursor-pointer"
-            >
-              {String(subject)}
-            </button>
-          ) : (
-            String(subject)
-          )}
-        </div>
+        isClickable ? (
+          <ActionLink text={String(subject)} onClick={handleClick} />
+        ) : (
+          <nldd-text weight="medium">{String(subject)}</nldd-text>
+        )
       )}
       {chips.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <nldd-container layout="wrap" gap="6">
           {chips.map((chip, i) => (
             <nldd-tag
               key={i}
@@ -216,10 +216,10 @@ function DetailCell({
               text={`${chip.label}: ${chip.value}`}
             />
           ))}
-        </div>
+        </nldd-container>
       )}
       {!subject && chips.length === 0 && <nldd-text color="secondary">—</nldd-text>}
-    </div>
+    </nldd-container>
   );
 }
 
@@ -258,9 +258,9 @@ export function AuditLogPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Filters */}
-      <div className="max-w-xs">
+      <nldd-container max-width="320px">
         <Select
           value={category}
           onChange={(e) => {
@@ -269,7 +269,7 @@ export function AuditLogPage() {
           }}
           options={CATEGORY_OPTIONS}
         />
-      </div>
+      </nldd-container>
 
       {/* Table */}
       <nldd-table
@@ -297,8 +297,8 @@ export function AuditLogPage() {
               {/* Below lg (sm and md both fall back to sm-columns, one track)
                   the four columns collapse into this single cell instead. */}
               <nldd-cell hide-above="md">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
+                <nldd-container gap="6">
+                  <nldd-container layout="row" gap="8" horizontal-alignment="left">
                     <nldd-text size="xs" color="secondary">
                       {formatDate(item.created_at)}
                     </nldd-text>
@@ -307,12 +307,12 @@ export function AuditLogPage() {
                         {item.actor_naam}
                       </nldd-text>
                     )}
-                  </div>
+                  </nldd-container>
                   <nldd-text size="sm" weight="medium">
                     {EVENT_TYPE_LABELS[item.event_type] || item.event_type}
                   </nldd-text>
                   <DetailCell item={item} onOpenNode={openNodeDetail} onOpenTask={openTaskDetail} />
-                </div>
+                </nldd-container>
               </nldd-cell>
             </nldd-table-row>
           ))
@@ -336,13 +336,17 @@ export function AuditLogPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <nldd-text size="sm" color="secondary">
-            {data?.total ?? 0} resultaten — pagina {page + 1} van {totalPages}
-          </nldd-text>
-          <nldd-pagination ref={paginationRef} current={page + 1} total={totalPages} />
-        </div>
+        <nldd-container layout="row" gap="16">
+          <nldd-container vertical-alignment="center">
+            <nldd-text size="sm" color="secondary">
+              {data?.total ?? 0} resultaten — pagina {page + 1} van {totalPages}
+            </nldd-text>
+          </nldd-container>
+          <nldd-container width="fit-content">
+            <nldd-pagination ref={paginationRef} current={page + 1} total={totalPages} />
+          </nldd-container>
+        </nldd-container>
       )}
-    </div>
+    </nldd-container>
   );
 }

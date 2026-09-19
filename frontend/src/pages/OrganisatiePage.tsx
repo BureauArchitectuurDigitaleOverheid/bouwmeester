@@ -249,20 +249,21 @@ export function OrganisatiePage() {
   const isEmpty = tree.length === 0;
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <p className="text-sm text-text-secondary">
+      <nldd-toolbar label="Organisatieacties">
+        <nldd-toolbar-item slot="start" priority={1}>
+          <nldd-text size="sm" color="secondary">
             Beheer de organisatiestructuur: Ministerie, DG, Directie, Afdeling, Team.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
+          </nldd-text>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end">
           <Button icon="plus" onClick={() => handleAdd(null)}>
-            <span className="hidden sm:inline">Eenheid toevoegen</span>
+            Eenheid toevoegen
           </Button>
-        </div>
-      </div>
+          <nldd-menu-item slot="overflow" text="Eenheid toevoegen" icon="plus" />
+        </nldd-toolbar-item>
+      </nldd-toolbar>
 
       {isEmpty ? (
         <EmptyState
@@ -276,48 +277,44 @@ export function OrganisatiePage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <nldd-container layout="grid" column-count={1} lg-column-count={3} gap="24">
           {/* Left panel: Tree */}
-          <div className="lg:col-span-1">
-            <Card>
-              <div className="p-2">
-                <div className="mb-2">
-                  <OrganisatieSearchField value={searchTerm} onChange={setSearchTerm} />
-                </div>
-                <div className="flex items-center justify-between gap-2 mb-2 px-1">
-                  <HistorischCheckbox checked={includeHistorisch} onChange={setIncludeHistorisch} />
-                  <div className="w-40">
-                    <Select
-                      value={bronFilter}
-                      onChange={(e) => setBronFilter(e.target.value as typeof bronFilter)}
-                      title="Filter op bron"
-                      options={[
-                        { value: 'alle', label: 'Alle bronnen' },
-                        { value: 'handmatig', label: 'Alleen handmatig' },
-                        { value: 'tooi', label: 'Alleen TOOI' },
-                        { value: 'scrape', label: 'Alleen scrape/import' },
-                      ]}
-                    />
-                  </div>
-                </div>
-                <OrganisatieTree
-                  tree={filteredTree}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                  onAdd={handleAdd}
-                  onDropPerson={handleDropPerson}
-                  searchTerm={searchTerm}
-                  expandedByDefaultIds={expandedByDefaultIds}
-                />
-              </div>
-            </Card>
-          </div>
+          <Card>
+            <nldd-container gap="8" padding="8">
+              <OrganisatieSearchField value={searchTerm} onChange={setSearchTerm} />
+              <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center" padding-inline="4">
+                <HistorischCheckbox checked={includeHistorisch} onChange={setIncludeHistorisch} />
+                <nldd-container width="160px">
+                  <Select
+                    value={bronFilter}
+                    onChange={(e) => setBronFilter(e.target.value as typeof bronFilter)}
+                    title="Filter op bron"
+                    options={[
+                      { value: 'alle', label: 'Alle bronnen' },
+                      { value: 'handmatig', label: 'Alleen handmatig' },
+                      { value: 'tooi', label: 'Alleen TOOI' },
+                      { value: 'scrape', label: 'Alleen scrape/import' },
+                    ]}
+                  />
+                </nldd-container>
+              </nldd-container>
+              <OrganisatieTree
+                tree={filteredTree}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onAdd={handleAdd}
+                onDropPerson={handleDropPerson}
+                searchTerm={searchTerm}
+                expandedByDefaultIds={expandedByDefaultIds}
+              />
+            </nldd-container>
+          </Card>
 
-          {/* Right panel: Detail */}
-          <div className="lg:col-span-2">
+          {/* Right panel: Detail — spans the remaining two columns at lg */}
+          <div style={{ gridColumn: 'span 2' }}>
             {selectedId ? (
               <Card>
-                <div className="p-2">
+                <nldd-container padding="8">
                   <OrganisatieDetail
                     selectedId={selectedId}
                     onEdit={handleEdit}
@@ -329,18 +326,20 @@ export function OrganisatiePage() {
                     onDragStartPerson={handleDragStartPerson}
                     onDropPerson={handleDropPerson}
                   />
-                </div>
+                </nldd-container>
               </Card>
             ) : (
               <Card>
-                <div className="text-center py-12 text-text-secondary">
+                <nldd-container gap="12" padding="48" horizontal-alignment="center">
                   <Icon name="apartment-building" size="32" style={{ opacity: 0.3 }} aria-hidden="true" />
-                  <p className="text-sm mt-3">Selecteer een eenheid in de boomstructuur.</p>
-                </div>
+                  <nldd-text size="sm" color="secondary" horizontal-alignment="center">
+                    Selecteer een eenheid in de boomstructuur.
+                  </nldd-text>
+                </nldd-container>
               </Card>
             )}
           </div>
-        </div>
+        </nldd-container>
       )}
 
       {/* Create/Edit org form */}
@@ -367,6 +366,6 @@ export function OrganisatiePage() {
         defaultOrgEenheidId={selectedId || undefined}
         createdApiKey={createdApiKey}
       />
-    </div>
+    </nldd-container>
   );
 }

@@ -55,14 +55,16 @@ export function PeoplePage() {
   };
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <nldd-text color="secondary">Overzicht van alle betrokken personen.</nldd-text>
-        <div className="flex items-center gap-2 shrink-0">
+      <nldd-container layout="row" gap="12">
+        <nldd-container vertical-alignment="center">
+          <nldd-text color="secondary">Overzicht van alle betrokken personen.</nldd-text>
+        </nldd-container>
+        <nldd-container width="fit-content">
           <NlddButton text="Persoon toevoegen" startIcon="plus" onClick={handleAddPerson} />
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-container>
 
       {/* People list */}
       <PersonList
@@ -83,6 +85,6 @@ export function PeoplePage() {
         editData={editPerson}
         createdApiKey={createdApiKey}
       />
-    </div>
+    </nldd-container>
   );
 }

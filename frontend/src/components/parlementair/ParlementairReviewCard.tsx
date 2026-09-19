@@ -51,6 +51,13 @@ interface FollowUpTaskRow {
 }
 
 /**
+ * `PARLEMENTAIR_TYPE_COLORS` and `SEARCH_RESULT_TYPE_COLORS`-style maps in
+ * `@/types` speak the twelve-color `BadgeVariant` palette that `Badge` (the
+ * `nldd-tag` wrapper) already understands, so no local remap was needed here —
+ * `Badge` takes the existing `BadgeVariant` values directly.
+ */
+
+/**
  * An `nldd-link` that stops its click from bubbling into a clickable ancestor
  * row (the card header toggles `expanded` on click). Click has to go through
  * `useNlddEvent` rather than a React `onClick` prop for consistency with the
@@ -373,12 +380,16 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
     <div ref={cardRef}>
     <Card className="overflow-visible">
       {/* Clickable header */}
-      <div
-        className="flex items-start justify-between gap-3 cursor-pointer select-none"
+      <nldd-container
+        layout="row"
+        width="full"
+        gap="12"
+        horizontal-alignment="right"
+        style={{ cursor: 'pointer', userSelect: 'none' }}
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+        <nldd-container gap="4" width="full">
+          <nldd-container layout="wrap" gap="6" vertical-alignment="center">
             <Badge variant={typeColor}>
               {typeLabel}
             </Badge>
@@ -387,49 +398,49 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             >
               {PARLEMENTAIR_ITEM_STATUS_LABELS[item.status]}
             </Badge>
-            <span className="text-xs text-text-secondary">{item.bron === 'tweede_kamer' ? 'Tweede Kamer' : 'Eerste Kamer'}</span>
-            <span className="text-xs text-text-secondary">{item.zaak_nummer}</span>
+            <nldd-text size="xs" color="secondary">{item.bron === 'tweede_kamer' ? 'Tweede Kamer' : 'Eerste Kamer'}</nldd-text>
+            <nldd-text size="xs" color="secondary">{item.zaak_nummer}</nldd-text>
             {item.datum && (
-              <span className="text-xs text-text-secondary flex items-center gap-0.5">
+              <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content">
                 <Icon name="calendar" size="xs" />
-                {formatDateLong(item.datum)}
-              </span>
+                <nldd-text size="xs" color="secondary">{formatDateLong(item.datum)}</nldd-text>
+              </nldd-container>
             )}
             {item.deadline && (
-              <nldd-text size="xs" color="warning" className="flex items-center gap-0.5">
+              <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content">
                 <Icon name="calendar" size="xs" />
-                Deadline: {formatDateLong(item.deadline)}
-              </nldd-text>
+                <nldd-text size="xs" color="warning">
+                  Deadline: {formatDateLong(item.deadline)}
+                </nldd-text>
+              </nldd-container>
             )}
             {item.ministerie && (
-              <span className="text-xs text-text-secondary">{item.ministerie}</span>
+              <nldd-text size="xs" color="secondary">{item.ministerie}</nldd-text>
             )}
-          </div>
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-sm font-semibold text-text">{item.onderwerp}</h3>
+          </nldd-container>
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            <nldd-text size="sm" weight="bold">{item.onderwerp}</nldd-text>
             {item.document_url && (
               <ExternalDocLink href={item.document_url} label="Bekijk op tweedekamer.nl" iconOnly />
             )}
-          </div>
-          <p className="text-xs text-text-secondary">Zaak: {item.titel}</p>
-        </div>
+          </nldd-container>
+          <nldd-text size="xs" color="secondary">Zaak: {item.titel}</nldd-text>
+        </nldd-container>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <nldd-container layout="row" gap="8" vertical-alignment="center" width="fit-content">
           {item.suggested_edges && item.suggested_edges.length > 0 && (
-            <span className="text-xs text-text-secondary">
+            <nldd-text size="xs" color="secondary">
               {pendingEdges.length} te beoordelen
-            </span>
+            </nldd-text>
           )}
-          <div className="p-1 rounded hover:bg-gray-100 transition-colors">
-            <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size="md" />
-          </div>
-        </div>
-      </div>
+          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size="md" />
+        </nldd-container>
+      </nldd-container>
 
       {expanded && (
-        <div className="mt-4 pt-4 border-t border-border space-y-5">
+        <nldd-container gap="20" padding-top="16">
           {/* Quick links bar */}
-          <div className="flex items-center gap-3">
+          <nldd-container layout="row" gap="12" vertical-alignment="center">
             {item.corpus_node_id && (
               <Button
                 variant="ghost"
@@ -443,59 +454,65 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             {item.document_url && (
               <ExternalDocLink href={item.document_url} label="Bekijk op tweedekamer.nl" />
             )}
-          </div>
+          </nldd-container>
 
           {/* Indieners */}
           {item.indieners && item.indieners.length > 0 && (
-            <div>
-              <h4 className="text-xs font-medium text-text mb-1.5 flex items-center gap-1">
+            <nldd-container gap="6">
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
                 <Icon name="users" size="sm" />
-                Indieners
-              </h4>
-              <div className="flex flex-wrap gap-1">
+                <nldd-text size="xs" weight="medium">Indieners</nldd-text>
+              </nldd-container>
+              <nldd-container layout="wrap" gap="4">
                 {item.indieners.map((indiener) => (
                   <Badge key={indiener} variant="purple">{indiener}</Badge>
                 ))}
-              </div>
-            </div>
+              </nldd-container>
+            </nldd-container>
           )}
 
           {/* Summary */}
           {item.llm_samenvatting && (
-            <div>
-              <h4 className="text-xs font-medium text-text mb-1">Samenvatting</h4>
-              <div className="text-sm text-text-secondary">
+            <nldd-container gap="4">
+              <nldd-text size="xs" weight="medium">Samenvatting</nldd-text>
+              <nldd-text size="sm" color="secondary">
                 <MarkdownRenderer content={item.llm_samenvatting} />
-              </div>
-            </div>
+              </nldd-text>
+            </nldd-container>
           )}
 
           {/* Document text */}
           {item.document_tekst && (
-            <div>
-              <h4 className="text-xs font-medium text-text mb-1">Tekst</h4>
+            <nldd-container gap="4">
+              <nldd-text size="xs" weight="medium">Tekst</nldd-text>
+              {/* whitespace-pre-wrap has no nldd-text equivalent (the component
+                  does not expose white-space control), so this stays a plain
+                  element; the scroll box and tinted background are likewise
+                  presentational chrome around a text dump rather than a
+                  document composition, so nldd-container's background isn't a
+                  fit either. */}
               <p className="text-sm text-text-secondary whitespace-pre-wrap bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto">
                 {item.document_tekst}
               </p>
-            </div>
+            </nldd-container>
           )}
 
           {/* Matched tags */}
           {item.matched_tags && item.matched_tags.length > 0 && (
-            <div>
-              <h4 className="text-xs font-medium text-text mb-1.5">Gematchte tags</h4>
-              <div className="flex flex-wrap gap-1">
+            <nldd-container gap="6">
+              <nldd-text size="xs" weight="medium">Gematchte tags</nldd-text>
+              <nldd-container layout="wrap" gap="4">
                 {item.matched_tags.map((tag) => (
                   <Badge key={tag} variant="slate">{tag}</Badge>
                 ))}
-              </div>
-            </div>
+              </nldd-container>
+            </nldd-container>
           )}
 
           {/* Tags on corpus node */}
           {corpusNodeId && (
-            <div className="max-w-xs">
-              <h4 className="text-xs font-medium text-text mb-1.5">Tags</h4>
+            <nldd-container gap="6" max-width="320px">
+              <nldd-text size="xs" weight="medium">Tags</nldd-text>
               <TagTokenField
                 nodeTags={nodeTags}
                 allTags={allTags}
@@ -503,28 +520,25 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                 onAddNew={(tagName) => addTag.mutate({ nodeId: corpusNodeId, data: { tag_name: tagName } })}
                 onRemove={(tagId) => removeTag.mutate({ nodeId: corpusNodeId, tagId })}
               />
-            </div>
+            </nldd-container>
           )}
 
           {/* Suggested edges + add new edges */}
-          <div className="max-w-2xl">
-            <h4 className="text-xs font-medium text-text mb-2">
+          <nldd-container gap="8" max-width="672px">
+            <nldd-text size="xs" weight="medium">
               Verbindingen
-              {(sortedSuggestedEdges.length + manualEdges.length > 0) && (
-                <span className="text-text-secondary font-normal ml-1">
-                  ({sortedSuggestedEdges.length + manualEdges.length})
-                </span>
-              )}
-            </h4>
+              {(sortedSuggestedEdges.length + manualEdges.length > 0) &&
+                ` (${sortedSuggestedEdges.length + manualEdges.length})`}
+            </nldd-text>
 
             {/* Suggested edges list */}
             {sortedSuggestedEdges.length > 0 && (
-              <nldd-list type="list" variant="box-tinted" dividers="always" className="mb-2">
+              <nldd-list type="list" variant="box-tinted" dividers="always">
                 {sortedSuggestedEdges.map((edge) => (
                   <nldd-list-item key={edge.id} style={edge.status === 'rejected' ? { opacity: 0.5 } : undefined}>
-                    <div className="flex items-start gap-2 w-full py-1">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
+                    <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="top">
+                      <nldd-container gap="2" width="full">
+                        <nldd-container layout="row" gap="6" vertical-alignment="center">
                           {edge.status === 'pending' ? (
                             <Select
                               value={edge.edge_type_id}
@@ -542,9 +556,9 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                           ) : (
                             <Badge variant="slate">{edgeLabel(edge.edge_type_id)}</Badge>
                           )}
-                        </div>
+                        </nldd-container>
                         {edge.target_node && (
-                          <div className="flex items-center gap-1.5 mt-0.5">
+                          <nldd-container layout="row" gap="6" vertical-alignment="center">
                             <Badge variant={NODE_TYPE_COLORS[edge.target_node.node_type]} dot>
                               {nodeLabel(edge.target_node.node_type)}
                             </Badge>
@@ -552,22 +566,22 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                               text={edge.target_node.title}
                               onClick={() => setModalNodeId(edge.target_node_id)}
                             />
-                          </div>
+                          </nldd-container>
                         )}
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-xs text-text-secondary">
+                        <nldd-container layout="row" gap="6" vertical-alignment="center">
+                          <nldd-text size="xs" color="secondary">
                             {Math.round(edge.confidence * 100)}% match
-                          </span>
+                          </nldd-text>
                           {edge.reason && (
-                            <span className="text-xs text-text-secondary truncate">
+                            <nldd-text size="xs" color="secondary">
                               — {edge.reason}
-                            </span>
+                            </nldd-text>
                           )}
-                        </div>
-                      </div>
+                        </nldd-container>
+                      </nldd-container>
 
                       {/* Actions on the right */}
-                      <div className="flex items-center gap-0.5 shrink-0 mt-1">
+                      <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content" padding-top="4">
                         {edge.status === 'pending' && (
                           <>
                             <NlddIconButton
@@ -595,8 +609,8 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                             onClick={() => resetEdge.mutate(edge.id)}
                           />
                         )}
-                      </div>
-                    </div>
+                      </nldd-container>
+                    </nldd-container>
                   </nldd-list-item>
                 ))}
               </nldd-list>
@@ -604,20 +618,20 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
 
             {/* Manually added edges */}
             {manualEdges.length > 0 && (
-              <nldd-list type="list" variant="box-tinted" dividers="always" className="mb-2">
+              <nldd-list type="list" variant="box-tinted" dividers="always">
                 {manualEdges.map((edge) => {
                   const isOutgoing = edge.from_node_id === corpusNodeId;
                   const otherNode = isOutgoing ? edge.to_node : edge.from_node;
                   const otherNodeId = isOutgoing ? edge.to_node_id : edge.from_node_id;
                   return (
                     <nldd-list-item key={edge.id}>
-                      <div className="flex items-start gap-2 w-full py-1">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
+                      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="top">
+                        <nldd-container gap="2" width="full">
+                          <nldd-container layout="row" gap="6" vertical-alignment="center">
                             <Badge variant="slate">{edgeLabel(edge.edge_type_id)}</Badge>
-                          </div>
+                          </nldd-container>
                           {otherNode && (
-                            <div className="flex items-center gap-1.5 mt-0.5">
+                            <nldd-container layout="row" gap="6" vertical-alignment="center">
                               <Badge variant={NODE_TYPE_COLORS[otherNode.node_type]} dot>
                                 {nodeLabel(otherNode.node_type)}
                               </Badge>
@@ -625,9 +639,9 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                                 text={otherNode.title}
                                 onClick={() => setModalNodeId(otherNodeId)}
                               />
-                            </div>
+                            </nldd-container>
                           )}
-                        </div>
+                        </nldd-container>
                         <NlddIconButton
                           icon="trash"
                           accessibleLabel="Verwijderen"
@@ -635,7 +649,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                           size="sm"
                           onClick={() => deleteEdge.mutate(edge.id)}
                         />
-                      </div>
+                      </nldd-container>
                     </nldd-list-item>
                   );
                 })}
@@ -649,114 +663,120 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                   Verbinding toevoegen
                 </Button>
               ) : (
-                <p className="text-xs text-text-secondary">
+                <nldd-text size="xs" color="secondary">
                   Geen corpus-node gekoppeld — verbindingen kunnen niet worden toegevoegd.
-                </p>
+                </nldd-text>
               )
             )}
 
             {/* Add new edge form */}
             {showAddEdge && corpusNodeId && (
-              <div className="p-3 rounded-lg border border-border bg-gray-50/50 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-text">
-                  <Icon name="link" size="sm" />
-                  Nieuwe verbinding
-                </div>
-                <div className="space-y-2">
-                  <CreatableSelect
-                    value={newEdgeTargetId}
-                    onChange={setNewEdgeTargetId}
-                    options={targetOptions}
-                    placeholder="Selecteer node..."
-                    onCreate={handleCreateNode}
-                    createLabel="Nieuw aanmaken"
-                  />
-                  <CreatableSelect
-                    value={newEdgeTypeId}
-                    onChange={setNewEdgeTypeId}
-                    options={edgeTypeOptions}
-                    placeholder="Type verbinding..."
-                  />
-                </div>
-                {createEdge.isError && (
-                  <nldd-text size="xs" color="critical">
-                    {(createEdge.error as { body?: { detail?: string } })?.body?.detail || 'Fout bij aanmaken verbinding'}
-                  </nldd-text>
-                )}
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={handleAddEdge}
-                    disabled={!newEdgeTargetId || !newEdgeTypeId || createEdge.isPending}
-                    loading={createEdge.isPending}
-                  >
-                    Toevoegen
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setShowAddEdge(false);
-                      setNewEdgeTargetId('');
-                      setNewEdgeTypeId('');
-                      createEdge.reset();
-                    }}
-                  >
-                    Annuleren
-                  </Button>
-                </div>
-              </div>
+              <nldd-list variant="box-tinted">
+                <nldd-list-item>
+                  <nldd-container gap="8" width="full" padding="4">
+                    <nldd-container layout="row" gap="6" vertical-alignment="center">
+                      <Icon name="link" size="sm" />
+                      <nldd-text size="xs" weight="medium">Nieuwe verbinding</nldd-text>
+                    </nldd-container>
+                    <nldd-container gap="8">
+                      <CreatableSelect
+                        value={newEdgeTargetId}
+                        onChange={setNewEdgeTargetId}
+                        options={targetOptions}
+                        placeholder="Selecteer node..."
+                        onCreate={handleCreateNode}
+                        createLabel="Nieuw aanmaken"
+                      />
+                      <CreatableSelect
+                        value={newEdgeTypeId}
+                        onChange={setNewEdgeTypeId}
+                        options={edgeTypeOptions}
+                        placeholder="Type verbinding..."
+                      />
+                    </nldd-container>
+                    {createEdge.isError && (
+                      <nldd-text size="xs" color="critical">
+                        {(createEdge.error as { body?: { detail?: string } })?.body?.detail || 'Fout bij aanmaken verbinding'}
+                      </nldd-text>
+                    )}
+                    <nldd-container layout="row" gap="8" vertical-alignment="center">
+                      <Button
+                        size="sm"
+                        onClick={handleAddEdge}
+                        disabled={!newEdgeTargetId || !newEdgeTypeId || createEdge.isPending}
+                        loading={createEdge.isPending}
+                      >
+                        Toevoegen
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setShowAddEdge(false);
+                          setNewEdgeTargetId('');
+                          setNewEdgeTypeId('');
+                          createEdge.reset();
+                        }}
+                      >
+                        Annuleren
+                      </Button>
+                    </nldd-container>
+                  </nldd-container>
+                </nldd-list-item>
+              </nldd-list>
             )}
-          </div>
+          </nldd-container>
 
           {/* Follow-up tasks (right below verbindingen) */}
           {item.status === 'imported' && (
-            <div className="max-w-2xl">
-              <h4 className="text-xs font-medium text-text mb-2">Vervolgacties</h4>
+            <nldd-container gap="8" max-width="672px">
+              <nldd-text size="xs" weight="medium">Vervolgacties</nldd-text>
               {followUpTasks.length > 0 && (
-                <div className="space-y-2 mb-2">
+                <nldd-list variant="box-tinted">
                   {followUpTasks.map((task, index) => (
-                    <div key={index} className="flex items-start gap-2 p-2 rounded-lg bg-gray-50 border border-border">
-                      <div className="flex-1 space-y-2">
-                        <FollowUpTitleField
-                          value={task.title}
-                          onChange={(v) => updateTaskRow(index, 'title', v)}
-                        />
-                        <div className="flex gap-2">
-                          <div className="flex-1">
-                            <CreatableSelect
-                              value={task.assignee_id}
-                              onChange={(v) => updateTaskRow(index, 'assignee_id', v)}
-                              options={sortedPeopleOptions}
-                              placeholder="Toewijzen aan..."
-                            />
-                          </div>
-                          <FollowUpDeadlineField
-                            value={task.deadline}
-                            onChange={(v) => updateTaskRow(index, 'deadline', v)}
+                    <nldd-list-item key={index}>
+                      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="top" padding="4">
+                        <nldd-container gap="8" width="full">
+                          <FollowUpTitleField
+                            value={task.title}
+                            onChange={(v) => updateTaskRow(index, 'title', v)}
                           />
-                        </div>
-                      </div>
-                      <NlddIconButton
-                        icon="trash"
-                        accessibleLabel="Verwijderen"
-                        variant="neutral-transparent"
-                        size="sm"
-                        onClick={() => removeTaskRow(index)}
-                      />
-                    </div>
+                          <nldd-container layout="row" gap="8">
+                            <nldd-container width="full">
+                              <CreatableSelect
+                                value={task.assignee_id}
+                                onChange={(v) => updateTaskRow(index, 'assignee_id', v)}
+                                options={sortedPeopleOptions}
+                                placeholder="Toewijzen aan..."
+                              />
+                            </nldd-container>
+                            <FollowUpDeadlineField
+                              value={task.deadline}
+                              onChange={(v) => updateTaskRow(index, 'deadline', v)}
+                            />
+                          </nldd-container>
+                        </nldd-container>
+                        <NlddIconButton
+                          icon="trash"
+                          accessibleLabel="Verwijderen"
+                          variant="neutral-transparent"
+                          size="sm"
+                          onClick={() => removeTaskRow(index)}
+                        />
+                      </nldd-container>
+                    </nldd-list-item>
                   ))}
-                </div>
+                </nldd-list>
               )}
               <Button variant="ghost" size="sm" icon="plus" onClick={addTaskRow}>
                 Taak toevoegen
               </Button>
-            </div>
+            </nldd-container>
           )}
 
           {/* Eigenaar — last decision before submit */}
           {item.status === 'imported' && (
-            <div className="max-w-xs">
+            <nldd-container max-width="320px">
               <CreatableSelect
                 label="Eigenaar"
                 value={eigenaarId}
@@ -764,12 +784,12 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                 options={sortedPeopleOptions}
                 placeholder="Selecteer eigenaar..."
               />
-            </div>
+            </nldd-container>
           )}
 
           {/* Bottom actions */}
           {item.status === 'imported' && (
-            <div className="flex items-center gap-3 pt-2 border-t border-border">
+            <nldd-container layout="row" gap="12" vertical-alignment="center" padding-top="8">
               <Button
                 size="sm"
                 onClick={handleCompleteSubmit}
@@ -785,12 +805,12 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
               >
                 Niet relevant
               </Button>
-            </div>
+            </nldd-container>
           )}
 
           {/* Reopen action for rejected/out_of_scope items */}
           {(item.status === 'out_of_scope' || item.status === 'rejected') && (
-            <div className="pt-2 border-t border-border">
+            <nldd-container padding-top="8">
               <Button
                 size="sm"
                 variant="ghost"
@@ -801,9 +821,9 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
               >
                 Heropenen voor beoordeling
               </Button>
-            </div>
+            </nldd-container>
           )}
-        </div>
+        </nldd-container>
       )}
     </Card>
     <NodeDetailModal

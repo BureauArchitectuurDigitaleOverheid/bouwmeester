@@ -63,33 +63,33 @@ export function SearchPage() {
   }, []);
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* Page header */}
-      <div>
-        <p className="text-sm text-text-secondary">
+    <nldd-simple-section width="768px" horizontal-alignment="center">
+      <nldd-container gap="24">
+        {/* Page header */}
+        <nldd-text size="sm" color="secondary">
           Doorzoek alles: beleidscorpus, taken, personen, organisaties, parlementaire items, tags en leads.
-        </p>
-      </div>
+        </nldd-text>
 
-      {/* Search input */}
-      <nldd-search-field
-        ref={inputRef}
-        value={query}
-        placeholder="Zoek op titel, naam, beschrijving, trefwoord..."
-        accessible-label="Zoeken"
-      />
+        {/* Search input */}
+        <nldd-search-field
+          ref={inputRef}
+          value={query}
+          placeholder="Zoek op titel, naam, beschrijving, trefwoord..."
+          accessible-label="Zoeken"
+        />
 
-      {/* Filter chips */}
-      <FilterChips activeTypes={activeTypes} onToggle={toggleType} allowedTypes={allowedTypes} />
+        {/* Filter chips */}
+        <FilterChips activeTypes={activeTypes} onToggle={toggleType} allowedTypes={allowedTypes} />
 
-      {/* Results */}
-      <SearchResultsList
-        query={query}
-        data={data}
-        isLoading={isLoading}
-        isFetched={isFetched}
-        onResultClick={handleResultClick}
-      />
-    </div>
+        {/* Results */}
+        <SearchResultsList
+          query={query}
+          data={data}
+          isLoading={isLoading}
+          isFetched={isFetched}
+          onResultClick={handleResultClick}
+        />
+      </nldd-container>
+    </nldd-simple-section>
   );
 }

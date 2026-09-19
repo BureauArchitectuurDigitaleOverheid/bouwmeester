@@ -170,45 +170,43 @@ export function LeadInboxView({
   const groupOrder: DateGroup[] = ['vandaag', 'gisteren', 'deze_week', 'ouder'];
 
   return (
-    <div className="space-y-2">
+    <nldd-container gap="8">
       {/* Batch action bar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 rounded-xl bg-primary-50 border border-primary-200 px-4 py-2.5">
-          <nldd-text size="sm" weight="medium" color="accent">
-            {selectedIds.size} geselecteerd
-          </nldd-text>
-          <NlddButton
-            size="sm"
-            text="Oppakken"
-            onClick={handleBatchClaim}
-            disabled={!currentPerson}
-          />
-          <NlddButton
-            size="sm"
-            variant="secondary"
-            text="Koelkast"
-            onClick={handleBatchKoelkast}
-          />
-          <NlddButton
-            size="sm"
-            variant="neutral-transparent"
-            text="Deselecteren"
-            onClick={() => setSelectedIds(new Set())}
-            className="ml-auto"
-          />
-        </div>
+        <nldd-banner variant="accent" size="sm" text={`${selectedIds.size} geselecteerd`}>
+          <div slot="actions">
+            <NlddButton
+              size="sm"
+              text="Oppakken"
+              onClick={handleBatchClaim}
+              disabled={!currentPerson}
+            />
+            <NlddButton
+              size="sm"
+              variant="secondary"
+              text="Koelkast"
+              onClick={handleBatchKoelkast}
+            />
+            <NlddButton
+              size="sm"
+              variant="neutral-transparent"
+              text="Deselecteren"
+              onClick={() => setSelectedIds(new Set())}
+            />
+          </div>
+        </nldd-banner>
       )}
 
       {/* Select all */}
       {filteredLeads.length > 1 && selectedIds.size === 0 && (
-        <div className="px-3">
+        <nldd-container padding-inline="12">
           <NlddButton
             size="xs"
             variant="neutral-transparent"
             text={`Alles selecteren (${filteredLeads.length})`}
             onClick={toggleSelectAll}
           />
-        </div>
+        </nldd-container>
       )}
 
       {groupOrder.map((group) => {
@@ -216,12 +214,12 @@ export function LeadInboxView({
         if (items.length === 0) return null;
 
         return (
-          <div key={group}>
-            <div className="px-3 py-1.5">
-              <nldd-text size="xs" weight="medium" color="secondary" className="uppercase tracking-wider">
+          <nldd-container key={group} gap="0">
+            <nldd-container padding-inline="12" padding-block="6">
+              <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {DATE_GROUP_LABELS[group]}
               </nldd-text>
-            </div>
+            </nldd-container>
 
             <nldd-list variant="simple" dividers="always" accessible-label={`Leads: ${DATE_GROUP_LABELS[group]}`}>
               {items.map((lead) => (
@@ -243,10 +241,10 @@ export function LeadInboxView({
                 />
               ))}
             </nldd-list>
-          </div>
+          </nldd-container>
         );
       })}
-    </div>
+    </nldd-container>
   );
 }
 
@@ -302,59 +300,65 @@ function LeadInboxRow({
       <nldd-list-item-segment ref={checkboxRef} checkbox checked={orUndef(selected)} accessible-label={`Selecteer ${lead.title}`} />
 
       <nldd-list-item-segment ref={openRef} button width="full" accessible-label={lead.title}>
-        <div className="text-left">
-          <span className="text-sm font-medium text-text truncate block w-full">{lead.title}</span>
-
-          {lead.description && (
-            <div className="text-xs text-text-secondary mt-1 line-clamp-2 break-words [&_p]:m-0 [&_p]:leading-snug">
-              <RichTextDisplay content={lead.description} fallback="" />
-            </div>
-          )}
-
-          <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-1 text-xs text-text-secondary">
-            {lead.brought_by && (
-              <span className="truncate max-w-[160px]">via {lead.brought_by.naam}</span>
-            )}
-            {lead.organization && (
-              <span className="truncate max-w-[160px]">
-                {lead.organisatie_eenheid?.naam ?? lead.organization}
-              </span>
-            )}
-            {lead.contact_names.length > 0 && (
-              <span className="inline-flex items-center gap-0.5 truncate max-w-[160px]" title={lead.contact_names.join(', ')}>
-                <nldd-icon name="users" size="16" aria-hidden="true" />
-                <span className="truncate">{lead.contact_names[0]}</span>
-                {lead.contact_names.length > 1 && (
-                  <span className="shrink-0">+{lead.contact_names.length - 1}</span>
-                )}
-              </span>
-            )}
-            {lead.next_action_date && (
-              <span className="inline-flex items-center gap-0.5">
-                <nldd-icon name="calendar" size="16" aria-hidden="true" />
-                {formatDateShort(lead.next_action_date)}
-              </span>
-            )}
-            {lead.attachment_count > 0 && (
-              <span className="inline-flex items-center gap-0.5">
-                <nldd-icon name="paperclip" size="16" aria-hidden="true" />
-                {lead.attachment_count}
-              </span>
-            )}
-            <span>{timeAgo(lead.created_at)}</span>
-          </div>
-
-          {lead.tags.length > 0 && (
-            <div className="flex gap-1 flex-wrap mt-1">
-              {lead.tags.slice(0, 4).map((tag) => (
-                <nldd-tag key={tag} text={tag} color="neutral" size="sm" />
-              ))}
-              {lead.tags.length > 4 && (
-                <nldd-text size="xs" color="secondary">+{lead.tags.length - 4}</nldd-text>
+        <nldd-text-cell text={lead.title}>
+          <span slot="supporting-text">
+            <nldd-container gap="4">
+              {lead.description && (
+                <nldd-text
+                  size="xs"
+                  color="secondary"
+                  style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                >
+                  <RichTextDisplay content={lead.description} fallback="" />
+                </nldd-text>
               )}
-            </div>
-          )}
-        </div>
+
+              <nldd-container layout="wrap" gap="4">
+                {lead.brought_by && (
+                  <nldd-text size="xs" color="secondary">via {lead.brought_by.naam}</nldd-text>
+                )}
+                {lead.organization && (
+                  <nldd-text size="xs" color="secondary">
+                    {lead.organisatie_eenheid?.naam ?? lead.organization}
+                  </nldd-text>
+                )}
+                {lead.contact_names.length > 0 && (
+                  <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content" title={lead.contact_names.join(', ')}>
+                    <nldd-icon name="users" size="16" aria-hidden="true" />
+                    <nldd-text size="xs" color="secondary">
+                      {lead.contact_names[0]}
+                      {lead.contact_names.length > 1 && ` +${lead.contact_names.length - 1}`}
+                    </nldd-text>
+                  </nldd-container>
+                )}
+                {lead.next_action_date && (
+                  <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content">
+                    <nldd-icon name="calendar" size="16" aria-hidden="true" />
+                    <nldd-text size="xs" color="secondary">{formatDateShort(lead.next_action_date)}</nldd-text>
+                  </nldd-container>
+                )}
+                {lead.attachment_count > 0 && (
+                  <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content">
+                    <nldd-icon name="paperclip" size="16" aria-hidden="true" />
+                    <nldd-text size="xs" color="secondary">{lead.attachment_count}</nldd-text>
+                  </nldd-container>
+                )}
+                <nldd-text size="xs" color="secondary">{timeAgo(lead.created_at)}</nldd-text>
+              </nldd-container>
+
+              {lead.tags.length > 0 && (
+                <nldd-container layout="wrap" gap="4">
+                  {lead.tags.slice(0, 4).map((tag) => (
+                    <nldd-tag key={tag} text={tag} color="neutral" size="sm" />
+                  ))}
+                  {lead.tags.length > 4 && (
+                    <nldd-text size="xs" color="secondary">+{lead.tags.length - 4}</nldd-text>
+                  )}
+                </nldd-container>
+              )}
+            </nldd-container>
+          </span>
+        </nldd-text-cell>
       </nldd-list-item-segment>
 
       <nldd-list-item-segment ref={claimRef} button disabled={orUndef(!canClaim)} accessible-label="Zelf oppakken">
