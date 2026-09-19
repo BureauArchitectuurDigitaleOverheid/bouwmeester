@@ -134,7 +134,7 @@ export function InboxPage() {
 
         {/* Quick stats */}
         <nldd-collection layout="grid" item-width="200px" gap="16">
-          <Card hoverable onClick={() => navigate('/corpus')}>
+          <Card actionLabel="Corpus nodes bekijken" onClick={() => navigate('/corpus')}>
             <nldd-container layout="row" gap="12" vertical-alignment="center">
               <nldd-icon name="network-structure" size="40" color="lintblauw" box />
               <nldd-container gap="0">
@@ -144,7 +144,7 @@ export function InboxPage() {
             </nldd-container>
           </Card>
 
-          <Card hoverable onClick={() => navigate('/tasks')}>
+          <Card actionLabel="Open taken bekijken" onClick={() => navigate('/tasks')}>
             <nldd-container layout="row" gap="12" vertical-alignment="center">
               <nldd-icon name="check-list" size="40" color="geel" box />
               <nldd-container gap="0">
@@ -154,7 +154,7 @@ export function InboxPage() {
             </nldd-container>
           </Card>
 
-          <Card hoverable onClick={() => navigate('/tasks')}>
+          <Card actionLabel="Achterstallige taken bekijken" onClick={() => navigate('/tasks')}>
             <nldd-container layout="row" gap="12" vertical-alignment="center">
               <nldd-icon name="chart-x-y-axis-line" size="40" color="robijnrood" box />
               <nldd-container gap="0">
@@ -165,7 +165,7 @@ export function InboxPage() {
           </Card>
 
           <Card
-            hoverable
+            actionLabel="Actief budget bekijken"
             onClick={() => {
               const params = currentPerson?.id ? `?verantwoordelijke_id=${currentPerson.id}` : '';
               navigate(`/opdrachten${params}`);
@@ -185,7 +185,7 @@ export function InboxPage() {
 
         {/* Manager stats card */}
         {managedEenheidId && visibleUnassignedCount > 0 && (
-          <Card hoverable onClick={() => navigate('/eenheid-overzicht')}>
+          <Card actionLabel="Onverdeelde taken verdelen" onClick={() => navigate('/eenheid-overzicht')}>
             <nldd-container layout="row" gap="12" vertical-alignment="center">
               <nldd-icon name="users" size="40" color="violet" box />
               <nldd-container gap="0" width="full">

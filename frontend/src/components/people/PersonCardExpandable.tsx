@@ -114,9 +114,25 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
         <PersonAvatar person={person} size="32" />
         <nldd-container width="full" style={{ minWidth: 0 }}>
           <nldd-container layout="row" gap="8" vertical-alignment="center">
-            <nldd-text size="sm" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {person.naam}
-            </nldd-text>
+            {/* The name is the disclosure control, not the card. The card
+                holds its own "copy e-mail" button, and a control inside a
+                button is invalid, so `nldd-card button` is not available here
+                — without this the whole card was mouse-only, with no tab stop
+                and nothing to announce. Clicking the card still toggles, as a
+                pointer convenience on top of a real control. */}
+            <button
+              type="button"
+              aria-expanded={expanded}
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded(!expanded);
+              }}
+              style={{ overflow: 'hidden', textAlign: 'left', minWidth: 0 }}
+            >
+              <nldd-text size="sm" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {person.naam}
+              </nldd-text>
+            </button>
             {person.is_agent && <Badge variant="purple">Agent</Badge>}
             {isManager && (() => {
               const label = managerLabel ?? 'Manager';

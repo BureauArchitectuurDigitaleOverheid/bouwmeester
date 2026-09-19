@@ -1,4 +1,5 @@
-import type { ReactNode, HTMLAttributes } from 'react';
+import { useRef, type ReactNode, type HTMLAttributes } from 'react';
+import { useNlddEvent } from '@/components/nldd/events';
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
@@ -6,17 +7,29 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
   footer?: ReactNode;
   hoverable?: boolean;
   padding?: boolean;
+  /**
+   * Names the action when the whole card is one control, which also makes it
+   * one: `nldd-card` gets its `button` attribute, and with it a real button in
+   * the shadow root, a tab stop, and Enter/Space.
+   *
+   * Leave it off when the card holds its own buttons. Nesting a control inside
+   * a button is invalid, and the inner control is what should be operable.
+   */
+  actionLabel?: string;
 }
 
 /**
  * `nldd-card` behind the previous API, so existing call sites are unchanged.
  *
- * `hoverable` used to mean "looks clickable". The card has a real `button`
- * attribute for that, which also gives it the keyboard and ARIA of a control —
- * but only when the whole card is genuinely one action. Several call sites put
- * their own buttons inside a hoverable card, and nesting controls would be
- * invalid, so this keeps `hoverable` purely visual and leaves the click handling
- * where it already is.
+ * `hoverable` is only the pointer cursor: it says "this looks clickable"
+ * without making it so. On its own that is a keyboard trap in the other
+ * direction — five stat tiles on the inbox page were clickable by mouse and
+ * unreachable by tab, with no role for a screen reader to announce.
+ *
+ * `actionLabel` is the honest version and is what a whole-card action should
+ * use. The two are separate because a card that contains buttons cannot become
+ * one, so the choice has to be made per call site rather than inferred from
+ * `onClick` being present.
  */
 export function Card({
   children,
@@ -24,17 +37,35 @@ export function Card({
   footer,
   hoverable = false,
   padding = true,
+  actionLabel,
   className,
   style,
+  onClick,
   ...props
 }: CardProps) {
+  // With `button`, the activation happens on a <button> inside the shadow root
+  // and surfaces as a composed click on the host, which React's onClick does
+  // not see. The listener goes on the element itself.
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(
+    ref,
+    'click',
+    actionLabel && onClick
+      ? (event) => onClick(event as unknown as React.MouseEvent<HTMLDivElement>)
+      : undefined,
+  );
+
   return (
     <nldd-card
+      ref={ref}
       className={className}
+      {...(actionLabel ? { button: true, 'accessible-label': actionLabel } : {})}
       // Merged, not replaced: `...props` spreading a caller's `style` after
       // this line would drop the pointer cursor, and setting it here without
-      // merging would drop the caller's.
-      style={{ ...(hoverable ? { cursor: 'pointer' } : {}), ...style }}
+      // merging would drop the caller's. With `button` the element brings its
+      // own cursor, so this only covers the visual-only case.
+      style={{ ...(hoverable && !actionLabel ? { cursor: 'pointer' } : {}), ...style }}
+      {...(actionLabel ? {} : { onClick })}
       {...props}
     >
       {header && <div slot="header">{header}</div>}

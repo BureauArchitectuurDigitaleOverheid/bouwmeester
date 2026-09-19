@@ -46,7 +46,10 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
   const isClickable = item.type === 'message' || !!item.task_id || !!item.node_id || !!item.lead_id;
 
   return (
-    <Card hoverable={isClickable} onClick={handleClick}>
+    <Card
+      {...(isClickable ? { actionLabel: `Openen: ${item.title}` } : {})}
+      onClick={handleClick}
+    >
       <nldd-container layout="row" gap="12" vertical-alignment="top">
         {/* A 32px square icon badge with a read/unread background: nldd-container
             has no fixed-height attribute (only width/min-width/max-width) and no
