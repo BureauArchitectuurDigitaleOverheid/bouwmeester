@@ -333,6 +333,15 @@ _DEFAULT_CONFIG = [
         "is_secret": True,
     },
     {
+        "key": "VLAM_API_URL",
+        "value": "",
+        "description": (
+            "VLAM-proxyadres. Leeg laten: de ZAD-dienst 'vlam' injecteert "
+            "dit zelf. Alleen invullen om dat platformadres te overrulen."
+        ),
+        "is_secret": False,
+    },
+    {
         "key": "VLAM_BASE_URL",
         "value": "",
         "description": (

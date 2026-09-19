@@ -47,6 +47,27 @@ class TestNormalize:
         raw = "https://api.demo.vlam.ai/v2.1/projects/poc/openai-compatible"
         assert normalize_vlam_base_url(raw) == f"{raw}/v1"
 
+    def test_hoofdletter_v1_wordt_niet_verdubbeld(self):
+        """``/V1`` is hetzelfde pad als ``/v1``.
+
+        Zou het hoofdlettergevoelig zijn, dan werd het ``/V1/v1`` en dat is
+        een 404 die er in de logs uitziet als een storing.
+        """
+        assert (
+            normalize_vlam_base_url("https://vlam-api.rijksweb.nl/V1")
+            == "https://vlam-api.rijksweb.nl/V1"
+        )
+
+    def test_v1_als_deel_van_langer_segment_telt_niet(self):
+        """``/apiv1`` en ``/v10`` zijn echt andere paden."""
+        assert normalize_vlam_base_url("https://h/apiv1") == "https://h/apiv1/v1"
+        assert normalize_vlam_base_url("https://h/v10") == "https://h/v10/v1"
+
+    def test_query_en_fragment_verdwijnen(self):
+        """Een base_url draagt geen query of fragment; de client plakt er
+        zelf een pad achter, dus die zouden middenin de URL belanden."""
+        assert normalize_vlam_base_url("https://h/v1?x=1#f") == "https://h/v1"
+
     def test_spaties_eromheen_storen_niet(self):
         assert normalize_vlam_base_url(f"  {PLATFORM_URL}  ") == f"{PLATFORM_URL}/v1"
 

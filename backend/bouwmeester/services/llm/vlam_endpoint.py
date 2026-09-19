@@ -52,7 +52,10 @@ def normalize_vlam_base_url(raw: str) -> str:
 
     path = parts.path.rstrip("/")
     segments = [s for s in path.split("/") if s]
-    if not segments or segments[-1] != _OPENAI_PATH_SUFFIX:
+    # Hoofdletter-ongevoelig vergelijken: een adres dat op ``/V1`` eindigt
+    # zou er anders een tweede ``/v1`` bij krijgen, en dat is een 404 die
+    # er in de logs uitziet als een storing.
+    if not segments or segments[-1].lower() != _OPENAI_PATH_SUFFIX:
         segments.append(_OPENAI_PATH_SUFFIX)
 
     rebuilt_path = "/" + "/".join(segments)
@@ -67,5 +70,9 @@ def resolve_vlam_base_url(platform_url: str, manual_url: str) -> str:
     verkeer toestaat. Een handmatige waarde kan blijven staan nadat de
     endpoint verhuisd is — precies wat er gebeurde toen de demo-omgeving
     verdween en de ingestelde URL naar een dode host bleef wijzen.
+
+    Toch overrulen kan: de caller leest ``VLAM_API_URL`` eerst uit AppConfig
+    (Beheer > Instellingen) en pas daarna uit de omgeving, dus een beheerder
+    die het platformadres wil vervangen zet die sleutel daar.
     """
     return normalize_vlam_base_url(platform_url) or normalize_vlam_base_url(manual_url)
