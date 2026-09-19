@@ -92,9 +92,17 @@ interface FilterChipsProps {
   onToggle: (type: SearchResultType) => void;
   allowedTypes?: SearchResultType[];
   className?: string;
+  /** Lets a caller place the group in a slot of its parent, e.g. a list's toolbar. */
+  slot?: string;
 }
 
-export function FilterChips({ activeTypes, onToggle, allowedTypes, className = '' }: FilterChipsProps) {
+export function FilterChips({
+  activeTypes,
+  onToggle,
+  allowedTypes,
+  className = '',
+  slot,
+}: FilterChipsProps) {
   const visibleTypes = allowedTypes ?? ALL_RESULT_TYPES;
   const ref = useRef<HTMLElement>(null);
 
@@ -110,7 +118,13 @@ export function FilterChips({ activeTypes, onToggle, allowedTypes, className = '
   useNlddEvent(ref, 'change', handleChange);
 
   return (
-    <nldd-toggle-button-group ref={ref} type="checkbox" size="sm" className={className}>
+    <nldd-toggle-button-group
+      ref={ref}
+      type="checkbox"
+      size="sm"
+      className={className}
+      {...(slot ? { slot } : {})}
+    >
       {visibleTypes.map((type) => (
         // `selected` means "you picked this one", so an empty filter leaves
         // every button unselected rather than marking them all. Treating "no

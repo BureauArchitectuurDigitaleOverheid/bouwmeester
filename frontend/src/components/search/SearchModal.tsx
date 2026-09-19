@@ -92,8 +92,12 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
       {/* Overlay */}
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Dialog */}
-      <div className="relative w-full max-w-2xl mx-4 rounded-2xl shadow-2xl overflow-hidden">
+      {/* Dialog.
+          `type="listbox"` already draws its own bordered, rounded surface with
+          the search field pinned above the options, so the wrapper only
+          positions it and adds the lift. Giving the wrapper a border and radius
+          of its own put a second line under the search field. */}
+      <div className="relative mx-4 w-full max-w-2xl shadow-2xl">
         <nldd-list
           ref={listRef}
           type="listbox"
@@ -101,9 +105,14 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
           height="50vh"
           accessible-label="Zoeken"
         >
-          <div slot="toolbar" className="px-5 pb-3">
-            <FilterChips activeTypes={activeTypes} onToggle={toggleType} allowedTypes={allowedTypes} />
-          </div>
+          {/* The toolbar slot lays its own children out (row, wrap, gap) and
+              sits inside the list's padding, so it needs no wrapper of its own. */}
+          <FilterChips
+            slot="toolbar"
+            activeTypes={activeTypes}
+            onToggle={toggleType}
+            allowedTypes={allowedTypes}
+          />
 
           {/* Zero rows always routes here (never `no-results`, which is only for
               rows hidden by client-side filtering — this search is server-driven
