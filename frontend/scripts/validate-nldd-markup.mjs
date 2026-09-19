@@ -83,6 +83,15 @@ for (const file of files) {
 
     // Nothing here; slots are checked against their real parent below.
 
+    // `class` instead of `className`. The generated types allow `class`,
+    // because a custom element really does take that attribute, but React does
+    // not apply it: it is not in React's known-attribute list for this element,
+    // so it lands nowhere and the styling silently does nothing. An agent hit
+    // this with `class="hidden sm:flex"`, which meant the element never hid.
+    if (/\bclass="/.test(attrText)) {
+      problems.push(`${rel}:${line} ${tag} uses class="…"; React needs className`);
+    }
+
     // Icon names, where they are written as a literal.
     for (const attr of ['name', 'icon', 'start-icon', 'end-icon']) {
       const im = attrText.match(new RegExp(`\\b${attr}="([a-z0-9-]+)"`));

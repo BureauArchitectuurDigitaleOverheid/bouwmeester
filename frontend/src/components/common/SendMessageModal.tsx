@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useSendMessage } from '@/hooks/useNotifications';
@@ -12,6 +12,14 @@ interface SendMessageModalProps {
   recipient: Person;
 }
 
+/**
+ * Uses the shared Modal rather than its own overlay.
+ *
+ * This file used to rebuild the whole thing: a fixed backdrop with its own
+ * z-index, a header with its own close button, a footer, and the blur. All of
+ * that is nldd-window through Modal, which also brings the focus trap and the
+ * Escape handling that this version never had.
+ */
 export function SendMessageModal({ open, onClose, recipient }: SendMessageModalProps) {
   const [text, setText] = useState('');
   const { currentPerson } = useCurrentPerson();
@@ -41,56 +49,46 @@ export function SendMessageModal({ open, onClose, recipient }: SendMessageModalP
     );
   }
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative w-full max-w-lg mx-4 bg-surface rounded-2xl shadow-xl border border-border animate-in fade-in zoom-in-95 flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <h2 className="text-lg font-semibold text-text">{title}</h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="px-6 py-4 flex-1">
-          <RichTextEditor
-            value={text}
-            onChange={setText}
-            placeholder={isAgent ? 'Typ je prompt... Gebruik @ voor personen, # voor nodes' : 'Typ je bericht... Gebruik @ voor personen, # voor nodes'}
-            rows={8}
-            autoFocus
-          />
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-border shrink-0">
-          <span className="text-xs text-text-secondary">
-            {currentPerson ? `Van: ${currentPerson.naam}` : 'Selecteer eerst een persoon'}
-          </span>
-          <div className="flex items-center gap-3">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      size="lg"
+      footer={
+        <nldd-container layout="row" gap="12" vertical-alignment="center" width="full">
+          <nldd-container width="full">
+            <nldd-text size="xs" color="secondary">
+              {currentPerson ? `Van: ${currentPerson.naam}` : 'Selecteer eerst een persoon'}
+            </nldd-text>
+          </nldd-container>
+          <nldd-container layout="row" gap="12" width="fit-content">
             <Button variant="secondary" onClick={onClose}>
               Annuleren
             </Button>
             <Button
               variant="primary"
               onClick={handleSend}
-              disabled={!text.trim() || sendMessage.isPending || !currentPerson}
+              loading={sendMessage.isPending}
+              disabled={!text.trim() || !currentPerson}
             >
-              {sendMessage.isPending ? 'Versturen...' : 'Versturen'}
+              Versturen
             </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+          </nldd-container>
+        </nldd-container>
+      }
+    >
+      <RichTextEditor
+        value={text}
+        onChange={setText}
+        placeholder={
+          isAgent
+            ? 'Typ je prompt... Gebruik @ voor personen, # voor nodes'
+            : 'Typ je bericht... Gebruik @ voor personen, # voor nodes'
+        }
+        rows={8}
+        autoFocus
+      />
+    </Modal>
   );
 }

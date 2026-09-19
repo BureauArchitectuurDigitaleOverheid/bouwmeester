@@ -53,10 +53,33 @@ const files = [];
   }
 })(root);
 
+/**
+ * Files allowed to name colors literally.
+ *
+ * The graph canvases hand their colors to reactflow and to raw SVG, which paint
+ * outside the cascade and cannot read a custom property off an ancestor. Those
+ * were excluded from the migration for the same reason.
+ */
+const LITERAL_COLOR_OK = /(graph|reactflow|mermaid)/i;
+
 const problems = [];
 for (const file of files) {
   const source = readFileSync(file, 'utf8');
   const rel = path.relative(path.resolve(import.meta.dirname, '..'), file);
+
+  // A hard-coded color in an inline style. The token check above cannot see
+  // these: there is no var() to be wrong about, so a color simply sits there
+  // and never follows the theme. Moving a Tailwind class into a style object
+  // with the same literal value lowers the className count and changes
+  // nothing, which is how several of these got written.
+  if (!LITERAL_COLOR_OK.test(rel)) {
+    for (const m of source.matchAll(
+      /\b(background|backgroundColor|color|borderColor|outlineColor|fill|stroke)\s*:\s*'(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/g,
+    )) {
+      const line = source.slice(0, m.index).split('\n').length;
+      problems.push(`${rel}:${line} ${m[1]} is a literal color; use a design-system token`);
+    }
+  }
   for (const m of source.matchAll(/var\(\s*(--(?:primitives|semantics|components)-[a-z0-9-]*)/g)) {
     const name = m[1];
     if (defined.has(name)) continue;
@@ -71,7 +94,10 @@ for (const file of files) {
 if (problems.length) {
   console.error(`\n${problems.length} unknown design-system token(s):\n`);
   for (const p of problems) console.error(`  ${p}`);
-  console.error('\nAn undefined custom property renders nothing, silently.\n');
+  console.error(
+    '\nAn undefined custom property renders nothing, silently; a literal color\n' +
+      'renders fine and then never follows the theme.\n',
+  );
   process.exit(1);
 }
 

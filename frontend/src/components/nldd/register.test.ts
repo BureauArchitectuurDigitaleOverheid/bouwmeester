@@ -15,7 +15,20 @@ import { describe, it, expect } from 'vitest';
  * than imported separately, because importing them is not wrong, just noise.
  */
 
-/** Elements that a parent module registers, verified in a browser. */
+/**
+ * Elements that a parent module registers, verified in a browser.
+ *
+ * Read the parent's TEMPLATE, not just its component file, before adding a row
+ * here. token-field.js imports menu.js and nothing else, which makes it look
+ * like nldd-token is unregistered; the import sits in token-field.template.js,
+ * which pulls in content/token/token.js and that is where
+ * customElement('nldd-token') runs. An agent flagged nldd-token as missing on
+ * the strength of the component file alone, and the chain turned out to be
+ * fine.
+ *
+ * A wrong row here is worse than a missing import, because it exempts the tag
+ * from the one check that would have caught it.
+ */
 const REGISTERED_BY_PARENT: Record<string, string> = {
   'nldd-table-row': 'table',
   'nldd-menu-item': 'menu',
@@ -30,6 +43,8 @@ const REGISTERED_BY_PARENT: Record<string, string> = {
   'nldd-segmented-control-item': 'segmented-control',
   'nldd-step-indicator-item': 'step-indicator',
   'nldd-button-bar-divider': 'button-bar',
+  'nldd-toolbar-item': 'toolbar',
+  'nldd-toolbar-title': 'toolbar',
   'nldd-split-view-divider': 'split-view-pane',
   'nldd-page-footer-legal-bar': 'page-footer',
   'nldd-page-footer-legal-bar-item': 'page-footer',

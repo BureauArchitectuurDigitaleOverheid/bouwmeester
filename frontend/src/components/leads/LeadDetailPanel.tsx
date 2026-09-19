@@ -42,16 +42,15 @@ import { isOverdue, formatDateLong, timeAgo } from '@/utils/dates';
 import {
   LeadStage,
   LEAD_STAGE_LABELS,
-  LEAD_STAGE_COLORS,
   LEAD_STAGE_ORDER,
   LeadActivityType,
   LEAD_ACTIVITY_TYPE_LABELS,
   INITIATIEF_COLORS,
   LEAD_CONTACT_ROL_LABELS,
   ENGAGEMENT_TYPE_LABELS,
-  ENGAGEMENT_TYPE_COLORS,
 } from '@/types';
 import type { LeadUpdate, LeadActivityCreate, EngagementType, LeadAttachment } from '@/types';
+import { stageTagColor, engagementTagColor } from './stageColors';
 
 /** Stages where a lead can publicly appear; mirrors the backend filter in
  *  public_initiatief.py — keep in sync. */
@@ -320,22 +319,22 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       entityLabel="Lead"
       footer={
         editing ? (
-          <div className="flex items-center justify-end gap-2">
+          <nldd-container layout="row" gap="8" horizontal-alignment="right">
             <Button variant="ghost" onClick={() => setEditing(false)}>Annuleren</Button>
             <Button onClick={saveEdit} loading={updateLead.isPending}>Opslaan</Button>
-          </div>
+          </nldd-container>
         ) : (
           <DetailModalFooter
             onClose={onClose}
             actions={
-              <div className="flex items-center gap-2">
+              <nldd-container layout="row" gap="8">
                 <Button variant="secondary" size="sm" icon="pencil" onClick={startEditing} disabled={!lead}>
                   Bewerken
                 </Button>
                 <Button variant="danger" size="sm" icon="trash" onClick={handleDelete} disabled={!lead}>
                   Verwijderen
                 </Button>
-              </div>
+              </nldd-container>
             }
           />
         )
@@ -344,70 +343,64 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
       {isLoading ? (
         <LoadingSpinner className="py-8" />
       ) : !lead ? (
-        <div className="flex items-center justify-center py-8 text-text-secondary text-sm">
-          Lead niet gevonden.
-        </div>
+        <nldd-container horizontal-alignment="center" padding="32">
+          <nldd-text size="sm" color="secondary">Lead niet gevonden.</nldd-text>
+        </nldd-container>
       ) : editing ? (
         /* Edit mode */
-        <div className="space-y-4">
+        <nldd-container gap="16">
           <Input label="Titel" type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <CreatableSelect
-                label="Stage"
-                value={editStage}
-                onChange={(v) => setEditStage(v as LeadStage)}
-                options={LEAD_STAGE_ORDER.map((s) => ({
-                  value: s,
-                  label: LEAD_STAGE_LABELS[s],
-                }))}
-                placeholder="Selecteer stage..."
-                searchable={false}
-              />
-            </div>
-            <div>
-              <CreatableSelect
-                label="Toegewezen aan"
-                value={editAssignee}
-                onChange={setEditAssignee}
-                options={[
-                  { value: '', label: 'Niet toegewezen' },
-                  ...(people?.map((p) => ({
-                    value: p.id,
-                    label: p.naam,
-                    description: p.functie ?? undefined,
-                  })) ?? []),
-                ]}
-                placeholder="Zoek een persoon..."
-                onCreate={async (name) => {
-                  const result = await createPerson.mutateAsync({ naam: name, force: true });
-                  return result?.id ?? null;
-                }}
-                createLabel="Nieuwe persoon aanmaken"
-                onClear={editAssignee ? () => setEditAssignee('') : undefined}
-              />
-            </div>
-          </div>
-          <Input label="Organisatie" type="text" value={editOrganization} onChange={(e) => setEditOrganization(e.target.value)} autoComplete="organization" />
-          <div>
+          <nldd-container layout="grid" column-count={2} gap="16">
             <CreatableSelect
-              label="Initiatief"
-              value={editInitiatiefId}
-              onChange={setEditInitiatiefId}
-              options={[
-                { value: '', label: 'Geen initiatief' },
-                ...(initiatieven?.map((i) => ({ value: i.id, label: i.naam })) ?? []),
-              ]}
-              placeholder="Selecteer initiatief..."
-              onClear={editInitiatiefId ? () => setEditInitiatiefId('') : undefined}
-              onCreate={async (name) => {
-                const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
-                const result = await createInitiatief.mutateAsync({ naam: name, kleur });
-                return result.id;
-              }}
-              createLabel="Nieuw initiatief"
+              label="Stage"
+              value={editStage}
+              onChange={(v) => setEditStage(v as LeadStage)}
+              options={LEAD_STAGE_ORDER.map((s) => ({
+                value: s,
+                label: LEAD_STAGE_LABELS[s],
+              }))}
+              placeholder="Selecteer stage..."
+              searchable={false}
             />
-          </div>
+            <CreatableSelect
+              label="Toegewezen aan"
+              value={editAssignee}
+              onChange={setEditAssignee}
+              options={[
+                { value: '', label: 'Niet toegewezen' },
+                ...(people?.map((p) => ({
+                  value: p.id,
+                  label: p.naam,
+                  description: p.functie ?? undefined,
+                })) ?? []),
+              ]}
+              placeholder="Zoek een persoon..."
+              onCreate={async (name) => {
+                const result = await createPerson.mutateAsync({ naam: name, force: true });
+                return result?.id ?? null;
+              }}
+              createLabel="Nieuwe persoon aanmaken"
+              onClear={editAssignee ? () => setEditAssignee('') : undefined}
+            />
+          </nldd-container>
+          <Input label="Organisatie" type="text" value={editOrganization} onChange={(e) => setEditOrganization(e.target.value)} autoComplete="organization" />
+          <CreatableSelect
+            label="Initiatief"
+            value={editInitiatiefId}
+            onChange={setEditInitiatiefId}
+            options={[
+              { value: '', label: 'Geen initiatief' },
+              ...(initiatieven?.map((i) => ({ value: i.id, label: i.naam })) ?? []),
+            ]}
+            placeholder="Selecteer initiatief..."
+            onClear={editInitiatiefId ? () => setEditInitiatiefId('') : undefined}
+            onCreate={async (name) => {
+              const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
+              const result = await createInitiatief.mutateAsync({ naam: name, kleur });
+              return result.id;
+            }}
+            createLabel="Nieuw initiatief"
+          />
           <Input label="Volgende actie" type="text" value={editNextAction} onChange={(e) => setEditNextAction(e.target.value)} />
           <Input label="Actiedatum" type="date" value={editNextActionDate} onChange={(e) => setEditNextActionDate(e.target.value)} />
           <Input
@@ -427,17 +420,19 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             const labelPositie =
               selectedInit.score_positie_label || 'Positie / omgeving';
             return (
-              <div className="space-y-3 rounded-lg border border-border p-3 bg-gray-50/50">
-                <nldd-text size="xs" weight="medium" color="secondary" className="uppercase tracking-wider">
-                  Funnel-afweging
-                </nldd-text>
-                <EngagementTypeDropdown value={editEngagementType} onChange={setEditEngagementType} />
-                <div className="grid grid-cols-3 gap-2">
-                  <ScoreDropdown label={labelStrategisch} value={editScoreStrategisch} onChange={setEditScoreStrategisch} />
-                  <ScoreDropdown label={labelPolitiek} value={editScorePolitiek} onChange={setEditScorePolitiek} />
-                  <ScoreDropdown label={labelPositie} value={editScorePositie} onChange={setEditScorePositie} />
-                </div>
-              </div>
+              <nldd-card background="tinted">
+                <nldd-container gap="12" padding="12">
+                  <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Funnel-afweging
+                  </nldd-text>
+                  <EngagementTypeDropdown value={editEngagementType} onChange={setEditEngagementType} />
+                  <nldd-container layout="grid" column-count={3} gap="8">
+                    <ScoreDropdown label={labelStrategisch} value={editScoreStrategisch} onChange={setEditScoreStrategisch} />
+                    <ScoreDropdown label={labelPolitiek} value={editScorePolitiek} onChange={setEditScorePolitiek} />
+                    <ScoreDropdown label={labelPositie} value={editScorePositie} onChange={setEditScorePositie} />
+                  </nldd-container>
+                </nldd-container>
+              </nldd-card>
             );
           })()}
           {(() => {
@@ -449,42 +444,44 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               stage: editStage,
             });
             return (
-              <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <nldd-text size="xs" weight="medium" color="success" className="uppercase tracking-wider">
-                    Publicatie op /c/{linkedInit.slug}
+              <nldd-card background="tinted">
+                <nldd-container gap="12" padding="12">
+                  <nldd-container layout="row" gap="8" vertical-alignment="center">
+                    <nldd-text size="xs" weight="medium" color="success" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Publicatie op /c/{linkedInit.slug}
+                    </nldd-text>
+                    <PublicVisibleSwitch checked={editPublicVisible} onChange={setEditPublicVisible} />
+                  </nldd-container>
+                  {editPublicVisible && !status.visible && (
+                    <nldd-inline-dialog
+                      variant="alert"
+                      size="md"
+                      text="Nog niet zichtbaar"
+                      supporting-text={status.reason ?? undefined}
+                    />
+                  )}
+                  <nldd-text size="xs" color="secondary">
+                    Schrijf een externe titel en samenvatting. Alleen die tekst
+                    verschijnt op de publieke pagina, nooit het interne titel- of
+                    beschrijvingsveld.
                   </nldd-text>
-                  <PublicVisibleSwitch checked={editPublicVisible} onChange={setEditPublicVisible} />
-                </div>
-                {editPublicVisible && !status.visible && (
-                  <nldd-inline-dialog
-                    variant="alert"
-                    size="md"
-                    text="Nog niet zichtbaar"
-                    supporting-text={status.reason ?? undefined}
+                  <Input
+                    label="Publieke titel"
+                    type="text"
+                    value={editPublicTitle}
+                    onChange={(e) => setEditPublicTitle(e.target.value)}
+                    placeholder="Bijv. 'Pilot bij Gemeente Utrecht'"
                   />
-                )}
-                <nldd-text size="xs" color="secondary">
-                  Schrijf een externe titel en samenvatting. Alleen die tekst
-                  verschijnt op de publieke pagina, nooit het interne titel- of
-                  beschrijvingsveld.
-                </nldd-text>
-                <Input
-                  label="Publieke titel"
-                  type="text"
-                  value={editPublicTitle}
-                  onChange={(e) => setEditPublicTitle(e.target.value)}
-                  placeholder="Bijv. 'Pilot bij Gemeente Utrecht'"
-                />
-                <nldd-form-field label="Publieke samenvatting">
-                  <PublicSummaryField value={editPublicSummary} onChange={setEditPublicSummary} />
-                </nldd-form-field>
-                <nldd-text size="xs" color="secondary">
-                  Verschijnt alleen als de stage actief is (eerste gesprek, interne
-                  check, follow-up of in the pocket) én "Publiek tonen" aan staat én
-                  de titel ingevuld is.
-                </nldd-text>
-              </div>
+                  <nldd-form-field label="Publieke samenvatting">
+                    <PublicSummaryField value={editPublicSummary} onChange={setEditPublicSummary} />
+                  </nldd-form-field>
+                  <nldd-text size="xs" color="secondary">
+                    Verschijnt alleen als de stage actief is (eerste gesprek, interne
+                    check, follow-up of in the pocket) én "Publiek tonen" aan staat én
+                    de titel ingevuld is.
+                  </nldd-text>
+                </nldd-container>
+              </nldd-card>
             );
           })()}
           <RichTextFormField
@@ -493,33 +490,37 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             onChange={setEditDescription}
             rows={5}
           />
-        </div>
+        </nldd-container>
       ) : (
         /* View mode */
-        <div className="space-y-5">
-          {/* Stage badge + next action.
-              LEAD_STAGE_COLORS is a raw Tailwind chip class per lead stage
-              (7 stages), not one of the five semantic roles, and src/types is
-              off-limits to edit — kept as a styled span, same call as
-              LeadMetricsBar/LeadListView. */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${LEAD_STAGE_COLORS[lead.stage]}`}>
-              {LEAD_STAGE_LABELS[lead.stage]}
-            </span>
+        <nldd-container gap="20">
+          {/* Stage badge + next action */}
+          <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+            <nldd-tag text={LEAD_STAGE_LABELS[lead.stage]} color={stageTagColor(lead.stage)} size="sm" />
             {lead.next_action_date && (
-              <span className={`inline-flex items-center gap-1 text-sm ${overdue ? 'text-red-600 font-medium bg-red-50 rounded-md px-2 py-0.5' : 'text-text-secondary'}`}>
+              <nldd-container
+                layout="row"
+                gap="4"
+                vertical-alignment="center"
+                width="fit-content"
+                padding="2"
+                padding-inline="8"
+                style={overdue ? { backgroundColor: 'var(--primitives-color-critical-25)', borderRadius: '6px' } : undefined}
+              >
                 <nldd-icon name="calendar" size="16" aria-hidden="true" />
-                {formatDateLong(lead.next_action_date)}
-              </span>
+                <nldd-text size="sm" color={overdue ? 'critical' : 'secondary'} weight={overdue ? 'medium' : 'regular'}>
+                  {formatDateLong(lead.next_action_date)}
+                </nldd-text>
+              </nldd-container>
             )}
-          </div>
+          </nldd-container>
 
           {/* Description */}
           {lead.description && (
             <DetailSection title="Beschrijving">
-              <div className="text-sm text-text">
+              <nldd-text size="sm">
                 <RichTextDisplay content={lead.description} />
-              </div>
+              </nldd-text>
             </DetailSection>
           )}
 
@@ -533,31 +534,41 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               {
                 label: 'Toegewezen aan',
                 value: lead.assignee ? (
-                  <span className="inline-flex items-center gap-1.5 text-text">
+                  <nldd-container layout="row" gap="6" vertical-alignment="center" width="fit-content">
                     <Icon name="person" size="md" />
-                    {lead.assignee.naam}
-                  </span>
+                    <nldd-text size="sm">{lead.assignee.naam}</nldd-text>
+                  </nldd-container>
                 ) : (
-                  <span className="text-text-secondary">Niet toegewezen</span>
+                  <nldd-text size="sm" color="secondary">Niet toegewezen</nldd-text>
                 ),
               },
               {
                 label: 'Binnengebracht door',
                 value: lead.brought_by ? (
-                  <span className="inline-flex items-center gap-1.5 text-text">
+                  <nldd-container layout="row" gap="6" vertical-alignment="center" width="fit-content">
                     <Icon name="person" size="md" />
-                    {lead.brought_by.naam}
-                  </span>
+                    <nldd-text size="sm">{lead.brought_by.naam}</nldd-text>
+                  </nldd-container>
                 ) : (
-                  <span className="text-text-secondary">Onbekend</span>
+                  <nldd-text size="sm" color="secondary">Onbekend</nldd-text>
                 ),
               },
               {
                 label: 'Initiatief',
+                // Per-initiatief color is an arbitrary hex on the record, not
+                // one of nldd-tag's closed color names — stays a styled span
+                // (same call as the initiatief chip in LeadListView).
                 value: lead.initiatief ? (
                   <span
-                    className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                    style={{ backgroundColor: lead.initiatief.kleur || '#6B7280' }}
+                    style={{
+                      display: 'inline-block',
+                      borderRadius: '9999px',
+                      padding: '2px 8px',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      color: 'white',
+                      backgroundColor: lead.initiatief.kleur || '#6B7280',
+                    }}
                   >
                     {lead.initiatief.naam}
                   </span>
@@ -596,31 +607,28 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             ] as const;
             return (
               <DetailSection title="Funnel-afweging">
-                <div className="space-y-2">
+                <nldd-container gap="8">
                   {lead.engagement_type && (
-                    <div className="text-sm">
-                      <span className="text-text-secondary">Engagement: </span>
-                      {/* ENGAGEMENT_TYPE_COLORS is a raw Tailwind chip class in
-                          src/types (off-limits to edit), not one of the five
-                          semantic roles — kept as a styled span. */}
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ENGAGEMENT_TYPE_COLORS[lead.engagement_type]}`}
-                      >
-                        {ENGAGEMENT_TYPE_LABELS[lead.engagement_type]}
-                      </span>
-                    </div>
+                    <nldd-container layout="row" gap="6" vertical-alignment="center">
+                      <nldd-text size="sm" color="secondary">Engagement:</nldd-text>
+                      <nldd-tag
+                        text={ENGAGEMENT_TYPE_LABELS[lead.engagement_type]}
+                        color={engagementTagColor(lead.engagement_type)}
+                        size="sm"
+                      />
+                    </nldd-container>
                   )}
-                  <div className="grid grid-cols-3 gap-2 text-sm">
+                  <nldd-container layout="grid" column-count={3} gap="8">
                     {labels.map(([label, value], idx) => (
-                      <div key={idx} className="text-text">
+                      <nldd-container key={idx} gap="2">
                         <nldd-text size="xs" color="secondary">{label}</nldd-text>
-                        <div className="font-medium">
+                        <nldd-text size="sm" weight="medium">
                           {value != null ? `${value}/5` : '—'}
-                        </div>
-                      </div>
+                        </nldd-text>
+                      </nldd-container>
                     ))}
-                  </div>
-                </div>
+                  </nldd-container>
+                </nldd-container>
               </DetailSection>
             );
           })()}
@@ -639,9 +647,12 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             });
             return (
               <DetailSection title="Publicatie">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
+                <nldd-container gap="8">
+                  <nldd-container layout="wrap" gap="8" vertical-alignment="center">
                     {status.visible ? (
+                      // `group-hover:underline` needs a real CSS group-hover
+                      // selector (the underline lives on a nested span, not
+                      // the link itself) — no nldd-* equivalent, kept as-is.
                       <a
                         href={`/c/${linkedInit.slug}`}
                         target="_blank"
@@ -658,26 +669,24 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                     ) : (
                       <Badge variant="gray">Niet zichtbaar</Badge>
                     )}
-                  </div>
+                  </nldd-container>
                   {!status.visible && status.reason && (
                     <nldd-text size="xs" color="secondary">
                       {status.reason}
                     </nldd-text>
                   )}
                   {lead.public_title && (
-                    <div className="text-sm">
-                      <span className="text-text-secondary">Publieke titel: </span>
-                      <span className="text-text font-medium">
-                        {lead.public_title}
-                      </span>
-                    </div>
+                    <nldd-container layout="row" gap="4">
+                      <nldd-text size="sm" color="secondary">Publieke titel:</nldd-text>
+                      <nldd-text size="sm" weight="medium">{lead.public_title}</nldd-text>
+                    </nldd-container>
                   )}
                   {lead.public_summary && (
-                    <nldd-text size="sm" color="secondary" className="whitespace-pre-wrap block">
+                    <nldd-text size="sm" color="secondary" style={{ whiteSpace: 'pre-wrap', display: 'block' }}>
                       {lead.public_summary}
                     </nldd-text>
                   )}
-                </div>
+                </nldd-container>
               </DetailSection>
             );
           })()}
@@ -687,11 +696,11 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
           {/* Tags */}
           {(leadTags ?? []).length > 0 && (
             <DetailSection title="Tags">
-              <div className="flex flex-wrap gap-1.5">
+              <nldd-container layout="wrap" gap="6">
                 {(leadTags ?? []).map((lt) => (
                   <Badge key={lt.id} variant="gray">{lt.tag.name}</Badge>
                 ))}
-              </div>
+              </nldd-container>
             </DetailSection>
           )}
 
@@ -702,11 +711,11 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             count={lead.attachments.length}
             separated
             action={
-              <label className="cursor-pointer">
+              <label style={{ cursor: 'pointer' }}>
                 <input
                   type="file"
                   multiple
-                  className="hidden"
+                  hidden
                   ref={fileInputRef}
                   onChange={handleFileUpload}
                 />
@@ -805,7 +814,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
             separated
           >
             {/* Add activity form */}
-            <div className="space-y-2 mb-4">
+            <nldd-container gap="8" padding-bottom="16">
               <RichTextEditor
                 value={activityContent}
                 onChange={setActivityContent}
@@ -813,7 +822,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 rows={2}
               />
               {activityType === LeadActivityType.EVALUATIE && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <nldd-container layout="grid" column-count={1} sm-column-count={2} gap="8">
                   <ActivityTextArea
                     value={activityUitkomst}
                     onChange={setActivityUitkomst}
@@ -826,10 +835,10 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                     placeholder="Vervolgacties / wat moet er nu gebeuren..."
                     accessibleLabel="Vervolgacties"
                   />
-                </div>
+                </nldd-container>
               )}
-              <div className="flex items-center gap-2">
-                <div className="w-36">
+              <nldd-container layout="row" gap="8" vertical-alignment="center">
+                <nldd-container width="fit-content" min-width="144px">
                   <CreatableSelect
                     value={activityType}
                     onChange={(v) => setActivityType(v as LeadActivityType)}
@@ -839,7 +848,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                     placeholder="Type..."
                     searchable={false}
                   />
-                </div>
+                </nldd-container>
                 <Button
                   size="sm"
                   onClick={handleAddActivity}
@@ -848,26 +857,43 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 >
                   Toevoegen
                 </Button>
-              </div>
-            </div>
+              </nldd-container>
+            </nldd-container>
 
             {/* Activity list */}
             {lead.activities.length > 0 ? (
-              <div className="space-y-3">
+              <nldd-container gap="12">
                 {[...lead.activities].reverse().map((activity) => {
                   const canDelete =
                     !!person &&
                     (person.is_admin ||
                       (person.id !== null && activity.author_id === person.id));
                   return (
-                  <div key={activity.id} className="group flex gap-2.5">
-                    <div className="mt-0.5 flex items-center justify-center h-6 w-6 rounded-full bg-gray-100 text-text-secondary shrink-0">
+                  // `group`/`group-hover` reveals the delete icon-button only
+                  // on hover or keyboard focus of this row — real CSS-group
+                  // behavior, no nldd-* equivalent, kept as a narrow className
+                  // on the row and the button.
+                  <div key={activity.id} className="group" style={{ display: 'flex', gap: '10px' }}>
+                    <div
+                      style={{
+                        marginTop: '2px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '24px',
+                        width: '24px',
+                        borderRadius: '9999px',
+                        backgroundColor: 'var(--primitives-color-neutral-100)',
+                        color: 'var(--primitives-color-neutral-600)',
+                        flexShrink: 0,
+                      }}
+                    >
                       <nldd-icon name={ACTIVITY_ICONS[activity.activity_type]} size="16" aria-hidden="true" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 text-xs text-text-secondary">
+                    <nldd-container gap="2" width="full">
+                      <nldd-container layout="row" gap="8" vertical-alignment="center">
                         {activity.author_naam && (
-                          <span className="font-medium text-text">{activity.author_naam}</span>
+                          <nldd-text size="xs" weight="medium">{activity.author_naam}</nldd-text>
                         )}
                         <Badge variant="gray">
                           {LEAD_ACTIVITY_TYPE_LABELS[activity.activity_type]}
@@ -875,11 +901,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                         {activity.metadata_?.source === 'mattermost' && (
                           (() => {
                             const permalink = activity.metadata_?.mm_permalink;
-                            const badge = (
-                              <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
-                                via Mattermost
-                              </span>
-                            );
+                            const badge = <nldd-tag text="via Mattermost" color="lintblauw" size="sm" />;
                             return typeof permalink === 'string' ? (
                               <a
                                 href={permalink}
@@ -892,7 +914,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                             ) : badge;
                           })()
                         )}
-                        <span>{timeAgo(activity.created_at)}</span>
+                        <nldd-text size="xs" color="secondary">{timeAgo(activity.created_at)}</nldd-text>
                         {canDelete && (
                           <NlddIconButton
                             icon="trash"
@@ -903,39 +925,43 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                             className="ml-auto sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
                           />
                         )}
-                      </div>
-                      <div className="mt-0.5">
+                      </nldd-container>
+                      <nldd-text size="sm">
                         <RichTextDisplay content={activity.content} fallback="" />
-                      </div>
+                      </nldd-text>
                       {(activity.uitkomst || activity.vervolgacties) && (
-                        <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <nldd-container layout="grid" column-count={1} sm-column-count={2} gap="8" padding-top="6">
                           {activity.uitkomst && (
-                            <div className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-1.5 text-xs">
-                              <nldd-text size="xs" weight="medium" color="success" className="block mb-0.5">
-                                Uitkomst
-                              </nldd-text>
-                              <div className="text-text whitespace-pre-wrap">
-                                {activity.uitkomst}
-                              </div>
-                            </div>
+                            <nldd-card background="tinted">
+                              <nldd-container gap="2" padding="8">
+                                <nldd-text size="xs" weight="medium" color="success">
+                                  Uitkomst
+                                </nldd-text>
+                                <nldd-text size="xs" style={{ whiteSpace: 'pre-wrap' }}>
+                                  {activity.uitkomst}
+                                </nldd-text>
+                              </nldd-container>
+                            </nldd-card>
                           )}
                           {activity.vervolgacties && (
-                            <div className="rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5 text-xs">
-                              <nldd-text size="xs" weight="medium" color="warning" className="block mb-0.5">
-                                Vervolgacties
-                              </nldd-text>
-                              <div className="text-text whitespace-pre-wrap">
-                                {activity.vervolgacties}
-                              </div>
-                            </div>
+                            <nldd-card background="tinted">
+                              <nldd-container gap="2" padding="8">
+                                <nldd-text size="xs" weight="medium" color="warning">
+                                  Vervolgacties
+                                </nldd-text>
+                                <nldd-text size="xs" style={{ whiteSpace: 'pre-wrap' }}>
+                                  {activity.vervolgacties}
+                                </nldd-text>
+                              </nldd-container>
+                            </nldd-card>
                           )}
-                        </div>
+                        </nldd-container>
                       )}
-                    </div>
+                    </nldd-container>
                   </div>
                   );
                 })}
-              </div>
+              </nldd-container>
             ) : (
               <nldd-text size="sm" color="secondary">Nog geen activiteiten</nldd-text>
             )}
@@ -948,19 +974,32 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               parentZIndex={zIndex}
             />
           </DetailSection>
-        </div>
+        </nldd-container>
       )}
     </Modal>
 
     {lightboxSrc && (
       <div
-        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'var(--semantics-overlays-backdrop-color)',
+        }}
         onClick={() => setLightboxSrc(null)}
       >
         <img
           src={lightboxSrc.src}
           alt={lightboxSrc.alt}
-          className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-xl"
+          style={{
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            borderRadius: '12px',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)',
+          }}
           onClick={(e) => e.stopPropagation()}
         />
       </div>
@@ -1120,21 +1159,27 @@ function AttachmentRow({ attachment: att, downloadUrl, onDelete, onZoom }: Attac
 
   return (
     <nldd-list-item>
-      <div className={`w-full space-y-2 px-1 py-1 ${!att.bestand_beschikbaar ? 'opacity-50' : ''}`}>
-        <div className="flex items-center gap-2">
+      <nldd-container width="full" gap="8" padding="4" style={{ opacity: att.bestand_beschikbaar ? 1 : 0.5 }}>
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
           <nldd-icon name={att.soort === 'link' ? 'external-link' : 'paperclip'} size="16" aria-hidden="true" />
           {att.soort === 'link' && att.url ? (
+            // `hover:underline` is a real link hover state, no nldd-* link
+            // primitive here (this is a bare href inside a row, not
+            // nldd-list-item-segment), kept as a narrow className.
             <a
               href={att.url}
               target="_blank"
               rel="noreferrer"
-              className="flex-1 truncate text-primary-700 hover:underline"
+              className="hover:underline"
+              style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--primitives-color-accent-100)' }}
               title={att.url}
             >
               {att.bestandsnaam ?? att.url}
             </a>
           ) : (
-            <nldd-text size="sm" className="flex-1 truncate">{att.bestandsnaam ?? '(naamloos)'}</nldd-text>
+            <nldd-text size="sm" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {att.bestandsnaam ?? '(naamloos)'}
+            </nldd-text>
           )}
           {att.source === 'mattermost' && (
             <nldd-tag text="via mm" color="neutral" size="sm" />
@@ -1160,29 +1205,34 @@ function AttachmentRow({ attachment: att, downloadUrl, onDelete, onZoom }: Attac
             size="sm"
             onClick={onDelete}
           />
-        </div>
+        </nldd-container>
         {isImage && (
+          // The hover-reveal zoom affordance over the thumbnail is a real
+          // CSS group-hover interaction with no nldd-* equivalent, kept as a
+          // narrow className pair (button + overlay).
           <button
             type="button"
             onClick={() => onZoom(downloadUrl, att.bestandsnaam ?? 'bijlage')}
-            className="relative group ml-2 block"
+            className="relative group"
+            style={{ marginLeft: '8px', display: 'block' }}
           >
             <img
               src={downloadUrl}
               alt={att.bestandsnaam ?? 'bijlage'}
-              className="rounded-lg border border-border max-h-48 object-contain"
+              style={{ borderRadius: '8px', border: '1px solid var(--primitives-color-neutral-200)', maxHeight: '192px', objectFit: 'contain' }}
             />
-            <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+            <div className="group-hover:bg-black/20" style={{ position: 'absolute', inset: 0, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background-color 150ms' }}>
               <nldd-icon
                 name="magnifier"
                 size="24"
-                className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                className="opacity-0 group-hover:opacity-100"
+                style={{ color: 'white', transition: 'opacity 150ms' }}
                 aria-hidden="true"
               />
             </div>
           </button>
         )}
-      </div>
+      </nldd-container>
     </nldd-list-item>
   );
 }
