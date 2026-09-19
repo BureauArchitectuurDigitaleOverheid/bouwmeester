@@ -10,7 +10,7 @@ interface SubeenheidCardProps {
 
 export function SubeenheidCard({ sub, onSelect }: SubeenheidCardProps) {
   return (
-    <Card hoverable onClick={() => onSelect(sub.eenheid_id)}>
+    <Card actionLabel={`Open ${sub.eenheid_naam}`} onClick={() => onSelect(sub.eenheid_id)}>
       <nldd-container layout="stack" gap="8">
         <nldd-container layout="row" gap="8" vertical-alignment="top" horizontal-alignment="left">
           <nldd-container layout="row" gap="8" vertical-alignment="center">

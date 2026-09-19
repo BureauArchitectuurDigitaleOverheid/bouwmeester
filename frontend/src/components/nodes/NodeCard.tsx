@@ -25,7 +25,7 @@ export function NodeCard({ node }: NodeCardProps) {
 
   return (
     <Card
-      hoverable
+      actionLabel={`Open ${node.title}`}
       onClick={() => navigate(`/nodes/${node.id}`, { state: { fromCorpus: location.pathname + location.search } })}
     >
       <nldd-container layout="row" gap="12" vertical-alignment="top">
@@ -52,9 +52,11 @@ export function NodeCard({ node }: NodeCardProps) {
           )}
         </nldd-container>
 
-        {/* Hover-reveal: `group-hover-reveal` carries the real CSS (see
-            utilities.css), the `group` state comes from Card's hoverable. */}
-        <Icon name="arrow-right" size="md" className="shrink-0 group-hover-reveal" />
+        {/* Always visible. This used to be `group-hover-reveal`, on a comment
+            claiming the `group` state came from Card's `hoverable` — Card has
+            never set that class, so the arrow was hidden at all times. The
+            card is a real button now, so the affordance can just be there. */}
+        <Icon name="arrow-right" size="md" className="shrink-0" />
       </nldd-container>
 
       {/* Footer info */}

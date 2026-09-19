@@ -68,9 +68,27 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
 
         {/* Content */}
         <nldd-container width="full" gap="4">
-          <nldd-text size="sm" weight="medium" color={isDone ? 'secondary' : 'content'}>
-            {task.title}
-          </nldd-text>
+          {/* The title is the operable element, not the card: the card holds
+              the done-checkbox, and a control inside a button is invalid. The
+              card's own onClick stays as a pointer convenience on top of it. */}
+          {onEdit ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCardClick();
+              }}
+              style={{ textAlign: 'left', minWidth: 0 }}
+            >
+              <nldd-text size="sm" weight="medium" color={isDone ? 'secondary' : 'content'}>
+                {task.title}
+              </nldd-text>
+            </button>
+          ) : (
+            <nldd-text size="sm" weight="medium" color={isDone ? 'secondary' : 'content'}>
+              {task.title}
+            </nldd-text>
+          )}
 
           {!compact && task.description && (
             <nldd-text size="xs" color="secondary">

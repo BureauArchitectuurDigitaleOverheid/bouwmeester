@@ -43,14 +43,18 @@ export function Card({
   onClick,
   ...props
 }: CardProps) {
-  // With `button`, the activation happens on a <button> inside the shadow root
-  // and surfaces as a composed click on the host, which React's onClick does
-  // not see. The listener goes on the element itself.
+  // The listener goes on the element, always, not on a React onClick.
+  //
+  // With `button` the activation happens on a <button> inside the shadow root
+  // and arrives as a composed click on the host, which React's synthetic
+  // system does not deliver. Without `button` it is no better: an `onClick`
+  // spread onto a custom element is not wired as a plain DOM listener either,
+  // which is why the task cards never opened anything on click.
   const ref = useRef<HTMLElement>(null);
   useNlddEvent(
     ref,
     'click',
-    actionLabel && onClick
+    onClick
       ? (event) => onClick(event as unknown as React.MouseEvent<HTMLDivElement>)
       : undefined,
   );
@@ -65,7 +69,6 @@ export function Card({
       // merging would drop the caller's. With `button` the element brings its
       // own cursor, so this only covers the visual-only case.
       style={{ ...(hoverable && !actionLabel ? { cursor: 'pointer' } : {}), ...style }}
-      {...(actionLabel ? {} : { onClick })}
       {...props}
     >
       {header && <div slot="header">{header}</div>}
