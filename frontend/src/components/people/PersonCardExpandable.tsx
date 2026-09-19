@@ -1,16 +1,17 @@
-import { useState } from 'react';
-import { clsx } from 'clsx';
-import { Mail, Briefcase, Pencil, CheckCircle2, Circle, FileText, Loader2, MessageSquare, Terminal, Building2, X, Phone, Star, Handshake } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useCallback, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { PersonAvatar } from '@/components/people/PersonAvatar';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { useNlddEvent } from '@/components/nldd/events';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
 import { useSamenwerkingsverbandenForPerson } from '@/hooks/useSamenwerkingsverbanden';
 import { SAMENWERKINGSVERBAND_TYPE_LABELS, SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS } from '@/types';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
-import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS } from '@/types';
+import { formatFunctie, NODE_TYPE_COLORS, STAKEHOLDER_ROL_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS, TASK_PRIORITY_LABELS } from '@/types';
 import { richTextToPlain } from '@/utils/richtext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDateShort, todayISO } from '@/utils/dates';
@@ -18,11 +19,12 @@ import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import type { Person } from '@/types';
 
-const PRIORITY_DOT_COLORS: Record<string, string> = {
-  kritiek: 'bg-red-500',
-  hoog: 'bg-orange-400',
-  normaal: 'bg-blue-400',
-  laag: 'bg-gray-300',
+/** Priority -> the five semantic tag colors, for the task dot in the open-tasks list. */
+const PRIORITY_DOT_COLORS: Record<string, 'critical' | 'warning' | 'accent' | 'neutral'> = {
+  kritiek: 'critical',
+  hoog: 'warning',
+  normaal: 'accent',
+  laag: 'neutral',
 };
 
 interface PersonCardExpandableProps {
@@ -36,6 +38,45 @@ interface PersonCardExpandableProps {
   extraBadge?: React.ReactNode;
   /** Show end/delete buttons on placements (only on person/org pages) */
   showPlacementActions?: boolean;
+}
+
+/**
+ * An external link (TK OData, Wikidata) inside a card that is itself
+ * clickable. `nldd-link`'s click bubbles same as a native anchor would, so it
+ * is stopped here before it reaches the card's own expand handler — same
+ * pattern as `ContactLink` in PersonCard.tsx.
+ */
+function ExternalRefLink({ href, text }: { href: string; text: string }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', (e) => e.stopPropagation());
+  return (
+    <nldd-link ref={ref} href={href} text={text} target="_blank" size="xs" />
+  );
+}
+
+/**
+ * An internal route link (samenwerkingsverband detail) inside a card that
+ * expands on click. `nldd-link` renders a real `<a>`; navigation goes through
+ * the router instead of a full page load, and the click is stopped before it
+ * reaches the card.
+ */
+function InternalRefLink({ to, text }: { to: string; text: string }) {
+  const ref = useRef<HTMLElement>(null);
+  const navigate = useNavigate();
+  const onClick = useCallback(
+    (event: Event) => {
+      event.stopPropagation();
+      const mouse = event as MouseEvent;
+      if (mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.altKey || mouse.button === 1) {
+        return;
+      }
+      event.preventDefault();
+      navigate(to);
+    },
+    [navigate, to],
+  );
+  useNlddEvent(ref, 'click', onClick);
+  return <nldd-link ref={ref} href={to} text={text} size="xs" />;
 }
 
 export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, isManager, managerLabel, extraBadge, showPlacementActions }: PersonCardExpandableProps) {
@@ -69,266 +110,297 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
       draggable={!!onDragStartPerson}
       onDragStart={onDragStartPerson ? (e: React.DragEvent) => onDragStartPerson(e, person) : undefined}
     >
-      <div className="flex items-center gap-3">
-        <PersonAvatar person={person} size="h-9 w-9" iconSize="h-4.5 w-4.5" agentColor="bg-violet-100 text-violet-700" />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-medium text-text truncate">
-              {person.naam}
-            </p>
-            {person.is_agent && (
-              <Badge variant="purple" className="text-[10px] px-1.5 py-0 shrink-0">
-                Agent
-              </Badge>
-            )}
+      <nldd-container layout="row" gap="12">
+        <PersonAvatar person={person} size="32" />
+        <nldd-container width="full" style={{ minWidth: 0 }}>
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            {/* The name is the disclosure control, not the card. The card
+                holds its own "copy e-mail" button, and a control inside a
+                button is invalid, so `nldd-card button` is not available here
+                — without this the whole card was mouse-only, with no tab stop
+                and nothing to announce. Clicking the card still toggles, as a
+                pointer convenience on top of a real control. */}
+            <button
+              type="button"
+              aria-expanded={expanded}
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded(!expanded);
+              }}
+              style={{ overflow: 'hidden', textAlign: 'left', minWidth: 0 }}
+            >
+              <nldd-text size="sm" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {person.naam}
+              </nldd-text>
+            </button>
+            {person.is_agent && <Badge variant="purple">Agent</Badge>}
             {isManager && (() => {
               const label = managerLabel ?? 'Manager';
               return (
-                <Badge
-                  variant={label === 'Bewindspersoon' ? 'purple' : 'blue'}
-                  className="text-[10px] px-1.5 py-0 shrink-0"
-                >
+                <Badge variant={label === 'Bewindspersoon' ? 'purple' : 'blue'}>
                   {label}
                 </Badge>
               );
             })()}
-            {extraBadge && <div className="shrink-0 ml-auto">{extraBadge}</div>}
-          </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-secondary mt-0.5">
+            {extraBadge && <nldd-container style={{ marginLeft: 'auto', flexShrink: 0 }}>{extraBadge}</nldd-container>}
+          </nldd-container>
+          <nldd-container layout="wrap" gap="12" vertical-alignment="center">
             {displayEmail && (
               <button
-                className="flex items-center gap-1 hover:text-primary-600 transition-colors truncate"
+                type="button"
                 onClick={handleCopyEmail}
                 title="Klik om e-mail te kopiëren"
+                style={{ display: 'flex', alignItems: 'center', gap: 'var(--primitives-space-4)', overflow: 'hidden' }}
               >
-                <Mail className="h-3 w-3 shrink-0" />
-                <span className="truncate">{copied ? 'Gekopieerd!' : displayEmail}</span>
+                <Icon name="Mail" size="xs" />
+                <nldd-text size="xs" color="secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {copied ? 'Gekopieerd!' : displayEmail}
+                </nldd-text>
               </button>
             )}
             {person.default_phone && (
               <a
                 href={`tel:${person.default_phone}`}
-                className="flex items-center gap-1 hover:text-primary-600 transition-colors"
                 onClick={(e) => e.stopPropagation()}
+                style={{ display: 'flex', alignItems: 'center', gap: 'var(--primitives-space-4)' }}
               >
-                <Phone className="h-3 w-3 shrink-0" />
-                {person.default_phone}
+                <Icon name="Phone" size="xs" />
+                <nldd-text size="xs" color="secondary">{person.default_phone}</nldd-text>
               </a>
             )}
             {person.functie && !person.is_agent && (
-              <span className="flex items-center gap-1 hidden sm:flex">
-                <Briefcase className="h-3 w-3 shrink-0" />
-                <span className="truncate">{formatFunctie(person.functie)}</span>
-              </span>
+              // nldd-container's layout has no responsive show/hide (unlike
+              // gap/padding/column-count, which do take sm-/md-/lg- variants),
+              // so hiding it below sm is a utility class. It has to be the
+              // -block variant: `hidden-below-sm` forces `display: inline`
+              // above the breakpoint, which flattens a row container and
+              // collapses its contents to zero width.
+              <nldd-container layout="row" gap="4" vertical-alignment="center" className="hidden-below-sm-block">
+                <Icon name="Briefcase" size="xs" />
+                <nldd-text size="xs" color="secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {formatFunctie(person.functie)}
+                </nldd-text>
+              </nldd-container>
             )}
             {person.description && person.is_agent && (
-              <span className={clsx('flex items-start gap-1', !expanded && 'truncate')}>
-                <Briefcase className="h-3 w-3 shrink-0 mt-0.5" />
-                <span className={expanded ? 'whitespace-normal' : 'truncate'}>{richTextToPlain(person.description)}</span>
-              </span>
+              <nldd-container layout="row" gap="4" vertical-alignment="top">
+                <Icon name="Briefcase" size="xs" style={{ marginTop: '2px' }} />
+                <nldd-text
+                  size="xs"
+                  color="secondary"
+                  style={
+                    expanded
+                      ? { whiteSpace: 'normal' }
+                      : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+                  }
+                >
+                  {richTextToPlain(person.description)}
+                </nldd-text>
+              </nldd-container>
             )}
             {/* Externe links: TK OData, Wikidata */}
             {expanded && (person.tk_persoon_id || person.wikidata_qid) && (
-              <div className="flex items-center gap-3 text-[11px]">
+              <nldd-container layout="row" gap="12">
                 {person.tk_persoon_id && (
-                  <a
+                  <ExternalRefLink
                     href={`https://www.tweedekamer.nl/kamerleden_en_commissies/alle_kamerleden/${person.tk_persoon_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary-600 hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    Tweede Kamer ↗
-                  </a>
+                    text="Tweede Kamer ↗"
+                  />
                 )}
                 {person.wikidata_qid && (
-                  <a
+                  <ExternalRefLink
                     href={`https://www.wikidata.org/wiki/${person.wikidata_qid}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary-600 hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    Wikidata {person.wikidata_qid} ↗
-                  </a>
+                    text={`Wikidata ${person.wikidata_qid} ↗`}
+                  />
                 )}
-              </div>
+              </nldd-container>
             )}
-          </div>
+          </nldd-container>
+        </nldd-container>
+        {/* Prominent message/prompt button — always visible. The card wraps
+            everything in its own click-to-expand handler, and nldd-button's
+            click bubbles same as a native button would, so this is stopped
+            at capture before it reaches the card. */}
+        <div style={{ flexShrink: 0 }} onClickCapture={(e) => e.stopPropagation()}>
+          <NlddButton
+            text={person.is_agent ? 'Prompt' : 'Bericht'}
+            startIcon={person.is_agent ? 'terminal' : 'message-rectangle-text'}
+            variant="neutral-tinted"
+            size="sm"
+            onClick={() => setMessageOpen(true)}
+          />
         </div>
-        {/* Prominent message/prompt button — always visible */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setMessageOpen(true);
-          }}
-          className={clsx(
-            'shrink-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-            person.is_agent
-              ? 'bg-violet-100 text-violet-700 hover:bg-violet-200'
-              : 'bg-primary-100 text-primary-700 hover:bg-primary-200',
-          )}
-          title={person.is_agent ? 'Prompt sturen' : 'Bericht sturen'}
-        >
-          {person.is_agent ? <Terminal className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
-          {person.is_agent ? 'Prompt' : 'Bericht'}
-        </button>
-      </div>
+      </nldd-container>
 
-      {/* Expanded details */}
+      {/* Expanded details. nldd-divider draws the section separator (see the
+          list-with-rows and page-with-sections patterns); the previous inline
+          style invented a --semantics-border-color token that does not exist
+          in the design system, so its hardcoded #e2e8f0 fallback was always
+          the color actually applied. */}
       {expanded && (
-        <div className="mt-3 pt-3 border-t border-border text-xs">
+        <>
+          <nldd-spacer size="12" />
+          <nldd-divider />
+          <nldd-spacer size="12" />
+          <nldd-container>
           {/* All emails */}
           {person.emails && person.emails.length > 0 && (
-            <div className="mb-3">
-              <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
-                <Mail className="h-3 w-3" />
-                E-mailadressen
-              </p>
-              <div className="space-y-0.5">
+            <nldd-container padding-bottom="12">
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
+                <Icon name="Mail" size="xs" />
+                <nldd-text size="xs" color="secondary" weight="medium">E-mailadressen</nldd-text>
+              </nldd-container>
+              <nldd-container gap="2">
                 {person.emails.map((em) => (
-                  <div key={em.id} className="flex items-center gap-1.5 text-text">
+                  <nldd-container key={em.id} layout="row" gap="6" vertical-alignment="center">
                     <a
                       href={`mailto:${em.email}`}
-                      className="hover:text-primary-600 transition-colors truncate"
                       onClick={(e) => e.stopPropagation()}
+                      style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                     >
-                      {em.email}
+                      <nldd-text size="xs">{em.email}</nldd-text>
                     </a>
-                    {em.is_default && (
-                      <Star className="h-3 w-3 text-amber-500 shrink-0" />
-                    )}
-                  </div>
+                    {em.is_default && <nldd-icon name="star" size="16" color="warning" />}
+                  </nldd-container>
                 ))}
-              </div>
-            </div>
+              </nldd-container>
+            </nldd-container>
           )}
           {/* All phones */}
           {person.phones && person.phones.length > 0 && (
-            <div className="mb-3">
-              <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
-                <Phone className="h-3 w-3" />
-                Telefoonnummers
-              </p>
-              <div className="space-y-0.5">
+            <nldd-container padding-bottom="12">
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
+                <Icon name="Phone" size="xs" />
+                <nldd-text size="xs" color="secondary" weight="medium">Telefoonnummers</nldd-text>
+              </nldd-container>
+              <nldd-container gap="2">
                 {person.phones.map((ph) => (
-                  <div key={ph.id} className="flex items-center gap-1.5 text-text">
-                    <a
-                      href={`tel:${ph.phone_number}`}
-                      className="hover:text-primary-600 transition-colors"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {ph.phone_number}
+                  <nldd-container key={ph.id} layout="row" gap="6" vertical-alignment="center">
+                    <a href={`tel:${ph.phone_number}`} onClick={(e) => e.stopPropagation()}>
+                      <nldd-text size="xs">{ph.phone_number}</nldd-text>
                     </a>
-                    <span className="text-text-secondary">
+                    <nldd-text size="xs" color="secondary">
                       {PHONE_LABELS[ph.label] || ph.label}
-                    </span>
-                    {ph.is_default && (
-                      <Star className="h-3 w-3 text-amber-500 shrink-0" />
-                    )}
-                  </div>
+                    </nldd-text>
+                    {ph.is_default && <nldd-icon name="star" size="16" color="warning" />}
+                  </nldd-container>
                 ))}
-              </div>
-            </div>
+              </nldd-container>
+            </nldd-container>
           )}
           {summaryLoading ? (
-            <div className="flex items-center gap-2 text-text-secondary py-1">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span>Laden...</span>
-            </div>
+            <nldd-container layout="row" gap="8" vertical-alignment="center" padding-block="4">
+              <nldd-activity-indicator size="16" />
+              <nldd-text size="xs" color="secondary">Laden...</nldd-text>
+            </nldd-container>
           ) : summary ? (
-            <div className="space-y-3">
+            <nldd-container gap="12">
               {/* Tasks section */}
-              <div>
-                <div className="flex items-center gap-3 text-text-secondary">
-                  <span className="flex items-center gap-1">
-                    <Circle className="h-3 w-3" />
-                    {summary.open_task_count} open
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
-                    {summary.done_task_count} afgerond
-                  </span>
-                </div>
+              <nldd-container>
+                <nldd-container layout="row" gap="12">
+                  <nldd-container layout="row" gap="4" vertical-alignment="center">
+                    <Icon name="Circle" size="xs" />
+                    <nldd-text size="xs" color="secondary">{summary.open_task_count} open</nldd-text>
+                  </nldd-container>
+                  <nldd-container layout="row" gap="4" vertical-alignment="center">
+                    <Icon name="CheckCircle2" size="xs" />
+                    <nldd-text size="xs" color="secondary">{summary.done_task_count} afgerond</nldd-text>
+                  </nldd-container>
+                </nldd-container>
                 {summary.open_tasks.length > 0 && (
-                  <div className="mt-1.5 space-y-1">
+                  <nldd-list variant="simple" dividers="never" accessible-label="Open taken">
                     {summary.open_tasks.map((task) => (
-                      <button
+                      <nldd-list-item
                         key={task.id}
-                        className="flex items-center gap-2 text-text w-full text-left hover:text-primary-600 transition-colors rounded px-1 -mx-1 py-0.5 hover:bg-primary-50/50"
-                        onClick={(e) => {
+                        button
+                        size="sm"
+                        onClick={(e: React.MouseEvent) => {
                           e.stopPropagation();
                           openTaskDetail(task.id);
                         }}
                       >
-                        <span className={clsx('h-1.5 w-1.5 rounded-full shrink-0', PRIORITY_DOT_COLORS[task.priority] || 'bg-gray-300')} />
-                        <span className="truncate">{task.title}</span>
+                        <nldd-icon-cell size="16">
+                          <nldd-tag
+                            size="sm"
+                            color={PRIORITY_DOT_COLORS[task.priority] ?? 'neutral'}
+                            icon="circle-filled-extra-small"
+                            variant="icon"
+                            accessible-label={TASK_PRIORITY_LABELS[task.priority] ?? task.priority}
+                          />
+                        </nldd-icon-cell>
+                        <nldd-text-cell size="sm" text={task.title} />
                         {task.due_date && (
-                          <span className="text-text-secondary shrink-0 ml-auto">
-                            {formatDateShort(task.due_date)}
-                          </span>
+                          <nldd-text-cell
+                            size="sm"
+                            color="secondary"
+                            width="fit-content"
+                            text={formatDateShort(task.due_date)}
+                          />
                         )}
-                      </button>
+                      </nldd-list-item>
                     ))}
-                  </div>
+                  </nldd-list>
                 )}
-              </div>
+              </nldd-container>
 
               {/* Stakeholder nodes section */}
               {summary.stakeholder_nodes.length > 0 && (
-                <div>
-                  <div className="space-y-1">
-                    {summary.stakeholder_nodes.map((node) => (
-                      <button
-                        key={node.node_id}
-                        className="flex items-center gap-2 text-text w-full text-left hover:text-primary-600 transition-colors rounded px-1 -mx-1 py-0.5 hover:bg-primary-50/50"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openNodeDetail(node.node_id);
-                        }}
-                      >
-                        <FileText className="h-3 w-3 text-text-secondary shrink-0" />
-                        <span className="truncate">{node.node_title}</span>
+                <nldd-list variant="simple" dividers="never" accessible-label="Betrokken dossiers">
+                  {summary.stakeholder_nodes.map((node) => (
+                    <nldd-list-item
+                      key={node.node_id}
+                      button
+                      size="sm"
+                      onClick={(e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        openNodeDetail(node.node_id);
+                      }}
+                    >
+                      <nldd-icon-cell icon="file-text" size="16" color="secondary" />
+                      <nldd-text-cell size="sm" text={node.node_title} />
+                      <nldd-cell width="fit-content">
                         <Badge
                           variant={NODE_TYPE_COLORS[node.node_type as keyof typeof NODE_TYPE_COLORS] || 'gray'}
-                          className="text-[10px] px-1.5 py-0 shrink-0"
                         >
                           {nodeLabel(node.node_type)}
                         </Badge>
-                        <span className="text-text-secondary shrink-0 ml-auto">
-                          {STAKEHOLDER_ROL_LABELS[node.stakeholder_rol] || node.stakeholder_rol}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                      </nldd-cell>
+                      <nldd-text-cell
+                        size="sm"
+                        color="secondary"
+                        width="fit-content"
+                        text={STAKEHOLDER_ROL_LABELS[node.stakeholder_rol] || node.stakeholder_rol}
+                      />
+                    </nldd-list-item>
+                  ))}
+                </nldd-list>
               )}
 
               {/* Org placements section */}
               {placements && placements.length > 0 && (
-                <div>
-                  <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
-                    <Building2 className="h-3 w-3" />
-                    Teams
-                  </p>
-                  <div className="space-y-1">
+                <nldd-container>
+                  <nldd-container layout="row" gap="4" vertical-alignment="center">
+                    <Icon name="Building2" size="xs" />
+                    <nldd-text size="xs" color="secondary" weight="medium">Teams</nldd-text>
+                  </nldd-container>
+                  <nldd-container gap="4">
                     {placements.map((p) => (
-                      <div key={p.id} className="flex items-center gap-2 text-text">
-                        <span className="truncate">
+                      <nldd-container key={p.id} layout="row" gap="8" vertical-alignment="center">
+                        <nldd-text size="xs" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {p.organisatie_eenheid_naam}
                           {p.functietitel && (
-                            <span className="text-text-secondary font-normal">
-                              {' '}— {p.functietitel}
-                            </span>
+                            <nldd-text size="xs" color="secondary"> — {p.functietitel}</nldd-text>
                           )}
-                        </span>
-                        <Badge variant="gray" className="text-[10px] px-1.5 py-0 shrink-0">
+                        </nldd-text>
+                        <Badge variant="gray">
                           {DIENSTVERBAND_LABELS[p.dienstverband] || p.dienstverband}
                         </Badge>
                         {showPlacementActions && (
-                          <div className="flex items-center gap-1 shrink-0 ml-auto">
+                          <nldd-container layout="row" gap="4" style={{ marginLeft: 'auto', flexShrink: 0 }}>
                             {!p.eind_datum && (
-                              <button
+                              <NlddIconButtonInline
+                                icon="check-mark-circle"
+                                accessibleLabel="Team-indeling beëindigen"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   endPlacement.mutate({
@@ -337,15 +409,11 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                                     data: { eind_datum: todayISO() },
                                   });
                                 }}
-                                className="text-text-secondary hover:text-amber-600 transition-colors"
-                                title="Team-indeling beëindigen"
-                              >
-                                <CheckCircle2 className="h-3 w-3" />
-                              </button>
+                              />
                             )}
                             {confirmDeleteId === p.id ? (
-                              <span className="flex items-center gap-1 text-red-600">
-                                <span>Zeker?</span>
+                              <nldd-container layout="row" gap="4" vertical-alignment="center">
+                                <nldd-text size="xs" color="critical">Zeker?</nldd-text>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -354,107 +422,101 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                                       { onSettled: () => setConfirmDeleteId(null) },
                                     );
                                   }}
-                                  className="font-medium hover:underline"
                                 >
-                                  Ja
+                                  <nldd-text size="xs" color="critical" weight="medium">Ja</nldd-text>
                                 </button>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setConfirmDeleteId(null);
                                   }}
-                                  className="text-text-secondary hover:text-text"
                                 >
-                                  Nee
+                                  <nldd-text size="xs" color="secondary">Nee</nldd-text>
                                 </button>
-                              </span>
+                              </nldd-container>
                             ) : (
-                              <button
+                              <NlddIconButtonInline
+                                icon="close"
+                                accessibleLabel="Team-indeling verwijderen"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setConfirmDeleteId(p.id);
                                 }}
-                                className="text-text-secondary hover:text-red-600 transition-colors"
-                                title="Team-indeling verwijderen"
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
+                              />
                             )}
-                          </div>
+                          </nldd-container>
                         )}
-                      </div>
+                      </nldd-container>
                     ))}
-                  </div>
-                </div>
+                  </nldd-container>
+                </nldd-container>
               )}
 
               {/* Samenwerkingsverbanden */}
               {lidmaatschappen && lidmaatschappen.length > 0 && (
-                <div>
-                  <p className="text-text-secondary font-medium mb-1 flex items-center gap-1">
-                    <Handshake className="h-3 w-3" />
-                    Samenwerkingsverbanden
-                  </p>
-                  <div className="space-y-1">
+                <nldd-container>
+                  <nldd-container layout="row" gap="4" vertical-alignment="center">
+                    <Icon name="Handshake" size="xs" />
+                    <nldd-text size="xs" color="secondary" weight="medium">Samenwerkingsverbanden</nldd-text>
+                  </nldd-container>
+                  <nldd-container gap="4">
                     {lidmaatschappen.map((lid) => (
-                      <div
-                        key={lid.id}
-                        className="flex items-center gap-2 text-text"
-                      >
-                        <Link
+                      <nldd-container key={lid.id} layout="row" gap="8" vertical-alignment="center">
+                        <InternalRefLink
                           to={`/samenwerkingsverbanden/${lid.samenwerkingsverband_id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="truncate hover:text-primary-600 transition-colors"
-                        >
-                          {lid.samenwerkingsverband_naam}
-                        </Link>
+                          text={lid.samenwerkingsverband_naam}
+                        />
                         <Badge
                           variant={
                             SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[
                               lid.samenwerkingsverband_type
                             ] ?? 'gray'
                           }
-                          className="text-[10px] px-1.5 py-0 shrink-0"
                         >
                           {SAMENWERKINGSVERBAND_TYPE_LABELS[
                             lid.samenwerkingsverband_type
                           ] ?? lid.samenwerkingsverband_type}
                         </Badge>
                         {lid.rol && (
-                          <span className="text-[11px] text-text-secondary shrink-0">
-                            — {lid.rol}
-                          </span>
+                          <nldd-text size="xs" color="secondary">— {lid.rol}</nldd-text>
                         )}
-                      </div>
+                      </nldd-container>
                     ))}
-                  </div>
-                </div>
+                  </nldd-container>
+                </nldd-container>
               )}
 
               {/* No tasks and no nodes */}
               {summary.open_task_count === 0 && summary.done_task_count === 0 && summary.stakeholder_nodes.length === 0 && (!placements || placements.length === 0) && (!lidmaatschappen || lidmaatschappen.length === 0) && (
-                <p className="text-text-secondary">Geen taken, dossiers of teams.</p>
+                <nldd-text size="xs" color="secondary">Geen taken, dossiers of teams.</nldd-text>
               )}
-            </div>
+            </nldd-container>
           ) : null}
 
-          {/* Edit button */}
+          {/* Edit button. Same divider fix as above: nldd-divider instead of
+              an invented border-color token. */}
           {onEditPerson && (
-            <div className="flex justify-end mt-2 pt-2 border-t border-border">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEditPerson(person);
-                }}
-                className="flex items-center gap-1 text-text-secondary hover:text-text transition-colors"
-                title="Bewerken"
+            <>
+              <nldd-spacer size="8" />
+              <nldd-divider />
+              <nldd-container
+                layout="row"
+                horizontal-alignment="right"
+                padding-top="8"
+                onClickCapture={(e: React.MouseEvent) => e.stopPropagation()}
               >
-                <Pencil className="h-3 w-3" />
-                <span>Bewerken</span>
-              </button>
-            </div>
+                <NlddButton
+                  text="Bewerken"
+                  startIcon="pencil"
+                  variant="neutral-transparent"
+                  size="sm"
+                  onClick={() => onEditPerson(person)}
+                />
+              </nldd-container>
+            </>
           )}
-        </div>
+          </nldd-container>
+        </>
       )}
 
       <SendMessageModal
@@ -463,5 +525,29 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
         recipient={person}
       />
     </Card>
+  );
+}
+
+/** Small icon-only action button local to placement rows: neutral, xs, stops
+ *  its own click before it reaches the card's expand handler. */
+function NlddIconButtonInline({
+  icon,
+  accessibleLabel,
+  onClick,
+}: {
+  icon: string;
+  accessibleLabel: string;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', (e) => onClick(e as unknown as React.MouseEvent));
+  return (
+    <nldd-icon-button
+      ref={ref}
+      icon={icon}
+      variant="neutral-transparent"
+      size="xs"
+      accessible-label={accessibleLabel}
+    />
   );
 }

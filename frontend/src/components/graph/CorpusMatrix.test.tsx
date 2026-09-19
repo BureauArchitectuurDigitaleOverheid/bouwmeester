@@ -1,3 +1,4 @@
+import { getByNlddText } from '@/test/utils';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -52,7 +53,7 @@ describe('CorpusMatrix', () => {
       />,
       { wrapper },
     );
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(container.querySelector('nldd-activity-indicator')).toBeInTheDocument();
   });
 
   it('renders error state', () => {
@@ -66,7 +67,7 @@ describe('CorpusMatrix', () => {
       />,
       { wrapper },
     );
-    expect(screen.getByText('Fout bij laden')).toBeInTheDocument();
+    expect(getByNlddText('Fout bij laden')).toBeInTheDocument();
   });
 
   it('renders empty state when no nodes match', () => {
@@ -80,7 +81,7 @@ describe('CorpusMatrix', () => {
       />,
       { wrapper },
     );
-    expect(screen.getByText('Geen nodes gevonden voor de geselecteerde types.')).toBeInTheDocument();
+    expect(getByNlddText('Geen nodes gevonden voor de geselecteerde types.')).toBeInTheDocument();
   });
 
   it('renders row and column headers', () => {

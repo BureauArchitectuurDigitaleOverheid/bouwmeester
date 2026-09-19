@@ -1,5 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { Search as SearchIcon } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useSearch } from '@/hooks/useSearch';
 import {
   ALL_RESULT_TYPES,
@@ -8,12 +7,13 @@ import {
   useResultNavigation,
 } from '@/components/search/SearchResults';
 import { usePermissions } from '@/hooks/usePermissions';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { SEARCH_TYPE_PERMISSIONS, type SearchResultType } from '@/types';
 
 export function SearchPage() {
   const [query, setQuery] = useState('');
   const [activeTypes, setActiveTypes] = useState<SearchResultType[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLElement>(null);
   const { hasPermission } = usePermissions();
 
   const allowedTypes = useMemo(
@@ -26,11 +26,20 @@ export function SearchPage() {
 
   const handleResultClick = useResultNavigation();
 
-  const toggleType = (type: SearchResultType) => {
-    setActiveTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
-    );
-  };
+  const toggleType = useCallback((type: SearchResultType) => {
+    setActiveTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
+  }, []);
+
+  useNlddEvent(
+    inputRef,
+    'input',
+    useCallback((e: Event) => setQuery(eventValue(e)), []),
+  );
+
+  // Focus on mount, same as the old input's `autoFocus`.
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   // Focus search input on "/" key
   useEffect(() => {
@@ -54,39 +63,33 @@ export function SearchPage() {
   }, []);
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* Page header */}
-      <div>
-        <p className="text-sm text-text-secondary">
+    <nldd-simple-section width="768px" horizontal-alignment="center">
+      <nldd-container gap="24">
+        {/* Page header */}
+        <nldd-text size="sm" color="secondary">
           Doorzoek alles: beleidscorpus, taken, personen, organisaties, parlementaire items, tags en leads.
-        </p>
-      </div>
+        </nldd-text>
 
-      {/* Search input */}
-      <div className="relative">
-        <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-text-secondary" />
-        <input
+        {/* Search input */}
+        <nldd-search-field
           ref={inputRef}
-          type="text"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
           placeholder="Zoek op titel, naam, beschrijving, trefwoord..."
-          autoFocus
-          className="block w-full rounded-2xl border border-border bg-white pl-12 pr-4 py-3.5 text-sm text-text placeholder:text-text-secondary/50 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 hover:border-border-hover shadow-sm"
+          accessible-label="Zoeken"
         />
-      </div>
 
-      {/* Filter chips */}
-      <FilterChips activeTypes={activeTypes} onToggle={toggleType} allowedTypes={allowedTypes} className="gap-2" />
+        {/* Filter chips */}
+        <FilterChips activeTypes={activeTypes} onToggle={toggleType} allowedTypes={allowedTypes} />
 
-      {/* Results */}
-      <SearchResultsList
-        query={query}
-        data={data}
-        isLoading={isLoading}
-        isFetched={isFetched}
-        onResultClick={handleResultClick}
-      />
-    </div>
+        {/* Results */}
+        <SearchResultsList
+          query={query}
+          data={data}
+          isLoading={isLoading}
+          isFetched={isFetched}
+          onResultClick={handleResultClick}
+        />
+      </nldd-container>
+    </nldd-simple-section>
   );
 }

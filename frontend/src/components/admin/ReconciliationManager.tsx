@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, ArrowLeftRight, Check, X } from 'lucide-react';
 import {
   listReconciliations,
   mergeReconciliation,
@@ -14,8 +13,18 @@ import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { EmptyState } from '@/components/common/EmptyState';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 
 type Status = 'open' | 'merged' | 'ignored';
+
+const STATUS_LABEL: Record<Status, string> = {
+  open: 'Open',
+  merged: 'Gemerged',
+  ignored: 'Genegeerd',
+};
 
 function ManualMergePanel() {
   const queryClient = useQueryClient();
@@ -93,139 +102,133 @@ function ManualMergePanel() {
 
   return (
     <Card>
-      <div className="p-4 space-y-3">
-        <div>
-          <h3 className="font-semibold text-sm mb-1">Handmatig mergen</h3>
-          <p className="text-sm text-text-secondary">
+      <nldd-container gap="12">
+        <nldd-container gap="4">
+          <nldd-title size={4}><h3>Handmatig mergen</h3></nldd-title>
+          <nldd-text size="sm" color="secondary">
             Twee eenheden samenvoegen die de scan niet vangt (bv. een
             seed-DG naast een organogram-rij met net andere naam). Alle
             plaatsingen, leads, opdrachten en sub-eenheden van de{' '}
             <strong>bron</strong> verhuizen naar het <strong>doel</strong>;
             de bron wordt verwijderd. Hou als doel de gesyncte rij aan
             (officiële naam en TOOI-koppeling blijven dan staan).
-          </p>
-        </div>
+          </nldd-text>
+        </nldd-container>
 
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
-          <CreatableSelect
-            label="Bron (verdwijnt)"
-            value={sourceId}
-            onChange={(v) => {
-              setSourceId(v);
-              setConfirming(false);
-            }}
-            options={options}
-            placeholder="Zoek eenheid…"
-            emptyMessage="Geen eenheid gevonden"
-          />
-          <button
-            type="button"
-            onClick={swap}
+        <nldd-container layout="row" gap="12" vertical-alignment="center">
+          <nldd-container width="fit-content" min-width="240px">
+            <CreatableSelect
+              label="Bron (verdwijnt)"
+              value={sourceId}
+              onChange={(v) => {
+                setSourceId(v);
+                setConfirming(false);
+              }}
+              options={options}
+              placeholder="Zoek eenheid…"
+              emptyMessage="Geen eenheid gevonden"
+            />
+          </nldd-container>
+          <NlddIconButton
+            icon="arrow-left-right"
+            accessibleLabel="Bron en doel omwisselen"
+            variant="neutral-transparent"
             disabled={!sourceId && !targetId}
-            title="Bron en doel omwisselen"
-            className="mb-1 p-2 rounded text-text-secondary hover:bg-gray-100 disabled:opacity-40"
-          >
-            <ArrowLeftRight className="h-5 w-5" />
-          </button>
-          <CreatableSelect
-            label="Doel (blijft)"
-            value={targetId}
-            onChange={(v) => {
-              setTargetId(v);
-              setConfirming(false);
-            }}
-            options={options}
-            placeholder="Zoek eenheid…"
-            emptyMessage="Geen eenheid gevonden"
+            onClick={swap}
           />
-        </div>
+          <nldd-container width="fit-content" min-width="240px">
+            <CreatableSelect
+              label="Doel (blijft)"
+              value={targetId}
+              onChange={(v) => {
+                setTargetId(v);
+                setConfirming(false);
+              }}
+              options={options}
+              placeholder="Zoek eenheid…"
+              emptyMessage="Geen eenheid gevonden"
+            />
+          </nldd-container>
+        </nldd-container>
 
         {sameRow && (
-          <p className="text-sm text-red-600">
-            Bron en doel zijn dezelfde eenheid.
-          </p>
+          <nldd-text size="sm" color="critical">Bron en doel zijn dezelfde eenheid.</nldd-text>
         )}
 
         {targetIsSynthetic && (
-          <p className="text-sm text-red-600">
+          <nldd-text size="sm" color="critical">
             Het doel is een synthetische groep, geen echte eenheid. Kies
             een echte organisatie-eenheid als doel.
-          </p>
+          </nldd-text>
         )}
 
         {suggestSwap && (
-          <p className="text-sm text-amber-700">
-            De bron is een gesyncte rij ({source?.bron}) en het doel
-            handmatig. Meestal wil je het andersom zodat de gesyncte rij
-            blijft bestaan.{' '}
-            <button
-              type="button"
-              onClick={swap}
-              className="underline font-medium"
-            >
-              Omwisselen
-            </button>
-          </p>
+          <nldd-banner
+            variant="warning"
+            text={`De bron is een gesyncte rij (${source?.bron}) en het doel handmatig`}
+            supporting-text="Meestal wil je het andersom zodat de gesyncte rij blijft bestaan."
+          >
+            <div slot="actions">
+              <NlddButton variant="neutral-tinted" size="sm" text="Omwisselen" onClick={swap} />
+            </div>
+          </nldd-banner>
         )}
 
         {canMerge && !confirming && (
-          <div className="flex justify-end">
+          <nldd-container horizontal-alignment="right">
             <Button variant="primary" onClick={() => setConfirming(true)}>
               Mergen…
             </Button>
-          </div>
+          </nldd-container>
         )}
 
         {canMerge && confirming && (
-          <div className="border border-red-200 bg-red-50 rounded p-3 space-y-3">
-            <p className="text-sm">
-              <strong>{source?.naam}</strong> wordt verwijderd. Alle
-              referenties verhuizen naar <strong>{target?.naam}</strong>
-              {target?.bron && target.bron !== 'handmatig'
-                ? ` (${target.bron})`
-                : ''}
-              . Dit is niet terug te draaien.
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button
+          <nldd-banner
+            variant="critical"
+            text={`${source?.naam} wordt verwijderd`}
+            supporting-text={`Alle referenties verhuizen naar ${target?.naam}${
+              target?.bron && target.bron !== 'handmatig' ? ` (${target.bron})` : ''
+            }. Dit is niet terug te draaien.`}
+          >
+            <div slot="actions">
+              <NlddButton
                 variant="secondary"
+                text="Annuleren"
                 onClick={() => setConfirming(false)}
                 disabled={mergeMutation.isPending}
-              >
-                Annuleren
-              </Button>
-              <Button
-                variant="primary"
+              />
+              <NlddButton
+                variant="destructive"
+                text={mergeMutation.isPending ? 'Bezig…' : 'Definitief mergen'}
                 onClick={() => mergeMutation.mutate()}
                 disabled={mergeMutation.isPending}
-              >
-                {mergeMutation.isPending
-                  ? 'Bezig…'
-                  : 'Definitief mergen'}
-              </Button>
+              />
             </div>
-          </div>
+          </nldd-banner>
         )}
 
         {mergeMutation.isError && (
-          <p className="text-sm text-red-600">
+          <nldd-text size="sm" color="critical">
             Merge mislukt:{' '}
             {mergeMutation.error instanceof Error
               ? mergeMutation.error.message
               : 'onbekende fout'}
-          </p>
+          </nldd-text>
         )}
         {mergeMutation.isSuccess && (
-          <p className="text-sm text-green-700">Merge voltooid.</p>
+          <nldd-text size="sm" color="success">Merge voltooid.</nldd-text>
         )}
-      </div>
+      </nldd-container>
     </Card>
   );
 }
 
 export function ReconciliationManager() {
   const [status, setStatus] = useState<Status>('open');
+  const statusFilterRef = useRef<HTMLElement>(null);
   const queryClient = useQueryClient();
+
+  useNlddEvent(statusFilterRef, 'change', useCallback((e: Event) => setStatus(eventValue(e) as Status), []));
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['reconciliation', status],
@@ -257,34 +260,32 @@ export function ReconciliationManager() {
   });
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold mb-1">
-          Reconciliatie van handmatige rijen met TOOI-data
-        </h2>
-        <p className="text-sm text-text-secondary">
+    <nldd-container gap="16">
+      <nldd-container gap="4">
+        <nldd-title size={3}><h2>Reconciliatie van handmatige rijen met TOOI-data</h2></nldd-title>
+        <nldd-text size="sm" color="secondary">
           TOOI-sync detecteert organisaties die ook handmatig zijn
           aangemaakt. Mergen voegt de handmatige rij samen met de TOOI-rij
           (alle leads, opdrachten en plaatsingen verhuizen). Negeren laat
           beide rijen bestaan.
-        </p>
-      </div>
+        </nldd-text>
+      </nldd-container>
 
       <Card>
-        <div className="p-3 flex items-center justify-between gap-3 text-sm">
-          <div>
+        <nldd-container layout="row" gap="12" horizontal-alignment="left" vertical-alignment="center">
+          <nldd-text size="sm">
             <strong>Scan op afkorting/naam-match:</strong> zoekt handmatige
             rijen (vaak FCC-import) die alsnog matchen op een TOOI-rij.
             Genereert open reconciliations.
             {scanResult && (
-              <span className="ml-2 text-text-secondary">
-                Laatste run: {scanResult.scanned} gescand,
+              <nldd-text size="sm" color="secondary">
+                {' '}Laatste run: {scanResult.scanned} gescand,
                 {' '}{scanResult.found_match} matches,
                 {' '}{scanResult.new_reconciliations} nieuw,
                 {' '}{scanResult.already_pending} al open.
-              </span>
+              </nldd-text>
             )}
-          </div>
+          </nldd-text>
           <Button
             onClick={() => orphanScanMutation.mutate()}
             disabled={orphanScanMutation.isPending}
@@ -292,125 +293,109 @@ export function ReconciliationManager() {
           >
             {orphanScanMutation.isPending ? 'Bezig…' : 'Scan starten'}
           </Button>
-        </div>
+        </nldd-container>
       </Card>
 
       <ManualMergePanel />
 
-      <div className="flex gap-2">
+      <nldd-toggle-button-group ref={statusFilterRef} type="radio" accessible-label="Filter op status">
         {(['open', 'merged', 'ignored'] as const).map((s) => (
-          <button
+          <nldd-toggle-button
             key={s}
-            onClick={() => setStatus(s)}
-            className={`px-3 py-1.5 text-sm rounded ${
-              status === s
-                ? 'bg-primary-100 text-primary-700 font-medium'
-                : 'text-text-secondary hover:bg-gray-100'
-            }`}
-          >
-            {s === 'open' ? 'Open' : s === 'merged' ? 'Gemerged' : 'Genegeerd'}
-            <span className="ml-1.5 text-xs opacity-70">
-              {status === s ? `(${items.length})` : ''}
-            </span>
-          </button>
+            text={`${STATUS_LABEL[s]}${status === s ? ` (${items.length})` : ''}`}
+            value={s}
+            selected={status === s ? true : undefined}
+          />
         ))}
-      </div>
+      </nldd-toggle-button-group>
 
       {isLoading && <LoadingSpinner />}
 
       {!isLoading && items.length === 0 && (
         <Card>
-          <div className="p-6 text-center text-text-secondary text-sm">
-            Geen{' '}
-            {status === 'open'
-              ? 'open reconciliaties'
-              : status === 'merged'
-                ? 'gemergede reconciliaties'
-                : 'genegeerde reconciliaties'}
-            .
-          </div>
+          <EmptyState
+            icon="inbox"
+            title={
+              status === 'open'
+                ? 'Geen open reconciliaties'
+                : status === 'merged'
+                  ? 'Geen gemergede reconciliaties'
+                  : 'Geen genegeerde reconciliaties'
+            }
+          />
         </Card>
       )}
 
       {items.map((item) => (
         <Card key={item.id}>
-          <div className="p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-text-secondary">
-                {item.match_reden}
-              </span>
-              <span className="text-xs text-text-secondary">
+          <nldd-container gap="16">
+            <nldd-container layout="row" gap="12" vertical-alignment="center">
+              <nldd-tag text={item.match_reden} size="sm" />
+              <nldd-text size="xs" color="secondary">
                 {new Date(item.created_at).toLocaleDateString('nl-NL', {
                   day: '2-digit',
                   month: 'short',
                   year: 'numeric',
                 })}
-              </span>
-            </div>
+              </nldd-text>
+            </nldd-container>
 
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-center">
+            <nldd-container layout="row" gap="16" vertical-alignment="center">
               {/* Handmatige rij */}
-              <div className="border border-amber-200 bg-amber-50 rounded p-3">
-                <div className="text-xs font-medium text-amber-700 mb-1">
-                  Handmatig
-                </div>
-                <div className="font-medium">{item.handmatige_naam}</div>
+              <nldd-container width="fit-content" min-width="200px" padding="12" gap="4">
+                <nldd-text size="xs" color="warning" weight="medium">Handmatig</nldd-text>
+                <nldd-text size="sm" weight="medium">{item.handmatige_naam}</nldd-text>
                 {item.handmatige_afkorting && (
-                  <div className="text-xs text-text-secondary">
-                    {item.handmatige_afkorting}
-                  </div>
+                  <nldd-text size="xs" color="secondary">{item.handmatige_afkorting}</nldd-text>
                 )}
-              </div>
+              </nldd-container>
 
-              <ArrowRight className="h-5 w-5 text-text-secondary mx-auto" />
+              <nldd-icon name="arrow-right" size="20" color="secondary-content" />
 
               {/* Kandidaat */}
-              <div className="border border-blue-200 bg-blue-50 rounded p-3">
-                <div className="text-xs font-medium text-blue-700 mb-1">
+              <nldd-container width="fit-content" min-width="200px" padding="12" gap="4">
+                <nldd-text size="xs" color="accent" weight="medium">
                   {item.kandidaat_bron.toUpperCase()}
-                </div>
-                <div className="font-medium">{item.kandidaat_naam ?? '—'}</div>
+                </nldd-text>
+                <nldd-text size="sm" weight="medium">{item.kandidaat_naam ?? '—'}</nldd-text>
                 {item.kandidaat_tooi_uri && (
-                  <div className="text-xs text-text-secondary truncate font-mono">
-                    {item.kandidaat_tooi_uri}
-                  </div>
+                  <nldd-text size="xs" color="secondary">{item.kandidaat_tooi_uri}</nldd-text>
                 )}
-              </div>
-            </div>
+              </nldd-container>
+            </nldd-container>
 
             {status === 'open' && (
-              <div className="flex justify-end gap-2 mt-4">
-                <Button
+              <nldd-container horizontal-alignment="right" layout="row" gap="8">
+                <NlddButton
                   variant="secondary"
+                  text="Negeren"
+                  startIcon="dismiss"
                   onClick={() => ignoreMutation.mutate(item.id)}
-                  disabled={
-                    ignoreMutation.isPending && ignoreMutation.variables === item.id
-                  }
-                >
-                  <X className="h-4 w-4" />
-                  Negeren
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => mergeMutation.mutate(item.id)}
-                  disabled={
-                    !item.kandidaat_id ||
-                    (mergeMutation.isPending && mergeMutation.variables === item.id)
-                  }
+                  disabled={ignoreMutation.isPending && ignoreMutation.variables === item.id}
+                />
+                <span
                   title={
                     !item.kandidaat_id
                       ? 'Kandidaat-rij is verwijderd; kan niet mergen'
                       : 'Verplaats alle plaatsingen, leads en opdrachten naar de kandidaat-rij en verwijder de handmatige rij'
                   }
                 >
-                  <Check className="h-4 w-4" />
-                  Mergen
-                </Button>
-              </div>
+                  <NlddButton
+                    variant="primary"
+                    text="Mergen"
+                    startIcon="check-mark"
+                    onClick={() => mergeMutation.mutate(item.id)}
+                    disabled={
+                      !item.kandidaat_id ||
+                      (mergeMutation.isPending && mergeMutation.variables === item.id)
+                    }
+                  />
+                </span>
+              </nldd-container>
             )}
-          </div>
+          </nldd-container>
         </Card>
       ))}
-    </div>
+    </nldd-container>
   );
 }

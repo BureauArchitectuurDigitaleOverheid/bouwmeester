@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { Check, Plus, Sparkles } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
+import { useNlddEvent } from '@/components/nldd/events';
 
 interface AutoTagDialogProps {
   open: boolean;
@@ -54,29 +54,29 @@ export function AutoTagDialog({
       onClose={handleSkip}
       title="Tag-suggesties"
       footer={
-        <div className="flex items-center justify-end gap-2">
+        <nldd-container layout="row" gap="8" horizontal-alignment="right">
           <Button variant="ghost" onClick={handleSkip}>
             Overslaan
           </Button>
           <Button
             onClick={handleAcceptAll}
             disabled={selected.size === 0}
-            icon={<Sparkles className="h-3.5 w-3.5" />}
+            icon="sparkles"
           >
             Toevoegen ({selected.size})
           </Button>
-        </div>
+        </nldd-container>
       }
     >
-      <div className="space-y-3">
-        <p className="text-sm text-text-secondary">
+      <nldd-container gap="12">
+        <nldd-text size="sm" color="secondary">
           Deze node heeft weinig tags. Wil je de volgende suggesties toevoegen?
-        </p>
+        </nldd-text>
 
         {matchedTags.length > 0 && (
-          <div>
-            <p className="text-xs font-medium text-text-secondary mb-1.5">Bestaande tags</p>
-            <div className="flex flex-wrap gap-1.5">
+          <nldd-container gap="6">
+            <nldd-text size="xs" weight="medium" color="secondary">Bestaande tags</nldd-text>
+            <nldd-container layout="wrap" gap="6">
               {matchedTags.map((tag) => (
                 <TagChip
                   key={tag}
@@ -85,14 +85,14 @@ export function AutoTagDialog({
                   onToggle={() => toggleTag(tag)}
                 />
               ))}
-            </div>
-          </div>
+            </nldd-container>
+          </nldd-container>
         )}
 
         {suggestedNewTags.length > 0 && (
-          <div>
-            <p className="text-xs font-medium text-text-secondary mb-1.5">Nieuwe tags</p>
-            <div className="flex flex-wrap gap-1.5">
+          <nldd-container gap="6">
+            <nldd-text size="xs" weight="medium" color="secondary">Nieuwe tags</nldd-text>
+            <nldd-container layout="wrap" gap="6">
               {suggestedNewTags.map((tag) => (
                 <TagChip
                   key={tag}
@@ -102,10 +102,10 @@ export function AutoTagDialog({
                   onToggle={() => toggleTag(tag)}
                 />
               ))}
-            </div>
-          </div>
+            </nldd-container>
+          </nldd-container>
         )}
-      </div>
+      </nldd-container>
     </Modal>
   );
 }
@@ -121,24 +121,15 @@ function TagChip({
   selected: boolean;
   onToggle: () => void;
 }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', onToggle);
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
-        selected
-          ? 'bg-primary-100 text-primary-700 ring-1 ring-primary-300'
-          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-      }`}
-    >
-      {selected ? (
-        <Check className="h-3 w-3" />
-      ) : isNew ? (
-        <Plus className="h-3 w-3" />
-      ) : (
-        <Check className="h-3 w-3 opacity-30" />
-      )}
-      {name}
-    </button>
+    <nldd-toggle-button
+      ref={ref}
+      text={name}
+      icon={selected ? 'check-mark' : isNew ? 'plus' : 'check-mark'}
+      selected={selected ? true : undefined}
+      size="sm"
+    />
   );
 }

@@ -1,8 +1,11 @@
-import { useState, useMemo } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { useState, useMemo, useRef } from 'react';
 import { useSharing, useCreateSharing, useDeleteSharing } from '@/hooks/useSharing';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import type { SharingGrantCreate } from '@/hooks/useSharing';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { EmptyState } from '@/components/common/EmptyState';
 
 type ShareMode = 'eenheid' | 'node';
 
@@ -31,6 +34,24 @@ export function SharingManager() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(INITIAL_FORM);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const modeGroupRef = useRef<HTMLElement>(null);
+  const sourceNodeRef = useRef<HTMLElement>(null);
+  const reasonRef = useRef<HTMLElement>(null);
+  const geldigVanRef = useRef<HTMLElement>(null);
+  const geldigTotRef = useRef<HTMLElement>(null);
+
+  useNlddEvent(modeGroupRef, 'change', (e) => {
+    const mode = eventValue(e) as ShareMode;
+    if (mode === 'eenheid') setForm((f) => ({ ...f, mode, source_node_id: undefined }));
+    else if (mode === 'node') setForm((f) => ({ ...f, mode, source_eenheid_id: undefined }));
+  });
+  useNlddEvent(sourceNodeRef, 'input', (e) =>
+    setForm((f) => ({ ...f, source_node_id: eventValue(e) || undefined })),
+  );
+  useNlddEvent(reasonRef, 'input', (e) => setForm((f) => ({ ...f, reason: eventValue(e) })));
+  useNlddEvent(geldigVanRef, 'input', (e) => setForm((f) => ({ ...f, geldig_van: eventValue(e) })));
+  useNlddEvent(geldigTotRef, 'input', (e) => setForm((f) => ({ ...f, geldig_tot: eventValue(e) })));
 
   const sortedEenheden = useMemo(
     () => [...(eenheden ?? [])].sort((a, b) => a.naam.localeCompare(b.naam)),
@@ -70,65 +91,78 @@ export function SharingManager() {
   };
 
   if (isLoading) {
-    return <div className="text-sm text-text-secondary py-8 text-center">Laden...</div>;
+    return <nldd-activity-indicator size="32" style={{ margin: '2rem auto', display: 'block' }} />;
   }
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       {/* Toggle add form */}
       {!showForm && (
-        <button
+        <NlddButton
+          text="Nieuwe deling"
+          startIcon="plus"
           onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Nieuwe deling
-        </button>
+        />
       )}
 
       {/* Add form */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="border border-border rounded-xl p-4 space-y-3">
-          <h3 className="text-sm font-medium text-text">Nieuwe deling aanmaken</h3>
+        <nldd-card>
+        <form onSubmit={handleSubmit}>
+          <nldd-container padding="16" gap="12">
+          <nldd-title size={4}><h3>Nieuwe deling aanmaken</h3></nldd-title>
 
           {/* Mode toggle */}
-          <fieldset className="flex gap-4">
-            <label className="flex items-center gap-1.5 text-sm text-text cursor-pointer">
-              <input
-                type="radio"
-                name="mode"
-                checked={form.mode === 'eenheid'}
-                onChange={() =>
-                  setForm({ ...form, mode: 'eenheid', source_node_id: undefined })
-                }
-              />
-              Hele eenheid delen
-            </label>
-            <label className="flex items-center gap-1.5 text-sm text-text cursor-pointer">
-              <input
-                type="radio"
-                name="mode"
-                checked={form.mode === 'node'}
-                onChange={() =>
-                  setForm({ ...form, mode: 'node', source_eenheid_id: undefined })
-                }
-              />
-              Specifiek item delen
-            </label>
-          </fieldset>
+          <nldd-radio-button-group ref={modeGroupRef} accessible-label="Type deling" name="share-mode">
+            <nldd-radio-button-field
+              label="Hele eenheid delen"
+              value="eenheid"
+              checked={form.mode === 'eenheid' ? true : undefined}
+            />
+            <nldd-radio-button-field
+              label="Specifiek item delen"
+              value="node"
+              checked={form.mode === 'node' ? true : undefined}
+            />
+          </nldd-radio-button-group>
 
           {/* Source */}
           {form.mode === 'eenheid' ? (
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">
-                Broneenheid
-              </label>
+            <nldd-form-field label="Broneenheid">
+              <nldd-dropdown>
+                <select
+                  value={form.source_eenheid_id ?? ''}
+                  onChange={(e) =>
+                    setForm({ ...form, source_eenheid_id: e.target.value || undefined })
+                  }
+                  required
+                >
+                  <option value="">Selecteer eenheid...</option>
+                  {sortedEenheden.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.naam}
+                    </option>
+                  ))}
+                </select>
+              </nldd-dropdown>
+            </nldd-form-field>
+          ) : (
+            <nldd-form-field label="Item ID (corpus node)">
+              <nldd-text-field
+                ref={sourceNodeRef}
+                value={form.source_node_id ?? ''}
+                placeholder="UUID van het item..."
+                required
+              />
+            </nldd-form-field>
+          )}
+
+          {/* Target */}
+          <nldd-form-field label="Doeleenheid">
+            <nldd-dropdown>
               <select
-                value={form.source_eenheid_id ?? ''}
-                onChange={(e) =>
-                  setForm({ ...form, source_eenheid_id: e.target.value || undefined })
-                }
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
+                value={form.target_eenheid_id}
+                onChange={(e) => setForm({ ...form, target_eenheid_id: e.target.value })}
                 required
               >
                 <option value="">Selecteer eenheid...</option>
@@ -138,218 +172,140 @@ export function SharingManager() {
                   </option>
                 ))}
               </select>
-            </div>
-          ) : (
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">
-                Item ID (corpus node)
-              </label>
-              <input
-                type="text"
-                value={form.source_node_id ?? ''}
-                onChange={(e) =>
-                  setForm({ ...form, source_node_id: e.target.value || undefined })
-                }
-                placeholder="UUID van het item..."
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
-                required
-              />
-            </div>
-          )}
-
-          {/* Target */}
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">
-              Doeleenheid
-            </label>
-            <select
-              value={form.target_eenheid_id}
-              onChange={(e) => setForm({ ...form, target_eenheid_id: e.target.value })}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
-              required
-            >
-              <option value="">Selecteer eenheid...</option>
-              {sortedEenheden.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.naam}
-                </option>
-              ))}
-            </select>
-          </div>
+            </nldd-dropdown>
+          </nldd-form-field>
 
           {/* Access level */}
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">
-              Toegangsniveau
-            </label>
-            <select
-              value={form.access_level}
-              onChange={(e) =>
-                setForm({ ...form, access_level: e.target.value as 'read' | 'edit' })
-              }
-              className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
-            >
-              <option value="read">Lezen</option>
-              <option value="edit">Bewerken</option>
-            </select>
-          </div>
+          <nldd-form-field label="Toegangsniveau">
+            <nldd-dropdown>
+              <select
+                value={form.access_level}
+                onChange={(e) =>
+                  setForm({ ...form, access_level: e.target.value as 'read' | 'edit' })
+                }
+              >
+                <option value="read">Lezen</option>
+                <option value="edit">Bewerken</option>
+              </select>
+            </nldd-dropdown>
+          </nldd-form-field>
 
           {/* Reason */}
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">
-              Reden (optioneel)
-            </label>
-            <input
-              type="text"
+          <nldd-form-field label="Reden" optional>
+            <nldd-text-field
+              ref={reasonRef}
               value={form.reason ?? ''}
-              onChange={(e) => setForm({ ...form, reason: e.target.value })}
               placeholder="Bijv. samenwerking project X"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
             />
-          </div>
+          </nldd-form-field>
 
           {/* Date range */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-text-secondary mb-1">
-                Geldig van (optioneel)
-              </label>
-              <input
-                type="date"
-                value={form.geldig_van ?? ''}
-                onChange={(e) => setForm({ ...form, geldig_van: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-text-secondary mb-1">
-                Geldig tot (optioneel)
-              </label>
-              <input
-                type="date"
-                value={form.geldig_tot ?? ''}
-                onChange={(e) => setForm({ ...form, geldig_tot: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
-              />
-            </div>
-          </div>
+          <nldd-container layout="grid" column-count={2} gap="12">
+            <nldd-form-field label="Geldig van" optional>
+              <nldd-date-field ref={geldigVanRef} value={form.geldig_van ?? ''} />
+            </nldd-form-field>
+            <nldd-form-field label="Geldig tot" optional>
+              <nldd-date-field ref={geldigTotRef} value={form.geldig_tot ?? ''} />
+            </nldd-form-field>
+          </nldd-container>
 
           {/* Form actions */}
-          <div className="flex gap-2 pt-1">
-            <button
+          <nldd-container layout="row" gap="8">
+            <NlddButton
               type="submit"
+              text="Toevoegen"
+              startIcon="plus"
               disabled={createSharing.isPending}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              Toevoegen
-            </button>
-            <button
+            />
+            <NlddButton
               type="button"
+              text="Annuleren"
+              variant="neutral-tinted"
               onClick={() => {
                 setForm(INITIAL_FORM);
                 setShowForm(false);
               }}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-200 text-text hover:bg-gray-300 transition-colors"
-            >
-              Annuleren
-            </button>
-          </div>
+            />
+          </nldd-container>
+          </nldd-container>
         </form>
+        </nldd-card>
       )}
 
       {/* Shares table */}
-      <div className="border border-border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-border">
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary">Bron</th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary">Doel</th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden sm:table-cell">
-                Niveau
-              </th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden md:table-cell">
-                Reden
-              </th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden lg:table-cell">
-                Geldig van
-              </th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden lg:table-cell">
-                Geldig tot
-              </th>
-              <th className="w-10 px-4 py-2.5"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {shares?.map((share) => (
-              <tr
-                key={share.id}
-                className="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors"
-              >
-                <td className="px-4 py-2.5 text-text">
-                  {share.source_eenheid_naam ?? 'Specifiek item'}
-                </td>
-                <td className="px-4 py-2.5 text-text">
-                  {share.target_eenheid_naam ?? share.target_eenheid_id}
-                </td>
-                <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
-                  {ACCESS_LABELS[share.access_level] ?? share.access_level}
-                </td>
-                <td className="px-4 py-2.5 text-text-secondary hidden md:table-cell">
-                  {share.reason || '-'}
-                </td>
-                <td className="px-4 py-2.5 text-text-secondary hidden lg:table-cell">
-                  {new Date(share.geldig_van).toLocaleDateString('nl-NL')}
-                </td>
-                <td className="px-4 py-2.5 text-text-secondary hidden lg:table-cell">
-                  {share.geldig_tot
-                    ? new Date(share.geldig_tot).toLocaleDateString('nl-NL')
-                    : '-'}
-                </td>
-                <td className="px-4 py-2.5">
-                  {confirmDeleteId === share.id ? (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleDelete(share.id)}
-                        disabled={deleteSharing.isPending}
-                        className="px-2 py-0.5 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-                      >
-                        Ja
-                      </button>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        className="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-text hover:bg-gray-300 transition-colors"
-                      >
-                        Nee
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmDeleteId(share.id)}
-                      className="p-1 rounded hover:bg-red-50 text-text-secondary hover:text-red-600 transition-colors"
-                      title="Verwijderen"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {(!shares || shares.length === 0) && (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-text-secondary">
-                  Geen actieve delingen
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <nldd-table
+        columns="minmax(160px,1fr) minmax(160px,1fr) 120px minmax(160px,1fr) 120px 120px 48px"
+        sm-columns="1fr 1fr 48px"
+        md-columns="1fr 1fr 120px 48px"
+        accessible-label="Actieve delingen"
+      >
+        <nldd-table-row slot="header">
+          <nldd-text-cell text="Bron" />
+          <nldd-text-cell text="Doel" />
+          <nldd-text-cell text="Niveau" hide-below="md" />
+          <nldd-text-cell text="Reden" hide-below="lg" />
+          <nldd-text-cell text="Geldig van" hide-below="lg" />
+          <nldd-text-cell text="Geldig tot" hide-below="lg" />
+          <nldd-text-cell />
+        </nldd-table-row>
+        {shares?.map((share) => (
+          <nldd-table-row key={share.id}>
+            <nldd-text-cell text={share.source_eenheid_naam ?? 'Specifiek item'} />
+            <nldd-text-cell text={share.target_eenheid_naam ?? share.target_eenheid_id} />
+            <nldd-text-cell
+              text={ACCESS_LABELS[share.access_level] ?? share.access_level}
+              color="secondary"
+              hide-below="md"
+            />
+            <nldd-text-cell text={share.reason || '-'} color="secondary" hide-below="lg" />
+            <nldd-text-cell
+              text={new Date(share.geldig_van).toLocaleDateString('nl-NL')}
+              color="secondary"
+              hide-below="lg"
+            />
+            <nldd-text-cell
+              text={share.geldig_tot ? new Date(share.geldig_tot).toLocaleDateString('nl-NL') : '-'}
+              color="secondary"
+              hide-below="lg"
+            />
+            <nldd-text-cell>
+              {confirmDeleteId === share.id ? (
+                <nldd-container layout="row" gap="4" vertical-alignment="center">
+                  <NlddButton
+                    text="Ja"
+                    variant="destructive"
+                    size="xs"
+                    disabled={deleteSharing.isPending}
+                    onClick={() => handleDelete(share.id)}
+                  />
+                  <NlddButton
+                    text="Nee"
+                    variant="neutral-tinted"
+                    size="xs"
+                    onClick={() => setConfirmDeleteId(null)}
+                  />
+                </nldd-container>
+              ) : (
+                <NlddIconButton
+                  icon="trash"
+                  accessibleLabel="Verwijderen"
+                  variant="neutral-transparent"
+                  size="sm"
+                  onClick={() => setConfirmDeleteId(share.id)}
+                />
+              )}
+            </nldd-text-cell>
+          </nldd-table-row>
+        ))}
+        <div slot="empty">
+          <EmptyState icon="inbox" title="Geen actieve delingen" />
+        </div>
+      </nldd-table>
 
-      <p className="text-xs text-text-secondary">
+      <nldd-text size="xs" color="secondary">
         Delingen geven een organisatie-eenheid toegang tot gegevens van een andere eenheid of een
         specifiek item. Verwijder een deling om de toegang in te trekken.
-      </p>
-    </div>
+      </nldd-text>
+    </nldd-container>
   );
 }

@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Clock, XCircle } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { ChatPanel } from '@/components/chat/ChatPanel';
@@ -13,6 +12,14 @@ import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
 import { GlobalDropOverlay } from '@/components/common/GlobalDropOverlay';
 import { FileActionChooser } from '@/components/common/FileActionChooser';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
+import { orUndef } from '@/components/nldd/events';
+import { NlddButton } from '@/components/nldd/NlddLink';
+
+/** The subset of nldd-navigation-split-view's imperative API we drive. */
+type SplitViewElement = HTMLElement & {
+  showPrimarySidebarSheet?: () => Promise<void>;
+  hidePrimarySidebarSheet?: () => void;
+};
 
 function PlacementBanner() {
   const { person } = useAuth();
@@ -24,16 +31,16 @@ function PlacementBanner() {
   if (person.placement_denied) {
     return (
       <>
-        <div className="bg-red-50 border-b border-red-200 px-4 py-2.5 flex items-center justify-center gap-2 text-sm text-red-800">
-          <XCircle className="h-4 w-4 shrink-0" />
-          <span>Je teamverzoek is afgewezen.</span>
-          <button
-            onClick={() => setShowReRequest(true)}
-            className="underline font-medium hover:text-red-900"
-          >
-            Opnieuw aanvragen
-          </button>
-        </div>
+        <nldd-banner variant="critical" size="sm" text="Je teamverzoek is afgewezen.">
+          <div slot="actions">
+            <NlddButton
+              text="Opnieuw aanvragen"
+              variant="critical-tinted"
+              size="sm"
+              onClick={() => setShowReRequest(true)}
+            />
+          </div>
+        </nldd-banner>
         {showReRequest && <OnboardingModal />}
       </>
     );
@@ -42,10 +49,11 @@ function PlacementBanner() {
   // User has a pending request
   if (person.has_pending_placement) {
     return (
-      <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-center gap-2 text-sm text-amber-800">
-        <Clock className="h-4 w-4 shrink-0" />
-        <span>Je teamverzoek wordt beoordeeld door een manager.</span>
-      </div>
+      <nldd-banner
+        variant="warning"
+        size="sm"
+        text="Je teamverzoek wordt beoordeeld door een manager."
+      />
     );
   }
 
@@ -55,18 +63,41 @@ function PlacementBanner() {
 export function AppLayout() {
   const isMobile = useIsMobile();
   const location = useLocation();
-  const { mobileSidebarOpen, setMobileSidebarOpen, chatOpen, chatWidth, searchModalOpen, setSearchModalOpen } = useUIStore();
+  const {
+    mobileSidebarOpen,
+    setMobileSidebarOpen,
+    sidebarOpen,
+    chatOpen,
+    searchModalOpen,
+    setSearchModalOpen,
+  } = useUIStore();
   const { isDragging } = useGlobalFileDropContext();
+  const splitViewRef = useRef<HTMLElement>(null);
 
-  // Close mobile sidebar on Escape
+  // The split view owns the sidebar sheet on narrow screens. Mirror our store
+  // onto it rather than rendering a second overlay of our own: it handles the
+  // backdrop, the focus trap and Escape itself.
   useEffect(() => {
-    if (!mobileSidebarOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMobileSidebarOpen(false);
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [mobileSidebarOpen, setMobileSidebarOpen]);
+    const el = splitViewRef.current as SplitViewElement | null;
+    if (!el || !isMobile) return;
+    if (mobileSidebarOpen) void el.showPrimarySidebarSheet?.();
+    else el.hidePrimarySidebarSheet?.();
+  }, [mobileSidebarOpen, isMobile]);
+
+  // The split view closes the sheet itself on Escape or a backdrop click and
+  // dispatches nothing, so the store would stay stuck on "open" and the next
+  // toggle would appear dead. Watch the underlying <dialog> instead.
+  useEffect(() => {
+    const el = splitViewRef.current as SplitViewElement | null;
+    if (!el || !isMobile || !mobileSidebarOpen) return;
+
+    const dialog = el.shadowRoot?.querySelector('dialog');
+    if (!dialog) return;
+
+    const onClose = () => setMobileSidebarOpen(false);
+    dialog.addEventListener('close', onClose);
+    return () => dialog.removeEventListener('close', onClose);
+  }, [isMobile, mobileSidebarOpen, setMobileSidebarOpen]);
 
   // Global "/" shortcut to open search modal (unless on /search page)
   useEffect(() => {
@@ -91,38 +122,68 @@ export function AppLayout() {
   }, [location.pathname, setSearchModalOpen]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Desktop sidebar */}
-      {!isMobile && <Sidebar />}
+    <>
+      <nldd-skip-link href="#main-content" text="Direct naar de inhoud" />
+      <nldd-app-view background="tinted">
+        <nldd-navigation-split-view
+          ref={splitViewRef}
+          primary-sidebar-accessible-label="Navigatie"
+          inspector-accessible-label="Assistent"
+          /* Below lg the split view moves the sidebar into a sheet itself, which
+             replaces the fixed-position overlay this layout used to hand-roll. */
+          primary-sidebar-as-sheet={orUndef(isMobile)}
+          /* The width of the sidebar column lives on the split view, not on the
+             pane. Its shadow DOM wraps the pane in a div whose width is entirely
+             `min-width: var(--_primary-sidebar-min-width)` with flex-shrink: 0,
+             so a width set on the pane itself only shrinks the pane INSIDE a
+             wrapper that stays 320px — the icons narrow, the column does not,
+             and the main content never moves left.
+             The component's own stylesheet marks this variable as the way in
+             ("read by JS via getComputedStyle in firstUpdated"), so overriding
+             it here is the intended seam rather than reaching into the shadow
+             DOM. */
+          style={
+            {
+              '--_primary-sidebar-min-width': sidebarOpen || isMobile ? '240px' : '64px',
+              transition: 'none',
+            } as React.CSSProperties
+          }
+        >
+          <nldd-split-view-pane slot="primary-sidebar" has-content background="tinted">
+            <Sidebar mobile={isMobile} />
+          </nldd-split-view-pane>
 
-      {/* Mobile sidebar overlay */}
-      {isMobile && mobileSidebarOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/40 z-40"
-            onClick={() => setMobileSidebarOpen(false)}
-          />
-          <div className="fixed inset-y-0 left-0 z-50 w-72">
-            <Sidebar mobile />
-          </div>
-        </>
-      )}
+          <nldd-split-view-pane slot="main" has-content>
+            <nldd-page>
+              <div slot="header">
+                <Header />
+                <PlacementBanner />
+              </div>
+              <main id="main-content">
+                <nldd-container padding="16" md-padding="24">
+                  <Outlet />
+                </nldd-container>
+              </main>
+            </nldd-page>
+          </nldd-split-view-pane>
 
-      <div
-        className="flex flex-col flex-1 min-w-0 transition-all duration-300"
-        style={{ marginRight: chatOpen && !isMobile ? chatWidth : 0 }}
-      >
-        <Header />
-        <PlacementBanner />
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
-          <Outlet />
-        </main>
-      </div>
-      <ChatPanel />
+          {/* The inspector is the lowest-priority pane, so it is the first the
+              split view hides when space runs short — which is what we want for
+              the assistant. */}
+          {chatOpen && (
+            <nldd-split-view-pane slot="inspector" has-content background="base">
+              <ChatPanel />
+            </nldd-split-view-pane>
+          )}
+        </nldd-navigation-split-view>
+      </nldd-app-view>
+
+      {/* Overlays live at the document root. Left as light-DOM siblings of the
+          split view they get slotted into the main pane and steal its height. */}
       <ChatToggleButton />
       <SearchModal open={searchModalOpen} onClose={() => setSearchModalOpen(false)} />
       <GlobalDropOverlay visible={isDragging} />
       <FileActionChooser />
-    </div>
+    </>
   );
 }

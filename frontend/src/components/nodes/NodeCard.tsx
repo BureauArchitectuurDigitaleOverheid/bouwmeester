@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowRight, Compass, Link as LinkIcon, Wallet } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
+import { Icon } from '@/components/nldd/Icon';
 import type { CorpusNode, NodeStatus } from '@/types';
 import { NODE_TYPE_COLORS, NODE_STATUS_LABELS, NodeType } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
@@ -19,67 +19,79 @@ export function NodeCard({ node }: NodeCardProps) {
   const { nodeLabel, nodeAltLabel } = useVocabulary();
   const color = NODE_TYPE_COLORS[node.node_type];
 
+  const kompasDone =
+    node.beleidskompas_progress &&
+    node.beleidskompas_progress.completed_steps === node.beleidskompas_progress.total_steps;
+
   return (
     <Card
       hoverable
       onClick={() => navigate(`/nodes/${node.id}`, { state: { fromCorpus: location.pathname + location.search } })}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
+      <nldd-container layout="row" gap="12" vertical-alignment="top">
+        <nldd-container gap="4" min-width="0px">
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
             <Badge variant={color} dot title={nodeAltLabel(node.node_type)}>
               {nodeLabel(node.node_type)}
             </Badge>
             {node.status && (
               <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>
             )}
-          </div>
+          </nldd-container>
 
-          <h3 className="text-sm font-semibold text-text truncate mb-1">
-            {node.title}
+          {/* nldd-text has no truncate/line-clamp prop; that's line-box CSS
+              behavior with no token equivalent, so it stays as plain classes. */}
+          <h3 className="truncate">
+            <nldd-text size="sm" weight="bold">{node.title}</nldd-text>
           </h3>
 
           {node.description && (
-            <p className="text-xs text-text-secondary line-clamp-2">
-              {richTextToPlain(node.description)}
+            <p className="line-clamp-2">
+              <nldd-text size="xs" color="secondary">{richTextToPlain(node.description)}</nldd-text>
             </p>
           )}
-        </div>
+        </nldd-container>
 
-        <ArrowRight className="h-4 w-4 text-text-secondary shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
-      </div>
+        {/* Hover-reveal: `group-hover-reveal` carries the real CSS (see
+            utilities.css), the `group` state comes from Card's hoverable. */}
+        <Icon name="arrow-right" size="md" className="shrink-0 group-hover-reveal" />
+      </nldd-container>
 
       {/* Footer info */}
-      <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border">
+      <nldd-container layout="row" gap="12" vertical-alignment="center" padding-top="12">
         {node.edge_count !== undefined && (
-          <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
-            <LinkIcon className="h-3 w-3" />
-            {node.edge_count} verbindingen
-          </span>
+          <nldd-container layout="row" gap="4" vertical-alignment="center">
+            <Icon name="link" size="xs" />
+            <nldd-text size="xs" color="secondary">{node.edge_count} verbindingen</nldd-text>
+          </nldd-container>
         )}
         {node.financieel_summary && node.financieel_summary.totaal_budget > 0 && (
-          <span className="inline-flex items-center gap-1 text-xs text-text-secondary" title={`Budget: ${formatCurrency(node.financieel_summary.totaal_budget)} — Gerealiseerd: ${formatCurrency(node.financieel_summary.totaal_gerealiseerd)}`}>
-            <Wallet className="h-3 w-3" />
-            {formatCurrencyCompact(node.financieel_summary.totaal_budget)}
-          </span>
+          <nldd-container
+            layout="row"
+            gap="4"
+            vertical-alignment="center"
+            title={`Budget: ${formatCurrency(node.financieel_summary.totaal_budget)} — Gerealiseerd: ${formatCurrency(node.financieel_summary.totaal_gerealiseerd)}`}
+          >
+            <Icon name="euro-sign" size="xs" />
+            <nldd-text size="xs" color="secondary">{formatCurrencyCompact(node.financieel_summary.totaal_budget)}</nldd-text>
+          </nldd-container>
         )}
         {node.node_type === NodeType.DOSSIER && node.beleidskompas_progress && (
-          <span
-            className={`inline-flex items-center gap-1 text-xs font-medium ${
-              node.beleidskompas_progress.completed_steps === node.beleidskompas_progress.total_steps
-                ? 'text-emerald-600'
-                : 'text-text-secondary'
-            }`}
+          <nldd-container
+            layout="row"
+            gap="4"
+            vertical-alignment="center"
             title={`Beleidskompas: ${node.beleidskompas_progress.completed_steps} van ${node.beleidskompas_progress.total_steps} stappen compleet`}
           >
-            <Compass className="h-3 w-3" />
-            {node.beleidskompas_progress.completed_steps}/{node.beleidskompas_progress.total_steps}
-          </span>
+            <Icon name="signpost" size="xs" />
+            <nldd-text size="xs" weight="medium" color={kompasDone ? 'success' : 'secondary'}>
+              {node.beleidskompas_progress.completed_steps}/{node.beleidskompas_progress.total_steps}
+            </nldd-text>
+          </nldd-container>
         )}
-        <span className="text-xs text-text-secondary ml-auto">
-          {formatDateShort(node.updated_at ?? node.created_at)}
-        </span>
-      </div>
+        <nldd-spacer direction="horizontal" size="flexible" />
+        <nldd-text size="xs" color="secondary">{formatDateShort(node.updated_at ?? node.created_at)}</nldd-text>
+      </nldd-container>
     </Card>
   );
 }

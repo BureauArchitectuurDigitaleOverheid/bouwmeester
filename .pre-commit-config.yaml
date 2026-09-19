@@ -32,3 +32,41 @@ repos:
         language: system
         files: ^frontend/src/.*\.(ts|tsx)$
         pass_filenames: false
+      # Checks the nldd-* markup against the design system's own manifest and
+      # icon registry. Catches the three things that fail silently in the
+      # browser and that tsc cannot see: an unknown slot, an icon name outside
+      # the closed set, and an element that does not exist in this version.
+      - id: nldd-markup
+        name: nldd markup
+        entry: bash -c 'cd frontend && node scripts/validate-nldd-markup.mjs'
+        language: system
+        files: ^frontend/src/.*\.tsx$
+        pass_filenames: false
+
+      # Every design-system CSS variable the app names must exist. An undefined
+      # custom property renders nothing and says nothing; written with a
+      # fallback it is worse, because the fallback ships and the token is
+      # decoration. Fourteen invented names were in the tree when this was
+      # added, six of them behind a hex fallback that made them look right in
+      # light mode and freeze in dark.
+      - id: nldd-tokens
+        name: nldd tokens
+        entry: bash -c 'cd frontend && node scripts/validate-nldd-tokens.mjs'
+        language: system
+        files: ^frontend/src/.*\.(tsx?|css)$
+        pass_filenames: false
+
+      # Every class the app renders must have a rule behind it, and every rule
+      # in utilities.css must have a user. While Tailwind was installed its
+      # compiler invented a rule for anything it recognised, so a class could
+      # work without existing in any stylesheet we own; once the package left,
+      # those kept compiling and stopped doing anything. This is the check for
+      # that, and it was the only one of the three not wired in here — which is
+      # how 112 dead classes survived, including a table that rendered as bare
+      # HTML and three traffic lights that rendered as nothing at all.
+      - id: nldd-css-classes
+        name: nldd css classes
+        entry: bash -c 'cd frontend && node scripts/validate-css-classes.mjs'
+        language: system
+        files: ^frontend/src/.*\.(tsx?|css)$
+        pass_filenames: false

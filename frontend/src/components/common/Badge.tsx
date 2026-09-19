@@ -1,21 +1,35 @@
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
 import type { BadgeVariant } from '@/types';
 
-const variantClasses: Record<BadgeVariant, string> = {
-  blue: 'bg-blue-50 text-blue-700 ring-blue-600/20',
-  green: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-  purple: 'bg-purple-50 text-purple-700 ring-purple-600/20',
-  amber: 'bg-amber-50 text-amber-700 ring-amber-600/20',
-  cyan: 'bg-cyan-50 text-cyan-700 ring-cyan-600/20',
-  rose: 'bg-rose-50 text-rose-700 ring-rose-600/20',
-  slate: 'bg-slate-50 text-slate-700 ring-slate-600/20',
-  gray: 'bg-gray-50 text-gray-600 ring-gray-500/20',
-  red: 'bg-red-50 text-red-700 ring-red-600/20',
-  orange: 'bg-orange-50 text-orange-700 ring-orange-600/20',
-  emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-  indigo: 'bg-indigo-50 text-indigo-700 ring-indigo-600/20',
+/**
+ * `nldd-tag` behind the previous Badge API.
+ *
+ * nldd-tag accepts the five semantic roles AND the Rijkshuisstijl colors, so the
+ * twelve variants this app uses keep their distinctness instead of collapsing
+ * into five. Where a variant already carried meaning (red = error, emerald =
+ * done, amber = attention) it maps to the semantic role, which keeps it correct
+ * in dark mode and for colorblind users; the purely decorative ones map to the
+ * nearest Rijkshuisstijl color.
+ *
+ * `nldd-badge` is a different component: a small count or status dot on top of
+ * another element, not a labelled chip. Our Badge is a chip, hence the tag.
+ */
+type TagColor = NonNullable<React.ComponentProps<'nldd-tag'>['color']>;
+
+const VARIANT_COLORS: Record<BadgeVariant, TagColor> = {
+  // Semantic: these carry meaning, so they follow the roles.
+  red: 'critical',
+  green: 'success',
+  emerald: 'success',
+  amber: 'warning',
+  orange: 'warning',
+  blue: 'accent',
+  gray: 'neutral',
+  slate: 'neutral',
+  // Decorative: nearest Rijkshuisstijl color.
+  purple: 'paars',
+  cyan: 'hemelblauw',
+  rose: 'roze',
+  indigo: 'donkerblauw',
 };
 
 interface BadgeProps {
@@ -27,21 +41,32 @@ interface BadgeProps {
 }
 
 export function Badge({ children, variant = 'gray', dot = false, className, title }: BadgeProps) {
+  // The element takes its label as an attribute; children only work through the
+  // text slot. Most call sites pass a plain string, so prefer the attribute and
+  // fall back to the slot for rich content.
+  const text = typeof children === 'string' ? children : undefined;
+
+  // The tag paints itself from `color`; a Tailwind color class passed through
+  // `className` now lands on the host and does nothing, because the visible
+  // surface lives in the shadow root. That fails silently — the badge simply
+  // renders in the default color — so say it out loud in development.
+  if (import.meta.env.DEV && className && /\b(bg|text|border|ring)-/.test(className)) {
+    console.warn(
+      `<Badge className="${className}"> — color utilities no longer apply; ` +
+        'the tag paints from `color`. Use the `variant` prop instead.',
+    );
+  }
+
   return (
-    <span
+    <nldd-tag
+      color={VARIANT_COLORS[variant]}
+      size="sm"
+      className={className}
       title={title}
-      className={twMerge(
-        clsx(
-          'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset whitespace-nowrap',
-          variantClasses[variant],
-          className,
-        ),
-      )}
+      {...(text ? { text } : {})}
+      {...(dot ? { icon: 'circle-filled-extra-small' } : {})}
     >
-      {dot && (
-        <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
-      )}
-      {children}
-    </span>
+      {text ? null : children}
+    </nldd-tag>
   );
 }

@@ -1,6 +1,5 @@
 import { InboxItemCard } from './InboxItem';
 import { EmptyState } from '@/components/common/EmptyState';
-import { Inbox } from 'lucide-react';
 import type { InboxItem } from '@/types';
 
 interface InboxListProps {
@@ -20,7 +19,7 @@ export function InboxList({ items, onOpenThread, onMarkRead }: InboxListProps) {
   if (items.length === 0) {
     return (
       <EmptyState
-        icon={<Inbox className="h-16 w-16" />}
+        icon="inbox"
         title="Inbox is leeg"
         description="Er zijn geen nieuwe berichten of meldingen. Zodra er activiteit is, verschijnt deze hier."
       />
@@ -38,19 +37,19 @@ export function InboxList({ items, onOpenThread, onMarkRead }: InboxListProps) {
   );
 
   return (
-    <div className="space-y-6">
+    <nldd-container layout="stack" gap="24">
       {Object.entries(grouped).map(([type, groupItems]) => (
-        <div key={type}>
-          <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
+        <nldd-container key={type} layout="stack" gap="8">
+          <nldd-text size="xs" weight="bold" color="secondary">
             {GROUP_LABELS[type] ?? type} ({groupItems.length})
-          </h3>
-          <div className="space-y-2">
+          </nldd-text>
+          <nldd-container layout="stack" gap="8">
             {groupItems.map((item) => (
               <InboxItemCard key={item.id} item={item} onOpenThread={onOpenThread} onMarkRead={onMarkRead} />
             ))}
-          </div>
-        </div>
+          </nldd-container>
+        </nldd-container>
       ))}
-    </div>
+    </nldd-container>
   );
 }

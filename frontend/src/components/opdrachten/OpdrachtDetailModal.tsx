@@ -1,16 +1,49 @@
-import { useState, useMemo } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Trash2, Link as LinkIcon, CheckSquare, Plus, ClipboardList, CheckCircle2, Circle, Clock, Users, Building2, X, Sparkles } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { DetailSection } from '@/components/common/DetailSection';
+import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
 import { RelatedItemsList } from '@/components/common/RelatedItemsList';
 import { DetailModalFooter } from '@/components/common/DetailModalFooter';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { useNlddEvent } from '@/components/nldd/events';
+
+/** An `nldd-link` with its click bridged to React, for an in-page navigation action inside plain text. */
+function ActionLink({ text, onClick }: { text: string; onClick: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onClick);
+  return <nldd-link ref={ref} text={text} />;
+}
+
+/** `SyncStatus` -> the design system's five semantic roles. */
+const SYNC_STATUS_TAG_COLOR: Record<SyncStatus, 'success' | 'warning' | 'accent' | 'critical'> = {
+  synced: 'success',
+  pending_push: 'warning',
+  pending_pull: 'accent',
+  conflict: 'critical',
+  error: 'critical',
+};
+
+/** Small "matched by AI" indicator, shown next to a member/eenheid name. */
+function AiMatchedTag({ reason, confidence }: { reason?: string | null; confidence?: number | null }) {
+  return (
+    <nldd-tag
+      text="AI"
+      icon="sparkles"
+      color="warning"
+      size="sm"
+      title={reason ? `${reason} (${Math.round((confidence ?? 0) * 100)}%)` : 'Door AI gematcht'}
+    />
+  );
+}
 import { FccDataSection } from './FccDataSection';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { Select } from '@/components/common/Select';
 import { OpdrachtForm } from './OpdrachtForm';
 import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
 import {
@@ -34,7 +67,6 @@ import {
   KOSTENSOORT_LABELS,
   NODE_TYPE_COLORS,
   SYNC_STATUS_LABELS,
-  SYNC_STATUS_COLORS,
   OpdrachtType,
   OpdrachtStatus,
   Kostensoort,
@@ -48,10 +80,9 @@ interface OpdrachtDetailModalProps {
   opdrachtId: string | null;
   open: boolean;
   onClose: () => void;
-  zIndex?: number;
 }
 
-export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: OpdrachtDetailModalProps) {
+export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetailModalProps) {
   const { data: opdracht, isLoading } = useOpdracht(opdrachtId ?? undefined);
   const { data: tasks = [] } = useTasksByOpdracht(opdrachtId);
   const deleteMutation = useDeleteOpdracht();
@@ -103,7 +134,6 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
         onClose={() => { setShowEdit(false); onClose(); }}
         title="Opdracht bewerken"
         size="lg"
-        zIndex={zIndex}
       >
         <OpdrachtForm
           opdracht={opdracht}
@@ -175,9 +205,8 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
         onClose={onClose}
         title={isLoading ? 'Laden...' : opdracht?.titel ?? 'Opdracht niet gevonden'}
         size="lg"
-        zIndex={zIndex}
         accentColor={accentColor}
-        headerIcon={<ClipboardList className="h-5 w-5" />}
+        headerIcon={<Icon name="clipboard-bullet-list" size="lg" />}
         entityLabel={opdracht ? (OPDRACHT_TYPE_LABELS[opdracht.type as OpdrachtType] || opdracht.type) : undefined}
         backLabel={opdrachtParentLabel ?? undefined}
         onBack={opdrachtParentLabel ? onClose : undefined}
@@ -189,19 +218,18 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                 <Button
                   variant="secondary"
                   size="sm"
-                  icon={<Pencil className="h-4 w-4" />}
+                  icon="pencil"
                   onClick={() => setShowEdit(true)}
                   disabled={!opdracht}
                 >
                   Bewerken
                 </Button>
                 <Button
-                  variant="secondary"
+                  variant="danger"
                   size="sm"
-                  icon={<Trash2 className="h-4 w-4" />}
+                  icon="trash"
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={!opdracht}
-                  className="text-red-600 hover:text-red-700"
                 >
                   Verwijderen
                 </Button>
@@ -211,24 +239,18 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
         }
       >
         {isLoading ? (
-          <div className="flex items-center justify-center py-8 text-text-secondary text-sm">
-            Laden...
-          </div>
+          <nldd-container layout="row" horizontal-alignment="center" padding="16">
+            <nldd-activity-indicator size="24" text="Laden..." show-text />
+          </nldd-container>
         ) : !opdracht ? (
-          <div className="flex items-center justify-center py-8 text-text-secondary text-sm">
-            Opdracht niet gevonden.
-          </div>
+          <nldd-inline-dialog icon="question-mark-circle" text="Opdracht niet gevonden." />
         ) : (
-          <div className="space-y-5">
+          <nldd-container gap="20">
             {/* Error feedback */}
-            {error && (
-              <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
-                {error}
-              </div>
-            )}
+            {error && <nldd-banner variant="critical" size="sm" text={error} />}
 
             {/* Type + status + sync badges */}
-            <div className="flex items-center gap-2 flex-wrap">
+            <nldd-container layout="wrap" gap="8" vertical-alignment="center">
               <Badge variant={OPDRACHT_TYPE_COLORS[opdracht.type as OpdrachtType] || 'gray'}>
                 {OPDRACHT_TYPE_LABELS[opdracht.type as OpdrachtType] || opdracht.type}
               </Badge>
@@ -236,11 +258,13 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                 {OPDRACHT_STATUS_LABELS[opdracht.status as OpdrachtStatus] || opdracht.status}
               </Badge>
               {opdracht.sync_status && (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${SYNC_STATUS_COLORS[opdracht.sync_status as SyncStatus] || 'bg-gray-100 text-gray-800'}`}>
-                  FCC: {SYNC_STATUS_LABELS[opdracht.sync_status as SyncStatus] || opdracht.sync_status}
-                </span>
+                <nldd-tag
+                  text={`FCC: ${SYNC_STATUS_LABELS[opdracht.sync_status as SyncStatus] || opdracht.sync_status}`}
+                  color={SYNC_STATUS_TAG_COLOR[opdracht.sync_status as SyncStatus] ?? 'neutral'}
+                  size="sm"
+                />
               )}
-            </div>
+            </nldd-container>
 
             {/* Description */}
             {opdracht.beschrijving && (
@@ -251,125 +275,107 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
 
             {/* Financial hero */}
             {budget > 0 && (
-              <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
-                <div>
-                  <span className="text-xs text-text-secondary uppercase tracking-wider">Budget</span>
-                  <p className="text-xl font-semibold tabular-nums">{formatCurrency(opdracht.budget)}</p>
-                </div>
+              <nldd-container layout="wrap" gap="32" vertical-alignment="bottom">
+                <nldd-container width="fit-content" gap="2">
+                  {/* `nldd-text` has no letter-spacing/uppercase token; this is
+                      line-box CSS with no equivalent, so it stays plain. */}
+                  <nldd-text size="xs" color="secondary" className="uppercase tracking-wider">Budget</nldd-text>
+                  <nldd-text size="lg" weight="bold">{formatCurrency(opdracht.budget)}</nldd-text>
+                </nldd-container>
                 {uitnutting !== null && (
-                  <div>
-                    <span className="text-xs text-text-secondary uppercase tracking-wider">Uitnutting</span>
-                    <p className="text-xl font-semibold tabular-nums">{uitnutting.toFixed(1)}%</p>
-                  </div>
+                  <nldd-container width="fit-content" gap="2">
+                    <nldd-text size="xs" color="secondary" className="uppercase tracking-wider">Uitnutting</nldd-text>
+                    <nldd-text size="lg" weight="bold">{uitnutting.toFixed(1)}%</nldd-text>
+                  </nldd-container>
                 )}
                 {gerealiseerd > 0 && (
-                  <div>
-                    <span className="text-xs text-text-secondary uppercase tracking-wider">Gerealiseerd</span>
-                    <p className="text-xl font-semibold tabular-nums">{formatCurrency(opdracht.gerealiseerd)}</p>
-                  </div>
+                  <nldd-container width="fit-content" gap="2">
+                    <nldd-text size="xs" color="secondary" className="uppercase tracking-wider">Gerealiseerd</nldd-text>
+                    <nldd-text size="lg" weight="bold">{formatCurrency(opdracht.gerealiseerd)}</nldd-text>
+                  </nldd-container>
                 )}
-              </div>
+              </nldd-container>
             )}
             {uitnutting !== null && (
-              <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-primary-500 transition-all"
-                  style={{ width: `${Math.min(uitnutting, 100)}%` }}
-                />
-              </div>
+              <nldd-progress-bar value={Math.min(uitnutting, 100)} max={100} size="sm" value-display="none" />
             )}
 
             {/* Details + Financieel grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Details</h4>
-                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                  <dt className="text-text-secondary">Begrotingsjaar</dt>
-                  <dd className="text-text font-medium">{opdracht.begrotingsjaar}</dd>
-                  <dt className="text-text-secondary">Instrument</dt>
-                  <dd className="truncate">
-                    {opdracht.instrument ? (
-                      <button
-                        onClick={() => openNodeDetail(opdracht.instrument!.id, opdracht.titel)}
-                        className="text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium truncate max-w-full text-left"
-                        title={opdracht.instrument.title}
-                      >
-                        {opdracht.instrument.title}
-                      </button>
-                    ) : '-'}
-                  </dd>
-                  <dt className="text-text-secondary">Opdrachtnemer</dt>
-                  <dd>
-                    {opdracht.opdrachtnemer ? (
-                      <button
-                        onClick={() => { onClose(); navigate(`/externe-organisaties`); }}
-                        className="text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium"
-                      >
-                        {opdracht.opdrachtnemer.afkorting || opdracht.opdrachtnemer.naam}
-                      </button>
-                    ) : '-'}
-                  </dd>
-                  <dt className="text-text-secondary">Opdrachtgever</dt>
-                  <dd>
-                    {opdracht.opdrachtgever ? (
-                      <button
-                        onClick={() => { onClose(); navigate(`/organisatie`); }}
-                        className="text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium"
-                      >
-                        {opdracht.opdrachtgever.naam}
-                      </button>
-                    ) : '-'}
-                  </dd>
-                  <dt className="text-text-secondary">Verantwoordelijke</dt>
-                  <dd>
-                    {opdracht.verantwoordelijke ? (
-                      <button
-                        onClick={() => { onClose(); navigate(`/people`); }}
-                        className="text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium"
-                      >
-                        {opdracht.verantwoordelijke.naam}
-                      </button>
-                    ) : '-'}
-                  </dd>
-                  {opdracht.referentie && (
-                    <>
-                      <dt className="text-text-secondary">Referentie</dt>
-                      <dd className="text-text">{opdracht.referentie}</dd>
-                    </>
-                  )}
-                  {opdracht.kostensoort && (
-                    <>
-                      <dt className="text-text-secondary">Kostensoort</dt>
-                      <dd className="text-text">{KOSTENSOORT_LABELS[opdracht.kostensoort as Kostensoort] || opdracht.kostensoort}</dd>
-                    </>
-                  )}
-                  {opdracht.startdatum && (
-                    <>
-                      <dt className="text-text-secondary">Periode</dt>
-                      <dd className="text-text">{opdracht.startdatum} — {opdracht.einddatum || '...'}</dd>
-                    </>
-                  )}
-                </dl>
-              </div>
+            <nldd-container layout="grid" gap="24">
+              <nldd-container gap="12">
+                <nldd-text size="xs" weight="bold" color="secondary" className="uppercase tracking-wider"><h4>Details</h4></nldd-text>
+                <DetailMetadataGrid
+                  items={[
+                    { label: 'Begrotingsjaar', value: opdracht.begrotingsjaar },
+                    {
+                      label: 'Instrument',
+                      value: opdracht.instrument ? (
+                        <ActionLink
+                          text={opdracht.instrument.title}
+                          onClick={() => openNodeDetail(opdracht.instrument!.id, opdracht.titel)}
+                        />
+                      ) : undefined,
+                    },
+                    {
+                      label: 'Opdrachtnemer',
+                      value: opdracht.opdrachtnemer ? (
+                        <ActionLink
+                          text={opdracht.opdrachtnemer.afkorting || opdracht.opdrachtnemer.naam}
+                          onClick={() => { onClose(); navigate('/externe-organisaties'); }}
+                        />
+                      ) : undefined,
+                    },
+                    {
+                      label: 'Opdrachtgever',
+                      value: opdracht.opdrachtgever ? (
+                        <ActionLink
+                          text={opdracht.opdrachtgever.naam}
+                          onClick={() => { onClose(); navigate('/organisatie'); }}
+                        />
+                      ) : undefined,
+                    },
+                    {
+                      label: 'Verantwoordelijke',
+                      value: opdracht.verantwoordelijke ? (
+                        <ActionLink
+                          text={opdracht.verantwoordelijke.naam}
+                          onClick={() => { onClose(); navigate('/people'); }}
+                        />
+                      ) : undefined,
+                    },
+                    { label: 'Referentie', value: opdracht.referentie },
+                    {
+                      label: 'Kostensoort',
+                      value: opdracht.kostensoort
+                        ? KOSTENSOORT_LABELS[opdracht.kostensoort as Kostensoort] || opdracht.kostensoort
+                        : undefined,
+                    },
+                    {
+                      label: 'Periode',
+                      value: opdracht.startdatum
+                        ? `${opdracht.startdatum} — ${opdracht.einddatum || '...'}`
+                        : undefined,
+                    },
+                  ]}
+                />
+              </nldd-container>
 
-              <div className="space-y-3">
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Financieel</h4>
-                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                  {opdracht.volgend_jaar_benodigd != null && (
-                    <>
-                      <dt className="text-text-secondary">Volgend jaar benodigd</dt>
-                      <dd className="text-text tabular-nums">{formatCurrency(opdracht.volgend_jaar_benodigd)}</dd>
-                    </>
-                  )}
-                  {opdracht.volgend_jaar_aangevraagd != null && (
-                    <>
-                      <dt className="text-text-secondary">Volgend jaar aangevraagd</dt>
-                      <dd className="text-text tabular-nums">{formatCurrency(opdracht.volgend_jaar_aangevraagd)}</dd>
-                    </>
-                  )}
-                </dl>
-              </div>
-            </div>
+              <nldd-container gap="12">
+                <nldd-text size="xs" weight="bold" color="secondary" className="uppercase tracking-wider"><h4>Financieel</h4></nldd-text>
+                <DetailMetadataGrid
+                  items={[
+                    {
+                      label: 'Volgend jaar benodigd',
+                      value: opdracht.volgend_jaar_benodigd != null ? formatCurrency(opdracht.volgend_jaar_benodigd) : undefined,
+                    },
+                    {
+                      label: 'Volgend jaar aangevraagd',
+                      value: opdracht.volgend_jaar_aangevraagd != null ? formatCurrency(opdracht.volgend_jaar_aangevraagd) : undefined,
+                    },
+                  ]}
+                />
+              </nldd-container>
+            </nldd-container>
 
             {/* FCC data section */}
             {opdracht.fcc_id && opdracht.fcc_raw_data && (
@@ -385,20 +391,12 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
             {/* Subsidie section */}
             {opdracht.type === 'subsidie' && (opdracht.subsidieregeling || opdracht.beschikking_nummer) && (
               <DetailSection title="Subsidie-gegevens" separated>
-                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                  {opdracht.subsidieregeling && (
-                    <>
-                      <dt className="text-text-secondary">Subsidieregeling</dt>
-                      <dd className="text-text">{opdracht.subsidieregeling}</dd>
-                    </>
-                  )}
-                  {opdracht.beschikking_nummer && (
-                    <>
-                      <dt className="text-text-secondary">Beschikking nr.</dt>
-                      <dd className="text-text">{opdracht.beschikking_nummer}</dd>
-                    </>
-                  )}
-                </dl>
+                <DetailMetadataGrid
+                  items={[
+                    { label: 'Subsidieregeling', value: opdracht.subsidieregeling },
+                    { label: 'Beschikking nr.', value: opdracht.beschikking_nummer },
+                  ]}
+                />
               </DetailSection>
             )}
 
@@ -406,7 +404,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
             {opdracht.node_koppelingen && opdracht.node_koppelingen.length > 0 && (
               <DetailSection
                 title="Gekoppelde nodes"
-                icon={<LinkIcon className="h-3.5 w-3.5" />}
+                icon={<Icon name="link" size="sm" />}
                 count={opdracht.node_koppelingen.length}
                 separated
               >
@@ -431,14 +429,14 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
             {/* Contactpersonen */}
             <DetailSection
               title="Contactpersonen"
-              icon={<Users className="h-3.5 w-3.5" />}
+              icon={<Icon name="users" size="sm" />}
               count={members.length}
               separated
               action={
                 <Button
                   variant="ghost"
                   size="sm"
-                  icon={<Sparkles className="h-3.5 w-3.5" />}
+                  icon="sparkles"
                   onClick={handleMatchContacts}
                   disabled={matchContactsMutation.isPending}
                 >
@@ -446,55 +444,44 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                 </Button>
               }
             >
-              {members.length > 0 && (
-                <ul className="divide-y divide-border rounded-xl border border-border mb-3">
-                  {members.map((member) => (
-                    <li
-                      key={member.person_id}
-                      className="flex items-center justify-between px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <button
-                          onClick={() => { onClose(); navigate(`/people?highlight=${member.person_id}`); }}
-                          className="text-sm text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium truncate"
-                        >
-                          {member.person_naam}
-                        </button>
-                        {member.source === 'ai' && (
-                          <span
-                            className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5"
-                            title={member.ai_reason ? `${member.ai_reason} (${Math.round((member.ai_confidence ?? 0) * 100)}%)` : 'Door AI gematcht'}
-                          >
-                            <Sparkles className="h-2.5 w-2.5" />
-                            AI
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <select
-                          value={member.rol}
-                          onChange={(e) => handleUpdateMemberRole(member.person_id, e.target.value)}
-                          className="text-xs border border-border rounded px-1.5 py-0.5 bg-white"
-                        >
-                          {Object.entries(OPDRACHT_CONTACT_ROL_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </select>
-                        <button
+              <nldd-container gap="12">
+                {members.length > 0 && (
+                  <nldd-list variant="box-tinted" dividers="always">
+                    {members.map((member) => (
+                      <nldd-list-item key={member.person_id}>
+                        <nldd-cell>
+                          <nldd-container layout="row" gap="8" vertical-alignment="center" min-width="0px">
+                            <ActionLink
+                              text={member.person_naam}
+                              onClick={() => { onClose(); navigate(`/people?highlight=${member.person_id}`); }}
+                            />
+                            {member.source === 'ai' && (
+                              <AiMatchedTag reason={member.ai_reason} confidence={member.ai_confidence} />
+                            )}
+                          </nldd-container>
+                        </nldd-cell>
+                        <nldd-spacer-cell size="12" />
+                        <nldd-cell width="144px">
+                          <Select
+                            value={member.rol}
+                            onChange={(e) => handleUpdateMemberRole(member.person_id, e.target.value)}
+                            options={Object.entries(OPDRACHT_CONTACT_ROL_LABELS).map(([value, label]) => ({ value, label }))}
+                          />
+                        </nldd-cell>
+                        <nldd-spacer-cell size="12" />
+                        <NlddIconButton
+                          icon="trash"
+                          variant="neutral-transparent"
+                          size="sm"
+                          accessibleLabel="Verwijderen"
                           onClick={() => handleRemoveMember(member.person_id)}
-                          className="p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 transition-colors"
-                          title="Verwijderen"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                        />
+                      </nldd-list-item>
+                    ))}
+                  </nldd-list>
+                )}
 
-              <div className="flex items-start gap-2">
-                <div className="flex-1">
+                <nldd-container width="full">
                   <CreatableSelect
                     value={addMemberValue}
                     onChange={(val) => {
@@ -505,66 +492,55 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                     placeholder="Contactpersoon toevoegen..."
                     emptyMessage="Geen personen gevonden"
                   />
-                </div>
-              </div>
+                </nldd-container>
+              </nldd-container>
             </DetailSection>
 
             {/* Organisatie-eenheden */}
             <DetailSection
               title="Organisatie-eenheden"
-              icon={<Building2 className="h-3.5 w-3.5" />}
+              icon={<Icon name="apartment-building" size="sm" />}
               count={eenheden.length}
               separated
             >
-              {eenheden.length > 0 && (
-                <ul className="divide-y divide-border rounded-xl border border-border mb-3">
-                  {eenheden.map((eenheid) => (
-                    <li
-                      key={eenheid.eenheid_id}
-                      className="flex items-center justify-between px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <button
-                          onClick={() => { onClose(); navigate(`/organisatie?highlight=${eenheid.eenheid_id}`); }}
-                          className="text-sm text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium truncate"
-                        >
-                          {eenheid.eenheid_naam}
-                        </button>
-                        {eenheid.source === 'ai' && (
-                          <span
-                            className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5"
-                            title={eenheid.ai_reason ? `${eenheid.ai_reason} (${Math.round((eenheid.ai_confidence ?? 0) * 100)}%)` : 'Door AI gematcht'}
-                          >
-                            <Sparkles className="h-2.5 w-2.5" />
-                            AI
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <select
-                          value={eenheid.rol}
-                          onChange={(e) => handleUpdateEenheidRol(eenheid.eenheid_id, e.target.value)}
-                          className="text-xs border border-border rounded px-1.5 py-0.5 bg-white"
-                        >
-                          {Object.entries(OPDRACHT_CONTACT_ROL_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </select>
-                        <button
+              <nldd-container gap="12">
+                {eenheden.length > 0 && (
+                  <nldd-list variant="box-tinted" dividers="always">
+                    {eenheden.map((eenheid) => (
+                      <nldd-list-item key={eenheid.eenheid_id}>
+                        <nldd-cell>
+                          <nldd-container layout="row" gap="8" vertical-alignment="center" min-width="0px">
+                            <ActionLink
+                              text={eenheid.eenheid_naam}
+                              onClick={() => { onClose(); navigate(`/organisatie?highlight=${eenheid.eenheid_id}`); }}
+                            />
+                            {eenheid.source === 'ai' && (
+                              <AiMatchedTag reason={eenheid.ai_reason} confidence={eenheid.ai_confidence} />
+                            )}
+                          </nldd-container>
+                        </nldd-cell>
+                        <nldd-spacer-cell size="12" />
+                        <nldd-cell width="144px">
+                          <Select
+                            value={eenheid.rol}
+                            onChange={(e) => handleUpdateEenheidRol(eenheid.eenheid_id, e.target.value)}
+                            options={Object.entries(OPDRACHT_CONTACT_ROL_LABELS).map(([value, label]) => ({ value, label }))}
+                          />
+                        </nldd-cell>
+                        <nldd-spacer-cell size="12" />
+                        <NlddIconButton
+                          icon="trash"
+                          variant="neutral-transparent"
+                          size="sm"
+                          accessibleLabel="Verwijderen"
                           onClick={() => handleRemoveEenheid(eenheid.eenheid_id)}
-                          className="p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 transition-colors"
-                          title="Verwijderen"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                        />
+                      </nldd-list-item>
+                    ))}
+                  </nldd-list>
+                )}
 
-              <div className="flex items-start gap-2">
-                <div className="flex-1">
+                <nldd-container width="full">
                   <CreatableSelect
                     value={addEenheidValue}
                     onChange={(val) => {
@@ -575,21 +551,21 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                     placeholder="Eenheid toevoegen..."
                     emptyMessage="Geen eenheden gevonden"
                   />
-                </div>
-              </div>
+                </nldd-container>
+              </nldd-container>
             </DetailSection>
 
             {/* Tasks */}
             <DetailSection
               title="Taken"
-              icon={<CheckSquare className="h-3.5 w-3.5" />}
+              icon={<Icon name="check-list" size="sm" />}
               count={tasks.length}
               separated
               action={
                 <Button
                   variant="ghost"
                   size="sm"
-                  icon={<Plus className="h-3.5 w-3.5" />}
+                  icon="plus"
                   onClick={() => setShowTaskCreate(true)}
                 >
                   Taak
@@ -601,10 +577,10 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                   id: task.id,
                   label: task.title,
                   icon: task.status === TaskStatus.DONE
-                    ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                    ? <nldd-icon name="check-mark-circle" size="16" color="success" aria-hidden="true" />
                     : task.status === TaskStatus.IN_PROGRESS
-                      ? <Clock className="h-4 w-4 text-blue-500 shrink-0" />
-                      : <Circle className="h-4 w-4 text-gray-300 shrink-0" />,
+                      ? <nldd-icon name="clock" size="16" color="accent" aria-hidden="true" />
+                      : <nldd-icon name="circle" size="16" color="" aria-hidden="true" />,
                   secondaryText: task.assignee?.naam,
                   onClick: () => openTaskDetail(task.id, opdracht.titel),
                 }))}
@@ -612,7 +588,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
                 emptyLabel="Geen taken gekoppeld"
               />
             </DetailSection>
-          </div>
+          </nldd-container>
         )}
       </Modal>
 
@@ -632,10 +608,12 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose, zIndex }: Opdra
         variant="danger"
         loading={deleteMutation.isPending}
       >
-        <p>Weet je zeker dat je <strong>{opdracht?.titel}</strong> wilt verwijderen?</p>
-        {tasks.length > 0 && (
-          <p className="mt-2">{tasks.length} gekoppelde taak/taken worden ook verwijderd.</p>
-        )}
+        <nldd-rich-text>
+          <p>Weet je zeker dat je <strong>{opdracht?.titel}</strong> wilt verwijderen?</p>
+          {tasks.length > 0 && (
+            <p>{tasks.length} gekoppelde taak/taken worden ook verwijderd.</p>
+          )}
+        </nldd-rich-text>
       </ConfirmDialog>
     </>
   );

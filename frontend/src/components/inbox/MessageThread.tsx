@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Send, ArrowLeft, Smile } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { Button } from '@/components/common/Button';
+import { Modal } from '@/components/common/Modal';
 import { useNotification, useReplies, useReplyToNotification, useMarkNotificationRead, useReactToMessage } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { timeAgo } from '@/utils/dates';
@@ -27,38 +28,79 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
   const [hovered, setHovered] = useState(false);
   const smileRef = useRef<HTMLButtonElement>(null);
 
+  // The chat bubble itself (asymmetric corner, sender-colored background, a
+  // rich-text-content color override so links/buttons read on a dark fill)
+  // is not one of the nine design-system patterns — there is no bubble/chat
+  // component in nldd — so it stays custom markup. What IS layout (alignment
+  // of the bubble to a side, the row it sits in with its hover-revealed
+  // react-button) converts to nldd-container below.
   return (
-    <div className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
-      <div className="max-w-[80%]">
+    <nldd-container layout="row" horizontal-alignment={isCurrentUser ? 'right' : 'left'}>
+      <div style={{ maxWidth: '80%' }}>
+        {/* The row holding the bubble and its hover-revealed react-button, in
+            reading order or reversed for the current user's own messages: no
+            nldd-container row-reverse equivalent, so this direction switch
+            stays plain CSS. */}
         <div
-          className={`relative flex items-start gap-1 ${isCurrentUser ? 'flex-row-reverse' : 'flex-row'}`}
+          style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '4px', flexDirection: isCurrentUser ? 'row-reverse' : 'row' }}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => { if (!showPicker) setHovered(false); }}
         >
+          {/* The chat bubble itself (asymmetric corner, sender-colored fill)
+              is not one of the nine design-system patterns, so it stays custom
+              markup, same call as ChatMessageBubble.tsx. Colors are tokens. */}
           <div
-            className={`rounded-2xl px-4 py-2.5 ${
-              isCurrentUser
-                ? 'bg-primary-600 text-white rounded-br-md'
-                : 'bg-gray-100 text-text rounded-bl-md'
-            }`}
+            style={{
+              borderRadius: '16px',
+              paddingInline: '16px',
+              paddingBlock: '10px',
+              ...(isCurrentUser
+                ? {
+                    backgroundColor: 'var(--primitives-color-accent-600)',
+                    color: 'var(--primitives-color-neutral-0)',
+                    borderBottomRightRadius: '6px',
+                  }
+                : {
+                    backgroundColor: 'var(--semantics-surfaces-tinted-background-color)',
+                    color: 'var(--primitives-color-neutral-900)',
+                    borderBottomLeftRadius: '6px',
+                  }),
+            }}
           >
             {!isCurrentUser && message.sender_name && (
-              <p className="text-xs font-medium mb-1 opacity-70">{message.sender_name}</p>
+              <nldd-text size="xs" weight="medium" style={{ opacity: 0.7, display: 'block', marginBottom: '4px' }}>
+                {message.sender_name}
+              </nldd-text>
             )}
-            <div className={`text-sm ${isCurrentUser ? '[&_*]:text-white [&_button]:bg-white/20 [&_button]:text-white [&_a]:text-white [&_a]:underline [&_a]:decoration-white/60 [&_a:hover]:!text-white [&_a:hover]:decoration-white' : ''}`}>
+            {/* This selector override (forcing rich-text content, links and
+                buttons to white) has no design-system equivalent: RichTextDisplay
+                renders arbitrary user content, and there is no "invert my
+                descendants' color" attribute on any nldd-* component. It only
+                applies on the filled (isCurrentUser) bubble. */}
+            <div className={isCurrentUser ? '[&_*]:text-white [&_button]:bg-white/20 [&_button]:text-white [&_a]:text-white [&_a]:underline [&_a]:decoration-white/60 [&_a:hover]:!text-white [&_a:hover]:decoration-white' : undefined} style={{ fontSize: '14px' }}>
               <RichTextDisplay content={message.message} fallback="" />
             </div>
-            <p className={`text-[10px] mt-1 ${isCurrentUser ? 'text-white/60' : 'text-text-secondary'}`}>
+            <nldd-text size="xxs" style={{ display: 'block', marginTop: '4px', opacity: isCurrentUser ? 0.6 : 1 }} {...(isCurrentUser ? { color: 'inherit' } : { color: 'secondary' })}>
               {timeAgo(message.created_at)}
-            </p>
+            </nldd-text>
           </div>
-          <div className={`shrink-0 pt-1 ${hovered || showPicker ? 'visible' : 'invisible'}`}>
+          {/* EmojiPicker anchors itself via getBoundingClientRect on a real DOM
+              button ref, so this trigger stays a native <button>, matching the
+              documented exception in EmojiPicker.tsx/ReactionBar.tsx. */}
+          <div className={`shrink-0 ${hovered || showPicker ? 'visible' : 'invisible'}`} style={{ paddingTop: '4px' }}>
             <button
               ref={smileRef}
               onClick={() => setShowPicker(!showPicker)}
-              className="p-1 rounded-full bg-surface border border-border shadow-sm text-text-secondary hover:text-text hover:bg-gray-50 transition-colors"
+              className="hover-tinted"
+              style={{
+                padding: '4px',
+                borderRadius: '9999px',
+                backgroundColor: 'var(--primitives-color-neutral-0)',
+                border: '1px solid var(--primitives-color-neutral-200)',
+                boxShadow: 'var(--primitives-box-shadows-level-1)',
+              }}
             >
-              <Smile className="h-4 w-4" />
+              <Icon name="face-smiling" size="sm" color="secondary-content" />
             </button>
             {showPicker && (
               <EmojiPicker
@@ -69,11 +111,11 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
             )}
           </div>
         </div>
-        <div className={`${isCurrentUser ? 'flex justify-end' : ''}`}>
+        <nldd-container layout="row" horizontal-alignment={isCurrentUser ? 'right' : 'left'}>
           <ReactionBar reactions={reactions} onReact={onReact} />
-        </div>
+        </nldd-container>
       </div>
-    </div>
+    </nldd-container>
   );
 }
 
@@ -100,16 +142,13 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [replies]);
 
-  // Close modal on Escape key (guard against mention popup consuming Escape first)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.defaultPrevented) {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  // Escape is the dialog's own business now. This used to be a keydown listener
+  // on document, which the native <dialog> inside nldd-window makes both
+  // redundant and wrong: the window closes on the dialog's `cancel` event, so
+  // both would fire, and a listener on document also sees the key when the
+  // mention popup has already handled it. The `!e.defaultPrevented` guard in
+  // the old version was there for exactly that popup, and it only worked as
+  // long as nothing else closed the modal too.
 
   // Mark as read when opened — only if current user is the recipient (person_id),
   // not the sender.  After a reply the backend marks the root unread for the
@@ -143,78 +182,58 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
   if (!parentMessage) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl mx-4 bg-surface rounded-2xl shadow-xl border border-border animate-in fade-in zoom-in-95 flex flex-col max-h-[80vh]">
-        {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-text truncate">{parentMessage.title}</h3>
-            <p className="text-xs text-text-secondary">
-              {replies ? `${replies.length} ${replies.length === 1 ? 'reactie' : 'reacties'}` : 'Laden...'}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-text-secondary hover:bg-gray-100 hover:text-text transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-          {/* Original message */}
-          <MessageBubble
-            message={parentMessage}
-            isCurrentUser={parentMessage.sender_id === currentPerson?.id}
-            reactions={parentMessage.reactions}
-            onReact={(emoji) => handleReact(parentMessage.id, emoji)}
-          />
-
-          {/* Replies */}
-          {replies?.map((reply) => (
-            <MessageBubble
-              key={reply.id}
-              message={reply}
-              isCurrentUser={reply.sender_id === currentPerson?.id}
-              reactions={reply.reactions}
-              onReact={(emoji) => handleReact(reply.id, emoji)}
+    <Modal
+      open
+      onClose={onClose}
+      title={parentMessage.title}
+      size="lg"
+      entityLabel={
+        replies ? `${replies.length} ${replies.length === 1 ? 'reactie' : 'reacties'}` : 'Laden...'
+      }
+      footer={
+        <nldd-container layout="row" gap="8" width="full" vertical-alignment="top">
+          <nldd-container width="full">
+            <RichTextEditor
+              value={replyText}
+              onChange={setReplyText}
+              placeholder="Typ een reactie..."
+              rows={2}
+              autoFocus
             />
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
+          </nldd-container>
+          <Button
+            size="sm"
+            onClick={handleSendReply}
+            disabled={!replyText.trim() || replyMutation.isPending || !currentPerson}
+            loading={replyMutation.isPending}
+            icon="paper-plane"
+          >
+            Verstuur
+          </Button>
+        </nldd-container>
+      }
+    >
+      <nldd-container gap="12">
+        {/* Original message */}
+        <MessageBubble
+          message={parentMessage}
+          isCurrentUser={parentMessage.sender_id === currentPerson?.id}
+          reactions={parentMessage.reactions}
+          onReact={(emoji) => handleReact(parentMessage.id, emoji)}
+        />
 
-        {/* Reply input */}
-        <div className="border-t border-border px-4 py-3 shrink-0">
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <RichTextEditor
-                value={replyText}
-                onChange={setReplyText}
-                placeholder="Typ een reactie..."
-                rows={2}
-                autoFocus
-              />
-            </div>
-            <Button
-              size="sm"
-              onClick={handleSendReply}
-              disabled={!replyText.trim() || replyMutation.isPending || !currentPerson}
-              loading={replyMutation.isPending}
-              icon={<Send className="h-3.5 w-3.5" />}
-            >
-              Verstuur
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+        {/* Replies */}
+        {replies?.map((reply) => (
+          <MessageBubble
+            key={reply.id}
+            message={reply}
+            isCurrentUser={reply.sender_id === currentPerson?.id}
+            reactions={reply.reactions}
+            onReact={(emoji) => handleReact(reply.id, emoji)}
+          />
+        ))}
+        <div ref={messagesEndRef} />
+      </nldd-container>
+    </Modal>
   );
 }

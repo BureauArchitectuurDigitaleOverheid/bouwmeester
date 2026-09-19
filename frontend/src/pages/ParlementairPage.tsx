@@ -1,16 +1,15 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useId, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { RefreshCw, RotateCcw, Search, ChevronDown } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useToast } from '@/contexts/ToastContext';
 import { Button } from '@/components/common/Button';
-import { Input } from '@/components/common/Input';
 import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { ParlementairReviewCard } from '@/components/parlementair/ParlementairReviewCard';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import {
   useParlementairItems,
   useTriggerParlementairImport,
@@ -38,6 +37,27 @@ const parlementairTypeOptions: MultiSelectOption[] = ALL_PARLEMENTAIR_TYPES.map(
   color: PARLEMENTAIR_TYPE_HEX_COLORS[t],
 }));
 
+/** `nldd-menu-item` with a React-shaped onClick, listening to its `select` event. */
+function MenuItem({ text, onClick }: { text: string; onClick: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'select', onClick);
+  return <nldd-menu-item ref={ref} text={text} />;
+}
+
+/** The kamerstukken search field: `nldd-search-field` with its `input` event bridged to React. */
+function ParlementairSearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return (
+    <nldd-search-field
+      ref={ref}
+      value={value}
+      placeholder="Zoek in kamerstukken..."
+      accessible-label="Zoek in kamerstukken"
+    />
+  );
+}
+
 const statusFilters: { value: ParlementairItemStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'Alles' },
   { value: 'imported', label: 'Te beoordelen' },
@@ -46,6 +66,47 @@ const statusFilters: { value: ParlementairItemStatus | 'all'; label: string }[] 
   { value: 'out_of_scope', label: 'Buiten scope' },
   { value: 'pending', label: 'In wachtrij' },
 ];
+
+/**
+ * Content-switching tab bar for the status filter. `nldd-tab-bar` self-manages
+ * `current` on click and arrow-key navigation (non-`navigation` mode), so this
+ * only needs to read the id back off `tabchange`'s `detail.item` — same
+ * pattern as AdminPage's tab bar.
+ */
+function StatusTabBar({
+  value,
+  onChange,
+}: {
+  value: ParlementairItemStatus | 'all';
+  onChange: (v: ParlementairItemStatus | 'all') => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(
+    ref,
+    'tabchange',
+    useCallback(
+      (event: Event) => {
+        const item = (event as CustomEvent<{ item?: HTMLElement }>).detail?.item;
+        const next = item?.dataset.statusValue as ParlementairItemStatus | 'all' | undefined;
+        if (next) onChange(next);
+      },
+      [onChange],
+    ),
+  );
+
+  return (
+    <nldd-tab-bar ref={ref} variant="text">
+      {statusFilters.map((filter) => (
+        <nldd-tab-bar-item
+          key={filter.value}
+          text={filter.label}
+          current={value === filter.value ? true : undefined}
+          data-status-value={filter.value}
+        />
+      ))}
+    </nldd-tab-bar>
+  );
+}
 
 export function ParlementairPage() {
   const [searchParams] = useSearchParams();
@@ -80,21 +141,8 @@ export function ParlementairPage() {
 
   const { showSuccess, showError } = useToast();
   const triggerImport = useTriggerParlementairImport();
-  const [reprocessDropdownOpen, setReprocessDropdownOpen] = useState(false);
   const [reprocessConfirm, setReprocessConfirm] = useState<string | null>(null);
-  const reprocessDropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (reprocessDropdownRef.current && !reprocessDropdownRef.current.contains(e.target as Node)) {
-        setReprocessDropdownOpen(false);
-      }
-    }
-    if (reprocessDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [reprocessDropdownOpen]);
+  const reprocessMenuTriggerId = useId();
 
   const formatReprocessResult = (result: ReprocessResult, plural: string) => {
     if (result.total === 0) return `Geen ongekoppelde ${plural.toLowerCase()} om te herverwerken.`;
@@ -108,12 +156,10 @@ export function ParlementairPage() {
   const reprocess = useReprocessParlementairItems();
 
   const handleReprocessType = (itemType: string) => {
-    setReprocessDropdownOpen(false);
     setReprocessConfirm(itemType);
   };
 
   const handleReprocessAll = () => {
-    setReprocessDropdownOpen(false);
     setReprocessConfirm('__all__');
   };
 
@@ -154,110 +200,68 @@ export function ParlementairPage() {
   const eitherPending = triggerImport.isPending || reprocess.isPending;
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <p className="text-sm text-text-secondary">
-          Beheer geïmporteerde kamerstukken uit de Tweede en Eerste Kamer.
-        </p>
-        <div className="flex items-center gap-2">
-          <div className="relative" ref={reprocessDropdownRef}>
-            <Button
-              variant="secondary"
-              icon={<RotateCcw className={`h-4 w-4 ${reprocess.isPending ? 'animate-spin' : ''}`} />}
-              onClick={() => setReprocessDropdownOpen((prev) => !prev)}
-              disabled={eitherPending}
-              title="Herverwerk kamerstukken die nog geen koppelingen hebben via LLM-matching"
-            >
-              <span className="hidden sm:inline">
-                {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk kamerstukken'}
-              </span>
-              <span className="sm:hidden">
-                {reprocess.isPending ? 'Laden...' : 'Herverwerk'}
-              </span>
-              <ChevronDown className="h-3.5 w-3.5 ml-1" />
-            </Button>
-            {reprocessDropdownOpen && (
-              <div className="absolute left-0 sm:right-0 sm:left-auto mt-1 w-56 rounded-md border border-border bg-surface shadow-lg z-50">
-                <div className="py-1">
-                  <button
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-surface-hover"
-                    onClick={handleReprocessAll}
-                  >
-                    Alle kamerstukken
-                  </button>
-                  {REPROCESS_TYPES.map((t) => (
-                    <button
-                      key={t}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-surface-hover"
-                      onClick={() => handleReprocessType(t)}
-                    >
-                      {REPROCESS_TYPE_PLURALS[t]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+      <nldd-toolbar label="Kamerstukacties">
+        <nldd-toolbar-item slot="start" priority={1}>
+          <nldd-text size="sm" color="secondary">
+            Beheer geïmporteerde kamerstukken uit de Tweede en Eerste Kamer.
+          </nldd-text>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end">
           <Button
-            icon={<RefreshCw className={`h-4 w-4 ${triggerImport.isPending ? 'animate-spin' : ''}`} />}
+            id={reprocessMenuTriggerId}
+            variant="secondary"
+            icon="undo"
+            loading={reprocess.isPending}
+            disabled={eitherPending}
+            title="Herverwerk kamerstukken die nog geen koppelingen hebben via LLM-matching"
+          >
+            {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk kamerstukken'}
+          </Button>
+          <nldd-menu anchor={reprocessMenuTriggerId}>
+            <MenuItem text="Alle kamerstukken" onClick={handleReprocessAll} />
+            {REPROCESS_TYPES.map((t) => (
+              <MenuItem key={t} text={REPROCESS_TYPE_PLURALS[t]} onClick={() => handleReprocessType(t)} />
+            ))}
+          </nldd-menu>
+          <nldd-menu-item slot="overflow" text="Herverwerk kamerstukken" icon="undo" />
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end" priority={2}>
+          <Button
+            icon="refresh"
+            loading={triggerImport.isPending}
             onClick={() => triggerImport.mutate()}
             disabled={eitherPending}
             title="Haal nieuwe kamerstukken op uit de Tweede en Eerste Kamer"
           >
-            <span className="hidden sm:inline">
-              {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
-            </span>
-            <span className="sm:hidden">
-              {triggerImport.isPending ? 'Laden...' : 'Importeren'}
-            </span>
+            {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
           </Button>
-        </div>
-      </div>
+          <nldd-menu-item slot="overflow" text="Importeer nieuwe kamerstukken" icon="refresh" />
+        </nldd-toolbar-item>
+      </nldd-toolbar>
 
       {/* Filter bar (matching Corpus page layout) */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-        <div className="relative w-full sm:w-56">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Zoek in kamerstukken..."
-            className="pl-9"
-          />
-        </div>
-        <div className="w-full sm:w-52">
+      <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+        <nldd-container width="fit-content" min-width="224px">
+          <ParlementairSearchField value={searchInput} onChange={setSearchInput} />
+        </nldd-container>
+        <nldd-container width="fit-content" min-width="208px">
           <MultiSelect
             value={enabledTypes}
             onChange={handleTypesChange}
             options={parlementairTypeOptions}
             allLabel="Alle typen"
           />
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-container>
 
       {/* Status tabs */}
-      <div className="flex items-center gap-2 sm:gap-4 border-b border-border overflow-x-auto scrollbar-hide">
-        <div className="flex items-center gap-1">
-          {statusFilters.map((filter) => (
-            <button
-              key={filter.value}
-              onClick={() => setStatusFilter(filter.value)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap flex-shrink-0 ${
-                statusFilter === filter.value
-                  ? 'border-primary-900 text-primary-900'
-                  : 'border-transparent text-text-secondary hover:text-text hover:border-border'
-              }`}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <StatusTabBar value={statusFilter} onChange={setStatusFilter} />
 
       {/* Content */}
       {isLoading ? (
-        <LoadingSpinner className="py-16" />
+        <LoadingSpinner padding="64" />
       ) : !filteredImports || filteredImports.length === 0 ? (
         <EmptyState
           title="Geen kamerstukken gevonden"
@@ -268,7 +272,7 @@ export function ParlementairPage() {
           }
         />
       ) : (
-        <div className="space-y-3">
+        <nldd-container gap="12">
           {filteredImports.map((item) => (
             <ParlementairReviewCard
               key={item.id}
@@ -276,7 +280,7 @@ export function ParlementairPage() {
               defaultExpanded={item.id === highlightItemId}
             />
           ))}
-        </div>
+        </nldd-container>
       )}
 
       <ConfirmDialog
@@ -293,6 +297,6 @@ export function ParlementairPage() {
             : `Alle ongekoppelde ${(REPROCESS_TYPE_PLURALS[reprocessConfirm ?? ''] ?? reprocessConfirm ?? '').toLowerCase()} herverwerken via LLM-matching? Dit kan even duren.`}
         </p>
       </ConfirmDialog>
-    </div>
+    </nldd-container>
   );
 }

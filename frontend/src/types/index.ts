@@ -750,25 +750,40 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   emoji_reaction: 'reactie',
 };
 
+/**
+ * Notification type → `nldd-tag` color.
+ *
+ * Same rule as VARIANT_COLORS in common/Badge.tsx: a type that carries meaning
+ * gets the semantic role, which keeps it right in dark mode and for colorblind
+ * users, and the rest get the nearest Rijkshuisstijl color. Three types are
+ * deliberately no longer distinct: node_updated, direct_message and
+ * placement_approved all read as "something went well" and all painted the same
+ * green before, so `success` loses nothing.
+ *
+ * The label beside the color says which type it is, so the color never carries
+ * the meaning on its own (WCAG 1.4.1).
+ */
 export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
-  task_assigned: 'bg-blue-100 text-blue-700',
-  task_overdue: 'bg-red-100 text-red-700',
-  task_completed: 'bg-green-100 text-green-700',
-  task_reassigned: 'bg-orange-100 text-orange-700',
-  node_updated: 'bg-green-100 text-green-700',
-  edge_created: 'bg-purple-100 text-purple-700',
-  coverage_needed: 'bg-amber-100 text-amber-700',
-  stakeholder_added: 'bg-teal-100 text-teal-700',
-  stakeholder_role_changed: 'bg-teal-100 text-teal-700',
-  direct_message: 'bg-green-100 text-green-700',
-  agent_prompt: 'bg-violet-100 text-violet-700',
-  mention: 'bg-cyan-100 text-cyan-700',
-  politieke_input_imported: 'bg-rose-100 text-rose-700',
-  access_request: 'bg-amber-100 text-amber-700',
-  placement_request: 'bg-indigo-100 text-indigo-700',
-  placement_approved: 'bg-green-100 text-green-700',
-  placement_denied: 'bg-red-100 text-red-700',
-  emoji_reaction: 'bg-pink-100 text-pink-700',
+  // Semantic roles.
+  task_overdue: 'critical',
+  placement_denied: 'critical',
+  task_completed: 'success',
+  node_updated: 'success',
+  direct_message: 'success',
+  placement_approved: 'success',
+  task_reassigned: 'warning',
+  coverage_needed: 'warning',
+  access_request: 'warning',
+  task_assigned: 'accent',
+  // Decorative: nearest Rijkshuisstijl color.
+  edge_created: 'paars',
+  stakeholder_added: 'mintgroen',
+  stakeholder_role_changed: 'mintgroen',
+  agent_prompt: 'violet',
+  mention: 'hemelblauw',
+  politieke_input_imported: 'roze',
+  placement_request: 'donkerblauw',
+  emoji_reaction: 'roze',
 };
 
 export const INBOX_TYPE_COLORS: Record<string, BadgeVariant> = {
@@ -1439,20 +1454,18 @@ export const SYNC_STATUS_LABELS: Record<SyncStatus, string> = {
   error: 'Fout',
 };
 
-export const SYNC_STATUS_COLORS: Record<SyncStatus, string> = {
-  synced: 'bg-green-100 text-green-800',
-  pending_push: 'bg-yellow-100 text-yellow-800',
-  pending_pull: 'bg-blue-100 text-blue-800',
-  conflict: 'bg-red-100 text-red-800',
-  error: 'bg-red-100 text-red-800',
-};
-
 export type FccTrafficLight = 'green' | 'orange' | 'red';
 
+/**
+ * A traffic light is semantic, so these are the semantic tokens rather than a
+ * color class. They used to be `bg-emerald-500` and friends, which rendered as
+ * nothing once Tailwind's compiler stopped inventing a rule for them: three
+ * invisible dots with a title attribute.
+ */
 export const FCC_TRAFFIC_LIGHT_COLORS: Record<FccTrafficLight, string> = {
-  green: 'bg-emerald-500',
-  orange: 'bg-orange-400',
-  red: 'bg-red-500',
+  green: 'var(--primitives-color-groen-500)',
+  orange: 'var(--primitives-color-oranje-500)',
+  red: 'var(--primitives-color-rood-500)',
 };
 
 export const FCC_TRAFFIC_LIGHT_FIELDS: { key: string; label: string }[] = [
@@ -1676,14 +1689,22 @@ export const LEAD_STAGE_LABELS: Record<string, string> = {
   [LeadStage.KOELKAST]: 'Koelkast',
 };
 
+/**
+ * Default column color per lead stage, as an nldd-tag color name.
+ *
+ * Mirrors the defaults in `backend/bouwmeester/schema/lead_column.py`, which
+ * validates `LeadColumn.color` against the same closed set. These used to be
+ * Tailwind chip classes; `leadColumnTagColor()` rejects anything outside the
+ * set, so every fallback column silently rendered grey.
+ */
 export const LEAD_STAGE_COLORS: Record<string, string> = {
-  [LeadStage.INBOX]: 'bg-indigo-100 text-indigo-800',
-  [LeadStage.VERKENNEN]: 'bg-blue-100 text-blue-800',
-  [LeadStage.EERSTE_GESPREK]: 'bg-yellow-100 text-yellow-800',
-  [LeadStage.INTERNE_CHECK]: 'bg-orange-100 text-orange-800',
-  [LeadStage.FOLLOW_UP]: 'bg-purple-100 text-purple-800',
-  [LeadStage.IN_THE_POCKET]: 'bg-green-100 text-green-800',
-  [LeadStage.KOELKAST]: 'bg-gray-100 text-gray-800',
+  [LeadStage.INBOX]: 'lintblauw',
+  [LeadStage.VERKENNEN]: 'hemelblauw',
+  [LeadStage.EERSTE_GESPREK]: 'geel',
+  [LeadStage.INTERNE_CHECK]: 'oranje',
+  [LeadStage.FOLLOW_UP]: 'paars',
+  [LeadStage.IN_THE_POCKET]: 'success',
+  [LeadStage.KOELKAST]: 'neutral',
 };
 
 export const LEAD_STAGE_ORDER: LeadStage[] = [
@@ -2108,14 +2129,6 @@ export const ENGAGEMENT_TYPE_LABELS: Record<EngagementType, string> = {
   nog_te_bepalen: 'Nog te bepalen',
 };
 
-export const ENGAGEMENT_TYPE_COLORS: Record<EngagementType, string> = {
-  intern_oppakken: 'bg-emerald-100 text-emerald-800',
-  voorbereiden_eigen_team: 'bg-indigo-100 text-indigo-800',
-  betrokken_houden: 'bg-sky-100 text-sky-800',
-  verkenning: 'bg-amber-100 text-amber-800',
-  nog_te_bepalen: 'bg-slate-100 text-slate-800',
-};
-
 export type StakeholderHouding =
   | 'tegen'
   | 'kritisch'
@@ -2129,14 +2142,6 @@ export const STAKEHOLDER_HOUDING_LABELS: Record<StakeholderHouding, string> = {
   neutraal: 'Neutraal',
   welwillend: 'Welwillend',
   voorstander: 'Voorstander',
-};
-
-export const STAKEHOLDER_HOUDING_COLORS: Record<StakeholderHouding, string> = {
-  tegen: 'bg-red-100 text-red-800',
-  kritisch: 'bg-orange-100 text-orange-800',
-  neutraal: 'bg-slate-100 text-slate-800',
-  welwillend: 'bg-emerald-100 text-emerald-800',
-  voorstander: 'bg-green-100 text-green-800',
 };
 
 export type StakeholderScopeType = 'corpus_node' | 'initiatief';

@@ -1,5 +1,5 @@
-import { MessageSquare } from 'lucide-react';
 import { useUIStore } from '@/store/ui';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 
 export function ChatToggleButton() {
   const { chatOpen, toggleChat } = useUIStore();
@@ -7,12 +7,26 @@ export function ChatToggleButton() {
   if (chatOpen) return null;
 
   return (
-    <button
-      onClick={toggleChat}
-      className="fixed bottom-6 right-6 z-40 p-3 rounded-full bg-primary-600 text-white shadow-lg hover:bg-primary-700 hover:shadow-xl transition-all duration-200"
-      title="AI Assistent"
+    // Viewport-fixed floating action button: no nldd-container equivalent for
+    // fixed/absolute positioning pinned to a screen corner with a z-index, so
+    // this stays plain CSS.
+    <div
+      style={{
+        position: 'fixed',
+        bottom: '24px',
+        right: '24px',
+        zIndex: 40,
+        borderRadius: '9999px',
+        boxShadow: 'var(--semantics-overlays-box-shadow)',
+      }}
     >
-      <MessageSquare className="w-5 h-5" />
-    </button>
+      <NlddIconButton
+        icon="message-rectangle-text"
+        accessibleLabel="AI Assistent"
+        variant="accent-filled"
+        size="lg"
+        onClick={toggleChat}
+      />
+    </div>
   );
 }

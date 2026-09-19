@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost, ApiError } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,7 +7,10 @@ import { CreatableSelect, type SelectOption } from '@/components/common/Creatabl
 import { addPersonEmail, addPersonPhone } from '@/api/people';
 import { FUNCTIE_LABELS, PHONE_LABELS } from '@/types';
 import type { Person } from '@/types';
-import { Mail, Phone, Plus, X } from 'lucide-react';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { Select } from '@/components/common/Select';
 
 const EXCLUDED_ONBOARDING_FUNCTIES = new Set([
   'minister',
@@ -39,6 +42,68 @@ interface ExtraPhone {
   label: string;
 }
 
+/** One row of the extra-emails list; owns its own ref so useNlddEvent can bind
+ *  per row instead of every row sharing one ref from a .map(). */
+function EmailRow({
+  email,
+  onChange,
+  onRemove,
+}: {
+  email: string;
+  onChange: (value: string) => void;
+  onRemove: () => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', (e) => onChange(eventValue(e)));
+
+  return (
+    <nldd-container layout="row" gap="8" style={{ alignItems: 'center' }}>
+      <nldd-text-field ref={ref} type="email" value={email} placeholder="E-mailadres" autocomplete="email" width="full" />
+      <NlddIconButton
+        icon="close"
+        accessibleLabel="E-mailadres verwijderen"
+        variant="neutral-transparent"
+        size="sm"
+        onClick={onRemove}
+      />
+    </nldd-container>
+  );
+}
+
+/** One row of the extra-phones list; same per-row ref reasoning as EmailRow. */
+function PhoneRow({
+  phone,
+  onChangeNumber,
+  onChangeLabel,
+  onRemove,
+}: {
+  phone: ExtraPhone;
+  onChangeNumber: (value: string) => void;
+  onChangeLabel: (value: string) => void;
+  onRemove: () => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', (e) => onChangeNumber(eventValue(e)));
+
+  return (
+    <nldd-container layout="row" gap="8" style={{ alignItems: 'center' }}>
+      <nldd-text-field ref={ref} type="tel" value={phone.phone_number} placeholder="Telefoonnummer" autocomplete="tel" width="full" />
+      <Select
+        value={phone.label}
+        onChange={(e) => onChangeLabel(e.target.value)}
+        options={PHONE_LABEL_OPTIONS}
+      />
+      <NlddIconButton
+        icon="close"
+        accessibleLabel="Telefoonnummer verwijderen"
+        variant="neutral-transparent"
+        size="sm"
+        onClick={onRemove}
+      />
+    </nldd-container>
+  );
+}
+
 export function ProfileStep({ onComplete }: { onComplete: () => void }) {
   const { person } = useAuth();
   const queryClient = useQueryClient();
@@ -51,6 +116,7 @@ export function ProfileStep({ onComplete }: { onComplete: () => void }) {
   const [extraPhones, setExtraPhones] = useState<ExtraPhone[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const naamFieldRef = useRef<HTMLElement>(null);
 
   const mutation = useMutation({
     mutationFn: async (data: OnboardingPayload) => {
@@ -118,23 +184,18 @@ export function ProfileStep({ onComplete }: { onComplete: () => void }) {
     });
   };
 
+  useNlddEvent(naamFieldRef, 'input', (e) => setNaam(eventValue(e)));
+
   return (
     <div>
-      <p className="text-sm text-text-secondary mb-4">
+      <nldd-text size="sm" color="secondary" style={{ marginBottom: '16px', display: 'block' }}>
         Vul je profiel aan om aan de slag te gaan.
-      </p>
+      </nldd-text>
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">Naam</label>
-          <input
-            type="text"
-            value={naam}
-            onChange={(e) => setNaam(e.target.value)}
-            className="w-full rounded-lg border border-border px-3 py-2 text-sm text-text focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-            placeholder="Volledige naam"
-          />
-        </div>
+      <nldd-container gap="16">
+        <nldd-form-field label="Naam">
+          <nldd-text-field ref={naamFieldRef} value={naam} placeholder="Volledige naam" autocomplete="name" width="full" />
+        </nldd-form-field>
 
         <CreatableSelect
           label="Functie"
@@ -149,129 +210,92 @@ export function ProfileStep({ onComplete }: { onComplete: () => void }) {
         <CascadingOrgSelect value={orgId} onChange={setOrgId} minDepth={2} />
 
         {/* Extra email addresses */}
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">
-            Extra e-mailadressen
-          </label>
-          {person?.email && (
-            <p className="text-xs text-text-secondary mb-2">
-              {person.email} wordt automatisch toegevoegd.
-            </p>
-          )}
-          {extraEmails.map((entry, i) => (
-            <div key={i} className="flex items-center gap-2 mb-2">
-              <Mail className="h-4 w-4 text-text-secondary shrink-0" />
-              <input
-                type="email"
-                value={entry.email}
-                onChange={(e) => {
+        <nldd-form-field
+          label="Extra e-mailadressen"
+          {...(person?.email ? { 'supporting-label': `${person.email} wordt automatisch toegevoegd.` } : {})}
+        >
+          <nldd-container gap="8">
+            {extraEmails.map((entry, i) => (
+              <EmailRow
+                key={i}
+                email={entry.email}
+                onChange={(value) => {
                   const updated = [...extraEmails];
-                  updated[i] = { email: e.target.value };
+                  updated[i] = { email: value };
                   setExtraEmails(updated);
                 }}
-                className="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-                placeholder="E-mailadres"
+                onRemove={() => setExtraEmails(extraEmails.filter((_, j) => j !== i))}
               />
-              <button
-                type="button"
-                onClick={() => setExtraEmails(extraEmails.filter((_, j) => j !== i))}
-                className="text-text-secondary hover:text-red-600 transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => setExtraEmails([...extraEmails, { email: '' }])}
-            className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 transition-colors"
-          >
-            <Plus className="h-3 w-3" />
-            E-mailadres toevoegen
-          </button>
-        </div>
+            ))}
+            <NlddButton
+              text="E-mailadres toevoegen"
+              startIcon="plus"
+              variant="neutral-transparent"
+              size="sm"
+              onClick={() => setExtraEmails([...extraEmails, { email: '' }])}
+            />
+          </nldd-container>
+        </nldd-form-field>
 
         {/* Phone numbers */}
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">
-            Telefoonnummers
-          </label>
-          {extraPhones.map((entry, i) => (
-            <div key={i} className="flex items-center gap-2 mb-2">
-              <Phone className="h-4 w-4 text-text-secondary shrink-0" />
-              <input
-                type="tel"
-                value={entry.phone_number}
-                onChange={(e) => {
+        <nldd-form-field label="Telefoonnummers" optional>
+          <nldd-container gap="8">
+            {extraPhones.map((entry, i) => (
+              <PhoneRow
+                key={i}
+                phone={entry}
+                onChangeNumber={(value) => {
                   const updated = [...extraPhones];
-                  updated[i] = { ...updated[i], phone_number: e.target.value };
+                  updated[i] = { ...updated[i], phone_number: value };
                   setExtraPhones(updated);
                 }}
-                className="flex-1 rounded-lg border border-border px-3 py-1.5 text-sm text-text focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-                placeholder="Telefoonnummer"
+                onChangeLabel={(value) => {
+                  const updated = [...extraPhones];
+                  updated[i] = { ...updated[i], label: value };
+                  setExtraPhones(updated);
+                }}
+                onRemove={() => setExtraPhones(extraPhones.filter((_, j) => j !== i))}
               />
-              <select
-                value={entry.label}
-                onChange={(e) => {
-                  const updated = [...extraPhones];
-                  updated[i] = { ...updated[i], label: e.target.value };
-                  setExtraPhones(updated);
-                }}
-                className="rounded-lg border border-border px-2 py-1.5 text-sm text-text focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-              >
-                {PHONE_LABEL_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setExtraPhones(extraPhones.filter((_, j) => j !== i))}
-                className="text-text-secondary hover:text-red-600 transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => setExtraPhones([...extraPhones, { phone_number: '', label: 'werk' }])}
-            className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 transition-colors"
-          >
-            <Plus className="h-3 w-3" />
-            Telefoonnummer toevoegen
-          </button>
-        </div>
-
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {warnings.length > 0 && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 space-y-1">
-            <p className="font-medium">Je profiel is opgeslagen, maar niet alle contactgegevens konden worden toegevoegd:</p>
-            {warnings.map((w, i) => (
-              <p key={i}>- {w}</p>
             ))}
-            <p className="text-xs text-amber-700 pt-1">Je kunt deze later toevoegen via Instellingen.</p>
-          </div>
+            <NlddButton
+              text="Telefoonnummer toevoegen"
+              startIcon="plus"
+              variant="neutral-transparent"
+              size="sm"
+              onClick={() => setExtraPhones([...extraPhones, { phone_number: '', label: 'werk' }])}
+            />
+          </nldd-container>
+        </nldd-form-field>
+
+        {error && <nldd-banner variant="critical" size="sm" text={error} />}
+        {warnings.length > 0 && (
+          <nldd-banner variant="warning" size="sm" text="Je profiel is opgeslagen, maar niet alle contactgegevens konden worden toegevoegd:">
+            <nldd-container gap="4">
+              {warnings.map((w, i) => (
+                <nldd-text key={i} size="sm">
+                  - {w}
+                </nldd-text>
+              ))}
+              <nldd-text size="xs" color="secondary">
+                Je kunt deze later toevoegen via Instellingen.
+              </nldd-text>
+            </nldd-container>
+          </nldd-banner>
         )}
 
-        <div className="flex justify-end pt-2">
+        <nldd-container horizontal-alignment="right">
           {warnings.length > 0 ? (
-            <button
-              onClick={onComplete}
-              className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors"
-            >
-              Doorgaan
-            </button>
+            <NlddButton text="Doorgaan" onClick={onComplete} />
           ) : (
-            <button
+            <NlddButton
+              text={mutation.isPending ? 'Bezig...' : 'Profiel voltooien'}
+              disabled={!canSubmit}
+              loading={mutation.isPending}
               onClick={handleSubmit}
-              disabled={!canSubmit || mutation.isPending}
-              className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {mutation.isPending ? 'Bezig...' : 'Profiel voltooien'}
-            </button>
+            />
           )}
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-container>
     </div>
   );
 }

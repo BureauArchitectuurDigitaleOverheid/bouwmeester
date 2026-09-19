@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FileText } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
+import { Icon } from '@/components/nldd/Icon';
 import { ChatActionCard } from './ChatActionCard';
 import { ChatPendingActionCard } from './ChatPendingActionCard';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
@@ -24,6 +25,12 @@ function fixNumberedBoldHeadings(text: string): string {
   );
 }
 
+/**
+ * Rendered through a portal to `document.body`: this component lives inside
+ * the split view's inspector pane, and an overlay left as a light-DOM sibling
+ * there gets slotted into the main pane and steals its height instead of
+ * covering the viewport.
+ */
 function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -33,18 +40,34 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  return (
+  return createPortal(
+    // Full-viewport dimmed overlay behind a portalled image: no nldd component
+    // renders an image lightbox, so this stays plain fixed-position CSS.
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 50,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'var(--semantics-overlays-backdrop-color)',
+      }}
       onClick={onClose}
     >
       <img
         src={src}
         alt={alt}
-        className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-xl"
+        style={{
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          borderRadius: '8px',
+          boxShadow: 'var(--primitives-box-shadows-level-4)',
+        }}
         onClick={(e) => e.stopPropagation()}
       />
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -72,19 +95,34 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
 
   return (
     <>
-      <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+      <nldd-container
+        layout="row"
+        gap="0"
+        horizontal-alignment={isUser ? 'right' : 'left'}
+      >
+        {/* No nldd component renders a chat message bubble, so the rounded
+            pill shape and its background stay scoped CSS; the background
+            color itself comes from the design system's own color tokens
+            rather than a hardcoded or Tailwind palette value. */}
         <div
-          className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-            isUser
-              ? 'bg-primary-600 text-white'
-              : 'bg-gray-100 text-text'
-          }`}
+          style={{
+            maxWidth: '85%',
+            borderRadius: '8px',
+            paddingInline: '12px',
+            paddingBlock: '8px',
+            fontSize: '14px',
+            backgroundColor: isUser
+              ? 'var(--primitives-color-lintblauw-600)'
+              : 'var(--primitives-color-coolgray-100)',
+            color: isUser ? 'var(--primitives-color-coolgray-0)' : undefined,
+          }}
         >
           {/* Attachment previews (user messages) */}
           {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-1.5">
+            <nldd-container layout="wrap" gap="6" padding-bottom="6">
               {attachments.map((att) =>
                 isImageContentType(att.content_type) ? (
+                  // Thumbnail button opening the lightbox.
                   <button
                     key={att.id}
                     onClick={() =>
@@ -93,56 +131,80 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                         alt: att.bestandsnaam,
                       })
                     }
-                    className="block"
+                    className="hover-dim"
+                    style={{ display: 'block', cursor: 'pointer' }}
                   >
-                    <img
+                    <nldd-image
                       src={chatAttachmentPreviewUrl(att.id)}
                       alt={att.bestandsnaam}
-                      className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                      width="64"
+                      height={64}
+                      object-fit="cover"
+                      shape="rounded"
                     />
                   </button>
                 ) : (
+                  // A file-attachment pill: no nldd-tag/nldd-token fits (those
+                  // are for labeled values, not file previews), so the chip's
+                  // own background/padding stays scoped CSS around
+                  // nldd-container's flex layout.
                   <div
                     key={att.id}
-                    className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-                      isUser ? 'bg-primary-700/50' : 'bg-gray-200'
-                    }`}
+                    style={{
+                      borderRadius: '4px',
+                      paddingInline: '8px',
+                      paddingBlock: '4px',
+                      fontSize: '12px',
+                      backgroundColor: isUser
+                        ? 'color-mix(in oklch, var(--primitives-color-lintblauw-700) 50%, transparent)'
+                        : 'var(--primitives-color-coolgray-200)',
+                    }}
                   >
-                    <FileText className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate max-w-[100px]">{att.bestandsnaam}</span>
+                    <nldd-container layout="row" gap="4" vertical-alignment="center">
+                      <Icon name="file-text" size="sm" />
+                      {/* truncate + fixed max-width: no nldd-text equivalent
+                          for single-line ellipsis truncation. */}
+                      <span className="truncate" style={{ maxWidth: '100px' }}>{att.bestandsnaam}</span>
+                    </nldd-container>
                   </div>
                 ),
               )}
-            </div>
+            </nldd-container>
           )}
 
           {isUser ? (
+            // whitespace-pre-wrap preserves the user's own line breaks; no
+            // nldd-text equivalent for that CSS white-space value.
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : message.content ? (
-            <div className="prose-sm">
+            // prose-sm referenced the Tailwind Typography plugin, which was
+            // never installed in this project — MarkdownRenderer styles its
+            // own headings/lists/etc. independently, so the class did nothing
+            // even before this migration. Dropped rather than converted.
+            <div>
               <MarkdownRenderer content={fixNumberedBoldHeadings(message.content)} compact onBmLink={handleBmLink} />
             </div>
           ) : null}
 
           {/* Completed actions */}
           {message.actions.length > 0 && (
-            <div className="mt-2 space-y-1.5">
+            <nldd-container gap="6" padding-top="8">
               {message.actions.map((action, i) => (
                 <ChatActionCard key={action.entity_id ?? `action-${i}`} action={action} />
               ))}
-            </div>
+            </nldd-container>
           )}
 
           {/* Pending actions awaiting confirmation */}
           {message.pending_actions.length > 0 && (
-            <div className="mt-2 space-y-1.5">
+            <nldd-container gap="6" padding-top="8">
               {message.pending_actions.map((pa) => (
                 <ChatPendingActionCard key={pa.action_id} pendingAction={pa} />
               ))}
-            </div>
+            </nldd-container>
           )}
         </div>
-      </div>
+      </nldd-container>
 
       {/* Image lightbox */}
       {lightboxSrc && (

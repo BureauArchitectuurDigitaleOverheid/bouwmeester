@@ -1,7 +1,30 @@
-import { FileText, Users, BookOpen } from 'lucide-react';
+import { useRef } from 'react';
 import { Modal } from './Modal';
 import { Button } from './Button';
+import { useNlddEvent } from '@/components/nldd/events';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
+
+/** One of the things you can do with the dropped file. */
+function ActionRow({
+  icon,
+  title,
+  description,
+  onSelect,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  onSelect: () => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onSelect);
+  return (
+    <nldd-list-item ref={ref} size="md" button>
+      <nldd-icon-cell icon={icon} size="24" color="accent" />
+      <nldd-text-cell text={title} supporting-text={description} />
+    </nldd-list-item>
+  );
+}
 
 export function FileActionChooser() {
   const { chooserFiles, showChooser, setShowChooser, chooseAction, discardChooserFiles } =
@@ -14,54 +37,44 @@ export function FileActionChooser() {
     discardChooserFiles();
   };
 
+  const fileLabel =
+    chooserFiles.length === 1 ? chooserFiles[0].name : `${chooserFiles.length} bestanden`;
+
   return (
     <Modal open={showChooser} onClose={handleClose} title="Bestand ontvangen" size="sm">
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-text-secondary">
-          <FileText className="h-4 w-4 shrink-0" />
-          <span className="truncate">
-            {chooserFiles.length === 1
-              ? chooserFiles[0].name
-              : `${chooserFiles.length} bestanden`}
-          </span>
-        </div>
+      <nldd-container gap="16">
+        {/* What was dropped. A banner rather than a tinted strip: it reports
+            something that just happened, which is what a banner is for. */}
+        <nldd-banner variant="neutral" icon="file-text" text={fileLabel} size="sm" />
 
-        <p className="text-sm text-text-secondary">Wat wil je met dit bestand doen?</p>
+        <nldd-text size="sm" color="secondary">
+          Wat wil je met dit bestand doen?
+        </nldd-text>
 
-        <div className="space-y-2">
-          <button
-            onClick={() => chooseAction('lead')}
-            className="w-full flex items-center gap-3 rounded-lg border border-border px-4 py-3 text-left hover:bg-gray-50 transition-colors"
-          >
-            <div className="rounded-lg bg-blue-50 p-2">
-              <Users className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-text">Nieuwe lead aanmaken</p>
-              <p className="text-xs text-text-secondary">Analyseer met VLAM en maak een lead aan</p>
-            </div>
-          </button>
+        {/* Two choices, so a list of rows rather than two buttons carrying a
+            title and a description each. The row is the control; the cells set
+            the type scale and the alignment against the row height. */}
+        <nldd-list variant="simple" accessible-label="Wat wil je met dit bestand doen?">
+          <ActionRow
+            icon="users"
+            title="Nieuwe lead aanmaken"
+            description="Analyseer met VLAM en maak een lead aan"
+            onSelect={() => chooseAction('lead')}
+          />
+          <ActionRow
+            icon="book"
+            title="Bron toevoegen aan corpus"
+            description="Voeg toe als bronbestand"
+            onSelect={() => chooseAction('bron')}
+          />
+        </nldd-list>
 
-          <button
-            onClick={() => chooseAction('bron')}
-            className="w-full flex items-center gap-3 rounded-lg border border-border px-4 py-3 text-left hover:bg-gray-50 transition-colors"
-          >
-            <div className="rounded-lg bg-emerald-50 p-2">
-              <BookOpen className="h-5 w-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-text">Bron toevoegen aan corpus</p>
-              <p className="text-xs text-text-secondary">Voeg toe als bronbestand</p>
-            </div>
-          </button>
-        </div>
-
-        <div className="flex justify-end pt-2">
+        <nldd-container horizontal-alignment="right">
           <Button variant="ghost" onClick={handleClose}>
             Annuleren
           </Button>
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-container>
     </Modal>
   );
 }

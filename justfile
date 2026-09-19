@@ -136,6 +136,10 @@ typecheck:
 install-frontend:
     cd frontend && npm install
 
+# Regenerate the React JSX types for the nldd-* elements (after a design system upgrade)
+nldd-types:
+    cd frontend && node scripts/generate-nldd-types.mjs
+
 # ---------------------------------------------------------------------------
 # Worker
 # ---------------------------------------------------------------------------

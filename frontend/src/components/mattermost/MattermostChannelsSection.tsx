@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
-import { ExternalLink, Hash, Link2, Plus, Search, Trash2 } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/common/Button';
 import { Modal } from '@/components/common/Modal';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
   useCreateInitiatiefChannelLink,
@@ -27,10 +29,9 @@ interface Props {
   /** z-index van de parent-modal (lead/initiatief detail). De picker
    *  opent met +10 bovenop deze waarde zodat hij niet achter de
    *  parent-modal verdwijnt. */
-  parentZIndex?: number;
 }
 
-export function MattermostChannelsSection({ scope, parentZIndex }: Props) {
+export function MattermostChannelsSection({ scope }: Props) {
   const initiatiefQuery = useInitiatiefChannels(
     scope.type === 'initiatief' ? scope.id : undefined,
   );
@@ -44,37 +45,50 @@ export function MattermostChannelsSection({ scope, parentZIndex }: Props) {
   const deleteMutation = useDeleteChannelLink(scope);
 
   return (
-    <div className="rounded-2xl border border-border bg-white p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="text-sm font-semibold flex items-center gap-1.5">
-          <Hash className="h-4 w-4 text-text-secondary" />
-          Mattermost-kanalen
-        </h4>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<Plus className="h-3.5 w-3.5" />}
-          onClick={() => setPickerOpen(true)}
-        >
+    <nldd-card>
+      <nldd-container gap="12">
+      <nldd-container layout="row" gap="8" vertical-alignment="center">
+        <nldd-container width="full">
+          <nldd-container layout="row" gap="6" vertical-alignment="center">
+            <Icon name="tag" size="md" />
+            <nldd-title size={4}>
+              <h4>Mattermost-kanalen</h4>
+            </nldd-title>
+          </nldd-container>
+        </nldd-container>
+        <Button variant="secondary" size="sm" icon="plus" onClick={() => setPickerOpen(true)}>
           Kanaal koppelen
         </Button>
-      </div>
+      </nldd-container>
 
-      {query.isLoading && <LoadingSpinner className="py-6" />}
+      {query.isLoading && (
+        <nldd-container padding-block="24">
+          <LoadingSpinner />
+        </nldd-container>
+      )}
       {query.isError && (
-        <p className="text-xs text-red-700 px-1 py-2">
-          Kon kanalen niet ophalen.
-        </p>
+        <nldd-inline-dialog
+          variant="alert"
+          size="md"
+          text="Kon kanalen niet ophalen."
+        />
       )}
       {query.data && query.data.length === 0 && (
-        <p className="text-xs text-text-secondary px-1 py-2">
-          {scope.type === 'initiatief'
-            ? 'Nog geen kanalen gekoppeld. Bouwmeester leest mee in gekoppelde kanalen en stelt nieuwe leads voor.'
-            : 'Nog geen kanaal gekoppeld. Berichten in gekoppelde kanalen worden notities op deze lead.'}
-        </p>
+        <nldd-inline-dialog
+          text={
+            scope.type === 'initiatief'
+              ? 'Nog geen kanalen gekoppeld.'
+              : 'Nog geen kanaal gekoppeld.'
+          }
+          supporting-text={
+            scope.type === 'initiatief'
+              ? 'Bouwmeester leest mee in gekoppelde kanalen en stelt nieuwe leads voor.'
+              : 'Berichten in gekoppelde kanalen worden notities op deze lead.'
+          }
+        />
       )}
       {query.data && query.data.length > 0 && (
-        <ul className="divide-y divide-border rounded-xl border border-border">
+        <nldd-list type="list" variant="box-tinted" accessible-label="Gekoppelde kanalen">
           {query.data.map((link) => (
             <ChannelRow
               key={link.id}
@@ -94,17 +108,22 @@ export function MattermostChannelsSection({ scope, parentZIndex }: Props) {
               onDelete={() => deleteMutation.mutate(link.id)}
             />
           ))}
-        </ul>
+        </nldd-list>
       )}
 
       <ChannelPickerModal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         scope={scope}
-        zIndex={(parentZIndex ?? 50) + 10}
       />
-    </div>
+      </nldd-container>
+    </nldd-card>
   );
+}
+
+/** Reads `checked` off an nldd-checkbox-field's `change` detail. */
+function checkedValue(event: Event): boolean {
+  return Boolean((event as CustomEvent<{ checked?: boolean }>).detail?.checked);
 }
 
 function ChannelRow({
@@ -118,48 +137,42 @@ function ChannelRow({
   onToggleSuggest: (value: boolean) => void;
   onDelete: () => void;
 }) {
+  const autoNoteRef = useRef<HTMLElement>(null);
+  const suggestRef = useRef<HTMLElement>(null);
+  useNlddEvent(autoNoteRef, 'change', (e) => onToggleAutoNote(checkedValue(e)));
+  useNlddEvent(suggestRef, 'change', (e) => onToggleSuggest(checkedValue(e)));
+
   return (
-    <li className="px-3 py-2.5 flex items-start justify-between gap-3">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 text-sm">
-          <Hash className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-          <span className="font-medium truncate">
-            {link.channel_display_name}
-          </span>
-          {link.disabled_at && (
-            <span className="text-xs text-red-700 px-1.5 py-0.5 rounded bg-red-50">
-              uitgeschakeld
-            </span>
-          )}
-        </div>
-        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-secondary">
-          <label className="inline-flex items-center gap-1 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={link.auto_note_enabled}
-              onChange={(e) => onToggleAutoNote(e.target.checked)}
+    <nldd-list-item>
+      <nldd-container layout="row" width="full" gap="12" horizontal-alignment="right" vertical-alignment="top" padding="4">
+        <nldd-container width="full" min-width="0" gap="4">
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            <nldd-icon-cell icon="tag" size="16" />
+            <nldd-text-cell text={link.channel_display_name} width="fit-content" />
+            {link.disabled_at && <nldd-tag color="critical" size="sm" text="uitgeschakeld" />}
+          </nldd-container>
+          <nldd-container layout="wrap" gap="16">
+            <nldd-checkbox-field
+              ref={autoNoteRef}
+              label="Berichten als notities"
+              checked={orUndef(link.auto_note_enabled)}
             />
-            Berichten als notities
-          </label>
-          <label className="inline-flex items-center gap-1 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={link.suggest_leads_enabled}
-              onChange={(e) => onToggleSuggest(e.target.checked)}
+            <nldd-checkbox-field
+              ref={suggestRef}
+              label="Leads voorstellen"
+              checked={orUndef(link.suggest_leads_enabled)}
             />
-            Leads voorstellen
-          </label>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="text-text-secondary hover:text-red-600 p-1.5 rounded-md hover:bg-red-50"
-        aria-label="Ontkoppelen"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
-    </li>
+          </nldd-container>
+        </nldd-container>
+        <NlddIconButton
+          icon="trash"
+          accessibleLabel="Ontkoppelen"
+          variant="neutral-transparent"
+          size="sm"
+          onClick={onDelete}
+        />
+      </nldd-container>
+    </nldd-list-item>
   );
 }
 
@@ -167,7 +180,6 @@ function ChannelPickerModal({
   open,
   onClose,
   scope,
-  zIndex,
 }: {
   open: boolean;
   onClose: () => void;
@@ -209,80 +221,94 @@ function ChannelPickerModal({
     );
   };
 
+  const searchRef = useRef<HTMLElement>(null);
+  useNlddEvent(searchRef, 'input', (e) => setQ(eventValue(e)));
+
   return (
-    <Modal open={open} onClose={onClose} title="Kanaal koppelen" zIndex={zIndex}>
-      <div className="space-y-3">
-        <p className="text-xs text-text-secondary">
+    <Modal open={open} onClose={onClose} title="Kanaal koppelen">
+      <nldd-container gap="12">
+        <nldd-text size="xs" color="secondary">
           Zoek een kanaal waar de Bouwmeester-bot al lid van is. Niet
           gevonden? Voeg de bot eerst toe aan dat kanaal in Mattermost.
-        </p>
-        <div className="relative">
-          <Search className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" />
-          <input
-            type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Zoek op kanaalnaam"
-            className="w-full pl-8 pr-3 py-2 text-sm rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary-500"
-            autoFocus
-          />
-        </div>
-        {errorMsg && (
-          <p className="text-xs text-red-700">{errorMsg}</p>
+        </nldd-text>
+        <nldd-text-field
+          ref={searchRef}
+          value={q}
+          placeholder="Zoek op kanaalnaam"
+          keyboard="search"
+          accessible-label="Zoek op kanaalnaam"
+        />
+        {errorMsg && <nldd-inline-dialog variant="alert" text={errorMsg} />}
+        {search.isLoading && (
+          <nldd-container padding-block="16">
+            <LoadingSpinner />
+          </nldd-container>
         )}
-        {search.isLoading && <LoadingSpinner className="py-4" />}
         {search.data && search.data.length === 0 && debounced.length >= 2 && (
-          <p className="text-xs text-text-secondary py-2">
-            Geen kanalen gevonden voor "{debounced}".
-          </p>
+          <nldd-inline-dialog text={`Geen kanalen gevonden voor "${debounced}".`} />
         )}
         {search.data && search.data.length > 0 && (
-          <ul className="divide-y divide-border rounded-xl border border-border max-h-72 overflow-y-auto">
+          <nldd-list
+            type="list"
+            variant="box-tinted"
+            height="288px"
+            accessible-label="Gevonden kanalen"
+          >
             {search.data.map((ch) => (
-              <li
+              <ChannelSearchRow
                 key={ch.channel_id}
-                className="px-3 py-2 flex items-center justify-between gap-2 hover:bg-gray-50"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 text-sm font-medium truncate">
-                    <Hash className="h-3.5 w-3.5 text-text-secondary" />
-                    {ch.channel_display_name}
-                  </div>
-                  <div className="text-xs text-text-secondary truncate">
-                    {ch.channel_name}
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  icon={<Link2 className="h-3.5 w-3.5" />}
-                  onClick={() => handlePick(ch)}
-                  disabled={createMutation.isPending}
-                >
-                  Koppelen
-                </Button>
-              </li>
+                channel={ch}
+                pending={createMutation.isPending}
+                onPick={() => handlePick(ch)}
+              />
             ))}
-          </ul>
+          </nldd-list>
         )}
         {createMutation.isError && (
-          <p className="text-xs text-red-700">
-            Koppelen mislukt:{' '}
-            {(createMutation.error as { message?: string } | undefined)
-              ?.message ?? 'onbekende fout'}
-          </p>
+          <nldd-inline-dialog
+            variant="alert"
+            text="Koppelen mislukt"
+            supporting-text={
+              (createMutation.error as { message?: string } | undefined)?.message ??
+              'onbekende fout'
+            }
+          />
         )}
-        <div className="flex justify-end pt-2">
-          <a
+        <nldd-container layout="row" horizontal-alignment="right" padding-top="8">
+          <nldd-link
             href="https://docs.mattermost.com/welcome/managing-members.html"
             target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-primary-700"
-          >
-            <ExternalLink className="h-3 w-3" /> Bot toevoegen aan kanaal
-          </a>
-        </div>
-      </div>
+            size="xs"
+            end-icon="external-link"
+            text="Bot toevoegen aan kanaal"
+          />
+        </nldd-container>
+      </nldd-container>
     </Modal>
+  );
+}
+
+function ChannelSearchRow({
+  channel,
+  pending,
+  onPick,
+}: {
+  channel: MattermostChannelSearchResult;
+  pending: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <nldd-list-item>
+      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
+        <nldd-text-cell
+          text={channel.channel_display_name}
+          supporting-text={channel.channel_name}
+          width="full"
+        />
+        <Button size="sm" variant="primary" icon="link" onClick={onPick} disabled={pending}>
+          Koppelen
+        </Button>
+      </nldd-container>
+    </nldd-list-item>
   );
 }

@@ -6,7 +6,7 @@ export function OpdrachtCreateModal() {
   const { isOpen, defaults, closeOpdrachtCreate } = useOpdrachtCreate();
 
   return (
-    <Modal open={isOpen} onClose={closeOpdrachtCreate} title="Nieuwe opdracht" size="lg" zIndex={55}>
+    <Modal open={isOpen} onClose={closeOpdrachtCreate} title="Nieuwe opdracht" size="lg">
       <OpdrachtForm
         onClose={closeOpdrachtCreate}
         onSuccess={closeOpdrachtCreate}

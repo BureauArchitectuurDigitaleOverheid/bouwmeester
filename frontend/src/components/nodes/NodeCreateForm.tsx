@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { FormModalFooter } from '@/components/common/FormModalFooter';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
+import { FileUpload } from '@/components/common/FileUpload';
 import { AutoTagDialog } from './AutoTagDialog';
 import { DuplicateWarning } from './DuplicateWarning';
 import { PendingTagsList } from './PendingTagsList';
@@ -48,8 +48,9 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
   const [bronPublicatieDatum, setBronPublicatieDatum] = useState('');
   const [bronUrl, setBronUrl] = useState('');
   const [bijlageFile, setBijlageFile] = useState<File | null>(null);
+  // Bumped on reset to force FileUpload to remount and drop its own selected-file state.
+  const [fileUploadKey, setFileUploadKey] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Tags suggested by LLM, to be applied after node creation
   const [pendingTags, setPendingTags] = useState<{ name: string; isNew: boolean }[]>([]);
@@ -88,8 +89,8 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
     setBronPublicatieDatum('');
     setBronUrl('');
     setBijlageFile(null);
+    setFileUploadKey((k) => k + 1);
     setPendingTags([]);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const doSave = async (extraTags: { name: string; isNew: boolean }[] = []) => {
@@ -181,7 +182,8 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
         />
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit}>
+        <nldd-container gap="16">
         <Input
           label="Titel"
           value={title}
@@ -227,11 +229,7 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
         />
 
         {isBron && (
-          <>
-            <div className="border-t border-border pt-4">
-              <p className="text-sm font-medium text-text mb-3">Bron details</p>
-            </div>
-
+          <nldd-form-section text="Bron details">
             <Select
               label="Bron type"
               value={bronType}
@@ -261,29 +259,21 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
               placeholder="https://..."
             />
 
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-text">
-                Bijlage
-              </label>
-              <div className="relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border hover:border-border-hover p-4 transition-colors cursor-pointer">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.doc,.docx,.odt,.txt,.png,.jpg,.jpeg"
-                  onChange={(e) => setBijlageFile(e.target.files?.[0] ?? null)}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                />
-                <Upload className="h-5 w-5 text-text-secondary" />
-                <p className="text-sm text-text-secondary">
-                  {bijlageFile ? bijlageFile.name : 'Klik om een bestand te selecteren'}
-                </p>
-                <p className="text-xs text-text-secondary">
-                  PDF, Word, ODT, TXT, PNG, JPEG (max. 20 MB)
-                </p>
-              </div>
-            </div>
-          </>
+            <nldd-form-field label="Bijlage">
+              <FileUpload
+                key={fileUploadKey}
+                accept=".pdf,.doc,.docx,.odt,.txt,.png,.jpg,.jpeg"
+                label={
+                  bijlageFile
+                    ? bijlageFile.name
+                    : 'Klik om een bestand te selecteren (PDF, Word, ODT, TXT, PNG, JPEG, max. 20 MB)'
+                }
+                onFileSelect={setBijlageFile}
+              />
+            </nldd-form-field>
+          </nldd-form-section>
         )}
+        </nldd-container>
       </form>
 
       <AutoTagDialog

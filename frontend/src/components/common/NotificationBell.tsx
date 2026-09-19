@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, BellOff, BellRing, Check, CheckCheck, Volume2, VolumeOff } from 'lucide-react';
 import { useNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNotificationsRead } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
+import { useNlddEvent, orUndef } from '@/components/nldd/events';
 import { timeAgo } from '@/utils/dates';
 import type { Notification } from '@/types';
 import { richTextToPlain } from '@/utils/richtext';
@@ -21,6 +21,8 @@ import {
 } from '@/hooks/useBrowserNotifications';
 import { useToast } from '@/contexts/ToastContext';
 
+type TagColor = NonNullable<React.ComponentProps<'nldd-tag'>['color']>;
+
 function NotificationItem({
   notification,
   onMarkRead,
@@ -30,43 +32,79 @@ function NotificationItem({
   onMarkRead: (id: string) => void;
   onClick?: () => void;
 }) {
+  const label =
+    NOTIFICATION_TYPE_LABELS[notification.type] || titleCase(notification.type.replace(/_/g, ' '));
+  const body = richTextToPlain(notification.last_message ?? notification.message ?? '');
+
+  // A row is built from cells, never from loose text: the cell sets the type
+  // scale, the color and the alignment against the row height. Text dropped
+  // straight into a button row inherits the browser's button styling instead.
   return (
-    <div
+    <nldd-list-item
+      size="md"
+      button={orUndef(Boolean(onClick))}
       onClick={onClick}
-      className={`flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors ${
-        !notification.is_read ? 'bg-blue-50/50' : ''
-      } ${onClick ? 'cursor-pointer' : ''}`}
+      selected={orUndef(!notification.is_read)}
     >
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span
-            className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-              NOTIFICATION_TYPE_COLORS[notification.type] || 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            {NOTIFICATION_TYPE_LABELS[notification.type] || titleCase(notification.type.replace(/_/g, ' '))}
-          </span>
-          <span className="text-xs text-text-secondary">{timeAgo(notification.last_activity_at ?? notification.created_at)}</span>
-        </div>
-        <p className="text-sm font-medium text-text truncate">{notification.title}</p>
-        {(notification.last_message || notification.message) && (
-          <p className="text-xs text-text-secondary truncate mt-0.5">{richTextToPlain(notification.last_message ?? notification.message ?? '')}</p>
-        )}
-      </div>
+      <nldd-cell>
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <nldd-tag
+            text={label}
+            color={(NOTIFICATION_TYPE_COLORS[notification.type] ?? 'neutral') as TagColor}
+            size="sm"
+          />
+          <nldd-text size="xs" color="secondary">
+            {timeAgo(notification.last_activity_at ?? notification.created_at)}
+          </nldd-text>
+        </nldd-container>
+      </nldd-cell>
+
+      <nldd-text-cell
+        text={notification.title}
+        {...(body ? { 'supporting-text': body } : {})}
+      />
+
       {!notification.is_read && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onMarkRead(notification.id);
-          }}
-          className="shrink-0 rounded p-1 text-text-secondary hover:bg-gray-200 hover:text-text transition-colors"
-          title="Markeer als gelezen"
-        >
-          <Check className="h-3.5 w-3.5" />
-        </button>
+        <nldd-cell width="fit-content">
+          <NlddIconButton
+            icon="check-mark"
+            variant="neutral-transparent"
+            size="sm"
+            accessible-label="Markeer als gelezen"
+            no-tab
+            onClick={(e) => {
+              e.stopPropagation();
+              onMarkRead(notification.id);
+            }}
+          />
+        </nldd-cell>
       )}
-    </div>
+    </nldd-list-item>
   );
+}
+
+/** An nldd-icon-button that reports clicks through the element's own event. */
+function NlddIconButton({
+  onClick,
+  ...props
+}: React.ComponentProps<'nldd-icon-button'> & {
+  onClick?: (event: MouseEvent) => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', (e) => onClick?.(e as MouseEvent));
+  return <nldd-icon-button ref={ref} {...props} />;
+}
+
+/** Same, for nldd-toggle-button. */
+function NlddToggleButton({
+  onClick,
+  ...props
+}: React.ComponentProps<'nldd-toggle-button'> & {
+  onClick?: (event: MouseEvent) => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', (e) => onClick?.(e as MouseEvent));
+  return <nldd-toggle-button ref={ref} {...props} />;
 }
 
 function BrowserNotificationToggle() {
@@ -90,16 +128,18 @@ function BrowserNotificationToggle() {
     }
   };
 
-  const Icon = enabled ? BellRing : BellOff;
-
+  // A toggle button, not an icon button with two icons: there is no bell-slash
+  // in the icon set, and the state belongs in aria-pressed anyway. The pressed
+  // state is what says whether notifications are on, so it is announced rather
+  // than left to whichever glyph is showing.
   return (
-    <button
-      onClick={handleToggle}
-      className="flex items-center gap-1 text-xs text-text-secondary hover:text-text transition-colors"
-      title={enabled ? 'Browsermeldingen uitschakelen' : 'Browsermeldingen inschakelen'}
-    >
-      <Icon className="h-3.5 w-3.5" />
-    </button>
+    <NlddToggleButton
+      icon="bell"
+      size="sm"
+      selected={orUndef(enabled)}
+      accessible-label={enabled ? 'Browsermeldingen uitschakelen' : 'Browsermeldingen inschakelen'}
+      onClick={() => void handleToggle()}
+    />
   );
 }
 
@@ -109,27 +149,26 @@ function NotificationSoundToggle() {
 
   if (!notificationsOn) return null;
 
-  const Icon = soundOn ? Volume2 : VolumeOff;
-
+  // This one does have a real pair of glyphs, so the icon changes as well as
+  // the pressed state.
   return (
-    <button
+    <NlddToggleButton
+      icon={soundOn ? 'speaker-volume-high' : 'speaker-slash'}
+      size="sm"
+      selected={orUndef(soundOn)}
+      accessible-label={soundOn ? 'Geluid uitschakelen' : 'Geluid inschakelen'}
       onClick={() => {
         const next = !soundOn;
         setNotificationSoundEnabled(next);
         setSoundOn(next);
       }}
-      className="flex items-center gap-1 text-xs text-text-secondary hover:text-text transition-colors"
-      title={soundOn ? 'Geluid uitschakelen' : 'Geluid inschakelen'}
-    >
-      <Icon className="h-3.5 w-3.5" />
-    </button>
+    />
   );
 }
 
 export function NotificationBell() {
-  const [open, setOpen] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLElement>(null);
   const navigate = useNavigate();
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
@@ -145,101 +184,112 @@ export function NotificationBell() {
 
   const unreadCount = countData?.count ?? 0;
 
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   if (!currentPerson) return null;
 
+  // The component's own hide(), not the native hidePopover(): it no-ops when the
+  // popover is already closed instead of throwing.
+  const close = () => (popoverRef.current as { hide?: () => void } | null)?.hide?.();
+
+  // Every branch marks read (where it applies), routes, and closes. The routing
+  // is what differs, so only that is per-type.
+  const handleOpen = (notification: Notification) => {
+    const type = notification.type;
+    if (type === 'direct_message' || type === 'agent_prompt') {
+      setThreadId(notification.id);
+      close();
+      return;
+    }
+
+    if (type === 'access_request') navigate('/admin?tab=requests');
+    else if (type === 'placement_request') navigate('/admin?tab=placements');
+    else if (notification.related_task_id) openTaskDetail(notification.related_task_id);
+    else if (notification.related_node_id) openNodeDetail(notification.related_node_id);
+    else if (notification.related_lead_id) openLeadDetail(notification.related_lead_id);
+    else return;
+
+    if (!notification.is_read) markRead.mutate(notification.id);
+    close();
+  };
+
   return (
-    <div className="relative" ref={menuRef}>
-      <button
-        onClick={() => setOpen(!open)}
-        className="relative flex items-center justify-center h-9 w-9 rounded-xl border border-transparent hover:border-border hover:bg-gray-100 text-text-secondary hover:text-text transition-colors"
+    <>
+      {/* The popover sits in the button's `popup` slot, so the browser owns
+          opening, toggling and light dismiss, and the button gets its
+          aria-expanded and aria-haspopup wired up for free. The previous
+          version did all of that by hand with a mousedown listener on
+          document. On a narrow screen the popover becomes a bottom sheet by
+          itself, which is what the fixed/absolute breakpoint dance replaced. */}
+      <nldd-icon-button
+        icon="bell"
+        variant="neutral-transparent"
+        accessible-label={
+          unreadCount > 0 ? `Meldingen (${unreadCount} ongelezen)` : 'Meldingen'
+        }
+        popup-type="dialog"
       >
-        <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center h-4 min-w-[16px] rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
+          <nldd-badge
+            number={unreadCount}
+            max={99}
+            color="critical"
+            size="sm"
+            accessible-label={`${unreadCount} ongelezen meldingen`}
+          />
         )}
-      </button>
 
-      {open && (
-        <div className="fixed inset-x-2 top-16 z-50 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 w-auto sm:w-80 max-h-96 rounded-xl border border-border bg-surface shadow-xl overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <h3 className="text-sm font-semibold text-text">Meldingen</h3>
-            <div className="flex items-center gap-2">
-              <BrowserNotificationToggle />
-              <NotificationSoundToggle />
-              {unreadCount > 0 && (
-                <button
-                  onClick={() => markAllRead.mutate()}
-                  className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 transition-colors"
-                >
-                  <CheckCheck className="h-3.5 w-3.5" />
-                  Alles gelezen
-                </button>
-              )}
-            </div>
-          </div>
+        <nldd-popover
+          slot="popup"
+          ref={popoverRef}
+          accessible-label="Meldingen"
+          width="360px"
+          placement="bottom-end"
+          sm-full-height
+        >
+          <nldd-container gap="0">
+            <nldd-container layout="row" gap="8" vertical-alignment="center" padding="12">
+              <nldd-title size={5}><h2>Meldingen</h2></nldd-title>
+              <nldd-container layout="row" gap="4" vertical-alignment="center" horizontal-alignment="right">
+                <BrowserNotificationToggle />
+                <NotificationSoundToggle />
+                {unreadCount > 0 && (
+                  <NlddIconButton
+                    icon="checked"
+                    variant="neutral-transparent"
+                    size="sm"
+                    accessible-label="Alles markeren als gelezen"
+                    onClick={() => markAllRead.mutate()}
+                  />
+                )}
+              </nldd-container>
+            </nldd-container>
 
-          {/* Notification list */}
-          <div className="overflow-y-auto max-h-72 divide-y divide-border">
+            <nldd-divider />
+
             {notifications && notifications.length > 0 ? (
-              notifications.map((notification) => (
-                <NotificationItem
-                  key={notification.id}
-                  notification={notification}
-                  onMarkRead={(id) => markRead.mutate(id)}
-                  onClick={() => {
-                    if (notification.type === 'access_request') {
-                      navigate('/admin?tab=requests');
-                      if (!notification.is_read) markRead.mutate(notification.id);
-                      setOpen(false);
-                    } else if (notification.type === 'placement_request') {
-                      navigate('/admin?tab=placements');
-                      if (!notification.is_read) markRead.mutate(notification.id);
-                      setOpen(false);
-                    } else if (notification.type === 'direct_message' || notification.type === 'agent_prompt') {
-                      setThreadId(notification.id);
-                      setOpen(false);
-                    } else if (notification.related_task_id) {
-                      openTaskDetail(notification.related_task_id);
-                      if (!notification.is_read) markRead.mutate(notification.id);
-                      setOpen(false);
-                    } else if (notification.related_node_id) {
-                      openNodeDetail(notification.related_node_id);
-                      if (!notification.is_read) markRead.mutate(notification.id);
-                      setOpen(false);
-                    } else if (notification.related_lead_id) {
-                      openLeadDetail(notification.related_lead_id);
-                      if (!notification.is_read) markRead.mutate(notification.id);
-                      setOpen(false);
-                    }
-                  }}
-                />
-              ))
+              <nldd-list variant="simple" accessible-label="Meldingen">
+                {notifications.map((notification) => (
+                  <NotificationItem
+                    key={notification.id}
+                    notification={notification}
+                    onMarkRead={(id) => markRead.mutate(id)}
+                    onClick={() => handleOpen(notification)}
+                  />
+                ))}
+              </nldd-list>
             ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-text-secondary">
-                <Bell className="h-8 w-8 mb-2 opacity-30" />
-                <p className="text-sm">Geen meldingen</p>
-              </div>
+              <nldd-container padding="24" horizontal-alignment="center">
+                <nldd-text size="sm" color="secondary">
+                  Geen meldingen
+                </nldd-text>
+              </nldd-container>
             )}
-          </div>
-        </div>
-      )}
+          </nldd-container>
+        </nldd-popover>
+      </nldd-icon-button>
 
       {threadId && (
         <MessageThread notificationId={threadId} onClose={() => setThreadId(null)} />
       )}
-    </div>
+    </>
   );
 }

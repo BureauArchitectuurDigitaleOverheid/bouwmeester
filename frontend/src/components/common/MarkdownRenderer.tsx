@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import DOMPurify from 'dompurify';
+import { parseMention, mentionSigil, MENTION_SCHEMES } from '@/utils/mentions';
 import mermaid from 'mermaid';
 
 mermaid.initialize({
@@ -35,20 +36,13 @@ function MermaidBlock({ chart }: { chart: string }) {
   }, [chart]);
 
   if (error) {
-    return (
-      <pre className="p-4 bg-red-50 text-red-700 rounded-lg text-sm overflow-x-auto">
-        {error}
-      </pre>
-    );
+    return <nldd-banner variant="critical" text="Diagram kon niet worden getekend" supporting-text={error} />;
   }
 
-  return (
-    <div
-      ref={ref}
-      className="my-4 flex justify-center overflow-x-auto"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
-  );
+  // `data-width="wide"` puts the diagram in the media zone, the same one
+  // rich-text gives images and tables, so a wide diagram gets the extra room
+  // instead of being squeezed into the reading column.
+  return <div ref={ref} data-width="wide" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
 /** Parse bm:// links and return { type, id } or null for regular links. */
@@ -59,95 +53,71 @@ function parseBmLink(href: string | undefined): { type: 'node' | 'task' | 'lead'
   return { type: match[1] as 'node' | 'task' | 'lead', id: match[2] };
 }
 
-const defaultComponents: Components = {
-  h1: ({ children }) => (
-    <h1 className="text-2xl font-bold text-text mt-8 mb-4 first:mt-0">{children}</h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="text-xl font-semibold text-text mt-8 mb-3 pb-2 border-b border-border">
-      {children}
-    </h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="text-lg font-semibold text-text mt-6 mb-2">{children}</h3>
-  ),
-  h4: ({ children }) => (
-    <h4 className="text-base font-semibold text-text mt-4 mb-2">{children}</h4>
-  ),
-  p: ({ children }) => <p className="text-sm text-text-secondary leading-relaxed mb-4">{children}</p>,
+/**
+ * Only the elements that carry behaviour are overridden.
+ *
+ * Headings, paragraphs, lists, blockquotes, tables, rules and inline code used
+ * to be twenty hand-styled overrides here. `nldd-rich-text` styles plain HTML
+ * directly (it renders without a shadow root for exactly this reason), so they
+ * are gone and the markdown now produces ordinary tags. That also means the
+ * responsive type scale and the heading rhythm come from the system rather
+ * than from a set of numbers that happened to be typed in this file.
+ */
+const components: Components = {
   a: ({ href, children }) => {
-    const bm = parseBmLink(href);
-    if (bm) {
+    // A mention: a link carrying a scheme, written by the editor and by the
+    // TipTap migration. Rendered as a chip that opens the thing it names.
+    const mention = href ? parseMention(href, String(children ?? '')) : null;
+    if (mention) {
       return (
         <button
           type="button"
-          data-bm-type={bm.type}
-          data-bm-id={bm.id}
-          className="text-primary-600 hover:text-primary-700 underline cursor-pointer inline font-medium"
+          data-mention-kind={mention.kind}
+          data-mention-id={mention.id}
+          style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer' }}
         >
+          <nldd-tag
+            text={`${mentionSigil(mention.kind)}${mention.label}`}
+            color={mention.kind === 'person' || mention.kind === 'organisatie' ? 'accent' : 'neutral'}
+            size="sm"
+          />
+        </button>
+      );
+    }
+
+    const bm = parseBmLink(href);
+    if (bm) {
+      // A button, not a link: it navigates inside the app and has no URL to
+      // open in a new tab. Click handling sits on the container, so this only
+      // has to carry the target.
+      return (
+        <button type="button" data-bm-type={bm.type} data-bm-id={bm.id}>
           {children}
         </button>
       );
     }
+    // A raw <a> inside nldd-rich-text, not nldd-link: link components are for
+    // UI navigation, running text uses the real element.
     return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-primary-600 hover:text-primary-700 underline"
-      >
+      <a href={href} target="_blank" rel="noopener noreferrer">
         {children}
       </a>
     );
   },
-  ul: ({ children }) => <ul className="list-disc list-inside mb-4 space-y-1 text-sm text-text-secondary">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal list-inside mb-4 space-y-1 text-sm text-text-secondary">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  blockquote: ({ children }) => (
-    <blockquote className="border-l-4 border-primary-300 pl-4 my-4 text-sm text-text-secondary italic">
-      {children}
-    </blockquote>
-  ),
-  table: ({ children }) => (
-    <div className="overflow-x-auto mb-4">
-      <table className="min-w-full text-sm border border-border rounded-lg">{children}</table>
-    </div>
-  ),
-  thead: ({ children }) => <thead className="bg-gray-50">{children}</thead>,
-  th: ({ children }) => (
-    <th className="px-3 py-2 text-left text-xs font-semibold text-text border-b border-border">
-      {children}
-    </th>
-  ),
-  td: ({ children }) => (
-    <td className="px-3 py-2 text-sm text-text-secondary border-b border-border">{children}</td>
-  ),
   code: ({ className, children, ...props }) => {
     const match = /language-(\w+)/.exec(className || '');
-    const language = match?.[1];
-
-    if (language === 'mermaid') {
+    if (match?.[1] === 'mermaid') {
       return <MermaidBlock chart={String(children).trim()} />;
     }
-
-    // Inline code vs block code
-    const isInline = !className;
-    if (isInline) {
-      return (
-        <code className="px-1.5 py-0.5 bg-gray-100 text-primary-700 rounded text-xs font-mono" {...props}>
-          {children}
-        </code>
-      );
-    }
-
     return (
-      <code className={`block text-xs font-mono ${className || ''}`} {...props}>
+      <code className={className} {...props}>
         {children}
       </code>
     );
   },
   pre: ({ children }) => {
-    // Check if the child is a MermaidBlock — if so don't wrap in <pre>
+    // A mermaid diagram replaces the code block entirely, so it must not end up
+    // wrapped in a <pre>.
     const child = children as ReactNode;
     if (
       child &&
@@ -157,39 +127,29 @@ const defaultComponents: Components = {
     ) {
       return <>{children}</>;
     }
-    return (
-      <pre className="p-4 bg-gray-50 rounded-lg overflow-x-auto mb-4 border border-border">
-        {children}
-      </pre>
-    );
+    return <pre>{children}</pre>;
   },
-  hr: () => <hr className="my-6 border-border" />,
-  strong: ({ children }) => <strong className="font-semibold text-text">{children}</strong>,
 };
 
+/**
+ * Compact additionally demotes the headings by two levels.
+ *
+ * This is the one piece of the old component map that could not go. Compact
+ * renders inside a chat bubble, and an assistant reply regularly opens with an
+ * `#` heading; at the document scale that heading is larger than the whole
+ * conversation around it. rich-text has a spacing scale but no size scale, so
+ * the demotion stays here. It is a real property of the surface, not styling:
+ * a heading inside a message is subordinate to the page it sits on.
+ *
+ * Demoting the tag rather than restyling it also keeps the document outline
+ * honest, which an h1-styled-as-h5 would not.
+ */
 const compactComponents: Components = {
-  ...defaultComponents,
-  h1: ({ children }) => (
-    <h3 className="text-sm font-bold text-text mt-3 mb-1 first:mt-0">{children}</h3>
-  ),
-  h2: ({ children }) => (
-    <h4 className="text-sm font-bold text-text mt-3 mb-1 first:mt-0">{children}</h4>
-  ),
-  h3: ({ children }) => (
-    <h5 className="text-sm font-semibold text-text mt-2 mb-1 first:mt-0">{children}</h5>
-  ),
-  h4: ({ children }) => (
-    <h6 className="text-sm font-semibold text-text mt-2 mb-0.5 first:mt-0">{children}</h6>
-  ),
-  p: ({ children }) => <p className="text-sm text-text-secondary leading-relaxed mb-2">{children}</p>,
-  ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5 text-sm text-text-secondary">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5 text-sm text-text-secondary">{children}</ol>,
-  blockquote: ({ children }) => (
-    <blockquote className="border-l-4 border-primary-300 pl-3 my-2 text-sm text-text-secondary italic">
-      {children}
-    </blockquote>
-  ),
-  hr: () => <hr className="my-3 border-border" />,
+  ...components,
+  h1: ({ children }) => <h3>{children}</h3>,
+  h2: ({ children }) => <h4>{children}</h4>,
+  h3: ({ children }) => <h5>{children}</h5>,
+  h4: ({ children }) => <h6>{children}</h6>,
 };
 
 interface MarkdownRendererProps {
@@ -216,21 +176,28 @@ export function MarkdownRenderer({ content, compact, onBmLink }: MarkdownRendere
     [onBmLink],
   );
 
+  // `compact` was a second copy of the whole component map with smaller
+  // margins everywhere. The margins are now the spacing scale, so only the
+  // heading demotion is left of it.
   return (
     <div ref={containerRef} onClick={handleClick}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={compact ? compactComponents : defaultComponents}
-        urlTransform={(url) => {
-          // Allow bm:// protocol links for in-app navigation
-          if (url.startsWith('bm://')) return url;
-          // Default: only allow http, https, mailto
-          if (/^https?:\/\/|^mailto:/i.test(url)) return url;
-          return '';
-        }}
-      >
-        {content}
-      </ReactMarkdown>
+      <nldd-rich-text spacing={compact ? 'tight' : 'snug'}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={compact ? compactComponents : components}
+          urlTransform={(url) => {
+            // Allow bm:// protocol links for in-app navigation
+            if (url.startsWith('bm://')) return url;
+            // ...and the mention schemes, which are links by construction.
+            if (Object.values(MENTION_SCHEMES).some((s) => url.startsWith(`${s}:`))) return url;
+            // Default: only allow http, https, mailto
+            if (/^https?:\/\/|^mailto:/i.test(url)) return url;
+            return '';
+          }}
+        >
+          {content}
+        </ReactMarkdown>
+      </nldd-rich-text>
     </div>
   );
 }

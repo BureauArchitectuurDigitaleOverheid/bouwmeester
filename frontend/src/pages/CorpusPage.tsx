@@ -1,17 +1,18 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, LayoutGrid, GitFork, Grid3x3, Search } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { ViewToggle } from '@/components/common/ViewToggle';
 import type { ViewToggleOption } from '@/components/common/ViewToggle';
-import { Input } from '@/components/common/Input';
 import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
+import { Select } from '@/components/common/Select';
 import { NodeList } from '@/components/nodes/NodeList';
 import { NodeCreateForm } from '@/components/nodes/NodeCreateForm';
 import { ExportButton } from '@/components/nodes/ExportButton';
 import { CorpusGraph } from '@/components/graph/CorpusGraph';
 import { CorpusMatrix } from '@/components/graph/CorpusMatrix';
+import { Icon } from '@/components/nldd/Icon';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useGraphView } from '@/hooks/useGraph';
@@ -21,12 +22,26 @@ import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 type ViewMode = 'list' | 'graph' | 'matrix';
 
 const VIEW_OPTIONS: ViewToggleOption<ViewMode>[] = [
-  { value: 'list', label: 'Lijst', icon: <LayoutGrid className="h-3.5 w-3.5" /> },
-  { value: 'graph', label: 'Netwerk', icon: <GitFork className="h-3.5 w-3.5" /> },
-  { value: 'matrix', label: 'Matrix', icon: <Grid3x3 className="h-3.5 w-3.5" /> },
+  { value: 'list', label: 'Lijst', icon: <Icon name="square-grid-2x2" size="sm" /> },
+  { value: 'graph', label: 'Netwerk', icon: <Icon name="git-fork" size="sm" /> },
+  { value: 'matrix', label: 'Matrix', icon: <Icon name="square-grid-3x3" size="sm" /> },
 ];
 
 const ALL_NODE_TYPES = Object.values(NodeType);
+
+/** The corpus search field: `nldd-search-field` with its `input` event bridged to React. */
+function CorpusSearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return (
+    <nldd-search-field
+      ref={ref}
+      value={value}
+      placeholder="Zoek in corpus..."
+      accessible-label="Zoek in corpus"
+    />
+  );
+}
 
 export function CorpusPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -158,85 +173,86 @@ export function CorpusPage() {
   }, [setSearchParams]);
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <p className="text-sm text-text-secondary">
+      <nldd-toolbar label="Corpusacties">
+        <nldd-toolbar-item slot="start" priority={1}>
+          <nldd-text size="sm" color="secondary">
             Bekijk en beheer alle beleidsdocumenten, dossiers en instrumenten.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {/* View mode toggle */}
+          </nldd-text>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end" priority={3}>
+          {/* A tab-like view switcher, not a single action: per the toolbar
+              pattern this gets a high priority instead of an overflow
+              alternative, so it never becomes a menu item. */}
           <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
-
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end">
+          {/* ExportButton owns its own anchored nldd-menu with four export
+              formats; the overflow slot only takes flat menu items, so this
+              is a single reasonable fallback action rather than the full
+              submenu. */}
           <ExportButton hideLabel />
-
-          <Button
-            icon={<Plus className="h-4 w-4" />}
-            onClick={() => setShowCreateForm(true)}
-          >
-            <span className="hidden sm:inline">Nieuwe node</span>
+          <nldd-menu-item slot="overflow" text="Exporteren" icon="download"></nldd-menu-item>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end" priority={2}>
+          {/* `Button` reads this className to detect a responsively-hidden
+              label and turn it into the accessible name on narrow screens —
+              the wrapper's own API contract, not decorative Tailwind (see
+              common/Button.tsx). */}
+          <Button icon="plus" onClick={() => setShowCreateForm(true)}>
+            <span className="hidden-below-sm">Nieuwe node</span>
           </Button>
-        </div>
-      </div>
+          <nldd-menu-item slot="overflow" text="Nieuwe node" icon="plus"></nldd-menu-item>
+        </nldd-toolbar-item>
+      </nldd-toolbar>
 
       {/* Shared filter bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-        <div className="relative w-full sm:w-56">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Zoek in corpus..."
-            className="pl-9"
-          />
-        </div>
+      <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+        <nldd-container width="fit-content" min-width="224px">
+          <CorpusSearchField value={searchInput} onChange={setSearchInput} />
+        </nldd-container>
         {viewMode !== 'matrix' && (
-          <div className="w-full sm:w-52">
+          <nldd-container width="fit-content" min-width="208px">
             <MultiSelect
               value={enabledNodeTypes as Set<string>}
               onChange={handleNodeTypesChange}
               options={nodeTypeFilterOptions}
               allLabel="Alle types"
             />
-          </div>
+          </nldd-container>
         )}
         {(viewMode === 'graph' || viewMode === 'matrix') && edgeTypeFilterOptions.length > 0 && (
-          <div className="w-full sm:w-52">
+          <nldd-container width="fit-content" min-width="208px">
             <MultiSelect
               value={enabledEdgeTypes}
               onChange={handleEdgeTypesChange}
               options={edgeTypeFilterOptions}
               allLabel="Alle relaties"
             />
-          </div>
+          </nldd-container>
         )}
         {viewMode === 'matrix' && (
           <>
-            <select
-              value={matrixRowType}
-              onChange={(e) => setMatrixRowType(e.target.value as NodeType)}
-              className="w-full sm:w-44 rounded-lg border border-border bg-white px-3 py-2 text-sm text-text focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-              aria-label="Rij-type"
-            >
-              {ALL_NODE_TYPES.map((t) => (
-                <option key={t} value={t}>{nodeLabel(t)} (rij)</option>
-              ))}
-            </select>
-            <select
-              value={matrixColType}
-              onChange={(e) => setMatrixColType(e.target.value as NodeType)}
-              className="w-full sm:w-44 rounded-lg border border-border bg-white px-3 py-2 text-sm text-text focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-              aria-label="Kolom-type"
-            >
-              {ALL_NODE_TYPES.map((t) => (
-                <option key={t} value={t}>{nodeLabel(t)} (kolom)</option>
-              ))}
-            </select>
+            <nldd-container width="fit-content" min-width="176px">
+              <Select
+                value={matrixRowType}
+                onChange={(e) => setMatrixRowType(e.target.value as NodeType)}
+                options={ALL_NODE_TYPES.map((t) => ({ value: t, label: `${nodeLabel(t)} (rij)` }))}
+                aria-label="Rij-type"
+              />
+            </nldd-container>
+            <nldd-container width="fit-content" min-width="176px">
+              <Select
+                value={matrixColType}
+                onChange={(e) => setMatrixColType(e.target.value as NodeType)}
+                options={ALL_NODE_TYPES.map((t) => ({ value: t, label: `${nodeLabel(t)} (kolom)` }))}
+                aria-label="Kolom-type"
+              />
+            </nldd-container>
           </>
         )}
-      </div>
+      </nldd-container>
 
       {/* View content */}
       {viewMode === 'list' ? (
@@ -261,6 +277,6 @@ export function CorpusPage() {
         onClose={() => { setShowCreateForm(false); setDroppedFile(undefined); }}
         initialBijlageFile={droppedFile}
       />
-    </div>
+    </nldd-container>
   );
 }

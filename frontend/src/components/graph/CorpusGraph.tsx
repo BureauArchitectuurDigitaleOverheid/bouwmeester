@@ -341,7 +341,7 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
   }, []);
 
   if (isLoading) {
-    return <LoadingSpinner className="py-12" />;
+    return <LoadingSpinner padding="48" />;
   }
 
   if (error) {
@@ -363,9 +363,9 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
   }
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       {/* Graph canvas */}
-      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden" style={{ height: 'calc(100vh - 260px)', minHeight: isMobile ? '300px' : '500px' }}>
+      <div className="graph-canvas-frame" style={{ height: 'calc(100vh - 260px)', minHeight: isMobile ? '300px' : '500px' }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -435,7 +435,7 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
           required
         />
       </Modal>
-    </div>
+    </nldd-container>
   );
 }
 

@@ -3,6 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
+import { MENTION_SCHEMES } from '@/utils/mentions';
+
+/** `[label](scheme:id)` for any of our mention schemes. */
+const MENTION_LINK_RE = new RegExp(
+  `\\]\\((?:${Object.values(MENTION_SCHEMES).join('|')}):`,
+);
 
 // Regex to detect URLs in plain text.
 // Matches http(s) URLs, then trims common trailing sentence punctuation that
@@ -37,6 +43,11 @@ interface TipTapNode {
 interface TipTapMark {
   type: string;
   attrs?: Record<string, unknown>;
+}
+
+/** Does the text hold a mention token? Those are links, so they need the renderer. */
+function containsMention(text: string): boolean {
+  return MENTION_LINK_RE.test(text);
 }
 
 /** Simple heuristic: does the text contain markdown-like formatting? */
@@ -78,29 +89,104 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
 
+  // A mention rendered by MarkdownRenderer is a button carrying its kind and
+  // id; opening it needs the contexts, which live here.
+  const handleMentionClick = (e: React.MouseEvent) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-mention-kind]');
+    if (!target) return;
+    const kind = target.dataset.mentionKind;
+    const id = target.dataset.mentionId;
+    if (!kind || !id) return;
+    e.preventDefault();
+    if (kind === 'node') openNodeDetail(id);
+    else if (kind === 'task') openTaskDetail(id);
+    else if (kind === 'organisatie') navigate(`/organisatie?eenheid=${id}`);
+    // A person mention goes nowhere: there is no person detail surface.
+  };
+
+  const markdown = (value: string) => (
+    <div onClick={handleMentionClick}>
+      <MarkdownRenderer content={value} />
+    </div>
+  );
+
   if (!content) {
-    return <p className="text-sm text-text-secondary whitespace-pre-wrap">{fallback}</p>;
+    return (
+      <nldd-text size="sm" color="secondary">
+        {fallback}
+      </nldd-text>
+    );
   }
 
   const doc = isTipTapJson(content);
   if (!doc) {
     // Detect markdown syntax and render accordingly
-    if (looksLikeMarkdown(content)) {
-      return <div className="text-sm text-text-secondary"><MarkdownRenderer content={content} /></div>;
+    // Markdown, or a mention token, which is markdown by construction. After
+    // the TipTap migration this is what every stored description looks like.
+    if (looksLikeMarkdown(content) || containsMention(content)) {
+      // MarkdownRenderer brings its own nldd-rich-text.
+      return markdown(content);
     }
-    // Plain text fallback — auto-linkify URLs
-    return <p className="text-sm text-text-secondary whitespace-pre-wrap">{linkifyText(content)}</p>;
+    // Plain text fallback — auto-linkify URLs. `pre-wrap` is content, not
+    // styling: the line breaks are the only structure this text has.
+    return (
+      <nldd-text size="sm" color="secondary" style={{ whiteSpace: 'pre-wrap' }}>
+        {linkifyText(content)}
+      </nldd-text>
+    );
   }
 
   // Handle legacy data: TipTap JSON where markdown syntax was stored as plain
   // text (before the editor learned to convert markdown on input).
   const plainText = extractPlainText(doc);
   if (plainText !== null && looksLikeMarkdown(plainText)) {
-    return <div className="text-sm text-text-secondary"><MarkdownRenderer content={plainText} /></div>;
+    return markdown(plainText);
   }
 
+  // nldd-rich-text styles the plain tags this renderer emits, which is why none
+  // of the cases below carry classes any more.
   const handlers: MentionHandlers = { openTaskDetail, openNodeDetail, navigate };
-  return <div className="text-sm text-text-secondary">{renderNodes(doc.content ?? [], handlers)}</div>;
+  return <nldd-rich-text spacing="tight">{renderNodes(doc.content ?? [], handlers)}</nldd-rich-text>;
+}
+
+/**
+ * An @person or #dossier chip inside running text.
+ *
+ * Clickable ones are a button wrapping the tag; the rest are just a tag. The
+ * previous version made both a <button> and told the inert one apart with
+ * `cursor-default`, so screen readers offered a control that did nothing.
+ */
+function Mention({
+  label,
+  color,
+  title,
+  onClick,
+}: {
+  label: string;
+  color: 'accent' | 'success' | 'neutral';
+  title: string;
+  onClick?: () => void;
+}) {
+  const tag = <nldd-tag text={label} color={color} size="sm" />;
+  if (!onClick) return <span title={title}>{tag}</span>;
+  // Not `all: unset`: that drops the focus ring along with the chrome, and a
+  // control you cannot see focus on fails WCAG 2.4.7. Only the box is reset.
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      style={{
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        font: 'inherit',
+        cursor: 'pointer',
+      }}
+    >
+      {tag}
+    </button>
+  );
 }
 
 interface MentionHandlers {
@@ -117,7 +203,7 @@ function renderNode(node: TipTapNode, key: number, handlers: MentionHandlers): R
   switch (node.type) {
     case 'paragraph':
       return (
-        <p key={key} className="whitespace-pre-wrap mb-1 last:mb-0">
+        <p key={key}>
           {node.content ? renderNodes(node.content, handlers) : null}
         </p>
       );
@@ -130,23 +216,17 @@ function renderNode(node: TipTapNode, key: number, handlers: MentionHandlers): R
       const label = node.attrs?.label as string | undefined;
       const mentionType = (node.attrs?.mentionType as string | undefined) ?? 'person';
       const isOrg = mentionType === 'organisatie';
+      // A person mention goes nowhere, so it is not a button. It used to be one
+      // with `cursor-default`, which announced a control to screen readers that
+      // does nothing when activated.
       return (
-        <button
+        <Mention
           key={key}
-          onClick={() => {
-            if (isOrg && id) {
-              handlers.navigate(`/organisatie?eenheid=${id}`);
-            }
-          }}
-          className={`inline rounded px-1 py-0.5 font-medium text-sm transition-colors ${
-            isOrg
-              ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer'
-              : 'bg-blue-50 text-blue-700 hover:bg-blue-100 cursor-default'
-          }`}
+          label={`@${label}`}
+          color={isOrg ? 'success' : 'accent'}
           title={isOrg ? `Afdeling: ${label}` : `Persoon: ${label}`}
-        >
-          @{label}
-        </button>
+          onClick={isOrg && id ? () => handlers.navigate(`/organisatie?eenheid=${id}`) : undefined}
+        />
       );
     }
 
@@ -157,35 +237,28 @@ function renderNode(node: TipTapNode, key: number, handlers: MentionHandlers): R
       const mentionType = (node.attrs?.mentionType as string | undefined) ?? 'node';
       const isClickable = (mentionType === 'node' || mentionType === 'task') && !!id;
       return (
-        <button
+        <Mention
           key={key}
-          onClick={() => {
-            if (mentionType === 'node' && id) {
-              handlers.openNodeDetail(id);
-            } else if (mentionType === 'task' && id) {
-              handlers.openTaskDetail(id);
-            }
-          }}
-          className={`inline text-left rounded px-1 py-0.5 font-medium text-sm transition-colors ${
-            isClickable
-              ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer'
-              : 'bg-slate-100 text-slate-700 cursor-default'
-          }`}
+          label={`#${label}`}
+          color="neutral"
           title={`${mentionType}: ${label}`}
-        >
-          #{label}
-        </button>
+          onClick={
+            isClickable
+              ? () => {
+                  if (mentionType === 'node' && id) handlers.openNodeDetail(id);
+                  else if (mentionType === 'task' && id) handlers.openTaskDetail(id);
+                }
+              : undefined
+          }
+        />
       );
     }
 
     case 'heading': {
       const level = (node.attrs?.level as number) ?? 2;
       const Tag = level === 2 ? 'h2' : 'h3';
-      const className = level === 2
-        ? 'text-lg font-semibold mt-3 mb-1'
-        : 'text-base font-semibold mt-2 mb-1';
       return (
-        <Tag key={key} className={className}>
+        <Tag key={key}>
           {node.content ? renderNodes(node.content, handlers) : null}
         </Tag>
       );
@@ -193,34 +266,34 @@ function renderNode(node: TipTapNode, key: number, handlers: MentionHandlers): R
 
     case 'blockquote':
       return (
-        <blockquote key={key} className="border-l-3 border-gray-300 pl-3 text-gray-500 my-2">
+        <blockquote key={key}>
           {node.content ? renderNodes(node.content, handlers) : null}
         </blockquote>
       );
 
     case 'codeBlock':
       return (
-        <pre key={key} className="bg-gray-100 rounded-md px-3 py-2 my-2 font-mono text-xs overflow-x-auto">
+        <pre key={key}>
           <code>{node.content?.map((c) => c.text ?? '').join('\n')}</code>
         </pre>
       );
 
     case 'horizontalRule':
-      return <hr key={key} className="border-t border-gray-200 my-3" />;
+      return <hr key={key} />;
 
     case 'hardBreak':
       return <br key={key} />;
 
     case 'bulletList':
       return (
-        <ul key={key} className="list-disc pl-5 mb-1">
+        <ul key={key}>
           {node.content ? renderNodes(node.content, handlers) : null}
         </ul>
       );
 
     case 'orderedList':
       return (
-        <ol key={key} className="list-decimal pl-5 mb-1">
+        <ol key={key}>
           {node.content ? renderNodes(node.content, handlers) : null}
         </ol>
       );
@@ -259,7 +332,7 @@ function renderText(node: TipTapNode, key: number): React.ReactNode {
           element = <em key={key}>{element}</em>;
           break;
         case 'code':
-          element = <code key={key} className="bg-gray-100 rounded px-1 py-0.5 text-xs">{element}</code>;
+          element = <code key={key}>{element}</code>;
           break;
         case 'strike':
           element = <s key={key}>{element}</s>;
@@ -273,7 +346,6 @@ function renderText(node: TipTapNode, key: number): React.ReactNode {
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary-600 underline hover:text-primary-800 break-all"
               >
                 {element}
               </a>
@@ -310,7 +382,6 @@ function linkifyText(text: string): React.ReactNode {
           href={trimmed}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary-600 underline hover:text-primary-800 break-all"
         >
           {trimmed}
         </a>,

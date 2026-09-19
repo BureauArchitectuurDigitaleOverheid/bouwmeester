@@ -48,15 +48,17 @@ export function PlacementEditModal({ open, onClose, request }: PlacementEditModa
         />
       }
     >
-      <p className="text-sm text-text-secondary mb-4">
-        Kies de juiste eenheid voor het teamverzoek van{' '}
-        <span className="font-medium text-text">{request?.person_naam}</span>.
-      </p>
-      <CascadingOrgSelect
-        value={selectedEenheidId}
-        onChange={setSelectedEenheidId}
-        label="Organisatie-eenheid"
-      />
+      <nldd-container gap="16">
+        <nldd-text size="sm" color="secondary">
+          Kies de juiste eenheid voor het teamverzoek van{' '}
+          <strong>{request?.person_naam}</strong>.
+        </nldd-text>
+        <CascadingOrgSelect
+          value={selectedEenheidId}
+          onChange={setSelectedEenheidId}
+          label="Organisatie-eenheid"
+        />
+      </nldd-container>
     </Modal>
   );
 }

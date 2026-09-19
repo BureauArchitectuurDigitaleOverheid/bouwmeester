@@ -1,15 +1,28 @@
-import { useState } from 'react';
-import { Search, Users } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
 import { PersonCard } from './PersonCard';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { Input } from '@/components/common/Input';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import type { Person } from '@/types';
 
 interface PersonListProps {
   people: Person[];
   isLoading: boolean;
   onPersonClick?: (person: Person) => void;
+}
+
+/** The people search field: `nldd-search-field` with its `input` event bridged to React. */
+function PersonSearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return (
+    <nldd-search-field
+      ref={ref}
+      value={value}
+      placeholder="Zoek personen..."
+      accessible-label="Zoek personen"
+    />
+  );
 }
 
 export function PersonList({ people, isLoading, onPersonClick }: PersonListProps) {
@@ -30,32 +43,28 @@ export function PersonList({ people, isLoading, onPersonClick }: PersonListProps
   });
 
   if (isLoading) {
-    return <LoadingSpinner className="py-12" />;
+    return (
+      <nldd-container padding-block="48">
+        <LoadingSpinner />
+      </nldd-container>
+    );
   }
 
   return (
-    <div className="space-y-4">
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
-        <Input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Zoek personen..."
-          className="pl-9"
-        />
-      </div>
+    <nldd-container gap="16">
+      <nldd-container max-width="384px">
+        <PersonSearchField value={searchQuery} onChange={setSearchQuery} />
+      </nldd-container>
 
-      {/* Grid */}
       {filteredPeople.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <nldd-container layout="grid" column-count={1} sm-column-count={2} lg-column-count={3} gap="16">
           {filteredPeople.map((person) => (
             <PersonCard key={person.id} person={person} onClick={onPersonClick} />
           ))}
-        </div>
+        </nldd-container>
       ) : (
         <EmptyState
-          icon={<Users className="h-16 w-16" />}
+          icon="users"
           title="Geen personen gevonden"
           description={
             searchQuery
@@ -64,6 +73,6 @@ export function PersonList({ people, isLoading, onPersonClick }: PersonListProps
           }
         />
       )}
-    </div>
+    </nldd-container>
   );
 }

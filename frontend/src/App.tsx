@@ -38,6 +38,7 @@ import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
 import { PublicInitiatiefPage } from '@/pages/PublicInitiatiefPage';
 import { ReloadPrompt } from '@/components/common/ReloadPrompt';
+import { NlddButton } from '@/components/nldd/NlddLink';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,32 +50,65 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * A state that owns the whole viewport: the auth check running, or failing.
+ *
+ * These render OUTSIDE nldd-app-view, before the shell exists, so they cannot
+ * use nldd-page and have to center themselves. The height and the centering are
+ * layout with nothing to inherit from; the surface colour still comes from a
+ * token.
+ */
+function FullScreenState({ tinted, children }: { tinted?: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+        ...(tinted
+          ? { backgroundColor: 'var(--semantics-surfaces-tinted-background-color)' }
+          : {}),
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { loading, authenticated, oidcConfigured, error, accessDenied, deniedEmail } = useAuth();
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="text-text-secondary">Laden...</div>
-      </div>
+      <FullScreenState>
+        <nldd-inline-dialog variant="loading" text="Laden..." />
+      </FullScreenState>
     );
   }
 
   // Show error state when auth status check failed
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="max-w-sm w-full space-y-4 text-center">
-          <h1 className="text-xl font-semibold text-text">Verbindingsfout</h1>
-          <p className="text-sm text-text-secondary">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-gray-100 transition-colors"
+      <FullScreenState tinted>
+        <nldd-container max-width="400px" padding="16">
+          <nldd-inline-dialog
+            variant="alert"
+            icon="exclamation-triangle"
+            text="Verbindingsfout"
+            supporting-text={error}
           >
-            Opnieuw proberen
-          </button>
-        </div>
-      </div>
+            <div slot="actions">
+              <NlddButton
+                text="Opnieuw proberen"
+                variant="primary"
+                onClick={() => window.location.reload()}
+              />
+            </div>
+          </nldd-inline-dialog>
+        </nldd-container>
+      </FullScreenState>
     );
   }
 

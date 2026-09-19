@@ -6,8 +6,9 @@
  * LeadIntakeDialog zodat alle drie de flows dezelfde set velden bieden.
  */
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
+import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import { Input } from '@/components/common/Input';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
@@ -74,24 +75,26 @@ export function NewContactPersonFields({
   };
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       {!hideNaam && (
         <Input
           label="Naam"
           value={state.naam}
           onChange={(e) => set('naam', e.target.value)}
+          autoComplete="name"
           required
           autoFocus
           disabled={disabled}
         />
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <nldd-container layout="grid" column-count={1} sm-column-count={2} gap="12">
         <Input
           label="E-mail"
           type="email"
           value={state.email}
           onChange={(e) => set('email', e.target.value)}
           placeholder="email@voorbeeld.nl"
+          autoComplete="email"
           disabled={disabled}
         />
         <Input
@@ -100,10 +103,11 @@ export function NewContactPersonFields({
           value={state.phone}
           onChange={(e) => set('phone', e.target.value)}
           placeholder="06-12345678"
+          autoComplete="tel"
           disabled={disabled}
         />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      </nldd-container>
+      <nldd-container layout="grid" column-count={1} sm-column-count={2} gap="12">
         <Input
           label="Functie"
           value={state.functie}
@@ -133,7 +137,7 @@ export function NewContactPersonFields({
           createLabel="Nieuwe expertise toevoegen"
           disabled={disabled}
         />
-      </div>
+      </nldd-container>
       <CascadingOrgSelect
         label="Organisatie-eenheid (optioneel)"
         value={state.organisatieEenheidId}
@@ -147,7 +151,7 @@ export function NewContactPersonFields({
           disabled={disabled}
         />
       )}
-    </div>
+    </nldd-container>
   );
 }
 
@@ -165,34 +169,38 @@ function SwvCheckboxList({
   disabled,
 }: SwvListProps) {
   return (
-    <div>
-      <label className="block text-sm font-medium text-text mb-1">
-        Samenwerkingsverbanden (optioneel)
-      </label>
-      <div className="max-h-32 overflow-y-auto rounded-lg border border-border p-2 space-y-1">
+    <nldd-form-field label="Samenwerkingsverbanden (optioneel)">
+      <nldd-list variant="box-tinted" dividers="always" height="8rem" accessible-label="Samenwerkingsverbanden">
         {samenwerkingsverbanden.map((s) => (
-          <label
+          <SwvCheckboxRow
             key={s.id}
-            className={`flex items-center gap-2 text-sm rounded px-1 py-0.5 ${
-              disabled
-                ? 'cursor-not-allowed opacity-60'
-                : 'cursor-pointer hover:bg-gray-50'
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={selected.has(s.id)}
-              onChange={() => onToggle(s.id)}
-              className="rounded border-border"
-              disabled={disabled}
-            />
-            <span className="flex-1 truncate">{s.naam}</span>
-            <span className="text-xs text-text-secondary shrink-0">
-              {SAMENWERKINGSVERBAND_TYPE_LABELS[s.type] ?? s.type}
-            </span>
-          </label>
+            label={s.naam}
+            supportingText={SAMENWERKINGSVERBAND_TYPE_LABELS[s.type] ?? s.type}
+            checked={selected.has(s.id)}
+            disabled={disabled}
+            onToggle={() => onToggle(s.id)}
+          />
         ))}
-      </div>
-    </div>
+      </nldd-list>
+    </nldd-form-field>
+  );
+}
+
+interface SwvCheckboxRowProps {
+  label: string;
+  supportingText: string;
+  checked: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}
+
+function SwvCheckboxRow({ label, supportingText, checked, disabled, onToggle }: SwvCheckboxRowProps) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', useCallback(() => onToggle(), [onToggle]));
+
+  return (
+    <nldd-list-item ref={ref} checkbox checked={orUndef(checked)} {...(disabled ? { disabled: true } : {})}>
+      <nldd-text-cell text={label} supporting-text={supportingText} />
+    </nldd-list-item>
   );
 }

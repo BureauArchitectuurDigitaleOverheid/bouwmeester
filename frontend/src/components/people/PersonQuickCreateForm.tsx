@@ -1,11 +1,32 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
+import { useNlddEvent } from '@/components/nldd/events';
 import { useCreatePerson } from '@/hooks/usePeople';
 import { checkDuplicates } from '@/api/people';
 import type { DuplicateCheckHit } from '@/api/people';
 import { useDebounce } from '@/hooks/useDebounce';
+
+interface DuplicateRowProps {
+  hit: DuplicateCheckHit;
+  onSelect: (id: string) => void;
+}
+
+function DuplicateRow({ hit, onSelect }: DuplicateRowProps) {
+  const ref = useRef<HTMLElement>(null);
+  const handleClick = useCallback(() => onSelect(hit.id), [hit.id, onSelect]);
+  useNlddEvent(ref, 'click', handleClick);
+
+  const supporting = [hit.email, hit.functie].filter(Boolean).join(' — ');
+
+  return (
+    <nldd-list-item ref={ref} button>
+      <nldd-text-cell text={hit.naam} {...(supporting ? { 'supporting-text': supporting } : {})} />
+      <nldd-text-cell text="Selecteer" color="accent" horizontal-alignment="right" width="fit-content" />
+    </nldd-list-item>
+  );
+}
 
 interface PersonQuickCreateFormProps {
   open: boolean;
@@ -125,56 +146,45 @@ export function PersonQuickCreateForm({
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          label="Naam"
-          value={naam}
-          onChange={(e) => setNaam(e.target.value)}
-          placeholder="Volledige naam"
-          required
-          autoFocus
-        />
-        <Input
-          label="E-mail"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="email@voorbeeld.nl"
-        />
+      <form onSubmit={handleSubmit}>
+        <nldd-container gap="16">
+          <Input
+            label="Naam"
+            value={naam}
+            onChange={(e) => setNaam(e.target.value)}
+            placeholder="Volledige naam"
+            autoComplete="name"
+            required
+            autoFocus
+          />
+          <Input
+            label="E-mail"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="email@voorbeeld.nl"
+            autoComplete="email"
+          />
 
-        {searching && (
-          <p className="text-sm text-gray-500">Zoeken naar bestaande personen...</p>
-        )}
+          {searching && (
+            <nldd-inline-dialog variant="loading" text="Zoeken naar bestaande personen..." size="md" />
+          )}
 
-        {hasDuplicates && !searching && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
-            <p className="text-sm font-medium text-amber-800 mb-2">
-              Er bestaan al personen met een vergelijkbare naam:
-            </p>
-            <ul className="space-y-1">
-              {duplicates.map((d) => (
-                <li key={d.id} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-900">
-                    {d.naam}
-                    {d.email && (
-                      <span className="text-gray-500 ml-1">({d.email})</span>
-                    )}
-                    {d.functie && (
-                      <span className="text-gray-500 ml-1">- {d.functie}</span>
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectExisting(d.id)}
-                    className="ml-2 text-indigo-600 hover:text-indigo-800 font-medium whitespace-nowrap"
-                  >
-                    Selecteer
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+          {hasDuplicates && !searching && (
+            <nldd-container gap="8">
+              <nldd-inline-dialog
+                variant="alert"
+                text="Er bestaan al personen met een vergelijkbare naam"
+                supporting-text="Kies een bestaande persoon, of maak toch een nieuwe aan."
+              />
+              <nldd-list variant="box-tinted" accessible-label="Vergelijkbare personen">
+                {duplicates.map((d) => (
+                  <DuplicateRow key={d.id} hit={d} onSelect={handleSelectExisting} />
+                ))}
+              </nldd-list>
+            </nldd-container>
+          )}
+        </nldd-container>
       </form>
     </Modal>
   );

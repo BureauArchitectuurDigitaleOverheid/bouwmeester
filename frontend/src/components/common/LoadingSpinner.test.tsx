@@ -2,39 +2,39 @@ import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { LoadingSpinner } from './LoadingSpinner';
 
+/**
+ * These assert the contract (an activity indicator at the requested scale), not
+ * the markup. The previous versions checked for an <svg> with Tailwind classes,
+ * which said nothing about whether a spinner was actually shown and broke the
+ * moment the internals changed.
+ *
+ * jsdom does not upgrade custom elements, so nldd-activity-indicator stays an
+ * inert tag here. That is enough to check we render the right element with the
+ * right attributes; that it spins is the design system's own test.
+ */
 describe('LoadingSpinner', () => {
-  it('renders an SVG element', () => {
+  it('renders an activity indicator', () => {
     const { container } = render(<LoadingSpinner />);
-    expect(container.querySelector('svg')).toBeInTheDocument();
-  });
-
-  it('has animate-spin class', () => {
-    const { container } = render(<LoadingSpinner />);
-    const svg = container.querySelector('svg');
-    expect(svg).toHaveClass('animate-spin');
+    expect(container.querySelector('nldd-activity-indicator')).toBeInTheDocument();
   });
 
   it('renders medium size by default', () => {
     const { container } = render(<LoadingSpinner />);
-    const svg = container.querySelector('svg');
-    expect(svg).toHaveClass('h-8', 'w-8');
+    expect(container.querySelector('nldd-activity-indicator')).toHaveAttribute('size', '32');
   });
 
   it('renders small size', () => {
     const { container } = render(<LoadingSpinner size="sm" />);
-    const svg = container.querySelector('svg');
-    expect(svg).toHaveClass('h-4', 'w-4');
+    expect(container.querySelector('nldd-activity-indicator')).toHaveAttribute('size', '16');
   });
 
   it('renders large size', () => {
     const { container } = render(<LoadingSpinner size="lg" />);
-    const svg = container.querySelector('svg');
-    expect(svg).toHaveClass('h-12', 'w-12');
+    expect(container.querySelector('nldd-activity-indicator')).toHaveAttribute('size', '48');
   });
 
-  it('applies custom className', () => {
-    const { container } = render(<LoadingSpinner className="p-4" />);
-    const wrapper = container.firstChild as HTMLElement;
-    expect(wrapper).toHaveClass('p-4');
+  it('applies the requested padding', () => {
+    const { container } = render(<LoadingSpinner padding="16" />);
+    expect(container.querySelector('nldd-container')).toHaveAttribute('padding-block', '16');
   });
 });

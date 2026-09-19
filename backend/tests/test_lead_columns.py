@@ -55,7 +55,7 @@ async def test_create_column(client, db_session):
         f"/api/initiatieven/{init.id}/columns",
         json={
             "name": "Strategisch",
-            "color": "bg-red-100 text-red-800",
+            "color": "rood",
             "is_active_stage": True,
             "is_public_visible": False,
         },
@@ -71,7 +71,7 @@ async def test_create_column_duplicate_name_409(client, db_session):
     init = await _create_initiatief_with_defaults(db_session)
     resp = await client.post(
         f"/api/initiatieven/{init.id}/columns",
-        json={"name": "Inbox", "color": "bg-red-100 text-red-800"},
+        json={"name": "Inbox", "color": "rood"},
     )
     assert resp.status_code == 409, resp.text
 

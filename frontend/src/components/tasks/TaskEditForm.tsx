@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Trash2 } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
@@ -99,11 +98,11 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
         onClose={onClose}
         title="Taak bewerken"
         footer={
-          <div className="flex items-center justify-between w-full">
+          <nldd-container layout="row" gap="12" width="full" vertical-alignment="center">
             <div>
               {showDeleteConfirm ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-red-600">Weet je het zeker?</span>
+                <nldd-container layout="row" gap="8" vertical-alignment="center">
+                  <nldd-text size="sm" color="critical">Weet je het zeker?</nldd-text>
                   <Button
                     variant="danger"
                     size="sm"
@@ -119,19 +118,22 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
                   >
                     Annuleren
                   </Button>
-                </div>
+                </nldd-container>
               ) : (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowDeleteConfirm(true)}
-                  icon={<Trash2 className="h-4 w-4" />}
+                  icon="trash"
                 >
                   Verwijderen
                 </Button>
               )}
             </div>
-            <div className="flex items-center gap-3">
+            {/* Pushes the cancel/save actions to the far edge, mirroring the
+                delete action on the left. */}
+            <nldd-spacer size="flexible" direction="horizontal" />
+            <nldd-container layout="row" gap="12">
               <Button variant="secondary" onClick={onClose}>
                 Annuleren
               </Button>
@@ -142,11 +144,19 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
               >
                 Opslaan
               </Button>
-            </div>
-          </div>
+            </nldd-container>
+          </nldd-container>
         }
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {/*
+          Submit/cancel/delete live in Modal's `footer`, a sibling of
+          `children` — not a descendant of nldd-form, so nldd-form-actions
+          cannot reach them from here. Wrapping the body still gets autofill
+          and label-alignment inheritance for the fields.
+        */}
+        <nldd-form>
+        <form onSubmit={handleSubmit}>
+        <nldd-container gap="16">
           <Input
             label="Titel"
             value={title}
@@ -158,7 +168,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
 
           <RichTextFormField label="Beschrijving" value={description} onChange={setDescription} />
 
-          <div className="grid grid-cols-2 gap-4">
+          <nldd-container layout="grid" column-count={2} gap="16">
             <CreatableSelect
               label="Status"
               value={status}
@@ -174,7 +184,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
               options={priorityOptions}
               searchable={false}
             />
-          </div>
+          </nldd-container>
 
           <CreatableSelect
             label="Node"
@@ -221,7 +231,9 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
           />
+        </nldd-container>
         </form>
+        </nldd-form>
       </Modal>
 
       <PersonQuickCreateForm

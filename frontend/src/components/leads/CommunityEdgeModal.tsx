@@ -157,7 +157,6 @@ export function CommunityEdgeModal({ pendingConnection, onClose }: Props) {
       onClose={resetAndClose}
       title={title}
       size="sm"
-      zIndex={60}
       footer={
         route.kind === 'invalid' ? (
           <Button variant="secondary" onClick={resetAndClose}>
@@ -176,7 +175,7 @@ export function CommunityEdgeModal({ pendingConnection, onClose }: Props) {
       }
     >
       {route.kind === 'invalid' && (
-        <p className="text-sm text-text-secondary">{route.reason}</p>
+        <nldd-text size="sm" color="secondary">{route.reason}</nldd-text>
       )}
 
       {route.kind === 'lead_contact' && (
@@ -191,16 +190,16 @@ export function CommunityEdgeModal({ pendingConnection, onClose }: Props) {
       )}
 
       {route.kind === 'lead_node' && (
-        <p className="text-sm text-text-secondary">
+        <nldd-text size="sm" color="secondary">
           Wil je deze beleidsnode koppelen aan de lead?
-        </p>
+        </nldd-text>
       )}
 
       {route.kind === 'lead_org' && (
-        <p className="text-sm text-text-secondary">
+        <nldd-text size="sm" color="secondary">
           Wil je deze organisatie koppelen aan de lead? Een eventueel eerder gekoppelde organisatie
           wordt vervangen.
-        </p>
+        </nldd-text>
       )}
 
       {route.kind === 'corpus_edge' && (

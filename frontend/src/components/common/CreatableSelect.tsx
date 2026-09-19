@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, Plus, Search, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '@/api/client';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 
 function extractCreateErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -14,6 +14,9 @@ function extractCreateErrorMessage(err: unknown): string {
   if (err instanceof Error && err.message) return err.message;
   return 'Aanmaken niet gelukt';
 }
+
+/** Id linking the input's `unmet` to the validation item that explains it. */
+const MESSAGE_ID = 'creatable-select-message';
 
 export interface SelectOption {
   value: string;
@@ -42,14 +45,31 @@ interface CreatableSelectProps {
   filterLocally?: boolean;
   /** Text to display when no option is selected (e.g. after creating a new item) */
   displayValue?: string;
-  /** Called when the user clears the selection. Shows an X button when provided and a value is set. */
+  /** Called when the user clears the selection. */
   onClear?: () => void;
-  /** Message to show when the dropdown is open but has no results (default: "Geen resultaten") */
+  /** Message to show when the dropdown is open but has no results */
   emptyMessage?: string;
   /** When false, hide the search input and show a plain dropdown. @default true */
   searchable?: boolean;
 }
 
+/**
+ * `nldd-combo-box` behind the previous API.
+ *
+ * This replaces ~345 lines of hand-rolled autocomplete: the element owns the
+ * filtering UI, the keyboard (arrows, Home/End, Enter, Escape), the ARIA
+ * combobox wiring and the clear button.
+ *
+ * What stays ours is the one thing the element has no opinion about: creating an
+ * option that does not exist yet. `allow-custom` lets a typed value be
+ * committed, and the `change` handler below decides whether that value is an
+ * existing option or a new one to POST.
+ *
+ * `searchable={false}` still renders a combo box. The element has no read-only
+ * list mode, and swapping in an `nldd-dropdown` would change the keyboard
+ * behaviour between call sites that look identical — a mode, in the sense the
+ * design guidelines warn about. Typing simply filters, which is not harmful.
+ */
 export function CreatableSelect({
   label,
   value,
@@ -57,7 +77,7 @@ export function CreatableSelect({
   options,
   placeholder = 'Selecteer...',
   onCreate,
-  createLabel = 'Nieuw aanmaken',
+  createLabel,
   error,
   disabled,
   required,
@@ -68,278 +88,172 @@ export function CreatableSelect({
   emptyMessage = 'Geen resultaten',
   searchable = true,
 }: CreatableSelectProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [isCreating, setIsCreating] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
+  const ref = useRef<HTMLElement>(null);
   const [createError, setCreateError] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLUListElement>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [query, setQuery] = useState('');
 
-  const selectedOption = options.find((o) => o.value === value);
+  const selected = options.find((o) => o.value === value);
+  // `text` is what the input shows; it differs from `value` (an id) and has to
+  // be set explicitly when populating an existing record.
+  const text = selected?.label ?? displayValue ?? '';
 
-  const filtered = filterLocally && query
-    ? options.filter(
-        (o) =>
-          o.label.toLowerCase().includes(query.toLowerCase()) ||
-          o.description?.toLowerCase().includes(query.toLowerCase()),
-      )
-    : options;
+  const visible =
+    filterLocally && query
+      ? options.filter(
+          (o) =>
+            o.label.toLowerCase().includes(query.toLowerCase()) ||
+            o.description?.toLowerCase().includes(query.toLowerCase()),
+        )
+      : options;
 
-  const showCreateOption =
-    onCreate && query.trim() && !filtered.some((o) => o.label.toLowerCase() === query.trim().toLowerCase());
-
-  const totalItems = filtered.length + (showCreateOption ? 1 : 0);
-
-  // Close on click outside
+  // Keep the element's own text in step when the selection changes elsewhere.
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-        setQuery('');
-        setIsFocused(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    const el = ref.current as (HTMLElement & { text?: string }) | null;
+    if (el && el.text !== text) el.text = text;
+  }, [text]);
 
-  // Reset highlight when filtered list changes
-  useEffect(() => {
-    setHighlightedIndex(0);
-  }, [query]);
-
-  // Scroll highlighted item into view
-  useEffect(() => {
-    if (isOpen && listRef.current) {
-      const item = listRef.current.children[highlightedIndex] as HTMLElement | undefined;
-      item?.scrollIntoView({ block: 'nearest' });
-    }
-  }, [highlightedIndex, isOpen]);
-
-  const selectOption = useCallback(
-    (opt: SelectOption) => {
-      onChange(opt.value);
-      setIsOpen(false);
-      setQuery('');
-      setCreateError(null);
+  const handleInput = useCallback(
+    (event: Event) => {
+      const next = eventValue(event);
+      setQuery(next);
+      onQueryChange?.(next);
+      if (next === '' && value && onClear) onClear();
     },
-    [onChange],
+    [onQueryChange, onClear, value],
   );
 
-  const handleCreate = useCallback(async () => {
-    if (!onCreate || !query.trim() || isCreating) return;
-    setIsCreating(true);
-    setCreateError(null);
-    try {
-      const newId = await onCreate(query.trim());
-      if (newId) {
-        onChange(newId);
-        setIsOpen(false);
-        setQuery('');
-      } else {
-        // onCreate returned null without throwing — treat as soft success
-        // (e.g. when the parent wants to keep the typed text without saving yet)
-        setIsOpen(false);
-        setQuery('');
-      }
-    } catch (err) {
-      setCreateError(extractCreateErrorMessage(err));
-      // Keep dropdown open and query intact so the user can retry or correct
-    } finally {
-      setIsCreating(false);
-    }
-  }, [onCreate, query, onChange, isCreating]);
+  const handleChange = useCallback(
+    async (event: Event) => {
+      const committed = eventValue(event);
+      setCreateError(null);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!isOpen) {
-      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        setIsOpen(true);
+      // An existing option: commit its id.
+      const match = options.find((o) => o.value === committed || o.label === committed);
+      if (match) {
+        onChange(match.value);
+        setQuery('');
+        return;
       }
-      return;
-    }
 
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        setHighlightedIndex((i) => (i + 1) % totalItems);
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        setHighlightedIndex((i) => (i - 1 + totalItems) % totalItems);
-        break;
-      case 'Enter':
-        e.preventDefault();
-        if (showCreateOption && highlightedIndex === filtered.length) {
-          handleCreate();
-        } else if (filtered[highlightedIndex]) {
-          selectOption(filtered[highlightedIndex]);
+      if (!committed) {
+        onClear?.();
+        return;
+      }
+
+      // Anything else is a new value the user typed. Only create when the caller
+      // supports it; otherwise ignore, so a typo cannot silently clear a field.
+      if (!onCreate) return;
+
+      setIsCreating(true);
+      try {
+        const created = await onCreate(committed);
+        if (created) {
+          onChange(created);
+          setQuery('');
         }
-        break;
-      case 'Escape':
-        e.preventDefault();
-        setIsOpen(false);
-        setQuery('');
-        break;
-    }
-  };
+      } catch (err) {
+        setCreateError(extractCreateErrorMessage(err));
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [options, onChange, onCreate, onClear],
+  );
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuery(e.target.value);
-    setCreateError(null);
-    onQueryChange?.(e.target.value);
-    if (!isOpen) setIsOpen(true);
-  };
+  useNlddEvent(ref, 'input', handleInput);
+  useNlddEvent(ref, 'change', handleChange);
 
-  const handleInputFocus = () => {
-    if (disabled) return;
-    setIsFocused(true);
-    if (!isOpen) setIsOpen(true);
-    // Select text so user can immediately type to replace
-    setTimeout(() => inputRef.current?.select(), 0);
-  };
+  const message = createError ?? error;
 
-  const handleInputBlur = () => {
-    setIsFocused(false);
-  };
+  const comboBox = (
+    <nldd-combo-box
+      ref={ref}
+      value={value}
+      text={text}
+      placeholder={placeholder}
+      max-items={8}
+      {...(onCreate ? { 'allow-custom': true } : {})}
+      {...(disabled || isCreating ? { disabled: true } : {})}
+      {...(required ? { required: true } : {})}
+      {...(message ? { invalid: true, unmet: MESSAGE_ID } : {})}
+      {...(label ? {} : { 'accessible-label': placeholder })}
+    >
+      <nldd-menu>
+        {visible.map((option) => (
+          <nldd-menu-item
+            key={option.value}
+            value={option.value}
+            text={option.label}
+            {...(option.description ? { details: option.description } : {})}
+          />
+        ))}
+        {visible.length === 0 && (
+          <nldd-menu-item value="" text={emptyMessage} disabled />
+        )}
+      </nldd-menu>
+    </nldd-combo-box>
+  );
 
-  const handleToggle = () => {
-    if (disabled) return;
-    if (searchable) {
-      // For searchable selects, focus the always-visible input
-      inputRef.current?.focus();
-      if (!isOpen) setIsOpen(true);
-    } else {
-      setIsOpen(!isOpen);
-    }
-  };
+  /**
+   * A plain list, for `searchable={false}`.
+   *
+   * An earlier pass rendered the combo box here too, reasoning that two call
+   * sites which look identical should not behave differently. The visible
+   * result argued otherwise: a five-option filter showed its own value as
+   * truncated, spell-checked, editable text with a clear button beside it,
+   * because a combo box is, in its own words, "a text input with autocomplete".
+   * A select is not a quieter combo box; it is a different control, and the
+   * nineteen call sites that pass `searchable={false}` are asking for it.
+   *
+   * nldd-dropdown wraps a native <select>, so the browser owns the keyboard,
+   * the form value and the accessibility, including type-to-jump. Nothing is
+   * lost against typing-to-filter on a list this short.
+   */
+  const dropdown = (
+    <nldd-dropdown
+      {...(disabled || isCreating ? { disabled: true } : {})}
+      {...(required ? { required: true } : {})}
+      {...(message ? { invalid: true } : {})}
+      {...(label ? {} : { 'accessible-label': placeholder })}
+    >
+      <select
+        value={value ?? ''}
+        disabled={disabled || isCreating}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (!next) onClear?.();
+          else onChange(next);
+        }}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </nldd-dropdown>
+  );
 
-  const selectId = label?.toLowerCase().replace(/\s+/g, '-');
+  const control = searchable ? comboBox : dropdown;
 
-  // What to show when closed: selected option label, displayValue fallback, or placeholder
-  const closedDisplayText = selectedOption?.label || displayValue || '';
-  const hasDisplay = !!closedDisplayText;
+  // Without a label there is no field to wrap it in; the control carries its
+  // own accessible name in that case.
+  if (!label) return control;
 
   return (
-    <div className="space-y-1.5" ref={containerRef}>
-      {label && (
-        <label htmlFor={selectId} className="block text-sm font-medium text-text">
-          {label}
-          {required && <span className="text-red-500 ml-0.5">*</span>}
-        </label>
+    <nldd-form-field label={label} {...(required ? {} : { optional: true })}>
+      {control}
+      {message ? (
+        // A reason only the server can establish gets no rule of its own; it is
+        // named in `unmet` on the input and spelled out here.
+        <nldd-validation-list>
+          <nldd-validation-item id={MESSAGE_ID}>{message}</nldd-validation-item>
+        </nldd-validation-list>
+      ) : (
+        createLabel && <nldd-form-field-help-text>{createLabel}</nldd-form-field-help-text>
       )}
-      <div className="relative">
-        {/* Trigger */}
-        <div
-          onClick={handleToggle}
-          className={`flex items-center w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm cursor-pointer transition-colors duration-150 ${
-            error
-              ? 'border-red-300 focus-within:ring-red-500/20 focus-within:border-red-500'
-              : 'border-border hover:border-border-hover focus-within:ring-2 focus-within:ring-primary-500/20 focus-within:border-primary-500'
-          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          {searchable ? (
-            <>
-              {!hasDisplay && !isFocused && (
-                <Search className="h-3.5 w-3.5 text-text-secondary/50 shrink-0" />
-              )}
-              <input
-                ref={inputRef}
-                id={selectId}
-                type="text"
-                value={isFocused || isOpen ? query : closedDisplayText}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                onFocus={handleInputFocus}
-                onBlur={handleInputBlur}
-                className="flex-1 min-w-0 outline-none ring-0 border-none bg-transparent text-text placeholder:text-text-secondary/50 focus:outline-none focus:ring-0"
-                placeholder={placeholder}
-                disabled={disabled}
-              />
-            </>
-          ) : (
-            <span className={`flex-1 truncate ${hasDisplay ? 'text-text' : 'text-text-secondary/50'}`}>
-              {closedDisplayText || placeholder}
-            </span>
-          )}
-          {onClear && hasDisplay && !isOpen && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onChange('');
-                onClear();
-                onQueryChange?.('');
-              }}
-              className="shrink-0 ml-1 p-0.5 rounded hover:bg-gray-100 transition-colors"
-              title="Selectie wissen"
-            >
-              <X className="h-3.5 w-3.5 text-text-secondary" />
-            </button>
-          )}
-          <ChevronDown
-            className={`h-4 w-4 text-text-secondary shrink-0 ml-1 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          />
-        </div>
-
-        {/* Dropdown */}
-        {isOpen && (
-          <ul
-            ref={listRef}
-            className="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-xl border border-border bg-white shadow-lg py-1"
-          >
-            {filtered.length === 0 && !showCreateOption && (
-              <li className="px-3.5 py-2.5 text-sm text-text-secondary">{emptyMessage}</li>
-            )}
-
-            {filtered.map((opt, idx) => (
-              <li
-                key={opt.value}
-                onClick={() => selectOption(opt)}
-                onMouseEnter={() => setHighlightedIndex(idx)}
-                className={`px-3.5 py-2 text-sm cursor-pointer transition-colors ${
-                  highlightedIndex === idx ? 'bg-primary-50 text-primary-700' : 'text-text hover:bg-gray-50'
-                } ${opt.value === value ? 'font-medium' : ''}`}
-              >
-                <div>{opt.label}</div>
-                {opt.description && (
-                  <div className="text-xs text-text-secondary mt-0.5">{opt.description}</div>
-                )}
-              </li>
-            ))}
-
-            {showCreateOption && (
-              <li
-                onClick={handleCreate}
-                onMouseEnter={() => setHighlightedIndex(filtered.length)}
-                className={`px-3.5 py-2 text-sm cursor-pointer transition-colors flex items-center gap-2 border-t border-border ${
-                  highlightedIndex === filtered.length
-                    ? 'bg-primary-50 text-primary-700'
-                    : 'text-primary-600 hover:bg-gray-50'
-                } ${isCreating ? 'opacity-50 pointer-events-none' : ''}`}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>
-                  {createLabel}: &quot;{query.trim()}&quot;
-                </span>
-              </li>
-            )}
-
-            {createError && (
-              <li className="px-3.5 py-2 text-xs text-red-600 border-t border-border bg-red-50">
-                {createError}
-              </li>
-            )}
-          </ul>
-        )}
-      </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      {!error && createError && !isOpen && (
-        <p className="text-xs text-red-600">{createError}</p>
-      )}
-    </div>
+    </nldd-form-field>
   );
 }

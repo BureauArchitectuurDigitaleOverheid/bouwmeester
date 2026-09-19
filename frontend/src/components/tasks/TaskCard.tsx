@@ -1,6 +1,7 @@
-import { CheckCircle2, Circle, Clock, AlertTriangle, User, Bot, Building2, ListTree } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { Card } from '@/components/common/Card';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { useUpdateTask } from '@/hooks/useTasks';
 import {
   TaskStatus,
@@ -20,8 +21,8 @@ interface TaskCardProps {
 }
 
 const priorityIcons: Record<TaskPriority, React.ReactNode> = {
-  [TaskPriority.KRITIEK]: <AlertTriangle className="h-3.5 w-3.5" />,
-  [TaskPriority.HOOG]: <AlertTriangle className="h-3.5 w-3.5" />,
+  [TaskPriority.KRITIEK]: <Icon name="exclamation-triangle" size="sm" />,
+  [TaskPriority.HOOG]: <Icon name="exclamation-triangle" size="sm" />,
   [TaskPriority.NORMAAL]: null,
   [TaskPriority.LAAG]: null,
 };
@@ -35,8 +36,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
   const subtasks = task.subtasks ?? [];
   const doneSubtasks = subtasks.filter((s) => s.status === TaskStatus.DONE).length;
 
-  const handleToggleDone = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggleDone = () => {
     updateTask.mutate({
       id: task.id,
       data: {
@@ -54,40 +54,31 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
       hoverable={!!onEdit}
       onClick={onEdit ? handleCardClick : undefined}
     >
-      <div className="flex items-start gap-3">
+      <nldd-container layout="row" gap="12" vertical-alignment="top">
         {/* Checkbox */}
-        <button
-          onClick={handleToggleDone}
-          className={`mt-0.5 shrink-0 transition-colors ${
-            isDone
-              ? 'text-emerald-500 hover:text-emerald-600'
-              : 'text-text-secondary hover:text-primary-700'
-          }`}
-        >
-          {isDone ? (
-            <CheckCircle2 className="h-5 w-5" />
-          ) : (
-            <Circle className="h-5 w-5" />
-          )}
-        </button>
+        <div onClick={(e) => e.stopPropagation()}>
+          <NlddIconButton
+            icon={isDone ? 'check-mark-circle' : 'circle'}
+            variant="neutral-transparent"
+            size="sm"
+            accessibleLabel={isDone ? 'Markeer als niet afgerond' : 'Markeer als afgerond'}
+            onClick={handleToggleDone}
+          />
+        </div>
 
         {/* Content */}
-        <div className="flex-1 min-w-0">
-          <p
-            className={`text-sm font-medium ${
-              isDone ? 'text-text-secondary line-through' : 'text-text'
-            }`}
-          >
+        <nldd-container width="full" gap="4">
+          <nldd-text size="sm" weight="medium" color={isDone ? 'secondary' : 'content'}>
             {task.title}
-          </p>
+          </nldd-text>
 
           {!compact && task.description && (
-            <p className="text-xs text-text-secondary mt-0.5 line-clamp-1">
+            <nldd-text size="xs" color="secondary">
               {richTextToPlain(task.description)}
-            </p>
+            </nldd-text>
           )}
 
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <nldd-container layout="wrap" gap="8" vertical-alignment="center">
             <Badge
               variant={TASK_PRIORITY_COLORS[task.priority]}
               dot
@@ -103,32 +94,30 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {task.due_date && (
-              <span
-                className={`inline-flex items-center gap-1 text-xs ${
-                  isOverdue ? 'text-red-600 font-medium' : 'text-text-secondary'
-                }`}
-              >
-                <Clock className="h-3 w-3" />
-                {formatDateShort(task.due_date)}
-              </span>
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
+                <Icon name="clock" size="xs" />
+                <nldd-text size="xs" color={isOverdue ? 'critical' : 'secondary'} weight={isOverdue ? 'bold' : 'regular'}>
+                  {formatDateShort(task.due_date)}
+                </nldd-text>
+              </nldd-container>
             )}
 
             {task.assignee && (
-              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
                 {task.assignee.is_agent ? (
-                  <Bot className="h-3 w-3 text-violet-500" />
+                  <nldd-icon name="sparkles" size="16" color="paars" aria-hidden="true" />
                 ) : (
-                  <User className="h-3 w-3" />
+                  <Icon name="person" size="xs" />
                 )}
-                {task.assignee.naam}
-              </span>
+                <nldd-text size="xs" color="secondary">{task.assignee.naam}</nldd-text>
+              </nldd-container>
             )}
 
             {task.organisatie_eenheid && (
-              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
-                <Building2 className="h-3 w-3" />
-                {task.organisatie_eenheid.naam}
-              </span>
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
+                <Icon name="apartment-building" size="xs" />
+                <nldd-text size="xs" color="secondary">{task.organisatie_eenheid.naam}</nldd-text>
+              </nldd-container>
             )}
 
             {task.work_type && (
@@ -136,14 +125,14 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {subtasks.length > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
-                <ListTree className="h-3 w-3" />
-                {doneSubtasks}/{subtasks.length}
-              </span>
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
+                <Icon name="tree-structure" size="xs" />
+                <nldd-text size="xs" color="secondary">{doneSubtasks}/{subtasks.length}</nldd-text>
+              </nldd-container>
             )}
-          </div>
-        </div>
-      </div>
+          </nldd-container>
+        </nldd-container>
+      </nldd-container>
     </Card>
   );
 }

@@ -1,25 +1,34 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import { X, ArrowLeft } from 'lucide-react';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import type { BadgeVariant } from '@/types';
+import { useNlddEvent, useNlddOverlay } from '@/components/nldd/events';
 
-// Shared counter: tracks how many modals are currently open.
-// Only restore body overflow when the last modal closes.
-let openModalCount = 0;
-
-const ACCENT_BORDER: Record<BadgeVariant, string> = {
-  blue: 'border-t-blue-400',
-  green: 'border-t-emerald-400',
-  purple: 'border-t-purple-400',
-  amber: 'border-t-amber-400',
-  cyan: 'border-t-cyan-400',
-  rose: 'border-t-rose-400',
-  slate: 'border-t-slate-400',
-  gray: 'border-t-gray-400',
-  red: 'border-t-red-400',
-  orange: 'border-t-orange-400',
-  emerald: 'border-t-emerald-400',
-  indigo: 'border-t-indigo-400',
+/**
+ * Accent color per entity type, as a Rijkshuisstijl color the design system
+ * knows. Drawn as a 3px line along the top of the window, which is how this
+ * app signals "you are looking at a lead / a node / an opdracht".
+ */
+const ACCENT_COLOR: Record<BadgeVariant, string> = {
+  blue: 'lintblauw',
+  green: 'groen',
+  purple: 'paars',
+  amber: 'geel',
+  cyan: 'hemelblauw',
+  rose: 'roze',
+  slate: 'donkerblauw',
+  gray: 'coolgray',
+  red: 'rood',
+  orange: 'oranje',
+  emerald: 'mosgroen',
+  indigo: 'violet',
 };
+
+/** Window width per size step. */
+const SIZE_WIDTH = {
+  sm: 'min(448px, calc(100vw - 32px))',
+  md: 'min(512px, calc(100vw - 32px))',
+  lg: 'min(672px, calc(100vw - 32px))',
+  xl: 'min(896px, calc(100vw - 32px))',
+} as const;
 
 interface ModalProps {
   open: boolean;
@@ -29,8 +38,6 @@ interface ModalProps {
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   closeable?: boolean;
-  /** z-index layer for stacking multiple modals. Higher = on top. Default 50. */
-  zIndex?: number;
   headerIcon?: ReactNode;
   entityLabel?: string;
   accentColor?: BadgeVariant;
@@ -39,13 +46,19 @@ interface ModalProps {
   onBack?: () => void;
 }
 
-const sizeClasses = {
-  sm: 'max-w-md',
-  md: 'max-w-lg',
-  lg: 'max-w-2xl',
-  xl: 'max-w-4xl',
-};
-
+/**
+ * `nldd-window` + `nldd-page` behind the previous API, so the 32 call sites are
+ * unchanged.
+ *
+ * The window is a native `<dialog>`, always modal. That hands the browser four
+ * things this component used to carry itself: the backdrop, the top layer (so
+ * the shared `openModalCount` and the `zIndex` prop are gone), the focus trap,
+ * and Escape.
+ *
+ * The title bar is `nldd-top-title-bar` in the page's sticky header, which
+ * supplies the heading, the back affordance and the dismiss button, each with
+ * its own accessible name.
+ */
 export function Modal({
   open,
   onClose,
@@ -54,121 +67,94 @@ export function Modal({
   footer,
   size = 'md',
   closeable = true,
-  zIndex = 50,
-  headerIcon,
+  headerIcon: _headerIcon,
   entityLabel,
   accentColor,
   backLabel,
   onBack,
 }: ModalProps) {
-  const wasOpen = useRef(false);
-  const openedAtRef = useRef(0);
+  const windowRef = useRef<HTMLElement>(null);
+  const barRef = useRef<HTMLElement>(null);
+  const openedAt = useRef(0);
+
+  const handleClose = useCallback(() => {
+    // Suppress the close for the first 250ms after opening. Without this, a
+    // synthetic click that follows a drag-and-drop (Outlook on Windows/Citrix)
+    // lands on the freshly opened window and closes it before the user sees it.
+    // Kept from the previous implementation: it was reported from the field.
+    if (Date.now() - openedAt.current < 250) return;
+    if (!closeable) return;
+    onClose();
+  }, [closeable, onClose]);
+
+  // Remember when this became visible, for the guard above. In an effect, not
+  // during render: a render may run more than once per commit (and does under
+  // StrictMode), so a timestamp written there can be re-stamped by a re-render
+  // that has nothing to do with opening, and the guard would then swallow a
+  // click the user meant.
+  //
+  // This has to stand BEFORE useNlddOverlay: effects run in the order they are
+  // declared, and the overlay's effect is the one that calls show(). Stamped
+  // afterwards, the window would be on screen for one effect longer with
+  // openedAt still at 0, and a click arriving in that gap reads as 250ms past
+  // an open that had not happened yet. That gap is exactly the one the guard
+  // exists for.
   useEffect(() => {
-    if (open && !wasOpen.current) {
-      openModalCount++;
-      document.body.style.overflow = 'hidden';
-      openedAtRef.current = Date.now();
-      wasOpen.current = true;
-    } else if (!open && wasOpen.current) {
-      openModalCount = Math.max(0, openModalCount - 1);
-      if (openModalCount === 0) {
-        document.body.style.overflow = '';
-      }
-      wasOpen.current = false;
-    }
-    return () => {
-      if (wasOpen.current) {
-        openModalCount = Math.max(0, openModalCount - 1);
-        if (openModalCount === 0) {
-          document.body.style.overflow = '';
-        }
-        wasOpen.current = false;
-      }
-    };
+    openedAt.current = open ? Date.now() : 0;
   }, [open]);
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && open && closeable) {
-        onClose();
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose, closeable]);
+  useNlddOverlay(windowRef, open, handleClose);
 
-  if (!open) return null;
-
-  const borderClass = accentColor ? `border-t-[3px] ${ACCENT_BORDER[accentColor]}` : '';
-
-  // Suppress overlay-click for the first 250ms after opening. Without this,
-  // a synthetic mouseup/click that follows a drag-and-drop (notably Outlook
-  // on Windows/Citrix) lands on the freshly-mounted overlay and closes the
-  // modal before the user sees it.
-  const handleOverlayClick = () => {
-    if (!closeable) return;
-    if (Date.now() - openedAtRef.current < 250) return;
-    onClose();
-  };
+  // The title bar's own dismiss and back buttons.
+  useNlddEvent(barRef, 'dismiss', closeable ? onClose : undefined);
+  useNlddEvent(barRef, 'back', onBack);
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex }}>
-      {/* Overlay */}
-      <div
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
-        onClick={handleOverlayClick}
-      />
+    <nldd-window
+      ref={windowRef}
+      accessible-label={title}
+      centered
+      width={SIZE_WIDTH[size]}
+      {...(closeable ? {} : { 'no-light-dismiss': true })}
+    >
+      {/* A 3px line in the entity's colour along the top edge. */}
+      {accentColor && (
+        <div
+          style={{
+            height: '3px',
+            backgroundColor: `var(--primitives-color-${ACCENT_COLOR[accentColor]}-500)`,
+          }}
+        />
+      )}
+      <nldd-page sticky-header {...(footer ? { 'sticky-footer': true } : {})}>
+        <nldd-top-title-bar
+          ref={barRef}
+          slot="header"
+          text={title}
+          {...(entityLabel ? { 'supporting-text': entityLabel } : {})}
+          {...(backLabel && onBack ? { 'back-text': `Terug naar ${backLabel}` } : {})}
+          {...(closeable ? { 'dismiss-text': 'Sluiten' } : {})}
+        />
+        {/* `headerIcon` has nowhere to go: nldd-top-title-bar has only a
+            `toolbar` slot, beside the dismiss button, and an icon there would
+            read as an action rather than as the entity's type. The type is
+            already named in `supporting-text`, so the icon is dropped. */}
 
-      {/* Dialog */}
-      <div
-        className={`relative w-full ${sizeClasses[size]} mx-2 sm:mx-4 bg-surface rounded-2xl shadow-xl border border-border animate-in fade-in zoom-in-95 ${borderClass}`}
-      >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-border">
-          {backLabel && onBack && (
-            <button
-              onClick={onBack}
-              className="flex items-center gap-1 text-xs text-text-secondary hover:text-text transition-colors mb-1"
-            >
-              <ArrowLeft className="h-3 w-3" />
-              Terug naar {backLabel}
-            </button>
-          )}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5 min-w-0">
-              {headerIcon && (
-                <span className="text-text-secondary shrink-0">{headerIcon}</span>
-              )}
-              <div className="min-w-0">
-                {entityLabel && (
-                  <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
-                    {entityLabel}
-                  </span>
-                )}
-                <h2 className="text-lg font-semibold text-text truncate">{title}</h2>
-              </div>
-            </div>
-            {closeable && (
-              <button
-                onClick={onClose}
-                className="rounded-lg p-1.5 text-text-secondary hover:bg-gray-100 hover:text-text transition-colors shrink-0"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            )}
-          </div>
-        </div>
+        <nldd-container padding="24">{children}</nldd-container>
 
-        {/* Body – extra bottom padding so dropdown menus have room to open */}
-        <div className="px-6 py-4 max-h-[80vh] sm:max-h-[75vh] overflow-y-auto pb-20">{children}</div>
-
-        {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
+          <nldd-container
+            slot="footer"
+            layout="row"
+            gap="12"
+            padding="16"
+            horizontal-alignment="right"
+            vertical-alignment="center"
+          >
             {footer}
-          </div>
+          </nldd-container>
         )}
-      </div>
-    </div>
+      </nldd-page>
+    </nldd-window>
   );
 }

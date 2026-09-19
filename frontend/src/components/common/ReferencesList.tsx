@@ -1,11 +1,35 @@
-import { Link as LinkIcon } from 'lucide-react';
+import { useRef } from 'react';
 import { Badge } from '@/components/common/Badge';
+import { useNlddEvent } from '@/components/nldd/events';
 import { useReferences } from '@/hooks/useMentions';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 
 interface ReferencesListProps {
   targetId: string;
+}
+
+function ReferenceRow({
+  label,
+  title,
+  variant,
+  onOpen,
+}: {
+  label: string;
+  title: string;
+  variant: 'amber' | 'blue';
+  onOpen: () => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onOpen);
+  return (
+    <nldd-list-item ref={ref} size="sm" button>
+      <nldd-cell width="fit-content">
+        <Badge variant={variant}>{label}</Badge>
+      </nldd-cell>
+      <nldd-text-cell text={title} />
+    </nldd-list-item>
+  );
 }
 
 export function ReferencesList({ targetId }: ReferencesListProps) {
@@ -16,28 +40,29 @@ export function ReferencesList({ targetId }: ReferencesListProps) {
   if (!references || references.length === 0) return null;
 
   return (
-    <div>
-      <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
-        <LinkIcon className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
-        Verwijzingen ({references.length})
-      </h4>
-      <div className="space-y-1">
+    <nldd-container gap="8">
+      <nldd-container layout="row" gap="4" vertical-alignment="center">
+        <nldd-icon name="link" size="16" aria-hidden="true" />
+        <nldd-text size="xs" weight="bold" color="secondary">
+          Verwijzingen ({references.length})
+        </nldd-text>
+      </nldd-container>
+      <nldd-list variant="simple" accessible-label="Verwijzingen">
         {references.map((ref) => (
-          <button
+          <ReferenceRow
             key={`${ref.source_type}-${ref.source_id}`}
-            onClick={() => {
+            label={
+              ref.source_type === 'node' ? 'Node' : ref.source_type === 'task' ? 'Taak' : ref.source_type
+            }
+            title={ref.source_title}
+            variant={ref.source_type === 'task' ? 'amber' : 'blue'}
+            onOpen={() => {
               if (ref.source_type === 'node') openNodeDetail(ref.source_id);
               else if (ref.source_type === 'task') openTaskDetail(ref.source_id);
             }}
-            className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
-          >
-            <Badge variant={ref.source_type === 'task' ? 'amber' : 'blue'}>
-              {ref.source_type === 'node' ? 'Node' : ref.source_type === 'task' ? 'Taak' : ref.source_type}
-            </Badge>
-            <span className="text-sm text-text truncate">{ref.source_title}</span>
-          </button>
+          />
         ))}
-      </div>
-    </div>
+      </nldd-list>
+    </nldd-container>
   );
 }

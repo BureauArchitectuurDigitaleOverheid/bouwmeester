@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, User, Bot, Calendar, Link as LinkIcon, Pencil, Building2, ListTree, Plus, CheckCircle2, Circle, FileSearch, ChevronUp, ChevronDown, ClipboardList, CheckSquare } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
@@ -23,15 +25,126 @@ import {
   TASK_PRIORITY_LABELS,
   TASK_PRIORITY_COLORS,
 } from '@/types';
+import type { TaskSubtask } from '@/types';
 
 interface TaskDetailModalProps {
   taskId: string | null;
   open: boolean;
   onClose: () => void;
-  zIndex?: number;
 }
 
-export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailModalProps) {
+interface DetailLinkActionProps {
+  text: string;
+  startIcon: string;
+  onClick: () => void;
+}
+
+/**
+ * A metadata-grid value that opens something (a node, an opdracht, a
+ * parlementair item) rather than navigating to a URL. `nldd-link` renders a
+ * real `<a>`, and without an `href` the design system emits the anchor with no
+ * `href` attribute at all — unfocusable, not keyboard-activatable, a link to
+ * nowhere. There is genuinely nothing to link to here (these open an in-app
+ * panel, not a URL), so this uses NlddButton in its lowest-emphasis variant
+ * instead: a real, focusable, keyboard-operable control that reads like an
+ * inline action rather than a link.
+ */
+function DetailLinkAction({ text, startIcon, onClick }: DetailLinkActionProps) {
+  return (
+    <NlddButton
+      text={text}
+      startIcon={startIcon}
+      variant="neutral-transparent"
+      size="sm"
+      onClick={onClick}
+    />
+  );
+}
+
+interface SubtaskRowProps {
+  subtask: TaskSubtask;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  reorderPending: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onOpen: () => void;
+}
+
+/**
+ * A subtask row with three actions (move up, move down, open detail), so per
+ * the list-with-rows pattern the row itself carries no href/button of its own
+ * and each action gets its own nldd-list-item-segment. Refs + useNlddEvent
+ * bind the clicks: a JSX onClick on a custom element is not a real listener
+ * (React only delegates its fixed DOM event set), and disabled is boolean, so
+ * it goes through orUndef the same as every other nldd-* boolean attribute.
+ */
+function SubtaskRow({
+  subtask,
+  canMoveUp,
+  canMoveDown,
+  reorderPending,
+  onMoveUp,
+  onMoveDown,
+  onOpen,
+}: SubtaskRowProps) {
+  const upRef = useRef<HTMLElement>(null);
+  const downRef = useRef<HTMLElement>(null);
+  const openRef = useRef<HTMLElement>(null);
+  useNlddEvent(upRef, 'click', onMoveUp);
+  useNlddEvent(downRef, 'click', onMoveDown);
+  useNlddEvent(openRef, 'click', onOpen);
+
+  const subDone = subtask.status === TaskStatus.DONE;
+
+  return (
+    <nldd-list-item>
+      <nldd-list-item-segment
+        ref={upRef}
+        button
+        accessible-label="Omhoog"
+        disabled={orUndef(!canMoveUp || reorderPending)}
+      >
+        <Icon name="ChevronUp" size="xs" />
+      </nldd-list-item-segment>
+      <nldd-list-item-segment
+        ref={downRef}
+        button
+        accessible-label="Omlaag"
+        disabled={orUndef(!canMoveDown || reorderPending)}
+      >
+        <Icon name="ChevronDown" size="xs" />
+      </nldd-list-item-segment>
+      <nldd-list-item-segment ref={openRef} button width="full">
+        <nldd-icon-cell icon={subDone ? 'check-mark-circle' : 'circle'} color={subDone ? 'success' : 'content'} />
+        <nldd-spacer-cell size="8" />
+        <nldd-text-cell
+          text={subtask.title}
+          color={subDone ? 'secondary' : 'content'}
+          width="fit-content"
+        />
+        {subtask.work_type && (
+          <>
+            <nldd-spacer-cell size="8" />
+            <Badge variant="slate">{subtask.work_type}</Badge>
+          </>
+        )}
+        <nldd-spacer-cell size="flexible" />
+        {subtask.assignee && (
+          <nldd-text-cell text={subtask.assignee.naam} color="secondary" width="fit-content" size="sm" />
+        )}
+        {subtask.due_date && (
+          <>
+            <nldd-spacer-cell size="12" />
+            <nldd-text-cell text={formatDateShort(subtask.due_date)} color="secondary" width="fit-content" size="sm" />
+          </>
+        )}
+      </nldd-list-item-segment>
+    </nldd-list-item>
+  );
+}
+
+export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps) {
   const { data: task, isLoading } = useTask(taskId);
   const [showEdit, setShowEdit] = useState(false);
   const [showSubtaskCreate, setShowSubtaskCreate] = useState(false);
@@ -80,9 +193,8 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
         onClose={onClose}
         title={isLoading ? 'Laden...' : task?.title ?? 'Taak niet gevonden'}
         size="lg"
-        zIndex={zIndex}
         accentColor={accentColor}
-        headerIcon={<CheckSquare className="h-5 w-5" />}
+        headerIcon={<Icon name="check-list" size="md" />}
         entityLabel="Taak"
         backLabel={taskParentLabel ?? undefined}
         onBack={taskParentLabel ? onClose : undefined}
@@ -93,7 +205,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
               <Button
                 variant="secondary"
                 size="sm"
-                icon={<Pencil className="h-4 w-4" />}
+                icon="pencil"
                 onClick={() => setShowEdit(true)}
                 disabled={!task}
               >
@@ -104,17 +216,17 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
         }
       >
         {isLoading ? (
-          <div className="flex items-center justify-center py-8 text-text-secondary text-sm">
-            Laden...
-          </div>
+          <nldd-container layout="row" horizontal-alignment="center" vertical-alignment="center" padding-block="32">
+            <nldd-text size="sm" color="secondary">Laden...</nldd-text>
+          </nldd-container>
         ) : !task ? (
-          <div className="flex items-center justify-center py-8 text-text-secondary text-sm">
-            Taak niet gevonden.
-          </div>
+          <nldd-container layout="row" horizontal-alignment="center" vertical-alignment="center" padding-block="32">
+            <nldd-text size="sm" color="secondary">Taak niet gevonden.</nldd-text>
+          </nldd-container>
         ) : (
-          <div className="space-y-5">
+          <nldd-container gap="20">
             {/* Status / Priority / Deadline row */}
-            <div className="flex items-center gap-2 flex-wrap">
+            <nldd-container layout="wrap" gap="8" vertical-alignment="center">
               <Badge variant={TASK_STATUS_COLORS[task.status] ?? 'gray'} dot>
                 {TASK_STATUS_LABELS[task.status]}
               </Badge>
@@ -122,18 +234,14 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                 {TASK_PRIORITY_LABELS[task.priority]}
               </Badge>
               {task.due_date && (
-                <span
-                  className={`inline-flex items-center gap-1 text-sm ${
-                    isOverdue
-                      ? 'text-red-600 font-medium bg-red-50 rounded-md px-2 py-0.5'
-                      : 'text-text-secondary'
-                  }`}
-                >
-                  <Clock className="h-4 w-4" />
-                  {formatDateLong(task.due_date)}
-                </span>
+                <nldd-container layout="row" gap="4" vertical-alignment="center">
+                  <Icon name="clock" size="sm" />
+                  <nldd-text size="sm" color={isOverdue ? 'critical' : 'secondary'} weight={isOverdue ? 'bold' : 'regular'}>
+                    {formatDateLong(task.due_date)}
+                  </nldd-text>
+                </nldd-container>
               )}
-            </div>
+            </nldd-container>
 
             {/* Description */}
             <DetailSection title="Beschrijving">
@@ -149,41 +257,39 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                 {
                   label: 'Toegewezen aan',
                   value: task.assignee ? (
-                    <span className="inline-flex items-center gap-1.5 text-text">
+                    <nldd-container layout="row" gap="6" vertical-alignment="center">
                       {task.assignee.is_agent ? (
-                        <Bot className="h-4 w-4 text-violet-500" />
+                        <nldd-icon name="sparkles" size="20" color="paars" aria-hidden="true" />
                       ) : (
-                        <User className="h-4 w-4 text-text-secondary" />
+                        <Icon name="person" size="md" />
                       )}
-                      {task.assignee.naam}
-                    </span>
+                      <nldd-text size="sm">{task.assignee.naam}</nldd-text>
+                    </nldd-container>
                   ) : (
-                    <span className="text-text-secondary">Niet toegewezen</span>
+                    <nldd-text size="sm" color="secondary">Niet toegewezen</nldd-text>
                   ),
                 },
                 {
                   label: 'Verantwoordelijke eenheid',
                   value: task.organisatie_eenheid ? (
-                    <span className="inline-flex items-center gap-1.5 text-text">
-                      <Building2 className="h-4 w-4 text-text-secondary" />
-                      {task.organisatie_eenheid.naam}
-                    </span>
+                    <nldd-container layout="row" gap="6" vertical-alignment="center">
+                      <Icon name="apartment-building" size="md" />
+                      <nldd-text size="sm">{task.organisatie_eenheid.naam}</nldd-text>
+                    </nldd-container>
                   ) : (
-                    <span className="text-text-secondary">Geen</span>
+                    <nldd-text size="sm" color="secondary">Geen</nldd-text>
                   ),
                 },
                 {
                   label: 'Node',
                   value: task.node ? (
-                    <button
+                    <DetailLinkAction
+                      text={task.node.title}
+                      startIcon="link"
                       onClick={() => openNodeDetail(task.node_id!, task.title)}
-                      className="inline-flex items-start gap-1.5 text-primary-600 hover:text-primary-800 hover:underline transition-colors text-left"
-                    >
-                      <LinkIcon className="h-4 w-4 shrink-0 mt-0.5" />
-                      {task.node.title}
-                    </button>
+                    />
                   ) : (
-                    <span className="text-text-secondary">Geen</span>
+                    <nldd-text size="sm" color="secondary">Geen</nldd-text>
                   ),
                 },
                 ...(task.opdracht
@@ -191,13 +297,11 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                       {
                         label: 'Opdracht',
                         value: (
-                          <button
+                          <DetailLinkAction
+                            text={task.opdracht.titel}
+                            startIcon="clipboard-bullet-list"
                             onClick={() => openOpdrachtDetail(task.opdracht!.id, task.title)}
-                            className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 hover:underline transition-colors text-sm text-left"
-                          >
-                            <ClipboardList className="h-4 w-4 shrink-0" />
-                            {task.opdracht!.titel}
-                          </button>
+                          />
                         ),
                       },
                     ]
@@ -207,16 +311,14 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                       {
                         label: 'Beoordeling',
                         value: (
-                          <button
+                          <DetailLinkAction
+                            text="Ga naar beoordeling"
+                            startIcon="file-text"
                             onClick={() => {
                               onClose();
                               navigate(`/parlementair?item=${task.parlementair_item_id}`);
                             }}
-                            className="inline-flex items-center gap-1.5 text-primary-600 hover:text-primary-800 hover:underline transition-colors text-sm"
-                          >
-                            <FileSearch className="h-4 w-4" />
-                            Ga naar beoordeling
-                          </button>
+                          />
                         ),
                       },
                     ]
@@ -224,7 +326,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                 {
                   label: 'Aangemaakt',
                   value: formatDateLong(task.created_at),
-                  icon: <Calendar className="h-4 w-4" />,
+                  icon: <Icon name="calendar" size="md" />,
                 },
               ]}
             />
@@ -232,13 +334,13 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
             {/* Subtasks */}
             <DetailSection
               title="Subtaken"
-              icon={<ListTree className="h-3.5 w-3.5" />}
+              icon={<Icon name="tree-structure" size="sm" />}
               count={subtasks.length}
               action={
                 <Button
                   variant="ghost"
                   size="sm"
-                  icon={<Plus className="h-3.5 w-3.5" />}
+                  icon="plus"
                   onClick={() => setShowSubtaskCreate(true)}
                 >
                   Subtaak toevoegen
@@ -246,65 +348,25 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
               }
             >
               {subtasks.length > 0 ? (
-                <div className="space-y-1">
-                  {subtasks.map((sub, idx) => {
-                    const subDone = sub.status === TaskStatus.DONE;
-                    return (
-                      <div
-                        key={sub.id}
-                        className="flex items-center gap-1 w-full"
-                      >
-                        <div className="flex flex-col shrink-0">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleMoveSubtask(idx, 'up'); }}
-                            disabled={idx === 0 || reorderSubtasks.isPending}
-                            className="p-0.5 text-text-secondary hover:text-text disabled:opacity-25 disabled:cursor-default transition-colors"
-                            title="Omhoog"
-                          >
-                            <ChevronUp className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleMoveSubtask(idx, 'down'); }}
-                            disabled={idx === subtasks.length - 1 || reorderSubtasks.isPending}
-                            className="p-0.5 text-text-secondary hover:text-text disabled:opacity-25 disabled:cursor-default transition-colors"
-                            title="Omlaag"
-                          >
-                            <ChevronDown className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                        <button
-                          onClick={() => openTaskDetail(sub.id, task.title)}
-                          className="flex items-center gap-2 flex-1 min-w-0 px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
-                        >
-                          {subDone ? (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                          ) : (
-                            <Circle className="h-4 w-4 text-text-secondary shrink-0" />
-                          )}
-                          <span className={`text-sm flex-1 ${subDone ? 'text-text-secondary line-through' : 'text-text'}`}>
-                            {sub.title}
-                          </span>
-                          {sub.work_type && (
-                            <Badge variant="slate">{sub.work_type}</Badge>
-                          )}
-                          {sub.assignee && (
-                            <span className="text-xs text-text-secondary">{sub.assignee.naam}</span>
-                          )}
-                          {sub.due_date && (
-                            <span className="text-xs text-text-secondary">
-                              {formatDateShort(sub.due_date)}
-                            </span>
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <nldd-list variant="simple" accessible-label="Subtaken">
+                  {subtasks.map((sub, idx) => (
+                    <SubtaskRow
+                      key={sub.id}
+                      subtask={sub}
+                      canMoveUp={idx > 0}
+                      canMoveDown={idx < subtasks.length - 1}
+                      reorderPending={reorderSubtasks.isPending}
+                      onMoveUp={() => handleMoveSubtask(idx, 'up')}
+                      onMoveDown={() => handleMoveSubtask(idx, 'down')}
+                      onOpen={() => openTaskDetail(sub.id, task.title)}
+                    />
+                  ))}
+                </nldd-list>
               ) : (
-                <p className="text-sm text-text-secondary">Geen subtaken</p>
+                <nldd-text size="sm" color="secondary">Geen subtaken</nldd-text>
               )}
             </DetailSection>
-          </div>
+          </nldd-container>
         )}
       </Modal>
 

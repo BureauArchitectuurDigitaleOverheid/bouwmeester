@@ -1,18 +1,8 @@
-import { useState, useMemo } from 'react';
-import {
-  CheckCircle2,
-  AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  Plus,
-  Link as LinkIcon,
-  ExternalLink,
-  Users,
-  Compass,
-} from 'lucide-react';
+import { useRef, useState, useMemo } from 'react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
+import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import { useNodeGraph } from '@/hooks/useNodes';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useCompletenessAnalysis, type StepStatus } from './useCompletenessAnalysis';
@@ -24,6 +14,50 @@ import { NodeCreateForm } from '../NodeCreateForm';
 import { NODE_TYPE_LABELS, NODE_TYPE_LABELS_PLURAL, NODE_TYPE_COLORS, type NodeType } from '@/types';
 import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
 
+/** An `nldd-list-item[button]` row with its click bridged to React. */
+function ClickableListItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onClick);
+  return (
+    <nldd-list-item ref={ref} button>
+      {children}
+    </nldd-list-item>
+  );
+}
+
+/**
+ * A segment that discloses a row's children group: a chevron that flips, and a
+ * click bridged to React. Sits beside a sibling segment (the KCBR link) so the
+ * two actions stay independent rather than nesting a control inside a control.
+ * `disclosure` marks this as the row's own disclosure control, which rotates
+ * the slotted icon-cell a quarter turn while open — no manual class needed.
+ */
+function DisclosureSegment({
+  expanded,
+  onToggle,
+  children,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onToggle);
+  return (
+    <nldd-list-item-segment ref={ref} button width="full" expanded={orUndef(expanded)} disclosure>
+      {children}
+      <nldd-icon-cell icon="chevron-down" size="16" />
+    </nldd-list-item-segment>
+  );
+}
+
+/** An `nldd-link` with its click bridged to React, for an in-page action rather than navigation. */
+function ActionLink({ text, onClick }: { text: string; onClick: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onClick);
+  return <nldd-link ref={ref} text={text} size="xs" />;
+}
+
 interface StepActionButtonsProps {
   nodeType: NodeType;
   onCreateNew: (nodeType: NodeType) => void;
@@ -32,11 +66,11 @@ interface StepActionButtonsProps {
 
 function StepActionButtons({ nodeType, onCreateNew, onLinkExisting }: StepActionButtonsProps) {
   return (
-    <div className="flex items-center gap-1">
+    <nldd-container layout="row" gap="2" vertical-alignment="center">
       <Button
         variant="ghost"
         size="sm"
-        icon={<Plus className="h-3.5 w-3.5" />}
+        icon="plus"
         onClick={() => onCreateNew(nodeType)}
       >
         Nieuw
@@ -44,12 +78,12 @@ function StepActionButtons({ nodeType, onCreateNew, onLinkExisting }: StepAction
       <Button
         variant="ghost"
         size="sm"
-        icon={<LinkIcon className="h-3.5 w-3.5" />}
+        icon="link"
         onClick={() => onLinkExisting(nodeType)}
       >
         Koppelen
       </Button>
-    </div>
+    </nldd-container>
   );
 }
 
@@ -61,17 +95,7 @@ interface BeleidskompasStepRowProps {
 }
 
 function StepNumberBadge({ number, complete }: { number: number; complete: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold shrink-0 ${
-        complete
-          ? 'bg-emerald-100 text-emerald-700'
-          : 'bg-gray-100 text-gray-500'
-      }`}
-    >
-      {number}
-    </span>
-  );
+  return <nldd-badge number={number} color={complete ? 'success' : 'neutral'} size="md" />;
 }
 
 function stepCountLabel(status: StepStatus): string {
@@ -111,16 +135,14 @@ function StepTypeGroups({
     return (
       <>
         {status.nodes.map((node) => (
-          <button
-            key={node.id}
-            onClick={() => openNodeDetail(node.id)}
-            className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
-          >
-            <Badge variant={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
-              {NODE_TYPE_LABELS[node.node_type as NodeType]}
-            </Badge>
-            <span className="text-sm text-text truncate">{node.title}</span>
-          </button>
+          <ClickableListItem key={node.id} onClick={() => openNodeDetail(node.id)}>
+            <nldd-text-cell width="fit-content">
+              <Badge variant={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
+                {NODE_TYPE_LABELS[node.node_type as NodeType]}
+              </Badge>
+            </nldd-text-cell>
+            <nldd-text-cell text={node.title} />
+          </ClickableListItem>
         ))}
         <StepActionButtons
           nodeType={status.step.nodeTypes[0]}
@@ -133,41 +155,37 @@ function StepTypeGroups({
 
   // Multi-type: group nodes and actions per type
   return (
-    <div className="space-y-2">
+    <nldd-container gap="8">
       {status.step.nodeTypes.map((nt) => {
         const typeNodes = status.nodes.filter(
           (n) => n.node_type === nt,
         );
         return (
-          <div key={nt}>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs text-text-secondary font-medium min-w-[100px]">
-                {NODE_TYPE_LABELS[nt]}:
-              </span>
-            </div>
-            {typeNodes.map((node) => (
-              <button
-                key={node.id}
-                onClick={() => openNodeDetail(node.id)}
-                className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-gray-100 transition-colors text-left ml-2"
-              >
-                <Badge variant={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
-                  {NODE_TYPE_LABELS[node.node_type as NodeType]}
-                </Badge>
-                <span className="text-sm text-text truncate">{node.title}</span>
-              </button>
-            ))}
-            <div className="ml-2">
-              <StepActionButtons
-                nodeType={nt}
-                onCreateNew={onCreateNew}
-                onLinkExisting={onLinkExisting}
-              />
-            </div>
-          </div>
+          <nldd-container key={nt} gap="4" padding-left="8">
+            <nldd-text size="xs" color="secondary" weight="medium">
+              {NODE_TYPE_LABELS[nt]}:
+            </nldd-text>
+            <nldd-container gap="0">
+              {typeNodes.map((node) => (
+                <ClickableListItem key={node.id} onClick={() => openNodeDetail(node.id)}>
+                  <nldd-text-cell width="fit-content">
+                    <Badge variant={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
+                      {NODE_TYPE_LABELS[node.node_type as NodeType]}
+                    </Badge>
+                  </nldd-text-cell>
+                  <nldd-text-cell text={node.title} />
+                </ClickableListItem>
+              ))}
+            </nldd-container>
+            <StepActionButtons
+              nodeType={nt}
+              onCreateNew={onCreateNew}
+              onLinkExisting={onLinkExisting}
+            />
+          </nldd-container>
         );
       })}
-    </div>
+    </nldd-container>
   );
 }
 
@@ -176,73 +194,49 @@ function BeleidskompasStepRow({ status, dossierId, onCreateNew, onLinkExisting }
 
   if (status.isComplete) {
     return (
-      <div className="border-b border-border last:border-b-0">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-3 w-full px-3 py-2.5 sm:px-4 sm:py-3 text-left hover:bg-gray-50/50 transition-colors"
-        >
-          <StepNumberBadge number={status.step.number} complete />
-          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <span className="text-sm font-medium text-text">{status.step.question}</span>
-          </div>
-          <span className="text-xs text-text-secondary mr-1 hidden sm:inline">
-            {stepCountLabel(status)}
-          </span>
-          <a
-            href={status.step.kcbrUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-            className="text-text-secondary hover:text-primary-700 transition-colors shrink-0"
-            title="Bekijk op KCBR"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-          {expanded ? (
-            <ChevronDown className="h-4 w-4 text-text-secondary shrink-0" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-text-secondary shrink-0" />
-          )}
-        </button>
+      <>
+        <nldd-list-item>
+          <DisclosureSegment expanded={expanded} onToggle={() => setExpanded((e) => !e)}>
+            <nldd-icon-cell icon="check-mark-circle" color="success" />
+            <StepNumberBadge number={status.step.number} complete />
+            <nldd-title-cell text={status.step.question} />
+            <nldd-text-cell width="fit-content" color="secondary" hide-below="sm" text={stepCountLabel(status)} />
+          </DisclosureSegment>
+          <nldd-list-item-segment href={status.step.kcbrUrl} target="_blank" width="fit-content" accessible-label="Bekijk op KCBR">
+            <nldd-icon-cell icon="external-link" size="16" />
+          </nldd-list-item-segment>
+        </nldd-list-item>
         {expanded && (
-          <div className="px-3 sm:px-4 pb-3 space-y-1.5 ml-9 sm:ml-10">
-            <StepTypeGroups
-              status={status}
-              onCreateNew={onCreateNew}
-              onLinkExisting={onLinkExisting}
-            />
-          </div>
+          <nldd-list-item>
+            <nldd-container padding-left="24" gap="6">
+              <StepTypeGroups
+                status={status}
+                onCreateNew={onCreateNew}
+                onLinkExisting={onLinkExisting}
+              />
+            </nldd-container>
+          </nldd-list-item>
         )}
-      </div>
+      </>
     );
   }
 
   // Incomplete step (may still have some nodes linked)
   return (
-    <div className="border-b border-border last:border-b-0">
-      <div className="px-3 py-2.5 sm:px-4 sm:py-3">
-        <div className="flex items-start gap-3">
+    <nldd-list-item>
+      <nldd-container gap="8" width="full">
+        <nldd-container layout="row" vertical-alignment="top" gap="12">
           <StepNumberBadge number={status.step.number} complete={false} />
-          <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-medium text-text">{status.step.question}</span>
-              <a
-                href={status.step.kcbrUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-text-secondary hover:text-primary-700 transition-colors shrink-0"
-                title="Bekijk op KCBR"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-            </div>
-            <p className="text-xs text-text-secondary mt-0.5">{status.step.description}</p>
-          </div>
-        </div>
-        <div className="mt-2 ml-9 sm:ml-10 space-y-1.5">
+          <nldd-icon name="exclamation-triangle" size="20" color="warning" aria-hidden="true" />
+          <nldd-container gap="0" width="full">
+            <nldd-container layout="row" vertical-alignment="center" gap="6">
+              <nldd-text size="sm" weight="medium">{status.step.question}</nldd-text>
+              <nldd-link href={status.step.kcbrUrl} target="_blank" accessible-label="Bekijk op KCBR" start-icon="external-link" />
+            </nldd-container>
+            <nldd-text size="xs" color="secondary">{status.step.description}</nldd-text>
+          </nldd-container>
+        </nldd-container>
+        <nldd-container padding-left="24" gap="6">
           <StepTypeGroups
             status={status}
             onCreateNew={onCreateNew}
@@ -253,9 +247,9 @@ function BeleidskompasStepRow({ status, dossierId, onCreateNew, onLinkExisting }
             stepNodeTypes={status.step.nodeTypes}
             stepDescription={status.step.question}
           />
-        </div>
-      </div>
-    </div>
+        </nldd-container>
+      </nldd-container>
+    </nldd-list-item>
   );
 }
 
@@ -286,9 +280,7 @@ export function BeleidskompasPanel({ nodeId, stakeholderCount, onNavigateToStake
   if (isLoading) {
     return (
       <Card>
-        <div className="px-4 py-6 text-center text-sm text-text-secondary">
-          Beleidskompas laden...
-        </div>
+        <nldd-inline-dialog variant="loading" text="Beleidskompas laden..." />
       </Card>
     );
   }
@@ -296,90 +288,66 @@ export function BeleidskompasPanel({ nodeId, stakeholderCount, onNavigateToStake
   if (isError) {
     return (
       <Card>
-        <div className="px-4 py-6 text-center text-sm text-text-secondary">
-          Beleidskompas kon niet geladen worden.
-        </div>
+        <nldd-inline-dialog
+          icon="exclamation-triangle"
+          text="Beleidskompas kon niet geladen worden."
+        />
       </Card>
     );
   }
 
-  const progressPercent = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
-
   return (
     <>
       <Card>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Compass className="h-4 w-4 text-primary-700 shrink-0" />
-            <h3 className="text-sm font-semibold text-text">Beleidskompas</h3>
-            <a
-              href={KCBR_MAIN_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-text-secondary hover:text-primary-700 transition-colors"
-              title="Bekijk Beleidskompas op KCBR"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                style={{ width: `${progressPercent}%` }}
+        <nldd-container gap="16">
+          {/* Header */}
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            <nldd-icon name="signpost" size="20" color="accent" aria-hidden="true" />
+            <nldd-title size={6}><h3>Beleidskompas</h3></nldd-title>
+            <nldd-link href={KCBR_MAIN_URL} target="_blank" accessible-label="Bekijk Beleidskompas op KCBR" start-icon="external-link" />
+            <nldd-spacer size="flexible" />
+            <nldd-container width="fit-content">
+              <nldd-progress-bar
+                value={completedCount}
+                max={totalSteps}
+                color="success"
+                size="sm"
+                value-text={`${completedCount}/${totalSteps}`}
               />
-            </div>
-            <span className="text-xs font-medium text-text-secondary">
-              {completedCount}/{totalSteps}
-            </span>
-          </div>
-        </div>
+            </nldd-container>
+          </nldd-container>
 
-        {/* Stakeholders reference (recurring question) — only shown when stakeholders exist */}
-        {stakeholderCount > 0 && (
-          <div className="mb-3 px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg bg-slate-50 border border-slate-200">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Users className="h-4 w-4 text-slate-500 shrink-0" />
-              <span className="text-xs font-medium text-slate-600">
-                Wie zijn belanghebbenden?
-              </span>
-              <button
-                onClick={onNavigateToStakeholders}
-                className="text-xs text-primary-700 hover:text-primary-900 transition-colors"
-              >
-                {stakeholderCount} betrokkenen
-              </button>
-              <a
-                href={KCBR_STAKEHOLDERS_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-text-secondary hover:text-primary-700 transition-colors shrink-0"
-                title="Bekijk op KCBR"
-              >
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </div>
-          </div>
-        )}
+          {/* Stakeholders reference (recurring question) — only shown when stakeholders exist */}
+          {stakeholderCount > 0 && (
+            <nldd-inline-dialog
+              icon="users"
+              text="Wie zijn belanghebbenden?"
+              horizontal-alignment="left"
+            >
+              <nldd-container layout="wrap" gap="8">
+                <ActionLink text={`${stakeholderCount} betrokkenen`} onClick={onNavigateToStakeholders} />
+                <nldd-link href={KCBR_STAKEHOLDERS_URL} target="_blank" accessible-label="Bekijk op KCBR" start-icon="external-link" size="xs" />
+              </nldd-container>
+            </nldd-inline-dialog>
+          )}
 
-        {/* Steps */}
-        <div className="rounded-lg border border-border overflow-hidden">
-          {steps.map((stepStatus) => (
-            <BeleidskompasStepRow
-              key={stepStatus.step.id}
-              status={stepStatus}
-              dossierId={nodeId}
-              onCreateNew={(nodeType) => setCreateModalType(nodeType)}
-              onLinkExisting={(nodeType) => setLinkModalType(nodeType)}
-            />
-          ))}
-        </div>
+          {/* Steps */}
+          <nldd-list variant="box-tinted" dividers="always">
+            {steps.map((stepStatus) => (
+              <BeleidskompasStepRow
+                key={stepStatus.step.id}
+                status={stepStatus}
+                dossierId={nodeId}
+                onCreateNew={(nodeType) => setCreateModalType(nodeType)}
+                onLinkExisting={(nodeType) => setLinkModalType(nodeType)}
+              />
+            ))}
+          </nldd-list>
 
-        {/* Gap Analysis */}
-        <div className="mt-4 pt-4 border-t border-border">
+          {/* Gap Analysis */}
+          <nldd-divider />
           <GapAnalysisPanel dossierId={nodeId} />
-        </div>
+        </nldd-container>
       </Card>
 
       {linkModalType && (

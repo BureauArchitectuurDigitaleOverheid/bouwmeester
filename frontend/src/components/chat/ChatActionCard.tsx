@@ -1,6 +1,7 @@
-import { Check, ExternalLink } from 'lucide-react';
+import { useCallback, useRef } from 'react';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { useNlddEvent } from '@/components/nldd/events';
 import type { ChatAction } from '@/api/chat';
 
 interface ChatActionCardProps {
@@ -10,43 +11,43 @@ interface ChatActionCardProps {
 export function ChatActionCard({ action }: ChatActionCardProps) {
   const { openNodeDetail } = useNodeDetail();
   const { openTaskDetail } = useTaskDetail();
+  const ref = useRef<HTMLElement>(null);
 
   const canNavigate =
     action.entity_id &&
     (action.entity_type === 'node' || action.entity_type === 'task' || action.entity_type === 'tag');
 
-  const handleClick = () => {
+  const handleClick = useCallback(() => {
     if (!action.entity_id) return;
     if (action.entity_type === 'node' || action.entity_type === 'tag') {
       openNodeDetail(action.entity_id);
     } else if (action.entity_type === 'task') {
       openTaskDetail(action.entity_id);
     }
-  };
+  }, [action.entity_id, action.entity_type, openNodeDetail, openTaskDetail]);
+
+  useNlddEvent(ref, 'click', canNavigate ? handleClick : undefined);
 
   return (
-    <div
-      className={`flex items-start gap-2 p-2 rounded-md bg-green-50 border border-green-200 text-xs ${
-        canNavigate ? 'cursor-pointer hover:bg-green-100 transition-colors' : ''
-      }`}
-      onClick={canNavigate ? handleClick : undefined}
-      role={canNavigate ? 'button' : 'status'}
-      tabIndex={canNavigate ? 0 : undefined}
-      onKeyDown={canNavigate ? (e) => { if (e.key === 'Enter' || e.key === ' ') handleClick(); } : undefined}
+    <nldd-card
+      ref={ref}
+      {...(canNavigate ? { button: true, 'accessible-label': `${action.description} — bekijken` } : {})}
     >
-      <Check className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0" />
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-green-800">{action.description}</p>
-        {action.result_summary && action.result_summary !== action.description && (
-          <p className="text-green-600 truncate">{action.result_summary}</p>
+      <nldd-container layout="row" gap="8" vertical-alignment="top">
+        <nldd-icon name="check-mark" size="16" color="success" aria-hidden="true" />
+        <nldd-text-cell
+          size="sm"
+          color="success"
+          text={action.description}
+          width="full"
+          {...(action.result_summary && action.result_summary !== action.description
+            ? { 'supporting-text': action.result_summary }
+            : {})}
+        />
+        {canNavigate && (
+          <nldd-icon name="external-link" size="16" color="success" aria-hidden="true" />
         )}
-      </div>
-      {canNavigate && (
-        <span className="flex items-center gap-0.5 text-green-600 shrink-0 mt-0.5">
-          <span className="text-[10px]">Bekijken</span>
-          <ExternalLink className="w-3 h-3" />
-        </span>
-      )}
-    </div>
+      </nldd-container>
+    </nldd-card>
   );
 }
