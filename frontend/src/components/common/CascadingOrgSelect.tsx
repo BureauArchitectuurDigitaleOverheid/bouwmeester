@@ -197,27 +197,32 @@ export function CascadingOrgSelect({
 
   if (isLoading) {
     return (
-      <div>
+      <nldd-container gap="4">
         {label && (
-          <label className="block text-sm font-medium text-text mb-1">
+          <nldd-text size="sm" weight="bold">
             {label}
-          </label>
+          </nldd-text>
         )}
-        <p className="text-xs text-text-secondary py-2">Laden...</p>
-      </div>
+        <nldd-text size="xs" color="secondary">
+          Laden...
+        </nldd-text>
+      </nldd-container>
     );
   }
 
   if (tree.length === 0 && !allowCreate) return null;
 
   return (
-    <div>
+    <nldd-container gap="4">
+      {/* Not an nldd-form-field: that labels ONE control, and this renders a
+          chain of them (ministerie, directie, afdeling...) that grows as you
+          pick. The label names the group, so it is a heading for the set. */}
       {label && (
-        <label className="block text-sm font-medium text-text mb-1">
+        <nldd-text size="sm" weight="bold">
           {label}
-        </label>
+        </nldd-text>
       )}
-      <div className="space-y-2">
+      <nldd-container gap="8">
         {levels.map((level, i) => {
           const selectOptions: SelectOption[] = level.options.map((node) => ({
             value: node.id,
@@ -246,11 +251,11 @@ export function CascadingOrgSelect({
           );
         })}
         {showDepthHint && (
-          <p className="text-xs text-amber-600 mt-1">
+          <nldd-text size="xs" color="warning">
             Kies een specifiekere organisatie-eenheid
-          </p>
+          </nldd-text>
         )}
-      </div>
-    </div>
+      </nldd-container>
+    </nldd-container>
   );
 }

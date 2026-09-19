@@ -34,7 +34,20 @@ export function Card({
       {...props}
     >
       {header && <div slot="header">{header}</div>}
-      {padding ? <div className="px-3 py-3 sm:px-5 sm:py-4">{children}</div> : children}
+      {/* nldd-card draws the surface but has no inset of its own, by design, so
+          a container owns the spacing. The sm-* variants are the same
+          breakpoint the Tailwind version used: 12px all round, 20/16 from sm. */}
+      {padding ? (
+        <nldd-container
+          padding="12"
+          sm-padding-inline="20"
+          sm-padding-block="16"
+        >
+          {children}
+        </nldd-container>
+      ) : (
+        children
+      )}
       {footer && <div slot="footer">{footer}</div>}
     </nldd-card>
   );
