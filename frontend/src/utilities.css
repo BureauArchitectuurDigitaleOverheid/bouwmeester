@@ -53,10 +53,6 @@
   white-space: pre-wrap;
 }
 
-.whitespace-nowrap {
-  white-space: nowrap;
-}
-
 /* # Type treatments the system does not offer
  *
  * nldd-text has size, weight and color, but no case or letter-spacing. Both
@@ -92,15 +88,6 @@
   opacity: 0.8;
 }
 
-/* # Images
- *
- * An avatar or thumbnail has to fill its box without distorting. nldd-avatar
- * does this for a person; a pasted attachment is not a person.
- */
-.object-cover {
-  object-fit: cover;
-}
-
 /* # Visibility without reflow
  *
  * `invisible` keeps the box so a hover-revealed control does not shift the row
@@ -108,23 +95,6 @@
  */
 .invisible {
   visibility: hidden;
-}
-
-/* # Scroll snapping
- *
- * The task board scrolls one column at a time on a phone. No design-system
- * component carries a scroll container of its own.
- */
-.snap-x {
-  scroll-snap-type: x var(--_snap-strictness, proximity);
-}
-
-.snap-mandatory {
-  --_snap-strictness: mandatory;
-}
-
-.snap-center {
-  scroll-snap-align: center;
 }
 
 /* # Responsive stack-to-row

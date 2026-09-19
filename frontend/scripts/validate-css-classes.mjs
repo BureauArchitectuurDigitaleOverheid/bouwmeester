@@ -123,9 +123,36 @@ for (const file of files) {
   }
 }
 
-if (unbacked.size === 0) {
-  console.log(`CSS classes OK — ${files.length} files, ${defined.size} classes defined.`);
+/**
+ * The other direction: CSS nobody uses.
+ *
+ * This check started by finding classes with no rule behind them, and the
+ * reverse crept in unnoticed: five rules in utilities.css that no .tsx
+ * mentioned, left behind when their call sites were converted. A file that
+ * opens by saying it is not a utility framework has to be held to it, so an
+ * orphan rule is an error here too, not a warning.
+ *
+ * Only utilities.css is judged. index.css carries element and global rules
+ * whose selectors are not class names we look for in markup.
+ */
+const utilities = readFileSync(path.join(SRC, 'utilities.css'), 'utf8');
+const ours = new Set([...utilities.matchAll(/^\.([a-zA-Z][\w-]*)/gm)].map((m) => m[1]));
+const allSource = files.map((f) => readFileSync(f, 'utf8')).join('\n');
+const orphans = [...ours].filter((cls) => !new RegExp(`\\b${cls}\\b`).test(allSource));
+
+if (unbacked.size === 0 && orphans.length === 0) {
+  console.log(
+    `CSS classes OK — ${files.length} files, ${defined.size} classes defined, ` +
+      `${ours.size} utilities all in use.`,
+  );
   process.exit(0);
+}
+
+if (orphans.length > 0 && unbacked.size === 0) {
+  console.error(`\n${orphans.length} class(es) in utilities.css that nothing uses:\n`);
+  for (const cls of orphans.sort()) console.error(`  .${cls}`);
+  console.error('\nDelete the rule, or use it. utilities.css is not a utility framework.\n');
+  process.exit(1);
 }
 
 const lines = [...unbacked].map(([cls, where]) => `  ${cls}  (${where})`);
