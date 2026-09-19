@@ -63,7 +63,12 @@ class MattermostPostLink(Base):
     skipped_reason: Mapped[str | None] = mapped_column(
         String(64),
         nullable=True,
-        comment="bot_self|noise|no_link|other — voor diagnose",
+        comment=(
+            "noise|no_link|no_lead|llm_unavailable|stale_initiatief|"
+            "post_gone|channel_unlinked|scope_changed|llm_not_configured — "
+            "voor diagnose. llm_unavailable en llm_not_configured vormen "
+            "samen de wachtrij voor herverwerking."
+        ),
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

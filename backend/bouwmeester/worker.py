@@ -78,6 +78,39 @@ async def _opdracht_task_loop(settings) -> None:  # type: ignore[no-untyped-def]
         await asyncio.sleep(settings.OPDRACHT_TASK_INTERVAL_SECONDS)
 
 
+async def _mattermost_retry_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Bied Mattermost-posts opnieuw aan die de LLM niet kon beoordelen.
+
+    Bij een VLAM-storing komt de lead-classificatie niet door en wordt de
+    post weggeschreven als ``llm_unavailable``. Zonder deze loop blijft zo'n
+    bericht definitief liggen, want ``ingest_post`` slaat alles over wat al
+    een ``mattermost_post_link`` heeft. Een echte lead die tijdens een
+    storing langskwam zou dus nooit meer opgepikt worden.
+    """
+    interval_seconds = settings.MATTERMOST_RETRY_INTERVAL_SECONDS
+    await health_tick("mattermost_retry", status="starting")
+    while True:
+        try:
+            from bouwmeester.services.mattermost_ingest_service import (
+                retry_llm_unavailable,
+            )
+
+            # Elke post krijgt binnen deze call een eigen sessie en commit,
+            # zodat één mislukking de rest van de ronde niet terugdraait.
+            processed, leads = await retry_llm_unavailable()
+            await health_tick(
+                "mattermost_retry",
+                detail=f"{processed} herverwerkt, {leads} suggesties",
+            )
+        except Exception as exc:
+            logger.exception("Error in Mattermost retry cycle")
+            await health_tick(
+                "mattermost_retry", status="error", detail=_short_error(exc)
+            )
+
+        await asyncio.sleep(interval_seconds)
+
+
 async def _fcc_sync_loop(settings) -> None:  # type: ignore[no-untyped-def]
     """Bidirectional sync with Fortes Change Cloud."""
     await health_tick("fcc_sync", status="starting")
@@ -347,6 +380,7 @@ async def main() -> None:
         asyncio.create_task(_mattermost_websocket_loop(settings)),
         asyncio.create_task(_opdracht_task_loop(settings)),
         asyncio.create_task(_fcc_sync_loop(settings)),
+        asyncio.create_task(_mattermost_retry_loop(settings)),
         asyncio.create_task(_overheidsorganisaties_dagelijks_loop(settings)),
         asyncio.create_task(_overheidsorganisaties_wekelijks_loop(settings)),
     ]

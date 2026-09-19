@@ -183,6 +183,33 @@ async def sync_kabinet(
             )
             continue
 
+        eind_datum = _parse_datum(entry.get("tot"), None)
+
+        # `huidige_keys` is op naam gekeyed, maar de insert gebeurt op id. De
+        # achternaam-match hierboven kan twee YAML-namen op dezelfde Person
+        # uitkomen, en dan zou de naam-check de botsing niet zien. Daarom
+        # hier nog een id-check tegen uq_active_placement, dat per
+        # (person, eenheid, bron) maar één open rij toestaat.
+        if eind_datum is None:
+            al_actief = (
+                (
+                    await session.execute(
+                        select(PersonOrganisatieEenheid).where(
+                            PersonOrganisatieEenheid.person_id == person.id,
+                            PersonOrganisatieEenheid.organisatie_eenheid_id
+                            == eenheid.id,
+                            PersonOrganisatieEenheid.bron == "kabinet_yaml",
+                            PersonOrganisatieEenheid.eind_datum.is_(None),
+                        )
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if al_actief is not None:
+                stats.onveranderd += 1
+                continue
+
         plc = PersonOrganisatieEenheid(
             person_id=person.id,
             organisatie_eenheid_id=eenheid.id,
@@ -190,7 +217,7 @@ async def sync_kabinet(
             functietitel=entry.get("functietitel"),
             bron="kabinet_yaml",
             start_datum=_parse_datum(entry.get("van"), today) or today,
-            eind_datum=_parse_datum(entry.get("tot"), None),
+            eind_datum=eind_datum,
         )
         session.add(plc)
         stats.new_placements += 1

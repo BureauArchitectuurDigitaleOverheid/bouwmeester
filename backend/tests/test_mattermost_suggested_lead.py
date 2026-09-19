@@ -511,15 +511,64 @@ async def test_double_approval_is_idempotent(
     assert len(leads) == 1
 
 
-async def test_llm_unavailable_marks_skipped_reason(db_session, sample_channel):
-    """Als VLAM niet beschikbaar is, wordt de PostLink met
-    ``skipped_reason='llm_unavailable'`` aangemaakt zodat de post
-    later kan worden gereprocesseerd."""
+async def test_geen_llm_geconfigureerd_markeert_not_configured(
+    db_session, sample_channel
+):
+    """Geen provider opgebouwd → ``skipped_reason='llm_not_configured'``.
+
+    Bewust onderscheiden van een storing: hier gaat er geen enkele
+    netwerkcall uit, en opnieuw proberen helpt pas als een beheerder de
+    configuratie rechtzet. Beide blijven wel in de herverwerkings-wachtrij.
+    """
     from bouwmeester.models.mattermost_post_link import MattermostPostLink
 
     with patch(
         "bouwmeester.services.llm.factory.get_llm_service_for",
         new=AsyncMock(return_value=None),
+    ):
+        ingest = MattermostIngestService(db_session)
+        post = {
+            "id": _id(),
+            "channel_id": sample_channel.channel_id,
+            "user_id": _id(),
+            "create_at": 1_700_000_000_000,
+            "message": "Mogelijk een lead.",
+        }
+        await ingest.ingest_post(post)
+
+    pl = (
+        await db_session.execute(
+            select(MattermostPostLink).where(MattermostPostLink.post_id == post["id"])
+        )
+    ).scalar_one()
+    assert pl.skipped_reason == "llm_not_configured"
+    assert pl.suggested_lead_id is None
+
+
+async def test_llm_storing_markeert_unavailable(db_session, sample_channel):
+    """LLM is er wél maar de call mislukt → ``llm_unavailable``.
+
+    Dit is het geval dat vanzelf overgaat, dus de herverwerking pakt 'm op
+    zodra de dienst terug is.
+    """
+    from bouwmeester.models.mattermost_post_link import MattermostPostLink
+    from bouwmeester.services.llm.base import LeadCandidateClassification
+
+    mock_llm = AsyncMock()
+    mock_llm.classify_mattermost_lead_candidate = AsyncMock(
+        return_value=LeadCandidateClassification(
+            is_lead=False,
+            confidence=0.0,
+            proposed_title="",
+            proposed_description="",
+            match_existing_lead_id=None,
+            reasoning="LLM-call mislukt",
+            failed=True,
+        )
+    )
+    with patch(
+        "bouwmeester.services.llm.factory.get_llm_service_for",
+        new=AsyncMock(return_value=mock_llm),
     ):
         ingest = MattermostIngestService(db_session)
         post = {

@@ -6,6 +6,10 @@ const LOOP_LABELS: Record<string, string> = {
   mattermost_websocket: 'Mattermost: websocket (kanaal-meelezen + DM-koppeling)',
   opdracht_task: 'Opdracht-taken (deadlines, budget)',
   fcc_sync: 'Fortes Change Cloud sync',
+  mattermost_retry: 'Mattermost: herverwerking na LLM-storing',
+  overheidsorganisaties_daily: 'Overheidsorganisaties: dagelijks (TK-leden, kabinet, ABD)',
+  overheidsorganisaties_weekly: 'Overheidsorganisaties: wekelijks (TOOI, RIO, organogram)',
+  worker_singleton: 'Worker-singleton (lock)',
 };
 
 function formatAge(seconds: number | null): string {
@@ -23,20 +27,38 @@ const HEALTH_CONFIG: Record<WorkerHealth, { icon: string; color: 'success' | 'wa
   disabled: { icon: 'minus-circle', color: 'neutral', label: 'Uitgeschakeld' },
 };
 
-function HealthBadge({ health }: { health: WorkerHealth }) {
+function HealthBadge({ health, one_shot = false }: { health: WorkerHealth; one_shot?: boolean }) {
   const { icon, color, label } = HEALTH_CONFIG[health];
-  return <nldd-tag text={label} icon={icon} color={color} size="sm" />;
+  // Een lock "draait" niet, die is gehouden.
+  return (
+    <nldd-tag
+      text={health === 'healthy' && one_shot ? 'Actief' : label}
+      icon={icon}
+      color={color}
+      size="sm"
+    />
+  );
 }
 
 function WorkerRow({ worker }: { worker: WorkerHeartbeat }) {
   const label = LOOP_LABELS[worker.loop_name] ?? worker.loop_name;
+  const age = formatAge(worker.seconds_since_last_tick);
   return (
     <nldd-table-row>
       <nldd-title-cell text={label} supporting-text={worker.loop_name} />
       <nldd-text-cell>
-        <HealthBadge health={worker.health} />
+        <HealthBadge health={worker.health} one_shot={worker.one_shot} />
       </nldd-text-cell>
-      <nldd-text-cell text={formatAge(worker.seconds_since_last_tick)} hide-below="md" />
+      {/* Een one-shot tickt per ontwerp maar één keer, dus de leeftijd is
+          "sinds wanneer", niet een achterstallige hartslag. */}
+      <nldd-text-cell
+        text={
+          worker.one_shot && worker.seconds_since_last_tick !== null
+            ? `sinds ${age.replace(/ geleden$/, '')}`
+            : age
+        }
+        hide-below="md"
+      />
       <nldd-text-cell
         text={worker.status === 'never_started' ? 'Nooit gestart' : worker.status}
         color={worker.status === 'never_started' ? 'critical' : 'secondary'}
@@ -64,7 +86,7 @@ export function WorkerHealthTable() {
     );
   }
 
-  const anyDown = data.workers.some((w) => w.health === 'down');
+  const downWorkers = data.workers.filter((w) => w.health === 'down');
 
   return (
     <nldd-container gap="12">
@@ -76,11 +98,15 @@ export function WorkerHealthTable() {
         </nldd-text>
       </nldd-container>
 
-      {anyDown ? (
+      {downWorkers.length > 0 ? (
         <nldd-inline-dialog
           variant="alert"
-          text="Een of meer worker-loops draaien niet"
-          supporting-text="Functionaliteit zoals Mattermost-meelezen of FCC-sync werkt nu mogelijk niet. Check de container-logs voor de oorzaak."
+          text={
+            downWorkers.length === 1 ? 'Deze loop draait niet' : 'Deze loops draaien niet'
+          }
+          supporting-text={`${downWorkers
+            .map((w) => LOOP_LABELS[w.loop_name] ?? w.loop_name)
+            .join(', ')}. De bijbehorende functionaliteit werkt nu mogelijk niet. Check de container-logs voor de oorzaak.`}
         />
       ) : null}
 

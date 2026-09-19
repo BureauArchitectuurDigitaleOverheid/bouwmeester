@@ -23,6 +23,19 @@ from bouwmeester.services.mattermost_utils import escape_mattermost_md
 
 logger = logging.getLogger(__name__)
 
+
+class PostNotFoundError(Exception):
+    """De Mattermost-post bestaat niet (meer).
+
+    Bewust apart van een tijdelijke ophaalfout: alleen dit is een reden om
+    een post definitief uit de herverwerkings-wachtrij te halen.
+    """
+
+    def __init__(self, post_id: str) -> None:
+        super().__init__(f"Mattermost-post {post_id} bestaat niet (meer)")
+        self.post_id = post_id
+
+
 # In-memory config cache with TTL — also cleared by admin config update endpoint.
 _mm_config_cache: dict[str, str] | None = None
 _mm_config_cache_ts: float = 0.0
@@ -193,6 +206,35 @@ class MattermostService:
         except httpx.HTTPError:
             logger.exception("Failed to get bot user ID")
             return None
+
+    async def get_bot_identity(self) -> tuple[str | None, str | None]:
+        """Get the bot's ``(user_id, username)`` in één call.
+
+        De username hebben we nodig om ``@bouwmeester``-vermeldingen in
+        kanaalberichten te herkennen; die is per installatie anders, dus
+        hardcoden kan niet.
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.get("/api/v4/users/me")
+            resp.raise_for_status()
+            data = resp.json()
+            user_id = data.get("id") or None
+            username = data.get("username") or None
+            if user_id is None:
+                # Zonder user-id werkt de anti-feedback-loop-check niet en
+                # zou de bot zijn eigen replies als gebruikersberichten
+                # inlezen. Dan liever ook de username laten vallen, zodat
+                # hij helemaal niet op mentions reageert.
+                logger.error(
+                    "Mattermost /users/me gaf geen user-id terug; "
+                    "mention-afhandeling blijft uit"
+                )
+                return None, None
+            return user_id, username
+        except httpx.HTTPError:
+            logger.exception("Failed to get bot identity")
+            return None, None
 
     async def get_bot_dm_url(self) -> str | None:
         """Build a browser URL for DMing the bot: {base}/{team}/messages/@{username}."""
@@ -654,6 +696,35 @@ class MattermostService:
             if len(results) >= 25:
                 break
         return results
+
+    async def get_post(self, post_id: str) -> dict | None:
+        """Haal één post op.
+
+        Gebruikt door de herverwerking van posts die eerder door een
+        onbereikbare LLM niet beoordeeld konden worden. Daar telt het
+        verschil tussen "bestaat niet meer" en "kon 'm even niet ophalen":
+
+        * de post is echt weg (404, of soft-deleted met ``delete_at``) →
+          ``PostNotFoundError``, zodat de caller hem uit de wachtrij haalt;
+        * tijdelijke fout (time-out, 5xx, 429) → ``None``, zodat de caller
+          hem laat staan voor de volgende ronde. Eén Mattermost-hik mag geen
+          hele batch echte leads als "verwijderd" afschrijven.
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.get(f"/api/v4/posts/{post_id}")
+            if resp.status_code == 404:
+                raise PostNotFoundError(post_id)
+            resp.raise_for_status()
+            data = resp.json()
+            # Mattermost geeft een soft-deleted post terug met status 200 en
+            # een delete_at != 0, niet met een 404.
+            if data.get("delete_at"):
+                raise PostNotFoundError(post_id)
+            return data
+        except httpx.HTTPError:
+            logger.warning("Kon Mattermost-post %s niet ophalen", post_id)
+            return None
 
     async def get_channel_posts_since(
         self, channel_id: str, since: int, *, per_page: int = 60

@@ -18,6 +18,9 @@ class WorkerHeartbeatResponse(BaseModel):
     started_at: datetime | None
     seconds_since_last_tick: float | None
     health: str  # "healthy" | "stale" | "down" | "disabled"
+    one_shot: bool = False
+    """True voor entries die per ontwerp één keer ticken (worker_singleton).
+    De UI toont de leeftijd dan als 'sinds', niet als achterstallige hartslag."""
 
 
 class WorkerHealthResponse(BaseModel):

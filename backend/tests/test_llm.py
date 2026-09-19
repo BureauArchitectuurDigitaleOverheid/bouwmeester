@@ -425,8 +425,14 @@ class TestAdminConfigAPI:
         keys = {e["key"] for e in data}
         assert "LLM_PROVIDER" in keys
         assert "ANTHROPIC_API_KEY" in keys
-        assert "VLAM_API_KEY" in keys
         assert "LLM_MODEL" in keys
+        # VLAM_API_URL blijft als noodrem voor een verkeerd platformadres.
+        assert "VLAM_API_URL" in keys
+        # Sleutel, model en base-URL komen uit de omgeving (zad env): een
+        # tweede plek om ze te zetten liet een oude waarde stil voorgaan.
+        assert "VLAM_API_KEY" not in keys
+        assert "VLAM_MODEL_ID" not in keys
+        assert "VLAM_BASE_URL" not in keys
 
     @pytest.mark.asyncio
     async def test_list_config_masks_secrets(self, client):
@@ -519,3 +525,47 @@ class TestLLMEndpoints:
             json={"title": "x" * 501, "node_type": "dossier"},
         )
         assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_vlam_gebruikt_platform_url_boven_handmatige(self, db_session):
+        """De ZAD-dienst levert VLAM_API_URL; die gaat vóór VLAM_BASE_URL.
+
+        Een handmatig ingestelde URL kan verouderen — dat gebeurde toen de
+        demo-omgeving verdween en de ingestelde waarde naar een dode host
+        bleef wijzen. Het platform leidt het adres af uit de
+        clusterconfiguratie en houdt het in de pas met de netwerkregel.
+        """
+        from sqlalchemy.dialects.postgresql import insert
+
+        from bouwmeester.models.app_config import AppConfig
+
+        platform_url = (
+            "http://productie-vlam-proxy-intern.rig-prd-vlam-wt8.svc.cluster.local:8081"
+        )
+        waarden = {
+            "VLAM_API_KEY": "vlam-test-key",
+            "VLAM_API_URL": platform_url,
+            "VLAM_BASE_URL": "https://api.demo.vlam.ai/v2.1/projects/poc/x/v1",
+            "VLAM_MODEL_ID": "Kimi-K3-prepaid",
+        }
+        for key, value in waarden.items():
+            stmt = (
+                insert(AppConfig)
+                .values(key=key, value=value, is_secret=False)
+                .on_conflict_do_update(index_elements=["key"], set_={"value": value})
+            )
+            await db_session.execute(stmt)
+        await db_session.flush()
+
+        clear_config_cache()
+        await _ensure_services(db_session)
+
+        from bouwmeester.services.llm import factory as fmod
+
+        assert fmod._vlam_cache is not None
+        # De OpenAI-client normaliseert de base_url naar een URL-object met
+        # trailing slash; vergelijk daarom op string-prefix.
+        assert str(fmod._vlam_cache._client.base_url).rstrip("/") == (
+            f"{platform_url}/v1"
+        )
+        clear_config_cache()
