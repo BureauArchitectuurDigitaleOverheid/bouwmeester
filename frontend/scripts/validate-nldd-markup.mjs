@@ -95,6 +95,33 @@ for (const file of files) {
     }
   }
 
+  // The same names again, but anywhere in the file rather than only on a literal
+  // nldd-* tag. Half of this codebase passes icons through React wrappers
+  // (<NlddIconButton icon="check-mark">, <Button startIcon={...}>), and those
+  // never match the tag scan above: four wrong names once shipped that way, and
+  // a wrong name renders nothing at all with no error. A string in a ternary
+  // (`icon={on ? 'a' : 'b'}`) is checked too, since that is how every toggle in
+  // the app picks its glyph.
+  //
+  // Only quoted literals are checked. A name held in a variable or a lookup
+  // table is out of reach here; the map itself is where that gets read.
+  if (iconNames.size) {
+    const seen = new Set();
+    for (const m of source.matchAll(/\b(?:icon|start-icon|end-icon|startIcon|endIcon)=(?:"([a-z0-9-]+)"|\{([^{}]*)\})/g)) {
+      const line = source.slice(0, m.index).split('\n').length;
+      // Strip comparison operands first: `typeof icon === 'string'` inside the
+      // expression is a type test, not an icon name.
+      const expr = m[2]?.replace(/[=!]==?\s*'[a-z0-9-]+'/g, '');
+      const candidates = m[1] ? [m[1]] : [...expr.matchAll(/'([a-z0-9-]+)'/g)].map((s) => s[1]);
+      for (const name of candidates) {
+        const key = `${line}:${name}`;
+        if (seen.has(key) || iconNames.has(name)) continue;
+        seen.add(key);
+        problems.push(`${rel}:${line} icon="${name}" is not a known icon`);
+      }
+    }
+  }
+
   // A `slot="x"` has to exist on the ELEMENT THAT ENCLOSES IT, not merely
   // somewhere in the system. This is the check that matters: nldd-table has
   // `empty` but no `no-results`, while nldd-list has both, so the same markup

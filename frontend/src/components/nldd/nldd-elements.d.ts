@@ -208,6 +208,11 @@ declare module 'react' {
 				/** Override translation keys; unset keys fall back to Dutch */
 				'translations'?: NLDDAvatar['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/avatar-group';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-avatar-group': NlddElement & {
 				/** Diameter of each avatar in px (spacer-aligned: 16, 20, 24, 28, 32, 40, 44, 48, 56, 64, 80, 96); default 40 */
 				'size'?: NLDDAvatarGroup['size'];
@@ -258,10 +263,20 @@ declare module 'react' {
 				/** Override translation keys; unset keys fall back to Dutch */
 				'translations'?: NLDDBanner['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/bar-split-view';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-bar-split-view': NlddElement & {
 				/** Background color variant (default: inherit) */
 				'background'?: NLDDBarSplitView['background'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/blockquote';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-blockquote': NlddElement & {
 				/** URL of the source (forwarded to the <blockquote> element) */
 				'cite'?: NLDDBlockquote['cite'];
@@ -276,6 +291,11 @@ declare module 'react' {
 				/** Override translation keys; unset keys fall back to the Dutch default. */
 				'translations'?: NLDDBreadcrumbs['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/breadcrumbs-item';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-breadcrumbs-item': NlddElement & {
 				/** Link target. Ignored when `current` is set. */
 				'href'?: NLDDBreadcrumbsItem['href'];
@@ -342,6 +362,11 @@ declare module 'react' {
 				/** Disabled state */
 				'disabled'?: NLDDButtonBar['disabled'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/button-bar-divider';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-button-bar-divider': NlddElement & {
 			};
 			'nldd-button-group': NlddElement & {
@@ -424,6 +449,11 @@ declare module 'react' {
 				'invalid'?: NLDDCheckboxField['invalid'];
 				'internals'?: NLDDCheckboxField['internals'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/code-editor';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-code-editor': NlddElement & {
 				/** Editor content */
 				'value'?: NLDDCodeEditor['value'];
@@ -457,6 +487,11 @@ declare module 'react' {
 				'invalid'?: NLDDCodeEditor['invalid'];
 				'internals'?: NLDDCodeEditor['internals'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/code-viewer';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-code-viewer': NlddElement & {
 				/** Visual style. The two `box` values are a framed card with rounded corners, padding, fill, and a 1px border ring, and differ in which surface they fill with; `box-tinted` is the default. `simple` drops the entire frame — use when embedding inside a parent surface. */
 				'variant'?: NLDDCodeViewer['variant'];
@@ -660,6 +695,11 @@ declare module 'react' {
 				'translations'?: NLDDDateField['translations'];
 				'internals'?: NLDDDateField['internals'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/date-picker';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-date-picker': NlddElement & {
 				/** The chosen date as ISO (yyyy-mm-dd). Only without `range`. */
 				'value'?: NLDDDatePicker['value'];
@@ -702,6 +742,11 @@ declare module 'react' {
 			};
 			'nldd-divider': NlddElement & {
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/document-tab-bar';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-document-tab-bar': NlddElement & {
 				/** Accessible name for the navigation landmark */
 				'accessible-label'?: NLDDDocumentTabBar['accessibleLabel'];
@@ -710,6 +755,11 @@ declare module 'react' {
 				/** Translation overrides; unset keys fall back to Dutch. Available keys: 'components.document-tab-bar.overflow-action' (default: 'Meer') */
 				'translations'?: NLDDDocumentTabBar['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/document-tab-bar-item';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-document-tab-bar-item': NlddElement & {
 				/** Selected state (managed by nldd-document-tab-bar) */
 				'selected'?: NLDDDocumentTabBarItem['selected'];
@@ -724,6 +774,11 @@ declare module 'react' {
 				/** Optional link URL; renders an anchor instead of a div */
 				'href'?: NLDDDocumentTabBarItem['href'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/drag-handle-cell';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-drag-handle-cell': NlddElement & {
 				/** Handle size: 'sm' | 'md' (default: 'md') */
 				'size'?: NLDDDragHandleCell['size'];
@@ -796,6 +851,11 @@ declare module 'react' {
 				/** Text for the optional badge. Defaults to 'Optioneel'. */
 				'optional-label'?: NLDDFormField['optionalLabel'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/form-field-help-text';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-form-field-help-text': NlddElement & {
 			};
 			'nldd-form-section': NlddElement & {
@@ -830,6 +890,11 @@ declare module 'react' {
 				/** Minimum section height (any CSS length, e.g. '400px', '100dvh') (mirrors width, which sets the body max-width). */
 				'height'?: NLDDFullBleedSection['height'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/hero';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-hero': NlddElement & {
 				/** Position of the text panel (default: 'bottom-left'); 'left'/'right' span the full height */
 				'main-position'?: NLDDHero['mainPosition'];
@@ -949,6 +1014,11 @@ declare module 'react' {
 				/** Alt text for the avatar-src image; empty means decorative */
 				'avatar-alt'?: NLDDIdentity['avatarAlt'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/image';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-image': NlddElement & {
 				/** Image URL */
 				'src'?: NLDDImage['src'];
@@ -1005,6 +1075,11 @@ declare module 'react' {
 				/** Overrides the alignment of text, icon and actions. Unset (the default) derives it: content in the default slot means a task, which aligns left; a bare message stays centered. Left alignment also lays the actions out in a row instead of stacked full-width. */
 				'horizontal-alignment'?: NLDDInlineDialog['horizontalAlignment'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/just-in-time-education';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-just-in-time-education': NlddElement & {
 				/** Show the coach mark. Driven by the app; false by default. */
 				'active'?: NLDDJustInTimeEducation['active'];
@@ -1022,6 +1097,11 @@ declare module 'react' {
 				'no-arrow'?: NLDDJustInTimeEducation['noArrow'];
 				'translations'?: NLDDJustInTimeEducation['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/keyboard-shortcut';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-keyboard-shortcut': NlddElement & {
 				/** Keys separated by '+' (e.g. 'Cmd+K' or 'Ctrl+Shift+P'). Use '+++' for a literal '+' key: 'Ctrl+++' becomes 'Ctrl' + '+'. For more complex cases (a combo with several '+' keys, for instance) use the default slot with your own <kbd> elements instead of the keys attribute. */
 				'keys'?: NLDDKeyboardShortcut['keys'];
@@ -1153,6 +1233,11 @@ declare module 'react' {
 				/** Render variant. Use 'listbox' when the menu serves as a combobox popup — this switches role to "listbox" and item roles to "option" per ARIA spec. Default: 'menu'. */
 				'variant'?: NLDDMenu['variant'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/menu-bar';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-menu-bar': NlddElement & {
 				/** Text for the overflow button (default through i18n) */
 				'overflow-text'?: NLDDMenuBar['overflowText'];
@@ -1162,6 +1247,11 @@ declare module 'react' {
 				'compact'?: NLDDMenuBar['compact'];
 				'translations'?: NLDDMenuBar['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/menu-bar-item';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-menu-bar-item': NlddElement & {
 				/** Text of the item */
 				'text'?: NLDDMenuBarItem['text'];
@@ -1190,12 +1280,27 @@ declare module 'react' {
 				/** Whether the matching popover is open; sets aria-expanded on the button when expandable or haspopup is set. Tracked automatically for a slotted `<nldd-menu>`. */
 				'expanded'?: NLDDMenuBarItem['expanded'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/menu-divider';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-menu-divider': NlddElement & {
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/menu-group';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-menu-group': NlddElement & {
 				/** Group title text shown above the items. */
 				'text'?: NLDDMenuGroup['text'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/menu-item';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-menu-item': NlddElement & {
 				/** Display text. Supports **bold** markdown syntax. */
 				'text'?: NLDDMenuItem['text'];
@@ -1342,6 +1447,11 @@ declare module 'react' {
 				'invalid'?: NLDDNumberField['invalid'];
 				'internals'?: NLDDNumberField['internals'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/one-half-one-half-section';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-one-half-one-half-section': NlddElement & {
 				/** Body max-width: 'full' removes the constraint so the section spans the full available width. Any CSS length (e.g. '480px') overrides the default max-width. */
 				'width'?: NLDDOneHalfOneHalfSection['width'];
@@ -1368,6 +1478,11 @@ declare module 'react' {
 				/** Minimum section height (any CSS length, e.g. '400px', '100dvh') (mirrors width, which sets the body max-width). */
 				'height'?: NLDDOneHalfOneHalfSection['height'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/one-third-two-thirds-section';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-one-third-two-thirds-section': NlddElement & {
 				/** Body max-width: 'full' removes the constraint so the section spans the full available width. Any CSS length (e.g. '480px') overrides the default max-width. */
 				'width'?: NLDDOneThirdTwoThirdsSection['width'];
@@ -1406,12 +1521,22 @@ declare module 'react' {
 				/** Body max-width, mirroring a page section: 'full' removes the constraint so the content spans the full width; any CSS length (e.g. '480px') overrides the default max-width. */
 				'width'?: NLDDPageFooter['width'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/page-footer-legal-bar';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-page-footer-legal-bar': NlddElement & {
 				/** Override the nav's aria-label. Defaults to the i18n value (NL: "Juridische links"). */
 				'accessible-label'?: NLDDPageFooterLegalBar['accessibleLabel'];
 				/** Override translation keys; unset keys fall back to the Dutch default. */
 				'translations'?: NLDDPageFooterLegalBar['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/page-footer-legal-bar-item';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-page-footer-legal-bar-item': NlddElement & {
 				/** Link target. When omitted, the item renders as plain text. */
 				'href'?: NLDDPageFooterLegalBarItem['href'];
@@ -1432,6 +1557,11 @@ declare module 'react' {
 				/** Translations; unspecified keys fall back to Dutch */
 				'translations'?: NLDDPagination['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/password-field';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-password-field': NlddElement & {
 				/** 'md' (default) | 'sm'. Set automatically by nldd-form-field. */
 				'size'?: NLDDPasswordField['size'];
@@ -1528,6 +1658,11 @@ declare module 'react' {
 				/** Override translation keys; unset keys fall back to Dutch */
 				'translations'?: NLDDProgressBar['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/progress-bar-segment-indicator';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-progress-bar-segment-indicator': NlddElement & {
 				/** Share of the parent's total (default 0; <=0 hides segment) */
 				'value'?: NLDDProgressBarSegmentIndicator['value'];
@@ -1538,6 +1673,11 @@ declare module 'react' {
 				/** Override of the auto-generated tooltip text */
 				'tooltip-text'?: NLDDProgressBarSegmentIndicator['tooltipText'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/progress-circle';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-progress-circle': NlddElement & {
 				/** Semantics for ARIA and gap behavior (default: 'progress') */
 				'mode'?: NLDDProgressCircle['mode'];
@@ -1564,6 +1704,11 @@ declare module 'react' {
 				/** Override translation keys; unset keys fall back to Dutch */
 				'translations'?: NLDDProgressCircle['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/progress-circle-segment-indicator';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-progress-circle-segment-indicator': NlddElement & {
 				/** Share of the parent's total (default 0; <=0 hides segment) */
 				'value'?: NLDDProgressCircleSegmentIndicator['value'];
@@ -1698,6 +1843,11 @@ declare module 'react' {
 				'values'?: NLDDSegmentedControl['values'];
 				'internals'?: NLDDSegmentedControl['internals'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/segmented-control-item';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-segmented-control-item': NlddElement & {
 				/** Required state of the native checkbox. In radio mode the group carries the constraint. */
 				'required'?: NLDDSegmentedControlItem['required'];
@@ -1730,12 +1880,22 @@ declare module 'react' {
 				/** Custom width for side sheets (left/right) as a CSS length (e.g. '480px', '32rem'). Applied from the md breakpoint up; ignored on sm (bottom sheet) and for `placement="bottom"`. Clamped to `100vw - 2 * inset` so the sheet always fits. */
 				'width'?: NLDDSheet['width'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/side-by-side-split-view';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-side-by-side-split-view': NlddElement & {
 				/** Use a tinted background color (cascades to descendants) */
 				'background'?: NLDDSideBySideSplitView['background'];
 				/** Number of panes (default: 2) */
 				'panes'?: NLDDSideBySideSplitView['panes'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/sidebar-section';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-sidebar-section': NlddElement & {
 				/** Body max-width: 'full' removes the constraint; any CSS length overrides the default. */
 				'width'?: NLDDSidebarSection['width'];
@@ -1822,6 +1982,11 @@ declare module 'react' {
 				'hide-below'?: NLDDSpacerCell['hideBelow'];
 				'hide-above'?: NLDDSpacerCell['hideAbove'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/split-button';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-split-button': NlddElement & {
 				/** Button size: 'xs' | 'sm' | 'md' | 'lg' (default: 'md') */
 				'size'?: NLDDSplitButton['size'];
@@ -1838,6 +2003,11 @@ declare module 'react' {
 				/** Translations; unset keys fall back to Dutch */
 				'translations'?: NLDDSplitButton['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/split-view-divider';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-split-view-divider': NlddElement & {
 				/** Orientation: 'vertical' | 'horizontal' */
 				'orientation'?: NLDDSplitViewDivider['orientation'];
@@ -1852,12 +2022,22 @@ declare module 'react' {
 				/** Use a tinted background color (cascades to descendants) */
 				'background'?: NLDDSplitViewPane['background'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/stacked-split-view';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-stacked-split-view': NlddElement & {
 				/** Use a tinted background color (cascades to descendants) */
 				'background'?: NLDDStackedSplitView['background'];
 				/** Number of panes (default: 2) */
 				'panes'?: NLDDStackedSplitView['panes'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/status-bar';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-status-bar': NlddElement & {
 				/** Color of the bar (default: 'neutral') */
 				'variant'?: NLDDStatusBar['variant'];
@@ -1872,6 +2052,11 @@ declare module 'react' {
 				/** Makes the whole bar a button; ignored when href is set */
 				'button'?: NLDDStatusBar['button'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/step-indicator';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-step-indicator': NlddElement & {
 				/** Name of the nav; defaults to the i18n value ("Voortgang") */
 				'accessible-label'?: NLDDStepIndicator['accessibleLabel'];
@@ -1881,6 +2066,11 @@ declare module 'react' {
 				'translations'?: NLDDStepIndicator['translations'];
 				'total'?: NLDDStepIndicator['total'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/step-indicator-item';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-step-indicator-item': NlddElement & {
 				/** `past` | `current` | `future`; overrides what the parent derives */
 				'status'?: NLDDStepIndicatorItem['status'];
@@ -1893,6 +2083,11 @@ declare module 'react' {
 				/** For flows without a URL per step (a wizard inside one window). Ignored once `href` is set: one step is one action, and a link outranks a button -- the same rule as nldd-card and nldd-avatar. */
 				'button'?: NLDDStepIndicatorItem['button'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/stepper';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-stepper': NlddElement & {
 				/** Current value */
 				'value'?: NLDDStepper['value'];
@@ -1967,6 +2162,11 @@ declare module 'react' {
 				/** Accessible name for the navigation region; defaults to 'Tabs' */
 				'accessible-label'?: NLDDTabBar['accessibleLabel'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/tab-bar-item';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-tab-bar-item': NlddElement & {
 				/** The item you are on. A tab bar switching content manages it itself and renders it as `aria-selected`; a `navigation` bar leaves it to the consumer, since it follows the route, and renders it as `aria-current="page"`. Unlike a list row, which separates `current` from `selected` because it can be both at once, a tab bar has exactly one active item. */
 				'current'?: NLDDTabBarItem['current'];
@@ -1997,6 +2197,11 @@ declare module 'react' {
 				/** Override translation keys; unset keys fall back to Dutch */
 				'translations'?: NLDDTable['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/table-row';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-table-row': NlddElement & {
 				/** Highlights the row (same treatment as nldd-list-item[selected]) */
 				'selected'?: NLDDTableRow['selected'];
@@ -2057,6 +2262,11 @@ declare module 'react' {
 				'hide-below'?: NLDDTextCell['hideBelow'];
 				'hide-above'?: NLDDTextCell['hideAbove'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/text-editor';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-text-editor': NlddElement & {
 				/** Editor content (markdown) */
 				'value'?: NLDDTextEditor['value'];
@@ -2137,6 +2347,11 @@ declare module 'react' {
 				'maxlength'?: NLDDTextField['maxlength'];
 				'internals'?: NLDDTextField['internals'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/time-field';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-time-field': NlddElement & {
 				/** 'md' (default) | 'sm'. Set automatically by nldd-form-field. */
 				'size'?: NLDDTimeField['size'];
@@ -2176,6 +2391,11 @@ declare module 'react' {
 				'translations'?: NLDDTimeField['translations'];
 				'internals'?: NLDDTimeField['internals'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/time-picker';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-time-picker': NlddElement & {
 				/** The chosen time as `HH:mm` (24-hour). */
 				'value'?: NLDDTimePicker['value'];
@@ -2301,6 +2521,11 @@ declare module 'react' {
 				/** Marks the control as invalid. Announced with aria-invalid; nothing is drawn for it. */
 				'invalid'?: NLDDToggleButtonGroup['invalid'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/token';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-token': NlddElement & {
 				/** Token text; falls back to the default slot when unset. */
 				'text'?: NLDDToken['text'];
@@ -2360,6 +2585,11 @@ declare module 'react' {
 				/** Override translation keys (e.g. the overflow button label); unset keys fall back to Dutch. */
 				'translations'?: NLDDToolbar['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/toolbar-item';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-toolbar-item': NlddElement & {
 				/** Fluid width: a percentage (e.g. '40%') or any CSS length (e.g. '240px'). Setting it (or min-width or max-width) makes the item fluid so it grows to fill the available space. */
 				'width'?: NLDDToolbarItem['width'];
@@ -2372,6 +2602,11 @@ declare module 'react' {
 				/** Overflow order: items with a lower priority move into the overflow menu first (default 0). Items sharing a priority overflow together, regardless of position. */
 				'priority'?: NLDDToolbarItem['priority'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/toolbar-title';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-toolbar-title': NlddElement & {
 				/** Makes the mark and the name one link, for the place this window belongs to (usually the app's own start). The `action` slot stays outside it: a control inside a link is a control you cannot reach without following the link. */
 				'href'?: NLDDToolbarTitle['href'];
@@ -2402,6 +2637,11 @@ declare module 'react' {
 				/** When the tooltip appears on hover: 'instant' — right away, without a show delay. 'delay' (the default) — after the standard show delay (700ms). 'never' — the tooltip is never shown; hover and focus events are ignored, aria-describedby is suppressed, and a tooltip that is already visible disappears. The hide delay and the touch suppression stay in force under every value. A focus trigger is always instant. */
 				'timing'?: NLDDTooltip['timing'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/top-navigation-bar';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-top-navigation-bar': NlddElement & {
 				/** Name of the website or application, above the menu bar. Empty leaves the title line out. */
 				'website-title'?: NLDDTopNavigationBar['websiteTitle'];
@@ -2441,6 +2681,11 @@ declare module 'react' {
 				/** Text of the dismiss button. Empty hides that button. */
 				'dismiss-text'?: NLDDTopTitleBar['dismissText'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/two-thirds-one-third-section';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-two-thirds-one-third-section': NlddElement & {
 				/** Body max-width: 'full' removes the constraint so the section spans the full available width. Any CSS length (e.g. '480px') overrides the default max-width. */
 				'width'?: NLDDTwoThirdsOneThirdSection['width'];
@@ -2467,6 +2712,11 @@ declare module 'react' {
 				/** Minimum section height (any CSS length, e.g. '400px', '100dvh') (mirrors width, which sets the body max-width). */
 				'height'?: NLDDTwoThirdsOneThirdSection['height'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/validation-item';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-validation-item': NlddElement & {
 				/** Regular expression the value has to contain. Not anchored, unlike the native `pattern`: `[A-Z]` means "has a capital in it". */
 				'match'?: NLDDValidationItem['match'];

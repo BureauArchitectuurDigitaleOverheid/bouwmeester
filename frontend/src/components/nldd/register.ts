@@ -14,6 +14,7 @@
 
 // Layout
 import '@nldd/design-system/app-view';
+import '@nldd/design-system/box';
 import '@nldd/design-system/card';
 import '@nldd/design-system/collection';
 import '@nldd/design-system/container';

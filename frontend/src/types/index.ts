@@ -750,25 +750,40 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   emoji_reaction: 'reactie',
 };
 
+/**
+ * Notification type → `nldd-tag` color.
+ *
+ * Same rule as VARIANT_COLORS in common/Badge.tsx: a type that carries meaning
+ * gets the semantic role, which keeps it right in dark mode and for colorblind
+ * users, and the rest get the nearest Rijkshuisstijl color. Three types are
+ * deliberately no longer distinct: node_updated, direct_message and
+ * placement_approved all read as "something went well" and all painted the same
+ * green before, so `success` loses nothing.
+ *
+ * The label beside the color says which type it is, so the color never carries
+ * the meaning on its own (WCAG 1.4.1).
+ */
 export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
-  task_assigned: 'bg-blue-100 text-blue-700',
-  task_overdue: 'bg-red-100 text-red-700',
-  task_completed: 'bg-green-100 text-green-700',
-  task_reassigned: 'bg-orange-100 text-orange-700',
-  node_updated: 'bg-green-100 text-green-700',
-  edge_created: 'bg-purple-100 text-purple-700',
-  coverage_needed: 'bg-amber-100 text-amber-700',
-  stakeholder_added: 'bg-teal-100 text-teal-700',
-  stakeholder_role_changed: 'bg-teal-100 text-teal-700',
-  direct_message: 'bg-green-100 text-green-700',
-  agent_prompt: 'bg-violet-100 text-violet-700',
-  mention: 'bg-cyan-100 text-cyan-700',
-  politieke_input_imported: 'bg-rose-100 text-rose-700',
-  access_request: 'bg-amber-100 text-amber-700',
-  placement_request: 'bg-indigo-100 text-indigo-700',
-  placement_approved: 'bg-green-100 text-green-700',
-  placement_denied: 'bg-red-100 text-red-700',
-  emoji_reaction: 'bg-pink-100 text-pink-700',
+  // Semantic roles.
+  task_overdue: 'critical',
+  placement_denied: 'critical',
+  task_completed: 'success',
+  node_updated: 'success',
+  direct_message: 'success',
+  placement_approved: 'success',
+  task_reassigned: 'warning',
+  coverage_needed: 'warning',
+  access_request: 'warning',
+  task_assigned: 'accent',
+  // Decorative: nearest Rijkshuisstijl color.
+  edge_created: 'paars',
+  stakeholder_added: 'mintgroen',
+  stakeholder_role_changed: 'mintgroen',
+  agent_prompt: 'violet',
+  mention: 'hemelblauw',
+  politieke_input_imported: 'roze',
+  placement_request: 'donkerblauw',
+  emoji_reaction: 'roze',
 };
 
 export const INBOX_TYPE_COLORS: Record<string, BadgeVariant> = {

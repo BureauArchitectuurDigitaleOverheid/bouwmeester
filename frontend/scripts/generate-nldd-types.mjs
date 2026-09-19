@@ -115,14 +115,39 @@ function reactProps(block) {
   return out;
 }
 
+/**
+ * Which elements the app actually imports.
+ *
+ * Typing all 128 while registering 77 quietly promises that any of them works:
+ * an unregistered element renders its children unstyled with no error, so the
+ * types would be handing out a trap. The ones that are not imported keep their
+ * props (so adding the import is all it takes) but say so in a doc comment.
+ */
+const registered = new Set(
+  [...readFileSync(path.resolve(import.meta.dirname, '../src/components/nldd/register.ts'), 'utf8')
+    .matchAll(/@nldd\/design-system\/([a-z-]+)/g)].map((m) => `nldd-${m[1]}`),
+);
+
 const body = elements
   .sort((a, b) => a.tag.localeCompare(b.tag))
   .map(({ tag, cls }) => {
     const block = propBlocks.get(cls);
     const props = block ? reactProps(block) : [];
-    return [`\t\t\t'${tag}': NlddElement & {`, ...props.map((l) => `\t${l}`), '\t\t\t};'].join(
-      '\n',
-    );
+    const note = registered.has(tag)
+      ? []
+      : [
+          `\t\t\t/** NOT REGISTERED. Using this renders its children unstyled with no`,
+          `\t\t\t *  error. Add \`import '@nldd/design-system/${tag.replace(/^nldd-/, '')}';\` to`,
+          `\t\t\t *  components/nldd/register.ts first. Some elements register through a`,
+          `\t\t\t *  parent's module (nldd-table-row with nldd-table); register.test.ts lists`,
+          `\t\t\t *  those. */`,
+        ];
+    return [
+      ...note,
+      `\t\t\t'${tag}': NlddElement & {`,
+      ...props.map((l) => `\t${l}`),
+      '\t\t\t};',
+    ].join('\n');
   })
   .join('\n');
 
