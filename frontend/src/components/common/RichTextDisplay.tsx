@@ -3,6 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
+import { MENTION_SCHEMES } from '@/utils/mentions';
+
+/** `[label](scheme:id)` for any of our mention schemes. */
+const MENTION_LINK_RE = new RegExp(
+  `\\]\\((?:${Object.values(MENTION_SCHEMES).join('|')}):`,
+);
 
 // Regex to detect URLs in plain text.
 // Matches http(s) URLs, then trims common trailing sentence punctuation that
@@ -37,6 +43,11 @@ interface TipTapNode {
 interface TipTapMark {
   type: string;
   attrs?: Record<string, unknown>;
+}
+
+/** Does the text hold a mention token? Those are links, so they need the renderer. */
+function containsMention(text: string): boolean {
+  return MENTION_LINK_RE.test(text);
 }
 
 /** Simple heuristic: does the text contain markdown-like formatting? */
@@ -78,6 +89,27 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
 
+  // A mention rendered by MarkdownRenderer is a button carrying its kind and
+  // id; opening it needs the contexts, which live here.
+  const handleMentionClick = (e: React.MouseEvent) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-mention-kind]');
+    if (!target) return;
+    const kind = target.dataset.mentionKind;
+    const id = target.dataset.mentionId;
+    if (!kind || !id) return;
+    e.preventDefault();
+    if (kind === 'node') openNodeDetail(id);
+    else if (kind === 'task') openTaskDetail(id);
+    else if (kind === 'organisatie') navigate(`/organisatie?eenheid=${id}`);
+    // A person mention goes nowhere: there is no person detail surface.
+  };
+
+  const markdown = (value: string) => (
+    <div onClick={handleMentionClick}>
+      <MarkdownRenderer content={value} />
+    </div>
+  );
+
   if (!content) {
     return (
       <nldd-text size="sm" color="secondary">
@@ -89,9 +121,11 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
   const doc = isTipTapJson(content);
   if (!doc) {
     // Detect markdown syntax and render accordingly
-    if (looksLikeMarkdown(content)) {
+    // Markdown, or a mention token, which is markdown by construction. After
+    // the TipTap migration this is what every stored description looks like.
+    if (looksLikeMarkdown(content) || containsMention(content)) {
       // MarkdownRenderer brings its own nldd-rich-text.
-      return <MarkdownRenderer content={content} />;
+      return markdown(content);
     }
     // Plain text fallback — auto-linkify URLs. `pre-wrap` is content, not
     // styling: the line breaks are the only structure this text has.
@@ -106,7 +140,7 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
   // text (before the editor learned to convert markdown on input).
   const plainText = extractPlainText(doc);
   if (plainText !== null && looksLikeMarkdown(plainText)) {
-    return <MarkdownRenderer content={plainText} />;
+    return markdown(plainText);
   }
 
   // nldd-rich-text styles the plain tags this renderer emits, which is why none

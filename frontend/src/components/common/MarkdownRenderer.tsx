@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import DOMPurify from 'dompurify';
+import { parseMention, mentionSigil, MENTION_SCHEMES } from '@/utils/mentions';
 import mermaid from 'mermaid';
 
 mermaid.initialize({
@@ -64,6 +65,26 @@ function parseBmLink(href: string | undefined): { type: 'node' | 'task' | 'lead'
  */
 const components: Components = {
   a: ({ href, children }) => {
+    // A mention: a link carrying a scheme, written by the editor and by the
+    // TipTap migration. Rendered as a chip that opens the thing it names.
+    const mention = href ? parseMention(href, String(children ?? '')) : null;
+    if (mention) {
+      return (
+        <button
+          type="button"
+          data-mention-kind={mention.kind}
+          data-mention-id={mention.id}
+          style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer' }}
+        >
+          <nldd-tag
+            text={`${mentionSigil(mention.kind)}${mention.label}`}
+            color={mention.kind === 'person' || mention.kind === 'organisatie' ? 'accent' : 'neutral'}
+            size="sm"
+          />
+        </button>
+      );
+    }
+
     const bm = parseBmLink(href);
     if (bm) {
       // A button, not a link: it navigates inside the app and has no URL to
@@ -167,6 +188,8 @@ export function MarkdownRenderer({ content, compact, onBmLink }: MarkdownRendere
           urlTransform={(url) => {
             // Allow bm:// protocol links for in-app navigation
             if (url.startsWith('bm://')) return url;
+            // ...and the mention schemes, which are links by construction.
+            if (Object.values(MENTION_SCHEMES).some((s) => url.startsWith(`${s}:`))) return url;
             // Default: only allow http, https, mailto
             if (/^https?:\/\/|^mailto:/i.test(url)) return url;
             return '';

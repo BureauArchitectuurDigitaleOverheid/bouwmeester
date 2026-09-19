@@ -71,6 +71,10 @@ import '@nldd/design-system/search-field';
 import '@nldd/design-system/segmented-control';
 import '@nldd/design-system/switch';
 import '@nldd/design-system/switch-field';
+// Brings CodeMirror with it: measured at +624 kB on the main chunk, which the
+// 5 MB precache limit has room for, and it replaces TipTap (6.7 MB of source)
+// rather than sitting next to it. See the note at the top about the barrel.
+import '@nldd/design-system/text-editor';
 import '@nldd/design-system/text-field';
 import '@nldd/design-system/toggle-button';
 import '@nldd/design-system/toggle-button-group';

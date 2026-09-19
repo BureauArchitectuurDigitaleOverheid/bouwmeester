@@ -1,618 +1,193 @@
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
-import { useEditor, EditorContent, type Editor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Mention from '@tiptap/extension-mention';
-import Placeholder from '@tiptap/extension-placeholder';
-import Link from '@tiptap/extension-link';
-import type { EditorView } from '@tiptap/pm/view';
+import { useEffect, useRef } from 'react';
 import { apiGet } from '@/api/client';
+import { useNlddEvent } from '@/components/nldd/events';
+import { mentionToMarkdown, type MentionKind } from '@/utils/mentions';
 import { formatFunctie, titleCase } from '@/types';
-import type { Person, OrganisatieEenheid, MentionSearchResult } from '@/types';
-import type { SuggestionProps, SuggestionKeyDownProps } from '@tiptap/suggestion';
-import { ReactRenderer } from '@tiptap/react';
-import { listyTextToHtml } from './richTextPaste';
+import type { Person, OrganisatieEenheid } from '@/types';
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+/**
+ * `nldd-text-editor` behind the previous API.
+ *
+ * This replaces ~600 lines of TipTap wiring. The document is plain markdown
+ * now, not a ProseMirror JSON tree, which is why the editor can be swapped at
+ * all: the storage format is the design system's, and `RichTextDisplay` reads
+ * the same thing.
+ *
+ * Mentions survive as markdown links carrying a scheme (`[@Anne](user:<id>)`).
+ * The `@` list is the element's built-in mention, which writes that format
+ * itself; the `#` list is ours, on its own trigger, and its `insert` writes the
+ * same shape with our schemes. See `utils/mentions.ts` for the format and
+ * `core/tiptap_markdown.py` for the migration that produced it.
+ */
 
-interface RichTextEditorProps {
-  value: string;
-  onChange: (json: string) => void;
-  placeholder?: string;
-  rows?: number;
-  readOnly?: boolean;
-  id?: string;
-  autoFocus?: boolean;
-}
-
-interface SuggestionItem {
+interface MentionSearchResult {
   id: string;
   label: string;
   subtitle?: string;
-  mentionType?: string;
+  type: string;
 }
 
-interface SuggestionListProps {
-  items: SuggestionItem[];
-  command: (item: SuggestionItem) => void;
+/** One row in a typeahead list, in the element's shape. */
+interface Candidate {
+  id: string;
+  text: string;
+  supportingText?: string;
+  avatar?: { src?: string; type?: 'person' | 'organization' };
+  icon?: string;
 }
 
-// ─── Mention type styling ────────────────────────────────────────────────────
-
-const MENTION_TYPE_LABELS: Record<string, string> = {
-  person: 'Persoon',
-  organisatie: 'Afdeling',
-  node: 'Node',
-  task: 'Taak',
-  tag: 'Tag',
-};
-
-const MENTION_TYPE_STYLES: Record<string, string> = {
-  person: 'bg-blue-50 text-blue-700',
-  organisatie: 'bg-emerald-50 text-emerald-700',
-  node: 'bg-blue-50 text-blue-700',
-  task: 'bg-amber-50 text-amber-700',
-  tag: 'bg-slate-100 text-slate-600',
-};
-
-// ─── Suggestion List Component ──────────────────────────────────────────────
-
-const SuggestionList = forwardRef<{ onKeyDown: (props: SuggestionKeyDownProps) => boolean }, SuggestionListProps>(
-  ({ items, command }, ref) => {
-    const [selectedIndex, setSelectedIndex] = useState(0);
-
-    useEffect(() => {
-      setSelectedIndex(0);
-    }, [items]);
-
-    useImperativeHandle(ref, () => ({
-      onKeyDown: ({ event }: SuggestionKeyDownProps) => {
-        if (event.key === 'ArrowUp') {
-          setSelectedIndex((i) => (i + items.length - 1) % items.length);
-          return true;
-        }
-        if (event.key === 'ArrowDown') {
-          setSelectedIndex((i) => (i + 1) % items.length);
-          return true;
-        }
-        if (event.key === 'Enter') {
-          if (items[selectedIndex]) {
-            command(items[selectedIndex]);
-          }
-          return true;
-        }
-        if (event.key === 'Escape') {
-          return true;
-        }
-        return false;
-      },
-    }));
-
-    if (!items.length || (items.length === 1 && items[0].id === '__hint__')) {
-      return (
-        <div className="rounded-xl border border-border bg-white shadow-lg py-2 px-3">
-          <p className="text-xs text-text-secondary">
-            {items[0]?.id === '__hint__' ? 'Typ om te zoeken...' : 'Geen resultaten'}
-          </p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="rounded-xl border border-border bg-white shadow-lg py-1 max-h-48 overflow-y-auto min-w-[240px]">
-        {items.map((item, index) => (
-          <button
-            key={item.id}
-            onClick={() => command(item)}
-            onMouseEnter={() => setSelectedIndex(index)}
-            className={`flex items-start gap-2 w-full px-3 py-1.5 text-left transition-colors ${
-              index === selectedIndex ? 'bg-primary-50 text-primary-700' : 'text-text hover:bg-gray-50'
-            }`}
-          >
-            {item.mentionType && (
-              <span className={`shrink-0 mt-0.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
-                MENTION_TYPE_STYLES[item.mentionType] ?? 'bg-gray-100 text-gray-600'
-              }`}>
-                {MENTION_TYPE_LABELS[item.mentionType] ?? item.mentionType}
-              </span>
-            )}
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-medium truncate">{item.label}</span>
-              {item.subtitle && (
-                <span className="text-xs text-text-secondary truncate">{item.subtitle}</span>
-              )}
-            </div>
-          </button>
-        ))}
-      </div>
-    );
-  },
-);
-SuggestionList.displayName = 'SuggestionList';
-
-// ─── Suggestion utilities ───────────────────────────────────────────────────
-
-/** Position popup below cursor, or above if there isn't enough space below. */
-function positionPopup(popup: HTMLDivElement, rect: DOMRect) {
-  const POPUP_HEIGHT_ESTIMATE = 260; // max height of suggestion dropdown
-  const GAP = 4;
-  const spaceBelow = window.innerHeight - rect.bottom;
-
-  popup.style.left = `${rect.left + window.scrollX}px`;
-
-  if (spaceBelow < POPUP_HEIGHT_ESTIMATE) {
-    // Position above
-    popup.style.top = '';
-    popup.style.bottom = `${window.innerHeight - rect.top - window.scrollY + GAP}px`;
-  } else {
-    // Position below
-    popup.style.bottom = '';
-    popup.style.top = `${rect.bottom + window.scrollY + GAP}px`;
-  }
-}
-
-function createSuggestionConfig(
-  fetchItems: (query: string) => Promise<SuggestionItem[]>,
-) {
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-  return {
-    items: async ({ query }: { query: string }) => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      return new Promise<SuggestionItem[]>((resolve) => {
-        debounceTimer = setTimeout(async () => {
-          const results = await fetchItems(query);
-          resolve(results);
-        }, 150);
-      });
-    },
-
-    render: () => {
-      let component: ReactRenderer<{ onKeyDown: (props: SuggestionKeyDownProps) => boolean }> | null = null;
-      let popup: HTMLDivElement | null = null;
-
-      return {
-        onStart: (props: SuggestionProps) => {
-          component = new ReactRenderer(SuggestionList, {
-            props: { items: props.items, command: props.command },
-            editor: props.editor,
-          });
-
-          popup = document.createElement('div');
-          popup.style.position = 'absolute';
-          popup.style.zIndex = '9999';
-          popup.appendChild(component.element);
-          document.body.appendChild(popup);
-
-          if (props.clientRect) {
-            const rect = props.clientRect();
-            if (rect) positionPopup(popup, rect);
-          }
-        },
-
-        onUpdate: (props: SuggestionProps) => {
-          component?.updateProps({ items: props.items, command: props.command });
-
-          if (popup && props.clientRect) {
-            const rect = props.clientRect();
-            if (rect) positionPopup(popup, rect);
-          }
-        },
-
-        onKeyDown: (props: SuggestionKeyDownProps) => {
-          if (props.event.key === 'Escape') {
-            popup?.remove();
-            component?.destroy();
-            popup = null;
-            component = null;
-            return true;
-          }
-          return component?.ref?.onKeyDown(props) ?? false;
-        },
-
-        onExit: () => {
-          popup?.remove();
-          component?.destroy();
-          popup = null;
-          component = null;
-        },
-      };
-    },
-  };
-}
-
-// ─── Fetch helpers ──────────────────────────────────────────────────────────
-
-async function fetchPeopleAndOrgs(query: string): Promise<SuggestionItem[]> {
+/** `@`: people and organisational units. */
+async function searchPeopleAndOrgs(query: string): Promise<Candidate[]> {
+  if (!query.trim()) return [];
   try {
     const [people, orgs] = await Promise.all([
       apiGet<Person[]>('/api/people/search', { q: query, limit: 8 }),
       apiGet<OrganisatieEenheid[]>('/api/organisatie/search', { q: query, limit: 5 }),
     ]);
-    const personItems: SuggestionItem[] = people.map((p) => ({
-      id: p.id,
-      label: p.naam,
-      subtitle: formatFunctie(p.functie),
-      mentionType: 'person',
-    }));
-    const orgItems: SuggestionItem[] = orgs.map((o) => ({
-      id: o.id,
-      label: o.naam,
-      subtitle: titleCase(o.type.replace(/_/g, ' ')),
-      mentionType: 'organisatie',
-    }));
-    return [...personItems, ...orgItems];
+    return [
+      ...people.map((p) => ({
+        id: `${p.id}`,
+        text: p.naam,
+        supportingText: formatFunctie(p.functie),
+        avatar: { type: 'person' as const },
+      })),
+      ...orgs.map((o) => ({
+        id: `org:${o.id}`,
+        text: o.naam,
+        supportingText: titleCase(o.type.replace(/_/g, ' ')),
+        avatar: { type: 'organization' as const },
+      })),
+    ];
   } catch {
+    // A failed lookup shows no candidates rather than an error in the menu:
+    // the person is mid-sentence and can keep typing.
     return [];
   }
 }
 
-async function fetchMentionables(query: string): Promise<SuggestionItem[]> {
-  if (!query.trim()) return [{ id: '__hint__', label: 'Typ om te zoeken...' }];
+/** `#`: corpus nodes and tasks. */
+async function searchMentionables(query: string): Promise<Candidate[]> {
+  if (!query.trim()) return [];
   try {
     const results = await apiGet<MentionSearchResult[]>('/api/mentions/search', {
       q: query,
       limit: 10,
     });
     return results.map((r) => ({
-      id: r.id,
-      label: r.label,
-      subtitle: r.subtitle ?? r.type,
-      mentionType: r.type,
+      id: `${r.type}:${r.id}`,
+      text: r.label,
+      supportingText: r.subtitle ?? r.type,
+      icon: r.type === 'task' ? 'check-list' : 'file-text',
     }));
   } catch {
     return [];
   }
 }
 
-// ─── TipTap extensions ──────────────────────────────────────────────────────
-
-const PersonMention = Mention.extend({
-  name: 'mention',
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      mentionType: {
-        default: 'person',
-        parseHTML: (element: HTMLElement) => element.getAttribute('data-mention-type') ?? 'person',
-        renderHTML: (attributes: Record<string, unknown>) => ({
-          'data-mention-type': attributes.mentionType as string,
-        }),
-      },
-    };
-  },
-}).configure({
-  HTMLAttributes: {
-    class: 'mention-person',
-  },
-  suggestion: {
-    char: '@',
-    allowedPrefixes: null,
-    ...createSuggestionConfig(fetchPeopleAndOrgs),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    command: ({ editor, range, props }: { editor: Editor; range: { from: number; to: number }; props: any }) => {
-      editor
-        .chain()
-        .focus()
-        .insertContentAt(range, [
-          {
-            type: 'mention',
-            attrs: {
-              id: props.id,
-              label: props.label,
-              mentionType: props.mentionType ?? 'person',
-            },
-          },
-          { type: 'text', text: ' ' },
-        ])
-        .run();
-    },
-  },
-  renderLabel: ({ node }: { node: { attrs: { label?: string } } }) => {
-    return `@${node.attrs.label ?? ''}`;
-  },
-});
-
-const HashtagMention = Mention.extend({
-  name: 'hashtagMention',
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      mentionType: {
-        default: 'node',
-        parseHTML: (element: HTMLElement) => element.getAttribute('data-mention-type') ?? 'node',
-        renderHTML: (attributes: Record<string, unknown>) => ({
-          'data-mention-type': attributes.mentionType as string,
-        }),
-      },
-    };
-  },
-}).configure({
-  HTMLAttributes: {
-    class: 'mention-hashtag',
-  },
-  suggestion: {
-    char: '#',
-    allowedPrefixes: null,
-    ...createSuggestionConfig(fetchMentionables),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    command: ({ editor, range, props }: { editor: Editor; range: { from: number; to: number }; props: any }) => {
-      editor
-        .chain()
-        .focus()
-        .insertContentAt(range, [
-          {
-            type: 'hashtagMention',
-            attrs: {
-              id: props.id,
-              label: props.label,
-              mentionType: props.mentionType ?? 'node',
-            },
-          },
-          { type: 'text', text: ' ' },
-        ])
-        .run();
-    },
-  },
-  renderLabel: ({ node }: { node: { attrs: { label?: string } } }) => {
-    return `#${node.attrs.label ?? ''}`;
-  },
-});
-
-// ─── Helper: parse TipTap JSON, markdown, or plain text ─────────────────────
-
-import { micromark } from 'micromark';
-
-/** Simple heuristic: does the text contain markdown-like formatting? */
-function looksLikeMarkdown(text: string): boolean {
-  return /\*\*[^*]+\*\*|\*[^*]+\*|^#{1,3}\s|^[-*]\s/m.test(text);
-}
-
-interface TipTapNode {
-  type: string;
-  content?: TipTapNode[];
-  text?: string;
-  marks?: { type: string }[];
-}
-
 /**
- * Extract plain text from a TipTap doc that only has paragraphs with unmarked
- * text nodes.  Returns null if the doc uses any rich features (marks, mentions).
+ * The kind is carried in the candidate id, because a list returns more than one
+ * kind and the element hands back only the candidate it was given.
  */
-function extractPlainText(doc: TipTapNode): string | null {
-  const lines: string[] = [];
-  for (const node of doc.content ?? []) {
-    if (node.type !== 'paragraph') return null;
-    let line = '';
-    for (const child of node.content ?? []) {
-      if (child.type !== 'text' || (child.marks && child.marks.length > 0)) return null;
-      line += child.text ?? '';
-    }
-    lines.push(line);
-  }
-  return lines.join('\n');
+function splitCandidateId(id: string, fallback: MentionKind): { kind: MentionKind; id: string } {
+  const match = /^(org|node|task|person):(.*)$/.exec(id);
+  if (!match) return { kind: fallback, id };
+  const kind = match[1] === 'org' ? 'organisatie' : (match[1] as MentionKind);
+  return { kind, id: match[2] };
 }
 
-function parseContent(value: string): object | string {
-  if (!value) {
-    return { type: 'doc', content: [{ type: 'paragraph' }] };
-  }
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && parsed.type === 'doc') {
-      // Check for legacy data: TipTap JSON with raw markdown in text nodes.
-      // Convert to HTML so TipTap re-parses it with proper marks.
-      const plain = extractPlainText(parsed as TipTapNode);
-      if (plain !== null && looksLikeMarkdown(plain)) {
-        return micromark(plain);
-      }
-      return parsed;
-    }
-  } catch {
-    // not JSON — check for markdown below
-  }
-  if (looksLikeMarkdown(value)) {
-    return micromark(value);
-  }
-  return {
-    type: 'doc',
-    content: [{ type: 'paragraph', content: [{ type: 'text', text: value }] }],
-  };
+interface RichTextEditorProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  rows?: number;
+  autoFocus?: boolean;
+  disabled?: boolean;
+  /**
+   * Blocks typing without taking the editor out of the tab order, which is what
+   * `disabled` would do. Used while an answer is being generated: the text
+   * stays selectable and readable.
+   */
+  readOnly?: boolean;
+  /** Rendered bare, for a composition that draws its own frame (a chat input). */
+  bare?: boolean;
 }
-
-// ─── Paste handler: rescue list structure from plain text ──────────────────
-
-/**
- * When the user pastes plain text that visually represents a list
- * ("1. foo\n2. bar" or "- foo\n- bar"), convert it to real `ol`/`ul`
- * nodes instead of a sequence of bare paragraphs.
- *
- * If the clipboard already carries `text/html`, defer to ProseMirror's
- * default rich-paste path, which already produces proper lists.
- * Returns true to signal the paste was handled.
- */
-function insertListyTextOnPaste(view: EditorView, event: ClipboardEvent): boolean {
-  if (!event.clipboardData) return false;
-  if (event.clipboardData.types.includes('text/html')) return false;
-  const text = event.clipboardData.getData('text/plain');
-  if (!text) return false;
-
-  const html = listyTextToHtml(text);
-  if (!html) return false;
-
-  return view.pasteHTML(html, event);
-}
-
-// ─── Main Component ─────────────────────────────────────────────────────────
 
 export function RichTextEditor({
   value,
   onChange,
-  placeholder = '',
+  placeholder,
   rows = 3,
-  readOnly = false,
-  id,
-  autoFocus = false,
+  autoFocus,
+  disabled,
+  readOnly,
+  bare = false,
 }: RichTextEditorProps) {
-  const initialContent = useRef(parseContent(value));
-  const skipUpdate = useRef(false);
+  const ref = useRef<HTMLElement>(null);
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [2, 3] },
-      }),
-      Placeholder.configure({ placeholder }),
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        linkOnPaste: true,
-        HTMLAttributes: {
-          class: 'text-primary-600 underline',
-          target: '_blank',
-          rel: 'noopener noreferrer',
+  // `typeaheads` and `mentionSource` are properties, not attributes: a function
+  // cannot travel through an attribute, and React would stringify it.
+  useEffect(() => {
+    const el = ref.current as
+      | (HTMLElement & {
+          mentionSource?: (q: string) => Promise<Candidate[]>;
+          typeaheads?: unknown[];
+        })
+      | null;
+    if (!el) return;
+
+    el.mentionSource = searchPeopleAndOrgs;
+    el.typeaheads = [
+      {
+        trigger: '#',
+        source: searchMentionables,
+        insert: (candidate: Candidate) => {
+          const { kind, id } = splitCandidateId(candidate.id, 'node');
+          return `${mentionToMarkdown(kind, id, candidate.text)} `;
         },
-      }),
-      PersonMention,
-      HashtagMention,
-    ],
-    editorProps: {
-      handlePaste: (view, event) => insertListyTextOnPaste(view, event),
-    },
-    content: initialContent.current,
-    editable: !readOnly,
-    onUpdate: ({ editor }) => {
-      if (skipUpdate.current) {
-        skipUpdate.current = false;
-        return;
-      }
-      const json = JSON.stringify(editor.getJSON());
-      onChange(json);
-    },
+      },
+    ];
+  }, []);
+
+  // The built-in @-mention writes `[text](user:id)` with the candidate's own id.
+  // An organisation comes through the same list, so its token is rewritten to
+  // the org scheme after insertion.
+  useNlddEvent(ref, 'nldd-text-editor-mention', (event) => {
+    const detail = (event as CustomEvent<{ id: string; text: string; from: number; to: number }>)
+      .detail;
+    if (!detail?.id?.startsWith('org:')) return;
+    const el = ref.current as
+      | (HTMLElement & { replaceRange?: (from: number, to: number, text: string) => void })
+      | null;
+    const { kind, id } = splitCandidateId(detail.id, 'person');
+    el?.replaceRange?.(detail.from, detail.to, mentionToMarkdown(kind, id, detail.text));
   });
 
-  // Focus editor when autoFocus is set (delayed to work inside modals)
-  useEffect(() => {
-    if (autoFocus && editor && !readOnly) {
-      requestAnimationFrame(() => editor.commands.focus('end'));
-    }
-  }, [editor, autoFocus, readOnly]);
+  useNlddEvent(ref, 'input', (event) => {
+    const detail = (event as CustomEvent<{ value?: string }>).detail;
+    onChange(detail?.value ?? (event.target as HTMLElement & { value?: string }).value ?? '');
+  });
 
-  // Sync editable state
+  // Writing `value` on every render would reset the caret mid-word, so only
+  // when it has actually diverged (an external reset, a refetch).
   useEffect(() => {
-    if (editor) {
-      editor.setEditable(!readOnly);
-    }
-  }, [editor, readOnly]);
+    const el = ref.current as (HTMLElement & { value?: string }) | null;
+    if (el && el.value !== value) el.value = value;
+  }, [value]);
 
-  // Sync external value changes (e.g., form reset)
   useEffect(() => {
-    if (!editor) return;
-    const currentJson = JSON.stringify(editor.getJSON());
-    if (value !== currentJson) {
-      const newContent = parseContent(value);
-      // When newContent is an HTML string (from markdown), always apply it —
-      // JSON.stringify comparison doesn't make sense for HTML.
-      const shouldApply = typeof newContent === 'string'
-        || JSON.stringify(newContent) !== currentJson;
-      if (shouldApply) {
-        skipUpdate.current = true;
-        editor.commands.setContent(newContent);
-      }
-    }
-  }, [value, editor]);
-
-  const minHeight = `${Math.max(rows * 1.5, 3)}rem`;
+    if (!autoFocus) return;
+    (ref.current as (HTMLElement & { focus?: () => void }) | null)?.focus?.();
+  }, [autoFocus]);
 
   return (
-    <div
-      id={id}
-      className={`rich-text-editor block w-full rounded-xl border border-border bg-white text-sm text-text transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary-500/20 focus-within:border-primary-500 hover:border-border-hover ${
-        readOnly ? 'opacity-60 cursor-not-allowed' : ''
-      }`}
-    >
-      <EditorContent
-        editor={editor}
-        className="px-3.5 py-2.5 prose prose-sm max-w-none focus:outline-none"
-        style={{ minHeight }}
-      />
-      <style>{`
-        .rich-text-editor .ProseMirror {
-          outline: none;
-          min-height: ${minHeight};
-        }
-        .rich-text-editor .ProseMirror p.is-editor-empty:first-child::before {
-          content: attr(data-placeholder);
-          float: left;
-          color: #9ca3af;
-          pointer-events: none;
-          height: 0;
-        }
-        .rich-text-editor .ProseMirror .mention-person {
-          background-color: #dbeafe;
-          color: #1d4ed8;
-          border-radius: 0.25rem;
-          padding: 0.1rem 0.3rem;
-          font-weight: 500;
-          text-decoration: none;
-        }
-        .rich-text-editor .ProseMirror .mention-person[data-mention-type="organisatie"] {
-          background-color: #d1fae5;
-          color: #065f46;
-        }
-        .rich-text-editor .ProseMirror .mention-hashtag {
-          background-color: #f1f5f9;
-          color: #475569;
-          border-radius: 0.25rem;
-          padding: 0.1rem 0.3rem;
-          font-weight: 500;
-          text-decoration: none;
-        }
-        .rich-text-editor .ProseMirror h2 {
-          font-size: 1.25rem;
-          font-weight: 600;
-          line-height: 1.4;
-          margin-top: 0.75rem;
-          margin-bottom: 0.25rem;
-        }
-        .rich-text-editor .ProseMirror h3 {
-          font-size: 1.1rem;
-          font-weight: 600;
-          line-height: 1.4;
-          margin-top: 0.5rem;
-          margin-bottom: 0.25rem;
-        }
-        .rich-text-editor .ProseMirror blockquote {
-          border-left: 3px solid #d1d5db;
-          padding-left: 0.75rem;
-          color: #6b7280;
-          margin: 0.5rem 0;
-        }
-        .rich-text-editor .ProseMirror pre {
-          background-color: #f3f4f6;
-          border-radius: 0.375rem;
-          padding: 0.5rem 0.75rem;
-          margin: 0.5rem 0;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-          font-size: 0.8rem;
-          overflow-x: auto;
-        }
-        .rich-text-editor .ProseMirror pre code {
-          background: none;
-          padding: 0;
-          font-size: inherit;
-          color: inherit;
-        }
-        .rich-text-editor .ProseMirror hr {
-          border: none;
-          border-top: 1px solid #e5e7eb;
-          margin: 0.75rem 0;
-        }
-        .rich-text-editor .ProseMirror a {
-          color: #4f46e5;
-          text-decoration: underline;
-          word-break: break-all;
-        }
-      `}</style>
-    </div>
+    <nldd-text-editor
+      ref={ref}
+      variant={bare ? 'simple' : 'input-field'}
+      rows={rows}
+      resize="auto"
+      {...(placeholder ? { placeholder } : {})}
+      {...(disabled ? { disabled: true } : {})}
+      {...(readOnly ? { readonly: true } : {})}
+    />
   );
 }
