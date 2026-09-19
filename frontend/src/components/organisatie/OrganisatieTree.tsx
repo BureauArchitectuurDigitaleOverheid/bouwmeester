@@ -116,7 +116,17 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
             <Icon name="ChevronRight" size="xs" />
           </nldd-list-item-segment>
 
-          <nldd-list-item-segment ref={selectRef} button width="full" accessible-label={node.naam}>
+          {/* `min-width: 0` is what lets this segment give way. Without it a
+              flex item refuses to shrink below its content, so the name
+              claimed the full row and the badges beside it were pushed off
+              the right edge of the card. */}
+          <nldd-list-item-segment
+            ref={selectRef}
+            button
+            width="full"
+            accessible-label={node.naam}
+            style={{ minWidth: 0, flex: '1 1 auto' }}
+          >
             <nldd-text-cell width="full" color={isHistorisch ? 'secondary' : 'content'}>
               {/* One nldd-text-cell holding several differently-styled inline
                   runs (afkorting, name, manager, count) in a single line of
@@ -125,7 +135,10 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
                   element that doesn't compose inline here. Plain spans with
                   inline color/weight stay (design-system tokens, not raw hex),
                   same for line-through (no text-decoration equivalent). */}
-              <span style={isHistorisch ? { textDecoration: 'line-through' } : undefined}>
+              <span
+                className="truncate"
+                style={isHistorisch ? { textDecoration: 'line-through' } : undefined}
+              >
                 {node.afkorting && (
                   <span style={{ color: 'var(--primitives-color-neutral-700)', fontWeight: 400, marginRight: '4px' }}>{node.afkorting}</span>
                 )}
@@ -149,47 +162,44 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
             </nldd-text-cell>
           </nldd-list-item-segment>
 
-          {/* Right-hand column: type badge and add button.
-              `flex: 0 0 auto` rather than one of nldd-container's width
-              attributes. `width="fit-content"` collapses a row container to
-              nothing (its host is display:block around an inner flex), and no
-              width at all makes it grow until it starves the name beside it,
-              which rendered the ministry name at zero pixels wide. */}
-          <nldd-container
-            layout="row"
-            gap="4"
-            vertical-alignment="center"
-            style={{ flex: '0 0 auto', width: 'auto' }}
-          >
-            {node.bron === 'fcc_import' && (
-              <Badge variant="amber" title="Auto-aangemaakt door FCC-import">
-                FCC
-              </Badge>
-            )}
-
-            <Badge variant={ORGANISATIE_TYPE_BADGE_COLORS[node.type] || 'gray'}>
-              {formatOrganisatieType(node.type)}
+          {/* Right-hand items sit directly in the row, not in a wrapper.
+              An nldd-container here measured zero pixels wide and its badges
+              rendered outside it, past the card's right edge: the host is
+              display:block, so `width: auto` resolves against a parent that
+              allotted it nothing, and the inner flex never reports an
+              intrinsic width back up. The list item is itself a flex row, so
+              these belong in it as their own items. */}
+          {node.bron === 'fcc_import' && (
+            <Badge variant="amber" title="Auto-aangemaakt door FCC-import" className="shrink-0">
+              FCC
             </Badge>
+          )}
 
-            {/* Add child button — niet voor synthetische groepen */}
-            {node.bron !== 'synthetisch' ? (
-              <nldd-list-item-segment
-                ref={addRef}
-                button
-                accessible-label="Subeenheid toevoegen"
-                // group/group-hover reveal-on-row-hover has no nldd
-                // equivalent; `group` itself lives on the parent
-                // nldd-list-item above. group-hover-reveal is the real CSS
-                // backing this in utilities.css.
-                className="group-hover-reveal"
-              >
-                <Icon name="Plus" size="xs" />
-              </nldd-list-item-segment>
-            ) : (
-              // Placeholder zodat synth-rijen dezelfde breedte hebben (badges blijven uitgelijnd)
-              <nldd-spacer size="20" aria-hidden />
-            )}
-          </nldd-container>
+          <Badge
+            variant={ORGANISATIE_TYPE_BADGE_COLORS[node.type] || 'gray'}
+            className="shrink-0"
+          >
+            {formatOrganisatieType(node.type)}
+          </Badge>
+
+          {/* Add child button — niet voor synthetische groepen */}
+          {node.bron !== 'synthetisch' ? (
+            <nldd-list-item-segment
+              ref={addRef}
+              button
+              accessible-label="Subeenheid toevoegen"
+              // group/group-hover reveal-on-row-hover has no nldd
+              // equivalent; `group` itself lives on the parent
+              // nldd-list-item above. group-hover-reveal is the real CSS
+              // backing this in utilities.css.
+              className="group-hover-reveal"
+            >
+              <Icon name="Plus" size="xs" />
+            </nldd-list-item-segment>
+          ) : (
+            // Placeholder zodat synth-rijen dezelfde breedte hebben (badges blijven uitgelijnd)
+            <nldd-spacer size="20" aria-hidden />
+          )}
         </nldd-list-item>
       </div>
 

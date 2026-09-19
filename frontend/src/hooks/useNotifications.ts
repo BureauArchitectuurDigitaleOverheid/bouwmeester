@@ -94,7 +94,7 @@ export function useDashboardStats() {
   const devPersonId = useDevPersonId();
   const { currentPerson } = useCurrentPerson();
   return useQuery({
-    queryKey: queryKeys.dashboardStats(),
+    queryKey: queryKeys.dashboardStats(currentPerson?.id),
     queryFn: () => getDashboardStats(devPersonId),
     enabled: !!currentPerson,
     refetchInterval: 60_000,
