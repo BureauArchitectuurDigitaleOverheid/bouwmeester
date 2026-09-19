@@ -29,7 +29,7 @@ export function PlacementRequestManager() {
   }
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       <nldd-text size="sm" color="secondary">
         Nieuwe medewerkers die zich aanmelden kiezen een team. Hieronder kun je hun teamverzoek
         goedkeuren of afwijzen.
@@ -51,8 +51,8 @@ export function PlacementRequestManager() {
           <nldd-table-row key={req.id}>
             <nldd-title-cell text={req.person_naam} />
             <nldd-text-cell>
-              <span className="inline-flex items-center gap-1.5">
-                {req.eenheid_naam}
+              <nldd-container layout="row" gap="6" vertical-alignment="center">
+                <nldd-text size="sm">{req.eenheid_naam}</nldd-text>
                 <NlddIconButton
                   icon="pencil"
                   accessibleLabel="Team wijzigen"
@@ -60,7 +60,7 @@ export function PlacementRequestManager() {
                   size="xs"
                   onClick={() => setEditingRequest(req)}
                 />
-              </span>
+              </nldd-container>
             </nldd-text-cell>
             <nldd-text-cell
               text={DIENSTVERBAND_LABELS[req.dienstverband] || req.dienstverband}
@@ -79,7 +79,7 @@ export function PlacementRequestManager() {
             />
             <nldd-text-cell>
               {confirmDenyId === req.id ? (
-                <div className="flex gap-1">
+                <nldd-container layout="row" gap="4">
                   <NlddButton
                     text="Bevestig"
                     variant="destructive"
@@ -93,9 +93,9 @@ export function PlacementRequestManager() {
                     size="xs"
                     onClick={() => setConfirmDenyId(null)}
                   />
-                </div>
+                </nldd-container>
               ) : (
-                <div className="flex items-center gap-1">
+                <nldd-container layout="row" gap="4" vertical-alignment="center">
                   <NlddIconButton
                     icon="check-mark"
                     accessibleLabel="Goedkeuren"
@@ -111,7 +111,7 @@ export function PlacementRequestManager() {
                     size="sm"
                     onClick={() => setConfirmDenyId(req.id)}
                   />
-                </div>
+                </nldd-container>
               )}
             </nldd-text-cell>
           </nldd-table-row>
@@ -126,6 +126,6 @@ export function PlacementRequestManager() {
         onClose={() => setEditingRequest(null)}
         request={editingRequest}
       />
-    </div>
+    </nldd-container>
   );
 }

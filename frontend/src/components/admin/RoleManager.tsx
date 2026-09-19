@@ -63,7 +63,7 @@ function AssignmentRow({
       />
       <nldd-text-cell>
         {!canRevoke ? null : confirmDelete ? (
-          <div className="flex items-center gap-1">
+          <nldd-container layout="row" gap="4" vertical-alignment="center">
             <NlddButton
               text="Ja"
               variant="destructive"
@@ -80,7 +80,7 @@ function AssignmentRow({
               size="xs"
               onClick={() => setConfirmDelete(false)}
             />
-          </div>
+          </nldd-container>
         ) : (
           <NlddIconButton
             icon="trash"
@@ -176,21 +176,18 @@ function PersonRolesPanel({
 
   if (isLoading) {
     return (
-      <div className="bg-gray-50 border-l-3 border-l-primary-300 py-3 px-2">
-        <div className="px-4 py-2">
+      <nldd-box>
+        <nldd-container padding="12">
           <nldd-activity-indicator size="16" />
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-box>
     );
   }
 
   return (
-    <div className="bg-gray-50 border-l-3 border-l-primary-300 py-3 px-2">
-      <div className="px-4 pb-1.5">
-        <h4 className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-          Rollen
-        </h4>
-      </div>
+    <nldd-box>
+      <nldd-container padding="12" gap="4">
+        <nldd-text size="xs" color="secondary" weight="medium">Rollen</nldd-text>
       {/* Current assignments table */}
       {assignments && assignments.length > 0 ? (
         <nldd-table
@@ -224,14 +221,12 @@ function PersonRolesPanel({
           })}
         </nldd-table>
       ) : (
-        <div className="px-4 py-2">
-          <nldd-text size="sm" color="secondary">Geen rollen.</nldd-text>
-        </div>
+        <nldd-text size="sm" color="secondary">Geen rollen.</nldd-text>
       )}
 
       {/* Add role button / form — directly after roles */}
       {!showForm ? (
-        <div className="px-4 py-1.5">
+        <nldd-container width="fit-content">
           <NlddButton
             text="Rol toewijzen"
             startIcon="plus"
@@ -239,10 +234,11 @@ function PersonRolesPanel({
             size="sm"
             onClick={() => setShowForm(true)}
           />
-        </div>
+        </nldd-container>
       ) : (
-        <form onSubmit={handleAssign} className="px-4 py-3 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <form onSubmit={handleAssign}>
+          <nldd-container gap="12">
+          <nldd-container layout="grid" column-count={2} gap="12">
             {/* Role selector */}
             <nldd-form-field label="Rol">
               <nldd-dropdown size="sm">
@@ -296,9 +292,9 @@ function PersonRolesPanel({
             <nldd-form-field label="Einddatum" optional>
               <nldd-date-field ref={eindDatumRef} value={eindDatum} size="sm" />
             </nldd-form-field>
-          </div>
+          </nldd-container>
 
-          <div className="flex gap-2">
+          <nldd-container layout="row" gap="8">
             <NlddButton
               type="submit"
               text="Toewijzen"
@@ -319,13 +315,15 @@ function PersonRolesPanel({
                 setEindDatum('');
               }}
             />
-          </div>
+          </nldd-container>
+          </nldd-container>
         </form>
       )}
 
       {/* Resource permissions */}
       <PersonResourcePermissionsSection personId={personId} />
-    </div>
+      </nldd-container>
+    </nldd-box>
   );
 }
 
@@ -360,7 +358,7 @@ function ResourcePermissionRow({
       <nldd-text-cell text={rp.rol} color="secondary" size="sm" />
       <nldd-text-cell>
         {confirmDelete ? (
-          <div className="flex items-center gap-1">
+          <nldd-container layout="row" gap="4" vertical-alignment="center">
             <NlddButton
               text="Ja"
               variant="destructive"
@@ -377,7 +375,7 @@ function ResourcePermissionRow({
               size="xs"
               onClick={() => setConfirmDelete(false)}
             />
-          </div>
+          </nldd-container>
         ) : (
           <NlddIconButton
             icon="trash"
@@ -491,12 +489,9 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
   const hasPerms = perms && perms.length > 0;
 
   return (
-    <div className="mt-3 pt-3 border-t border-gray-200/80">
-      <div className="px-4 pb-1.5">
-        <h4 className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-          Resource permissies
-        </h4>
-      </div>
+    <nldd-container gap="12">
+      <nldd-divider />
+      <nldd-text size="xs" color="secondary" weight="medium">Resource permissies</nldd-text>
       {hasPerms && (
         <nldd-table
           columns="minmax(120px,1fr) 140px 100px 48px"
@@ -522,13 +517,11 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
         </nldd-table>
       )}
       {!hasPerms && !showForm && (
-        <div className="px-4 py-2">
-          <nldd-text size="sm" color="secondary">Geen resource permissies.</nldd-text>
-        </div>
+        <nldd-text size="sm" color="secondary">Geen resource permissies.</nldd-text>
       )}
 
       {!canManageRp ? null : !showForm ? (
-        <div className="px-4 py-1.5">
+        <nldd-container width="fit-content">
           <NlddButton
             text="Resource permissie toevoegen"
             startIcon="plus"
@@ -536,10 +529,11 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
             size="sm"
             onClick={() => setShowForm(true)}
           />
-        </div>
+        </nldd-container>
       ) : (
-        <form onSubmit={handleAdd} className="px-4 py-3 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_1fr] gap-3">
+        <form onSubmit={handleAdd}>
+          <nldd-container gap="12">
+          <nldd-container layout="grid" column-count={3} gap="12">
             <nldd-form-field label="Resource type">
               <nldd-dropdown size="sm">
                 <select
@@ -596,9 +590,9 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
                 </select>
               </nldd-dropdown>
             </nldd-form-field>
-          </div>
+          </nldd-container>
 
-          <div className="flex gap-2">
+          <nldd-container layout="row" gap="8">
             <NlddButton
               type="submit"
               text="Toevoegen"
@@ -618,10 +612,11 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
               size="sm"
               onClick={resetForm}
             />
-          </div>
+          </nldd-container>
+          </nldd-container>
         </form>
       )}
-    </div>
+    </nldd-container>
   );
 }
 
@@ -690,10 +685,10 @@ export function RoleManager() {
   }
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       {/* Description */}
-      <div className="flex items-start gap-2">
-        <nldd-icon name="shield" size="16" color="accent" style={{ marginTop: '2px' }} />
+      <nldd-container layout="row" gap="8">
+        <nldd-icon name="shield" size="16" color="accent" />
         <nldd-text size="sm" color="secondary">
           Beheer roltoewijzingen per persoon. Klik op een persoon om rollen te bekijken, toe te
           wijzen of in te trekken.
@@ -701,7 +696,7 @@ export function RoleManager() {
             <> Beschikbare rollen: {roles.map((r) => r.naam).join(', ')}.</>
           )}
         </nldd-text>
-      </div>
+      </nldd-container>
 
       {/* Search */}
       <nldd-text-field
@@ -713,32 +708,34 @@ export function RoleManager() {
 
       {/* Merge bar */}
       {selectedIds.size >= 2 && !showMergeConfirm && (
-        <div className="flex items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2.5">
-          <nldd-text size="sm">{selectedIds.size} personen geselecteerd</nldd-text>
-          <NlddButton
-            text="Samenvoegen"
-            startIcon="git-merge"
-            size="sm"
-            onClick={() => setShowMergeConfirm(true)}
-          />
-          <NlddButton
-            text="Deselecteren"
-            variant="neutral-transparent"
-            size="sm"
-            onClick={() => {
-              setSelectedIds(new Set());
-              setMergeTargetId(null);
-            }}
-          />
-        </div>
+        <nldd-banner variant="accent" size="sm" text={`${selectedIds.size} personen geselecteerd`}>
+          <div slot="actions">
+            <NlddButton
+              text="Samenvoegen"
+              startIcon="git-merge"
+              size="sm"
+              onClick={() => setShowMergeConfirm(true)}
+            />
+            <NlddButton
+              text="Deselecteren"
+              variant="neutral-transparent"
+              size="sm"
+              onClick={() => {
+                setSelectedIds(new Set());
+                setMergeTargetId(null);
+              }}
+            />
+          </div>
+        </nldd-banner>
       )}
 
       {/* Merge confirmation */}
       {showMergeConfirm && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3">
-          <nldd-text size="sm" weight="medium" color="warning">
-            Welke persoon wil je behouden? Alle referenties van de andere worden overgeheveld.
-          </nldd-text>
+        <nldd-banner
+          variant="warning"
+          text="Welke persoon wil je behouden?"
+          supporting-text="Alle referenties van de andere worden overgeheveld."
+        >
           <nldd-radio-button-group
             ref={mergeTargetGroupRef}
             name="merge-target"
@@ -753,7 +750,7 @@ export function RoleManager() {
               />
             ))}
           </nldd-radio-button-group>
-          <div className="flex gap-2">
+          <div slot="actions">
             <NlddButton
               text={merge.isPending ? 'Samenvoegen...' : 'Bevestig samenvoegen'}
               startIcon="git-merge"
@@ -770,7 +767,7 @@ export function RoleManager() {
               onClick={() => setShowMergeConfirm(false)}
             />
           </div>
-        </div>
+        </nldd-banner>
       )}
 
       {/* People list with expandable role panels */}
@@ -818,7 +815,7 @@ export function RoleManager() {
           />
         </div>
       </nldd-table>
-    </div>
+    </nldd-container>
   );
 }
 

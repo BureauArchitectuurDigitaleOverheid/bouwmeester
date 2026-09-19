@@ -107,17 +107,15 @@ export function SyncStatusManager() {
   if (isLoading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold mb-1">
-            Sync-status overheidsorganisaties
-          </h2>
+    <nldd-container gap="16">
+      <nldd-container layout="row" gap="16" horizontal-alignment="left">
+        <nldd-container gap="4">
+          <nldd-title size={3}><h2>Sync-status overheidsorganisaties</h2></nldd-title>
           <nldd-text size="sm" color="secondary">
             Per externe bron: laatste sync-tijdstip + handmatige trigger. Worker draait dagelijks
             (TK + kabinet + ABD) en wekelijks (TOOI + RIO + CSV + organogram).
           </nldd-text>
-        </div>
+        </nldd-container>
         <NlddButton
           variant="primary"
           text="Alles syncen"
@@ -126,29 +124,25 @@ export function SyncStatusManager() {
           onClick={() => runAllMutation.mutate()}
           disabled={busyEndpoint !== null}
         />
-      </div>
+      </nldd-container>
 
       {data && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <nldd-container layout="grid" column-count={4} gap="12">
           {Object.entries(data.actief_per_bron).map(([bron, count]) => (
             <Card key={bron}>
-              <div className="p-3">
-                <div className="text-xs text-text-secondary">
-                  Actief — {bron}
-                </div>
-                <div className="text-2xl font-semibold">{count}</div>
-              </div>
+              <nldd-container gap="0">
+                <nldd-text size="xs" color="secondary">Actief — {bron}</nldd-text>
+                <nldd-text size="lg" weight="bold">{count}</nldd-text>
+              </nldd-container>
             </Card>
           ))}
           <Card>
-            <div className="p-3">
-              <div className="text-xs text-text-secondary">Open conflicten</div>
-              <div className="text-2xl font-semibold">
-                {data.open_reconciliations}
-              </div>
-            </div>
+            <nldd-container gap="0">
+              <nldd-text size="xs" color="secondary">Open conflicten</nldd-text>
+              <nldd-text size="lg" weight="bold">{data.open_reconciliations}</nldd-text>
+            </nldd-container>
           </Card>
-        </div>
+        </nldd-container>
       )}
 
       <nldd-table
@@ -195,45 +189,44 @@ export function SyncStatusManager() {
                 />
               </nldd-text-cell>
               {isExpanded && (
-                <div style={{ gridColumn: '1 / -1' }} className="px-4 py-2 bg-gray-50">
-                  <div className="text-xs text-text-secondary mb-2">
-                    Recente log-entries (laatste 30):
-                  </div>
-                  {logEntries.length === 0 ? (
-                    <div className="text-xs text-text-secondary italic">
-                      Geen entries.
-                    </div>
-                  ) : (
-                    <div className="space-y-1 max-h-60 overflow-y-auto">
-                      {logEntries.map((entry) => (
-                        <div
-                          key={entry.id}
-                          className="text-xs flex items-start gap-2"
-                        >
-                          <span className="text-text-secondary shrink-0 w-32">
-                            {new Date(entry.created_at).toLocaleString('nl-NL')}
-                          </span>
-                          <nldd-tag
-                            text={entry.action}
-                            color={LOG_ACTION_COLOR[entry.action] ?? 'neutral'}
-                            size="sm"
-                          />
-                          <span className="truncate">
-                            {entry.note ||
-                              (entry.after && typeof entry.after.naam === 'string'
-                                ? entry.after.naam
-                                : entry.tooi_uri || '—')}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <nldd-box>
+                    <nldd-container padding="12" gap="8">
+                      <nldd-text size="xs" color="secondary">Recente log-entries (laatste 30):</nldd-text>
+                      {logEntries.length === 0 ? (
+                        <nldd-text size="xs" color="secondary">Geen entries.</nldd-text>
+                      ) : (
+                        <nldd-container gap="4" style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                          {logEntries.map((entry) => (
+                            <nldd-container key={entry.id} layout="row" gap="8" vertical-alignment="top">
+                              <nldd-container width="128px">
+                                <nldd-text size="xs" color="secondary">
+                                  {new Date(entry.created_at).toLocaleString('nl-NL')}
+                                </nldd-text>
+                              </nldd-container>
+                              <nldd-tag
+                                text={entry.action}
+                                color={LOG_ACTION_COLOR[entry.action] ?? 'neutral'}
+                                size="sm"
+                              />
+                              <nldd-text size="xs">
+                                {entry.note ||
+                                  (entry.after && typeof entry.after.naam === 'string'
+                                    ? entry.after.naam
+                                    : entry.tooi_uri || '—')}
+                              </nldd-text>
+                            </nldd-container>
+                          ))}
+                        </nldd-container>
+                      )}
+                    </nldd-container>
+                  </nldd-box>
                 </div>
               )}
             </nldd-table-row>
           );
         })}
       </nldd-table>
-    </div>
+    </nldd-container>
   );
 }

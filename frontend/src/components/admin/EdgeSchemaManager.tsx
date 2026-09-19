@@ -57,13 +57,17 @@ export function EdgeSchemaManager() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner className="py-8" />;
+    return (
+      <nldd-container padding="32">
+        <LoadingSpinner />
+      </nldd-container>
+    );
   }
 
   const ruleCount = rules?.length ?? 0;
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       <nldd-text size="sm" color="secondary">
         Beheer welke relatiestypes zijn toegestaan tussen knooppunttypen. Als er geen regels zijn
         gedefinieerd, zijn alle verbindingen toegestaan. Momenteel {ruleCount}{' '}
@@ -89,20 +93,42 @@ export function EdgeSchemaManager() {
         first column needs to stay sticky while scrolling, which nldd-table has
         no attribute for. Left as a native <table> per the conversion brief's
         escape hatch ("if a component fights you, you are probably using the
-        wrong one"); the interactive cells and card chrome are converted.
+        wrong one"); the interactive cells and card chrome are converted. Cell
+        styling here is plain CSS against `--primitives-*` tokens rather than
+        Tailwind utilities, since no nldd-* primitive fits a sticky-column matrix.
       */}
       <Card padding={false}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2 text-left font-medium text-text-secondary border-b border-r border-border">
+                <th
+                  style={{
+                    position: 'sticky',
+                    left: 0,
+                    zIndex: 1,
+                    background: 'var(--primitives-color-neutral-25)',
+                    padding: '8px 12px',
+                    textAlign: 'left',
+                    fontWeight: 500,
+                    color: 'var(--primitives-color-neutral-700)',
+                    borderBottom: '1px solid var(--primitives-color-neutral-100)',
+                    borderRight: '1px solid var(--primitives-color-neutral-100)',
+                  }}
+                >
                   Van &#x2192; Naar
                 </th>
                 {SCHEMA_NODE_TYPES.map((nt) => (
                   <th
                     key={nt}
-                    className="px-2 py-2 text-center font-medium text-text-secondary border-b border-border whitespace-nowrap"
+                    style={{
+                      padding: '8px',
+                      textAlign: 'center',
+                      fontWeight: 500,
+                      color: 'var(--primitives-color-neutral-700)',
+                      borderBottom: '1px solid var(--primitives-color-neutral-100)',
+                      whiteSpace: 'nowrap',
+                    }}
                   >
                     {NODE_TYPE_LABELS[nt]}
                   </th>
@@ -111,23 +137,46 @@ export function EdgeSchemaManager() {
             </thead>
             <tbody>
               {SCHEMA_NODE_TYPES.map((fromType) => (
-                <tr key={fromType} className="hover:bg-gray-50/50">
-                  <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-text border-r border-border whitespace-nowrap">
+                <tr key={fromType}>
+                  <td
+                    style={{
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 1,
+                      background: 'var(--primitives-color-neutral-0)',
+                      padding: '8px 12px',
+                      fontWeight: 500,
+                      color: 'var(--primitives-color-neutral-900)',
+                      borderRight: '1px solid var(--primitives-color-neutral-100)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {NODE_TYPE_LABELS[fromType]}
                   </td>
                   {SCHEMA_NODE_TYPES.map((toType) => {
                     const key = `${fromType}_${toType}_${selectedEdgeType}`;
                     const isActive = ruleMap.has(key);
                     return (
-                      <td key={toType} className="px-2 py-2 text-center">
+                      <td key={toType} style={{ padding: '8px', textAlign: 'center' }}>
                         <button
                           onClick={() => handleToggle(fromType, toType)}
                           disabled={createRule.isPending || deleteRule.isPending}
-                          className={`inline-flex items-center justify-center h-7 w-7 rounded transition-colors ${
-                            isActive
-                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                          }`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: '28px',
+                            width: '28px',
+                            borderRadius: '4px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            background: isActive
+                              ? 'var(--primitives-color-success-100)'
+                              : 'var(--primitives-color-neutral-50)',
+                            color: isActive
+                              ? 'var(--primitives-color-success-700)'
+                              : 'var(--primitives-color-neutral-400)',
+                          }}
                           title={
                             isActive
                               ? `${NODE_TYPE_LABELS[fromType]} → ${NODE_TYPE_LABELS[toType]}: ${edgeLabel(selectedEdgeType)} (klik om te verwijderen)`
@@ -145,6 +194,6 @@ export function EdgeSchemaManager() {
           </table>
         </div>
       </Card>
-    </div>
+    </nldd-container>
   );
 }

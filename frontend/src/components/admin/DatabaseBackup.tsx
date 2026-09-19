@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Download, Upload, AlertTriangle, CheckCircle, Loader2, Database, Trash2 } from 'lucide-react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { useToast } from '@/contexts/ToastContext';
 import { FileUpload } from '@/components/common/FileUpload';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { eventValue, orUndef, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   exportDatabase,
   getDatabaseInfo,
@@ -23,6 +24,10 @@ export function DatabaseBackup() {
   const [resetConfirmText, setResetConfirmText] = useState('');
   const [showResetInput, setShowResetInput] = useState(false);
   const [resetResult, setResetResult] = useState<DatabaseResetResult | null>(null);
+  const resetFieldRef = useRef<HTMLElement>(null);
+
+  useNlddEvent(resetFieldRef, 'input', useCallback((e: Event) => setResetConfirmText(eventValue(e)), []));
+  useNlddValue(resetFieldRef, resetConfirmText);
 
   useEffect(() => {
     getDatabaseInfo()
@@ -95,257 +100,195 @@ export function DatabaseBackup() {
   };
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <nldd-container max-width="640px" gap="24">
       {/* Export section */}
-      <section className="rounded-xl border border-border bg-surface p-5 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-primary-50">
-            <Download className="h-5 w-5 text-primary-600" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-text">Database exporteren</h2>
-            <p className="text-sm text-text-secondary">
-              Download een volledige backup van de database.
-            </p>
-          </div>
-        </div>
+      <nldd-card>
+        <nldd-container gap="16">
+          <nldd-container layout="row" gap="12" vertical-alignment="center">
+            <nldd-icon name="download" size="24" color="accent" box />
+            <nldd-container gap="0">
+              <nldd-title size={4}><h2>Database exporteren</h2></nldd-title>
+              <nldd-text size="sm" color="secondary">
+                Download een volledige backup van de database.
+              </nldd-text>
+            </nldd-container>
+          </nldd-container>
 
-        <div className="text-sm text-text-secondary space-y-1">
-          <p>Bevat: corpus, organisatie, personen, taken, audit trail, kamerstukken</p>
-          {loadingInfo ? (
-            <p className="flex items-center gap-1.5">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Laden...
-            </p>
-          ) : info ? (
-            <>
-              <p>Migratieversie: <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{info.alembic_revision}</code></p>
-              {info.encrypted && <p>Versleuteling: age-encrypted</p>}
-            </>
-          ) : (
-            <p className="text-amber-600">Kon database-informatie niet ophalen</p>
-          )}
-        </div>
+          <nldd-container gap="4">
+            <nldd-text size="sm" color="secondary">
+              Bevat: corpus, organisatie, personen, taken, audit trail, kamerstukken
+            </nldd-text>
+            {loadingInfo ? (
+              <nldd-text size="sm" color="secondary">Laden...</nldd-text>
+            ) : info ? (
+              <>
+                <nldd-text size="sm" color="secondary">
+                  Migratieversie: <code>{info.alembic_revision}</code>
+                </nldd-text>
+                {info.encrypted && (
+                  <nldd-text size="sm" color="secondary">Versleuteling: age-encrypted</nldd-text>
+                )}
+              </>
+            ) : (
+              <nldd-text size="sm" color="warning">Kon database-informatie niet ophalen</nldd-text>
+            )}
+          </nldd-container>
 
-        <button
-          onClick={handleExport}
-          disabled={exporting}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
-        >
-          {exporting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Database className="h-4 w-4" />
-          )}
-          Database exporteren
-        </button>
-      </section>
+          <nldd-container width="fit-content">
+            <NlddButton
+              text="Database exporteren"
+              startIcon="database"
+              onClick={handleExport}
+              disabled={exporting}
+              loading={exporting}
+            />
+          </nldd-container>
+        </nldd-container>
+      </nldd-card>
 
       {/* Import section */}
-      <section className="rounded-xl border border-border bg-surface p-5 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-amber-50">
-            <Upload className="h-5 w-5 text-amber-600" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-text">Database importeren</h2>
-            <p className="text-sm text-text-secondary">
-              Herstel de database vanuit een backup-bestand.
-            </p>
-          </div>
-        </div>
+      <nldd-card>
+        <nldd-container gap="16">
+          <nldd-container layout="row" gap="12" vertical-alignment="center">
+            <nldd-icon name="upload" size="24" color="warning" box />
+            <nldd-container gap="0">
+              <nldd-title size={4}><h2>Database importeren</h2></nldd-title>
+              <nldd-text size="sm" color="secondary">
+                Herstel de database vanuit een backup-bestand.
+              </nldd-text>
+            </nldd-container>
+          </nldd-container>
 
-        <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3">
-          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-          <div className="text-sm text-amber-800 space-y-1">
-            <p>
-              Import vervangt <strong>alle</strong> huidige data in de database.
-              Maak eerst een export als backup.
-            </p>
-            <p>
-              De import kan enkele minuten duren. Tijdens het importeren is de
-              applicatie tijdelijk niet beschikbaar voor andere gebruikers.
-            </p>
-          </div>
-        </div>
+          <nldd-banner
+            variant="warning"
+            text="Import vervangt alle huidige data in de database"
+            supporting-text="Maak eerst een export als backup. De import kan enkele minuten duren; tijdens het importeren is de applicatie tijdelijk niet beschikbaar voor andere gebruikers."
+          />
 
-        <FileUpload
-          accept=".tar.gz,.tar.gz.age,.age"
-          onFileSelect={handleFileSelect}
-          disabled={importing}
-          label="Sleep een backup-bestand hierheen of klik om te uploaden"
-        />
+          <FileUpload
+            accept=".tar.gz,.tar.gz.age,.age"
+            onFileSelect={handleFileSelect}
+            disabled={importing}
+            label="Sleep een backup-bestand hierheen of klik om te uploaden"
+          />
 
-        {selectedFile && (
-          <div className="space-y-3">
-            {confirmImport && (
-              <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 p-3">
-                <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
-                <p className="text-sm text-red-800">
-                  Weet je zeker dat je wilt importeren? Alle huidige data wordt vervangen.
-                </p>
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <button
-                onClick={handleImport}
-                disabled={importing}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors ${
-                  confirmImport
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-amber-600 hover:bg-amber-700'
-                }`}
-              >
-                {importing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4" />
-                )}
-                {importing ? 'Bezig met importeren... (dit kan enkele minuten duren)' : confirmImport ? 'Bevestig import' : 'Database importeren'}
-              </button>
-
+          {selectedFile && (
+            <nldd-container gap="12">
               {confirmImport && (
-                <button
-                  onClick={() => setConfirmImport(false)}
-                  className="px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:bg-gray-50 transition-colors"
-                >
-                  Annuleren
-                </button>
+                <nldd-banner variant="critical" text="Weet je zeker dat je wilt importeren? Alle huidige data wordt vervangen." />
               )}
-            </div>
-          </div>
-        )}
 
-        {restoreResult && (
-          <div className={`flex items-start gap-2 rounded-lg p-3 ${
-            restoreResult.success
-              ? 'bg-green-50 border border-green-200'
-              : 'bg-red-50 border border-red-200'
-          }`}>
-            <CheckCircle className={`h-4 w-4 mt-0.5 shrink-0 ${
-              restoreResult.success ? 'text-green-600' : 'text-red-600'
-            }`} />
-            <div className="text-sm space-y-1">
-              <p className={restoreResult.success ? 'text-green-800' : 'text-red-800'}>
-                {restoreResult.message}
-              </p>
-              <p className="text-text-secondary">
-                {restoreResult.tables_restored} tabellen hersteld
-                {restoreResult.migrations_applied > 0 && (
-                  <> &middot; {restoreResult.migrations_applied} migraties toegepast</>
+              <nldd-container layout="row" gap="8">
+                <NlddButton
+                  text={
+                    importing
+                      ? 'Bezig met importeren... (dit kan enkele minuten duren)'
+                      : confirmImport
+                        ? 'Bevestig import'
+                        : 'Database importeren'
+                  }
+                  startIcon="upload"
+                  variant={confirmImport ? 'destructive' : 'primary'}
+                  onClick={handleImport}
+                  disabled={importing}
+                  loading={importing}
+                />
+                {confirmImport && (
+                  <NlddButton text="Annuleren" variant="neutral-tinted" onClick={() => setConfirmImport(false)} />
                 )}
-                {' '}&middot; versie {restoreResult.alembic_revision_to}
-              </p>
-            </div>
-          </div>
-        )}
-      </section>
+              </nldd-container>
+            </nldd-container>
+          )}
+
+          {restoreResult && (
+            <nldd-banner
+              variant={restoreResult.success ? 'success' : 'critical'}
+              text={restoreResult.message}
+              supporting-text={
+                `${restoreResult.tables_restored} tabellen hersteld` +
+                (restoreResult.migrations_applied > 0
+                  ? ` · ${restoreResult.migrations_applied} migraties toegepast`
+                  : '') +
+                ` · versie ${restoreResult.alembic_revision_to}`
+              }
+            />
+          )}
+        </nldd-container>
+      </nldd-card>
 
       {/* Reset section */}
-      <section className="rounded-xl border border-red-200 bg-surface p-5 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-red-50">
-            <Trash2 className="h-5 w-5 text-red-600" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-text">Database resetten</h2>
-            <p className="text-sm text-text-secondary">
-              Wis alle data en begin opnieuw.
-            </p>
-          </div>
-        </div>
+      <nldd-box background="critical">
+        <nldd-container gap="16">
+          <nldd-container layout="row" gap="12" vertical-alignment="center">
+            <nldd-icon name="delete" size="24" color="critical" box />
+            <nldd-container gap="0">
+              <nldd-title size={4}><h2>Database resetten</h2></nldd-title>
+              <nldd-text size="sm" color="secondary">Wis alle data en begin opnieuw.</nldd-text>
+            </nldd-container>
+          </nldd-container>
 
-        <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 p-3">
-          <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
-          <div className="text-sm text-red-800 space-y-1">
-            <p>
-              Dit wist <strong>alle</strong> data behalve de toegangslijst en sessies.
-              Corpus, organisatie, personen, taken — alles wordt verwijderd.
-              Admin-accounts worden opnieuw aangemaakt.
-            </p>
-            <p>
-              De applicatie is tijdelijk niet beschikbaar tijdens het resetten.
-            </p>
-          </div>
-        </div>
+          <nldd-banner
+            variant="critical"
+            text="Dit wist alle data behalve de toegangslijst en sessies"
+            supporting-text="Corpus, organisatie, personen, taken — alles wordt verwijderd. Admin-accounts worden opnieuw aangemaakt. De applicatie is tijdelijk niet beschikbaar tijdens het resetten."
+          />
 
-        {!showResetInput ? (
-          <button
-            onClick={() => setShowResetInput(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-300 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-            Database resetten
-          </button>
-        ) : (
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">
-                Type <code className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">RESET</code> om te bevestigen
-              </label>
-              <input
-                type="text"
-                value={resetConfirmText}
-                onChange={(e) => setResetConfirmText(e.target.value)}
-                placeholder="RESET"
-                className="w-48 px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                disabled={resetting}
-                autoFocus
+          {!showResetInput ? (
+            <nldd-container width="fit-content">
+              <NlddButton
+                text="Database resetten"
+                startIcon="delete"
+                variant="destructive"
+                onClick={() => setShowResetInput(true)}
               />
-            </div>
+            </nldd-container>
+          ) : (
+            <nldd-container gap="12">
+              <nldd-form-field label="Type RESET om te bevestigen">
+                <nldd-text-field
+                  ref={resetFieldRef}
+                  placeholder="RESET"
+                  disabled={orUndef(resetting)}
+                  width="240px"
+                />
+              </nldd-form-field>
 
-            <div className="flex gap-2">
-              <button
-                onClick={handleReset}
-                disabled={resetting || resetConfirmText !== 'RESET'}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
-              >
-                {resetting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
-                {resetting ? 'Bezig met resetten...' : 'Bevestig reset'}
-              </button>
+              <nldd-container layout="row" gap="8">
+                <NlddButton
+                  text={resetting ? 'Bezig met resetten...' : 'Bevestig reset'}
+                  startIcon="delete"
+                  variant="destructive"
+                  onClick={handleReset}
+                  disabled={resetting || resetConfirmText !== 'RESET'}
+                  loading={resetting}
+                />
+                <NlddButton
+                  text="Annuleren"
+                  variant="neutral-tinted"
+                  disabled={resetting}
+                  onClick={() => {
+                    setShowResetInput(false);
+                    setResetConfirmText('');
+                  }}
+                />
+              </nldd-container>
+            </nldd-container>
+          )}
 
-              <button
-                onClick={() => {
-                  setShowResetInput(false);
-                  setResetConfirmText('');
-                }}
-                disabled={resetting}
-                className="px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:bg-gray-50 transition-colors"
-              >
-                Annuleren
-              </button>
-            </div>
-          </div>
-        )}
-
-        {resetResult && (
-          <div className={`flex items-start gap-2 rounded-lg p-3 ${
-            resetResult.success
-              ? 'bg-green-50 border border-green-200'
-              : 'bg-red-50 border border-red-200'
-          }`}>
-            <CheckCircle className={`h-4 w-4 mt-0.5 shrink-0 ${
-              resetResult.success ? 'text-green-600' : 'text-red-600'
-            }`} />
-            <div className="text-sm space-y-1">
-              <p className={resetResult.success ? 'text-green-800' : 'text-red-800'}>
-                {resetResult.message}
-              </p>
-              <p className="text-text-secondary">
-                {resetResult.tables_cleared} tabellen gewist
-                {resetResult.admin_persons_created > 0 && (
-                  <> &middot; {resetResult.admin_persons_created} admin-accounts aangemaakt</>
-                )}
-              </p>
-            </div>
-          </div>
-        )}
-      </section>
-    </div>
+          {resetResult && (
+            <nldd-banner
+              variant={resetResult.success ? 'success' : 'critical'}
+              text={resetResult.message}
+              supporting-text={
+                `${resetResult.tables_cleared} tabellen gewist` +
+                (resetResult.admin_persons_created > 0
+                  ? ` · ${resetResult.admin_persons_created} admin-accounts aangemaakt`
+                  : '')
+              }
+            />
+          )}
+        </nldd-container>
+      </nldd-box>
+    </nldd-container>
   );
 }

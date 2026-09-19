@@ -67,14 +67,14 @@ export function WorkerHealthTable() {
   const anyDown = data.workers.some((w) => w.health === 'down');
 
   return (
-    <div className="space-y-3">
-      <div>
-        <h3 className="text-base font-semibold">Achtergrondprocessen</h3>
+    <nldd-container gap="12">
+      <nldd-container gap="4">
+        <nldd-title size={4}><h3>Achtergrondprocessen</h3></nldd-title>
         <nldd-text size="sm" color="secondary">
           De worker draait naast de webserver en doet polling, sync en de Mattermost-websocket. Elke
           loop schrijft hier een hartslag.
         </nldd-text>
-      </div>
+      </nldd-container>
 
       {anyDown ? (
         <nldd-inline-dialog
@@ -107,6 +107,6 @@ export function WorkerHealthTable() {
       <nldd-text size="xs" color="secondary">
         Server-tijd: {new Date(data.server_now).toLocaleString('nl-NL')}. Auto-refresh elke 15 sec.
       </nldd-text>
-    </div>
+    </nldd-container>
   );
 }

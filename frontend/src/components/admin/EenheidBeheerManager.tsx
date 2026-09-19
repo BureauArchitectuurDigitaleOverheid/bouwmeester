@@ -46,23 +46,29 @@ export function EenheidBeheerManager() {
     );
   }, [allEenheden, search]);
 
-  if (isLoading) return <LoadingSpinner className="py-12" />;
+  if (isLoading) {
+    return (
+      <nldd-container padding="48">
+        <LoadingSpinner />
+      </nldd-container>
+    );
+  }
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       <nldd-text size="sm" color="secondary">
         Beheer initiatieven en modules per organisatie-eenheid. Klik op een eenheid om de details te
         zien.
       </nldd-text>
 
-      <div className="max-w-md">
+      <nldd-container max-width="448px">
         <nldd-text-field
           ref={searchRef}
           value={search}
           placeholder="Zoek op naam..."
           accessible-label="Zoek eenheid op naam"
         />
-      </div>
+      </nldd-container>
 
       <nldd-table columns="minmax(200px,1fr) 160px" sm-columns="1fr" accessible-label="Organisatie-eenheden">
         <nldd-table-row slot="header">
@@ -88,7 +94,7 @@ export function EenheidBeheerManager() {
           />
         </div>
       </nldd-table>
-    </div>
+    </nldd-container>
   );
 }
 
@@ -183,26 +189,27 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
   };
 
   return (
-    <div className="bg-gray-50 border-l-[3px] border-l-primary-300 px-6 py-5 space-y-6">
+    <nldd-box>
+      <nldd-container padding="20" gap="24">
       {/* Initiatieven */}
-      <div>
-        <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5 mb-3">
+      <nldd-container gap="12">
+        <nldd-container layout="row" gap="6" vertical-alignment="center">
           <nldd-icon name="lightbulb" size="16" />
-          Initiatieven
-        </h4>
+          <nldd-text size="xs" color="secondary" weight="bold">Initiatieven</nldd-text>
+        </nldd-container>
 
-        {initiativeLoading && <LoadingSpinner className="py-4" />}
+        {initiativeLoading && (
+          <nldd-container padding="16">
+            <LoadingSpinner />
+          </nldd-container>
+        )}
 
         {(addEenheidMutation.isError || removeEenheidMutation.isError || updateRolMutation.isError) && (
-          <nldd-inline-dialog
-            variant="alert"
-            text="Kon initiatief-koppeling niet bijwerken."
-            style={{ marginBottom: '0.75rem' }}
-          />
+          <nldd-inline-dialog variant="alert" text="Kon initiatief-koppeling niet bijwerken." />
         )}
 
         {!initiativeLoading && initiatieven && initiatieven.length > 0 && (
-          <nldd-list variant="box-base" dividers="always" accessible-label="Gekoppelde initiatieven" style={{ marginBottom: '0.75rem' }}>
+          <nldd-list variant="box-base" dividers="always" accessible-label="Gekoppelde initiatieven">
             {initiatieven.map((link) => (
               <InitiatiefRow
                 key={link.initiatief_id}
@@ -216,13 +223,11 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
         )}
 
         {!initiativeLoading && initiatieven && initiatieven.length === 0 && (
-          <nldd-text size="sm" color="secondary" style={{ display: 'block', marginBottom: '0.75rem' }}>
-            Geen gekoppelde initiatieven.
-          </nldd-text>
+          <nldd-text size="sm" color="secondary">Geen gekoppelde initiatieven.</nldd-text>
         )}
 
-        <div className="flex items-start gap-2">
-          <div className="flex-1 max-w-xs">
+        <nldd-container layout="row" gap="8" horizontal-alignment="left">
+          <nldd-container max-width="320px">
             <CreatableSelect
               value={addValue}
               onChange={(val) => {
@@ -233,25 +238,25 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
               placeholder="Initiatief toevoegen..."
               emptyMessage="Geen initiatieven gevonden"
             />
-          </div>
-        </div>
-      </div>
+          </nldd-container>
+        </nldd-container>
+      </nldd-container>
 
       {/* Modules */}
-      <div>
-        <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5 mb-3">
+      <nldd-container gap="12">
+        <nldd-container layout="row" gap="6" vertical-alignment="center">
           <nldd-icon name="blocks-9" size="16" />
-          Modules
-        </h4>
+          <nldd-text size="xs" color="secondary" weight="bold">Modules</nldd-text>
+        </nldd-container>
 
-        {modulesLoading && <LoadingSpinner className="py-4" />}
+        {modulesLoading && (
+          <nldd-container padding="16">
+            <LoadingSpinner />
+          </nldd-container>
+        )}
 
         {updateModuleMutation.isError && (
-          <nldd-inline-dialog
-            variant="alert"
-            text="Kon module-instelling niet opslaan."
-            style={{ marginBottom: '0.75rem' }}
-          />
+          <nldd-inline-dialog variant="alert" text="Kon module-instelling niet opslaan." />
         )}
 
         {!modulesLoading && moduleConfig && (
@@ -276,8 +281,9 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
             })}
           </nldd-list>
         )}
-      </div>
-    </div>
+      </nldd-container>
+      </nldd-container>
+    </nldd-box>
   );
 }
 

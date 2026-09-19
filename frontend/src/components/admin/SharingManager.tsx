@@ -95,7 +95,7 @@ export function SharingManager() {
   }
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       {/* Toggle add form */}
       {!showForm && (
         <NlddButton
@@ -107,8 +107,10 @@ export function SharingManager() {
 
       {/* Add form */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="border border-border rounded-xl p-4 space-y-3">
-          <h3 className="text-sm font-medium text-text">Nieuwe deling aanmaken</h3>
+        <nldd-card>
+        <form onSubmit={handleSubmit}>
+          <nldd-container padding="16" gap="12">
+          <nldd-title size={4}><h3>Nieuwe deling aanmaken</h3></nldd-title>
 
           {/* Mode toggle */}
           <nldd-radio-button-group ref={modeGroupRef} accessible-label="Type deling" name="share-mode">
@@ -198,21 +200,17 @@ export function SharingManager() {
           </nldd-form-field>
 
           {/* Date range */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <nldd-form-field label="Geldig van" optional>
-                <nldd-date-field ref={geldigVanRef} value={form.geldig_van ?? ''} />
-              </nldd-form-field>
-            </div>
-            <div className="flex-1">
-              <nldd-form-field label="Geldig tot" optional>
-                <nldd-date-field ref={geldigTotRef} value={form.geldig_tot ?? ''} />
-              </nldd-form-field>
-            </div>
-          </div>
+          <nldd-container layout="grid" column-count={2} gap="12">
+            <nldd-form-field label="Geldig van" optional>
+              <nldd-date-field ref={geldigVanRef} value={form.geldig_van ?? ''} />
+            </nldd-form-field>
+            <nldd-form-field label="Geldig tot" optional>
+              <nldd-date-field ref={geldigTotRef} value={form.geldig_tot ?? ''} />
+            </nldd-form-field>
+          </nldd-container>
 
           {/* Form actions */}
-          <div className="flex gap-2 pt-1">
+          <nldd-container layout="row" gap="8">
             <NlddButton
               type="submit"
               text="Toevoegen"
@@ -228,8 +226,10 @@ export function SharingManager() {
                 setShowForm(false);
               }}
             />
-          </div>
+          </nldd-container>
+          </nldd-container>
         </form>
+        </nldd-card>
       )}
 
       {/* Shares table */}
@@ -270,7 +270,7 @@ export function SharingManager() {
             />
             <nldd-text-cell>
               {confirmDeleteId === share.id ? (
-                <div className="flex items-center gap-1">
+                <nldd-container layout="row" gap="4" vertical-alignment="center">
                   <NlddButton
                     text="Ja"
                     variant="destructive"
@@ -284,7 +284,7 @@ export function SharingManager() {
                     size="xs"
                     onClick={() => setConfirmDeleteId(null)}
                   />
-                </div>
+                </nldd-container>
               ) : (
                 <NlddIconButton
                   icon="trash"
@@ -306,6 +306,6 @@ export function SharingManager() {
         Delingen geven een organisatie-eenheid toegang tot gegevens van een andere eenheid of een
         specifiek item. Verwijder een deling om de toegang in te trekken.
       </nldd-text>
-    </div>
+    </nldd-container>
   );
 }

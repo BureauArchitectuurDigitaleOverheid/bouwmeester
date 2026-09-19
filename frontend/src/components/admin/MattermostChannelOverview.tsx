@@ -55,27 +55,27 @@ export function MattermostChannelOverviewTable() {
   }
   if (!data || data.length === 0) {
     return (
-      <div className="space-y-2">
-        <h3 className="text-base font-semibold">Mattermost-kanalen</h3>
+      <nldd-container gap="8">
+        <nldd-title size={4}><h3>Mattermost-kanalen</h3></nldd-title>
         <EmptyState
           icon="message-rectangle-text"
           title="Nog geen kanalen gekoppeld"
           description="Koppel er eentje vanuit een lead of initiatief om hier een overzicht te zien."
         />
-      </div>
+      </nldd-container>
     );
   }
 
   return (
-    <div className="space-y-3">
-      <div>
-        <h3 className="text-base font-semibold">Mattermost-kanalen</h3>
+    <nldd-container gap="12">
+      <nldd-container gap="4">
+        <nldd-title size={4}><h3>Mattermost-kanalen</h3></nldd-title>
         <nldd-text size="sm" color="secondary">
           Gekoppelde kanalen waar de bot meeleest. &quot;Laatste post&quot; is de meest recente
           verwerkte post; ontbreekt deze, dan is er sinds de koppeling niets binnengekomen, of de
           websocket loopt niet.
         </nldd-text>
-      </div>
+      </nldd-container>
       <nldd-table
         columns="minmax(200px,1fr) minmax(160px,1fr) 160px 140px"
         sm-columns="1fr 160px"
@@ -94,6 +94,6 @@ export function MattermostChannelOverviewTable() {
           <EmptyState icon="message-rectangle-text" title="Nog geen kanalen gekoppeld" />
         </div>
       </nldd-table>
-    </div>
+    </nldd-container>
   );
 }

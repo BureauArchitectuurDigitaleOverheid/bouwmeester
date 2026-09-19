@@ -35,26 +35,28 @@ export function WhitelistManager() {
   }
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       {/* Add form */}
-      <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2">
-        <nldd-text-field
-          ref={emailFieldRef}
-          type="email"
-          value={newEmail}
-          placeholder="E-mailadres toevoegen..."
-          accessible-label="E-mailadres toevoegen"
-          autocomplete="email"
-          required
-          style={{ flex: 1 }}
-        />
-        <NlddButton
-          type="submit"
-          text="Toevoegen"
-          startIcon="plus"
-          disabled={addEmail.isPending || !newEmail.trim()}
-          className="shrink-0"
-        />
+      <form onSubmit={handleAdd}>
+        <nldd-container layout="row" gap="8">
+          <nldd-container>
+            <nldd-text-field
+              ref={emailFieldRef}
+              type="email"
+              value={newEmail}
+              placeholder="E-mailadres toevoegen..."
+              accessible-label="E-mailadres toevoegen"
+              autocomplete="email"
+              required
+            />
+          </nldd-container>
+          <NlddButton
+            type="submit"
+            text="Toevoegen"
+            startIcon="plus"
+            disabled={addEmail.isPending || !newEmail.trim()}
+          />
+        </nldd-container>
       </form>
 
       {/* Email list */}
@@ -80,7 +82,7 @@ export function WhitelistManager() {
             />
             <nldd-text-cell>
               {confirmDeleteId === entry.id ? (
-                <div className="flex items-center gap-1">
+                <nldd-container layout="row" gap="4" vertical-alignment="center">
                   <NlddButton
                     text="Ja"
                     variant="destructive"
@@ -94,7 +96,7 @@ export function WhitelistManager() {
                     size="xs"
                     onClick={() => setConfirmDeleteId(null)}
                   />
-                </div>
+                </nldd-container>
               ) : (
                 <NlddIconButton
                   icon="trash"
@@ -116,6 +118,6 @@ export function WhitelistManager() {
         Alleen personen met een e-mailadres op deze lijst kunnen inloggen. Wanneer de lijst leeg is,
         is alle toegang open (lokale ontwikkeling).
       </nldd-text>
-    </div>
+    </nldd-container>
   );
 }

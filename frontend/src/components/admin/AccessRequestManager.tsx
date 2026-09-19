@@ -45,7 +45,7 @@ export function AccessRequestManager() {
   }
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       {/* Filter */}
       <nldd-toggle-button-group ref={filterRef} type="radio" accessible-label="Filter op status">
         <nldd-toggle-button text="In afwachting" value="pending" selected={filter === 'pending' ? true : undefined} />
@@ -86,7 +86,7 @@ export function AccessRequestManager() {
               {req.status === 'pending' && (
                 <>
                   {denyId === req.id ? (
-                    <div className="flex flex-col gap-1">
+                    <nldd-container gap="4">
                       <nldd-text-field
                         ref={denyReasonRef}
                         value={denyReason}
@@ -94,7 +94,7 @@ export function AccessRequestManager() {
                         size="sm"
                         accessible-label="Reden voor afwijzen"
                       />
-                      <div className="flex gap-1">
+                      <nldd-container layout="row" gap="4">
                         <NlddButton
                           text="Afwijzen"
                           variant="destructive"
@@ -108,10 +108,10 @@ export function AccessRequestManager() {
                           size="xs"
                           onClick={() => { setDenyId(null); setDenyReason(''); }}
                         />
-                      </div>
-                    </div>
+                      </nldd-container>
+                    </nldd-container>
                   ) : (
-                    <div className="flex items-center gap-1">
+                    <nldd-container layout="row" gap="4" vertical-alignment="center">
                       <NlddIconButton
                         icon="check-mark"
                         accessibleLabel="Goedkeuren"
@@ -127,7 +127,7 @@ export function AccessRequestManager() {
                         size="sm"
                         onClick={() => { setDenyId(req.id); setDenyReason(''); }}
                       />
-                    </div>
+                    </nldd-container>
                   )}
                 </>
               )}
@@ -151,6 +151,6 @@ export function AccessRequestManager() {
           />
         </div>
       </nldd-table>
-    </div>
+    </nldd-container>
   );
 }
