@@ -109,7 +109,9 @@ export function PublicInitiatiefPage() {
               Community
             </nldd-text>
           </nldd-container>
-          <nldd-title size={1}>{data.naam}</nldd-title>
+          <nldd-title size={1}>
+            <h1>{data.naam}</h1>
+          </nldd-title>
           {data.beschrijving && (
             <nldd-container max-width="640px">
               <RichTextDisplay content={data.beschrijving} />
@@ -128,7 +130,9 @@ export function PublicInitiatiefPage() {
                 horizontal-alignment="left"
                 style={{ alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '24px' }}
               >
-                <nldd-title size={4}>Lopende casussen</nldd-title>
+                <nldd-title size={4}>
+                  <h2>Lopende casussen</h2>
+                </nldd-title>
                 <nldd-text size="sm" color="secondary">
                   {data.casussen.length} {data.casussen.length === 1 ? 'casus' : 'casussen'}
                 </nldd-text>
@@ -147,7 +151,9 @@ export function PublicInitiatiefPage() {
               gap="8"
               style={{ alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '24px' }}
             >
-              <nldd-title size={4}>Updates</nldd-title>
+              <nldd-title size={4}>
+                <h2>Updates</h2>
+              </nldd-title>
               {data.updates.length > 0 && (
                 <nldd-text size="sm" color="secondary">
                   {data.updates.length} {data.updates.length === 1 ? 'bericht' : 'berichten'}
@@ -219,7 +225,9 @@ function UpdateCard({
             </nldd-text>
           )}
         </nldd-container>
-        <nldd-title size={3}>{update.titel}</nldd-title>
+        <nldd-title size={3}>
+          <h3>{update.titel}</h3>
+        </nldd-title>
         {update.body && (
           <nldd-container padding-top="16">
             <RichTextDisplay content={update.body} />
@@ -244,7 +252,9 @@ function CasusCard({ casus, accent }: { casus: PublicCasus; accent: string }) {
             Casus
           </nldd-text>
         </nldd-container>
-        <nldd-title size={5}>{casus.titel}</nldd-title>
+        <nldd-title size={5}>
+          <h3>{casus.titel}</h3>
+        </nldd-title>
         {casus.samenvatting && (
           <nldd-container padding-top="8">
             <nldd-text size="sm" color="secondary">
@@ -298,7 +308,9 @@ function PublicMessage({ title, body }: { title: string; body: string }) {
     <nldd-app-view background="tinted">
       <nldd-simple-section horizontal-alignment="center" vertical-alignment="center" height="100dvh">
         <nldd-container gap="12" horizontal-alignment="center" style={{ textAlign: 'center' }}>
-          <nldd-title size={2}>{title}</nldd-title>
+          <nldd-title size={2}>
+            <h2>{title}</h2>
+          </nldd-title>
           <nldd-text color="secondary">{body}</nldd-text>
         </nldd-container>
       </nldd-simple-section>

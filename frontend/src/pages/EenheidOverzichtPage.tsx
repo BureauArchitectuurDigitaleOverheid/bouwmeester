@@ -100,7 +100,9 @@ export function EenheidOverzichtPage() {
           <div>
             <nldd-container layout="row" gap="8" style={{ alignItems: 'center', marginBottom: '12px' }}>
               <Icon name="users" />
-              <nldd-title size={5}>Teamoverzicht</nldd-title>
+              <nldd-title size={5}>
+                <h2>Teamoverzicht</h2>
+              </nldd-title>
             </nldd-container>
             {overview.by_person.length === 0 ? (
               <Card>
@@ -136,7 +138,9 @@ export function EenheidOverzichtPage() {
             <div>
               <nldd-container layout="row" gap="8" style={{ alignItems: 'center', marginBottom: '12px' }}>
                 <Icon name="apartment-building" />
-                <nldd-title size={5}>Subeenheden</nldd-title>
+                <nldd-title size={5}>
+                  <h2>Subeenheden</h2>
+                </nldd-title>
               </nldd-container>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {overview.by_subeenheid.map((sub) => (

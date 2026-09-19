@@ -48,7 +48,9 @@ export function LoginPage() {
         <nldd-container gap="24" horizontal-alignment="center" style={{ textAlign: 'center' }}>
           <nldd-container gap="12" horizontal-alignment="center">
             <img src={logoImg} alt="Bouwmeester" className="h-20 w-20 rounded-full" />
-            <nldd-title size={3}>Bouwmeester</nldd-title>
+            <nldd-title size={3}>
+              <h1>Bouwmeester</h1>
+            </nldd-title>
             <nldd-text color="secondary">Log in om door te gaan</nldd-text>
           </nldd-container>
 
