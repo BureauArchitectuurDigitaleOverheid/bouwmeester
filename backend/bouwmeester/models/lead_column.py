@@ -49,9 +49,16 @@ class LeadColumn(Base):
     name: Mapped[str] = mapped_column(nullable=False)
     slug: Mapped[str] = mapped_column(nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # One of the nldd-tag color names in schema.lead_column.LEAD_COLUMN_COLORS
+    # (five semantic roles plus the Rijkshuisstijl hue set), e.g. "lintblauw"
+    # or "success". Not DB-enforced (a CHECK constraint would complicate the
+    # migration from the old free-form Tailwind strings for no real benefit
+    # here); Pydantic validates it on every write via
+    # LeadColumnCreate/LeadColumnUpdate. Never a raw Tailwind class string or
+    # hex value again; see migration 54ec9a7df491_lead_column_colors_to_names.
     color: Mapped[str] = mapped_column(
         nullable=False,
-        server_default="bg-gray-100 text-gray-800",
+        server_default="neutral",
     )
     is_active_stage: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
