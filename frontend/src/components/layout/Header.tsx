@@ -97,32 +97,30 @@ function DevPersonPicker({
   currentPerson: Person | null | undefined;
   onPick: (id: string) => void;
 }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddValue(ref, currentPerson?.id ?? '');
-  useNlddEvent(ref, 'change', (e) => {
-    const id = eventValue(e);
-    if (id) onPick(id);
-  });
+  // nldd-dropdown, not nldd-combo-box. The combo-box calls itself "a text input
+  // with autocomplete": it showed the chosen name as editable text, truncated
+  // it mid-word and had the browser spell-check it, with a clear button beside.
+  // Picking one of a fixed list of people is a select, and the dropdown wraps a
+  // native one so the browser keeps the keyboard handling and the accessibility.
   return (
-    <nldd-container width="fit-content" style={{ minWidth: '180px' }}>
-      <nldd-combo-box
-        ref={ref}
+    <nldd-dropdown accessible-label="Persoon kiezen (ontwikkelmodus)" width="200px">
+      <select
         value={currentPerson?.id ?? ''}
-        placeholder="Kies persoon"
-        accessible-label="Persoon kiezen (ontwikkelmodus)"
+        onChange={(e) => {
+          if (e.target.value) onPick(e.target.value);
+        }}
       >
-        <nldd-menu>
-          {people.map((person) => (
-            <nldd-menu-item
-              key={person.id}
-              value={person.id}
-              text={person.naam}
-              {...(person.functie ? { details: formatFunctie(person.functie) } : {})}
-            />
-          ))}
-        </nldd-menu>
-      </nldd-combo-box>
-    </nldd-container>
+        <option value="" disabled>
+          Kies persoon
+        </option>
+        {people.map((person) => (
+          <option key={person.id} value={person.id}>
+            {person.naam}
+            {person.functie ? ` — ${formatFunctie(person.functie)}` : ''}
+          </option>
+        ))}
+      </select>
+    </nldd-dropdown>
   );
 }
 
@@ -206,13 +204,13 @@ export function Header() {
         {/* Notification bell */}
         <span slot="toolbar"><NotificationBell /></span>
 
-        {/* Search shortcut */}
+        {/* Search. An icon button like the other toolbar actions: a labelled
+            button here competed with the page title and the profile picker for
+            the same row, and the magnifier is the one icon nobody has to
+            learn. The shortcut stays in the accessible name. */}
         <span slot="toolbar">
-          <NlddButton
-            variant="neutral-base"
-            size="sm"
-            startIcon="magnifier"
-            text="Zoeken"
+          <NlddIconButton
+            icon="magnifier"
             accessibleLabel="Zoeken (sneltoets /)"
             onClick={() => useUIStore.getState().setSearchModalOpen(true)}
           />

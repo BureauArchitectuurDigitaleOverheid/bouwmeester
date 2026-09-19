@@ -86,11 +86,7 @@ export function CreatableSelect({
   displayValue,
   onClear,
   emptyMessage = 'Geen resultaten',
-  // The element has no read-only list mode. Typing filters the menu, which is
-  // harmless, and swapping in an nldd-dropdown here would make two call sites
-  // that look identical behave differently — a mode, in the sense the design
-  // guidelines warn against. Accepted for API compatibility, intentionally unused.
-  searchable: _searchable = true,
+  searchable = true,
 }: CreatableSelectProps) {
   const ref = useRef<HTMLElement>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -199,13 +195,56 @@ export function CreatableSelect({
     </nldd-combo-box>
   );
 
-  // Without a label there is no field to wrap it in; the combo box carries its
+  /**
+   * A plain list, for `searchable={false}`.
+   *
+   * An earlier pass rendered the combo box here too, reasoning that two call
+   * sites which look identical should not behave differently. The visible
+   * result argued otherwise: a five-option filter showed its own value as
+   * truncated, spell-checked, editable text with a clear button beside it,
+   * because a combo box is, in its own words, "a text input with autocomplete".
+   * A select is not a quieter combo box; it is a different control, and the
+   * nineteen call sites that pass `searchable={false}` are asking for it.
+   *
+   * nldd-dropdown wraps a native <select>, so the browser owns the keyboard,
+   * the form value and the accessibility, including type-to-jump. Nothing is
+   * lost against typing-to-filter on a list this short.
+   */
+  const dropdown = (
+    <nldd-dropdown
+      {...(disabled || isCreating ? { disabled: true } : {})}
+      {...(required ? { required: true } : {})}
+      {...(message ? { invalid: true } : {})}
+      {...(label ? {} : { 'accessible-label': placeholder })}
+    >
+      <select
+        value={value ?? ''}
+        disabled={disabled || isCreating}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (!next) onClear?.();
+          else onChange(next);
+        }}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </nldd-dropdown>
+  );
+
+  const control = searchable ? comboBox : dropdown;
+
+  // Without a label there is no field to wrap it in; the control carries its
   // own accessible name in that case.
-  if (!label) return comboBox;
+  if (!label) return control;
 
   return (
     <nldd-form-field label={label} {...(required ? {} : { optional: true })}>
-      {comboBox}
+      {control}
       {message ? (
         // A reason only the server can establish gets no rule of its own; it is
         // named in `unmet` on the input and spelled out here.
