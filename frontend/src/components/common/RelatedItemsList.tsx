@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
-import { Icon } from '@/components/nldd/Icon';
+import { useRef, type ReactNode } from 'react';
 import { Badge } from './Badge';
+import { useNlddEvent } from '@/components/nldd/events';
 import type { BadgeVariant } from '@/types';
 
 interface RelatedItem {
@@ -20,6 +20,36 @@ interface RelatedItemsListProps {
   emptyLabel?: string;
 }
 
+function ItemRow({ item }: { item: RelatedItem }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', item.onClick);
+
+  // The arrow that used to fade in on hover is gone. It pointed at the row
+  // itself, which the row already announces by being a button, and a hint that
+  // only exists on hover never reaches a keyboard or a touch screen.
+  return (
+    <nldd-list-item ref={ref} size="sm" button>
+      {item.icon && <nldd-cell width="fit-content">{item.icon}</nldd-cell>}
+      {item.badge && (
+        <nldd-cell width="fit-content">
+          <Badge variant={item.badge.variant} dot={item.badge.dot}>
+            {item.badge.text}
+          </Badge>
+        </nldd-cell>
+      )}
+      <nldd-text-cell text={item.label} />
+      {item.secondaryText && (
+        <nldd-text-cell
+          text={item.secondaryText}
+          color="secondary"
+          width="fit-content"
+          horizontal-alignment="right"
+        />
+      )}
+    </nldd-list-item>
+  );
+}
+
 export function RelatedItemsList({
   items,
   maxVisible = 5,
@@ -28,55 +58,41 @@ export function RelatedItemsList({
   emptyLabel = 'Geen items',
 }: RelatedItemsListProps) {
   if (items.length === 0) {
-    return <p className="text-sm text-text-secondary">{emptyLabel}</p>;
+    return (
+      <nldd-text size="sm" color="secondary">
+        {emptyLabel}
+      </nldd-text>
+    );
   }
 
   const visible = items.slice(0, maxVisible);
   const hasMore = items.length > maxVisible;
 
   return (
-    <div className="space-y-0.5">
-      {visible.map((item) => (
-        <button
-          key={item.id}
-          onClick={item.onClick}
-          className="flex items-center gap-2 w-full p-1.5 rounded-lg hover:bg-gray-50 transition-colors text-left group"
-        >
-          {item.icon}
-          {item.badge && (
-            <Badge variant={item.badge.variant} dot={item.badge.dot}>
-              {item.badge.text}
-            </Badge>
-          )}
-          <span className="text-sm text-text truncate flex-1 group-hover:text-primary-700 transition-colors">
-            {item.label}
-          </span>
-          {item.secondaryText && (
-            <span className="text-xs text-text-secondary shrink-0">
-              {item.secondaryText}
-            </span>
-          )}
-          <Icon
-            name="arrow-right"
-            size="sm"
-            className="shrink-0 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100"
-          />
-        </button>
-      ))}
-      {hasMore && (
-        onShowAll ? (
-          <button
+    <nldd-container gap="4">
+      <nldd-list variant="simple" accessible-label="Gerelateerde items">
+        {visible.map((item) => (
+          <ItemRow key={item.id} item={item} />
+        ))}
+      </nldd-list>
+      {hasMore &&
+        (onShowAll ? (
+          <NlddTextButton
+            text={showAllLabel ?? `Bekijk alle ${items.length} items`}
             onClick={onShowAll}
-            className="text-xs text-primary-700 hover:text-primary-900 transition-colors pl-1.5 pt-1"
-          >
-            {showAllLabel ?? `Bekijk alle ${items.length} items`}
-          </button>
+          />
         ) : (
-          <p className="text-xs text-text-secondary pl-1.5 pt-1">
+          <nldd-text size="xs" color="secondary">
             +{items.length - maxVisible} meer
-          </p>
-        )
-      )}
-    </div>
+          </nldd-text>
+        ))}
+    </nldd-container>
   );
+}
+
+/** The "show all" link: an action, so a button, styled as a link. */
+function NlddTextButton({ text, onClick }: { text: string; onClick: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onClick);
+  return <nldd-button ref={ref} text={text} variant="accent-transparent" size="sm" />;
 }

@@ -1,16 +1,15 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Icon } from '@/components/nldd/Icon';
 import { NlddButton } from '@/components/nldd/NlddLink';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
-import { useNlddEvent } from '@/components/nldd/events';
+import { useNlddEvent, useNlddValue, eventValue } from '@/components/nldd/events';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { VOCABULARY_LABELS, type VocabularyId } from '@/vocabulary';
 import { NotificationBell } from '@/components/common/NotificationBell';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
-import { formatOrganisatieType, formatFunctie } from '@/types';
+import { formatOrganisatieType, formatFunctie, type Person } from '@/types';
 import { useUIStore } from '@/store/ui';
 
 const pageTitles: Record<string, string> = {
@@ -31,13 +30,69 @@ const pageTitles: Record<string, string> = {
   '/share-target': 'Nieuwe lead',
 };
 
-function getInitials(naam: string): string {
-  return naam
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
+/** The vocabulary choice, as one control rather than a row of buttons. */
+function VocabularySwitch({
+  value,
+  onChange,
+}: {
+  value: VocabularyId;
+  onChange: (id: VocabularyId) => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddValue(ref, value);
+  useNlddEvent(ref, 'change', (e) => onChange(eventValue(e) as VocabularyId));
+  return (
+    <nldd-segmented-control ref={ref} type="radio" size="sm" value={value} accessible-label="Woordenlijst">
+      {(Object.keys(VOCABULARY_LABELS) as VocabularyId[]).map((id) => (
+        <nldd-segmented-control-item key={id} value={id} text={VOCABULARY_LABELS[id]} />
+      ))}
+    </nldd-segmented-control>
+  );
+}
+
+/**
+ * Local-development person switcher, shown only when OIDC is not configured.
+ *
+ * An nldd-combo-box: it is a list you filter by typing, which is what the
+ * hand-built version was doing with its own text input, its own filter and its
+ * own mousedown listener on document to close again.
+ */
+function DevPersonPicker({
+  people,
+  currentPerson,
+  onPick,
+}: {
+  people: Person[];
+  currentPerson: Person | null | undefined;
+  onPick: (id: string) => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddValue(ref, currentPerson?.id ?? '');
+  useNlddEvent(ref, 'change', (e) => {
+    const id = eventValue(e);
+    if (id) onPick(id);
+  });
+  return (
+    <nldd-container width="fit-content" style={{ minWidth: '180px' }}>
+      <nldd-combo-box
+        ref={ref}
+        value={currentPerson?.id ?? ''}
+        placeholder="Kies persoon"
+        accessible-label="Persoon kiezen (ontwikkelmodus)"
+      >
+        <nldd-menu>
+          {people.map((person) => (
+            <nldd-menu-item
+              key={person.id}
+              value={person.id}
+              text={person.naam}
+              {...(person.functie ? { details: formatFunctie(person.functie) } : {})}
+            />
+          ))}
+        </nldd-menu>
+      </nldd-combo-box>
+    </nldd-container>
+  );
 }
 
 export function Header() {
@@ -47,11 +102,6 @@ export function Header() {
   const { vocabularyId, setVocabularyId } = useVocabulary();
   const { authenticated, oidcConfigured, logout, realIsAdmin, viewAsNonAdmin, toggleViewAsNonAdmin } = useAuth();
   const toggleMobileSidebar = useUIStore((s) => s.toggleMobileSidebar);
-
-  // Dev-mode person picker state (only used when !oidcConfigured)
-  const [showDevPicker, setShowDevPicker] = useState(false);
-  const [search, setSearch] = useState('');
-  const pickerRef = useRef<HTMLDivElement>(null);
 
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
 
@@ -76,25 +126,6 @@ export function Header() {
       ]
     : undefined;
 
-  // Close picker on outside click
-  useEffect(() => {
-    if (!showDevPicker) return;
-    const handleClick = (e: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setShowDevPicker(false);
-        setSearch('');
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [showDevPicker]);
-
-  const filteredPeople = people.filter((p) =>
-    p.naam.toLowerCase().includes(search.toLowerCase()),
-  );
-
-  const initials = currentPerson ? getInitials(currentPerson.naam) : null;
-
   // `back-href` would trigger a full page load, so the bar fires `back` instead
   // and the router handles it. Bound here only: the event bubbles, and binding
   // it on an ancestor as well would run the handler twice for one press.
@@ -110,31 +141,21 @@ export function Header() {
       text={title}
       {...(breadcrumbs ? { 'back-text': 'Corpus' } : {})}
     >
-      <div slot="toolbar" className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+      <nldd-container slot="toolbar" layout="row" gap="8" vertical-alignment="center" width="fit-content">
         {/* Only shown while the sidebar is a sheet; above lg the pane is visible. */}
-        <span className="lg:hidden">
+        <nldd-container width="fit-content" hide-above="lg">
           <NlddIconButton
             icon="menu"
             accessibleLabel="Navigatie openen"
             onClick={toggleMobileSidebar}
           />
-        </span>
-        {/* Vocabulary toggle */}
-        <div className="hidden sm:flex items-center h-9 rounded-xl border border-border text-xs overflow-hidden">
-          {(Object.keys(VOCABULARY_LABELS) as VocabularyId[]).map((id) => (
-            <button
-              key={id}
-              onClick={() => setVocabularyId(id)}
-              className={`h-full px-2.5 transition-colors ${
-                vocabularyId === id
-                  ? 'bg-primary-100 text-primary-700 font-medium'
-                  : 'text-text-secondary hover:text-text hover:bg-gray-50'
-              }`}
-            >
-              {VOCABULARY_LABELS[id]}
-            </button>
-          ))}
-        </div>
+        </nldd-container>
+        {/* Vocabulary toggle. A segmented control rather than a row of buttons:
+            it is one choice out of a set, so the items are radios and the
+            arrow keys move between them. */}
+        <nldd-container width="fit-content" hide-below="sm">
+          <VocabularySwitch value={vocabularyId} onChange={setVocabularyId} />
+        </nldd-container>
 
         {/* Admin view-as-non-admin toggle */}
         {realIsAdmin && (
@@ -164,77 +185,24 @@ export function Header() {
 
         {/* Dev-mode person picker (only when OIDC is not configured) */}
         {!oidcConfigured ? (
-          <div className="relative" ref={pickerRef}>
-            <button
-              onClick={() => setShowDevPicker(!showDevPicker)}
-              className="flex items-center gap-1.5 h-9 px-2 rounded-xl border border-border hover:border-border-hover transition-all"
-            >
-              <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary-100 text-primary-700 text-[11px] font-medium">
-                {initials || <Icon name="person" size="sm" />}
-              </div>
-              {currentPerson && (
-                <span className="text-sm text-text hidden sm:inline max-w-[120px] truncate">
-                  {currentPerson.naam}
-                </span>
-              )}
-              <Icon name="chevron-down" size="sm" className="text-text-secondary" />
-            </button>
-
-            {showDevPicker && (
-              <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-border rounded-xl shadow-lg z-50 overflow-hidden">
-                <div className="p-2 border-b border-border">
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Zoek persoon..."
-                    className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
-                    autoFocus
-                  />
-                </div>
-                <div className="max-h-64 overflow-y-auto py-1">
-                  {filteredPeople.map((person) => (
-                    <button
-                      key={person.id}
-                      onClick={() => {
-                        setDevPersonId(person.id);
-                        setShowDevPicker(false);
-                        setSearch('');
-                      }}
-                      className="flex items-center gap-3 w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-center justify-center h-7 w-7 rounded-full bg-primary-100 text-primary-700 text-xs font-medium shrink-0">
-                        {getInitials(person.naam)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-text truncate">{person.naam}</p>
-                        {person.functie && (
-                          <p className="text-xs text-text-secondary truncate">{formatFunctie(person.functie)}</p>
-                        )}
-                      </div>
-                      {currentPerson?.id === person.id && (
-                        <Icon name="check-mark" className="shrink-0 text-primary-600" />
-                      )}
-                    </button>
-                  ))}
-                  {filteredPeople.length === 0 && (
-                    <p className="px-3 py-2 text-sm text-text-secondary">Geen resultaten</p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          <DevPersonPicker
+            people={people}
+            currentPerson={currentPerson}
+            onPick={setDevPersonId}
+          />
         ) : (
-          <div className="flex items-center gap-1.5 h-9 px-2 rounded-xl border border-border">
-            <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary-100 text-primary-700 text-[11px] font-medium">
-              {initials || <Icon name="person" size="sm" />}
-            </div>
+          <nldd-container layout="row" gap="8" vertical-alignment="center" width="fit-content">
+            <nldd-avatar
+              size="24"
+              {...(currentPerson ? { name: currentPerson.naam } : { icon: 'person' })}
+              decorative
+            />
             {currentPerson && (
-              <span className="text-sm text-text hidden sm:inline max-w-[120px] truncate">
-                {currentPerson.naam}
-              </span>
+              <nldd-container width="fit-content" hide-below="sm">
+                <nldd-text size="sm">{currentPerson.naam}</nldd-text>
+              </nldd-container>
             )}
-          </div>
+          </nldd-container>
         )}
 
         {/* Logout button */}
@@ -247,7 +215,7 @@ export function Header() {
             onClick={logout}
           />
         )}
-      </div>
+      </nldd-container>
     </nldd-top-title-bar>
   );
 }
