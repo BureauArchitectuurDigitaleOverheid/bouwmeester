@@ -92,7 +92,7 @@ export function ImportDialog({ open, onClose, onSuccess }: ImportDialogProps) {
         </>
       }
     >
-      <div className="space-y-4">
+      <nldd-container gap="16">
         {/* Import type selector */}
         <Select
           label="Type import"
@@ -134,17 +134,19 @@ export function ImportDialog({ open, onClose, onSuccess }: ImportDialogProps) {
         {/* Result summary */}
         {result && (
           <nldd-banner variant="success" size="sm" text="Import voltooid">
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>
-                <span>Geimporteerd:</span>{' '}
-                <span className="font-medium">{result.imported}</span>
-              </div>
-              <div>
-                <span>Overgeslagen:</span>{' '}
-                <span className="font-medium">{result.skipped}</span>
-              </div>
-            </div>
+            <nldd-container layout="grid" column-count={2} gap="8">
+              <nldd-container layout="row" gap="4">
+                <nldd-text size="sm">Geimporteerd:</nldd-text>
+                <nldd-text size="sm" weight="medium">{result.imported}</nldd-text>
+              </nldd-container>
+              <nldd-container layout="row" gap="4">
+                <nldd-text size="sm">Overgeslagen:</nldd-text>
+                <nldd-text size="sm" weight="medium">{result.skipped}</nldd-text>
+              </nldd-container>
+            </nldd-container>
             {result.errors.length > 0 && (
+              // nldd-container has no max-height/overflow-scroll equivalent;
+              // this stays a plain scroll clamp around the error list.
               <div className="max-h-32 overflow-y-auto">
                 <nldd-list dividers="never">
                   {result.errors.map((err, i) => (
@@ -157,7 +159,7 @@ export function ImportDialog({ open, onClose, onSuccess }: ImportDialogProps) {
             )}
           </nldd-banner>
         )}
-      </div>
+      </nldd-container>
     </Modal>
   );
 }

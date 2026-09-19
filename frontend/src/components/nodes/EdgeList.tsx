@@ -49,11 +49,10 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-text">
-          Verbindingen ({edges.length})
-        </h3>
+    <nldd-container gap="16">
+      <nldd-container layout="row" gap="8" vertical-alignment="center" horizontal-alignment="left">
+        <nldd-title size={6}><h3>Verbindingen ({edges.length})</h3></nldd-title>
+        <nldd-spacer direction="horizontal" size="flexible" />
         <Button
           variant="secondary"
           size="sm"
@@ -62,7 +61,7 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
         >
           Verbinding toevoegen
         </Button>
-      </div>
+      </nldd-container>
 
       {edges.length > 0 ? (
         <nldd-list variant="box-tinted" dividers="always">
@@ -81,17 +80,17 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
                     overline={edgeLabel(edge.edge_type_id)}
                     text={connectedNode?.title ?? ''}
                   >
-                    <div slot="overline" className="flex items-center gap-2">
+                    <nldd-container slot="overline" layout="row" gap="8" vertical-alignment="center" width="fit-content">
                       <Badge variant="slate">{edgeLabel(edge.edge_type_id)}</Badge>
                       <Icon name={direction === 'incoming' ? 'arrow-left' : 'arrow-right'} size="xs" />
-                    </div>
+                    </nldd-container>
                     {connectedNode && (
-                      <span className="inline-flex items-center gap-2">
+                      <nldd-container layout="row" gap="8" vertical-alignment="center" width="fit-content">
                         <Badge variant={NODE_TYPE_COLORS[connectedNode.node_type]} title={nodeAltLabel(connectedNode.node_type)}>
                           {nodeLabel(connectedNode.node_type)}
                         </Badge>
                         {connectedNode.title}
-                      </span>
+                      </nldd-container>
                     )}
                   </nldd-title-cell>
                   {edge.description && (
@@ -135,6 +134,6 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
         sourceNodeId={nodeId}
         sourceNodeType={nodeType}
       />
-    </div>
+    </nldd-container>
   );
 }

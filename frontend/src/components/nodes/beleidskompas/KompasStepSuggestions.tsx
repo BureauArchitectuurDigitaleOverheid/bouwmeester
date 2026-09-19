@@ -96,7 +96,7 @@ export function KompasStepSuggestions({
   };
 
   return (
-    <div className="space-y-2">
+    <nldd-container gap="8">
       <AiActionButton
         label="Aanbevolen koppelingen"
         loading={loading}
@@ -150,6 +150,6 @@ export function KompasStepSuggestions({
           })}
         </nldd-list>
       )}
-    </div>
+    </nldd-container>
   );
 }

@@ -139,7 +139,11 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   }, [addTag, nodeId]);
 
   if (isLoading) {
-    return <LoadingSpinner className="py-16" />;
+    return (
+      <nldd-container padding="64">
+        <LoadingSpinner />
+      </nldd-container>
+    );
   }
 
   if (error || !node) {
@@ -165,7 +169,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Back button */}
       <NlddButton
         variant="neutral-transparent"
@@ -176,50 +180,50 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
       />
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Badge variant={color} dot title={nodeAltLabel(node.node_type)}>
-              {nodeLabel(node.node_type)}
-            </Badge>
-            {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
-          </div>
-          <h1 className="text-2xl font-bold text-text">{node.title}</h1>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 text-xs text-text-secondary">
-            <span className="inline-flex items-center gap-1">
-              <Icon name="calendar" size="xs" />
-              Aangemaakt: {formatDate(node.created_at)}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Icon name="link" size="xs" />
-              {node.edge_count ?? 0} verbindingen
-            </span>
-            {parlementairItem?.document_url && (
-              <nldd-link
-                href={parlementairItem.document_url}
-                target="_blank"
-                text="Bekijk op tweedekamer.nl"
-                start-icon="external-link"
-              />
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <Button variant="secondary" size="sm" icon="pencil" onClick={() => setShowEditForm(true)}>
-            Bewerken
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            icon="trash"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="text-red-500 hover:bg-red-50 hover:text-red-600"
-          >
-            Verwijder
-          </Button>
-        </div>
-      </div>
+      <nldd-container gap="8">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <Badge variant={color} dot title={nodeAltLabel(node.node_type)}>
+            {nodeLabel(node.node_type)}
+          </Badge>
+          {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
+        </nldd-container>
+        <nldd-title size={1}>
+          <h1>{node.title}</h1>
+          <span slot="end">
+            <nldd-container layout="row" gap="8" vertical-alignment="center">
+              <Button variant="secondary" size="sm" icon="pencil" onClick={() => setShowEditForm(true)}>
+                Bewerken
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                icon="trash"
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                Verwijder
+              </Button>
+            </nldd-container>
+          </span>
+        </nldd-title>
+        <nldd-container layout="wrap" gap="16" vertical-alignment="center">
+          <nldd-container layout="row" gap="4" vertical-alignment="center">
+            <Icon name="calendar" size="xs" />
+            <nldd-text size="xs" color="secondary">Aangemaakt: {formatDate(node.created_at)}</nldd-text>
+          </nldd-container>
+          <nldd-container layout="row" gap="4" vertical-alignment="center">
+            <Icon name="link" size="xs" />
+            <nldd-text size="xs" color="secondary">{node.edge_count ?? 0} verbindingen</nldd-text>
+          </nldd-container>
+          {parlementairItem?.document_url && (
+            <nldd-link
+              href={parlementairItem.document_url}
+              target="_blank"
+              text="Bekijk op tweedekamer.nl"
+              start-icon="external-link"
+            />
+          )}
+        </nldd-container>
+      </nldd-container>
 
       {/* Tabs */}
       <nldd-tab-bar ref={tabBarRef} variant="text" accessible-label="Node-secties">
@@ -236,7 +240,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
       {/* Tab content */}
       <div>
         {activeTab === 'overview' && (
-          <div className="space-y-6">
+          <nldd-container gap="24">
             {/* Beleidskompas panel for dossier nodes */}
             {node.node_type === 'dossier' && (
               <BeleidskompasPanel
@@ -248,14 +252,14 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
 
             {/* Description */}
             <Card>
-              <h3 className="text-sm font-medium text-text mb-2">Beschrijving</h3>
+              <nldd-title size={3}><h3>Beschrijving</h3></nldd-title>
               <RichTextDisplay content={node.description} />
             </Card>
 
             {/* Financieel overzicht for instrument/maatregel/doel nodes */}
             {(node.node_type === NodeType.INSTRUMENT || node.node_type === NodeType.MAATREGEL || node.node_type === NodeType.DOEL) && (
               <Card>
-                <h3 className="text-sm font-medium text-text mb-3">Financieel overzicht</h3>
+                <nldd-title size={3}><h3>Financieel overzicht</h3></nldd-title>
                 <FinancieelOverzichtPanel nodeId={nodeId} nodeType={node.node_type} />
               </Card>
             )}
@@ -263,23 +267,25 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             {/* Bron detail */}
             {node.node_type === NodeType.BRON && bronDetail && (
               <Card>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-text">Brongegevens</h3>
+                <nldd-title size={3}>
+                  <h3>Brongegevens</h3>
                   {!bronEditing && (
-                    <ActionLink
-                      text="Bewerken"
-                      onClick={() => {
-                        setBronType(bronDetail.type);
-                        setBronAuteur(bronDetail.auteur ?? '');
-                        setBronPublicatieDatum(bronDetail.publicatie_datum ?? '');
-                        setBronUrl(bronDetail.url ?? '');
-                        setBronEditing(true);
-                      }}
-                    />
+                    <span slot="end">
+                      <ActionLink
+                        text="Bewerken"
+                        onClick={() => {
+                          setBronType(bronDetail.type);
+                          setBronAuteur(bronDetail.auteur ?? '');
+                          setBronPublicatieDatum(bronDetail.publicatie_datum ?? '');
+                          setBronUrl(bronDetail.url ?? '');
+                          setBronEditing(true);
+                        }}
+                      />
+                    </span>
                   )}
-                </div>
+                </nldd-title>
                 {bronEditing ? (
-                  <div className="space-y-3">
+                  <nldd-container gap="12">
                     <Select
                       label="Type"
                       value={bronType}
@@ -306,7 +312,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       onChange={(e) => setBronUrl(e.target.value)}
                       placeholder="https://..."
                     />
-                    <div className="flex gap-2">
+                    <nldd-container layout="row" gap="8">
                       <Button
                         size="sm"
                         onClick={async () => {
@@ -330,8 +336,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       <Button variant="secondary" size="sm" onClick={() => setBronEditing(false)}>
                         Annuleren
                       </Button>
-                    </div>
-                  </div>
+                    </nldd-container>
+                  </nldd-container>
                 ) : (
                   <DetailMetadataGrid
                     items={[
@@ -348,7 +354,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                           bronDetail.url.startsWith('http://') || bronDetail.url.startsWith('https://') ? (
                             <nldd-link href={bronDetail.url} target="_blank" text={bronDetail.url} start-icon="external-link" />
                           ) : (
-                            <span className="text-text-secondary">{bronDetail.url}</span>
+                            <nldd-text size="md" color="secondary">{bronDetail.url}</nldd-text>
                           )
                         ) : undefined,
                       },
@@ -361,7 +367,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             {/* Bijlage */}
             {node.node_type === NodeType.BRON && (
               <Card>
-                <h3 className="text-sm font-medium text-text mb-3">Bijlage</h3>
+                <nldd-title size={3}><h3>Bijlage</h3></nldd-title>
                 {bijlageInfo ? (
                   <nldd-list variant="box-tinted" dividers="never">
                     <nldd-list-item>
@@ -419,8 +425,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
 
             {/* Tags */}
             <Card>
-              <h3 className="text-sm font-medium text-text mb-3">Tags</h3>
-              <div className="flex flex-wrap gap-1.5 mb-3">
+              <nldd-title size={3}><h3>Tags</h3></nldd-title>
+              <nldd-container layout="wrap" gap="6" padding-bottom="12">
                 {nodeTags?.map((nt) => (
                   <NlddTagToken
                     key={nt.id}
@@ -431,7 +437,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                 {(!nodeTags || nodeTags.length === 0) && (
                   <nldd-text size="xs" color="secondary">Geen tags</nldd-text>
                 )}
-              </div>
+              </nldd-container>
               {/* Add tag: search existing or create a new one */}
               <CreatableSelect
                 value=""
@@ -450,10 +456,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             {/* Verwijzingen (back-references from mentions) */}
             {references && references.length > 0 && (
               <Card>
-                <h3 className="text-sm font-medium text-text mb-3">
-                  <Icon name="link" size="sm" className="inline mr-1.5 -mt-0.5" />
-                  Verwijzingen ({references.length})
-                </h3>
+                <nldd-title size={3}><h3>Verwijzingen ({references.length})</h3></nldd-title>
                 <nldd-list variant="box-tinted" dividers="never">
                   {references.map((ref) => (
                     <ClickableListItem
@@ -478,7 +481,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             {/* Metadata */}
             {node.metadata && Object.keys(node.metadata).length > 0 && (
               <Card>
-                <h3 className="text-sm font-medium text-text mb-3">Metadata</h3>
+                <nldd-title size={3}><h3>Metadata</h3></nldd-title>
                 <DetailMetadataGrid
                   items={Object.entries(node.metadata).map(([key, value]) => ({
                     label: titleCase(key.replace(/_/g, ' ')),
@@ -490,12 +493,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
 
             {/* Stakeholders preview */}
             {stakeholders && stakeholders.length > 0 && (
-              <div>
-                <h3 className="text-sm font-medium text-text mb-3">
-                  <Icon name="users" size="sm" className="inline mr-1.5 -mt-0.5" />
-                  Betrokkenen ({stakeholders.length})
-                </h3>
-                <div className="space-y-2">
+              <nldd-container gap="12">
+                <nldd-title size={3}><h3>Betrokkenen ({stakeholders.length})</h3></nldd-title>
+                <nldd-container gap="8">
                   {stakeholders.slice(0, 5).map((s) => (
                     <PersonCardExpandable
                       key={s.id}
@@ -513,16 +513,14 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       onClick={() => setActiveTab('stakeholders')}
                     />
                   )}
-                </div>
-              </div>
+                </nldd-container>
+              </nldd-container>
             )}
 
             {/* Connected nodes preview */}
             {neighbors && neighbors.length > 0 && (
               <Card>
-                <h3 className="text-sm font-medium text-text mb-3">
-                  Verbonden nodes ({neighbors.length})
-                </h3>
+                <nldd-title size={3}><h3>Verbonden nodes ({neighbors.length})</h3></nldd-title>
                 <nldd-list variant="box-tinted" dividers="never">
                   {neighbors.slice(0, 5).map((neighbor) => (
                     <ClickableListItem key={neighbor.id} onClick={() => navigate(`/nodes/${neighbor.id}`)}>
@@ -544,7 +542,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
               </Card>
             )}
 
-          </div>
+          </nldd-container>
         )}
 
         {activeTab === 'connections' && (
@@ -552,16 +550,14 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         )}
 
         {activeTab === 'stakeholders' && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-medium text-text">
-              Betrokkenen ({stakeholders?.length ?? 0})
-            </h3>
+          <nldd-container gap="16">
+            <nldd-title size={3}><h3>Betrokkenen ({stakeholders?.length ?? 0})</h3></nldd-title>
 
             {/* Add stakeholder form */}
             <Card>
-              <h4 className="text-sm font-medium text-text mb-3">Betrokkene toevoegen</h4>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
-                <div className="flex-1">
+              <nldd-title size={4}><h4>Betrokkene toevoegen</h4></nldd-title>
+              <nldd-container layout="row" gap="12" vertical-alignment="bottom">
+                <nldd-container width="full">
                   <CreatableSelect
                     label="Persoon"
                     value={newStakeholderPersonId}
@@ -579,15 +575,15 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                     }}
                     createLabel="Nieuwe persoon aanmaken"
                   />
-                </div>
-                <div className="w-full sm:w-48">
+                </nldd-container>
+                <nldd-container width="192px">
                   <Select
                     label="Rol"
                     value={newStakeholderRol}
                     onChange={(e) => setNewStakeholderRol(e.target.value)}
                     options={Object.entries(STAKEHOLDER_ROL_LABELS).map(([value, label]) => ({ value, label }))}
                   />
-                </div>
+                </nldd-container>
                 <Button
                   icon="plus"
                   disabled={!newStakeholderPersonId || addStakeholder.isPending}
@@ -605,20 +601,20 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                 >
                   Toevoegen
                 </Button>
-              </div>
+              </nldd-container>
             </Card>
 
             {/* Stakeholder list */}
             {stakeholders && stakeholders.length > 0 ? (
-              <div className="space-y-2">
+              <nldd-container gap="8">
                 {stakeholders.map((s) => (
-                  <div key={s.id} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-white">
-                    <div className="flex-1 min-w-0">
+                  <nldd-container key={s.id} layout="row" gap="12" vertical-alignment="center">
+                    <nldd-container width="full">
                       <PersonCardExpandable
                         person={s.person}
                       />
-                    </div>
-                    <div className="w-48">
+                    </nldd-container>
+                    <nldd-container width="192px">
                       <Select
                         value={s.rol}
                         onChange={(e) => {
@@ -630,7 +626,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                         }}
                         options={Object.entries(STAKEHOLDER_ROL_LABELS).map(([value, label]) => ({ value, label }))}
                       />
-                    </div>
+                    </nldd-container>
                     <NlddIconButton
                       icon="trash"
                       variant="critical-transparent"
@@ -638,9 +634,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       accessibleLabel="Verwijderen"
                       onClick={() => setRemoveStakeholderId({ id: s.id, naam: s.person.naam })}
                     />
-                  </div>
+                  </nldd-container>
                 ))}
-              </div>
+              </nldd-container>
             ) : (
               <EmptyState
                 title="Geen betrokkenen"
@@ -648,17 +644,17 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
               />
             )}
 
-            <div className="pt-4 mt-4 border-t border-border">
-              <h4 className="text-sm font-medium text-text mb-2">
-                Belang, houding & invloed
-              </h4>
-              <p className="text-xs text-text-secondary mb-3">
+            <nldd-divider />
+
+            <nldd-container gap="8">
+              <nldd-title size={4}><h4>Belang, houding &amp; invloed</h4></nldd-title>
+              <nldd-text size="xs" color="secondary">
                 Inschatting per stakeholder, los van rol. Aparte assessment voor
                 analyse-doeleinden.
-              </p>
+              </nldd-text>
               <StakeholderTab scopeType="corpus_node" scopeId={nodeId} />
-            </div>
-          </div>
+            </nldd-container>
+          </nldd-container>
         )}
 
         {activeTab === 'tasks' && (
@@ -666,10 +662,10 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         )}
 
         {activeTab === 'activity' && (
-          <div className="space-y-6">
+          <nldd-container gap="24">
             {/* Title history */}
             <Card>
-              <h3 className="text-sm font-medium text-text mb-3">Titelgeschiedenis</h3>
+              <nldd-title size={3}><h3>Titelgeschiedenis</h3></nldd-title>
               {titleHistory && titleHistory.length > 0 ? (
                 <nldd-list dividers="never">
                   {titleHistory.map((record, idx) => (
@@ -707,7 +703,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
 
             {/* Status history */}
             <Card>
-              <h3 className="text-sm font-medium text-text mb-3">Statusgeschiedenis</h3>
+              <nldd-title size={3}><h3>Statusgeschiedenis</h3></nldd-title>
               {statusHistory && statusHistory.length > 0 ? (
                 <nldd-list dividers="never">
                   {statusHistory.map((record, idx) => (
@@ -744,7 +740,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                 <nldd-text size="sm" color="secondary">Geen statusgeschiedenis beschikbaar.</nldd-text>
               )}
             </Card>
-          </div>
+          </nldd-container>
         )}
       </div>
 
@@ -774,17 +770,19 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         variant="danger"
         loading={deleteNode.isPending}
       >
-        <p>Weet je zeker dat je <strong>{node.title}</strong> wilt verwijderen?</p>
-        {((neighbors && neighbors.length > 0) || (nodeTasks && nodeTasks.length > 0)) && (
-          <ul className="mt-2 space-y-1 list-disc list-inside">
-            {neighbors && neighbors.length > 0 && (
-              <li>{neighbors.length} verbinding(en) worden verwijderd</li>
-            )}
-            {nodeTasks && nodeTasks.length > 0 && (
-              <li>{nodeTasks.length} gekoppelde taak/taken worden verwijderd</li>
-            )}
-          </ul>
-        )}
+        <nldd-rich-text>
+          <p>Weet je zeker dat je <strong>{node.title}</strong> wilt verwijderen?</p>
+          {((neighbors && neighbors.length > 0) || (nodeTasks && nodeTasks.length > 0)) && (
+            <ul>
+              {neighbors && neighbors.length > 0 && (
+                <li>{neighbors.length} verbinding(en) worden verwijderd</li>
+              )}
+              {nodeTasks && nodeTasks.length > 0 && (
+                <li>{nodeTasks.length} gekoppelde taak/taken worden verwijderd</li>
+              )}
+            </ul>
+          )}
+        </nldd-rich-text>
       </ConfirmDialog>
 
       <ConfirmDialog
@@ -821,6 +819,6 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
       >
         <p>Weet je zeker dat je <strong>{removeStakeholderId?.naam}</strong> wilt verwijderen als betrokkene?</p>
       </ConfirmDialog>
-    </div>
+    </nldd-container>
   );
 }

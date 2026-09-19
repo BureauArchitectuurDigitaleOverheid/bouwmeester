@@ -33,16 +33,15 @@ export function NodeList({ enabledNodeTypes, searchQuery }: NodeListProps) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Grid */}
+    <nldd-container gap="16">
       {isLoading ? (
         <LoadingSpinner className="py-12" />
       ) : filteredNodes && filteredNodes.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <nldd-container layout="grid" gap="16">
           {filteredNodes.map((node) => (
             <NodeCard key={node.id} node={node} />
           ))}
-        </div>
+        </nldd-container>
       ) : (
         <EmptyState
           title="Geen nodes gevonden"
@@ -53,6 +52,6 @@ export function NodeList({ enabledNodeTypes, searchQuery }: NodeListProps) {
           }
         />
       )}
-    </div>
+    </nldd-container>
   );
 }

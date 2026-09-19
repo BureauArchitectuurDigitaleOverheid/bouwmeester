@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { AiActionButton } from '@/components/common/AiActionButton';
-import { Icon } from '@/components/nldd/Icon';
 import { analyzeGaps } from '@/api/llm';
 import { NODE_TYPE_LABELS, type GapAnalysisResponse, type NodeType } from '@/types';
 
@@ -28,35 +27,37 @@ export function GapAnalysisPanel({ dossierId }: GapAnalysisPanelProps) {
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-text">Voltooiheidsanalyse</h3>
+    <nldd-container gap="12">
+      <nldd-container layout="row" gap="8" vertical-alignment="center">
+        <nldd-text size="sm" weight="medium"><h3>Voltooiheidsanalyse</h3></nldd-text>
+        <nldd-spacer size="flexible" />
         <AiActionButton
           label="Analyse voltooiheid"
           loading={loading}
           onClick={handleAnalyze}
         />
-      </div>
+      </nldd-container>
 
       {error && <nldd-text size="xs" color="critical">{error}</nldd-text>}
 
       {result && (
-        <div className="space-y-3">
+        <nldd-container gap="12">
           {/* Score */}
-          <div className="flex items-center gap-2">
-            <Icon
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            <nldd-icon
               name={result.completed_count === result.total_steps ? 'check-mark-circle' : 'exclamation-triangle'}
-              size="md"
-              className={result.completed_count === result.total_steps ? 'text-emerald-500' : 'text-amber-500'}
+              size="16"
+              color={result.completed_count === result.total_steps ? 'success' : 'warning'}
+              aria-hidden="true"
             />
-            <span className="text-sm font-medium text-text">
+            <nldd-text size="sm" weight="medium">
               {result.completed_count}/{result.total_steps} stappen voltooid
-            </span>
-          </div>
+            </nldd-text>
+          </nldd-container>
 
           {/* Gap list */}
           {result.gaps.length > 0 && (
-            <div className="space-y-1.5">
+            <nldd-container gap="6">
               {result.gaps.map((gap) => (
                 <nldd-inline-dialog
                   key={gap.step_number}
@@ -67,7 +68,7 @@ export function GapAnalysisPanel({ dossierId }: GapAnalysisPanelProps) {
                   supporting-text={`Ontbreekt: ${gap.missing_types.map((t) => NODE_TYPE_LABELS[t as NodeType] ?? t).join(', ')}`}
                 />
               ))}
-            </div>
+            </nldd-container>
           )}
 
           {/* LLM narrative */}
@@ -84,22 +85,22 @@ export function GapAnalysisPanel({ dossierId }: GapAnalysisPanelProps) {
 
           {/* Recommendations */}
           {result.recommendations.length > 0 && (
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <Icon name="lightbulb" size="sm" className="text-amber-500" />
+            <nldd-container gap="4">
+              <nldd-container layout="row" gap="6" vertical-alignment="center">
+                <nldd-icon name="lightbulb" size="16" color="warning" aria-hidden="true" />
                 <nldd-text size="xs" color="secondary" weight="medium">Aanbevelingen</nldd-text>
-              </div>
-              <ul className="space-y-1 ml-5">
-                {result.recommendations.map((rec, i) => (
-                  <li key={i} className="text-xs text-text-secondary list-disc">
-                    {rec}
-                  </li>
-                ))}
-              </ul>
-            </div>
+              </nldd-container>
+              <nldd-rich-text>
+                <ul>
+                  {result.recommendations.map((rec, i) => (
+                    <li key={i}>{rec}</li>
+                  ))}
+                </ul>
+              </nldd-rich-text>
+            </nldd-container>
           )}
-        </div>
+        </nldd-container>
       )}
-    </div>
+    </nldd-container>
   );
 }

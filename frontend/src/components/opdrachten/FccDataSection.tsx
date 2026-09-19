@@ -70,10 +70,10 @@ export function FccDataSection({
       icon={<Icon name="cloud" size="sm" />}
       separated
     >
-      <div className="space-y-3">
+      <nldd-container gap="12">
         {/* Traffic lights */}
         {trafficLights.length > 0 && (
-          <div className="flex flex-wrap gap-3">
+          <nldd-container layout="wrap" gap="12">
             {trafficLights.map(({ label, value }) => (
               <nldd-tag
                 key={label}
@@ -84,7 +84,7 @@ export function FccDataSection({
                 title={`${label}: ${value}`}
               />
             ))}
-          </div>
+          </nldd-container>
         )}
 
         {/* Metadata grid */}
@@ -92,27 +92,27 @@ export function FccDataSection({
 
         {/* Labels */}
         {labelList.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <nldd-container layout="wrap" gap="6">
             {labelList.map((label) => (
               <Badge key={label} variant="slate">
                 {label}
               </Badge>
             ))}
-          </div>
+          </nldd-container>
         )}
 
         {/* Multi-year totals */}
         {(budgetTotaal != null || gerealiseerTotaal != null) && (
-          <div className="flex gap-4 text-xs text-text-secondary">
+          <nldd-container layout="row" gap="16">
             {budgetTotaal != null && (
-              <span>Budget totaal: {formatCurrency(budgetTotaal)}</span>
+              <nldd-text size="xs" color="secondary">Budget totaal: {formatCurrency(budgetTotaal)}</nldd-text>
             )}
             {gerealiseerTotaal != null && (
-              <span>Gerealiseerd totaal: {formatCurrency(gerealiseerTotaal)}</span>
+              <nldd-text size="xs" color="secondary">Gerealiseerd totaal: {formatCurrency(gerealiseerTotaal)}</nldd-text>
             )}
-          </div>
+          </nldd-container>
         )}
-      </div>
+      </nldd-container>
     </DetailSection>
   );
 }

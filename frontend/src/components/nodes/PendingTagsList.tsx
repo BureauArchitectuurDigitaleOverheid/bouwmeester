@@ -15,11 +15,11 @@ export function PendingTagsList({ tags, onRemove }: PendingTagsListProps) {
   if (tags.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <nldd-container layout="wrap" gap="6">
       {tags.map((tag) => (
         <PendingTagToken key={tag.name} name={tag.name} onRemove={() => onRemove(tag.name)} />
       ))}
-    </div>
+    </nldd-container>
   );
 }
 

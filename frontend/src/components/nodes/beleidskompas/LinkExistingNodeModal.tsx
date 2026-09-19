@@ -89,7 +89,7 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excl
         </Button>
       }
     >
-      <div className="space-y-4">
+      <nldd-container gap="16">
         {/* De placeholder verdwijnt zodra er een waarde staat, dus die is geen
             toegankelijke naam. */}
         <nldd-search-field
@@ -107,7 +107,9 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excl
             text={`Geen ${NODE_TYPE_LABELS[nodeType].toLowerCase()} gevonden.`}
           />
         ) : (
-          <div className="max-h-72 overflow-y-auto">
+          // No nldd-container attribute caps height with a scrollbar; this stays
+          // inline style rather than a Tailwind utility class.
+          <div style={{ maxHeight: '18rem', overflowY: 'auto' }}>
             <nldd-list variant="box-tinted" dividers="always">
               {filteredNodes.map((node) => (
                 <ClickableListItem key={node.id} disabled={isLinking} onClick={() => handleLink(node.id)}>
@@ -122,7 +124,7 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excl
             </nldd-list>
           </div>
         )}
-      </div>
+      </nldd-container>
     </Modal>
   );
 }

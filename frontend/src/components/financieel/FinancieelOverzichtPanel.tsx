@@ -45,37 +45,42 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
   }
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       {/* Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="bg-gray-50 rounded-lg p-3">
-          <nldd-text size="xs" color="secondary">Totaal budget</nldd-text>
-          <p className="text-lg font-semibold text-text tabular-nums">{formatCurrencyCompact(overzicht.totaal_budget)}</p>
-        </div>
-        <div className="bg-gray-50 rounded-lg p-3">
-          <nldd-text size="xs" color="secondary">Totaal gerealiseerd</nldd-text>
-          <p className="text-lg font-semibold text-text tabular-nums">{formatCurrencyCompact(overzicht.totaal_gerealiseerd)}</p>
-        </div>
-        <div className="bg-gray-50 rounded-lg p-3">
-          <nldd-text size="xs" color="secondary">Uitnutting</nldd-text>
-          <p className="text-lg font-semibold text-text">
-            {overzicht.uitnutting_percentage != null ? `${overzicht.uitnutting_percentage.toFixed(1)}%` : '-'}
-          </p>
-          {overzicht.uitnutting_percentage != null && (
-            <nldd-progress-bar
-              value={Math.min(overzicht.uitnutting_percentage, 100)}
-              max={100}
-              size="sm"
-              value-display="none"
-              className="mt-1 block"
-            />
-          )}
-        </div>
-      </div>
+      <nldd-collection layout="grid" item-width="160px" gap="12">
+        <nldd-card background="tinted">
+          <nldd-container padding="12" gap="2">
+            <nldd-text size="xs" color="secondary">Totaal budget</nldd-text>
+            <nldd-text size="lg" weight="bold">{formatCurrencyCompact(overzicht.totaal_budget)}</nldd-text>
+          </nldd-container>
+        </nldd-card>
+        <nldd-card background="tinted">
+          <nldd-container padding="12" gap="2">
+            <nldd-text size="xs" color="secondary">Totaal gerealiseerd</nldd-text>
+            <nldd-text size="lg" weight="bold">{formatCurrencyCompact(overzicht.totaal_gerealiseerd)}</nldd-text>
+          </nldd-container>
+        </nldd-card>
+        <nldd-card background="tinted">
+          <nldd-container padding="12" gap="2">
+            <nldd-text size="xs" color="secondary">Uitnutting</nldd-text>
+            <nldd-text size="lg" weight="bold">
+              {overzicht.uitnutting_percentage != null ? `${overzicht.uitnutting_percentage.toFixed(1)}%` : '-'}
+            </nldd-text>
+            {overzicht.uitnutting_percentage != null && (
+              <nldd-progress-bar
+                value={Math.min(overzicht.uitnutting_percentage, 100)}
+                max={100}
+                size="sm"
+                value-display="none"
+              />
+            )}
+          </nldd-container>
+        </nldd-card>
+      </nldd-collection>
 
       {/* Per year breakdown */}
-      <div>
-        <h4 className="text-sm font-semibold text-text mb-2">Per begrotingsjaar</h4>
+      <nldd-container gap="8">
+        <nldd-text size="sm" weight="bold"><h4>Per begrotingsjaar</h4></nldd-text>
         <nldd-table
           columns="minmax(80px,1fr) minmax(100px,1fr) minmax(100px,1fr) minmax(100px,1fr) minmax(100px,1fr)"
           accessible-label="Financieel overzicht per begrotingsjaar"
@@ -100,12 +105,13 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
             );
           })}
         </nldd-table>
-      </div>
+      </nldd-container>
 
       {/* Opdrachten list */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-semibold text-text">Opdrachten</h4>
+      <nldd-container gap="8">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <nldd-text size="sm" weight="bold"><h4>Opdrachten</h4></nldd-text>
+          <nldd-spacer direction="horizontal" size="flexible" />
           {nodeType === 'instrument' && (
             <Button
               variant="secondary"
@@ -116,7 +122,7 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
               Nieuwe opdracht
             </Button>
           )}
-        </div>
+        </nldd-container>
         {opdrachten.length > 0 ? (
           <nldd-list variant="box-tinted" dividers="always">
             {opdrachten.map((o) => (
@@ -137,7 +143,7 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
         ) : (
           <nldd-text size="sm" color="secondary">Nog geen opdrachten voor dit instrument.</nldd-text>
         )}
-      </div>
-    </div>
+      </nldd-container>
+    </nldd-container>
   );
 }

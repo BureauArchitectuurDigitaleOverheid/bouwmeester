@@ -60,11 +60,14 @@ const STATUS_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_STATUS_LABEL
 
 /** FCC "traffic light" dots: an arbitrary per-value color from FCC's own raw
  * data, not one of the five semantic roles, so kept as plain styled spans
- * (same call as LeadListRow's per-initiatief/column chips). */
+ * (same call as LeadListRow's per-initiatief/column chips). `FCC_TRAFFIC_LIGHT_COLORS`
+ * (src/types) still yields a Tailwind background class per value; that map is
+ * out of scope here, so the dot itself stays a plain styled span rather than
+ * inventing a parallel nldd-token mapping for the same values. */
 function FccTrafficLights({ opdracht }: { opdracht: Opdracht }) {
   if (!opdracht.fcc_raw_data) return null;
   return (
-    <div className="flex gap-0.5" title="FCC stoplichten">
+    <nldd-container layout="row" gap="2" width="fit-content" title="FCC stoplichten">
       {FCC_TRAFFIC_LIGHT_FIELDS.map(({ key, label }) => {
         const val = (opdracht.fcc_raw_data as Record<string, unknown>)?.[key] as string | undefined;
         return val ? (
@@ -75,7 +78,7 @@ function FccTrafficLights({ opdracht }: { opdracht: Opdracht }) {
           />
         ) : null;
       })}
-    </div>
+    </nldd-container>
   );
 }
 
@@ -98,12 +101,12 @@ function OpdrachtRow({ opdracht: o, onOpen }: { opdracht: Opdracht; onOpen: () =
       <nldd-text-cell text={formatCurrency(o.budget)} horizontal-alignment="right" />
       <nldd-text-cell text={formatCurrency(o.gerealiseerd)} horizontal-alignment="right" />
       <nldd-text-cell>
-        <div className="flex items-center gap-1.5">
+        <nldd-container layout="row" gap="6" vertical-alignment="center">
           <Badge variant={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'gray'}>
             {OPDRACHT_STATUS_LABELS[o.status as OpdrachtStatus] || o.status}
           </Badge>
           <FccTrafficLights opdracht={o} />
-        </div>
+        </nldd-container>
       </nldd-text-cell>
     </nldd-table-row>
   );
@@ -116,27 +119,29 @@ function OpdrachtCard({ opdracht: o, onOpen }: { opdracht: Opdracht; onOpen: () 
 
   return (
     <nldd-card ref={ref} button accessible-label={o.titel}>
-      <div className="space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <span className="font-medium text-text text-sm leading-tight">{o.titel}</span>
+      <nldd-container padding="12" gap="8">
+        <nldd-container layout="row" gap="8" vertical-alignment="top">
+          <nldd-text size="sm" weight="medium">{o.titel}</nldd-text>
+          <nldd-spacer direction="horizontal" size="flexible" />
           <Badge variant={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'gray'}>
             {OPDRACHT_STATUS_LABELS[o.status as OpdrachtStatus] || o.status}
           </Badge>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        </nldd-container>
+        <nldd-container layout="wrap" gap="6" vertical-alignment="center">
           <Badge variant={OPDRACHT_TYPE_COLORS[o.type as OpdrachtType] || 'gray'}>
             {OPDRACHT_TYPE_LABELS[o.type as OpdrachtType] || o.type}
           </Badge>
-          <span className="text-xs text-text-secondary">{o.begrotingsjaar}</span>
+          <nldd-text size="xs" color="secondary">{o.begrotingsjaar}</nldd-text>
           {(o.opdrachtnemer?.afkorting || o.opdrachtnemer?.naam) && (
-            <span className="text-xs text-text-secondary">· {o.opdrachtnemer.afkorting || o.opdrachtnemer.naam}</span>
+            <nldd-text size="xs" color="secondary">· {o.opdrachtnemer.afkorting || o.opdrachtnemer.naam}</nldd-text>
           )}
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-text-secondary">Budget: <span className="text-text tabular-nums">{formatCurrency(o.budget)}</span></span>
-          <span className="text-text-secondary">Gerealiseerd: <span className="text-text tabular-nums">{formatCurrency(o.gerealiseerd)}</span></span>
-        </div>
-      </div>
+        </nldd-container>
+        <nldd-container layout="row" gap="8">
+          <nldd-text size="xs" color="secondary">Budget: {formatCurrency(o.budget)}</nldd-text>
+          <nldd-spacer direction="horizontal" size="flexible" />
+          <nldd-text size="xs" color="secondary">Gerealiseerd: {formatCurrency(o.gerealiseerd)}</nldd-text>
+        </nldd-container>
+      </nldd-container>
     </nldd-card>
   );
 }
@@ -281,41 +286,51 @@ export function OpdrachtenPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-sm text-text-secondary">Aantal opdrachten</p>
-          <p className="text-2xl font-semibold text-text">{summary?.count ?? opdrachten.length}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-sm text-text-secondary">Totaal budget</p>
-          <p className="text-2xl font-semibold text-text">{formatCurrencyCompact(totaalBudget)}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-sm text-text-secondary">Totaal gerealiseerd</p>
-          <p className="text-2xl font-semibold text-text">{formatCurrencyCompact(totaalGerealiseerd)}</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-sm text-text-secondary">Uitnutting</p>
-          <p className="text-2xl font-semibold text-text">{uitnutting.toFixed(1)}%</p>
-        </div>
-      </div>
+      <nldd-collection layout="grid" item-width="160px" gap="12">
+        <nldd-card>
+          <nldd-container padding="16" gap="4">
+            <nldd-text size="sm" color="secondary">Aantal opdrachten</nldd-text>
+            <nldd-text size="lg" weight="bold">{summary?.count ?? opdrachten.length}</nldd-text>
+          </nldd-container>
+        </nldd-card>
+        <nldd-card>
+          <nldd-container padding="16" gap="4">
+            <nldd-text size="sm" color="secondary">Totaal budget</nldd-text>
+            <nldd-text size="lg" weight="bold">{formatCurrencyCompact(totaalBudget)}</nldd-text>
+          </nldd-container>
+        </nldd-card>
+        <nldd-card>
+          <nldd-container padding="16" gap="4">
+            <nldd-text size="sm" color="secondary">Totaal gerealiseerd</nldd-text>
+            <nldd-text size="lg" weight="bold">{formatCurrencyCompact(totaalGerealiseerd)}</nldd-text>
+          </nldd-container>
+        </nldd-card>
+        <nldd-card>
+          <nldd-container padding="16" gap="4">
+            <nldd-text size="sm" color="secondary">Uitnutting</nldd-text>
+            <nldd-text size="lg" weight="bold">{uitnutting.toFixed(1)}%</nldd-text>
+          </nldd-container>
+        </nldd-card>
+      </nldd-collection>
 
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <p className="text-sm text-text-secondary">
-            Beheer opdrachten, subsidies en bijbehorende budgetten.
-          </p>
-          {fccEnabled && lastSync?.last_synced_at && (
-            <p className="text-xs text-text-secondary mt-1">
-              Laatste FCC-import: {timeAgo(lastSync.last_synced_at)}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {hasPermission('opdracht:update') && (
+      <nldd-toolbar label="Opdrachtacties">
+        <nldd-toolbar-item slot="start" priority={3} min-width="200px">
+          <nldd-container gap="2">
+            <nldd-text size="sm" color="secondary">
+              Beheer opdrachten, subsidies en bijbehorende budgetten.
+            </nldd-text>
+            {fccEnabled && lastSync?.last_synced_at && (
+              <nldd-text size="xs" color="secondary">
+                Laatste FCC-import: {timeAgo(lastSync.last_synced_at)}
+              </nldd-text>
+            )}
+          </nldd-container>
+        </nldd-toolbar-item>
+        {hasPermission('opdracht:update') && (
+          <nldd-toolbar-item slot="end" priority={1}>
             <Button
               variant="secondary"
               icon="sparkles"
@@ -323,10 +338,16 @@ export function OpdrachtenPage() {
               onClick={() => bulkMatch.mutate(true)}
               disabled={bulkMatch.isPending}
             >
+              {/* `Button` reads this exact className to detect a
+                  responsively-hidden label and turn it into the accessible
+                  name on narrow screens (see common/Button.tsx). */}
               <span className="hidden sm:inline">{bulkMatch.isPending ? 'Matchen...' : 'Contacten & eenheden matchen'}</span>
             </Button>
-          )}
-          {fccEnabled && hasPermission('fcc:sync') && (
+            <nldd-menu-item slot="overflow" text="Contacten & eenheden matchen" icon="sparkles"></nldd-menu-item>
+          </nldd-toolbar-item>
+        )}
+        {fccEnabled && hasPermission('fcc:sync') && (
+          <nldd-toolbar-item slot="end" priority={2}>
             <Button
               variant="secondary"
               icon="refresh"
@@ -336,35 +357,39 @@ export function OpdrachtenPage() {
             >
               <span className="hidden sm:inline">FCC Sync</span>
             </Button>
-          )}
+            <nldd-menu-item slot="overflow" text="FCC Sync" icon="refresh"></nldd-menu-item>
+          </nldd-toolbar-item>
+        )}
+        <nldd-toolbar-item slot="end" priority={4}>
           <Button icon="plus" onClick={() => openOpdrachtCreate()}>
             <span className="hidden sm:inline">Nieuwe opdracht</span>
           </Button>
-        </div>
-      </div>
+          <nldd-menu-item slot="overflow" text="Nieuwe opdracht" icon="plus"></nldd-menu-item>
+        </nldd-toolbar-item>
+      </nldd-toolbar>
 
       {/* Filter bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-        <div className="w-full sm:w-56">
+      <nldd-container layout="wrap" gap="8">
+        <nldd-container min-width="224px">
           <OpdrachtenSearchField value={searchInput} onChange={setSearchInput} />
-        </div>
-        <div className="w-full sm:w-44">
+        </nldd-container>
+        <nldd-container min-width="176px">
           <MultiSelect
             value={typeFilter}
             onChange={setTypeFilter}
             options={TYPE_OPTIONS}
             allLabel="Alle typen"
           />
-        </div>
-        <div className="w-full sm:w-44">
+        </nldd-container>
+        <nldd-container min-width="176px">
           <MultiSelect
             value={statusFilter}
             onChange={setStatusFilter}
             options={STATUS_OPTIONS}
             allLabel="Alle statussen"
           />
-        </div>
-        <div className="w-full sm:w-40">
+        </nldd-container>
+        <nldd-container min-width="160px">
           <CreatableSelect
             value={apiFilters.begrotingsjaar ? String(apiFilters.begrotingsjaar) : ''}
             onChange={(v) =>
@@ -380,8 +405,8 @@ export function OpdrachtenPage() {
               setApiFilters((f) => ({ ...f, begrotingsjaar: undefined }))
             }
           />
-        </div>
-        <div className="w-full sm:w-52">
+        </nldd-container>
+        <nldd-container min-width="208px">
           <CreatableSelect
             value={apiFilters.opdrachtnemer_eenheid_id ?? ''}
             onChange={(v) =>
@@ -396,8 +421,8 @@ export function OpdrachtenPage() {
               setApiFilters((f) => ({ ...f, opdrachtnemer_eenheid_id: undefined }))
             }
           />
-        </div>
-        <div className="w-full sm:w-48">
+        </nldd-container>
+        <nldd-container min-width="192px">
           <CreatableSelect
             value={apiFilters.verantwoordelijke_id === currentPerson?.id ? MY_OPDRACHTEN_SENTINEL : (apiFilters.verantwoordelijke_id ?? '')}
             onChange={(v) => {
@@ -413,8 +438,8 @@ export function OpdrachtenPage() {
               setApiFilters((f) => ({ ...f, verantwoordelijke_id: undefined }))
             }
           />
-        </div>
-        <div className="w-full sm:w-48">
+        </nldd-container>
+        <nldd-container min-width="192px">
           <CreatableSelect
             value={apiFilters.instrument_id ?? ''}
             onChange={(v) =>
@@ -429,37 +454,49 @@ export function OpdrachtenPage() {
               setApiFilters((f) => ({ ...f, instrument_id: undefined }))
             }
           />
-        </div>
-      </div>
+        </nldd-container>
+      </nldd-container>
 
-      {/* Mobile card list */}
-      <div className="sm:hidden space-y-3">
-        {isLoading ? (
-          <p className="px-4 py-8 text-center text-text-secondary">Laden...</p>
-        ) : filteredOpdrachten.length === 0 ? (
-          <p className="px-4 py-8 text-center text-text-secondary">
-            {hasActiveFilter ? 'Geen opdrachten gevonden. Pas je zoekopdracht of filters aan.' : 'Nog geen opdrachten.'}
-          </p>
-        ) : (
-          <>
-            {filteredOpdrachten.map((o) => (
-              <OpdrachtCard key={o.id} opdracht={o} onOpen={() => openOpdrachtDetail(o.id)} />
-            ))}
-            <div className="bg-surface rounded-xl border border-border p-4 text-sm font-medium">
-              <div className="flex items-center justify-between">
-                <span className="text-text">Totaal ({filteredOpdrachten.length})</span>
-                <div className="flex gap-4">
-                  <span className="text-text tabular-nums">{formatCurrency(filteredBudget)}</span>
-                  <span className="text-text tabular-nums">{formatCurrency(filteredGerealiseerd)}</span>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
+      {/* Mobile card list. `nldd-table`'s own `sm-columns` collapses tracks
+          rather than swapping to an entirely different card layout, so there
+          is no single nldd component for "table on wide screens, cards on
+          narrow ones". A custom element's own display can't reliably be
+          overridden by a light-DOM utility class, so the visibility split
+          itself stays a plain div; everything inside it is nldd. */}
+      <div className="sm:hidden">
+        <nldd-container gap="12">
+          {isLoading ? (
+            <nldd-inline-dialog variant="loading" text="Laden..." />
+          ) : filteredOpdrachten.length === 0 ? (
+            <nldd-inline-dialog
+              text={hasActiveFilter ? 'Geen opdrachten gevonden' : 'Nog geen opdrachten'}
+              supporting-text={
+                hasActiveFilter
+                  ? 'Pas je zoekopdracht of filters aan.'
+                  : 'Zodra er een opdracht binnenkomt verschijnt die hier.'
+              }
+            />
+          ) : (
+            <>
+              {filteredOpdrachten.map((o) => (
+                <OpdrachtCard key={o.id} opdracht={o} onOpen={() => openOpdrachtDetail(o.id)} />
+              ))}
+              <nldd-card>
+                <nldd-container padding="16" layout="row" gap="8">
+                  <nldd-text size="sm" weight="medium">Totaal ({filteredOpdrachten.length})</nldd-text>
+                  <nldd-spacer direction="horizontal" size="flexible" />
+                  <nldd-text size="sm" weight="medium">{formatCurrency(filteredBudget)}</nldd-text>
+                  <nldd-text size="sm" weight="medium">{formatCurrency(filteredGerealiseerd)}</nldd-text>
+                </nldd-container>
+              </nldd-card>
+            </>
+          )}
+        </nldd-container>
       </div>
 
       {/* Desktop table */}
-      <div className="hidden sm:block space-y-2">
+      <div className="hidden sm:block">
+        <nldd-container gap="8">
         <nldd-table
           columns="minmax(200px,1.6fr) 140px 80px minmax(140px,1fr) minmax(140px,1fr) 120px 120px minmax(140px,1fr)"
           accessible-label="Opdrachten"
@@ -495,16 +532,16 @@ export function OpdrachtenPage() {
             ))
           )}
         </nldd-table>
-        {filteredOpdrachten.length > 0 && (
-          <div className="flex items-center justify-between px-2 py-2 text-sm font-medium text-text">
-            <span>Totaal ({filteredOpdrachten.length} opdrachten)</span>
-            <div className="flex gap-6">
-              <span className="tabular-nums">{formatCurrency(filteredBudget)}</span>
-              <span className="tabular-nums">{formatCurrency(filteredGerealiseerd)}</span>
-            </div>
-          </div>
-        )}
+          {filteredOpdrachten.length > 0 && (
+            <nldd-container layout="row" gap="24" padding-inline="8" padding-block="8">
+              <nldd-text size="sm" weight="medium">Totaal ({filteredOpdrachten.length} opdrachten)</nldd-text>
+              <nldd-spacer direction="horizontal" size="flexible" />
+              <nldd-text size="sm" weight="medium">{formatCurrency(filteredBudget)}</nldd-text>
+              <nldd-text size="sm" weight="medium">{formatCurrency(filteredGerealiseerd)}</nldd-text>
+            </nldd-container>
+          )}
+        </nldd-container>
       </div>
-    </div>
+    </nldd-container>
   );
 }

@@ -54,7 +54,7 @@ export function AutoTagDialog({
       onClose={handleSkip}
       title="Tag-suggesties"
       footer={
-        <div className="flex items-center justify-end gap-2">
+        <nldd-container layout="row" gap="8" horizontal-alignment="right">
           <Button variant="ghost" onClick={handleSkip}>
             Overslaan
           </Button>
@@ -65,18 +65,18 @@ export function AutoTagDialog({
           >
             Toevoegen ({selected.size})
           </Button>
-        </div>
+        </nldd-container>
       }
     >
-      <div className="space-y-3">
-        <p className="text-sm text-text-secondary">
+      <nldd-container gap="12">
+        <nldd-text size="sm" color="secondary">
           Deze node heeft weinig tags. Wil je de volgende suggesties toevoegen?
-        </p>
+        </nldd-text>
 
         {matchedTags.length > 0 && (
-          <div>
-            <p className="text-xs font-medium text-text-secondary mb-1.5">Bestaande tags</p>
-            <div className="flex flex-wrap gap-1.5">
+          <nldd-container gap="6">
+            <nldd-text size="xs" weight="medium" color="secondary">Bestaande tags</nldd-text>
+            <nldd-container layout="wrap" gap="6">
               {matchedTags.map((tag) => (
                 <TagChip
                   key={tag}
@@ -85,14 +85,14 @@ export function AutoTagDialog({
                   onToggle={() => toggleTag(tag)}
                 />
               ))}
-            </div>
-          </div>
+            </nldd-container>
+          </nldd-container>
         )}
 
         {suggestedNewTags.length > 0 && (
-          <div>
-            <p className="text-xs font-medium text-text-secondary mb-1.5">Nieuwe tags</p>
-            <div className="flex flex-wrap gap-1.5">
+          <nldd-container gap="6">
+            <nldd-text size="xs" weight="medium" color="secondary">Nieuwe tags</nldd-text>
+            <nldd-container layout="wrap" gap="6">
               {suggestedNewTags.map((tag) => (
                 <TagChip
                   key={tag}
@@ -102,10 +102,10 @@ export function AutoTagDialog({
                   onToggle={() => toggleTag(tag)}
                 />
               ))}
-            </div>
-          </div>
+            </nldd-container>
+          </nldd-container>
         )}
-      </div>
+      </nldd-container>
     </Modal>
   );
 }

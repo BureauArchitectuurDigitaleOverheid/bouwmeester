@@ -173,72 +173,86 @@ export function CorpusPage() {
   }, [setSearchParams]);
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <p className="text-sm text-text-secondary">
+      <nldd-toolbar label="Corpusacties">
+        <nldd-toolbar-item slot="start" priority={1}>
+          <nldd-text size="sm" color="secondary">
             Bekijk en beheer alle beleidsdocumenten, dossiers en instrumenten.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {/* View mode toggle */}
+          </nldd-text>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end" priority={3}>
+          {/* A tab-like view switcher, not a single action: per the toolbar
+              pattern this gets a high priority instead of an overflow
+              alternative, so it never becomes a menu item. */}
           <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
-
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end">
+          {/* ExportButton owns its own anchored nldd-menu with four export
+              formats; the overflow slot only takes flat menu items, so this
+              is a single reasonable fallback action rather than the full
+              submenu. */}
           <ExportButton hideLabel />
-
+          <nldd-menu-item slot="overflow" text="Exporteren" icon="download"></nldd-menu-item>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end" priority={2}>
+          {/* `Button` reads this className to detect a responsively-hidden
+              label and turn it into the accessible name on narrow screens —
+              the wrapper's own API contract, not decorative Tailwind (see
+              common/Button.tsx). */}
           <Button icon="plus" onClick={() => setShowCreateForm(true)}>
             <span className="hidden sm:inline">Nieuwe node</span>
           </Button>
-        </div>
-      </div>
+          <nldd-menu-item slot="overflow" text="Nieuwe node" icon="plus"></nldd-menu-item>
+        </nldd-toolbar-item>
+      </nldd-toolbar>
 
       {/* Shared filter bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-        <div className="w-full sm:w-56">
+      <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+        <nldd-container width="fit-content" min-width="224px">
           <CorpusSearchField value={searchInput} onChange={setSearchInput} />
-        </div>
+        </nldd-container>
         {viewMode !== 'matrix' && (
-          <div className="w-full sm:w-52">
+          <nldd-container width="fit-content" min-width="208px">
             <MultiSelect
               value={enabledNodeTypes as Set<string>}
               onChange={handleNodeTypesChange}
               options={nodeTypeFilterOptions}
               allLabel="Alle types"
             />
-          </div>
+          </nldd-container>
         )}
         {(viewMode === 'graph' || viewMode === 'matrix') && edgeTypeFilterOptions.length > 0 && (
-          <div className="w-full sm:w-52">
+          <nldd-container width="fit-content" min-width="208px">
             <MultiSelect
               value={enabledEdgeTypes}
               onChange={handleEdgeTypesChange}
               options={edgeTypeFilterOptions}
               allLabel="Alle relaties"
             />
-          </div>
+          </nldd-container>
         )}
         {viewMode === 'matrix' && (
           <>
-            <div className="w-full sm:w-44">
+            <nldd-container width="fit-content" min-width="176px">
               <Select
                 value={matrixRowType}
                 onChange={(e) => setMatrixRowType(e.target.value as NodeType)}
                 options={ALL_NODE_TYPES.map((t) => ({ value: t, label: `${nodeLabel(t)} (rij)` }))}
                 aria-label="Rij-type"
               />
-            </div>
-            <div className="w-full sm:w-44">
+            </nldd-container>
+            <nldd-container width="fit-content" min-width="176px">
               <Select
                 value={matrixColType}
                 onChange={(e) => setMatrixColType(e.target.value as NodeType)}
                 options={ALL_NODE_TYPES.map((t) => ({ value: t, label: `${nodeLabel(t)} (kolom)` }))}
                 aria-label="Kolom-type"
               />
-            </div>
+            </nldd-container>
           </>
         )}
-      </div>
+      </nldd-container>
 
       {/* View content */}
       {viewMode === 'list' ? (
@@ -263,6 +277,6 @@ export function CorpusPage() {
         onClose={() => { setShowCreateForm(false); setDroppedFile(undefined); }}
         initialBijlageFile={droppedFile}
       />
-    </div>
+    </nldd-container>
   );
 }

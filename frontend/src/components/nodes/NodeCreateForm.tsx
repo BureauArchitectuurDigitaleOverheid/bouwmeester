@@ -182,7 +182,8 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
         />
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit}>
+        <nldd-container gap="16">
         <Input
           label="Titel"
           value={title}
@@ -272,6 +273,7 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
             </nldd-form-field>
           </nldd-form-section>
         )}
+        </nldd-container>
       </form>
 
       <AutoTagDialog

@@ -116,33 +116,35 @@ export function AddEdgeForm({ open, onClose, sourceNodeId, sourceNodeType }: Add
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <CreatableSelect
-          label="Doel-node"
-          value={targetId}
-          onChange={handleTargetChange}
-          options={targetOptions}
-          placeholder="Selecteer een node..."
-          onCreate={handleCreateNode}
-          createLabel="Nieuw aanmaken"
-          required
-        />
+      <form onSubmit={handleSubmit}>
+        <nldd-container gap="16">
+          <CreatableSelect
+            label="Doel-node"
+            value={targetId}
+            onChange={handleTargetChange}
+            options={targetOptions}
+            placeholder="Selecteer een node..."
+            onCreate={handleCreateNode}
+            createLabel="Nieuw aanmaken"
+            required
+          />
 
-        <CreatableSelect
-          label="Type verbinding"
-          value={edgeType}
-          onChange={setEdgeType}
-          options={edgeTypeOptions}
-          placeholder="Selecteer een type..."
-          required
-        />
+          <CreatableSelect
+            label="Type verbinding"
+            value={edgeType}
+            onChange={setEdgeType}
+            options={edgeTypeOptions}
+            placeholder="Selecteer een type..."
+            required
+          />
 
-        <Input
-          label="Beschrijving (optioneel)"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Toelichting op de verbinding..."
-        />
+          <Input
+            label="Beschrijving (optioneel)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Toelichting op de verbinding..."
+          />
+        </nldd-container>
       </form>
     </Modal>
   );

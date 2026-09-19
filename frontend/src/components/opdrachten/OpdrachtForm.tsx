@@ -211,9 +211,10 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
 
   const formContent = (
     <nldd-form>
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit}>
+        <nldd-container gap="24">
         {/* Basic info */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <nldd-container layout="grid" gap="16">
           <Select
             label="Type"
             required
@@ -227,7 +228,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
             onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
             options={Object.entries(OPDRACHT_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))}
           />
-        </div>
+        </nldd-container>
 
         <Input
           label="Titel"
@@ -245,7 +246,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
         />
 
         {/* Links */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <nldd-container layout="grid" gap="16">
           <CreatableSelect
             label="Instrument"
             required
@@ -266,9 +267,9 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
             createLabel="Nieuwe organisatie"
             onClear={() => setForm(f => ({ ...f, opdrachtnemer_eenheid_id: '' }))}
           />
-        </div>
+        </nldd-container>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <nldd-container layout="grid" gap="16">
           <CreatableSelect
             label="Opdrachtgever"
             value={form.opdrachtgever_id}
@@ -285,7 +286,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
             placeholder="Kies verantwoordelijke..."
             onClear={() => setForm(f => ({ ...f, verantwoordelijke_id: '' }))}
           />
-        </div>
+        </nldd-container>
 
         <Input
           label="Referentie"
@@ -297,7 +298,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
 
         {/* Financial */}
         <nldd-form-section text="Financieel">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <nldd-container layout="grid" gap="16">
             <Input
               label="Begrotingsjaar"
               type="number"
@@ -323,8 +324,8 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
               min={0}
               step="0.01"
             />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+          </nldd-container>
+          <nldd-container layout="grid" gap="16" padding-top="16">
             <Select
               label="Kostensoort"
               value={form.kostensoort}
@@ -348,11 +349,11 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
               min={0}
               step="0.01"
             />
-          </div>
+          </nldd-container>
         </nldd-form-section>
 
         {/* Dates */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <nldd-container layout="grid" gap="16">
           <Input
             label="Startdatum"
             type="date"
@@ -365,12 +366,12 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
             value={form.einddatum}
             onChange={e => setForm(f => ({ ...f, einddatum: e.target.value }))}
           />
-        </div>
+        </nldd-container>
 
         {/* Subsidie-specific */}
         {isSubsidie && (
           <nldd-form-section text="Subsidie-specifiek">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <nldd-container layout="grid" gap="16">
               <Input
                 label="Subsidieregeling"
                 type="text"
@@ -383,67 +384,69 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
                 value={form.beschikking_nummer}
                 onChange={e => setForm(f => ({ ...f, beschikking_nummer: e.target.value }))}
               />
-            </div>
+            </nldd-container>
           </nldd-form-section>
         )}
 
         {/* Node koppelingen (edit mode only) */}
         {isEdit && opdracht && (
           <nldd-form-section text="Gekoppelde nodes">
-            {koppelingen.length > 0 && (
-              <nldd-list variant="box-tinted" dividers="never" className="mb-3">
-                {koppelingen.map(k => (
-                  <nldd-list-item key={k.id}>
-                    {k.node_type && (
-                      <nldd-text-cell width="fit-content">
-                        <Badge variant={NODE_TYPE_COLORS[k.node_type as NodeType] ?? 'gray'} dot>
-                          {k.node_type}
-                        </Badge>
-                      </nldd-text-cell>
-                    )}
-                    <nldd-text-cell text={k.node_title || k.node_id} overline={k.relatie_type ?? undefined} />
-                    <NlddIconButton
-                      icon="trash"
-                      variant="neutral-transparent"
-                      size="sm"
-                      accessibleLabel="Koppeling verwijderen"
-                      onClick={() => handleRemoveKoppeling(k.id)}
-                    />
-                  </nldd-list-item>
-                ))}
-              </nldd-list>
-            )}
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <CreatableSelect
-                  label="Node"
-                  value={newKoppelingNodeId}
-                  onChange={setNewKoppelingNodeId}
-                  options={nodeOptions}
-                  placeholder="Zoek node..."
-                />
-              </div>
-              <div className="w-40">
-                <Select
-                  label="Relatie"
-                  value={newKoppelingRelatie}
-                  onChange={e => setNewKoppelingRelatie(e.target.value)}
-                  options={[
-                    { value: 'gerelateerd', label: 'Gerelateerd' },
-                    { value: 'levert_aan', label: 'Levert aan' },
-                    { value: 'onderdeel_van', label: 'Onderdeel van' },
-                  ]}
-                />
-              </div>
-              <Button
-                type="button"
-                icon="plus"
-                disabled={!newKoppelingNodeId || addKoppeling.isPending}
-                onClick={handleAddKoppeling}
-              >
-                Toevoegen
-              </Button>
-            </div>
+            <nldd-container gap="12">
+              {koppelingen.length > 0 && (
+                <nldd-list variant="box-tinted" dividers="never">
+                  {koppelingen.map(k => (
+                    <nldd-list-item key={k.id}>
+                      {k.node_type && (
+                        <nldd-text-cell width="fit-content">
+                          <Badge variant={NODE_TYPE_COLORS[k.node_type as NodeType] ?? 'gray'} dot>
+                            {k.node_type}
+                          </Badge>
+                        </nldd-text-cell>
+                      )}
+                      <nldd-text-cell text={k.node_title || k.node_id} overline={k.relatie_type ?? undefined} />
+                      <NlddIconButton
+                        icon="trash"
+                        variant="neutral-transparent"
+                        size="sm"
+                        accessibleLabel="Koppeling verwijderen"
+                        onClick={() => handleRemoveKoppeling(k.id)}
+                      />
+                    </nldd-list-item>
+                  ))}
+                </nldd-list>
+              )}
+              <nldd-container layout="row" gap="8" vertical-alignment="bottom">
+                <nldd-container width="full">
+                  <CreatableSelect
+                    label="Node"
+                    value={newKoppelingNodeId}
+                    onChange={setNewKoppelingNodeId}
+                    options={nodeOptions}
+                    placeholder="Zoek node..."
+                  />
+                </nldd-container>
+                <nldd-container width="160px">
+                  <Select
+                    label="Relatie"
+                    value={newKoppelingRelatie}
+                    onChange={e => setNewKoppelingRelatie(e.target.value)}
+                    options={[
+                      { value: 'gerelateerd', label: 'Gerelateerd' },
+                      { value: 'levert_aan', label: 'Levert aan' },
+                      { value: 'onderdeel_van', label: 'Onderdeel van' },
+                    ]}
+                  />
+                </nldd-container>
+                <Button
+                  type="button"
+                  icon="plus"
+                  disabled={!newKoppelingNodeId || addKoppeling.isPending}
+                  onClick={handleAddKoppeling}
+                >
+                  Toevoegen
+                </Button>
+              </nldd-container>
+            </nldd-container>
           </nldd-form-section>
         )}
 
@@ -461,6 +464,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
             </Button>
           </nldd-button-group>
         </nldd-form-actions>
+        </nldd-container>
       </form>
     </nldd-form>
   );

@@ -62,7 +62,7 @@ export function TagSuggestions({
   const hasResults = filteredMatched.length > 0 || (result?.suggested_new_tags.length ?? 0) > 0;
 
   return (
-    <div className="space-y-2">
+    <nldd-container gap="8">
       <AiActionButton
         label="Tags suggereren"
         loading={loading}
@@ -77,11 +77,11 @@ export function TagSuggestions({
       )}
 
       {result && hasResults && (
-        <div className="space-y-2">
+        <nldd-container gap="8">
           {filteredMatched.length > 0 && (
-            <div>
-              <nldd-text size="xs" color="secondary" className="mb-1 block">Bestaande tags</nldd-text>
-              <div className="flex flex-wrap gap-1.5">
+            <nldd-container gap="4">
+              <nldd-text size="xs" color="secondary">Bestaande tags</nldd-text>
+              <nldd-container layout="wrap" gap="6">
                 {filteredMatched.map((tag) => (
                   <TagChip
                     key={tag}
@@ -90,14 +90,14 @@ export function TagSuggestions({
                     onAccept={() => handleAccept(tag, false)}
                   />
                 ))}
-              </div>
-            </div>
+              </nldd-container>
+            </nldd-container>
           )}
 
           {result.suggested_new_tags.length > 0 && (
-            <div>
-              <nldd-text size="xs" color="secondary" className="mb-1 block">Nieuwe tags</nldd-text>
-              <div className="flex flex-wrap gap-1.5">
+            <nldd-container gap="4">
+              <nldd-text size="xs" color="secondary">Nieuwe tags</nldd-text>
+              <nldd-container layout="wrap" gap="6">
                 {result.suggested_new_tags.map((tag) => (
                   <TagChip
                     key={tag}
@@ -107,12 +107,12 @@ export function TagSuggestions({
                     onAccept={() => handleAccept(tag, true)}
                   />
                 ))}
-              </div>
-            </div>
+              </nldd-container>
+            </nldd-container>
           )}
-        </div>
+        </nldd-container>
       )}
-    </div>
+    </nldd-container>
   );
 }
 
