@@ -27,6 +27,7 @@ import '@nldd/design-system/full-bleed-section';
 import '@nldd/design-system/simple-section';
 import '@nldd/design-system/spacer';
 import '@nldd/design-system/split-view-pane';
+import '@nldd/design-system/window';
 
 // Actions
 import '@nldd/design-system/button';

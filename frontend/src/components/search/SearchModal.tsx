@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useSearch } from '@/hooks/useSearch';
 import { usePermissions } from '@/hooks/usePermissions';
-import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { eventValue, useNlddEvent, useNlddOverlay } from '@/components/nldd/events';
 import {
   ALL_RESULT_TYPES,
   FilterChips,
@@ -32,6 +32,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
   const [query, setQuery] = useState('');
   const [activeTypes, setActiveTypes] = useState<SearchResultType[]>([]);
   const listRef = useRef<HTMLElement>(null);
+  const windowRef = useRef<HTMLElement>(null);
   const { hasPermission } = usePermissions();
 
   const allowedTypes = useMemo(
@@ -52,52 +53,40 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
   const handleSearchInput = useCallback((e: Event) => setQuery(eventValue(e)), []);
   useNlddEvent(listRef, 'input', handleSearchInput);
 
+  // Mirror `open` onto the window's imperative API rather than mounting and
+  // unmounting it, so the open and close animation plays. nldd-window is a
+  // native <dialog>, so it brings the backdrop, the scroll lock, the focus trap
+  // and Escape with it — all three hand-rolled effects that used to live here.
+  useNlddOverlay(windowRef, open, onClose);
+
   // Reset state and focus the listbox's own search field when the modal opens.
   useEffect(() => {
-    if (open) {
-      setQuery('');
-      setActiveTypes([]);
-      requestAnimationFrame(() => {
-        const input = listRef.current?.shadowRoot?.querySelector('input');
-        input?.focus();
-      });
-    }
-  }, [open]);
-
-  // Lock body scroll while open
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = '';
-      };
-    }
-  }, [open]);
-
-  // The listbox consumes Escape itself to clear a non-empty search value; only
-  // an Escape on an already-empty field reaches here, closing the modal.
-  useEffect(() => {
     if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
-
-  if (!open) return null;
+    setQuery('');
+    setActiveTypes([]);
+    requestAnimationFrame(() => {
+      const input = listRef.current?.shadowRoot?.querySelector('input');
+      input?.focus();
+    });
+  }, [open]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
-      {/* Overlay */}
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Dialog.
-          `type="listbox"` already draws its own bordered, rounded surface with
-          the search field pinned above the options, so the wrapper only
-          positions it and adds the lift. Giving the wrapper a border and radius
-          of its own put a second line under the search field. */}
-      <div className="relative mx-4 w-full max-w-2xl shadow-2xl">
+    // A native <dialog>, always modal: it owns the backdrop, the top layer, the
+    // focus trap and Escape. Replaces the hand-rolled fixed overlay, the body
+    // scroll lock and the keydown listener this component used to carry.
+    //
+    // The surface belongs here rather than on the list: `variant="box-base"`
+    // paints only `.list__main` (the options), because the search bar and the
+    // toolbar are meant to float above the box rather than sit on a panel. In a
+    // window there is nothing behind them, so the window provides the surface.
+    <nldd-window
+      ref={windowRef}
+      accessible-label="Zoeken"
+      centered
+      top="15vh"
+      width="min(672px, calc(100vw - 32px))"
+    >
+      <nldd-container padding="16">
         <nldd-list
           ref={listRef}
           type="listbox"
@@ -105,8 +94,8 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
           height="50vh"
           accessible-label="Zoeken"
         >
-          {/* The toolbar slot lays its own children out (row, wrap, gap) and
-              sits inside the list's padding, so it needs no wrapper of its own. */}
+          {/* The toolbar slot lays its own children out (row, wrap, gap), so the
+              button group goes straight in without a wrapper of its own. */}
           <FilterChips
             slot="toolbar"
             activeTypes={activeTypes}
@@ -127,7 +116,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
 
           {!isLoading && <GroupedListboxRows results={results} onResultClick={handleResultClick} />}
         </nldd-list>
-      </div>
-    </div>
+      </nldd-container>
+    </nldd-window>
   );
 }
