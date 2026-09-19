@@ -132,20 +132,24 @@ export function AppLayout() {
           /* Below lg the split view moves the sidebar into a sheet itself, which
              replaces the fixed-position overlay this layout used to hand-roll. */
           primary-sidebar-as-sheet={orUndef(isMobile)}
+          /* The width of the sidebar column lives on the split view, not on the
+             pane. Its shadow DOM wraps the pane in a div whose width is entirely
+             `min-width: var(--_primary-sidebar-min-width)` with flex-shrink: 0,
+             so a width set on the pane itself only shrinks the pane INSIDE a
+             wrapper that stays 320px — the icons narrow, the column does not,
+             and the main content never moves left.
+             The component's own stylesheet marks this variable as the way in
+             ("read by JS via getComputedStyle in firstUpdated"), so overriding
+             it here is the intended seam rather than reaching into the shadow
+             DOM. */
+          style={
+            {
+              '--_primary-sidebar-min-width': sidebarOpen || isMobile ? '240px' : '64px',
+              transition: 'none',
+            } as React.CSSProperties
+          }
         >
-          {/* The split view sizes its sidebar pane itself, so collapsing used to
-              hide the labels without the pane getting any narrower — the sidebar
-              just went empty. The width is set here instead, on the pane. */}
-          <nldd-split-view-pane
-            slot="primary-sidebar"
-            has-content
-            background="tinted"
-            style={{
-              width: sidebarOpen || isMobile ? '240px' : '64px',
-              minWidth: sidebarOpen || isMobile ? '240px' : '64px',
-              transition: 'width 200ms ease, min-width 200ms ease',
-            }}
-          >
+          <nldd-split-view-pane slot="primary-sidebar" has-content background="tinted">
             <Sidebar mobile={isMobile} />
           </nldd-split-view-pane>
 

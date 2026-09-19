@@ -111,17 +111,18 @@ export function FilterChips({ activeTypes, onToggle, allowedTypes, className = '
 
   return (
     <nldd-toggle-button-group ref={ref} type="checkbox" size="sm" className={className}>
-      {visibleTypes.map((type) => {
-        const isActive = activeTypes.length === 0 || activeTypes.includes(type);
-        return (
-          <nldd-toggle-button
-            key={type}
-            value={type}
-            text={SEARCH_RESULT_TYPE_LABELS[type]}
-            selected={orUndef(isActive)}
-          />
-        );
-      })}
+      {visibleTypes.map((type) => (
+        // `selected` means "you picked this one", so an empty filter leaves
+        // every button unselected rather than marking them all. Treating "no
+        // filter" as "all selected" painted the whole row solid and left no
+        // visible difference once you actually chose a type.
+        <nldd-toggle-button
+          key={type}
+          value={type}
+          text={SEARCH_RESULT_TYPE_LABELS[type]}
+          selected={orUndef(activeTypes.includes(type))}
+        />
+      ))}
     </nldd-toggle-button-group>
   );
 }

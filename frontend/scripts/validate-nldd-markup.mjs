@@ -101,15 +101,33 @@ for (const file of files) {
   // is right in one and silently inert in the other. Content in an undeclared
   // slot is never rendered and never warns.
   const stack = [];
-  const tagRe = /<(\/?)(nldd-[a-z-]+)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
+  // Tracking the parent by regex is only reliable while the open tag contains
+  // no nested JSX braces; a `style={{ ... }}` object defeats any single
+  // expression. So the stack is abandoned as soon as a tag looks like that, and
+  // the remaining slots in that file are skipped rather than blamed on the
+  // wrong parent. A missed check beats a false accusation.
+  const tagRe = /<(\/?)(nldd-[a-z-]+)((?:[^>"'{]|"[^"]*"|'[^']*'|\{[^{}]*\})*)>/g;
+
+  // An open tag the regex cannot consume (a nested `style={{ ... }}` object,
+  // say) is skipped entirely, which silently leaves the wrong element on the
+  // stack and blames its children's slots on it. Every `<nldd-` in the file is
+  // counted first; if the scanner sees fewer, the parent tracking is not
+  // trustworthy here and the slot check is skipped for this file. A missed
+  // check beats a false accusation.
+  const openTagCount = (source.match(/<nldd-[a-z-]+/g) ?? []).length;
+  const scannedCount = [...source.matchAll(tagRe)].filter((m) => !m[1]).length;
+  const stackIsReliable = scannedCount === openTagCount;
+
   for (const m of source.matchAll(tagRe)) {
-    const [, closing, tag, attrText, selfClosing] = m;
+    const [, closing, tag, rawAttrs] = m;
+    const selfClosing = rawAttrs.trimEnd().endsWith('/');
+    const attrText = rawAttrs;
     if (closing) {
       stack.pop();
       continue;
     }
 
-    const slotMatch = attrText.match(/\bslot="([a-z-]+)"/);
+    const slotMatch = stackIsReliable ? attrText.match(/\bslot="([a-z-]+)"/) : null;
     if (slotMatch) {
       const parent = stack[stack.length - 1];
       const parentSpec = parent ? api.get(parent) : null;
