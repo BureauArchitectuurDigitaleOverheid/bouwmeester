@@ -102,14 +102,26 @@ function DevPersonPicker({
   // it mid-word and had the browser spell-check it, with a clear button beside.
   // Picking one of a fixed list of people is a select, and the dropdown wraps a
   // native one so the browser keeps the keyboard handling and the accessibility.
+  // The listener sits on the DROPDOWN, not on the slotted <select>. React's
+  // onChange never fired there: its synthetic event system does not reach a
+  // native control slotted into a custom element, so picking a person silently
+  // did nothing at all. The dropdown re-emits the change itself, with the
+  // value in `detail`.
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', (event) => {
+    const value =
+      (event as CustomEvent<{ value?: string }>).detail?.value ??
+      (event.target as HTMLSelectElement | null)?.value;
+    if (value) onPick(value);
+  });
+
   return (
-    <nldd-dropdown accessible-label="Persoon kiezen (ontwikkelmodus)" width="200px">
-      <select
-        value={currentPerson?.id ?? ''}
-        onChange={(e) => {
-          if (e.target.value) onPick(e.target.value);
-        }}
-      >
+    <nldd-dropdown
+      ref={ref}
+      accessible-label="Persoon kiezen (ontwikkelmodus)"
+      width="200px"
+    >
+      <select defaultValue={currentPerson?.id ?? ''}>
         <option value="" disabled>
           Kies persoon
         </option>
@@ -212,7 +224,20 @@ export function Header() {
           <NlddIconButton
             icon="magnifier"
             accessibleLabel="Zoeken (sneltoets /)"
-            onClick={() => useUIStore.getState().setSearchModalOpen(true)}
+            onClick={() => {
+              // On the search page itself, focus the field that is already
+              // there. Opening the modal on top of it gave two search boxes
+              // stacked on one screen, each with its own results. The `/`
+              // shortcut in AppLayout already makes this distinction; the
+              // button did not.
+              if (location.pathname === '/search') {
+                document.querySelector<HTMLElement & { focus?: () => void }>(
+                  'nldd-search-field',
+                )?.focus?.();
+                return;
+              }
+              useUIStore.getState().setSearchModalOpen(true);
+            }}
           />
         </span>
 
