@@ -101,12 +101,29 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <nldd-list-item selected={orUndef(isSelected)} className="group">
+        {/* The open/closed state belongs on the row: `disclosure` makes the
+            segment take its aria-expanded from there, and the element warns
+            that an `expanded` set on the segment itself is ignored. It was:
+            measured in the browser, aria-expanded was absent on every row,
+            open ones included, so a screen reader was never told a branch
+            could be opened at all. An open row now announces itself.
+            A collapsed one still does not, and that is a gap we cannot close
+            from here: the row only relays a `false` downward when it renders
+            the children through its own `children` slot, and this tree keeps
+            them in its own div because that div is the drag-and-drop target
+            for reparenting a person. Setting aria-expanded on the row as well
+            was worse, not better — it put the state in two places that then
+            disagreed. The accessible label carries it in words in the
+            meantime ("Uitklappen" / "Inklappen"). */}
+        <nldd-list-item
+          selected={orUndef(isSelected)}
+          {...(hasChildren ? { expanded: effectiveExpanded } : {})}
+          className="group"
+        >
           <nldd-list-item-segment
             ref={toggleRef}
             button
-            disclosure={hasChildren ? true : undefined}
-            expanded={hasChildren ? effectiveExpanded : undefined}
+            disclosure={orUndef(hasChildren)}
             accessible-label={effectiveExpanded ? 'Inklappen' : 'Uitklappen'}
             // 'invisible' keeps the segment's width reserved so leaf rows
             // align with rows that do have a disclosure chevron; no

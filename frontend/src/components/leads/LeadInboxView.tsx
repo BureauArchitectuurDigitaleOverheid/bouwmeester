@@ -293,7 +293,13 @@ function LeadInboxRow({
   useNlddEvent(claimRef, 'click', useCallback(() => onClaim(), [onClaim]));
   useNlddEvent(assignTriggerRef, 'click', onToggleAssign);
   useNlddEvent(koelkastRef, 'click', useCallback(() => onKoelkast(), [onKoelkast]));
-  useNlddOverlay(popoverRef, assignOpen);
+  // The third argument is what carries a dismissal back up. `close` has
+  // `bubbles: false`, so an Escape or a click outside hid the element while
+  // the parent still had this lead in `assignDropdownId`. The next click on
+  // the trigger then only cleared that state, calling hide() on something
+  // already hidden: the popover took two clicks to reopen. The hook swallows
+  // the echo of its own hide(), so the toggle is safe to pass here.
+  useNlddOverlay(popoverRef, assignOpen, onToggleAssign);
 
   return (
     <nldd-list-item>
