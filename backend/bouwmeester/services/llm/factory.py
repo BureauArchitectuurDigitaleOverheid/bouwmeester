@@ -4,17 +4,20 @@ Settings are read from:
 1. AppConfig table in the database (set via admin panel)
 2. Environment variables / config.py settings (fallback)
 
-Service instances and config are cached in memory. The cache is cleared
-when an admin updates config via the admin panel.
+Service instances and config are cached in memory. De cache wordt geleegd
+wanneer een beheerder de configuratie aanpast, en verloopt daarnaast vanzelf
+na ``_CONFIG_CACHE_TTL_SECONDS``.
 
-NOTE: Caches are per-process. In a multi-worker deployment, only the worker
-that handles the admin config update will have its cache cleared immediately.
-Other workers will continue using stale config until they are restarted or
-recycled. This is acceptable for admin-initiated config changes (infrequent)
-but should be revisited if real-time propagation is needed (e.g. via Redis pub/sub).
+Die TTL is nodig omdat de caches PER PROCES zijn. De achtergrondworker draait
+apart van de webserver (zie ``entrypoint.sh``), dus een wijziging via het
+beheerscherm leegt alleen de cache van de webserver. Juist de worker doet het
+LLM-werk — lead-classificatie op Mattermost-berichten — dus zonder TTL bleef
+een gecorrigeerd model of een nieuwe sleutel daar onzichtbaar tot een
+herstart, terwijl het beheerscherm de wijziging netjes opgeslagen toonde.
 """
 
 import logging
+import time
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,8 +28,20 @@ from bouwmeester.services.llm.vlam_endpoint import resolve_vlam_base_url
 
 logger = logging.getLogger(__name__)
 
-# In-memory caches — cleared by admin config update endpoint.
+# In-memory caches — cleared by admin config update endpoint, en daarnaast
+# na _CONFIG_CACHE_TTL vanzelf verlopen.
+#
+# Die TTL is er omdat de worker een ANDER proces is dan de webserver
+# (entrypoint.sh start `python -m bouwmeester.worker` apart). Een beheerder
+# die in Beheer > Instellingen een LLM-sleutel of model wijzigt, raakt
+# alleen de cache van de webserver; de worker bleef het oude model gebruiken
+# tot een herstart. Dat is stil en verwarrend: de wijziging staat opgeslagen
+# en er verandert niets aan de lead-classificatie, die juist in de worker
+# draait. Zelfde patroon als _load_mattermost_config.
+_CONFIG_CACHE_TTL_SECONDS = 60
+
 _config_cache: dict[str, str] | None = None
+_config_cache_ts: float = 0.0
 _claude_cache: BaseLLMService | None = None
 _vlam_cache: BaseLLMService | None = None
 _services_built = False
@@ -35,16 +50,25 @@ _services_built = False
 def clear_config_cache() -> None:
     """Clear all caches so the next request rebuilds from the database."""
     global _config_cache, _claude_cache, _vlam_cache, _services_built  # noqa: PLW0603
+    global _config_cache_ts  # noqa: PLW0603
+    global _last_logged_summary  # noqa: PLW0603
     _config_cache = None
+    _config_cache_ts = 0.0
     _claude_cache = None
     _vlam_cache = None
     _services_built = False
+    _last_logged_summary = None
+
+
+def _config_cache_expired() -> bool:
+    """True als de gecachte configuratie ouder is dan de TTL."""
+    return (time.monotonic() - _config_cache_ts) >= _CONFIG_CACHE_TTL_SECONDS
 
 
 async def _load_config(db: AsyncSession) -> dict[str, str]:
     """Load LLM config from the AppConfig table, decrypting secrets."""
-    global _config_cache  # noqa: PLW0603
-    if _config_cache is not None:
+    global _config_cache, _config_cache_ts  # noqa: PLW0603
+    if _config_cache is not None and not _config_cache_expired():
         return _config_cache
 
     try:
@@ -58,11 +82,20 @@ async def _load_config(db: AsyncSession) -> dict[str, str]:
         for key, value, is_secret in result.all():
             if value:
                 _config_cache[key] = decrypt_value(value) if is_secret else value
+        _config_cache_ts = time.monotonic()
     except Exception:
         logger.debug("Could not load config from database, using env vars")
-        _config_cache = {}
+        # Niet cachen bij een DB-fout: anders zit je een hele TTL lang aan
+        # een lege configuratie vast terwijl de database alweer terug is.
+        return {}
 
     return _config_cache
+
+
+#: Laatst gelogde configuratie-samenvatting. Sinds de TTL-herbouw draait
+#: _ensure_services elke minuut opnieuw; zonder deze rem zou dat elke minuut
+#: dezelfde regel in de log zetten.
+_last_logged_summary: tuple | None = None
 
 
 def _log_llm_configuration(
@@ -89,6 +122,20 @@ def _log_llm_configuration(
     beheerder niet mag weten), de sleutel uiteraard wel: daarvan loggen we
     alleen of hij gezet is.
     """
+    global _last_logged_summary  # noqa: PLW0603
+    summary = (
+        claude_built,
+        claude_model,
+        vlam_built,
+        vlam_url,
+        vlam_model,
+        bool(vlam_key),
+        preferred,
+    )
+    if summary == _last_logged_summary:
+        return
+    _last_logged_summary = summary
+
     logger.info(
         "LLM-providers: claude=%s (model=%s), vlam=%s, voorkeur=%s",
         "ja" if claude_built else "nee",
@@ -129,10 +176,19 @@ def _log_llm_configuration(
 
 
 async def _ensure_services(db: AsyncSession) -> None:
-    """Build and cache service instances if not already built."""
+    """Build and cache service instances if not already built.
+
+    Bouwt ook opnieuw op zodra de configuratie-cache verlopen is. Alleen de
+    config verversen is niet genoeg: de clients dragen sleutel, adres en
+    model in zich, dus zonder herbouw blijft een gewijzigd model in een
+    ander proces onzichtbaar.
+    """
     global _claude_cache, _vlam_cache, _services_built  # noqa: PLW0603
-    if _services_built:
+    if _services_built and not _config_cache_expired():
         return
+
+    _claude_cache = None
+    _vlam_cache = None
 
     config = await _load_config(db)
     settings = get_settings()
