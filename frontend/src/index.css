@@ -40,6 +40,25 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* A heading is a heading whether or not it looks like one.
+ *
+ * Several small section labels carry their own type from an `nldd-text` or
+ * `nldd-title` inside them, and only need the tag for the outline: a screen
+ * reader lists them and can jump to them, which a styled `<div>` does not
+ * offer. The user-agent's own size and margin would fight the component that
+ * owns the type, so they go. Headings inside `nldd-rich-text` are excluded:
+ * that component styles rendered markdown itself, and this would flatten it. */
+h1:not(nldd-rich-text h1),
+h2:not(nldd-rich-text h2),
+h3:not(nldd-rich-text h3),
+h4:not(nldd-rich-text h4),
+h5:not(nldd-rich-text h5),
+h6:not(nldd-rich-text h6) {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;

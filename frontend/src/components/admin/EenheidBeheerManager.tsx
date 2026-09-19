@@ -195,7 +195,7 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
       <nldd-container gap="12">
         <nldd-container layout="row" gap="6" vertical-alignment="center">
           <nldd-icon name="lightbulb" size="16" />
-          <nldd-text size="xs" color="secondary" weight="bold">Initiatieven</nldd-text>
+          <h3><nldd-text size="xs" color="secondary" weight="bold">Initiatieven</nldd-text></h3>
         </nldd-container>
 
         {initiativeLoading && (
@@ -246,7 +246,7 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
       <nldd-container gap="12">
         <nldd-container layout="row" gap="6" vertical-alignment="center">
           <nldd-icon name="blocks-9" size="16" />
-          <nldd-text size="xs" color="secondary" weight="bold">Modules</nldd-text>
+          <h3><nldd-text size="xs" color="secondary" weight="bold">Modules</nldd-text></h3>
         </nldd-container>
 
         {modulesLoading && (

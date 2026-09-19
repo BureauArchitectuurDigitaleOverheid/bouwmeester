@@ -12,7 +12,7 @@ export function VocabularySettings() {
         <nldd-container layout="row" gap="12" vertical-alignment="center">
           <Icon name="book" size="lg" />
           <nldd-container gap="2">
-            <nldd-text weight="medium">Vocabulaire</nldd-text>
+            <h2><nldd-text weight="medium">Vocabulaire</nldd-text></h2>
             <nldd-text size="sm" color="secondary">
               Kies de terminologie die je wilt gebruiken in de applicatie.
             </nldd-text>

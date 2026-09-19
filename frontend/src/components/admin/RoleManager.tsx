@@ -201,7 +201,7 @@ function PersonRolesPanel({
   return (
     <nldd-box>
       <nldd-container padding="12" gap="4">
-        <nldd-text size="xs" color="secondary" weight="medium">Rollen</nldd-text>
+        <h3><nldd-text size="xs" color="secondary" weight="medium">Rollen</nldd-text></h3>
       {/* Current assignments table */}
       {assignments && assignments.length > 0 ? (
         <nldd-table
@@ -508,7 +508,7 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
   return (
     <nldd-container gap="12">
       <nldd-divider />
-      <nldd-text size="xs" color="secondary" weight="medium">Resource permissies</nldd-text>
+      <h3><nldd-text size="xs" color="secondary" weight="medium">Resource permissies</nldd-text></h3>
       {hasPerms && (
         <nldd-table
           columns="minmax(120px,1fr) 140px 100px 48px"

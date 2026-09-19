@@ -960,8 +960,18 @@ function StagePill({ name, color, active, onSelect }: StagePillProps) {
   useNlddEvent(ref, 'click', onSelect);
 
   return (
-    <nldd-list-item-segment ref={ref} button>
-      <nldd-tag text={name} color={active ? leadColumnTagColor(color) : 'neutral'} size="sm" />
+    // `current` marks which one is chosen, for the element's own ARIA. The
+    // check mark is the second signal: the color alone carried the selection,
+    // which is nothing to a colorblind user and nothing at all to a screen
+    // reader (WCAG 1.4.1). The old version had a focus ring beside the fill;
+    // this is that second channel, back.
+    <nldd-list-item-segment ref={ref} button {...(active ? { current: true } : {})}>
+      <nldd-tag
+        text={name}
+        color={active ? leadColumnTagColor(color) : 'neutral'}
+        size="sm"
+        {...(active ? { icon: 'check-mark' } : {})}
+      />
     </nldd-list-item-segment>
   );
 }
