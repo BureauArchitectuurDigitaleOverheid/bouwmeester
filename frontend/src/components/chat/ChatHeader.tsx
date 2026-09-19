@@ -18,7 +18,7 @@ export function ChatHeader() {
       <nldd-container width="full">
         <nldd-text size="sm" weight="bold">Assistent</nldd-text>
       </nldd-container>
-      <nldd-container layout="row" gap="4" width="fit-content">
+      <nldd-container layout="row" gap="4">
         <NlddIconButton
           icon="trash"
           accessibleLabel="Gesprek wissen"

@@ -297,7 +297,7 @@ function LeadListRow({ lead, column, selected, onToggleSelect, onOpen }: LeadLis
       <nldd-text-cell text={lead.assignee?.naam ?? '-'} hide-below="lg" />
       <nldd-text-cell hide-below="lg">
         {lead.next_action_date ? (
-          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+          <nldd-container layout="row" gap="4" vertical-alignment="center">
             <nldd-icon name="calendar" size="16" aria-hidden="true" />
             <nldd-text size="sm" color={overdue ? 'critical' : 'content'} weight={overdue ? 'medium' : 'regular'}>
               {formatDateShort(lead.next_action_date)}

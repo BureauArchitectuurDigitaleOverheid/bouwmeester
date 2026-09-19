@@ -73,7 +73,7 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
     // no scroll-snap or negative-margin equivalent, so there is no component
     // composition that reproduces this without a full custom scroller
     // component, which is out of scope for a chrome-only pass.
-    <div className="-mx-4 px-4 md:mx-0 md:px-0 flex gap-4 min-h-[400px] overflow-x-auto pb-2 snap-x snap-mandatory md:grid md:grid-cols-3 md:overflow-x-visible md:snap-none md:pb-0">
+    <div className="task-board">
       {BOARD_COLUMNS.map((status) => (
         // Left as a plain div: this is the native HTML5 drag-and-drop target
         // (onDragOver/onDragLeave/onDrop), which the brief calls out to leave
@@ -84,9 +84,7 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
           onDragOver={(e) => handleDragOver(e, status)}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, status)}
-          className={`rounded-xl border border-border surface-tinted w-[85vw] shrink-0 snap-center md:w-auto md:shrink md:flex-1 transition-colors ${
-            dragOverColumn === status ? 'bg-primary-50/50 border-primary-200' : ''
-          }`}
+          className={`task-board-column${dragOverColumn === status ? ' is-drag-over' : ''}`}
         >
           <nldd-container layout="row" gap="8" vertical-alignment="center" padding="16" padding-bottom="12">
             <nldd-text size="sm" weight="bold">
@@ -105,7 +103,7 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
                 key={task.id}
                 draggable
                 onDragStart={(e) => handleDragStart(e, task)}
-                className="cursor-grab active:cursor-grabbing"
+                className="draggable-card"
               >
                 <TaskCard task={task} onEdit={onEditTask} compact />
               </div>

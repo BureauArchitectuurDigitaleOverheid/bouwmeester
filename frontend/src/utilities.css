@@ -316,3 +316,135 @@
 .hover-tinted:hover {
   background-color: var(--semantics-buttons-neutral-base-is-hovered-background-color);
 }
+
+/* # Unassigned-task row
+ *
+ * One row per task with two dropdowns beside it: stacked below `md`, side by
+ * side from `md` up, with a divider between rows. nldd-container's layout is a
+ * single fixed mode rather than a responsive one, so a row that changes shape
+ * at a breakpoint cannot be one. Scoped to this one use (see
+ * eenheid/UnassignedTasksSection) rather than offered as a general row.
+ */
+.unassigned-task-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+}
+
+.unassigned-task-row:last-child {
+  border-bottom: 0;
+}
+
+@media (min-width: 768px) {
+  .unassigned-task-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+}
+
+/* The two dropdowns in that row: full width while stacked, a fixed column once
+ * the row turns horizontal. */
+.unassigned-task-field {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .unassigned-task-field {
+    width: 224px;
+  }
+}
+
+/* # Read-only key field
+ *
+ * The API key on a person's profile, shown but never edited. Not an
+ * nldd-text-field: that is a control you type in, and this one refuses input
+ * on purpose. It keeps the field's look so it reads as "a value that lives
+ * here", with a monospace face because a key is compared character by
+ * character.
+ */
+.readonly-key-field {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: var(--semantics-surfaces-border-width) solid var(--semantics-surfaces-base-border-color);
+  border-radius: var(--primitives-corner-radius-md);
+  background-color: var(--semantics-surfaces-tinted-background-color);
+  color: var(--semantics-content-secondary-color);
+  font-family: var(--primitives-font-family-monospace);
+  font-size: 0.875rem;
+}
+
+/* The placeholder row, when there is no key to show. */
+.readonly-key-field-empty {
+  opacity: 0.5;
+}
+
+/* # Task board
+ *
+ * A snap carousel below `md` that becomes a three-column grid above it, with
+ * the columns bleeding to the screen edge while it scrolls. nldd-container's
+ * `layout` is a single fixed mode with no responsive switch, no scroll-snap
+ * and no negative margin, so this is the one layout in the app that is a
+ * stylesheet rather than a composition.
+ */
+.task-board {
+  display: flex;
+  gap: 16px;
+  min-height: 400px;
+  margin-inline: -16px;
+  padding-inline: 16px;
+  padding-bottom: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+}
+
+@media (min-width: 768px) {
+  .task-board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-inline: 0;
+    padding-inline: 0;
+    padding-bottom: 0;
+    overflow-x: visible;
+    scroll-snap-type: none;
+  }
+}
+
+/* A column on that board: most of the viewport while it scrolls, an equal
+ * share of the grid once it stops. `is-drag-over` is the highlight while a
+ * card hovers over it, on accent tokens rather than a fixed blue. */
+.task-board-column {
+  border: var(--semantics-surfaces-border-width) solid var(--semantics-surfaces-base-border-color);
+  border-radius: var(--primitives-corner-radius-xl);
+  background-color: var(--semantics-surfaces-tinted-background-color);
+  width: 85vw;
+  flex-shrink: 0;
+  scroll-snap-align: center;
+  transition: background-color 150ms, border-color 150ms;
+}
+
+.task-board-column.is-drag-over {
+  background-color: var(--primitives-color-accent-25);
+  border-color: var(--primitives-color-accent-200);
+}
+
+@media (min-width: 768px) {
+  .task-board-column {
+    width: auto;
+    flex-shrink: 1;
+    flex: 1;
+  }
+}
+
+/* The grab cursor on a draggable card. Native HTML5 drag-and-drop, so the card
+ * itself stays a plain element (see the note in TaskBoard). */
+.draggable-card {
+  cursor: grab;
+}
+
+.draggable-card:active {
+  cursor: grabbing;
+}

@@ -147,7 +147,7 @@ export function ImportDialog({ open, onClose, onSuccess }: ImportDialogProps) {
             {result.errors.length > 0 && (
               // nldd-container has no max-height/overflow-scroll equivalent;
               // this stays a plain scroll clamp around the error list.
-              <div className="max-h-32 overflow-y-auto">
+              <div style={{ maxHeight: '128px', overflowY: 'auto' }}>
                 <nldd-list dividers="never">
                   {result.errors.map((err, i) => (
                     <nldd-list-item key={i}>

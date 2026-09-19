@@ -323,7 +323,7 @@ function LeadInboxRow({
                   </nldd-text>
                 )}
                 {lead.contact_names.length > 0 && (
-                  <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content" title={lead.contact_names.join(', ')}>
+                  <nldd-container layout="row" gap="2" vertical-alignment="center" title={lead.contact_names.join(', ')}>
                     <nldd-icon name="users" size="16" aria-hidden="true" />
                     <nldd-text size="xs" color="secondary">
                       {lead.contact_names[0]}
@@ -332,13 +332,13 @@ function LeadInboxRow({
                   </nldd-container>
                 )}
                 {lead.next_action_date && (
-                  <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content">
+                  <nldd-container layout="row" gap="2" vertical-alignment="center">
                     <nldd-icon name="calendar" size="16" aria-hidden="true" />
                     <nldd-text size="xs" color="secondary">{formatDateShort(lead.next_action_date)}</nldd-text>
                   </nldd-container>
                 )}
                 {lead.attachment_count > 0 && (
-                  <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content">
+                  <nldd-container layout="row" gap="2" vertical-alignment="center">
                     <nldd-icon name="paperclip" size="16" aria-hidden="true" />
                     <nldd-text size="xs" color="secondary">{lead.attachment_count}</nldd-text>
                   </nldd-container>

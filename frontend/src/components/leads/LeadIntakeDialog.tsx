@@ -594,7 +594,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                   pointerEvents: 'none',
                 }}
               >
-                <nldd-container layout="row" gap="8" vertical-alignment="center" width="fit-content">
+                <nldd-container layout="row" gap="8" vertical-alignment="center">
                   <nldd-icon name="upload" size="20" aria-hidden="true" />
                   <nldd-text size="sm" weight="medium" color="accent">Sleep bestanden hierheen</nldd-text>
                 </nldd-container>

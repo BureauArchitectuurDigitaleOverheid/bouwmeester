@@ -215,7 +215,7 @@ export function SamenwerkingsverbandDetailPage() {
       <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
         <BackLink to="/samenwerkingsverbanden" text="Terug naar overzicht" />
         {!editing && (
-          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+          <nldd-container layout="row" gap="4" vertical-alignment="center">
             <Button variant="ghost" size="sm" icon="pencil" onClick={startEdit}>
               Bewerken
             </Button>
@@ -287,7 +287,7 @@ export function SamenwerkingsverbandDetailPage() {
                     <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
                       {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}
                     </Badge>
-                    <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+                    <nldd-container layout="row" gap="4" vertical-alignment="center">
                       <Icon name="users" size="xs" />
                       <nldd-text size="xs" color="secondary">
                         {swv.aantal_leden} {swv.aantal_leden === 1 ? 'lid' : 'leden'}
@@ -440,7 +440,7 @@ export function SamenwerkingsverbandDetailPage() {
                         <> · tot {new Date(lid.eind_datum).toLocaleDateString('nl-NL')}</>
                       )}
                     </nldd-text>
-                    <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content" className="group-hover-reveal">
+                    <nldd-container layout="row" gap="2" vertical-alignment="center" className="group-hover-reveal">
                       <NlddIconButton
                         icon="pencil"
                         accessibleLabel="Bewerken"

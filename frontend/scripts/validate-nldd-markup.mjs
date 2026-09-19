@@ -84,9 +84,14 @@ for (const file of files) {
   const source = readFileSync(file, 'utf8');
   const rel = path.relative(SRC, file);
 
-  // Each opening tag with its attribute text, non-greedy up to the closing >.
-  for (const m of source.matchAll(/<(nldd-[a-z-]+)((?:[^>"']|"[^"]*"|'[^']*')*)>/g)) {
-    const [, tag, attrText] = m;
+  // Each opening tag with its attribute text, via the brace-counting scanner
+  // below. It used to be a second regex here, which stopped at the first `>`
+  // it saw and therefore read one element's attributes as the previous one's:
+  // six attributes of an nldd-container were reported against the
+  // nldd-list-item-segment above it.
+  for (const m of scanTags(source)) {
+    const [, closingSlash, tag, attrText] = m;
+    if (closingSlash) continue;
     const line = source.slice(0, m.index).split('\n').length;
     const spec = api.get(tag);
     if (!spec) {
@@ -204,17 +209,26 @@ for (const file of files) {
       let quote = null;
       for (; i < src.length; i++) {
         const c = src[i];
-        if (quote) {
-          if (c === quote && src[i - 1] !== '\\') quote = null;
+
+        // Comments come FIRST, before the quote check. Their prose is full of
+        // apostrophes ("the segment's width", "whose width"), and a quote
+        // opened there never closes, so the scan runs past the end of the tag
+        // and the next element's attributes get blamed on this one. Checking
+        // quotes first meant the comment skip below could never fire.
+        if (!quote && c === '/' && src[i + 1] === '/') {
+          const nl = src.indexOf('\n', i);
+          if (nl === -1) return;
+          i = nl;
           continue;
         }
-        // A /* … */ comment between attributes. Its prose contains apostrophes
-        // ("whose width"), and treating one as a quote swallows the rest of the
-        // file: AppLayout saw 4 of its 9 tags that way.
-        if (c === '/' && src[i + 1] === '*') {
+        if (!quote && c === '/' && src[i + 1] === '*') {
           const end = src.indexOf('*/', i + 2);
           if (end === -1) return;
           i = end + 1;
+          continue;
+        }
+        if (quote) {
+          if (c === quote && src[i - 1] !== '\\') quote = null;
           continue;
         }
         if (c === '"' || c === "'" || c === '`') quote = c;

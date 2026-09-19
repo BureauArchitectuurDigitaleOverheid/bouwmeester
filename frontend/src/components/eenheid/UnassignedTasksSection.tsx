@@ -129,13 +129,12 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
   useNlddEvent(titleRef, 'click', () => openTaskDetail(task.id));
 
   return (
-    // A row-with-controls in a card, not a nldd-list row: each task carries two
-    // live CreatableSelect dropdowns rather than a fixed action set, which the
-    // list/segment composition (list-with-rows.md) is not meant for. The
-    // md-and-up side-by-side vs. stacked-below-md layout has no nldd-container
-    // equivalent (layout is one fixed mode, not responsive), so the outer
-    // flex/border/hover chrome stays plain CSS; everything inside converts.
-    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 py-2.5 px-4 border-b border-border last:border-0 hover-tinted">
+    // A row-with-controls in a card, not an nldd-list row: each task carries
+    // two live CreatableSelect dropdowns rather than a fixed action set, which
+    // the list/segment composition is not meant for. Its shape changes at the
+    // md breakpoint, which nldd-container cannot express, so the row itself is
+    // a class in utilities.css.
+    <div className="unassigned-task-row hover-tinted">
       <nldd-container width="full" min-width="0" gap="4">
         {/* nldd-button rather than the NlddButton wrapper: this needs
             width="full" + left alignment, which the wrapper does not expose. */}
@@ -155,7 +154,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
             {TASK_PRIORITY_LABELS[task.priority]}
           </Badge>
           {task.due_date && (
-            <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+            <nldd-container layout="row" gap="4" vertical-alignment="center">
               <Icon name="Clock" size="xs" />
               <nldd-text size="xs" color={isOverdue ? 'critical' : 'secondary'} weight={isOverdue ? 'bold' : 'regular'}>
                 {formatDateShort(task.due_date)}
@@ -169,7 +168,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
           attribute). The two selects below keep their md-breakpoint caveat
           from the outer row: nldd-container's width is not responsive. */}
       <nldd-container layout="row" gap="8" vertical-alignment="center" className="shrink-0">
-        <div className="w-full md:w-56">
+        <div className="unassigned-task-field">
           <CreatableSelect
             value={task.organisatie_eenheid_id ?? ''}
             onChange={handleUnitChange}
@@ -178,7 +177,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
           />
         </div>
         {showPersonAssign && (
-          <div className="w-full md:w-56">
+          <div className="unassigned-task-field">
             <CreatableSelect
               value={task.assignee_id ?? ''}
               onChange={handlePersonChange}
@@ -233,8 +232,17 @@ export function UnassignedTasksSection({
             nldd-container has no fixed-height/border-radius attributes, so the
             box stays plain CSS. The color is a warning token, not a hex value. */}
         <div
-          className="flex items-center justify-center h-10 w-10 rounded-lg shrink-0"
-          style={{ background: 'var(--primitives-color-warning-100)', color: 'var(--primitives-color-warning-600)' }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '40px',
+            width: '40px',
+            flexShrink: 0,
+            borderRadius: 'var(--primitives-corner-radius-md)',
+            background: 'var(--primitives-color-warning-100)',
+            color: 'var(--primitives-color-warning-600)',
+          }}
         >
           <Icon name="AlertTriangle" size="lg" />
         </div>

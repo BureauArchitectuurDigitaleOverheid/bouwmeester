@@ -192,13 +192,13 @@ export function ChatInput() {
             >
               <nldd-container layout="row" gap="6" vertical-alignment="center">
                 {isImageContentType(att.content_type) ? (
-                  // Fixed 32px cropped thumbnail: no nldd-image/nldd-avatar
-                  // equivalent for an arbitrary attachment preview at this size.
-                  <img
+                  <nldd-image
                     src={chatAttachmentPreviewUrl(att.id)}
                     alt={att.bestandsnaam}
-                    className="object-cover"
-                    style={{ width: '32px', height: '32px', borderRadius: '4px' }}
+                    width="32"
+                    height={32}
+                    object-fit="cover"
+                    shape="rounded"
                   />
                 ) : (
                   <Icon name="file-text" size="md" />

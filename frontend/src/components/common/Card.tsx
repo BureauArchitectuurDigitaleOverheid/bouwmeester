@@ -25,12 +25,16 @@ export function Card({
   hoverable = false,
   padding = true,
   className,
+  style,
   ...props
 }: CardProps) {
   return (
     <nldd-card
       className={className}
-      style={hoverable ? { cursor: 'pointer' } : undefined}
+      // Merged, not replaced: `...props` spreading a caller's `style` after
+      // this line would drop the pointer cursor, and setting it here without
+      // merging would drop the caller's.
+      style={{ ...(hoverable ? { cursor: 'pointer' } : {}), ...style }}
       {...props}
     >
       {header && <div slot="header">{header}</div>}

@@ -236,7 +236,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                 {TASK_PRIORITY_LABELS[task.priority]}
               </Badge>
               {task.due_date && (
-                <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+                <nldd-container layout="row" gap="4" vertical-alignment="center">
                   <Icon name="clock" size="sm" />
                   <nldd-text size="sm" color={isOverdue ? 'critical' : 'secondary'} weight={isOverdue ? 'bold' : 'regular'}>
                     {formatDateLong(task.due_date)}
@@ -259,7 +259,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                 {
                   label: 'Toegewezen aan',
                   value: task.assignee ? (
-                    <nldd-container layout="row" gap="6" vertical-alignment="center" width="fit-content">
+                    <nldd-container layout="row" gap="6" vertical-alignment="center">
                       {task.assignee.is_agent ? (
                         <nldd-icon name="sparkles" size="20" color="paars" aria-hidden="true" />
                       ) : (
@@ -274,7 +274,7 @@ export function TaskDetailModal({ taskId, open, onClose, zIndex }: TaskDetailMod
                 {
                   label: 'Verantwoordelijke eenheid',
                   value: task.organisatie_eenheid ? (
-                    <nldd-container layout="row" gap="6" vertical-alignment="center" width="fit-content">
+                    <nldd-container layout="row" gap="6" vertical-alignment="center">
                       <Icon name="apartment-building" size="md" />
                       <nldd-text size="sm">{task.organisatie_eenheid.naam}</nldd-text>
                     </nldd-container>

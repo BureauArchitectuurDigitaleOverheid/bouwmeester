@@ -226,7 +226,7 @@ export function Header() {
             />
           </span>
         ) : (
-          <nldd-container slot="toolbar" layout="row" gap="8" vertical-alignment="center" width="fit-content">
+          <nldd-container slot="toolbar" layout="row" gap="8" vertical-alignment="center">
             <nldd-avatar
               size="24"
               {...(currentPerson ? { name: currentPerson.naam } : { icon: 'person' })}

@@ -29,7 +29,7 @@ export function DetailSection({
     <nldd-container gap="8">
       {separated && <nldd-divider />}
       <nldd-container layout="row" gap="8" vertical-alignment="center">
-        <nldd-container layout="row" gap="6" vertical-alignment="center" width="fit-content">
+        <nldd-container layout="row" gap="6" vertical-alignment="center">
           {icon}
           <nldd-text size="xs" weight="bold" color="secondary">
             {count != null ? `${title} (${count})` : title}

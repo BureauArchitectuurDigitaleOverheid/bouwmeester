@@ -352,7 +352,7 @@ function ColumnRow({
             </nldd-text>
           </nldd-container>
 
-          <nldd-container layout="row" gap="4" width="fit-content">
+          <nldd-container layout="row" gap="4">
             <NlddIconButton
               icon="chevron-up"
               accessibleLabel="Omhoog"
@@ -399,7 +399,7 @@ function ColumnRow({
             activeColor="lintblauw"
             onToggle={onTogglePublic}
           />
-          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+          <nldd-container layout="row" gap="4" vertical-alignment="center">
             <nldd-icon name="globe" size="16" color="secondary-content" aria-hidden="true" />
             <ColorSwatches selected={col.color} onSelect={onSetColor} />
           </nldd-container>

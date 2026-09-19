@@ -122,10 +122,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
             <nldd-container layout="wrap" gap="6" padding-bottom="6">
               {attachments.map((att) =>
                 isImageContentType(att.content_type) ? (
-                  // Thumbnail button opening the lightbox: a fixed-size
-                  // cropped preview (object-cover, w-16 h-16) with a hover
-                  // dim, none of which nldd-image or nldd-avatar offer for
-                  // an arbitrary attachment thumbnail.
+                  // Thumbnail button opening the lightbox.
                   <button
                     key={att.id}
                     onClick={() =>
@@ -134,13 +131,16 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                         alt: att.bestandsnaam,
                       })
                     }
-                    style={{ display: 'block' }}
+                    className="hover-dim"
+                    style={{ display: 'block', cursor: 'pointer' }}
                   >
-                    <img
+                    <nldd-image
                       src={chatAttachmentPreviewUrl(att.id)}
                       alt={att.bestandsnaam}
-                      className="object-cover hover-dim"
-                      style={{ width: '64px', height: '64px', borderRadius: '4px', cursor: 'pointer' }}
+                      width="64"
+                      height={64}
+                      object-fit="cover"
+                      shape="rounded"
                     />
                   </button>
                 ) : (

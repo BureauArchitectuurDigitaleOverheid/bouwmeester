@@ -104,7 +104,7 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
               {(item.notification_type && NOTIFICATION_TYPE_LABELS[item.notification_type]) || item.type}
             </Badge>
             {item.reply_count != null && item.reply_count > 0 && (
-              <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
                 <Icon name="message-rectangle-text" size="xs" />
                 <nldd-text size="xs" color="accent">
                   {item.reply_count} {item.reply_count === 1 ? 'reactie' : 'reacties'}

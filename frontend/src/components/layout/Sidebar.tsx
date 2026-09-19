@@ -190,7 +190,7 @@ export function Sidebar({ mobile }: SidebarProps) {
         padding-block="12"
         className="shrink-0"
       >
-        <img src={logoImg} alt="" className="shrink-0" style={{ width: '32px', height: '32px', borderRadius: '8px' }} />
+        <nldd-image src={logoImg} decorative width="32" height={32} shape="rounded" className="shrink-0" />
         {expanded && (
           <div style={{ flex: 1, minWidth: 0 }}>
             <nldd-text size="md" weight="bold" className="truncate tracking-tight">

@@ -149,12 +149,18 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
             </nldd-text-cell>
           </nldd-list-item-segment>
 
-          {/* Rechter kolom: type-badge rechts uitgelijnd + add-button.
-              Geen vaste breedte: de boom staat in een smal paneel, en een
-              shrink-0 kolom van 208px liet voor de naam zo weinig over dat die
-              per letter afbrak. shrink-0 blijft staan (nldd-container heeft
-              geen flex-shrink attribuut), de rest converteert. */}
-          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content" className="shrink-0">
+          {/* Right-hand column: type badge and add button.
+              `flex: 0 0 auto` rather than one of nldd-container's width
+              attributes. `width="fit-content"` collapses a row container to
+              nothing (its host is display:block around an inner flex), and no
+              width at all makes it grow until it starves the name beside it,
+              which rendered the ministry name at zero pixels wide. */}
+          <nldd-container
+            layout="row"
+            gap="4"
+            vertical-alignment="center"
+            style={{ flex: '0 0 auto', width: 'auto' }}
+          >
             {node.bron === 'fcc_import' && (
               <Badge variant="amber" title="Auto-aangemaakt door FCC-import">
                 FCC

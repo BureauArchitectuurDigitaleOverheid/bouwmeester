@@ -57,11 +57,10 @@ export function ReactionBar({ reactions, onReact }: ReactionBarProps) {
           width: '24px',
           height: '24px',
           borderRadius: '9999px',
-          color: 'var(--primitives-color-neutral-700)',
         }}
         aria-label="Reactie toevoegen"
       >
-        <Icon name="face-smiling-badge-plus" size="sm" />
+        <Icon name="face-smiling-badge-plus" size="sm" color="secondary-content" />
       </button>
       {pickerOpen && (
         <EmojiPicker

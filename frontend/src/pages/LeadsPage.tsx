@@ -331,7 +331,7 @@ export function LeadsPage() {
 
         {/* Tag */}
         {supportsTag && (
-          <nldd-container layout="row" gap="4" width="fit-content" min-width="176px">
+          <nldd-container layout="row" gap="4" min-width="176px">
             <nldd-container width="full">
               <Input
                 value={filterTag}

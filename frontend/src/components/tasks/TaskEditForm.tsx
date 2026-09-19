@@ -133,7 +133,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
             {/* Pushes the cancel/save actions to the far edge, mirroring the
                 delete action on the left. */}
             <nldd-spacer size="flexible" direction="horizontal" />
-            <nldd-container layout="row" gap="12" width="fit-content">
+            <nldd-container layout="row" gap="12">
               <Button variant="secondary" onClick={onClose}>
                 Annuleren
               </Button>

@@ -22,7 +22,7 @@ export function LeadMetricsBar() {
       })}
 
       {metrics.stale_count > 0 && (
-        <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+        <nldd-container layout="row" gap="4" vertical-alignment="center">
           <nldd-icon name="exclamation-triangle" size="16" aria-hidden="true" />
           <nldd-text size="xs" weight="medium" color="critical">
             {metrics.stale_count} inactief

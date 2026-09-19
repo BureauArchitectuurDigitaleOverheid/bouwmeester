@@ -165,24 +165,24 @@ export function ShareTargetPage() {
           {sharedData && sharedData.previews.length > 0 && (
             <nldd-container layout="row" gap="12" horizontal-alignment="center">
               {sharedData.previews.map((src, i) => (
-                // A fixed-size rounded thumbnail crop: no nldd primitive covers an
-                // arbitrary object-fit image crop, so this stays plain CSS.
+                // The border/shadow frame around the crop is a one-off card
+                // look nldd-image doesn't offer on its own, so that part stays
+                // plain CSS; the crop itself is nldd-image's job.
                 <div
                   key={i}
                   style={{
-                    width: '128px',
-                    height: '128px',
                     borderRadius: '16px',
                     overflow: 'hidden',
                     border: '1px solid var(--primitives-color-neutral-200)',
                     boxShadow: 'var(--primitives-box-shadows-level-1)',
                   }}
                 >
-                  <img
+                  <nldd-image
                     src={src}
                     alt={`Gedeelde afbeelding ${i + 1}`}
-                    className="object-cover"
-                    style={{ width: '100%', height: '100%' }}
+                    width="128"
+                    height={128}
+                    object-fit="cover"
                   />
                 </div>
               ))}

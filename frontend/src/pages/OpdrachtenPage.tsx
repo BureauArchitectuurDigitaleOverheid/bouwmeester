@@ -67,7 +67,7 @@ const STATUS_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_STATUS_LABEL
 function FccTrafficLights({ opdracht }: { opdracht: Opdracht }) {
   if (!opdracht.fcc_raw_data) return null;
   return (
-    <nldd-container layout="row" gap="2" width="fit-content" title="FCC stoplichten">
+    <nldd-container layout="row" gap="2" title="FCC stoplichten">
       {FCC_TRAFFIC_LIGHT_FIELDS.map(({ key, label }) => {
         const val = (opdracht.fcc_raw_data as Record<string, unknown>)?.[key] as string | undefined;
         return val ? (

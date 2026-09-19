@@ -502,7 +502,6 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
                 layout="row"
                 gap="4"
                 vertical-alignment="center"
-                width="fit-content"
                 padding="2"
                 padding-inline="8"
                 style={overdue ? { backgroundColor: 'var(--primitives-color-critical-25)', borderRadius: '6px' } : undefined}
@@ -534,7 +533,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               {
                 label: 'Toegewezen aan',
                 value: lead.assignee ? (
-                  <nldd-container layout="row" gap="6" vertical-alignment="center" width="fit-content">
+                  <nldd-container layout="row" gap="6" vertical-alignment="center">
                     <Icon name="person" size="md" />
                     <nldd-text size="sm">{lead.assignee.naam}</nldd-text>
                   </nldd-container>
@@ -545,7 +544,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               {
                 label: 'Binnengebracht door',
                 value: lead.brought_by ? (
-                  <nldd-container layout="row" gap="6" vertical-alignment="center" width="fit-content">
+                  <nldd-container layout="row" gap="6" vertical-alignment="center">
                     <Icon name="person" size="md" />
                     <nldd-text size="sm">{lead.brought_by.naam}</nldd-text>
                   </nldd-container>

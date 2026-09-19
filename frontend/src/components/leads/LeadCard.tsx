@@ -74,7 +74,7 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
                 </nldd-text>
               )}
               {contacts.length > 0 && (
-                <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content" title={contacts.join(', ')}>
+                <nldd-container layout="row" gap="2" vertical-alignment="center" title={contacts.join(', ')}>
                   <nldd-icon name="users" size="16" aria-hidden="true" />
                   <nldd-text size="xs" color="secondary">
                     {contacts[0]}
@@ -86,7 +86,7 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
           )}
 
           {lead.next_action_date && (
-            <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content">
+            <nldd-container layout="row" gap="2" vertical-alignment="center">
               <nldd-icon name="calendar" size="16" aria-hidden="true" />
               <nldd-text size="xs" color={overdue ? 'critical' : 'secondary'} weight={overdue ? 'medium' : 'regular'}>
                 {formatDateShort(lead.next_action_date)}
@@ -95,7 +95,7 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
           )}
 
           {lead.attachment_count > 0 && (
-            <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content" horizontal-alignment="right">
+            <nldd-container layout="row" gap="2" vertical-alignment="center" horizontal-alignment="right">
               <nldd-icon name="paperclip" size="16" aria-hidden="true" />
               <nldd-text size="xs" color="secondary">{lead.attachment_count}</nldd-text>
             </nldd-container>

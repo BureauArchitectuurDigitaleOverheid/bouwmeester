@@ -378,7 +378,8 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
 
   return (
     <div ref={cardRef}>
-    <Card className="overflow-visible">
+    {/* The suggestion menu anchors inside this card and must not be clipped. */}
+    <Card style={{ overflow: 'visible' }}>
       {/* Clickable header */}
       <nldd-container
         layout="row"
@@ -401,13 +402,13 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             <nldd-text size="xs" color="secondary">{item.bron === 'tweede_kamer' ? 'Tweede Kamer' : 'Eerste Kamer'}</nldd-text>
             <nldd-text size="xs" color="secondary">{item.zaak_nummer}</nldd-text>
             {item.datum && (
-              <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content">
+              <nldd-container layout="row" gap="2" vertical-alignment="center">
                 <Icon name="calendar" size="xs" />
                 <nldd-text size="xs" color="secondary">{formatDateLong(item.datum)}</nldd-text>
               </nldd-container>
             )}
             {item.deadline && (
-              <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content">
+              <nldd-container layout="row" gap="2" vertical-alignment="center">
                 <Icon name="calendar" size="xs" />
                 <nldd-text size="xs" color="warning">
                   Deadline: {formatDateLong(item.deadline)}
@@ -427,7 +428,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           <nldd-text size="xs" color="secondary">Zaak: {item.titel}</nldd-text>
         </nldd-container>
 
-        <nldd-container layout="row" gap="8" vertical-alignment="center" width="fit-content">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
           {item.suggested_edges && item.suggested_edges.length > 0 && (
             <nldd-text size="xs" color="secondary">
               {pendingEdges.length} te beoordelen
@@ -491,9 +492,19 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                   presentational chrome around a text dump rather than a
                   document composition, so nldd-container's background isn't a
                   fit either. */}
-              <p className="text-sm text-text-secondary whitespace-pre-wrap surface-tinted rounded-lg p-3 max-h-48 overflow-y-auto">
+              <nldd-text
+                size="sm"
+                color="secondary"
+                className="whitespace-pre-wrap surface-tinted"
+                style={{
+                  borderRadius: 'var(--primitives-corner-radius-md)',
+                  padding: '12px',
+                  maxHeight: '192px',
+                  overflowY: 'auto',
+                }}
+              >
                 {item.document_tekst}
-              </p>
+              </nldd-text>
             </nldd-container>
           )}
 
@@ -581,7 +592,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                       </nldd-container>
 
                       {/* Actions on the right */}
-                      <nldd-container layout="row" gap="2" vertical-alignment="center" width="fit-content" padding-top="4">
+                      <nldd-container layout="row" gap="2" vertical-alignment="center" padding-top="4">
                         {edge.status === 'pending' && (
                           <>
                             <NlddIconButton

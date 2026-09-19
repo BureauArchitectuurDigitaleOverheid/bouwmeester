@@ -62,7 +62,7 @@ export function SendMessageModal({ open, onClose, recipient }: SendMessageModalP
               {currentPerson ? `Van: ${currentPerson.naam}` : 'Selecteer eerst een persoon'}
             </nldd-text>
           </nldd-container>
-          <nldd-container layout="row" gap="12" width="fit-content">
+          <nldd-container layout="row" gap="12">
             <Button variant="secondary" onClick={onClose}>
               Annuleren
             </Button>

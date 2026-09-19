@@ -260,8 +260,13 @@ export function InitiatiefDetailModal({
             // primitive for "a dot that IS an arbitrary color" (see the color
             // picker at the bottom of this file for the same reasoning).
             <span
-              className="inline-block h-4 w-4 rounded-full"
-              style={{ backgroundColor: detail.kleur }}
+              style={{
+                display: 'inline-block',
+                height: '16px',
+                width: '16px',
+                borderRadius: 'var(--primitives-corner-radius-full)',
+                backgroundColor: detail.kleur,
+              }}
             />
           ) : undefined
         }
@@ -291,14 +296,14 @@ export function InitiatiefDetailModal({
                   {detail.members.map((member) => (
                     <nldd-list-item key={member.person_id}>
                       <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
-                        <nldd-container layout="row" gap="8" vertical-alignment="center" width="fit-content">
+                        <nldd-container layout="row" gap="8" vertical-alignment="center">
                           <nldd-text-cell text={member.person_naam} width="fit-content" />
                           <Badge variant={member.rol === 'eigenaar' ? 'purple' : 'gray'}>
                             {INITIATIEF_ROL_LABELS[member.rol] ?? member.rol}
                           </Badge>
                         </nldd-container>
                         {isEigenaar && (
-                          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+                          <nldd-container layout="row" gap="4" vertical-alignment="center">
                             {member.rol === 'eigenaar' ? (
                               eigenaarCount > 1 && (
                                 <Button
@@ -374,7 +379,7 @@ export function InitiatiefDetailModal({
                     <nldd-list-item key={eenheid.eenheid_id}>
                       <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
                         <nldd-text-cell text={eenheid.eenheid_naam} width="fit-content" />
-                        <nldd-container layout="row" gap="6" vertical-alignment="center" width="fit-content">
+                        <nldd-container layout="row" gap="6" vertical-alignment="center">
                           {isEigenaar ? (
                             <Select
                               value={eenheid.rol}
@@ -735,7 +740,7 @@ function ToggleRow({
 
   return (
     <nldd-container layout="row" gap="12" horizontal-alignment="right" vertical-alignment="top">
-      <nldd-container layout="row" gap="8" vertical-alignment="top" width="fit-content">
+      <nldd-container layout="row" gap="8" vertical-alignment="top">
         <Icon name={icon} size="sm" />
         <nldd-container gap="0" width="fit-content">
           <nldd-text size="sm" weight="medium">{label}</nldd-text>
@@ -997,7 +1002,7 @@ function PostRow({
           )}
         </nldd-container>
         {canEdit && (
-          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+          <nldd-container layout="row" gap="4" vertical-alignment="center">
             <NlddIconButton
               icon="pencil"
               accessibleLabel="Bewerken"
@@ -1072,18 +1077,29 @@ function EditForm({
             renders a fixed dot glyph rather than swapping its own fill to an
             arbitrary color, so there is no nldd primitive for "a circle that IS
             the color". Left as a plain button grid with its own CSS. */}
-        <div className="flex gap-2 flex-wrap">
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {INITIATIEF_COLORS.map((color) => (
             <button
               key={color}
               type="button"
               onClick={() => onChange({ ...form, kleur: color })}
-              className={`h-8 w-8 rounded-full border-2 transition-all ${
-                form.kleur === color
-                  ? 'border-primary-500 scale-110'
-                  : 'border-transparent hover:scale-105'
-              }`}
-              style={{ backgroundColor: color }}
+              aria-label={`Kleur ${color}`}
+              aria-pressed={form.kleur === color}
+              style={{
+                height: '32px',
+                width: '32px',
+                borderRadius: 'var(--primitives-corner-radius-full)',
+                borderWidth: '2px',
+                borderStyle: 'solid',
+                borderColor:
+                  form.kleur === color
+                    ? 'var(--primitives-color-accent-500)'
+                    : 'transparent',
+                transform: form.kleur === color ? 'scale(1.1)' : undefined,
+                transition: 'transform 150ms, border-color 150ms',
+                backgroundColor: color,
+                cursor: 'pointer',
+              }}
             />
           ))}
         </div>

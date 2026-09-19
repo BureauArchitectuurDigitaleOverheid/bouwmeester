@@ -52,15 +52,15 @@ export function NodeCard({ node }: NodeCardProps) {
           )}
         </nldd-container>
 
-        {/* Hover-reveal is line-box/transition CSS with no nldd token; the
-            `group` state itself comes from Card's own hoverable behavior. */}
-        <Icon name="arrow-right" size="md" className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+        {/* Hover-reveal: `group-hover-reveal` carries the real CSS (see
+            utilities.css), the `group` state comes from Card's hoverable. */}
+        <Icon name="arrow-right" size="md" className="shrink-0 group-hover-reveal" />
       </nldd-container>
 
       {/* Footer info */}
       <nldd-container layout="row" gap="12" vertical-alignment="center" padding-top="12">
         {node.edge_count !== undefined && (
-          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+          <nldd-container layout="row" gap="4" vertical-alignment="center">
             <Icon name="link" size="xs" />
             <nldd-text size="xs" color="secondary">{node.edge_count} verbindingen</nldd-text>
           </nldd-container>
@@ -70,7 +70,6 @@ export function NodeCard({ node }: NodeCardProps) {
             layout="row"
             gap="4"
             vertical-alignment="center"
-            width="fit-content"
             title={`Budget: ${formatCurrency(node.financieel_summary.totaal_budget)} — Gerealiseerd: ${formatCurrency(node.financieel_summary.totaal_gerealiseerd)}`}
           >
             <Icon name="euro-sign" size="xs" />
@@ -82,7 +81,6 @@ export function NodeCard({ node }: NodeCardProps) {
             layout="row"
             gap="4"
             vertical-alignment="center"
-            width="fit-content"
             title={`Beleidskompas: ${node.beleidskompas_progress.completed_steps} van ${node.beleidskompas_progress.total_steps} stappen compleet`}
           >
             <Icon name="signpost" size="xs" />

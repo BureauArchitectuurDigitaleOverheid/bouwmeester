@@ -94,7 +94,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {task.due_date && (
-              <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
                 <Icon name="clock" size="xs" />
                 <nldd-text size="xs" color={isOverdue ? 'critical' : 'secondary'} weight={isOverdue ? 'bold' : 'regular'}>
                   {formatDateShort(task.due_date)}
@@ -103,7 +103,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {task.assignee && (
-              <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
                 {task.assignee.is_agent ? (
                   <nldd-icon name="sparkles" size="16" color="paars" aria-hidden="true" />
                 ) : (
@@ -114,7 +114,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {task.organisatie_eenheid && (
-              <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
                 <Icon name="apartment-building" size="xs" />
                 <nldd-text size="xs" color="secondary">{task.organisatie_eenheid.naam}</nldd-text>
               </nldd-container>
@@ -125,7 +125,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {subtasks.length > 0 && (
-              <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+              <nldd-container layout="row" gap="4" vertical-alignment="center">
                 <Icon name="tree-structure" size="xs" />
                 <nldd-text size="xs" color="secondary">{doneSubtasks}/{subtasks.length}</nldd-text>
               </nldd-container>

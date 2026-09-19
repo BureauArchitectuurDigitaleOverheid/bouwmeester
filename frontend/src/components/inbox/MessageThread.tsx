@@ -98,10 +98,9 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
                 backgroundColor: 'var(--primitives-color-neutral-0)',
                 border: '1px solid var(--primitives-color-neutral-200)',
                 boxShadow: 'var(--primitives-box-shadows-level-1)',
-                color: 'var(--primitives-color-neutral-700)',
               }}
             >
-              <Icon name="face-smiling" size="sm" />
+              <Icon name="face-smiling" size="sm" color="secondary-content" />
             </button>
             {showPicker && (
               <EmojiPicker

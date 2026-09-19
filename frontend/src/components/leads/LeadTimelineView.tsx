@@ -273,7 +273,7 @@ export function LeadTimelineView({
 
       {/* Period selector + event count */}
       <nldd-container layout="row" gap="12" vertical-alignment="center">
-        <nldd-container layout="row" gap="2" width="fit-content">
+        <nldd-container layout="row" gap="2">
           {PERIOD_OPTIONS.map((opt) => (
             <NlddButton
               key={opt.value}

@@ -189,7 +189,7 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
               </Badge>
               {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
               {node.edge_count != null && (
-                <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+                <nldd-container layout="row" gap="4" vertical-alignment="center">
                   <nldd-icon name="link" size="16" aria-hidden="true" />
                   <nldd-text size="sm" color="secondary">{node.edge_count} verbindingen</nldd-text>
                 </nldd-container>

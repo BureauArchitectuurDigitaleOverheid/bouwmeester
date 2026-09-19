@@ -349,7 +349,7 @@ export function OrganisatieDetail({
             </dl>
           )}
         </nldd-container>
-        <nldd-container layout="row" gap="8" width="fit-content">
+        <nldd-container layout="row" gap="8">
           <Button variant="secondary" size="sm" icon="pencil" onClick={onEdit}>
             Bewerken
           </Button>
