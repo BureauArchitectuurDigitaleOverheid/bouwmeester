@@ -559,7 +559,14 @@ class MattermostIngestService:
         elif skipped_reason == "llm_unavailable":
             text = (
                 ":warning: Ik kon dit even niet beoordelen — de taalmodel-"
-                "dienst is nu niet bereikbaar. Probeer het straks opnieuw."
+                "dienst is nu niet bereikbaar. Ik probeer het vanzelf "
+                "opnieuw zodra hij er weer is."
+            )
+        elif skipped_reason == "llm_not_configured":
+            text = (
+                ":warning: Ik kon dit niet beoordelen — er is geen "
+                "taalmodel-dienst ingesteld. Dit vraagt om een beheerder, "
+                "opnieuw sturen helpt niet."
             )
         elif skipped_reason == "no_lead":
             text = (
@@ -872,10 +879,15 @@ class MattermostIngestService:
 
         llm = await get_llm_service_for(DataSensitivity.CONFIDENTIAL, self.session)
         if llm is None:
+            # Niet hetzelfde als een storing: er is geen provider opgebouwd,
+            # dus er gaat geen enkele netwerkcall uit. Dat onderscheid staat
+            # ook in de reply en in skipped_reason, anders is "onbereikbaar"
+            # en "niet geconfigureerd" van buitenaf niet uit elkaar te halen.
             logger.warning(
-                "Geen CONFIDENTIAL-LLM beschikbaar — sla suggested-lead over"
+                "Geen CONFIDENTIAL-LLM opgebouwd — sla suggested-lead over. "
+                "Zie de LLM-providers-regel bij worker-start voor de reden."
             )
-            return None, "llm_unavailable"
+            return None, "llm_not_configured"
 
         initiatief = await self.session.get(Initiatief, channel_link_initiatief_id)
         if initiatief is None:
@@ -1168,6 +1180,12 @@ class MattermostIngestService:
 #: initiatief-kanalen, dus de wachtrij loopt leeg na een storing.
 RETRY_BATCH_SIZE = 50
 
+#: Redenen die een herkansing verdienen zodra de LLM er weer is. Een
+#: onbereikbare dienst en een niet-geconfigureerde dienst zijn allebei
+#: oplosbaar zonder dat het bericht verandert; ``no_lead`` niet, want daar
+#: heeft de LLM wél een oordeel over gegeven.
+_RETRYABLE_REASONS = ("llm_unavailable", "llm_not_configured")
+
 
 async def retry_llm_unavailable(
     *, max_posts: int = RETRY_BATCH_SIZE
@@ -1198,16 +1216,18 @@ async def retry_llm_unavailable(
     )
 
     async with async_session() as session:
-        # Geen provider geconfigureerd: niets te proberen. Let op: dit zegt
+        # Geen provider opgebouwd: niets te proberen, de wachtrij blijft
+        # staan tot een beheerder de configuratie rechtzet. Let op: dit zegt
         # alleen iets over de configuratie, niet over bereikbaarheid. Ligt
-        # VLAM eruit, dan komen de posts gewoon opnieuw als
-        # ``llm_unavailable`` terug en blijven ze in de wachtrij staan.
+        # VLAM eruit terwijl hij wél geconfigureerd is, dan komen de posts
+        # gewoon opnieuw als ``llm_unavailable`` terug en wachten ze op de
+        # volgende ronde.
         if await get_llm_service_for(DataSensitivity.CONFIDENTIAL, session) is None:
             return 0, 0
 
         stmt = (
             select(MattermostPostLink.post_id, MattermostPostLink.scope_id)
-            .where(MattermostPostLink.skipped_reason == "llm_unavailable")
+            .where(MattermostPostLink.skipped_reason.in_(_RETRYABLE_REASONS))
             .order_by(MattermostPostLink.created_at)
             .limit(max_posts)
         )

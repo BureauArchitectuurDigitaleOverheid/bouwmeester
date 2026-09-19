@@ -65,8 +65,9 @@ class MattermostPostLink(Base):
         nullable=True,
         comment=(
             "noise|no_link|no_lead|llm_unavailable|stale_initiatief|"
-            "post_gone|channel_unlinked|scope_changed — voor diagnose. "
-            "llm_unavailable is de wachtrij voor herverwerking."
+            "post_gone|channel_unlinked|scope_changed|llm_not_configured — "
+            "voor diagnose. llm_unavailable en llm_not_configured vormen "
+            "samen de wachtrij voor herverwerking."
         ),
     )
     created_at: Mapped[datetime] = mapped_column(
