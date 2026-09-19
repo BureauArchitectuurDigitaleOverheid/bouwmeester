@@ -425,8 +425,14 @@ class TestAdminConfigAPI:
         keys = {e["key"] for e in data}
         assert "LLM_PROVIDER" in keys
         assert "ANTHROPIC_API_KEY" in keys
-        assert "VLAM_API_KEY" in keys
         assert "LLM_MODEL" in keys
+        # VLAM_API_URL blijft als noodrem voor een verkeerd platformadres.
+        assert "VLAM_API_URL" in keys
+        # Sleutel, model en base-URL komen uit de omgeving (zad env): een
+        # tweede plek om ze te zetten liet een oude waarde stil voorgaan.
+        assert "VLAM_API_KEY" not in keys
+        assert "VLAM_MODEL_ID" not in keys
+        assert "VLAM_BASE_URL" not in keys
 
     @pytest.mark.asyncio
     async def test_list_config_masks_secrets(self, client):

@@ -326,34 +326,25 @@ _DEFAULT_CONFIG = [
         "description": "Claude model-ID",
         "is_secret": False,
     },
-    {
-        "key": "VLAM_API_KEY",
-        "value": "",
-        "description": "VLAM API-token (soevereine LLM)",
-        "is_secret": True,
-    },
+    # VLAM-sleutel, model en base-URL staan bewust NIET in dit scherm: die
+    # komen uit de omgeving (`zad env` voor sleutel en model, de ZAD-dienst
+    # `vlam` voor het adres). Een tweede plek om ze te zetten was hier de
+    # oorzaak van een storing — AppConfig gaat vóór de omgeving, dus een
+    # maanden oude waarde in de database overrulede stil wat er in ZAD stond,
+    # en de logs toonden een fout met het oude model terwijl het beheerscherm
+    # de nieuwe waarde liet zien.
+    #
+    # VLAM_API_URL blijft wel beschikbaar als noodrem: klopt het adres dat
+    # het platform injecteert niet, dan is VLAM zonder deze uitweg
+    # onbereikbaar en is er geen weg terug via de UI.
     {
         "key": "VLAM_API_URL",
         "value": "",
         "description": (
             "VLAM-proxyadres. Leeg laten: de ZAD-dienst 'vlam' injecteert "
-            "dit zelf. Alleen invullen om dat platformadres te overrulen."
+            "dit zelf. Alleen invullen om dat platformadres te overrulen. "
+            "Sleutel en model komen uit de omgeving (zad env)."
         ),
-        "is_secret": False,
-    },
-    {
-        "key": "VLAM_BASE_URL",
-        "value": "",
-        "description": (
-            "VLAM API base-URL, handmatig. Alleen nodig zonder de "
-            "ZAD-dienst 'vlam' — die levert VLAM_API_URL en die gaat voor."
-        ),
-        "is_secret": False,
-    },
-    {
-        "key": "VLAM_MODEL_ID",
-        "value": "",
-        "description": "VLAM model-ID",
         "is_secret": False,
     },
     {
