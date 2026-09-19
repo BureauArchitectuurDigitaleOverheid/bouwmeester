@@ -115,13 +115,27 @@ function DevPersonPicker({
     if (value) onPick(value);
   });
 
+  // The selected person is mirrored onto the <select> rather than passed as
+  // `defaultValue`. `people` arrives from a query, so on the first render the
+  // list is empty and a default freezes on "" — after a reload the header read
+  // "Kies persoon" while the app was signed in as someone. Assigning `value`
+  // once the matching <option> exists is what makes it stick.
+  const selectRef = useRef<HTMLSelectElement>(null);
+  const currentPersonId = currentPerson?.id ?? '';
+  useEffect(() => {
+    const select = selectRef.current;
+    if (select && select.value !== currentPersonId) {
+      select.value = currentPersonId;
+    }
+  }, [currentPersonId, people]);
+
   return (
     <nldd-dropdown
       ref={ref}
       accessible-label="Persoon kiezen (ontwikkelmodus)"
       width="200px"
     >
-      <select defaultValue={currentPerson?.id ?? ''}>
+      <select ref={selectRef}>
         <option value="" disabled>
           Kies persoon
         </option>
