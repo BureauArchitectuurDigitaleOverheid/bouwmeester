@@ -144,3 +144,38 @@ test.describe('layout at width', () => {
     expect(overflows, 'page scrolls horizontally').toBe(false);
   });
 });
+
+test.describe('modal', () => {
+  // This moved out of the unit tests when Modal went to nldd-window: Escape and
+  // the backdrop click are the native <dialog>'s own behaviour, and jsdom does
+  // not implement showModal, so there is nothing there to press Escape against.
+  test('opens and closes on Escape', async ({ page }) => {
+    test.skip(test.info().project.name !== 'desktop', 'desktop only');
+    await page.goto('/tasks');
+    await expect(page.locator('nldd-app-view')).toBeAttached({ timeout: 15_000 });
+    await page.waitForLoadState('networkidle');
+
+    const found = await page.evaluate(() => {
+      const w = [...document.querySelectorAll('nldd-window')].find(
+        (el) => el.getAttribute('accessible-label') === 'Nieuwe taak aanmaken',
+      ) as (HTMLElement & { show?: () => void }) | undefined;
+      w?.show?.();
+      return !!w;
+    });
+    expect(found, 'the task create window should be mounted').toBe(true);
+    await page.waitForTimeout(400);
+
+    const isOpen = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll('nldd-window')].some((el) =>
+          el.shadowRoot?.querySelector('dialog')?.hasAttribute('open'),
+        ),
+      );
+
+    expect(await isOpen()).toBe(true);
+
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    expect(await isOpen(), 'Escape should close the window').toBe(false);
+  });
+});
