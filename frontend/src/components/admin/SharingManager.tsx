@@ -53,6 +53,22 @@ export function SharingManager() {
   useNlddEvent(geldigVanRef, 'input', (e) => setForm((f) => ({ ...f, geldig_van: eventValue(e) })));
   useNlddEvent(geldigTotRef, 'input', (e) => setForm((f) => ({ ...f, geldig_tot: eventValue(e) })));
 
+  // nldd-dropdown stops the slotted select's native `change` and re-emits its
+  // own CustomEvent from the host, so a React onChange on the select never
+  // fires (see src/components/nldd/events.ts). Listen on the dropdown instead.
+  const sourceEenheidRef = useRef<HTMLElement>(null);
+  const targetEenheidRef = useRef<HTMLElement>(null);
+  const accessLevelRef = useRef<HTMLElement>(null);
+  useNlddEvent(sourceEenheidRef, 'change', (e) =>
+    setForm((f) => ({ ...f, source_eenheid_id: eventValue(e) || undefined })),
+  );
+  useNlddEvent(targetEenheidRef, 'change', (e) =>
+    setForm((f) => ({ ...f, target_eenheid_id: eventValue(e) })),
+  );
+  useNlddEvent(accessLevelRef, 'change', (e) =>
+    setForm((f) => ({ ...f, access_level: eventValue(e) as 'read' | 'edit' })),
+  );
+
   const sortedEenheden = useMemo(
     () => [...(eenheden ?? [])].sort((a, b) => a.naam.localeCompare(b.naam)),
     [eenheden],
@@ -129,14 +145,8 @@ export function SharingManager() {
           {/* Source */}
           {form.mode === 'eenheid' ? (
             <nldd-form-field label="Broneenheid">
-              <nldd-dropdown>
-                <select
-                  value={form.source_eenheid_id ?? ''}
-                  onChange={(e) =>
-                    setForm({ ...form, source_eenheid_id: e.target.value || undefined })
-                  }
-                  required
-                >
+              <nldd-dropdown ref={sourceEenheidRef}>
+                <select value={form.source_eenheid_id ?? ''} onChange={() => {}} required>
                   <option value="">Selecteer eenheid...</option>
                   {sortedEenheden.map((e) => (
                     <option key={e.id} value={e.id}>
@@ -159,12 +169,8 @@ export function SharingManager() {
 
           {/* Target */}
           <nldd-form-field label="Doeleenheid">
-            <nldd-dropdown>
-              <select
-                value={form.target_eenheid_id}
-                onChange={(e) => setForm({ ...form, target_eenheid_id: e.target.value })}
-                required
-              >
+            <nldd-dropdown ref={targetEenheidRef}>
+              <select value={form.target_eenheid_id} onChange={() => {}} required>
                 <option value="">Selecteer eenheid...</option>
                 {sortedEenheden.map((e) => (
                   <option key={e.id} value={e.id}>
@@ -177,13 +183,8 @@ export function SharingManager() {
 
           {/* Access level */}
           <nldd-form-field label="Toegangsniveau">
-            <nldd-dropdown>
-              <select
-                value={form.access_level}
-                onChange={(e) =>
-                  setForm({ ...form, access_level: e.target.value as 'read' | 'edit' })
-                }
-              >
+            <nldd-dropdown ref={accessLevelRef}>
+              <select value={form.access_level} onChange={() => {}}>
                 <option value="read">Lezen</option>
                 <option value="edit">Bewerken</option>
               </select>

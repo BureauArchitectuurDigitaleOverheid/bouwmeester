@@ -65,6 +65,10 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
 
   const [adding, setAdding] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const draftNameRef = useRef<HTMLElement>(null);
+  // `input` rather than `change`: a controlled field has to follow every
+  // keystroke, or "Toevoegen" only enables after the field loses focus.
+  useNlddEvent(draftNameRef, 'input', (event) => setDraftName(eventValue(event) ?? ''));
   const [draftColor, setDraftColor] = useState(COLOR_PRESETS[0].value);
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -184,9 +188,14 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
       {adding ? (
         <nldd-card background="tinted">
           <nldd-container gap="8" padding="12">
+            {/* The listener sits on the element, not on a React onChange:
+                nldd-text-field owns a shadow input and re-emits as a
+                CustomEvent, which React does not map to onChange. Without
+                this `draftName` stayed empty, so "Toevoegen" below was
+                permanently disabled and a column could never be created. */}
             <nldd-text-field
+              ref={draftNameRef}
               value={draftName}
-              onChange={(e) => setDraftName((e.target as HTMLInputElement).value)}
               placeholder="Kolomnaam (bv. Strategisch)"
               accessible-label="Kolomnaam"
               autoFocus

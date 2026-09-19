@@ -1055,13 +1055,20 @@ function EngagementTypeDropdown({
   value: EngagementType | '';
   onChange: (value: EngagementType | '') => void;
 }) {
+  // nldd-dropdown stops the slotted select's native `change` and re-emits its
+  // own CustomEvent from the host, so a React onChange on the select never
+  // fires (see src/components/nldd/events.ts). Listen on the dropdown instead.
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(
+    ref,
+    'change',
+    useCallback((e: Event) => onChange(eventValue(e) as EngagementType | ''), [onChange]),
+  );
+
   return (
     <nldd-form-field label="Engagement type">
-      <nldd-dropdown accessible-label="Engagement type" width="full">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value as EngagementType | '')}
-        >
+      <nldd-dropdown ref={ref} accessible-label="Engagement type" width="full">
+        <select value={value} onChange={() => {}}>
           <option value="">—</option>
           {(Object.keys(ENGAGEMENT_TYPE_LABELS) as EngagementType[]).map((k) => (
             <option key={k} value={k}>
@@ -1083,13 +1090,24 @@ function ScoreDropdown({
   value: number | '';
   onChange: (value: number | '') => void;
 }) {
+  // Same nldd-dropdown wiring as EngagementTypeDropdown above.
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(
+    ref,
+    'change',
+    useCallback(
+      (e: Event) => {
+        const next = eventValue(e);
+        onChange(next === '' ? '' : Number(next));
+      },
+      [onChange],
+    ),
+  );
+
   return (
     <nldd-form-field label={label}>
-      <nldd-dropdown accessible-label={label} width="full">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
-        >
+      <nldd-dropdown ref={ref} accessible-label={label} width="full">
+        <select value={value} onChange={() => {}}>
           <option value="">—</option>
           {[1, 2, 3, 4, 5].map((n) => (
             <option key={n} value={n}>

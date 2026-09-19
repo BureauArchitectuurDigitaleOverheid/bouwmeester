@@ -201,17 +201,21 @@ function ScoreSelect({
   onChange: (v: number | null) => void;
   disabled?: boolean;
 }) {
+  // nldd-dropdown stops the slotted select's native `change` and re-emits its
+  // own CustomEvent from the host, so a React onChange on the select never
+  // fires (see src/components/nldd/events.ts). Listen on the dropdown instead.
+  // This component is instantiated once per row in a `.map()`, so its own
+  // useRef is already scoped per row — no extra extraction needed.
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', (e) => {
+    const next = eventValue(e);
+    onChange(next === '' ? null : Number(next));
+  });
+
   return (
     <nldd-form-field label={label}>
-      <nldd-dropdown size="sm" {...(disabled ? { disabled: true } : {})}>
-        <select
-          aria-label={label}
-          value={value ?? ''}
-          onChange={(e) =>
-            onChange(e.target.value === '' ? null : Number(e.target.value))
-          }
-          disabled={disabled}
-        >
+      <nldd-dropdown ref={ref} size="sm" {...(disabled ? { disabled: true } : {})}>
+        <select aria-label={label} value={value ?? ''} onChange={() => {}} disabled={disabled}>
           <option value="">—</option>
           {SCORE_OPTIONS.map((n) => (
             <option key={n} value={n}>
@@ -233,6 +237,15 @@ function HoudingSelect({
   onChange: (v: StakeholderHouding | null) => void;
   disabled?: boolean;
 }) {
+  // Same nldd-dropdown wiring as ScoreSelect above. Declared before the
+  // `disabled` early return below so the hook always runs (Rules of Hooks);
+  // it's simply unused in the disabled branch.
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', (e) => {
+    const next = eventValue(e);
+    onChange(next === '' ? null : (next as StakeholderHouding));
+  });
+
   if (disabled) {
     return (
       <nldd-container gap="2">
@@ -247,20 +260,11 @@ function HoudingSelect({
       </nldd-container>
     );
   }
+
   return (
     <nldd-form-field label="Houding">
-      <nldd-dropdown size="sm">
-        <select
-          aria-label="Houding"
-          value={value ?? ''}
-          onChange={(e) =>
-            onChange(
-              e.target.value === ''
-                ? null
-                : (e.target.value as StakeholderHouding),
-            )
-          }
-        >
+      <nldd-dropdown ref={ref} size="sm">
+        <select aria-label="Houding" value={value ?? ''} onChange={() => {}}>
           <option value="">—</option>
           {HOUDING_OPTIONS.map((h) => (
             <option key={h} value={h}>

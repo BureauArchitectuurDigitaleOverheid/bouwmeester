@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import DOMPurify from 'dompurify';
+import { useNavigate } from 'react-router-dom';
 import { parseMention, mentionSigil, MENTION_SCHEMES } from '@/utils/mentions';
+import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import mermaid from 'mermaid';
 
 mermaid.initialize({
@@ -161,8 +164,32 @@ interface MarkdownRendererProps {
 export function MarkdownRenderer({ content, compact, onBmLink }: MarkdownRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const navigate = useNavigate();
+  const { openTaskDetail } = useTaskDetail();
+  const { openNodeDetail } = useNodeDetail();
+
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      // Mentions are handled here rather than by each caller. They used to be
+      // wired up only in RichTextDisplay, which wrapped this component in its
+      // own click handler; the three callers that render MarkdownRenderer
+      // directly (chat, the parlementair summary, the docs page) got a real
+      // button, a real tab stop and a screen reader announcing "button" for
+      // something that did nothing at all.
+      const mention = (e.target as HTMLElement).closest<HTMLElement>('[data-mention-kind]');
+      if (mention) {
+        const kind = mention.dataset.mentionKind;
+        const id = mention.dataset.mentionId;
+        if (kind && id) {
+          e.preventDefault();
+          if (kind === 'node') openNodeDetail(id);
+          else if (kind === 'task') openTaskDetail(id);
+          else if (kind === 'organisatie') navigate(`/organisatie?eenheid=${id}`);
+          // A person mention goes nowhere: there is no person detail surface.
+          return;
+        }
+      }
+
       if (!onBmLink) return;
       const target = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-bm-type]');
       if (!target) return;
@@ -173,7 +200,7 @@ export function MarkdownRenderer({ content, compact, onBmLink }: MarkdownRendere
         onBmLink(type, id);
       }
     },
-    [onBmLink],
+    [onBmLink, navigate, openNodeDetail, openTaskDetail],
   );
 
   // `compact` was a second copy of the whole component map with smaller

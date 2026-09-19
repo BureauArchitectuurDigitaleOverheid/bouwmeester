@@ -333,10 +333,29 @@ interface MergeCandidateCardProps {
 
 function MergeCandidateCard({ lead, stageName, disabled, onPick }: MergeCandidateCardProps) {
   const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', useCallback(() => onPick(), [onPick]));
+  // The guard is here because the element cannot carry one: `nldd-card` has no
+  // `disabled` attribute, and the `aria-disabled` this used to set was inert —
+  // the button in its shadow root stayed operable, so a merge already in
+  // flight could be fired again while a screen reader announced the card as
+  // disabled. `disabled` is the mutation's pending state.
+  useNlddEvent(
+    ref,
+    'click',
+    useCallback(() => {
+      if (disabled) return;
+      onPick();
+    }, [disabled, onPick]),
+  );
 
   return (
-    <nldd-card ref={ref} button {...(disabled ? { 'aria-disabled': true } : {})} accessible-label={lead.title}>
+    <nldd-card
+      ref={ref}
+      button
+      accessible-label={
+        disabled ? `${lead.title} (samenvoegen loopt)` : lead.title
+      }
+      style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+    >
       <nldd-container padding="16">
         <nldd-text-cell
           text={lead.title}

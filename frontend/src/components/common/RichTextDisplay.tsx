@@ -89,26 +89,10 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
 
-  // A mention rendered by MarkdownRenderer is a button carrying its kind and
-  // id; opening it needs the contexts, which live here.
-  const handleMentionClick = (e: React.MouseEvent) => {
-    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-mention-kind]');
-    if (!target) return;
-    const kind = target.dataset.mentionKind;
-    const id = target.dataset.mentionId;
-    if (!kind || !id) return;
-    e.preventDefault();
-    if (kind === 'node') openNodeDetail(id);
-    else if (kind === 'task') openTaskDetail(id);
-    else if (kind === 'organisatie') navigate(`/organisatie?eenheid=${id}`);
-    // A person mention goes nowhere: there is no person detail surface.
-  };
-
-  const markdown = (value: string) => (
-    <div onClick={handleMentionClick}>
-      <MarkdownRenderer content={value} />
-    </div>
-  );
+  // Mention clicks are MarkdownRenderer's own business now. This used to be
+  // handled here, in a wrapper div, which meant the three callers that render
+  // MarkdownRenderer directly had inert mention buttons.
+  const markdown = (value: string) => <MarkdownRenderer content={value} />;
 
   if (!content) {
     return (

@@ -253,6 +253,14 @@ export function PersonEditForm({
     personCacheRef.current.set(p.id, p);
   }
 
+  // nldd-dropdown stops the slotted select's native `change` and re-emits its
+  // own CustomEvent from the host, so a React onChange on the select never
+  // fires (see src/components/nldd/events.ts). Listen on the dropdown instead.
+  const newPhoneLabelRef = useRef<HTMLElement>(null);
+  const dienstverbandRef = useRef<HTMLElement>(null);
+  useNlddEvent(newPhoneLabelRef, 'change', (e) => setNewPhoneLabel(eventValue(e)));
+  useNlddEvent(dienstverbandRef, 'change', (e) => setDienstverband(eventValue(e)));
+
   // Filter out agents from search results
   const personResults = searchResults.filter(p => !p.is_agent);
 
@@ -695,12 +703,8 @@ export function PersonEditForm({
                   accessibleLabel="Nieuw telefoonnummer"
                 />
               </nldd-container>
-              <nldd-dropdown width="140px">
-                <select
-                  aria-label="Type telefoonnummer"
-                  value={newPhoneLabel}
-                  onChange={(e) => setNewPhoneLabel(e.target.value)}
-                >
+              <nldd-dropdown ref={newPhoneLabelRef} width="140px">
+                <select aria-label="Type telefoonnummer" value={newPhoneLabel} onChange={() => {}}>
                   {Object.entries(PHONE_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
@@ -849,12 +853,8 @@ export function PersonEditForm({
         )}
         {!editData && orgEenheidId && !isAgent && (
           <nldd-form-field label="Dienstverband">
-            <nldd-dropdown>
-              <select
-                aria-label="Dienstverband"
-                value={dienstverband}
-                onChange={(e) => setDienstverband(e.target.value)}
-              >
+            <nldd-dropdown ref={dienstverbandRef}>
+              <select aria-label="Dienstverband" value={dienstverband} onChange={() => {}}>
                 {Object.entries(DIENSTVERBAND_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}

@@ -164,6 +164,18 @@ export function CreatableSelect({
   useNlddEvent(ref, 'input', handleInput);
   useNlddEvent(ref, 'change', handleChange);
 
+  // The `searchable={false}` branch below renders an nldd-dropdown, which
+  // needs its own listener: it stops the slotted select's native `change` and
+  // re-emits a CustomEvent from the host, so React's onChange on the select
+  // never fired. 21 call sites pass `searchable={false}`, and in all of them
+  // picking an option did nothing at all.
+  const dropdownRef = useRef<HTMLElement>(null);
+  useNlddEvent(dropdownRef, 'change', (event) => {
+    const next = eventValue(event);
+    if (!next) onClear?.();
+    else onChange(next);
+  });
+
   const message = createError ?? error;
 
   const comboBox = (
@@ -212,20 +224,17 @@ export function CreatableSelect({
    */
   const dropdown = (
     <nldd-dropdown
+      ref={dropdownRef}
       {...(disabled || isCreating ? { disabled: true } : {})}
       {...(required ? { required: true } : {})}
       {...(message ? { invalid: true } : {})}
       {...(label ? {} : { 'accessible-label': placeholder })}
     >
-      <select
-        value={value ?? ''}
-        disabled={disabled || isCreating}
-        onChange={(e) => {
-          const next = e.target.value;
-          if (!next) onClear?.();
-          else onChange(next);
-        }}
-      >
+      {/* No React onChange here: the dropdown calls stopPropagation() on the
+          slotted select's native `change` and re-emits its own CustomEvent, so
+          a handler bound to the select never runs. The listener sits on the
+          dropdown instead (see the useNlddEvent above). */}
+      <select value={value ?? ''} disabled={disabled || isCreating} onChange={() => {}}>
         <option value="">{placeholder}</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>

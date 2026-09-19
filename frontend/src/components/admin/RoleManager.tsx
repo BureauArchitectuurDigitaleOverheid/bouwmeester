@@ -121,6 +121,20 @@ function PersonRolesPanel({
   useNlddEvent(startDatumRef, 'input', (e) => setStartDatum(eventValue(e)));
   useNlddEvent(eindDatumRef, 'input', (e) => setEindDatum(eventValue(e)));
 
+  // nldd-dropdown stops the slotted select's native `change` and re-emits its
+  // own CustomEvent from the host, so a React onChange on the select never
+  // fires (see src/components/nldd/events.ts). Listen on the dropdown instead.
+  const roleRef = useRef<HTMLElement>(null);
+  const orgRef = useRef<HTMLElement>(null);
+  useNlddEvent(roleRef, 'change', (e) => {
+    const next = eventValue(e);
+    setSelectedRoleId(next);
+    // Reset org when switching to system role
+    const role = roles?.find((r) => r.id === next);
+    if (role?.level === 'system') setSelectedOrgId('');
+  });
+  useNlddEvent(orgRef, 'change', (e) => setSelectedOrgId(eventValue(e)));
+
   const selectedRole = roles?.find((r) => r.id === selectedRoleId);
   const isSystemLevel = selectedRole?.level === 'system';
 
@@ -241,17 +255,8 @@ function PersonRolesPanel({
           <nldd-container layout="grid" column-count={2} gap="12">
             {/* Role selector */}
             <nldd-form-field label="Rol">
-              <nldd-dropdown size="sm">
-                <select
-                  value={selectedRoleId}
-                  onChange={(e) => {
-                    setSelectedRoleId(e.target.value);
-                    // Reset org when switching to system role
-                    const role = roles?.find((r) => r.id === e.target.value);
-                    if (role?.level === 'system') setSelectedOrgId('');
-                  }}
-                  required
-                >
+              <nldd-dropdown ref={roleRef} size="sm">
+                <select value={selectedRoleId} onChange={() => {}} required>
                   <option value="">Kies een rol...</option>
                   {assignableRoles.map((role) => (
                     <option key={role.id} value={role.id}>
@@ -266,10 +271,10 @@ function PersonRolesPanel({
             {/* Org unit selector (hidden for system roles) */}
             {!isSystemLevel && (
               <nldd-form-field label="Organisatie-eenheid">
-                <nldd-dropdown size="sm">
+                <nldd-dropdown ref={orgRef} size="sm">
                   <select
                     value={selectedOrgId}
-                    onChange={(e) => setSelectedOrgId(e.target.value)}
+                    onChange={() => {}}
                     required={!!selectedRoleId && !isSystemLevel}
                   >
                     <option value="">Kies een eenheid...</option>
@@ -445,6 +450,18 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
 
   const resourceOptions = useResourceOptions(selectedResourceType);
 
+  // See the roleRef/orgRef comment above: nldd-dropdown swallows the slotted
+  // select's native `change`, so listeners live on the dropdown, not onChange.
+  const resourceTypeRef = useRef<HTMLElement>(null);
+  const resourceIdRef = useRef<HTMLElement>(null);
+  const rolRef = useRef<HTMLElement>(null);
+  useNlddEvent(resourceTypeRef, 'change', (e) => {
+    setSelectedResourceType(eventValue(e));
+    setSelectedResourceId('');
+  });
+  useNlddEvent(resourceIdRef, 'change', (e) => setSelectedResourceId(eventValue(e)));
+  useNlddEvent(rolRef, 'change', (e) => setSelectedRol(eventValue(e)));
+
   const addPermission = useMutationWithError({
     mutationFn: (data: {
       resourceType: string;
@@ -535,15 +552,8 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
           <nldd-container gap="12">
           <nldd-container layout="grid" column-count={3} gap="12">
             <nldd-form-field label="Resource type">
-              <nldd-dropdown size="sm">
-                <select
-                  value={selectedResourceType}
-                  onChange={(e) => {
-                    setSelectedResourceType(e.target.value);
-                    setSelectedResourceId('');
-                  }}
-                  required
-                >
+              <nldd-dropdown ref={resourceTypeRef} size="sm">
+                <select value={selectedResourceType} onChange={() => {}} required>
                   <option value="">Kies type...</option>
                   {RESOURCE_TYPE_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -555,10 +565,10 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
             </nldd-form-field>
 
             <nldd-form-field label="Resource">
-              <nldd-dropdown size="sm">
+              <nldd-dropdown ref={resourceIdRef} size="sm">
                 <select
                   value={selectedResourceId}
-                  onChange={(e) => setSelectedResourceId(e.target.value)}
+                  onChange={() => {}}
                   required
                   disabled={!selectedResourceType}
                 >
@@ -575,12 +585,8 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
             </nldd-form-field>
 
             <nldd-form-field label="Rol">
-              <nldd-dropdown size="sm">
-                <select
-                  value={selectedRol}
-                  onChange={(e) => setSelectedRol(e.target.value)}
-                  required
-                >
+              <nldd-dropdown ref={rolRef} size="sm">
+                <select value={selectedRol} onChange={() => {}} required>
                   <option value="">Kies rol...</option>
                   {RESOURCE_ROLE_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
