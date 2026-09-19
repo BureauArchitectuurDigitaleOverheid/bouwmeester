@@ -3,9 +3,8 @@ type ContainerPadding = NonNullable<React.ComponentProps<'nldd-container'>['padd
 interface LoadingSpinnerProps {
   size?: 'sm' | 'md' | 'lg';
   /** Vertical padding around the centered indicator, as an nldd-container
-   *  spacer-scale step (e.g. '32'). Replaces the old `className="py-N"` call
-   *  sites now that Tailwind's arbitrary utility classes no longer compile to
-   *  real CSS. */
+   *  spacer-scale step (e.g. '32'). Replaces the old Tailwind `py-N`
+   *  className prop, which no longer compiles to real CSS. */
   padding?: ContainerPadding;
 }
 

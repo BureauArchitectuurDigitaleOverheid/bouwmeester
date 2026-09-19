@@ -464,7 +464,7 @@ export function OpdrachtenPage() {
           narrow ones". A custom element's own display can't reliably be
           overridden by a light-DOM utility class, so the visibility split
           itself stays a plain div; everything inside it is nldd. */}
-      <div className="sm:hidden">
+      <div className="hidden-from-sm">
         <nldd-container gap="12">
           {isLoading ? (
             <nldd-inline-dialog variant="loading" text="Laden..." />
@@ -496,7 +496,7 @@ export function OpdrachtenPage() {
       </div>
 
       {/* Desktop table */}
-      <div className="hidden sm:block">
+      <div className="visible-from-sm">
         <nldd-container gap="8">
         <nldd-table
           columns="minmax(200px,1.6fr) 140px 80px minmax(140px,1fr) minmax(140px,1fr) 120px 120px minmax(140px,1fr)"

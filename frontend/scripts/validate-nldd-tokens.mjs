@@ -74,7 +74,10 @@ for (const file of files) {
   // nothing, which is how several of these got written.
   if (!LITERAL_COLOR_OK.test(rel)) {
     for (const m of source.matchAll(
-      /\b(background|backgroundColor|color|borderColor|outlineColor|fill|stroke)\s*:\s*'(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/g,
+      // The quote is optional: a JS style object writes `color: '#333'`, a
+      // stylesheet writes `color: #333`. Only the first form was checked, so
+      // a hard-coded scrim in utilities.css went straight past.
+      /\b(background|background-color|backgroundColor|color|border-color|borderColor|outline-color|outlineColor|fill|stroke)\s*:\s*'?(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/g,
     )) {
       const line = source.slice(0, m.index).split('\n').length;
       problems.push(`${rel}:${line} ${m[1]} is a literal color; use a design-system token`);

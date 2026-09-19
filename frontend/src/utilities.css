@@ -208,16 +208,18 @@
 
 /* A dark tint that fades in over an image thumbnail on hover/focus of the
  * `.group` ancestor, the backdrop for a zoom or preview affordance that fades
- * in on top of it (typically `.group-hover-reveal`). Black rather than a
- * design-system token deliberately: it needs to read as a scrim over an
- * arbitrary photo, not as a themed surface. */
+ * in on top of it (typically `.group-hover-reveal`).
+ *
+ * On the overlay backdrop token, not a hand-picked black: that token is
+ * exactly "the scrim the system puts over content", the same one its dialogs
+ * draw, so a thumbnail here matches a lightbox two clicks later. */
 .group-hover-dim-overlay {
   background-color: transparent;
   transition: background-color 150ms;
 }
 .group:hover .group-hover-dim-overlay,
 .group:focus-within .group-hover-dim-overlay {
-  background-color: rgb(0 0 0 / 0.2);
+  background-color: var(--semantics-overlays-backdrop-color);
 }
 
 /* # Responsive label inside a Button
@@ -234,6 +236,53 @@
 @media (min-width: 640px) {
   .hidden-below-sm {
     display: inline;
+  }
+}
+
+/**
+ * The same, for an element that brings its own `display`.
+ *
+ * `hidden-below-sm` forces `display: inline` above the breakpoint, which is
+ * right for a `<span>` of label text and wrong for anything that lays out its
+ * children. On an `nldd-container` it flattened a row to inline and the
+ * contents measured zero: 53 collapsed elements on the organisation page, all
+ * of them role labels ("Directeur", "Coördinator") that simply were not there.
+ *
+ * `revert` hands the display back to whatever the component's own stylesheet
+ * sets, instead of this file guessing at it.
+ */
+.hidden-below-sm-block {
+  display: none;
+}
+@media (min-width: 640px) {
+  .hidden-below-sm-block {
+    display: revert;
+  }
+}
+
+/* # Mobile-card vs. desktop-table switch
+ *
+ * The opposite direction from `hidden-below-sm-block`: visible below `sm`
+ * (the card list), hidden from `sm` up (the table takes over). See
+ * OpdrachtenPage's opdrachten list — nldd-table's own `sm-columns` collapses
+ * tracks rather than swapping to an entirely different layout, so the two
+ * views are separate markup and this pair of classes picks which one shows.
+ */
+.hidden-from-sm {
+  display: revert;
+}
+@media (min-width: 640px) {
+  .hidden-from-sm {
+    display: none;
+  }
+}
+
+.visible-from-sm {
+  display: none;
+}
+@media (min-width: 640px) {
+  .visible-from-sm {
+    display: revert;
   }
 }
 

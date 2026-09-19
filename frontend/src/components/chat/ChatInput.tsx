@@ -164,12 +164,16 @@ export function ChatInput() {
   const hasAttachments = pendingAttachments.length > 0 || uploadingCount > 0;
 
   return (
-    // border-t + the drag-over ring: a focus/drag-state ring around the whole
-    // input strip has no nldd-container equivalent (container has no border or
-    // ring styling at all, only padding/gap/layout), so this outer chrome
-    // stays plain CSS.
+    // border-top + the drag-over ring: a focus/drag-state ring around the
+    // whole input strip has no nldd-container equivalent (container has no
+    // border or ring styling at all, only padding/gap/layout), so this outer
+    // chrome stays plain CSS.
     <div
-      className={`border-t border-border p-3 ${isDragging ? 'ring-2 ring-primary-400 ring-inset' : ''}`}
+      style={{
+        borderTop: '1px solid var(--primitives-color-neutral-50)',
+        padding: '12px',
+        boxShadow: isDragging ? 'inset 0 0 0 2px var(--primitives-color-accent-400)' : undefined,
+      }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -249,7 +253,7 @@ export function ChatInput() {
           type="file"
           accept={ACCEPTED_TYPES}
           multiple
-          className="hidden"
+          style={{ display: 'none' }}
           onChange={handleFileInputChange}
         />
 

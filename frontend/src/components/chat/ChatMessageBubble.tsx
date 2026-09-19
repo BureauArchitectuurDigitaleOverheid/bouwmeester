@@ -177,10 +177,11 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
             // nldd-text equivalent for that CSS white-space value.
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : message.content ? (
-            // prose-sm is the Tailwind Typography plugin styling the
-            // rendered markdown's own headings/lists/etc.; not a spacing or
-            // color utility this conversion targets.
-            <div className="prose-sm">
+            // prose-sm referenced the Tailwind Typography plugin, which was
+            // never installed in this project — MarkdownRenderer styles its
+            // own headings/lists/etc. independently, so the class did nothing
+            // even before this migration. Dropped rather than converted.
+            <div>
               <MarkdownRenderer content={fixNumberedBoldHeadings(message.content)} compact onBmLink={handleBmLink} />
             </div>
           ) : null}

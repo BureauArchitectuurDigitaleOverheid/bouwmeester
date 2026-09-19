@@ -155,11 +155,11 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             {person.functie && !person.is_agent && (
               // nldd-container's layout has no responsive show/hide (unlike
               // gap/padding/column-count, which do take sm-/md-/lg- variants),
-              // so hiding this below sm stays a Tailwind class. Note the prop
-              // is `className`, not `class` — the raw `class` attribute is
-              // typed on NlddElement but is not how React applies classes, so
-              // it silently did nothing here.
-              <nldd-container layout="row" gap="4" vertical-alignment="center" className="hidden sm:flex">
+              // so hiding it below sm is a utility class. It has to be the
+              // -block variant: `hidden-below-sm` forces `display: inline`
+              // above the breakpoint, which flattens a row container and
+              // collapses its contents to zero width.
+              <nldd-container layout="row" gap="4" vertical-alignment="center" className="hidden-below-sm-block">
                 <Icon name="Briefcase" size="xs" />
                 <nldd-text size="xs" color="secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {formatFunctie(person.functie)}
