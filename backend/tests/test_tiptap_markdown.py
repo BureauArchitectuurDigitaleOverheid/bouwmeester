@@ -7,8 +7,13 @@ being mangled anyway.
 """
 
 import json
+import re
 
-from bouwmeester.core.tiptap_markdown import tiptap_to_markdown
+from bouwmeester.core.tiptap_markdown import (
+    extract_markdown_mentions,
+    tiptap_to_markdown,
+)
+from bouwmeester.services.mention_service import MentionService
 
 
 def doc(*content: dict) -> str:
@@ -208,3 +213,135 @@ class TestBlocks:
     def test_unknown_block_keeps_its_text(self):
         node = {"type": "somethingNew", "content": [para(text("Niet verliezen"))]}
         assert tiptap_to_markdown(doc(node)) == "Niet verliezen"
+
+
+ANNE = "3fa9c1e2-0000-0000-0000-000000000001"
+DOSSIER = "aaaa1111-0000-0000-0000-000000000002"
+
+
+def mention(node_type: str, mention_type: str, id_: str, label: str) -> dict:
+    return {
+        "type": node_type,
+        "attrs": {"id": id_, "label": label, "mentionType": mention_type},
+    }
+
+
+class TestMentionsSurviveTheRoundTrip:
+    """What the migration converts, the app has to be able to read back.
+
+    `MentionService` populates the mention table and fires the notifications.
+    It parsed only TipTap, so after the migration rewrote its columns it
+    extracted nothing: the first edit of a row deleted its mentions and
+    replaced them with none, and every `@` in the app went quietly dead.
+    """
+
+    def test_person_and_node_mentions_round_trip(self):
+        source = doc(
+            para(
+                text("Vraag aan "),
+                mention("mention", "person", ANNE, "Anne Schuth"),
+                text(" over "),
+                mention("hashtagMention", "node", DOSSIER, "Dossier X"),
+            )
+        )
+        assert extract_markdown_mentions(tiptap_to_markdown(source)) == [
+            {"mention_type": "person", "target_id": ANNE},
+            {"mention_type": "node", "target_id": DOSSIER},
+        ]
+
+    def test_service_reads_both_storage_formats(self):
+        # A row migrated to markdown and a row not yet edited since must give
+        # the same answer, or notifications depend on when a row was written.
+        source = doc(para(mention("mention", "person", ANNE, "Anne Schuth")))
+        assert MentionService.extract_mentions(
+            tiptap_to_markdown(source)
+        ) == MentionService.extract_mentions(source)
+
+    def test_label_cannot_smuggle_a_second_mention(self):
+        # The label is user data. Unescaped, this ends its own link early and
+        # opens one pointing at an id the author never chose.
+        smuggled = "9999aaaa-0000-0000-0000-000000000009"
+        source = doc(
+            para(
+                mention(
+                    "mention",
+                    "person",
+                    ANNE,
+                    f"A] fake](user:{smuggled}) B",
+                )
+            )
+        )
+        assert extract_markdown_mentions(tiptap_to_markdown(source)) == [
+            {"mention_type": "person", "target_id": ANNE}
+        ]
+
+
+def _link_targets(markdown: str) -> set[str]:
+    """The hrefs a markdown renderer would actually link to.
+
+    An unescaped `]` inside link text is still a literal `](` in the output,
+    so counting those says nothing. What matters is whether a second, working
+    link appeared: a `]` that ends the text early, or a `)` in an href that
+    closes the link. Both show up here as an extra target.
+
+    The `<...>` form is matched first and greedily to its closing `>`, the way
+    CommonMark reads it, so a `)` inside an angle-bracketed destination stays
+    part of that one destination instead of looking like a new link.
+    """
+    pattern = r"(?<!\\)\]\((?:<([^>]*)>|([^)\s]+))\)"
+    return {
+        m.group(1) if m.group(1) is not None else m.group(2)
+        for m in re.finditer(pattern, markdown)
+    }
+
+
+class TestLinksCannotBeInjected:
+    """Everything inside a link is user data, so all of it is escaped."""
+
+    def test_href_with_a_closing_paren_cannot_open_a_second_link(self):
+        value = tiptap_to_markdown(
+            doc(
+                para(
+                    {
+                        "type": "text",
+                        "text": "klik",
+                        "marks": [
+                            {
+                                "type": "link",
+                                "attrs": {
+                                    "href": "x) [KLIK HIER](https://phish.example"
+                                },
+                            }
+                        ],
+                    }
+                )
+            )
+        )
+        # The whole href sits inside <...>, so the `)` in it no longer closes
+        # the link and the attacker's URL never becomes a target of its own.
+        assert value == "[klik](<x) [KLIK HIER](https://phish.example>)"
+        assert not _link_targets(value) & {"https://phish.example"}
+
+    def test_link_text_with_a_bracket_cannot_open_a_second_link(self):
+        value = tiptap_to_markdown(
+            doc(
+                para(
+                    {
+                        "type": "text",
+                        "text": "a](https://phish.example) [b",
+                        "marks": [
+                            {"type": "link", "attrs": {"href": "https://ok.example"}}
+                        ],
+                    }
+                )
+            )
+        )
+        # The `]` is escaped, so it cannot end the link text early; only the
+        # author's own href is a target.
+        assert _link_targets(value) == {"https://ok.example"}
+
+    def test_typing_a_mention_does_not_forge_one(self):
+        typed = f"[@Directeur BZK](user:{ANNE})"
+        assert (
+            extract_markdown_mentions(tiptap_to_markdown(doc(para(text(typed))))) == []
+        )

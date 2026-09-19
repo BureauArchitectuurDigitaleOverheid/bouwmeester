@@ -21,7 +21,7 @@ from sqlalchemy import select
 from bouwmeester.core.database import async_session
 from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.services.mattermost_mention_renderer import (
-    render_mattermost_message_to_tiptap,
+    render_mattermost_message_to_markdown,
 )
 from bouwmeester.services.mention_service import MentionService
 
@@ -46,7 +46,7 @@ async def backfill() -> tuple[int, int]:
             inspected += 1
             if not activity.content or _looks_like_tiptap(activity.content):
                 continue
-            tiptap_json, mentioned_ids = await render_mattermost_message_to_tiptap(
+            tiptap_json, mentioned_ids = await render_mattermost_message_to_markdown(
                 session, activity.content
             )
             if not tiptap_json or not mentioned_ids:

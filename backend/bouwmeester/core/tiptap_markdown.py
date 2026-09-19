@@ -11,21 +11,25 @@ same shape with its own scheme: `node:`, `task:`. Both stay valid markdown and
 both degrade to a plain link anywhere the scheme is not understood, which is the
 property that makes this safe to write into a column that other code reads.
 
-The label is escaped and the id percent-encoded for the same reason the design
-system does it: a display name comes from user data, and a stray `]` or `)`
-would otherwise close the link early and let the rest of the name be read as
-markdown of its own.
+Everything that ends up inside a link is escaped, because all of it comes from
+user data: the mention label, ordinary text, and the href. A stray `]` or `)`
+closes a link early and turns the rest into markdown of its own, which is how a
+second, attacker-controlled link gets into someone else's description. Plain
+text is escaped for `[` and `]` too, so that typing the literal string
+`[@Directeur BZK](user:0000...)` cannot forge a mention this converter never
+wrote.
 
-Only used by the one-off migration; the app writes this format directly after
-that. Kept in the package rather than in scripts/ so the migration and the tests
-import the same code.
+Used by the one-off migration, and by `MentionService` to read the format back
+out. Kept in the package rather than in scripts/ so the migration, the service
+and the tests import the same code.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 # Mention node type -> URL scheme. The `mentionType` attribute distinguishes
 # person from organisatie within one TipTap node type, so the mapping is on the
@@ -40,6 +44,22 @@ _MENTION_SCHEMES = {
 # Defaults for documents written before `mentionType` existed.
 _DEFAULT_MENTION_TYPE = {"mention": "person", "hashtagMention": "node"}
 
+# URL scheme -> the `mention_type` the mention table stores, i.e. the inverse of
+# the values in _MENTION_SCHEMES above. Used when reading the markdown back.
+_SCHEME_MENTION_TYPES = {
+    "user": "person",
+    "org": "organisatie",
+    "node": "node",
+    "task": "task",
+}
+
+# The shape `_mention_to_markdown` writes, as a pattern. An escaped `\[` inside
+# the label cannot end it, which keeps a label containing brackets from being
+# read as a shorter mention followed by loose text.
+_MENTION_PATTERN = re.compile(
+    r"\[[@#]((?:\\.|[^\\\]])*)\]\((user|org|node|task):([^)\s]+)\)"
+)
+
 
 def _escape_label(label: str) -> str:
     """Backslash-escape what would end the link text early."""
@@ -49,13 +69,38 @@ def _escape_label(label: str) -> str:
 def _escape_text(text: str) -> str:
     """Escape markdown that would otherwise be read as formatting.
 
-    Only the characters that start inline formatting, and only where they could
-    plausibly do so. Over-escaping turns readable prose into a thicket of
-    backslashes, which is worse than the rare false positive it prevents.
+    `[` and `]` are in the set because leaving them out was an injection hole,
+    not because prose needs them escaped. Without it, a description containing
+    the literal text `[@Directeur BZK](user:0000...)` came through verbatim and
+    was indistinguishable from a mention this converter wrote, which is a way
+    to forge one in someone else's text. The same gap let link text carrying
+    `](...)` close its own link early and open a second one.
+
+    Over-escaping turns readable prose into a thicket of backslashes, so the
+    set stays as small as it can be while closing that off.
     """
-    for char in ("\\", "*", "_", "`"):
+    for char in ("\\", "*", "_", "`", "[", "]"):
         text = text.replace(char, "\\" + char)
     return text
+
+
+def _escape_href(href: str) -> str:
+    """Make a URL safe to sit inside `](...)`.
+
+    An href arrives straight from pasted user content (TipTap's Link extension
+    has `linkOnPaste` and `autolink` on), so a `)` in it closed the link early
+    and let the rest be read as markdown: `x) [KLIK HIER](https://phish.nl`
+    produced a second, attacker-controlled link. Angle brackets are the
+    markdown-native way to wrap a URL with delimiters in it, so anything
+    awkward goes inside them, with `<` and `>` themselves percent-encoded so
+    the wrapper cannot be closed early either.
+    """
+    if not href:
+        return ""
+    cleaned = href.replace("<", "%3C").replace(">", "%3E")
+    if any(char in cleaned for char in "() \t\n"):
+        return f"<{cleaned}>"
+    return cleaned
 
 
 def _mention_to_markdown(node: dict[str, Any]) -> str:
@@ -107,7 +152,7 @@ def _marks_to_markdown(text: str, marks: list[dict[str, Any]] | None) -> str:
     if link:
         href = (link.get("attrs") or {}).get("href")
         if href:
-            out = f"[{out}]({href})"
+            out = f"[{out}]({_escape_href(href)})"
 
     return out
 
@@ -215,3 +260,24 @@ def tiptap_to_markdown(value: str | None) -> str | None:
         blocks.pop()
 
     return "\n\n".join(blocks)
+
+
+def extract_markdown_mentions(value: str | None) -> list[dict[str, str]]:
+    """Read the mentions back out of the markdown form.
+
+    The inverse of `_mention_to_markdown`, and the reason both live in this
+    module: the migration rewrote the columns `MentionService` reads, so
+    without a reader every `@` in the app went quietly dead. Returns the same
+    shape that service's TipTap parser returns, in document order.
+    """
+    if not value:
+        return []
+
+    mentions: list[dict[str, str]] = []
+    for match in _MENTION_PATTERN.finditer(value):
+        mention_type = _SCHEME_MENTION_TYPES.get(match.group(2))
+        if mention_type:
+            mentions.append(
+                {"mention_type": mention_type, "target_id": unquote(match.group(3))}
+            )
+    return mentions

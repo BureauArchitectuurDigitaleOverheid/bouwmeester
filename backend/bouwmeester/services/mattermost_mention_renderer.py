@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.tiptap_markdown import tiptap_to_markdown
 from bouwmeester.models.mattermost_user import MattermostUser
 from bouwmeester.models.person import Person
 
@@ -75,15 +76,18 @@ def _build_paragraph(line: str, resolved: dict[str, tuple[UUID, str]]) -> dict:
     return {"type": "paragraph", "content": children}
 
 
-async def render_mattermost_message_to_tiptap(
+async def render_mattermost_message_to_markdown(
     session: AsyncSession, message: str
 ) -> tuple[str | None, list[UUID]]:
-    """Zet ``message`` om naar een TipTap-JSON-string als er gekoppelde
+    """Zet ``message`` om naar markdown met vermeldingen als er gekoppelde
     ``@username``-vermeldingen in zitten.
 
-    Returns ``(tiptap_json, mentioned_person_ids)``. Wanneer geen enkele
-    username gekoppeld is, geven we ``(None, [])`` terug zodat de caller op
-    de oorspronkelijke platte-tekst-flow kan terugvallen.
+    Returns ``(markdown, mentioned_person_ids)``. Wanneer geen enkele username
+    gekoppeld is, geven we ``(None, [])`` terug zodat de caller op de
+    oorspronkelijke platte-tekst-flow kan terugvallen.
+
+    Intern bouwt dit nog een TipTap-document op, omdat dat de vorm is die de
+    converter leest; opgeslagen wordt de markdown die eruit komt.
     """
     if not message:
         return None, []
@@ -97,4 +101,10 @@ async def render_mattermost_message_to_tiptap(
     paragraphs = [_build_paragraph(line, resolved) for line in message.split("\n")]
     doc = {"type": "doc", "content": paragraphs}
     person_ids = [pid for pid, _ in resolved.values()]
-    return json.dumps(doc, ensure_ascii=False), person_ids
+
+    # Het TipTap-document is hier een tussenvorm, geen opslagvorm. Migratie
+    # 6b1e04a7c8d2 heeft `lead_activity.content` naar markdown geschreven, dus
+    # verse JSON in diezelfde kolom kwam na de deploy als letterlijke tekst in
+    # beeld. Dezelfde converter als de migratie, zodat er één plek is die
+    # bepaalt hoe een mention eruitziet.
+    return tiptap_to_markdown(json.dumps(doc, ensure_ascii=False)), person_ids
