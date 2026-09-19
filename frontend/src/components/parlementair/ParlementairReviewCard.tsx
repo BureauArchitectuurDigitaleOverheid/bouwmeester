@@ -491,7 +491,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                   presentational chrome around a text dump rather than a
                   document composition, so nldd-container's background isn't a
                   fit either. */}
-              <p className="text-sm text-text-secondary whitespace-pre-wrap bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto">
+              <p className="text-sm text-text-secondary whitespace-pre-wrap surface-tinted rounded-lg p-3 max-h-48 overflow-y-auto">
                 {item.document_tekst}
               </p>
             </nldd-container>

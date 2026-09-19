@@ -94,8 +94,8 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
 
   if (isRoot) {
     return (
-      <div
-        className="space-y-2"
+      <nldd-container
+        gap="8"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -134,14 +134,17 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
             onDropPerson={onDropPerson}
           />
         ))}
-      </div>
+      </nldd-container>
     );
   }
 
   return (
+    // A plain div, not nldd-box: the drag-over ring highlight and the
+    // per-org-type tint (orgTypeBg) are dynamic border/ring colors with no
+    // nldd-box equivalent (only background="tinted"/"base"/"critical").
     <div
       className={clsx(
-        'border rounded-lg p-2 sm:p-3 space-y-2 transition-all duration-150',
+        'border rounded-lg p-2 sm:p-3 transition-all duration-150',
         orgTypeBg(group.eenheid.type),
         dragOver
           ? 'border-primary-400 ring-2 ring-primary-200'
@@ -151,62 +154,73 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Group header. A plain button rather than NlddButton: the label is a
-          composite of an icon, a badge, a name and a count, none of which
-          nldd-button's text/icon slots can carry together (its children only
-          reach the `text` slot, not a default slot for arbitrary content). */}
-      <button
-        className="flex items-center gap-2 w-full text-left"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size="sm" />
-        <Badge variant={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}>
-          {formatOrganisatieType(group.eenheid.type)}
-        </Badge>
-        <nldd-text size="sm" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {group.eenheid.naam}
-        </nldd-text>
-        <nldd-text size="xs" color="secondary">({totalCount})</nldd-text>
-      </button>
+      <nldd-container gap="8">
+        {/* Group header. A plain button rather than NlddButton: the label is a
+            composite of an icon, a badge, a name and a count, none of which
+            nldd-button's text/icon slots can carry together (its children only
+            reach the `text` slot, not a default slot for arbitrary content).
+            width: 100% stays inline: nldd-container's width="full" fills the
+            parent, not the host button's own box. */}
+        <button
+          style={{ width: '100%', textAlign: 'left' }}
+          onClick={() => setExpanded(!expanded)}
+        >
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size="sm" />
+            <Badge variant={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}>
+              {formatOrganisatieType(group.eenheid.type)}
+            </Badge>
+            <nldd-text size="sm" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {group.eenheid.naam}
+            </nldd-text>
+            <nldd-text size="xs" color="secondary">({totalCount})</nldd-text>
+          </nldd-container>
+        </button>
 
-      {expanded && (
-        <div className="space-y-2 ml-1">
-          {/* Manager at top of group */}
-          {managerPerson && (
-            <PersonCardExpandable
-              person={managerPerson}
-              onEditPerson={onEditPerson}
-              onDragStartPerson={onDragStartPerson}
-              isManager
-              managerLabel={managerLabelForType(group.eenheid.type, managerPerson.functie)}
-              showPlacementActions
-            />
-          )}
+        {expanded && (
+          // ml-1 (4px) stays inline: no nldd-container margin equivalent,
+          // and padding-left here would also inset the nested group's own
+          // border/background rather than just this list.
+          <div className="ml-1">
+            <nldd-container gap="8">
+              {/* Manager at top of group */}
+              {managerPerson && (
+                <PersonCardExpandable
+                  person={managerPerson}
+                  onEditPerson={onEditPerson}
+                  onDragStartPerson={onDragStartPerson}
+                  isManager
+                  managerLabel={managerLabelForType(group.eenheid.type, managerPerson.functie)}
+                  showPlacementActions
+                />
+              )}
 
-          {/* Direct people */}
-          {otherPersonen.map((person) => (
-            <PersonCardExpandable
-              key={person.id}
-              person={person}
-              onEditPerson={onEditPerson}
-              onDragStartPerson={onDragStartPerson}
-              showPlacementActions
-            />
-          ))}
+              {/* Direct people */}
+              {otherPersonen.map((person) => (
+                <PersonCardExpandable
+                  key={person.id}
+                  person={person}
+                  onEditPerson={onEditPerson}
+                  onDragStartPerson={onDragStartPerson}
+                  showPlacementActions
+                />
+              ))}
 
-          {/* Nested child groups */}
-          {group.children.map((child) => (
-            <PersonGroupSection
-              key={child.eenheid.id}
-              group={child}
-              isRoot={false}
-              onEditPerson={onEditPerson}
-              onDragStartPerson={onDragStartPerson}
-              onDropPerson={onDropPerson}
-            />
-          ))}
-        </div>
-      )}
+              {/* Nested child groups */}
+              {group.children.map((child) => (
+                <PersonGroupSection
+                  key={child.eenheid.id}
+                  group={child}
+                  isRoot={false}
+                  onEditPerson={onEditPerson}
+                  onDragStartPerson={onDragStartPerson}
+                  onDropPerson={onDropPerson}
+                />
+              ))}
+            </nldd-container>
+          </div>
+        )}
+      </nldd-container>
     </div>
   );
 }

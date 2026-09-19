@@ -84,7 +84,7 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
           onDragOver={(e) => handleDragOver(e, status)}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, status)}
-          className={`rounded-xl border border-border bg-gray-50/50 w-[85vw] shrink-0 snap-center md:w-auto md:shrink md:flex-1 transition-colors ${
+          className={`rounded-xl border border-border surface-tinted w-[85vw] shrink-0 snap-center md:w-auto md:shrink md:flex-1 transition-colors ${
             dragOverColumn === status ? 'bg-primary-50/50 border-primary-200' : ''
           }`}
         >

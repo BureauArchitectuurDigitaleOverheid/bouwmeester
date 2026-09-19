@@ -49,6 +49,10 @@ export function EmojiPicker({ onSelect, onClose, anchorRef }: EmojiPickerProps) 
   if (!pos) return null;
 
   return createPortal(
+    // Portalled popup positioned via getBoundingClientRect against the
+    // trigger button (see anchorRef), on a fixed 6-column emoji grid: no
+    // nldd component renders a viewport-anchored popup with computed
+    // top/left coordinates, so the panel and its emoji buttons stay plain CSS.
     <div
       ref={ref}
       className="fixed bg-surface border border-border rounded-lg shadow-lg p-2 grid grid-cols-6 gap-1 z-[60] w-[220px]"
@@ -61,7 +65,7 @@ export function EmojiPicker({ onSelect, onClose, anchorRef }: EmojiPickerProps) 
             onSelect(emoji);
             onClose();
           }}
-          className="w-8 h-8 flex items-center justify-center text-lg rounded hover:bg-gray-100 transition-colors"
+          className="w-8 h-8 flex items-center justify-center text-lg rounded hover-tinted transition-colors"
         >
           {emoji}
         </button>

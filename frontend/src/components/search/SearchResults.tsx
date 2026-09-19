@@ -162,27 +162,33 @@ export function ResultItem({ result, onClick }: { result: SearchResult; onClick:
 
 function ResultItemContent({ result, compact }: { result: SearchResult; compact?: boolean }) {
   return (
-    <div className="flex items-start gap-3 w-full">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
+    <nldd-container layout="row" width="full" gap="12" vertical-alignment="top">
+      <nldd-container width="full" min-width="0" gap="2">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
           <Badge variant={SEARCH_RESULT_TYPE_COLORS[result.result_type]} dot>
             {SEARCH_RESULT_TYPE_LABELS[result.result_type]}
           </Badge>
           {result.subtitle && (
-            <span className="text-xs text-text-secondary">{formatSubtitle(result)}</span>
+            <nldd-text size="xs" color="secondary">{formatSubtitle(result)}</nldd-text>
           )}
-        </div>
-        <h4 className="text-sm font-medium text-text">{result.title}</h4>
+        </nldd-container>
+        <nldd-text size="sm" weight="medium">{result.title}</nldd-text>
         {result.description && (
-          <p className={`text-xs text-text-secondary mt-0.5 ${compact ? 'line-clamp-1' : 'line-clamp-2'}`}>
-            {richTextToPlain(result.description)}
-          </p>
+          // line-clamp-* has no nldd-text equivalent, so the wrapper
+          // providing it stays plain CSS; color/size convert to nldd-text.
+          <div className={compact ? 'line-clamp-1' : 'line-clamp-2'}>
+            <nldd-text size="xs" color="secondary">{richTextToPlain(result.description)}</nldd-text>
+          </div>
         )}
         {result.highlights &&
           result.highlights.length > 0 &&
           (compact ? (
+            // Sanitized <mark> HTML injected via dangerouslySetInnerHTML: this
+            // stays a plain <p>, not nldd-text, since setting innerHTML
+            // directly on a custom element bypasses its slot rendering.
+            // italic and line-clamp-1 also have no nldd-text equivalent.
             <p
-              className="text-xs text-text-secondary mt-0.5 italic line-clamp-1"
+              className="text-xs text-text-secondary italic line-clamp-1"
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(result.highlights[0], {
                   ALLOWED_TAGS: ['mark'],
@@ -190,8 +196,9 @@ function ResultItemContent({ result, compact }: { result: SearchResult; compact?
               }}
             />
           ) : (
-            <div className="mt-1.5 space-y-0.5">
+            <nldd-container gap="2">
               {result.highlights.map((h, i) => (
+                // Same dangerouslySetInnerHTML/italic reasoning as above.
                 <p
                   key={i}
                   className="text-xs text-text-secondary italic"
@@ -202,15 +209,15 @@ function ResultItemContent({ result, compact }: { result: SearchResult; compact?
                   }}
                 />
               ))}
-            </div>
+            </nldd-container>
           ))}
-      </div>
+      </nldd-container>
       {result.score > 0 && (
-        <span className="text-xs text-text-secondary shrink-0">
+        <nldd-text size="xs" color="secondary">
           {Math.round(result.score * 100)}%
-        </span>
+        </nldd-text>
       )}
-    </div>
+    </nldd-container>
   );
 }
 
@@ -233,7 +240,11 @@ export function SearchResultsList({ query, data, isLoading, isFetched, onResultC
   const grouped = groupResults(results);
 
   if (isLoading) {
-    return <LoadingSpinner className="py-8" />;
+    return (
+      <nldd-container padding-block="32">
+        <LoadingSpinner />
+      </nldd-container>
+    );
   }
 
   if (query.length >= 2 && isFetched && results.length === 0) {
@@ -248,16 +259,16 @@ export function SearchResultsList({ query, data, isLoading, isFetched, onResultC
 
   if (results.length > 0) {
     return (
-      <div className="space-y-6">
-        <p className="text-sm text-text-secondary">
+      <nldd-container gap="24">
+        <nldd-text size="sm" color="secondary">
           {data?.total ?? results.length} resultaten voor &ldquo;{data?.query ?? query}&rdquo;
-        </p>
+        </nldd-text>
         {Object.entries(grouped).map(([resultType, groupResults]) => (
-          <div key={resultType}>
-            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2 block">
+          <nldd-container key={resultType} gap="8">
+            <nldd-text size="xs" weight="bold" color="secondary">
               {SEARCH_RESULT_TYPE_LABELS[resultType as SearchResultType]} ({groupResults.length})
-            </span>
-            <div className="space-y-2">
+            </nldd-text>
+            <nldd-container gap="8">
               {groupResults.map((result) => (
                 <ResultCard
                   key={`${result.result_type}-${result.id}`}
@@ -265,19 +276,21 @@ export function SearchResultsList({ query, data, isLoading, isFetched, onResultC
                   onClick={() => onResultClick(result)}
                 />
               ))}
-            </div>
-          </div>
+            </nldd-container>
+          </nldd-container>
         ))}
-      </div>
+      </nldd-container>
     );
   }
 
   if (query.length < 2 && !isFetched) {
     return (
-      <div className="text-center py-12">
+      <nldd-container gap="12" horizontal-alignment="center" padding="48">
         <nldd-icon name="magnifier" size="40" style={{ opacity: 0.3 }} aria-hidden="true" />
-        <p className="text-sm text-text-secondary mt-3">Voer minimaal 2 tekens in om te zoeken.</p>
-      </div>
+        <nldd-text size="sm" color="secondary" horizontal-alignment="center">
+          Voer minimaal 2 tekens in om te zoeken.
+        </nldd-text>
+      </nldd-container>
     );
   }
 
@@ -315,6 +328,12 @@ export function GroupedListboxRows({
     <>
       {Object.entries(grouped).map(([resultType, groupResults]) => (
         <Fragment key={resultType}>
+          {/* Must stay a direct-child sibling of the nldd-list-item rows (see
+              the function doc above), so this can't be an nldd-container
+              either — the list's listbox logic queries `:scope > nldd-list-item`
+              and any wrapper here is invisible to it the same way a div is. The
+              10px size has no nldd-text step (xxs is 11-12px), so this label
+              stays a plain span. */}
           <div className="px-5 pt-3 pb-1" role="presentation">
             <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">
               {SEARCH_RESULT_TYPE_LABELS[resultType as SearchResultType]} ({groupResults.length})

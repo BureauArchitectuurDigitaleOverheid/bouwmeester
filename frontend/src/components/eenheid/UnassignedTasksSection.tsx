@@ -135,7 +135,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
     // md-and-up side-by-side vs. stacked-below-md layout has no nldd-container
     // equivalent (layout is one fixed mode, not responsive), so the outer
     // flex/border/hover chrome stays plain CSS; everything inside converts.
-    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 py-2.5 px-4 border-b border-border last:border-0 hover:bg-gray-50/50">
+    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 py-2.5 px-4 border-b border-border last:border-0 hover-tinted">
       <nldd-container width="full" min-width="0" gap="4">
         {/* nldd-button rather than the NlddButton wrapper: this needs
             width="full" + left alignment, which the wrapper does not expose. */}
@@ -164,9 +164,11 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
           )}
         </nldd-container>
       </nldd-container>
-      {/* Same md-breakpoint caveat as the outer row: nldd-container's width is
-          not responsive, so the two selects keep their plain-CSS wrapper. */}
-      <div className="flex items-center gap-2 shrink-0">
+      {/* shrink-0 keeps this pair from being squeezed by the title container's
+          own width="full" above (nldd-container has no flex-shrink
+          attribute). The two selects below keep their md-breakpoint caveat
+          from the outer row: nldd-container's width is not responsive. */}
+      <nldd-container layout="row" gap="8" vertical-alignment="center" className="shrink-0">
         <div className="w-full md:w-56">
           <CreatableSelect
             value={task.organisatie_eenheid_id ?? ''}
@@ -185,7 +187,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
             />
           </div>
         )}
-      </div>
+      </nldd-container>
     </div>
   );
 }

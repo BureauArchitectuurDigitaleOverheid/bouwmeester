@@ -19,24 +19,26 @@ export function ChatPendingActionCard({ pendingAction }: ChatPendingActionCardPr
 
   return (
     <nldd-card>
-      <nldd-text-cell size="sm" color="warning" text={pendingAction.description} width="full" />
-      <div className="flex gap-2 mt-1.5">
-        <NlddButton
-          text="Bevestigen"
-          variant="primary"
-          size="xs"
-          loading={confirming}
-          disabled={confirming}
-          onClick={() => handleConfirm(true)}
-        />
-        <NlddButton
-          text="Annuleren"
-          variant="secondary"
-          size="xs"
-          disabled={confirming}
-          onClick={() => handleConfirm(false)}
-        />
-      </div>
+      <nldd-container gap="6">
+        <nldd-text-cell size="sm" color="warning" text={pendingAction.description} width="full" />
+        <nldd-container layout="row" gap="8">
+          <NlddButton
+            text="Bevestigen"
+            variant="primary"
+            size="xs"
+            loading={confirming}
+            disabled={confirming}
+            onClick={() => handleConfirm(true)}
+          />
+          <NlddButton
+            text="Annuleren"
+            variant="secondary"
+            size="xs"
+            disabled={confirming}
+            onClick={() => handleConfirm(false)}
+          />
+        </nldd-container>
+      </nldd-container>
     </nldd-card>
   );
 }

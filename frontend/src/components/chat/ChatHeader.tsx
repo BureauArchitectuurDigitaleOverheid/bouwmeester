@@ -7,9 +7,18 @@ export function ChatHeader() {
   const setChatOpen = useUIStore((s) => s.setChatOpen);
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-      <h2 className="text-sm font-semibold text-text">Assistent</h2>
-      <div className="flex items-center gap-1">
+    <nldd-container
+      layout="row"
+      gap="8"
+      padding="12"
+      padding-inline="16"
+      vertical-alignment="center"
+
+    >
+      <nldd-container width="full">
+        <nldd-text size="sm" weight="bold">Assistent</nldd-text>
+      </nldd-container>
+      <nldd-container layout="row" gap="4" width="fit-content">
         <NlddIconButton
           icon="trash"
           accessibleLabel="Gesprek wissen"
@@ -24,7 +33,7 @@ export function ChatHeader() {
           size="sm"
           onClick={() => setChatOpen(false)}
         />
-      </div>
-    </div>
+      </nldd-container>
+    </nldd-container>
   );
 }

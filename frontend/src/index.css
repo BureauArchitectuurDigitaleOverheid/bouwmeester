@@ -194,6 +194,22 @@ textarea:not(nldd-app-view *) {
   transition: all 0.15s ease-in-out;
 }
 
+/* The two surface treatments our own markup still needs, on design-system
+ * tokens instead of Tailwind's raw palette.
+ *
+ * These stay CSS classes rather than becoming inline style, because both are
+ * :hover states and an inline style cannot express one. They were `bg-gray-50`
+ * and `bg-gray-100`, which sit outside the token bridge: a fixed grey that does
+ * not follow the theme and would stay light in dark mode.
+ */
+.surface-tinted {
+  background-color: var(--semantics-surfaces-tinted-background-color);
+}
+
+.hover-tinted:hover {
+  background-color: var(--semantics-buttons-neutral-base-is-hovered-background-color);
+}
+
 /* Focus styles for our own markup only. NLDD components draw their own focus
  * ring inside their shadow root; without this exclusion both render at once. */
 *:focus-visible:not(:is([class*="nldd-"], nldd-app-view, nldd-app-view *)) {

@@ -46,7 +46,7 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
             className={`rounded-2xl px-4 py-2.5 ${
               isCurrentUser
                 ? 'bg-primary-600 text-white rounded-br-md'
-                : 'bg-gray-100 text-text rounded-bl-md'
+                : 'surface-tinted text-text rounded-bl-md'
             }`}
           >
             {!isCurrentUser && message.sender_name && (
@@ -73,7 +73,7 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
             <button
               ref={smileRef}
               onClick={() => setShowPicker(!showPicker)}
-              className="p-1 rounded-full bg-surface border border-border shadow-sm text-text-secondary hover:text-text hover:bg-gray-50 transition-colors"
+              className="p-1 rounded-full bg-surface border border-border shadow-sm text-text-secondary hover:text-text hover-tinted transition-colors"
             >
               <Icon name="face-smiling" size="sm" />
             </button>

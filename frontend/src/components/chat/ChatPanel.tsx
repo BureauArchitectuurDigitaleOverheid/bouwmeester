@@ -23,10 +23,10 @@ export function ChatPanel() {
   }, [chatOpen, setChatOpen]);
 
   return (
-    <div className="flex h-full flex-col">
+    <nldd-container gap="0" style={{ height: '100%' }}>
       <ChatHeader />
       <ChatMessageList />
       <ChatInput />
-    </div>
+    </nldd-container>
   );
 }

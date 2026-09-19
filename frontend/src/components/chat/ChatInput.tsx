@@ -184,11 +184,13 @@ export function ChatInput() {
             // flex layout.
             <div
               key={att.id}
-              className="relative group rounded-lg px-2 py-1.5 text-xs"
+              className="rounded-lg px-2 py-1.5 text-xs"
               style={{ backgroundColor: 'var(--primitives-color-coolgray-100)' }}
             >
               <nldd-container layout="row" gap="6" vertical-alignment="center">
                 {isImageContentType(att.content_type) ? (
+                  // Fixed 32px cropped thumbnail: no nldd-image/nldd-avatar
+                  // equivalent for an arbitrary attachment preview at this size.
                   <img
                     src={chatAttachmentPreviewUrl(att.id)}
                     alt={att.bestandsnaam}
@@ -197,6 +199,8 @@ export function ChatInput() {
                 ) : (
                   <Icon name="file-text" size="md" />
                 )}
+                {/* truncate + fixed max-width: no nldd-text single-line
+                    ellipsis equivalent. */}
                 <span className="truncate max-w-[120px]" title={att.bestandsnaam}>
                   {att.bestandsnaam}
                 </span>

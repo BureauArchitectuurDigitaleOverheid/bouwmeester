@@ -108,6 +108,9 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
             disclosure={hasChildren ? true : undefined}
             expanded={hasChildren ? effectiveExpanded : undefined}
             accessible-label={effectiveExpanded ? 'Inklappen' : 'Uitklappen'}
+            // 'invisible' keeps the segment's width reserved so leaf rows
+            // align with rows that do have a disclosure chevron; no
+            // nldd-list-item-segment prop hides while preserving layout.
             className={hasChildren ? undefined : 'invisible'}
           >
             <Icon name="ChevronRight" size="xs" />
@@ -115,6 +118,13 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
 
           <nldd-list-item-segment ref={selectRef} button width="full" accessible-label={node.naam}>
             <nldd-text-cell width="full" color={isHistorisch ? 'secondary' : 'content'}>
+              {/* One nldd-text-cell holding several differently-styled inline
+                  runs (afkorting, name, manager, count) in a single line of
+                  text: nldd-text-cell's own color/text props apply to the
+                  whole cell, not per-run, and nldd-text is a block-level
+                  element that doesn't compose inline here. Plain spans with
+                  Tailwind text color/weight stay, same for line-through
+                  (no text-decoration equivalent). */}
               <span className={isHistorisch ? 'line-through' : undefined}>
                 {node.afkorting && (
                   <span className="text-text-secondary font-normal mr-1">{node.afkorting}</span>
@@ -161,13 +171,16 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
                 ref={addRef}
                 button
                 accessible-label="Subeenheid toevoegen"
+                // group/group-hover reveal-on-row-hover has no nldd
+                // equivalent; `group` itself lives on the parent
+                // nldd-list-item above.
                 className="opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <Icon name="Plus" size="xs" />
               </nldd-list-item-segment>
             ) : (
               // Placeholder zodat synth-rijen dezelfde breedte hebben (badges blijven uitgelijnd)
-              <span className="h-5 w-5 shrink-0" aria-hidden />
+              <nldd-spacer size="20" aria-hidden />
             )}
           </nldd-container>
         </nldd-list-item>

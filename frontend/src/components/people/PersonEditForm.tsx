@@ -736,7 +736,7 @@ export function PersonEditForm({
                       type={showKey ? 'text' : 'password'}
                       readOnly
                       value={displayApiKey}
-                      className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary"
+                      className="flex-1 rounded-lg border border-border surface-tinted px-3 py-2 text-sm font-mono text-text-secondary"
                     />
                     <NlddIconButton
                       icon={showKey ? 'eye-slash' : 'eye'}
@@ -762,7 +762,7 @@ export function PersonEditForm({
                     type="text"
                     readOnly
                     value={editData.has_api_key ? '••••••••••••••••••••••••••' : 'Geen API key'}
-                    className="flex-1 rounded-lg border border-border bg-gray-50 px-3 py-2 text-sm font-mono text-text-secondary/50"
+                    className="flex-1 rounded-lg border border-border surface-tinted px-3 py-2 text-sm font-mono text-text-secondary/50"
                   />
                   {confirmRotate ? (
                     <nldd-container layout="row" gap="6" vertical-alignment="center">
