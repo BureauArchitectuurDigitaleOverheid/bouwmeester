@@ -59,21 +59,23 @@ function SamenwerkingsverbandCard({ swv }: SamenwerkingsverbandCardProps) {
 
   return (
     <nldd-card ref={ref} href={to} accessible-label={swv.naam}>
-      <div className="flex items-center justify-between mb-2">
-        <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
-          {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}
-        </Badge>
-        <div className="flex items-center gap-1 text-xs text-text-secondary">
-          <Icon name="users" size="xs" />
-          {swv.aantal_leden}
-        </div>
-      </div>
-      <h3 className="text-sm font-semibold text-text truncate">{swv.naam}</h3>
-      {swv.eind_datum && (
-        <p className="mt-1 text-xs text-text-secondary">
-          Eindigt {new Date(swv.eind_datum).toLocaleDateString('nl-NL')}
-        </p>
-      )}
+      <nldd-container gap="8">
+        <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
+          <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
+            {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}
+          </Badge>
+          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
+            <Icon name="users" size="xs" />
+            <nldd-text size="xs" color="secondary">{swv.aantal_leden}</nldd-text>
+          </nldd-container>
+        </nldd-container>
+        <nldd-text size="sm" weight="bold">{swv.naam}</nldd-text>
+        {swv.eind_datum && (
+          <nldd-text size="xs" color="secondary">
+            Eindigt {new Date(swv.eind_datum).toLocaleDateString('nl-NL')}
+          </nldd-text>
+        )}
+      </nldd-container>
     </nldd-card>
   );
 }
@@ -131,109 +133,122 @@ export function SamenwerkingsverbandenPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-64">
-            <Input
-              label="Zoeken"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Naam..."
-            />
-          </div>
-          <div className="w-48">
-            <CreatableSelect
-              label="Type"
-              value={typeFilter}
-              onChange={setTypeFilter}
-              options={ALL_TYPE_OPTIONS}
-              searchable={false}
-            />
-          </div>
-          <div className="pb-2">
-            <ActiefOnlyCheckbox checked={actiefOnly} onChange={setActiefOnly} />
-          </div>
-        </div>
-        <Button
-          variant="primary"
-          icon="plus"
-          onClick={() => { resetForm(); setShowForm(true); }}
-        >
-          Nieuw samenwerkingsverband
-        </Button>
-      </div>
-
-      {showForm && (
-        <div className="bg-surface rounded-xl border border-border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-text">Nieuw samenwerkingsverband</h3>
-            <NlddIconButton
-              icon="close"
-              accessibleLabel="Sluiten"
-              variant="neutral-transparent"
-              size="sm"
-              onClick={resetForm}
-            />
-          </div>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <nldd-container gap="24" max-width="1024px">
+      <nldd-toolbar label="Samenwerkingsverbandacties">
+        <nldd-toolbar-item slot="start" priority={1}>
+          {/* No width="fit-content" on a wrap row: wrap needs a width to decide
+              where to break, fit-content waits for the children, and the whole
+              subtree collapses to zero — including children with an explicit
+              width. It renders nothing while taking up height. */}
+          <nldd-container layout="wrap" gap="12" vertical-alignment="bottom">
+            <nldd-container width="256px">
               <Input
-                label="Naam"
-                value={form.naam}
-                onChange={(e) => setForm((f) => ({ ...f, naam: e.target.value }))}
-                autoComplete="organization"
-                required
-                autoFocus
+                label="Zoeken"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Naam..."
               />
+            </nldd-container>
+            <nldd-container width="192px">
               <CreatableSelect
                 label="Type"
-                value={form.type}
-                onChange={(v) => setForm((f) => ({ ...f, type: v }))}
-                options={SAMENWERKINGSVERBAND_TYPE_OPTIONS}
+                value={typeFilter}
+                onChange={setTypeFilter}
+                options={ALL_TYPE_OPTIONS}
                 searchable={false}
               />
-              <Input
-                label="Startdatum"
-                type="date"
-                value={form.start_datum ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, start_datum: e.target.value || null }))}
+            </nldd-container>
+            <ActiefOnlyCheckbox checked={actiefOnly} onChange={setActiefOnly} />
+          </nldd-container>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end">
+          <Button
+            variant="primary"
+            icon="plus"
+            onClick={() => { resetForm(); setShowForm(true); }}
+          >
+            <span className="hidden sm:inline">Nieuw samenwerkingsverband</span>
+          </Button>
+          <nldd-menu-item slot="overflow" text="Nieuw samenwerkingsverband" icon="plus"></nldd-menu-item>
+        </nldd-toolbar-item>
+      </nldd-toolbar>
+
+      {showForm && (
+        <nldd-card>
+          <nldd-container gap="16" padding="24">
+            <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
+              <nldd-title size={4}><h3>Nieuw samenwerkingsverband</h3></nldd-title>
+              <NlddIconButton
+                icon="close"
+                accessibleLabel="Sluiten"
+                variant="neutral-transparent"
+                size="sm"
+                onClick={resetForm}
               />
-              <Input
-                label="Einddatum"
-                type="date"
-                value={form.eind_datum ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, eind_datum: e.target.value || null }))}
-              />
-            </div>
-            <RichTextFormField
-              label="Beschrijving"
-              value={form.beschrijving ?? ''}
-              onChange={(v) => setForm((f) => ({ ...f, beschrijving: v }))}
-              rows={3}
-            />
-            {error && <nldd-text size="sm" color="critical">{error}</nldd-text>}
-            <div className="flex items-center gap-2 justify-end">
-              <Button variant="secondary" onClick={resetForm} type="button">Annuleren</Button>
-              <Button type="submit" loading={createMutation.isPending}>Aanmaken</Button>
-            </div>
-          </form>
-        </div>
+            </nldd-container>
+            <form onSubmit={handleSubmit}>
+              <nldd-container gap="16">
+                <nldd-container layout="grid" column-count={1} sm-column-count={2} gap="16">
+                  <Input
+                    label="Naam"
+                    value={form.naam}
+                    onChange={(e) => setForm((f) => ({ ...f, naam: e.target.value }))}
+                    autoComplete="organization"
+                    required
+                    autoFocus
+                  />
+                  <CreatableSelect
+                    label="Type"
+                    value={form.type}
+                    onChange={(v) => setForm((f) => ({ ...f, type: v }))}
+                    options={SAMENWERKINGSVERBAND_TYPE_OPTIONS}
+                    searchable={false}
+                  />
+                  <Input
+                    label="Startdatum"
+                    type="date"
+                    value={form.start_datum ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, start_datum: e.target.value || null }))}
+                  />
+                  <Input
+                    label="Einddatum"
+                    type="date"
+                    value={form.eind_datum ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, eind_datum: e.target.value || null }))}
+                  />
+                </nldd-container>
+                <RichTextFormField
+                  label="Beschrijving"
+                  value={form.beschrijving ?? ''}
+                  onChange={(v) => setForm((f) => ({ ...f, beschrijving: v }))}
+                  rows={3}
+                />
+                {error && <nldd-text size="sm" color="critical">{error}</nldd-text>}
+                <nldd-container layout="row" gap="8" horizontal-alignment="right">
+                  <Button variant="secondary" onClick={resetForm} type="button">Annuleren</Button>
+                  <Button type="submit" loading={createMutation.isPending}>Aanmaken</Button>
+                </nldd-container>
+              </nldd-container>
+            </form>
+          </nldd-container>
+        </nldd-card>
       )}
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12"><LoadingSpinner /></div>
+        <nldd-container layout="row" horizontal-alignment="center" padding="48"><LoadingSpinner /></nldd-container>
       ) : data.length === 0 ? (
-        <div className="text-center py-12 text-text-secondary">
-          Geen samenwerkingsverbanden gevonden.
-        </div>
+        <nldd-container padding="48" horizontal-alignment="center">
+          <nldd-text size="sm" color="secondary" horizontal-alignment="center">
+            Geen samenwerkingsverbanden gevonden.
+          </nldd-text>
+        </nldd-container>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <nldd-collection layout="grid" item-width="280px" gap="12">
           {data.map((swv) => (
             <SamenwerkingsverbandCard key={swv.id} swv={swv} />
           ))}
-        </div>
+        </nldd-collection>
       )}
-    </div>
+    </nldd-container>
   );
 }

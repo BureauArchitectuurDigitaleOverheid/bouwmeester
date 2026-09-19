@@ -13,18 +13,43 @@ import {
   useUpdateLeadColumn,
 } from '@/hooks/useLeadColumns';
 import type { LeadColumn } from '@/types';
+import { leadColumnTagColor } from './stageColors';
 
-const COLOR_PRESETS: { label: string; value: string }[] = [
-  { label: 'Indigo', value: 'bg-indigo-100 text-indigo-800' },
-  { label: 'Blauw', value: 'bg-blue-100 text-blue-800' },
-  { label: 'Geel', value: 'bg-yellow-100 text-yellow-800' },
-  { label: 'Oranje', value: 'bg-orange-100 text-orange-800' },
-  { label: 'Paars', value: 'bg-purple-100 text-purple-800' },
-  { label: 'Groen', value: 'bg-green-100 text-green-800' },
-  { label: 'Grijs', value: 'bg-gray-100 text-gray-800' },
-  { label: 'Roze', value: 'bg-pink-100 text-pink-800' },
-  { label: 'Rood', value: 'bg-red-100 text-red-800' },
-  { label: 'Smaragd', value: 'bg-emerald-100 text-emerald-800' },
+type NlddTagColor = NonNullable<React.ComponentProps<'nldd-tag'>['color']>;
+
+/**
+ * The closed set of nldd-tag color names `LeadColumn.color` may hold,
+ * mirrored from backend `schema.lead_column.LEAD_COLUMN_COLORS` (kept in
+ * sync by hand). `swatchVar` is the CSS custom property whose value IS that
+ * color, at the "100" step (the tag's own solid-fill weight), so the picker
+ * shows the real hue rather than a guessed one.
+ */
+const COLOR_PRESETS: { label: string; value: NlddTagColor; swatchVar: string }[] = [
+  // Semantic roles
+  { label: 'Neutraal', value: 'neutral', swatchVar: '--primitives-color-neutral-400' },
+  { label: 'Accent', value: 'accent', swatchVar: '--primitives-color-accent-100' },
+  { label: 'Succes', value: 'success', swatchVar: '--primitives-color-success-100' },
+  { label: 'Waarschuwing', value: 'warning', swatchVar: '--primitives-color-warning-100' },
+  { label: 'Kritiek', value: 'critical', swatchVar: '--primitives-color-critical-100' },
+  // Rijkshuisstijl
+  { label: 'Lintblauw', value: 'lintblauw', swatchVar: '--primitives-color-lintblauw-100' },
+  { label: 'Donkerblauw', value: 'donkerblauw', swatchVar: '--primitives-color-donkerblauw-100' },
+  { label: 'Hemelblauw', value: 'hemelblauw', swatchVar: '--primitives-color-hemelblauw-100' },
+  { label: 'Lichtblauw', value: 'lichtblauw', swatchVar: '--primitives-color-lichtblauw-100' },
+  { label: 'Paars', value: 'paars', swatchVar: '--primitives-color-paars-100' },
+  { label: 'Violet', value: 'violet', swatchVar: '--primitives-color-violet-100' },
+  { label: 'Robijnrood', value: 'robijnrood', swatchVar: '--primitives-color-robijnrood-100' },
+  { label: 'Roze', value: 'roze', swatchVar: '--primitives-color-roze-100' },
+  { label: 'Rood', value: 'rood', swatchVar: '--primitives-color-rood-100' },
+  { label: 'Oranje', value: 'oranje', swatchVar: '--primitives-color-oranje-100' },
+  { label: 'Donkergeel', value: 'donkergeel', swatchVar: '--primitives-color-donkergeel-100' },
+  { label: 'Geel', value: 'geel', swatchVar: '--primitives-color-geel-100' },
+  { label: 'Donkerbruin', value: 'donkerbruin', swatchVar: '--primitives-color-donkerbruin-100' },
+  { label: 'Bruin', value: 'bruin', swatchVar: '--primitives-color-bruin-100' },
+  { label: 'Donkergroen', value: 'donkergroen', swatchVar: '--primitives-color-donkergroen-100' },
+  { label: 'Groen', value: 'groen', swatchVar: '--primitives-color-groen-100' },
+  { label: 'Mosgroen', value: 'mosgroen', swatchVar: '--primitives-color-mosgroen-100' },
+  { label: 'Mintgroen', value: 'mintgroen', swatchVar: '--primitives-color-mintgroen-100' },
 ];
 
 interface ColumnsManagerProps {
@@ -123,7 +148,7 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
   }
 
   return (
-    <div className="space-y-3">
+    <nldd-container gap="12">
       <nldd-text size="xs" color="secondary">
         Eigenaren beheren hier de funnel-kolommen voor dit initiatief. Slug
         blijft vast na aanmaken zodat bestaande leads gekoppeld blijven.
@@ -157,38 +182,40 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
       </nldd-list>
 
       {adding ? (
-        <div className="rounded-xl border border-border p-3 space-y-2">
-          <nldd-text-field
-            value={draftName}
-            onChange={(e) => setDraftName((e.target as HTMLInputElement).value)}
-            placeholder="Kolomnaam (bv. Strategisch)"
-            accessible-label="Kolomnaam"
-            autoFocus
-          />
-          <div className="flex items-center justify-between gap-2">
-            <ColorSwatches selected={draftColor} onSelect={setDraftColor} />
-            <div className="flex gap-1">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setAdding(false);
-                  setDraftName('');
-                }}
-              >
-                Annuleren
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleAdd}
-                loading={createMutation.isPending}
-                disabled={!draftName.trim()}
-              >
-                Toevoegen
-              </Button>
-            </div>
-          </div>
-        </div>
+        <nldd-card background="tinted">
+          <nldd-container gap="8" padding="12">
+            <nldd-text-field
+              value={draftName}
+              onChange={(e) => setDraftName((e.target as HTMLInputElement).value)}
+              placeholder="Kolomnaam (bv. Strategisch)"
+              accessible-label="Kolomnaam"
+              autoFocus
+            />
+            <nldd-container layout="row" gap="8" vertical-alignment="center">
+              <ColorSwatches selected={draftColor} onSelect={setDraftColor} />
+              <nldd-container layout="row" gap="4" horizontal-alignment="right">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setAdding(false);
+                    setDraftName('');
+                  }}
+                >
+                  Annuleren
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleAdd}
+                  loading={createMutation.isPending}
+                  disabled={!draftName.trim()}
+                >
+                  Toevoegen
+                </Button>
+              </nldd-container>
+            </nldd-container>
+          </nldd-container>
+        </nldd-card>
       ) : (
         <Button variant="secondary" size="sm" icon="plus" onClick={() => setAdding(true)}>
           Kolom toevoegen
@@ -208,34 +235,34 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
         loading={deleteMutation.isPending}
       >
         {deletingColumn && (
-          <div className="space-y-3">
-            <p>
+          <nldd-container gap="12">
+            <nldd-text size="sm">
               Weet je zeker dat je <strong>{deletingColumn.name}</strong> wilt
               verwijderen?
-            </p>
+            </nldd-text>
             {deletingColumn.lead_count > 0 ? (
-              <div className="space-y-1">
-                <p className="text-sm text-text-secondary">
+              <nldd-container gap="4">
+                <nldd-text size="sm" color="secondary">
                   Deze kolom bevat {deletingColumn.lead_count}{' '}
                   {deletingColumn.lead_count === 1 ? 'lead' : 'leads'}. Kies een
                   doel-kolom waar ze heen gaan:
-                </p>
+                </nldd-text>
                 <Select
                   value={moveTarget}
                   onChange={(e) => setMoveTarget(e.target.value)}
                   placeholder="— Kies kolom —"
                   options={otherColumns.map((c) => ({ value: c.id, label: c.name }))}
                 />
-              </div>
+              </nldd-container>
             ) : (
-              <p className="text-sm text-text-secondary">
+              <nldd-text size="sm" color="secondary">
                 De kolom is leeg en wordt direct verwijderd.
-              </p>
+              </nldd-text>
             )}
-          </div>
+          </nldd-container>
         )}
       </ConfirmDialog>
-    </div>
+    </nldd-container>
   );
 }
 
@@ -302,12 +329,10 @@ function ColumnRow({
 
   return (
     <nldd-list-item>
-      <div className="flex flex-col gap-2 py-1 w-full">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${col.color}`}>
-              {col.slug}
-            </span>
+      <nldd-container gap="8" padding-block="4" width="full">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <nldd-container layout="row" gap="8" vertical-alignment="center" width="full">
+            <nldd-tag text={col.slug} color={leadColumnTagColor(col.color)} size="sm" />
             {editing ? (
               <nldd-text-field
                 ref={nameFieldRef}
@@ -322,12 +347,12 @@ function ColumnRow({
                 {col.name}
               </nldd-list-item-segment>
             )}
-            <nldd-text size="xs" color="secondary" className="tabular-nums">
+            <nldd-text size="xs" color="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>
               {col.lead_count} {col.lead_count === 1 ? 'lead' : 'leads'}
             </nldd-text>
-          </div>
+          </nldd-container>
 
-          <div className="flex items-center gap-1 shrink-0">
+          <nldd-container layout="row" gap="4" width="fit-content">
             <NlddIconButton
               icon="chevron-up"
               accessibleLabel="Omhoog"
@@ -352,17 +377,17 @@ function ColumnRow({
               disabled={!canDelete}
               onClick={onDelete}
             />
-          </div>
-        </div>
+          </nldd-container>
+        </nldd-container>
 
-        <div className="flex items-center gap-3 flex-wrap pl-1 text-xs">
+        <nldd-container layout="wrap" gap="12" padding-left="4">
           <ToggleChip
             active={col.is_active_stage}
             activeIcon="check-mark"
             inactiveIcon="close"
             label="Actieve fase"
             title="Telt mee voor overdue/stale-filter"
-            activeClassName="bg-emerald-100 text-emerald-800"
+            activeColor="success"
             onToggle={onToggleActive}
           />
           <ToggleChip
@@ -371,15 +396,15 @@ function ColumnRow({
             inactiveIcon="eye-slash"
             label="Publiek zichtbaar"
             title="Toont casuses op publieke pagina"
-            activeClassName="bg-blue-100 text-blue-800"
+            activeColor="lintblauw"
             onToggle={onTogglePublic}
           />
-          <div className="flex items-center gap-1">
+          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content">
             <nldd-icon name="globe" size="16" color="secondary-content" aria-hidden="true" />
             <ColorSwatches selected={col.color} onSelect={onSetColor} />
-          </div>
-        </div>
-      </div>
+          </nldd-container>
+        </nldd-container>
+      </nldd-container>
     </nldd-list-item>
   );
 }
@@ -390,23 +415,25 @@ interface ToggleChipProps {
   inactiveIcon: string;
   label: string;
   title: string;
-  activeClassName: string;
+  /** nldd-tag color to show while active; inactive always reads neutral. */
+  activeColor: NlddTagColor;
   onToggle: () => void;
 }
 
-function ToggleChip({ active, activeIcon, inactiveIcon, label, title, activeClassName, onToggle }: ToggleChipProps) {
+/**
+ * A two-state toggle the user clicks to flip, not a status label, so it
+ * stays a clickable segment rather than nldd-tag (which has no click
+ * semantics) — the color still comes from the same closed set nldd-tag uses,
+ * carried via a CSS custom property since nldd-list-item-segment has no
+ * `color` attribute of its own.
+ */
+function ToggleChip({ active, activeIcon, inactiveIcon, label, title, activeColor, onToggle }: ToggleChipProps) {
   const ref = useRef<HTMLElement>(null);
   useNlddEvent(ref, 'click', onToggle);
 
   return (
-    <nldd-list-item-segment
-      ref={ref}
-      button
-      title={title}
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${active ? activeClassName : 'bg-gray-100 text-gray-600'}`}
-    >
-      <nldd-icon name={active ? activeIcon : inactiveIcon} size="16" aria-hidden="true" />
-      {label}
+    <nldd-list-item-segment ref={ref} button title={title}>
+      <nldd-tag text={label} icon={active ? activeIcon : inactiveIcon} color={active ? activeColor : 'neutral'} size="sm" />
     </nldd-list-item-segment>
   );
 }
@@ -416,23 +443,29 @@ function ColorSwatches({
   onSelect,
 }: {
   selected: string;
-  onSelect: (color: string) => void;
+  onSelect: (color: NlddTagColor) => void;
 }) {
   return (
-    <div className="flex gap-1">
+    <nldd-container layout="wrap" gap="4">
       {COLOR_PRESETS.map((preset) => (
         <button
           key={preset.value}
           type="button"
           onClick={() => onSelect(preset.value)}
           title={preset.label}
-          className={`h-4 w-4 rounded-full border ${
-            preset.value
-          } ${selected === preset.value ? 'ring-2 ring-offset-1 ring-current' : ''}`}
-        >
-          <span className="sr-only">{preset.label}</span>
-        </button>
+          aria-label={preset.label}
+          style={{
+            height: '16px',
+            width: '16px',
+            borderRadius: '9999px',
+            backgroundColor: `var(${preset.swatchVar})`,
+            boxShadow:
+              selected === preset.value
+                ? `0 0 0 2px white, 0 0 0 4px var(${preset.swatchVar})`
+                : '0 0 0 1px var(--primitives-color-neutral-300)',
+          }}
+        />
       ))}
-    </div>
+    </nldd-container>
   );
 }

@@ -131,24 +131,21 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
 
   return (
     <nldd-container gap="24">
-      {/* Toolbar */}
-      <nldd-container layout="wrap" gap="12" horizontal-alignment="left" vertical-alignment="center">
-        {/* View toggle + New task (above filters on mobile/tablet, right on xl in the
-            previous layout; the container's own wrap now reflows both groups instead
-            of the bespoke xl breakpoint reordering, which nldd-container has no
-            equivalent for). */}
-        {/* No width="fit-content" here. The wrap above already sizes its
-            children, and fit-content on a row holding a grid child (which is
-            what nldd-segmented-control is) collapses both to zero width: the
-            control kept painting its selected item, which then landed on top
-            of the button beside it as a second blue square. */}
-        <nldd-container layout="row" gap="8">
+      {/* The view switcher and the new-task action, right-aligned, with the
+          filters below. nldd-toolbar owns the start/end split, so "push this
+          to the right" is a slot rather than a spacer, and it moves items into
+          an overflow menu when the row runs out of room. Same structure as
+          CorpusPage. */}
+      <nldd-toolbar label="Taakacties">
+        <nldd-toolbar-item slot="end" priority={3}>
+          {/* A view switcher, not a single action, so it gets the highest
+              priority: a lower number overflows FIRST, and a switcher that
+              disappears into a menu leaves no way to tell which view you are
+              looking at. Matches CorpusPage. */}
           <ViewToggle value={viewMode} onChange={handleViewChange} options={VIEW_OPTIONS} />
-
-          <Button
-            icon="plus"
-            onClick={() => setShowCreateForm(true)}
-          >
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end" priority={2}>
+          <Button icon="plus" onClick={() => setShowCreateForm(true)}>
             {/* This className is not styling: Button's own responsive-label logic
                 (see components/common/Button.tsx) reads "hidden sm:inline" to find
                 the text it should fall back to as the accessible name when the
@@ -156,51 +153,50 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
                 a Tailwind utility rendered here — left as-is on purpose. */}
             <span className="hidden sm:inline">Nieuwe taak</span>
           </Button>
+          <nldd-menu-item slot="overflow" text="Nieuwe taak" icon="plus"></nldd-menu-item>
+        </nldd-toolbar-item>
+      </nldd-toolbar>
+
+      {/* Filters, in one flat wrap. Each keeps a min-width: that is what stops
+          a fit-content container from collapsing, since it then has something
+          of its own to measure rather than waiting on its children. */}
+      <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+        <nldd-container width="fit-content" min-width="176px">
+          <CreatableSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={statusOptions}
+            placeholder="Alle statussen"
+            searchable={false}
+          />
         </nldd-container>
 
-        {/* Filters. nldd-container's `width` has no responsive variants (unlike
-            `gap`/`padding`/`column-count`), so the previous "full width under sm,
-            fixed width from sm" behaviour collapses to a plain min-width: each
-            filter still wraps to its own line on a narrow screen because of the
-            parent's layout="wrap", it just isn't forced to 100% while doing so. */}
-        <nldd-container layout="wrap" gap="8" vertical-alignment="center">
-          <nldd-container width="fit-content" min-width="176px">
-            <CreatableSelect
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={statusOptions}
-              placeholder="Alle statussen"
-              searchable={false}
-            />
-          </nldd-container>
+        <nldd-container width="fit-content" min-width="176px">
+          <CreatableSelect
+            value={priorityFilter}
+            onChange={setPriorityFilter}
+            options={priorityOptions}
+            placeholder="Alle prioriteiten"
+            searchable={false}
+          />
+        </nldd-container>
 
-          <nldd-container width="fit-content" min-width="176px">
-            <CreatableSelect
-              value={priorityFilter}
-              onChange={setPriorityFilter}
-              options={priorityOptions}
-              placeholder="Alle prioriteiten"
-              searchable={false}
-            />
-          </nldd-container>
+        <nldd-container width="fit-content" min-width="208px">
+          <CreatableSelect
+            value={personFilter}
+            onChange={setPersonFilter}
+            options={personOptions}
+            placeholder="Alle personen"
+          />
+        </nldd-container>
 
-          <nldd-container width="fit-content" min-width="208px">
-            <CreatableSelect
-              value={personFilter}
-              onChange={setPersonFilter}
-              options={personOptions}
-              placeholder="Alle personen"
-            />
-          </nldd-container>
-
-          <nldd-container width="fit-content" min-width="208px">
-            <CreatableSelect
-              value={eenheidFilter}
-              onChange={setEenheidFilter}
-              options={eenheidOptions}
-              placeholder="Alle eenheden"
-            />
-          </nldd-container>
+        <nldd-container width="fit-content" min-width="208px">
+          <CreatableSelect
+            value={eenheidFilter}
+            onChange={setEenheidFilter}
+            options={eenheidOptions}
+            placeholder="Alle eenheden"
+          />
         </nldd-container>
       </nldd-container>
 

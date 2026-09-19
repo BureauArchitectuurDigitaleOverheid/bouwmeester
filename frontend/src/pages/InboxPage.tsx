@@ -5,7 +5,6 @@ import { Button } from '@/components/common/Button';
 import { InboxList } from '@/components/inbox/InboxList';
 import { MessageThread } from '@/components/inbox/MessageThread';
 import { EmptyState } from '@/components/common/EmptyState';
-import { Icon } from '@/components/nldd/Icon';
 import { useNlddEvent } from '@/components/nldd/events';
 import { useNotifications, useDashboardStats, useMarkAllNotificationsRead, useMarkNotificationRead } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -109,147 +108,136 @@ export function InboxPage() {
   const hasUnread = inboxItems.some((item) => !item.read);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Welcome banner */}
-      <div className="bg-gradient-to-br from-primary-900 to-primary-700 rounded-2xl p-6 text-white">
-        <h2 className="text-xl font-bold mb-1">Welkom bij Bouwmeester</h2>
-        <p className="text-white/70 text-sm">
-          Je werkplek voor beleid, taken en samenwerking.
-        </p>
-      </div>
-
-      {/* Getting started card for new users */}
-      <GettingStartedCard />
-
-      {/* Quick stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <Card
-          hoverable
-          onClick={() => navigate('/corpus')}
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-blue-50 text-blue-600">
-              <Icon name="network-structure" size="lg" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-text">{stats?.corpus_node_count ?? '-'}</p>
-              <p className="text-xs text-text-secondary">Corpus nodes</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card
-          hoverable
-          onClick={() => navigate('/tasks')}
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-amber-50 text-amber-600">
-              <Icon name="check-list" size="lg" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-text">{stats?.open_task_count ?? '-'}</p>
-              <p className="text-xs text-text-secondary">Open taken</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card
-          hoverable
-          onClick={() => navigate('/tasks')}
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-red-50 text-red-600">
-              <Icon name="chart-x-y-axis-line" size="lg" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-text">{stats?.overdue_task_count ?? '-'}</p>
-              <p className="text-xs text-text-secondary">Achterstallig</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card
-          hoverable
-          onClick={() => {
-            const params = currentPerson?.id ? `?verantwoordelijke_id=${currentPerson.id}` : '';
-            navigate(`/opdrachten${params}`);
+    <nldd-simple-section width="960px" horizontal-alignment="center">
+      <nldd-container gap="24">
+        {/* Welcome banner. The gradient hero has no nldd equivalent (no
+            component paints a two-stop brand gradient), so it stays a plain
+            styled div; the colors are the same accent step the design system
+            itself uses, not an arbitrary Tailwind swatch. */}
+        <div
+          className="rounded-2xl p-6 text-white"
+          style={{
+            background:
+              'linear-gradient(to bottom right, var(--primitives-color-lintblauw-900), var(--primitives-color-lintblauw-700))',
           }}
         >
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-green-50 text-green-600">
-              <Icon name="euro-sign" size="lg" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-text whitespace-nowrap">
-                {stats?.active_opdracht_budget != null ? formatCurrencyCompact(stats.active_opdracht_budget) : '-'}
-              </p>
-              <p className="text-xs text-text-secondary">Actief budget</p>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Manager stats card */}
-      {managedEenheidId && visibleUnassignedCount > 0 && (
-        <Card
-          hoverable
-          onClick={() => navigate('/eenheid-overzicht')}
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-purple-50 text-purple-600">
-              <Icon name="users" size="lg" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-text">
-                {visibleUnassignedCount} onverdeelde {visibleUnassignedCount === 1 ? 'taak' : 'taken'}
-              </p>
-              <p className="text-xs text-text-secondary">
-                In jouw eenheid - klik om te verdelen
-              </p>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Inbox section */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-text">Inbox</h2>
-          {hasUnread && currentPerson?.id && (
-            <Button variant="ghost" size="sm" icon="check-list" onClick={() => markAllRead.mutate()}>
-              Alles gelezen
-            </Button>
-          )}
+          <nldd-title size={3} color="inherit"><h2>Welkom bij Bouwmeester</h2></nldd-title>
+          <nldd-text color="inherit" style={{ opacity: 0.7 }}>
+            Je werkplek voor beleid, taken en samenwerking.
+          </nldd-text>
         </div>
 
-        {inboxItems.length > 0 ? (
-          <InboxList items={inboxItems} onOpenThread={setOpenThreadId} onMarkRead={(id) => markRead.mutate(id)} />
-        ) : (
-          <EmptyState
-            icon="inbox"
-            title="Inbox is leeg"
-            description="Er zijn momenteel geen nieuwe meldingen. Begin met het verkennen van het corpus of het aanmaken van taken."
-            action={
-              <div className="flex items-center gap-3">
-                <Button variant="primary" onClick={() => navigate('/corpus')}>
-                  Bekijk corpus
-                </Button>
-                <Button variant="secondary" onClick={() => navigate('/tasks')}>
-                  Bekijk taken
-                </Button>
-              </div>
-            }
+        {/* Getting started card for new users */}
+        <GettingStartedCard />
+
+        {/* Quick stats */}
+        <nldd-collection layout="grid" item-width="200px" gap="16">
+          <Card hoverable onClick={() => navigate('/corpus')}>
+            <nldd-container layout="row" gap="12" vertical-alignment="center">
+              <nldd-icon name="network-structure" size="40" color="lintblauw" box />
+              <nldd-container gap="0">
+                <nldd-text size="lg" weight="bold">{stats?.corpus_node_count ?? '-'}</nldd-text>
+                <nldd-text size="xs" color="secondary">Corpus nodes</nldd-text>
+              </nldd-container>
+            </nldd-container>
+          </Card>
+
+          <Card hoverable onClick={() => navigate('/tasks')}>
+            <nldd-container layout="row" gap="12" vertical-alignment="center">
+              <nldd-icon name="check-list" size="40" color="geel" box />
+              <nldd-container gap="0">
+                <nldd-text size="lg" weight="bold">{stats?.open_task_count ?? '-'}</nldd-text>
+                <nldd-text size="xs" color="secondary">Open taken</nldd-text>
+              </nldd-container>
+            </nldd-container>
+          </Card>
+
+          <Card hoverable onClick={() => navigate('/tasks')}>
+            <nldd-container layout="row" gap="12" vertical-alignment="center">
+              <nldd-icon name="chart-x-y-axis-line" size="40" color="robijnrood" box />
+              <nldd-container gap="0">
+                <nldd-text size="lg" weight="bold">{stats?.overdue_task_count ?? '-'}</nldd-text>
+                <nldd-text size="xs" color="secondary">Achterstallig</nldd-text>
+              </nldd-container>
+            </nldd-container>
+          </Card>
+
+          <Card
+            hoverable
+            onClick={() => {
+              const params = currentPerson?.id ? `?verantwoordelijke_id=${currentPerson.id}` : '';
+              navigate(`/opdrachten${params}`);
+            }}
+          >
+            <nldd-container layout="row" gap="12" vertical-alignment="center">
+              <nldd-icon name="euro-sign" size="40" color="mosgroen" box />
+              <nldd-container gap="0">
+                <nldd-text size="lg" weight="bold" style={{ whiteSpace: 'nowrap' }}>
+                  {stats?.active_opdracht_budget != null ? formatCurrencyCompact(stats.active_opdracht_budget) : '-'}
+                </nldd-text>
+                <nldd-text size="xs" color="secondary">Actief budget</nldd-text>
+              </nldd-container>
+            </nldd-container>
+          </Card>
+        </nldd-collection>
+
+        {/* Manager stats card */}
+        {managedEenheidId && visibleUnassignedCount > 0 && (
+          <Card hoverable onClick={() => navigate('/eenheid-overzicht')}>
+            <nldd-container layout="row" gap="12" vertical-alignment="center">
+              <nldd-icon name="users" size="40" color="violet" box />
+              <nldd-container gap="0" width="full">
+                <nldd-text size="sm" weight="medium">
+                  {visibleUnassignedCount} onverdeelde {visibleUnassignedCount === 1 ? 'taak' : 'taken'}
+                </nldd-text>
+                <nldd-text size="xs" color="secondary">
+                  In jouw eenheid - klik om te verdelen
+                </nldd-text>
+              </nldd-container>
+            </nldd-container>
+          </Card>
+        )}
+
+        {/* Inbox section */}
+        <nldd-container gap="12">
+          <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
+            <nldd-title size={4}><h2>Inbox</h2></nldd-title>
+            {hasUnread && currentPerson?.id && (
+              <Button variant="ghost" size="sm" icon="check-list" onClick={() => markAllRead.mutate()}>
+                Alles gelezen
+              </Button>
+            )}
+          </nldd-container>
+
+          {inboxItems.length > 0 ? (
+            <InboxList items={inboxItems} onOpenThread={setOpenThreadId} onMarkRead={(id) => markRead.mutate(id)} />
+          ) : (
+            <EmptyState
+              icon="inbox"
+              title="Inbox is leeg"
+              description="Er zijn momenteel geen nieuwe meldingen. Begin met het verkennen van het corpus of het aanmaken van taken."
+              action={
+                <nldd-container layout="row" gap="12" vertical-alignment="center">
+                  <Button variant="primary" onClick={() => navigate('/corpus')}>
+                    Bekijk corpus
+                  </Button>
+                  <Button variant="secondary" onClick={() => navigate('/tasks')}>
+                    Bekijk taken
+                  </Button>
+                </nldd-container>
+              }
+            />
+          )}
+        </nldd-container>
+
+        {/* Thread modal */}
+        {openThreadId && (
+          <MessageThread
+            notificationId={openThreadId}
+            onClose={() => setOpenThreadId(null)}
           />
         )}
-      </div>
-
-      {/* Thread modal */}
-      {openThreadId && (
-        <MessageThread
-          notificationId={openThreadId}
-          onClose={() => setOpenThreadId(null)}
-        />
-      )}
-    </div>
+      </nldd-container>
+    </nldd-simple-section>
   );
 }

@@ -226,70 +226,74 @@ export function LeadsPage() {
   return (
     <nldd-container gap="16">
       {/* Page header */}
-      <nldd-container layout="row" gap="12" vertical-alignment="center" horizontal-alignment="left">
-        <nldd-container layout="wrap" gap="6" width="fit-content">
+      <nldd-toolbar label="Leadacties">
+        <nldd-toolbar-item slot="start" priority={1}>
           {/* Initiative pills: per-initiatief color is an arbitrary hex on
               the record, not one of nldd-tag's closed color names, so this
               stays a styled button rather than a guessed tag color (same
               call as the initiatief chips in LeadListView/LeadDetailPanel). */}
-          {initiatieven?.map((ini) => (
-            <button
-              key={ini.id}
-              onClick={() => setSelectedInitiatiefId(ini.id)}
-              style={{
-                borderRadius: '9999px',
-                padding: '4px 12px',
-                fontSize: '12px',
-                fontWeight: 500,
-                color: 'white',
-                backgroundColor: ini.kleur || '#6B7280',
-                opacity: selectedInitiatiefId === ini.id ? 1 : 0.4,
-                boxShadow:
-                  selectedInitiatiefId === ini.id
-                    ? '0 0 0 2px white, 0 0 0 4px var(--primitives-color-neutral-400), 0 1px 2px rgba(0,0,0,0.1)'
-                    : 'none',
-              }}
-            >
-              {ini.naam}
-            </button>
-          ))}
-          <NlddIconButton
-            icon="plus"
-            accessibleLabel="Nieuw initiatief"
-            variant="neutral-transparent"
-            size="sm"
-            onClick={() => setShowCreateInitiatief(true)}
-          />
-          {selectedInitiatiefId && (
+          <nldd-container layout="wrap" gap="6">
+            {initiatieven?.map((ini) => (
+              <button
+                key={ini.id}
+                onClick={() => setSelectedInitiatiefId(ini.id)}
+                style={{
+                  borderRadius: '9999px',
+                  padding: '4px 12px',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  color: 'white',
+                  backgroundColor: ini.kleur || '#6B7280',
+                  opacity: selectedInitiatiefId === ini.id ? 1 : 0.4,
+                  boxShadow:
+                    selectedInitiatiefId === ini.id
+                      ? '0 0 0 2px white, 0 0 0 4px var(--primitives-color-neutral-400), 0 1px 2px rgba(0,0,0,0.1)'
+                      : 'none',
+                }}
+              >
+                {ini.naam}
+              </button>
+            ))}
             <NlddIconButton
-              icon="gear"
-              accessibleLabel="Initiatief beheren"
+              icon="plus"
+              accessibleLabel="Nieuw initiatief"
               variant="neutral-transparent"
               size="sm"
-              onClick={() => setEditInitiatiefId(selectedInitiatiefId)}
+              onClick={() => setShowCreateInitiatief(true)}
             />
-          )}
-          {(() => {
-            if (!selectedInitiatiefId) return null;
-            const sel = initiatieven?.find((i) => i.id === selectedInitiatiefId);
-            if (!sel?.public_page_enabled || !sel.slug) return null;
-            return (
-              <PublicPageLink slug={sel.slug} />
-            );
-          })()}
-        </nldd-container>
-        {/* No width="fit-content": a row container that sizes to its content
-            gives a grid child nothing to measure, and nldd-segmented-control is
-            one. Both then collapse to zero width while the selected item keeps
-            painting its filled box, which lands on top of the button beside it
-            as a second blue square. The wrap above already sizes this row. */}
-        <nldd-container layout="row" gap="8" vertical-alignment="center" horizontal-alignment="right">
+            {selectedInitiatiefId && (
+              <NlddIconButton
+                icon="gear"
+                accessibleLabel="Initiatief beheren"
+                variant="neutral-transparent"
+                size="sm"
+                onClick={() => setEditInitiatiefId(selectedInitiatiefId)}
+              />
+            )}
+            {(() => {
+              if (!selectedInitiatiefId) return null;
+              const sel = initiatieven?.find((i) => i.id === selectedInitiatiefId);
+              if (!sel?.public_page_enabled || !sel.slug) return null;
+              return (
+                <PublicPageLink slug={sel.slug} />
+              );
+            })()}
+          </nldd-container>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end" priority={3}>
+          {/* A view switcher, not a single action: the toolbar pattern gives
+              those a high priority so they never collapse into the menu
+              (higher priority survives longer — a lower number overflows
+              first). */}
           <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end" priority={2}>
           <Button icon="plus" onClick={() => setShowIntake(true)}>
-            Nieuwe lead
+            <span className="hidden sm:inline">Nieuwe lead</span>
           </Button>
-        </nldd-container>
-      </nldd-container>
+          <nldd-menu-item slot="overflow" text="Nieuwe lead" icon="plus"></nldd-menu-item>
+        </nldd-toolbar-item>
+      </nldd-toolbar>
 
       {/* Shared filter bar */}
       <nldd-container layout="wrap" gap="12" vertical-alignment="center">

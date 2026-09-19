@@ -44,22 +44,35 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
       draggable={draggable}
       onDragStart={onDragStart ? (e: React.DragEvent) => onDragStart(e, person) : undefined}
     >
-      {/* nldd-identity lays out its own avatars/text/supporting-text slots
-          side by side, so this needs no wrapping flex container. */}
-      <nldd-identity text={person.naam}>
-        {/* The avatar composes its own online dot, so it is slotted rather
-            than left to nldd-identity's avatar-src (which only takes an
-            image). */}
-        <div slot="avatars">
-          <PersonAvatar person={person} />
-        </div>
-        {person.is_agent && (
-          <nldd-container slot="text" layout="row" gap="8" vertical-alignment="center">
-            <nldd-text>{person.naam}</nldd-text>
-            <Badge variant="purple">Agent</Badge>
-          </nldd-container>
-        )}
-        <nldd-container slot="supporting-text" gap="4">
+      {/*
+        The identity carries the avatar and the name; the details sit under it
+        rather than inside its `supporting-text` slot.
+
+        Measured: that slot is a flex column sized by its content, with no
+        `flex: 1`. An nldd-container slotted into it is a block with no
+        intrinsic width, so the column had nothing to measure and collapsed to
+        zero. The name then wrapped after every word and the card grew from 63
+        to 182 pixels tall. An identity with plain attributes measures 456px in
+        the same card, so the component was fine and the markup was not.
+
+        The slots take rich text (a link, a <time>), not a layout of their own.
+      */}
+      <nldd-container gap="8">
+        <nldd-identity text={person.naam}>
+          {/* The avatar composes its own online dot, so it is slotted rather
+              than left to nldd-identity's avatar-src (which only takes an
+              image). */}
+          <div slot="avatars">
+            <PersonAvatar person={person} />
+          </div>
+          {person.is_agent && (
+            <span slot="text">
+              {person.naam} <Badge variant="purple">Agent</Badge>
+            </span>
+          )}
+        </nldd-identity>
+
+        <nldd-container gap="4">
           {email && <ContactLink href={`mailto:${email}`} text={email} startIcon="envelope" />}
           {person.default_phone && (
             <ContactLink href={`tel:${person.default_phone}`} text={person.default_phone} startIcon="at" />
@@ -80,7 +93,7 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
             <nldd-text size="xs" color="secondary">{richTextToPlain(person.description)}</nldd-text>
           )}
         </nldd-container>
-      </nldd-identity>
+      </nldd-container>
     </Card>
   );
 }
