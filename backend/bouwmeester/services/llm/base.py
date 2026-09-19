@@ -332,6 +332,21 @@ class BaseLLMService(ABC):
         )
         try:
             text = await self._complete(prompt, max_tokens=512)
+        except Exception:
+            # Netwerk, time-out, rate-limit: de LLM heeft niets gezegd, dus
+            # er is niets beoordeeld. Wél opnieuw proberen.
+            logger.exception("LLM onbereikbaar bij lead-classificatie")
+            return LeadCandidateClassification(
+                is_lead=False,
+                confidence=0.0,
+                proposed_title="",
+                proposed_description="",
+                match_existing_lead_id=None,
+                reasoning="LLM-call mislukt",
+                failed=True,
+            )
+
+        try:
             result = self._parse_json(text)
             match_id = result.get("match_existing_lead_id")
             if isinstance(match_id, str):
@@ -352,13 +367,17 @@ class BaseLLMService(ABC):
                 reasoning=str(result.get("reasoning") or ""),
             )
         except Exception:
-            logger.exception("Fout bij LLM lead-classificatie")
+            # De LLM antwoordde wél, maar onbruikbaar (geen JSON, of
+            # afgekapt op de token-limiet). Opnieuw proberen levert
+            # waarschijnlijk hetzelfde op, dus niet als ``failed`` markeren:
+            # die post zou anders elke ronde terugkomen en telkens een
+            # LLM-call kosten zonder ooit uit de wachtrij te verdwijnen.
+            logger.exception("Onbruikbaar LLM-antwoord bij lead-classificatie")
             return LeadCandidateClassification(
                 is_lead=False,
                 confidence=0.0,
                 proposed_title="",
                 proposed_description="",
                 match_existing_lead_id=None,
-                reasoning="LLM-call mislukt",
-                failed=True,
+                reasoning="LLM-antwoord niet te lezen",
             )

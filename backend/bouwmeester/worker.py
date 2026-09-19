@@ -87,29 +87,17 @@ async def _mattermost_retry_loop(settings) -> None:  # type: ignore[no-untyped-d
     een ``mattermost_post_link`` heeft. Een echte lead die tijdens een
     storing langskwam zou dus nooit meer opgepikt worden.
     """
-    interval_seconds = getattr(settings, "MATTERMOST_RETRY_INTERVAL_SECONDS", 900)
+    interval_seconds = settings.MATTERMOST_RETRY_INTERVAL_SECONDS
     await health_tick("mattermost_retry", status="starting")
     while True:
         try:
-            async with async_session() as session:
-                from bouwmeester.services.mattermost_ingest_service import (
-                    MattermostIngestService,
-                )
-                from bouwmeester.services.mattermost_service import MattermostService
+            from bouwmeester.services.mattermost_ingest_service import (
+                retry_llm_unavailable,
+            )
 
-                mm = MattermostService(session)
-                try:
-                    bot_user_id, bot_username = await mm.get_bot_identity()
-                finally:
-                    await mm.close()
-
-                ingest = MattermostIngestService(
-                    session,
-                    bot_user_id=bot_user_id,
-                    bot_username=bot_username,
-                )
-                processed, leads = await ingest.retry_llm_unavailable()
-                await session.commit()
+            # Elke post krijgt binnen deze call een eigen sessie en commit,
+            # zodat één mislukking de rest van de ronde niet terugdraait.
+            processed, leads = await retry_llm_unavailable()
             await health_tick(
                 "mattermost_retry",
                 detail=f"{processed} herverwerkt, {leads} suggesties",

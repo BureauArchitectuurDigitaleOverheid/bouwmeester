@@ -197,10 +197,9 @@ async def test_herverwerking_pakt_lead_alsnog_op(db_session, initiatief_kanaal):
 
     # VLAM is er weer.
     FakeLLM.fails = False
-    processed, leads = await ingest.retry_llm_unavailable()
+    got_lead = await ingest.reprocess_one(post)
 
-    assert processed == 1
-    assert leads == 1
+    assert got_lead is True
     link = await _link_for(db_session, post_id)
     assert link is not None
     assert link.suggested_lead_id is not None
@@ -233,14 +232,62 @@ async def test_herverwerking_dubbelt_geen_mention_bevestiging(
     assert replies_na_eerste == 1
 
     # Storing duurt voort: herverwerking levert geen nieuwe bevestiging op.
-    await ingest.retry_llm_unavailable()
+    await ingest.reprocess_one(post)
     assert len(FakeMattermostService.replies) == replies_na_eerste
 
 
-async def test_verwijderde_post_blijft_niet_in_de_wachtrij(
+async def test_herverwerking_behoudt_de_rij_bij_ontkoppeld_kanaal(
     db_session, initiatief_kanaal
 ):
-    """Een in Mattermost verwijderde post wordt niet elke ronde opgehaald."""
+    """Kanaal ontkoppeld sinds het parkeren: post uit de wachtrij halen.
+
+    De rij mag niet verdwijnen (dan is de post nergens meer bekend) en ook
+    niet op llm_unavailable blijven staan (dan komt hij elke ronde terug
+    voor een classificatie die niet meer kan).
+    """
+    from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
+
+    _, cid = initiatief_kanaal
+    post_id = _id()
+    post = {
+        "id": post_id,
+        "channel_id": cid,
+        "user_id": _id(),
+        "create_at": 1_700_000_000_000,
+        "message": "Hoofd wetgevingsbeleid JenV wil capaciteit vrijmaken.",
+    }
+    ingest = MattermostIngestService(
+        db_session, bot_user_id=_id(), bot_username="bouwmeester"
+    )
+    await ingest.ingest_post(post)
+    assert (await _link_for(db_session, post_id)).skipped_reason == "llm_unavailable"
+
+    # Kanaal ontkoppeld.
+    link = (
+        await db_session.execute(
+            select(MattermostChannelLink).where(MattermostChannelLink.channel_id == cid)
+        )
+    ).scalar_one()
+    await db_session.delete(link)
+    await db_session.flush()
+
+    FakeLLM.fails = False
+    await ingest.reprocess_one(post)
+
+    row = await _link_for(db_session, post_id)
+    assert row is not None, "de rij mag niet verdwijnen"
+    assert row.skipped_reason == "channel_unlinked"
+
+
+async def test_herverwerking_verliest_de_rij_niet_bij_een_fout(
+    db_session, initiatief_kanaal
+):
+    """Faalt de her-ingest, dan blijft de post bekend in de administratie.
+
+    De eerdere opzet verwijderde de rij vóór de her-ingest; een vroege
+    return liet de post dan uit zowel de wachtrij als de idempotency-tabel
+    verdwijnen.
+    """
     _, cid = initiatief_kanaal
     post_id = _id()
     post = {
@@ -254,10 +301,10 @@ async def test_verwijderde_post_blijft_niet_in_de_wachtrij(
         db_session, bot_user_id=_id(), bot_username="bouwmeester"
     )
     await ingest.ingest_post(post)
-    # Post bestaat niet meer in Mattermost (niet in FakeMattermostService.posts).
 
-    processed, _ = await ingest.retry_llm_unavailable()
-    assert processed == 0
-    link = await _link_for(db_session, post_id)
-    assert link is not None
-    assert link.skipped_reason == "post_gone"
+    # Storing duurt voort: her-ingest levert weer llm_unavailable op.
+    await ingest.reprocess_one(post)
+
+    row = await _link_for(db_session, post_id)
+    assert row is not None
+    assert row.skipped_reason == "llm_unavailable"

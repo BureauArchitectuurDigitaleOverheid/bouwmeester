@@ -221,6 +221,7 @@ class MattermostIngestService:
         *,
         channel_type: str | None = None,
         reply_to_mentions: bool = True,
+        reprocess: bool = False,
     ) -> None:
         """Verwerk één Mattermost-post.
 
@@ -261,6 +262,12 @@ class MattermostIngestService:
         link_repo = MattermostChannelLinkRepository(self.session)
         channel_link = await link_repo.get_by_channel_id(channel_id)
         if channel_link is None or channel_link.disabled_at is not None:
+            if reprocess:
+                # Het kanaal is ontkoppeld sinds de post geparkeerd werd.
+                # Markeren en uit de wachtrij halen, anders blijft hij elke
+                # ronde terugkomen voor een classificatie die niet meer kan.
+                await self._mark_reprocess_outcome(post_id, "channel_unlinked")
+                return
             # Normaal zwijgen we in een ongekoppeld kanaal. Maar wie de bot
             # direct aanspreekt en niets terugkrijgt, concludeert dat hij
             # stuk is — dat is precies hoe een werkende bot voor dood werd
@@ -276,10 +283,11 @@ class MattermostIngestService:
 
         # Idempotency-check vóór insert vermijdt een IntegrityError-rollback
         # die in een ge-savepointe testtransactie de hele session sloopt.
-        existing_stmt = select(MattermostPostLink.id).where(
+        existing_stmt = select(MattermostPostLink).where(
             MattermostPostLink.post_id == post_id
         )
-        if (await self.session.execute(existing_stmt)).scalar_one_or_none():
+        existing = (await self.session.execute(existing_stmt)).scalar_one_or_none()
+        if existing is not None and not reprocess:
             return
 
         # Auteur-match via mattermost_user (alleen via expliciete koppeling).
@@ -290,38 +298,49 @@ class MattermostIngestService:
             if mapping is not None:
                 person_id = mapping.person_id
 
-        # Claim de post NU, vóór de LLM-call en eventuele bot-reply naar
-        # Mattermost. Twee overlappende workers (bv. tijdens een
-        # deploy-overlap) kunnen de pre-check-SELECT hierboven allebei
-        # passeren vóórdat een van beiden commit; zonder deze insert-
-        # first-claim zouden beiden de LLM aanroepen en allebei een
-        # zichtbare suggestie-post naar Mattermost sturen, en pas de
-        # állerlaatste insert zou de unique constraint raken — te laat om
-        # de dubbele Mattermost-post nog te voorkomen.
-        record = MattermostPostLink(
-            post_id=post_id,
-            channel_id=channel_id,
-            root_id=root_id,
-            scope_type=channel_link.scope_type,
-            scope_id=channel_link.scope_id,
-            mm_user_id=mm_user_id,
-            person_id=person_id,
-        )
-        self.session.add(record)
-        try:
-            async with self.session.begin_nested():
-                await self.session.flush()
-        except (IntegrityError, PendingRollbackError):
-            # Race-condition op unique post_id — andere worker was sneller.
-            # Bij een conflict tegen een nog-niet-gecommitte rij van de
-            # andere worker (i.p.v. een al-gecommitte rij) blokkeert onze
-            # INSERT eerst op de rij-lock en faalt pas zodra de andere
-            # transactie commit; dat laat de *outer* transactie hier
-            # poisoned achter (niet alleen het savepoint), dus zonder
-            # expliciete rollback zou de volgende `session.commit()` bij
-            # de caller alsnog een PendingRollbackError geven.
-            await self.session.rollback()
-            return
+        if existing is not None:
+            # Herverwerking: de bestaande rij blijft staan en houdt daarmee
+            # de claim op deze post vast. Hem eerst verwijderen zou het gat
+            # openen dat de insert-first-claim hieronder juist dichtzet, en
+            # bij een vroege return verderop zou de post helemaal uit de
+            # administratie verdwijnen.
+            record = existing
+            record.scope_type = channel_link.scope_type
+            record.scope_id = channel_link.scope_id
+            record.person_id = person_id
+        else:
+            # Claim de post NU, vóór de LLM-call en eventuele bot-reply naar
+            # Mattermost. Twee overlappende workers (bv. tijdens een
+            # deploy-overlap) kunnen de pre-check-SELECT hierboven allebei
+            # passeren vóórdat een van beiden commit; zonder deze insert-
+            # first-claim zouden beiden de LLM aanroepen en allebei een
+            # zichtbare suggestie-post naar Mattermost sturen, en pas de
+            # állerlaatste insert zou de unique constraint raken — te laat om
+            # de dubbele Mattermost-post nog te voorkomen.
+            record = MattermostPostLink(
+                post_id=post_id,
+                channel_id=channel_id,
+                root_id=root_id,
+                scope_type=channel_link.scope_type,
+                scope_id=channel_link.scope_id,
+                mm_user_id=mm_user_id,
+                person_id=person_id,
+            )
+            self.session.add(record)
+            try:
+                async with self.session.begin_nested():
+                    await self.session.flush()
+            except (IntegrityError, PendingRollbackError):
+                # Race-condition op unique post_id — andere worker was sneller.
+                # Bij een conflict tegen een nog-niet-gecommitte rij van de
+                # andere worker (i.p.v. een al-gecommitte rij) blokkeert onze
+                # INSERT eerst op de rij-lock en faalt pas zodra de andere
+                # transactie commit; dat laat de *outer* transactie hier
+                # poisoned achter (niet alleen het savepoint), dus zonder
+                # expliciete rollback zou de volgende `session.commit()` bij
+                # de caller alsnog een PendingRollbackError geven.
+                await self.session.rollback()
+                return
 
         lead_activity_id: UUID | None = None
         suggested_lead_id: UUID | None = None
@@ -435,87 +454,39 @@ class MattermostIngestService:
             # weer over, een permanente 403 floodt de logs niet vol.
             _backoff_unlinked_hint(channel_id)
 
-    async def retry_llm_unavailable(self, *, max_posts: int = 50) -> tuple[int, int]:
-        """Bied posts opnieuw aan die de LLM eerder niet kon beoordelen.
+    async def _mark_reprocess_outcome(self, post_id: str, reason: str) -> None:
+        """Zet ``skipped_reason`` op een post die niet herverwerkt kon worden.
 
-        Bij een VLAM-storing kwam ``classify_mattermost_lead_candidate`` niet
-        door, en werd de post weggeschreven met
-        ``skipped_reason="llm_unavailable"``. Zonder herverwerking is zo'n
-        bericht definitief verloren: ``ingest_post`` slaat elke post over die
-        al een ``mattermost_post_link`` heeft. Een echte lead die tijdens een
-        storing langskwam zou dus nooit meer opgepikt worden.
-
-        Returns ``(aantal_opnieuw_verwerkt, aantal_leads)``.
+        De wachtrij selecteert op ``llm_unavailable``; een andere waarde
+        haalt de post er dus uit. Zonder dit zou een post waarvan het kanaal
+        is ontkoppeld elke ronde terugkomen.
         """
-        from bouwmeester.services.llm import DataSensitivity
-        from bouwmeester.services.llm.factory import get_llm_service_for
-
-        # Geen provider geconfigureerd: niets te proberen. Let op: dit zegt
-        # alleen iets over de configuratie, niet over bereikbaarheid. Ligt
-        # VLAM eruit, dan komen de posts gewoon opnieuw als
-        # ``llm_unavailable`` terug en blijven ze in de wachtrij staan tot
-        # de volgende ronde. Dat is precies de bedoeling.
-        if (
-            await get_llm_service_for(DataSensitivity.CONFIDENTIAL, self.session)
-            is None
-        ):
-            return 0, 0
-
-        stmt = (
-            select(MattermostPostLink)
-            .where(MattermostPostLink.skipped_reason == "llm_unavailable")
-            .order_by(MattermostPostLink.created_at)
-            .limit(max_posts)
-        )
-        pending = list((await self.session.execute(stmt)).scalars().all())
-        if not pending:
-            return 0, 0
-
-        from bouwmeester.services.mattermost_service import MattermostService
-
-        service = MattermostService(self.session)
-        processed = 0
-        leads = 0
-        try:
-            if not await service.is_enabled():
-                return 0, 0
-            for link in pending:
-                post = await service.get_post(link.post_id)
-                if post is None:
-                    # Post verwijderd in Mattermost: niets meer te doen,
-                    # markeren zodat we 'm niet elke ronde opnieuw ophalen.
-                    link.skipped_reason = "post_gone"
-                    continue
-                # De idempotency-rij weghalen zodat ingest_post 'm als nieuw
-                # ziet. Flush vóór de her-ingest, anders botst de insert.
-                await self.session.delete(link)
-                await self.session.flush()
-                # Geen mention-bevestiging bij een herkansing: bij een lange
-                # storing zou elke ronde opnieuw ":eyes: Gezien" in de thread
-                # posten. De gebruiker heeft die bevestiging al gehad toen
-                # het bericht binnenkwam; wat hij nog mist is de suggestie,
-                # en die komt via _post_suggestion_reply wél door.
-                await self.ingest_post(post, reply_to_mentions=False)
-                processed += 1
-                refreshed = (
-                    await self.session.execute(
-                        select(MattermostPostLink).where(
-                            MattermostPostLink.post_id == post["id"]
-                        )
-                    )
-                ).scalar_one_or_none()
-                if refreshed is not None and refreshed.suggested_lead_id is not None:
-                    leads += 1
-        finally:
-            await service.close()
-
-        if processed:
-            logger.info(
-                "Herverwerkt na LLM-storing: %d posts, %d nieuwe lead-suggesties",
-                processed,
-                leads,
+        row = (
+            await self.session.execute(
+                select(MattermostPostLink).where(MattermostPostLink.post_id == post_id)
             )
-        return processed, leads
+        ).scalar_one_or_none()
+        if row is not None:
+            row.skipped_reason = reason
+            await self.session.flush()
+
+    async def reprocess_one(self, post: dict) -> bool:
+        """Herverwerk één eerder geparkeerde post. True als er een lead uitkwam.
+
+        Geen mention-bevestiging: bij een lange storing zou elke ronde
+        opnieuw ":eyes: Gezien" in de thread posten. De gebruiker heeft die
+        bevestiging al gehad toen het bericht binnenkwam; wat hij nog mist is
+        de suggestie, en die komt via ``_post_suggestion_reply`` wel door.
+        """
+        await self.ingest_post(post, reply_to_mentions=False, reprocess=True)
+        row = (
+            await self.session.execute(
+                select(MattermostPostLink).where(
+                    MattermostPostLink.post_id == post["id"]
+                )
+            )
+        ).scalar_one_or_none()
+        return row is not None and row.suggested_lead_id is not None
 
     async def _reply_not_linked(self, *, channel_id: str, root_post_id: str) -> bool:
         """Leg in een ongekoppeld kanaal uit dat we niet meelezen.
@@ -1191,3 +1162,111 @@ class MattermostIngestService:
         if not self.mm_base_url:
             return None
         return f"{self.mm_base_url}/_redirect/pl/{post_id}"
+
+
+#: Posts per ronde. Ruim boven het realistische berichttempo op
+#: initiatief-kanalen, dus de wachtrij loopt leeg na een storing.
+RETRY_BATCH_SIZE = 50
+
+
+async def retry_llm_unavailable(
+    *, max_posts: int = RETRY_BATCH_SIZE
+) -> tuple[int, int]:
+    """Bied posts opnieuw aan die de LLM eerder niet kon beoordelen.
+
+    Bij een VLAM-storing kwam ``classify_mattermost_lead_candidate`` niet
+    door, en werd de post weggeschreven met
+    ``skipped_reason="llm_unavailable"``. Zonder herverwerking is zo'n
+    bericht definitief verloren: ``ingest_post`` slaat elke post over die al
+    een ``mattermost_post_link`` heeft.
+
+    **Elke post krijgt een eigen sessie en commit.** Dat is geen detail:
+    ``ingest_post`` doet bij een insert-race een volledige
+    ``session.rollback()``, en met één gedeelde transactie zou die ene
+    botsing ook alle geslaagde herverwerkingen van deze ronde terugdraaien —
+    inclusief ``SuggestedLead``-rijen waarvan de bot-reply al in Mattermost
+    staat. Die replies zijn niet terug te draaien, dus je houdt goedkeur-
+    knoppen over zonder rij erachter.
+
+    Returns ``(aantal_opnieuw_verwerkt, aantal_leads)``.
+    """
+    from bouwmeester.services.llm import DataSensitivity
+    from bouwmeester.services.llm.factory import get_llm_service_for
+    from bouwmeester.services.mattermost_service import (
+        MattermostService,
+        PostNotFoundError,
+    )
+
+    async with async_session() as session:
+        # Geen provider geconfigureerd: niets te proberen. Let op: dit zegt
+        # alleen iets over de configuratie, niet over bereikbaarheid. Ligt
+        # VLAM eruit, dan komen de posts gewoon opnieuw als
+        # ``llm_unavailable`` terug en blijven ze in de wachtrij staan.
+        if await get_llm_service_for(DataSensitivity.CONFIDENTIAL, session) is None:
+            return 0, 0
+
+        stmt = (
+            select(MattermostPostLink.post_id, MattermostPostLink.scope_id)
+            .where(MattermostPostLink.skipped_reason == "llm_unavailable")
+            .order_by(MattermostPostLink.created_at)
+            .limit(max_posts)
+        )
+        pending = [(row[0], row[1]) for row in (await session.execute(stmt)).all()]
+
+    if not pending:
+        return 0, 0
+
+    processed = 0
+    leads = 0
+    for post_id, scope_id in pending:
+        async with async_session() as session:
+            service = MattermostService(session)
+            try:
+                if not await service.is_enabled():
+                    return processed, leads
+                try:
+                    post = await service.get_post(post_id)
+                except PostNotFoundError:
+                    # Alleen een 404 is definitief. Een time-out of 5xx laat
+                    # de post in de wachtrij staan voor de volgende ronde —
+                    # anders schrijft één Mattermost-hik een hele batch
+                    # echte leads af als "verwijderd".
+                    ingest = MattermostIngestService(session)
+                    await ingest._mark_reprocess_outcome(post_id, "post_gone")
+                    await session.commit()
+                    continue
+                if post is None:
+                    continue  # Tijdelijke fout: volgende ronde opnieuw.
+
+                ingest = MattermostIngestService(session)
+                # Scope-wissel sinds het parkeren (ontkoppeld en opnieuw
+                # gekoppeld aan iets anders): niet alsnog door de
+                # notitie-flow duwen, dat maakt weken oude berichten aan op
+                # een scope waar ze nooit voor bedoeld waren.
+                link_repo = MattermostChannelLinkRepository(session)
+                current = await link_repo.get_by_channel_id(
+                    post.get("channel_id") or ""
+                )
+                if current is not None and current.scope_id != scope_id:
+                    await ingest._mark_reprocess_outcome(post_id, "scope_changed")
+                    await session.commit()
+                    continue
+
+                got_lead = await ingest.reprocess_one(post)
+                await session.commit()
+                processed += 1
+                if got_lead:
+                    leads += 1
+            except Exception:
+                await session.rollback()
+                logger.exception("Herverwerking van post %s faalde", post_id)
+            finally:
+                await service.close()
+
+    if processed:
+        logger.info(
+            "Herverwerkt na LLM-storing: %d posts, %d nieuwe lead-suggesties",
+            processed,
+            leads,
+        )
+    return processed, leads
