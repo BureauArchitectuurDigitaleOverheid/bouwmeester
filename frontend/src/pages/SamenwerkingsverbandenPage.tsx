@@ -182,6 +182,7 @@ export function SamenwerkingsverbandenPage() {
                 label="Naam"
                 value={form.naam}
                 onChange={(e) => setForm((f) => ({ ...f, naam: e.target.value }))}
+                autoComplete="organization"
                 required
                 autoFocus
               />

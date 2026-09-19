@@ -58,7 +58,7 @@ function EmailRow({
 
   return (
     <nldd-container layout="row" gap="8" style={{ alignItems: 'center' }}>
-      <nldd-text-field ref={ref} type="email" value={email} placeholder="E-mailadres" width="full" />
+      <nldd-text-field ref={ref} type="email" value={email} placeholder="E-mailadres" autocomplete="email" width="full" />
       <NlddIconButton
         icon="close"
         accessibleLabel="E-mailadres verwijderen"
@@ -87,7 +87,7 @@ function PhoneRow({
 
   return (
     <nldd-container layout="row" gap="8" style={{ alignItems: 'center' }}>
-      <nldd-text-field ref={ref} type="tel" value={phone.phone_number} placeholder="Telefoonnummer" width="full" />
+      <nldd-text-field ref={ref} type="tel" value={phone.phone_number} placeholder="Telefoonnummer" autocomplete="tel" width="full" />
       <Select
         value={phone.label}
         onChange={(e) => onChangeLabel(e.target.value)}
@@ -194,7 +194,7 @@ export function ProfileStep({ onComplete }: { onComplete: () => void }) {
 
       <nldd-container gap="16">
         <nldd-form-field label="Naam">
-          <nldd-text-field ref={naamFieldRef} value={naam} placeholder="Volledige naam" width="full" />
+          <nldd-text-field ref={naamFieldRef} value={naam} placeholder="Volledige naam" autocomplete="name" width="full" />
         </nldd-form-field>
 
         <CreatableSelect

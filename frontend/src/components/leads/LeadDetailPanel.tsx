@@ -388,7 +388,7 @@ export function LeadDetailPanel({ leadId, open, onClose, zIndex }: LeadDetailPan
               />
             </div>
           </div>
-          <Input label="Organisatie" type="text" value={editOrganization} onChange={(e) => setEditOrganization(e.target.value)} />
+          <Input label="Organisatie" type="text" value={editOrganization} onChange={(e) => setEditOrganization(e.target.value)} autoComplete="organization" />
           <div>
             <CreatableSelect
               label="Initiatief"

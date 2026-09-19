@@ -147,6 +147,7 @@ export function AccessRequestManager() {
           <EmptyState
             icon="inbox"
             title={filter === 'pending' ? 'Geen openstaande verzoeken' : 'Geen verzoeken gevonden'}
+            description={filter === 'pending' ? 'Bekijk "Alle" om eerder behandelde verzoeken te zien.' : undefined}
           />
         </div>
       </nldd-table>

@@ -81,7 +81,11 @@ export function EenheidBeheerManager() {
           );
         })}
         <div slot="empty">
-          <EmptyState icon="magnifier" title="Geen eenheden gevonden" />
+          <EmptyState
+            icon="magnifier"
+            title={search.trim() ? 'Geen eenheden gevonden' : 'Geen organisatie-eenheden beschikbaar'}
+            description={search.trim() ? 'Pas je zoekopdracht aan.' : undefined}
+          />
         </div>
       </nldd-table>
     </div>

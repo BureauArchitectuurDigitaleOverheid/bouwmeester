@@ -145,6 +145,13 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
           </div>
         }
       >
+        {/*
+          Submit/cancel/delete live in Modal's `footer`, a sibling of
+          `children` — not a descendant of nldd-form, so nldd-form-actions
+          cannot reach them from here. Wrapping the body still gets autofill
+          and label-alignment inheritance for the fields.
+        */}
+        <nldd-form>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             label="Titel"
@@ -221,6 +228,7 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
             onChange={(e) => setDueDate(e.target.value)}
           />
         </form>
+        </nldd-form>
       </Modal>
 
       <PersonQuickCreateForm

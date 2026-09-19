@@ -322,6 +322,12 @@ export function AuditLogPage() {
             <nldd-inline-dialog variant="loading" text="Activiteiten laden..." />
           ) : isError ? (
             <EmptyState icon="exclamation-triangle" title="Fout bij laden van activiteiten" />
+          ) : category ? (
+            <EmptyState
+              icon="magnifier"
+              title="Geen activiteit gevonden"
+              description="Pas de categorie aan om andere activiteit te zien."
+            />
           ) : (
             <EmptyState icon="inbox" title="Geen activiteit gevonden" />
           )}

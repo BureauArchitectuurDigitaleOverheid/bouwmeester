@@ -727,6 +727,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                   value={organization}
                   onChange={(e) => setOrganization(e.target.value)}
                   placeholder="Naam van de organisatie"
+                  autoComplete="organization"
                 />
               </div>
 

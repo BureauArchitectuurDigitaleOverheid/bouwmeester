@@ -95,6 +95,20 @@ function PublicPageLink({ slug }: { slug: string }) {
   );
 }
 
+/** The leads search field: `nldd-search-field` with its `input` event bridged to React. */
+function LeadsSearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return (
+    <nldd-search-field
+      ref={ref}
+      value={value}
+      placeholder="Zoek in leads..."
+      accessible-label="Zoek in leads"
+    />
+  );
+}
+
 export function LeadsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const viewParam = searchParams.get('view');
@@ -266,11 +280,7 @@ export function LeadsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
         {/* Search */}
         <div className="w-full sm:w-56">
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Zoek in leads..."
-          />
+          <LeadsSearchField value={searchInput} onChange={setSearchInput} />
         </div>
 
         {/* Assignee */}

@@ -10,12 +10,11 @@ import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Button } from '@/components/common/Button';
-import { Input } from '@/components/common/Input';
 import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import type { SelectOption } from '@/components/common/CreatableSelect';
-import { useNlddEvent } from '@/components/nldd/events';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
   OPDRACHT_TYPE_LABELS,
@@ -36,6 +35,20 @@ import { formatCurrency, formatCurrencyCompact } from '@/utils/format';
 import { timeAgo } from '@/utils/dates';
 
 const MY_OPDRACHTEN_SENTINEL = '__me__';
+
+/** The opdrachten search field: `nldd-search-field` with its `input` event bridged to React. */
+function OpdrachtenSearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return (
+    <nldd-search-field
+      ref={ref}
+      value={value}
+      placeholder="Zoek opdrachten..."
+      accessible-label="Zoek opdrachten"
+    />
+  );
+}
 
 const TYPE_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_TYPE_LABELS).map(
   ([value, label]) => ({ value, label }),
@@ -244,6 +257,17 @@ export function OpdrachtenPage() {
     return result;
   }, [opdrachten, searchQuery, typeFilter, statusFilter]);
 
+  // Whether any search, dropdown or client-side filter is narrowing the set,
+  // so the empty state can say "no matches" rather than "nothing here at all".
+  const hasActiveFilter =
+    !!searchQuery ||
+    typeFilter.size > 0 ||
+    statusFilter.size > 0 ||
+    !!apiFilters.begrotingsjaar ||
+    !!apiFilters.opdrachtnemer_eenheid_id ||
+    !!apiFilters.verantwoordelijke_id ||
+    !!apiFilters.instrument_id;
+
   // Totals from server-side summary (for summary cards)
   const totaalBudget = summary?.totaal_budget ?? 0;
   const totaalGerealiseerd = summary?.totaal_gerealiseerd ?? 0;
@@ -322,11 +346,7 @@ export function OpdrachtenPage() {
       {/* Filter bar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
         <div className="w-full sm:w-56">
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Zoek opdrachten..."
-          />
+          <OpdrachtenSearchField value={searchInput} onChange={setSearchInput} />
         </div>
         <div className="w-full sm:w-44">
           <MultiSelect
@@ -417,7 +437,9 @@ export function OpdrachtenPage() {
         {isLoading ? (
           <p className="px-4 py-8 text-center text-text-secondary">Laden...</p>
         ) : filteredOpdrachten.length === 0 ? (
-          <p className="px-4 py-8 text-center text-text-secondary">Geen opdrachten gevonden</p>
+          <p className="px-4 py-8 text-center text-text-secondary">
+            {hasActiveFilter ? 'Geen opdrachten gevonden. Pas je zoekopdracht of filters aan.' : 'Nog geen opdrachten.'}
+          </p>
         ) : (
           <>
             {filteredOpdrachten.map((o) => (
@@ -458,7 +480,14 @@ export function OpdrachtenPage() {
             </div>
           ) : filteredOpdrachten.length === 0 ? (
             <div slot="empty">
-              <nldd-inline-dialog text="Geen opdrachten gevonden" />
+              <nldd-inline-dialog
+                text={hasActiveFilter ? 'Geen opdrachten gevonden' : 'Nog geen opdrachten'}
+                supporting-text={
+                  hasActiveFilter
+                    ? 'Pas je zoekopdracht of filters aan.'
+                    : 'Zodra er een opdracht binnenkomt verschijnt die hier.'
+                }
+              />
             </div>
           ) : (
             filteredOpdrachten.map((o) => (

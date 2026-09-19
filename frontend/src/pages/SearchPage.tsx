@@ -72,11 +72,10 @@ export function SearchPage() {
       </div>
 
       {/* Search input */}
-      <nldd-text-field
+      <nldd-search-field
         ref={inputRef}
         value={query}
         placeholder="Zoek op titel, naam, beschrijving, trefwoord..."
-        keyboard="search"
         accessible-label="Zoeken"
       />
 

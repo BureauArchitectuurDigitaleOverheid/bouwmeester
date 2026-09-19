@@ -237,6 +237,7 @@ export function SamenwerkingsverbandDetailPage() {
                 label="Naam"
                 value={editForm.naam ?? ''}
                 onChange={(e) => setEditForm((f) => ({ ...f, naam: e.target.value }))}
+                autoComplete="organization"
                 required
               />
               <CreatableSelect

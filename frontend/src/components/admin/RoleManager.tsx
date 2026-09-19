@@ -814,6 +814,7 @@ export function RoleManager() {
           <EmptyState
             icon="magnifier"
             title={searchQuery ? 'Geen personen gevonden' : 'Geen personen beschikbaar'}
+            description={searchQuery ? 'Pas je zoekopdracht aan.' : undefined}
           />
         </div>
       </nldd-table>

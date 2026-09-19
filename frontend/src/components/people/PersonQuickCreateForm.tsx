@@ -152,6 +152,7 @@ export function PersonQuickCreateForm({
           value={naam}
           onChange={(e) => setNaam(e.target.value)}
           placeholder="Volledige naam"
+          autoComplete="name"
           required
           autoFocus
         />
@@ -161,6 +162,7 @@ export function PersonQuickCreateForm({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="email@voorbeeld.nl"
+          autoComplete="email"
         />
 
         {searching && (

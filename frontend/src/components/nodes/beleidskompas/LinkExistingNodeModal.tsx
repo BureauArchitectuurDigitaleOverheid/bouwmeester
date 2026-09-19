@@ -90,10 +90,13 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excl
       }
     >
       <div className="space-y-4">
+        {/* De placeholder verdwijnt zodra er een waarde staat, dus die is geen
+            toegankelijke naam. */}
         <nldd-search-field
           ref={searchRef}
           value={search}
           placeholder={`Zoek ${NODE_TYPE_LABELS[nodeType].toLowerCase()}...`}
+          accessible-label={`Zoek ${NODE_TYPE_LABELS[nodeType].toLowerCase()}`}
         />
 
         {isLoading ? (

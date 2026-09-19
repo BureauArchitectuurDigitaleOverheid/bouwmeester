@@ -141,6 +141,7 @@ function NewValueField({ type, value, onChange, onSubmit, placeholder, accessibl
       type={type === 'tel' ? 'tel' : 'email'}
       placeholder={placeholder}
       accessible-label={accessibleLabel}
+      autocomplete={type === 'tel' ? 'tel' : 'email'}
     />
   );
 }
@@ -531,6 +532,14 @@ export function PersonEditForm({
         )
       }
     >
+      {/*
+        The submit/cancel buttons live in Modal's `footer`, rendered as a
+        sibling of `children` rather than inside this form — so they are not
+        descendants of `nldd-form` and `nldd-form-actions` cannot reach them
+        here. Wrapping the field body still gets light-DOM autofill and
+        label-alignment inheritance for any nldd-form-field/-section inside.
+      */}
+      <nldd-form>
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Naam field: search+select in create mode for non-agents, plain Input otherwise */}
         {isCreateMode && !isAgent ? (
@@ -555,6 +564,7 @@ export function PersonEditForm({
             value={naam}
             onChange={(e) => setNaam(e.target.value)}
             placeholder="Volledige naam"
+            autoComplete="name"
             required
             autoFocus
           />
@@ -579,6 +589,7 @@ export function PersonEditForm({
               onChange={(e) => setEmail(e.target.value)}
               onBlur={() => setEmailTouched(true)}
               placeholder="email@voorbeeld.nl"
+              autoComplete="email"
               required
               error={emailTouched && !email.trim() ? 'E-mail is verplicht' : undefined}
             />
@@ -847,6 +858,7 @@ export function PersonEditForm({
           </nldd-form-field>
         )}
       </form>
+      </nldd-form>
     </Modal>
   );
 }

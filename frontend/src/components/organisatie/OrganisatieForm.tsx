@@ -151,12 +151,20 @@ export function OrganisatieForm({
         </>
       }
     >
+      {/*
+        Submit/cancel live in Modal's `footer`, a sibling of `children` — not
+        a descendant of nldd-form, so nldd-form-actions cannot reach them
+        from here. Wrapping the body still gets autofill and label-alignment
+        inheritance for the fields.
+      */}
+      <nldd-form>
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
           label="Naam"
           value={naam}
           onChange={(e) => setNaam(e.target.value)}
           placeholder="Bijv. Directie Openbaar Vervoer"
+          autoComplete="organization"
           required
           autoFocus
         />
@@ -192,6 +200,7 @@ export function OrganisatieForm({
 
         <RichTextFormField label="Beschrijving" value={beschrijving} onChange={setBeschrijving} />
       </form>
+      </nldd-form>
     </Modal>
   );
 }

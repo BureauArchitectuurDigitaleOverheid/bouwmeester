@@ -44,6 +44,7 @@ export function WhitelistManager() {
           value={newEmail}
           placeholder="E-mailadres toevoegen..."
           accessible-label="E-mailadres toevoegen"
+          autocomplete="email"
           required
           style={{ flex: 1 }}
         />

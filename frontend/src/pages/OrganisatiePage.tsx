@@ -2,7 +2,6 @@ import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
-import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -11,8 +10,7 @@ import { OrganisatieDetail } from '@/components/organisatie/OrganisatieDetail';
 import { OrganisatieForm } from '@/components/organisatie/OrganisatieForm';
 import { PersonEditForm } from '@/components/people/PersonEditForm';
 import { Icon } from '@/components/nldd/Icon';
-import { NlddIconButton } from '@/components/nldd/NlddIconButton';
-import { orUndef, useNlddEvent } from '@/components/nldd/events';
+import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
 import {
   useOrganisatieTree,
   useCreateOrganisatieEenheid,
@@ -40,6 +38,20 @@ function HistorischCheckbox({
   const ref = useRef<HTMLElement>(null);
   useNlddEvent(ref, 'change', useCallback((e: Event) => onChange(checkedValue(e)), [onChange]));
   return <nldd-checkbox-field ref={ref} label="Historisch" checked={orUndef(checked)} />;
+}
+
+/** The organisatie tree search field: `nldd-search-field` with its `input` event bridged to React. */
+function OrganisatieSearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return (
+    <nldd-search-field
+      ref={ref}
+      value={value}
+      placeholder="Zoek organisatie of afkorting..."
+      accessible-label="Zoek organisatie of afkorting"
+    />
+  );
 }
 
 export function OrganisatiePage() {
@@ -269,23 +281,8 @@ export function OrganisatiePage() {
           <div className="lg:col-span-1">
             <Card>
               <div className="p-2">
-                <div className="flex items-end gap-1 mb-2">
-                  <div className="flex-1">
-                    <Input
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Zoek organisatie of afkorting..."
-                    />
-                  </div>
-                  {searchTerm && (
-                    <NlddIconButton
-                      icon="close"
-                      accessibleLabel="Wis zoekterm"
-                      variant="neutral-transparent"
-                      size="sm"
-                      onClick={() => setSearchTerm('')}
-                    />
-                  )}
+                <div className="mb-2">
+                  <OrganisatieSearchField value={searchTerm} onChange={setSearchTerm} />
                 </div>
                 <div className="flex items-center justify-between gap-2 mb-2 px-1">
                   <HistorischCheckbox checked={includeHistorisch} onChange={setIncludeHistorisch} />

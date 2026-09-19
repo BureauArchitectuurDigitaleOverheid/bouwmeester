@@ -81,6 +81,7 @@ export function NewContactPersonFields({
           label="Naam"
           value={state.naam}
           onChange={(e) => set('naam', e.target.value)}
+          autoComplete="name"
           required
           autoFocus
           disabled={disabled}
@@ -93,6 +94,7 @@ export function NewContactPersonFields({
           value={state.email}
           onChange={(e) => set('email', e.target.value)}
           placeholder="email@voorbeeld.nl"
+          autoComplete="email"
           disabled={disabled}
         />
         <Input
@@ -101,6 +103,7 @@ export function NewContactPersonFields({
           value={state.phone}
           onChange={(e) => set('phone', e.target.value)}
           placeholder="06-12345678"
+          autoComplete="tel"
           disabled={disabled}
         />
       </div>

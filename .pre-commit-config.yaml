@@ -32,3 +32,13 @@ repos:
         language: system
         files: ^frontend/src/.*\.(ts|tsx)$
         pass_filenames: false
+      # Checks the nldd-* markup against the design system's own manifest and
+      # icon registry. Catches the three things that fail silently in the
+      # browser and that tsc cannot see: an unknown slot, an icon name outside
+      # the closed set, and an element that does not exist in this version.
+      - id: nldd-markup
+        name: nldd markup
+        entry: bash -c 'cd frontend && node scripts/validate-nldd-markup.mjs'
+        language: system
+        files: ^frontend/src/.*\.tsx$
+        pass_filenames: false

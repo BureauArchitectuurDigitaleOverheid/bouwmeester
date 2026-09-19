@@ -31,6 +31,7 @@ import '@nldd/design-system/split-view-pane';
 // Actions
 import '@nldd/design-system/button';
 import '@nldd/design-system/button-bar';
+import '@nldd/design-system/button-group';
 import '@nldd/design-system/icon-button';
 import '@nldd/design-system/menu';
 import '@nldd/design-system/toolbar';

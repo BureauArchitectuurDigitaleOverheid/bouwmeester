@@ -210,258 +210,259 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
   const isSubsidie = form.type === OpdrachtType.SUBSIDIE;
 
   const formContent = (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Basic info */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Select
-          label="Type"
-          required
-          value={form.type}
-          onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-          options={Object.entries(OPDRACHT_TYPE_LABELS).map(([v, l]) => ({ value: v, label: l }))}
-        />
-        <Select
-          label="Status"
-          value={form.status}
-          onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-          options={Object.entries(OPDRACHT_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))}
-        />
-      </div>
-
-      <Input
-        label="Titel"
-        type="text"
-        value={form.titel}
-        onChange={e => setForm(f => ({ ...f, titel: e.target.value }))}
-        required
-      />
-
-      <RichTextFormField
-        label="Beschrijving"
-        value={form.beschrijving}
-        onChange={(value) => setForm(f => ({ ...f, beschrijving: value }))}
-        rows={3}
-      />
-
-      {/* Links */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <CreatableSelect
-          label="Instrument"
-          required
-          value={form.instrument_id}
-          onChange={(value) => setForm(f => ({ ...f, instrument_id: value }))}
-          options={instrumentOptions}
-          placeholder="Kies instrument..."
-          onCreate={handleCreateInstrument}
-          createLabel="Nieuw instrument"
-        />
-        <CreatableSelect
-          label="Opdrachtnemer"
-          value={form.opdrachtnemer_eenheid_id}
-          onChange={(value) => setForm(f => ({ ...f, opdrachtnemer_eenheid_id: value }))}
-          options={opdrachtnemerOptions}
-          placeholder="Kies opdrachtnemer..."
-          onCreate={handleCreateOpdrachtnemer}
-          createLabel="Nieuwe organisatie"
-          onClear={() => setForm(f => ({ ...f, opdrachtnemer_eenheid_id: '' }))}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <CreatableSelect
-          label="Opdrachtgever"
-          value={form.opdrachtgever_id}
-          onChange={(value) => setForm(f => ({ ...f, opdrachtgever_id: value }))}
-          options={opdrachtgeverOptions}
-          placeholder="Kies opdrachtgever..."
-          onClear={() => setForm(f => ({ ...f, opdrachtgever_id: '' }))}
-        />
-        <CreatableSelect
-          label="Verantwoordelijke"
-          value={form.verantwoordelijke_id}
-          onChange={(value) => setForm(f => ({ ...f, verantwoordelijke_id: value }))}
-          options={verantwoordelijkeOptions}
-          placeholder="Kies verantwoordelijke..."
-          onClear={() => setForm(f => ({ ...f, verantwoordelijke_id: '' }))}
-        />
-      </div>
-
-      <Input
-        label="Referentie"
-        type="text"
-        value={form.referentie}
-        onChange={e => setForm(f => ({ ...f, referentie: e.target.value }))}
-        placeholder="Intern kenmerk"
-      />
-
-      {/* Financial */}
-      <div className="border-t border-border pt-4">
-        <h3 className="text-sm font-semibold text-text mb-3">Financieel</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Input
-            label="Begrotingsjaar"
-            type="number"
-            value={form.begrotingsjaar}
-            onChange={e => setForm(f => ({ ...f, begrotingsjaar: Number(e.target.value) }))}
-            min={2020}
-            max={2035}
-            required
-          />
-          <Input
-            label="Budget"
-            type="number"
-            value={form.budget}
-            onChange={e => setForm(f => ({ ...f, budget: e.target.value }))}
-            min={0}
-            step="0.01"
-          />
-          <Input
-            label="Gerealiseerd"
-            type="number"
-            value={form.gerealiseerd}
-            onChange={e => setForm(f => ({ ...f, gerealiseerd: e.target.value }))}
-            min={0}
-            step="0.01"
-          />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+    <nldd-form>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Basic info */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Select
-            label="Kostensoort"
-            value={form.kostensoort}
-            onChange={e => setForm(f => ({ ...f, kostensoort: e.target.value }))}
-            placeholder="-"
-            options={Object.entries(KOSTENSOORT_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+            label="Type"
+            required
+            value={form.type}
+            onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+            options={Object.entries(OPDRACHT_TYPE_LABELS).map(([v, l]) => ({ value: v, label: l }))}
           />
-          <Input
-            label="Volgend jaar benodigd"
-            type="number"
-            value={form.volgend_jaar_benodigd}
-            onChange={e => setForm(f => ({ ...f, volgend_jaar_benodigd: e.target.value }))}
-            min={0}
-            step="0.01"
-          />
-          <Input
-            label="Volgend jaar aangevraagd"
-            type="number"
-            value={form.volgend_jaar_aangevraagd}
-            onChange={e => setForm(f => ({ ...f, volgend_jaar_aangevraagd: e.target.value }))}
-            min={0}
-            step="0.01"
+          <Select
+            label="Status"
+            value={form.status}
+            onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+            options={Object.entries(OPDRACHT_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))}
           />
         </div>
-      </div>
 
-      {/* Dates */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
-          label="Startdatum"
-          type="date"
-          value={form.startdatum}
-          onChange={e => setForm(f => ({ ...f, startdatum: e.target.value }))}
+          label="Titel"
+          type="text"
+          value={form.titel}
+          onChange={e => setForm(f => ({ ...f, titel: e.target.value }))}
+          required
         />
-        <Input
-          label="Einddatum"
-          type="date"
-          value={form.einddatum}
-          onChange={e => setForm(f => ({ ...f, einddatum: e.target.value }))}
-        />
-      </div>
 
-      {/* Subsidie-specific */}
-      {isSubsidie && (
-        <div className="border-t border-border pt-4">
-          <h3 className="text-sm font-semibold text-text mb-3">Subsidie-specifiek</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <RichTextFormField
+          label="Beschrijving"
+          value={form.beschrijving}
+          onChange={(value) => setForm(f => ({ ...f, beschrijving: value }))}
+          rows={3}
+        />
+
+        {/* Links */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <CreatableSelect
+            label="Instrument"
+            required
+            value={form.instrument_id}
+            onChange={(value) => setForm(f => ({ ...f, instrument_id: value }))}
+            options={instrumentOptions}
+            placeholder="Kies instrument..."
+            onCreate={handleCreateInstrument}
+            createLabel="Nieuw instrument"
+          />
+          <CreatableSelect
+            label="Opdrachtnemer"
+            value={form.opdrachtnemer_eenheid_id}
+            onChange={(value) => setForm(f => ({ ...f, opdrachtnemer_eenheid_id: value }))}
+            options={opdrachtnemerOptions}
+            placeholder="Kies opdrachtnemer..."
+            onCreate={handleCreateOpdrachtnemer}
+            createLabel="Nieuwe organisatie"
+            onClear={() => setForm(f => ({ ...f, opdrachtnemer_eenheid_id: '' }))}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <CreatableSelect
+            label="Opdrachtgever"
+            value={form.opdrachtgever_id}
+            onChange={(value) => setForm(f => ({ ...f, opdrachtgever_id: value }))}
+            options={opdrachtgeverOptions}
+            placeholder="Kies opdrachtgever..."
+            onClear={() => setForm(f => ({ ...f, opdrachtgever_id: '' }))}
+          />
+          <CreatableSelect
+            label="Verantwoordelijke"
+            value={form.verantwoordelijke_id}
+            onChange={(value) => setForm(f => ({ ...f, verantwoordelijke_id: value }))}
+            options={verantwoordelijkeOptions}
+            placeholder="Kies verantwoordelijke..."
+            onClear={() => setForm(f => ({ ...f, verantwoordelijke_id: '' }))}
+          />
+        </div>
+
+        <Input
+          label="Referentie"
+          type="text"
+          value={form.referentie}
+          onChange={e => setForm(f => ({ ...f, referentie: e.target.value }))}
+          placeholder="Intern kenmerk"
+        />
+
+        {/* Financial */}
+        <nldd-form-section text="Financieel">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Input
-              label="Subsidieregeling"
-              type="text"
-              value={form.subsidieregeling}
-              onChange={e => setForm(f => ({ ...f, subsidieregeling: e.target.value }))}
+              label="Begrotingsjaar"
+              type="number"
+              value={form.begrotingsjaar}
+              onChange={e => setForm(f => ({ ...f, begrotingsjaar: Number(e.target.value) }))}
+              min={2020}
+              max={2035}
+              required
             />
             <Input
-              label="Beschikking nummer"
-              type="text"
-              value={form.beschikking_nummer}
-              onChange={e => setForm(f => ({ ...f, beschikking_nummer: e.target.value }))}
+              label="Budget"
+              type="number"
+              value={form.budget}
+              onChange={e => setForm(f => ({ ...f, budget: e.target.value }))}
+              min={0}
+              step="0.01"
+            />
+            <Input
+              label="Gerealiseerd"
+              type="number"
+              value={form.gerealiseerd}
+              onChange={e => setForm(f => ({ ...f, gerealiseerd: e.target.value }))}
+              min={0}
+              step="0.01"
             />
           </div>
-        </div>
-      )}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+            <Select
+              label="Kostensoort"
+              value={form.kostensoort}
+              onChange={e => setForm(f => ({ ...f, kostensoort: e.target.value }))}
+              placeholder="-"
+              options={Object.entries(KOSTENSOORT_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+            />
+            <Input
+              label="Volgend jaar benodigd"
+              type="number"
+              value={form.volgend_jaar_benodigd}
+              onChange={e => setForm(f => ({ ...f, volgend_jaar_benodigd: e.target.value }))}
+              min={0}
+              step="0.01"
+            />
+            <Input
+              label="Volgend jaar aangevraagd"
+              type="number"
+              value={form.volgend_jaar_aangevraagd}
+              onChange={e => setForm(f => ({ ...f, volgend_jaar_aangevraagd: e.target.value }))}
+              min={0}
+              step="0.01"
+            />
+          </div>
+        </nldd-form-section>
 
-      {/* Node koppelingen (edit mode only) */}
-      {isEdit && opdracht && (
-        <div className="border-t border-border pt-4">
-          <h3 className="text-sm font-semibold text-text mb-3">Gekoppelde nodes</h3>
-          {koppelingen.length > 0 && (
-            <nldd-list variant="box-tinted" dividers="never" className="mb-3">
-              {koppelingen.map(k => (
-                <nldd-list-item key={k.id}>
-                  {k.node_type && (
-                    <nldd-text-cell width="fit-content">
-                      <Badge variant={NODE_TYPE_COLORS[k.node_type as NodeType] ?? 'gray'} dot>
-                        {k.node_type}
-                      </Badge>
-                    </nldd-text-cell>
-                  )}
-                  <nldd-text-cell text={k.node_title || k.node_id} overline={k.relatie_type ?? undefined} />
-                  <NlddIconButton
-                    icon="trash"
-                    variant="neutral-transparent"
-                    size="sm"
-                    accessibleLabel="Koppeling verwijderen"
-                    onClick={() => handleRemoveKoppeling(k.id)}
-                  />
-                </nldd-list-item>
-              ))}
-            </nldd-list>
-          )}
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <CreatableSelect
-                label="Node"
-                value={newKoppelingNodeId}
-                onChange={setNewKoppelingNodeId}
-                options={nodeOptions}
-                placeholder="Zoek node..."
+        {/* Dates */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input
+            label="Startdatum"
+            type="date"
+            value={form.startdatum}
+            onChange={e => setForm(f => ({ ...f, startdatum: e.target.value }))}
+          />
+          <Input
+            label="Einddatum"
+            type="date"
+            value={form.einddatum}
+            onChange={e => setForm(f => ({ ...f, einddatum: e.target.value }))}
+          />
+        </div>
+
+        {/* Subsidie-specific */}
+        {isSubsidie && (
+          <nldd-form-section text="Subsidie-specifiek">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Subsidieregeling"
+                type="text"
+                value={form.subsidieregeling}
+                onChange={e => setForm(f => ({ ...f, subsidieregeling: e.target.value }))}
+              />
+              <Input
+                label="Beschikking nummer"
+                type="text"
+                value={form.beschikking_nummer}
+                onChange={e => setForm(f => ({ ...f, beschikking_nummer: e.target.value }))}
               />
             </div>
-            <div className="w-40">
-              <Select
-                label="Relatie"
-                value={newKoppelingRelatie}
-                onChange={e => setNewKoppelingRelatie(e.target.value)}
-                options={[
-                  { value: 'gerelateerd', label: 'Gerelateerd' },
-                  { value: 'levert_aan', label: 'Levert aan' },
-                  { value: 'onderdeel_van', label: 'Onderdeel van' },
-                ]}
-              />
+          </nldd-form-section>
+        )}
+
+        {/* Node koppelingen (edit mode only) */}
+        {isEdit && opdracht && (
+          <nldd-form-section text="Gekoppelde nodes">
+            {koppelingen.length > 0 && (
+              <nldd-list variant="box-tinted" dividers="never" className="mb-3">
+                {koppelingen.map(k => (
+                  <nldd-list-item key={k.id}>
+                    {k.node_type && (
+                      <nldd-text-cell width="fit-content">
+                        <Badge variant={NODE_TYPE_COLORS[k.node_type as NodeType] ?? 'gray'} dot>
+                          {k.node_type}
+                        </Badge>
+                      </nldd-text-cell>
+                    )}
+                    <nldd-text-cell text={k.node_title || k.node_id} overline={k.relatie_type ?? undefined} />
+                    <NlddIconButton
+                      icon="trash"
+                      variant="neutral-transparent"
+                      size="sm"
+                      accessibleLabel="Koppeling verwijderen"
+                      onClick={() => handleRemoveKoppeling(k.id)}
+                    />
+                  </nldd-list-item>
+                ))}
+              </nldd-list>
+            )}
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <CreatableSelect
+                  label="Node"
+                  value={newKoppelingNodeId}
+                  onChange={setNewKoppelingNodeId}
+                  options={nodeOptions}
+                  placeholder="Zoek node..."
+                />
+              </div>
+              <div className="w-40">
+                <Select
+                  label="Relatie"
+                  value={newKoppelingRelatie}
+                  onChange={e => setNewKoppelingRelatie(e.target.value)}
+                  options={[
+                    { value: 'gerelateerd', label: 'Gerelateerd' },
+                    { value: 'levert_aan', label: 'Levert aan' },
+                    { value: 'onderdeel_van', label: 'Onderdeel van' },
+                  ]}
+                />
+              </div>
+              <Button
+                type="button"
+                icon="plus"
+                disabled={!newKoppelingNodeId || addKoppeling.isPending}
+                onClick={handleAddKoppeling}
+              >
+                Toevoegen
+              </Button>
             </div>
-            <Button
-              type="button"
-              icon="plus"
-              disabled={!newKoppelingNodeId || addKoppeling.isPending}
-              onClick={handleAddKoppeling}
-            >
-              Toevoegen
+          </nldd-form-section>
+        )}
+
+        {/* Error feedback */}
+        {error && <nldd-banner variant="critical" size="sm" text={error} />}
+
+        {/* Submit */}
+        <nldd-form-actions>
+          <nldd-button-group orientation="horizontal">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Annuleren
             </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Error feedback */}
-      {error && <nldd-banner variant="critical" size="sm" text={error} />}
-
-      {/* Submit */}
-      <div className="flex justify-end gap-3 pt-4 border-t border-border">
-        <Button type="button" variant="secondary" onClick={onClose}>
-          Annuleren
-        </Button>
-        <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-          {isEdit ? 'Opslaan' : 'Aanmaken'}
-        </Button>
-      </div>
-    </form>
+            <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+              {isEdit ? 'Opslaan' : 'Aanmaken'}
+            </Button>
+          </nldd-button-group>
+        </nldd-form-actions>
+      </form>
+    </nldd-form>
   );
 
   return (

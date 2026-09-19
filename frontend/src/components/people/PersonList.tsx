@@ -1,14 +1,28 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { PersonCard } from './PersonCard';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { Input } from '@/components/common/Input';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import type { Person } from '@/types';
 
 interface PersonListProps {
   people: Person[];
   isLoading: boolean;
   onPersonClick?: (person: Person) => void;
+}
+
+/** The people search field: `nldd-search-field` with its `input` event bridged to React. */
+function PersonSearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return (
+    <nldd-search-field
+      ref={ref}
+      value={value}
+      placeholder="Zoek personen..."
+      accessible-label="Zoek personen"
+    />
+  );
 }
 
 export function PersonList({ people, isLoading, onPersonClick }: PersonListProps) {
@@ -36,11 +50,7 @@ export function PersonList({ people, isLoading, onPersonClick }: PersonListProps
     <div className="space-y-4">
       {/* Search */}
       <div className="max-w-sm">
-        <Input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Zoek personen..."
-        />
+        <PersonSearchField value={searchQuery} onChange={setSearchQuery} />
       </div>
 
       {/* Grid */}

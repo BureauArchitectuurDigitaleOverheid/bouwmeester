@@ -3,14 +3,13 @@ import { useSearchParams } from 'react-router-dom';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useToast } from '@/contexts/ToastContext';
 import { Button } from '@/components/common/Button';
-import { Input } from '@/components/common/Input';
 import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { ParlementairReviewCard } from '@/components/parlementair/ParlementairReviewCard';
-import { useNlddEvent } from '@/components/nldd/events';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import {
   useParlementairItems,
   useTriggerParlementairImport,
@@ -43,6 +42,20 @@ function MenuItem({ text, onClick }: { text: string; onClick: () => void }) {
   const ref = useRef<HTMLElement>(null);
   useNlddEvent(ref, 'select', onClick);
   return <nldd-menu-item ref={ref} text={text} />;
+}
+
+/** The kamerstukken search field: `nldd-search-field` with its `input` event bridged to React. */
+function ParlementairSearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return (
+    <nldd-search-field
+      ref={ref}
+      value={value}
+      placeholder="Zoek in kamerstukken..."
+      accessible-label="Zoek in kamerstukken"
+    />
+  );
 }
 
 const statusFilters: { value: ParlementairItemStatus | 'all'; label: string }[] = [
@@ -237,11 +250,7 @@ export function ParlementairPage() {
       {/* Filter bar (matching Corpus page layout) */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
         <div className="w-full sm:w-56">
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Zoek in kamerstukken..."
-          />
+          <ParlementairSearchField value={searchInput} onChange={setSearchInput} />
         </div>
         <div className="w-full sm:w-52">
           <MultiSelect

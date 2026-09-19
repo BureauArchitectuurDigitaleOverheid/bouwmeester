@@ -1,9 +1,8 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/common/Button';
 import { ViewToggle } from '@/components/common/ViewToggle';
 import type { ViewToggleOption } from '@/components/common/ViewToggle';
-import { Input } from '@/components/common/Input';
 import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { Select } from '@/components/common/Select';
@@ -13,6 +12,7 @@ import { ExportButton } from '@/components/nodes/ExportButton';
 import { CorpusGraph } from '@/components/graph/CorpusGraph';
 import { CorpusMatrix } from '@/components/graph/CorpusMatrix';
 import { Icon } from '@/components/nldd/Icon';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useGraphView } from '@/hooks/useGraph';
@@ -28,6 +28,20 @@ const VIEW_OPTIONS: ViewToggleOption<ViewMode>[] = [
 ];
 
 const ALL_NODE_TYPES = Object.values(NodeType);
+
+/** The corpus search field: `nldd-search-field` with its `input` event bridged to React. */
+function CorpusSearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return (
+    <nldd-search-field
+      ref={ref}
+      value={value}
+      placeholder="Zoek in corpus..."
+      accessible-label="Zoek in corpus"
+    />
+  );
+}
 
 export function CorpusPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -182,11 +196,7 @@ export function CorpusPage() {
       {/* Shared filter bar */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
         <div className="w-full sm:w-56">
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Zoek in corpus..."
-          />
+          <CorpusSearchField value={searchInput} onChange={setSearchInput} />
         </div>
         {viewMode !== 'matrix' && (
           <div className="w-full sm:w-52">
