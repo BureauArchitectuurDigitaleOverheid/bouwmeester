@@ -65,6 +65,69 @@ async def _load_config(db: AsyncSession) -> dict[str, str]:
     return _config_cache
 
 
+def _log_llm_configuration(
+    *,
+    claude_built: bool,
+    claude_model: str,
+    vlam_built: bool,
+    vlam_key: str,
+    vlam_url: str,
+    vlam_model: str,
+    platform_url: str,
+    manual_url: str,
+    preferred: str,
+) -> None:
+    """Log één keer per proces welke LLM-providers er zijn opgebouwd.
+
+    Zonder dit is "de taalmodel-dienst is niet bereikbaar" niet te
+    onderscheiden van "er is helemaal geen provider geconfigureerd": het
+    eerste doet een netwerkcall die faalt, het tweede doet er geen. Dat
+    verschil kostte een middag uitzoeken, en het is van buitenaf niet te
+    zien omdat de configuratie in de pod-omgeving zit.
+
+    Adressen zijn geen geheim (een intern cluster-adres zegt niets dat de
+    beheerder niet mag weten), de sleutel uiteraard wel: daarvan loggen we
+    alleen of hij gezet is.
+    """
+    logger.info(
+        "LLM-providers: claude=%s (model=%s), vlam=%s, voorkeur=%s",
+        "ja" if claude_built else "nee",
+        claude_model or "-",
+        "ja" if vlam_built else "nee",
+        preferred or "-",
+    )
+    if vlam_built:
+        bron = (
+            "platform (VLAM_API_URL)" if platform_url else "handmatig (VLAM_BASE_URL)"
+        )
+        logger.info(
+            "VLAM actief: base_url=%s (bron: %s), model=%s",
+            vlam_url,
+            bron,
+            vlam_model or "-",
+        )
+        return
+
+    # Niet opgebouwd: benoem welke ingrediënt ontbreekt. CONFIDENTIAL-werk
+    # (lead-classificatie) kan alleen via VLAM, dus dit is geen detail.
+    ontbreekt = []
+    if not vlam_key:
+        ontbreekt.append("VLAM_API_KEY")
+    if not vlam_url:
+        if platform_url or manual_url:
+            ontbreekt.append(
+                f"bruikbare URL (VLAM_API_URL={platform_url or '-'!r}, "
+                f"VLAM_BASE_URL={manual_url or '-'!r})"
+            )
+        else:
+            ontbreekt.append("VLAM_API_URL of VLAM_BASE_URL (beide leeg)")
+    logger.warning(
+        "VLAM niet opgebouwd — ontbreekt: %s. Lead-classificatie en ander "
+        "CONFIDENTIAL-werk blijven uit tot dit gezet is.",
+        ", ".join(ontbreekt),
+    )
+
+
 async def _ensure_services(db: AsyncSession) -> None:
     """Build and cache service instances if not already built."""
     global _claude_cache, _vlam_cache, _services_built  # noqa: PLW0603
@@ -85,10 +148,9 @@ async def _ensure_services(db: AsyncSession) -> None:
     # Build VLAM. Het platform-adres (ZAD-dienst `vlam`) gaat vóór op een
     # handmatig ingestelde URL; zie resolve_vlam_base_url.
     vlam_key = config.get("VLAM_API_KEY") or settings.VLAM_API_KEY
-    vlam_url = resolve_vlam_base_url(
-        config.get("VLAM_API_URL") or settings.VLAM_API_URL,
-        config.get("VLAM_BASE_URL") or settings.VLAM_BASE_URL,
-    )
+    platform_url = config.get("VLAM_API_URL") or settings.VLAM_API_URL
+    manual_url = config.get("VLAM_BASE_URL") or settings.VLAM_BASE_URL
+    vlam_url = resolve_vlam_base_url(platform_url, manual_url)
     vlam_model = config.get("VLAM_MODEL_ID") or settings.VLAM_MODEL_ID
     if vlam_key and vlam_url:
         from bouwmeester.services.llm.vlam_service import VlamLLMService
@@ -96,6 +158,18 @@ async def _ensure_services(db: AsyncSession) -> None:
         _vlam_cache = VlamLLMService(
             api_key=vlam_key, base_url=vlam_url, model=vlam_model
         )
+
+    _log_llm_configuration(
+        claude_built=_claude_cache is not None,
+        claude_model=model,
+        vlam_built=_vlam_cache is not None,
+        vlam_key=vlam_key,
+        vlam_url=vlam_url,
+        vlam_model=vlam_model,
+        platform_url=platform_url,
+        manual_url=manual_url,
+        preferred=config.get("LLM_PROVIDER") or settings.LLM_PROVIDER,
+    )
 
     _services_built = True
 
