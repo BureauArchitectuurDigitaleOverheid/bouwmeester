@@ -164,6 +164,10 @@ export function ChatInput() {
   const hasAttachments = pendingAttachments.length > 0 || uploadingCount > 0;
 
   return (
+    // border-t + the drag-over ring: a focus/drag-state ring around the whole
+    // input strip has no nldd-container equivalent (container has no border or
+    // ring styling at all, only padding/gap/layout), so this outer chrome
+    // stays plain CSS.
     <div
       className={`border-t border-border p-3 ${isDragging ? 'ring-2 ring-primary-400 ring-inset' : ''}`}
       onDragOver={handleDragOver}
@@ -172,44 +176,58 @@ export function ChatInput() {
     >
       {/* Attachment preview strip */}
       {hasAttachments && (
-        <div className="flex flex-wrap gap-2 mb-2">
+        <nldd-container layout="wrap" gap="8" padding-bottom="8">
           {pendingAttachments.map((att) => (
+            // An attachment pill: no nldd-tag/nldd-token fits a file preview
+            // with a thumbnail and a remove button, so the chip's own
+            // background/rounding stays scoped CSS around nldd-container's
+            // flex layout.
             <div
               key={att.id}
-              className="relative group flex items-center gap-1.5 bg-gray-100 rounded-lg px-2 py-1.5 text-xs"
+              className="relative group rounded-lg px-2 py-1.5 text-xs"
+              style={{ backgroundColor: 'var(--primitives-color-coolgray-100)' }}
             >
-              {isImageContentType(att.content_type) ? (
-                <img
-                  src={chatAttachmentPreviewUrl(att.id)}
-                  alt={att.bestandsnaam}
-                  className="w-8 h-8 object-cover rounded"
+              <nldd-container layout="row" gap="6" vertical-alignment="center">
+                {isImageContentType(att.content_type) ? (
+                  <img
+                    src={chatAttachmentPreviewUrl(att.id)}
+                    alt={att.bestandsnaam}
+                    className="w-8 h-8 object-cover rounded"
+                  />
+                ) : (
+                  <Icon name="file-text" size="md" />
+                )}
+                <span className="truncate max-w-[120px]" title={att.bestandsnaam}>
+                  {att.bestandsnaam}
+                </span>
+                <NlddIconButton
+                  icon="close"
+                  accessibleLabel="Verwijderen"
+                  variant="neutral-transparent"
+                  size="xs"
+                  onClick={() => removeAttachment(att.id)}
                 />
-              ) : (
-                <Icon name="file-text" size="md" className="text-gray-500 shrink-0" />
-              )}
-              <span className="truncate max-w-[120px]" title={att.bestandsnaam}>
-                {att.bestandsnaam}
-              </span>
-              <NlddIconButton
-                icon="close"
-                accessibleLabel="Verwijderen"
-                variant="neutral-transparent"
-                size="xs"
-                onClick={() => removeAttachment(att.id)}
-              />
+              </nldd-container>
             </div>
           ))}
           {uploadingCount > 0 && (
-            <div className="flex items-center gap-1.5 bg-gray-100 rounded-lg px-2 py-1.5 text-xs text-gray-500">
-              <nldd-activity-indicator size="16" />
-              <span>Uploaden...</span>
+            <div
+              className="rounded-lg px-2 py-1.5 text-xs"
+              style={{ backgroundColor: 'var(--primitives-color-coolgray-100)' }}
+            >
+              <nldd-container layout="row" gap="6" vertical-alignment="center">
+                <nldd-activity-indicator size="16" />
+                <nldd-text size="xs" color="secondary">Uploaden...</nldd-text>
+              </nldd-container>
             </div>
           )}
-        </div>
+        </nldd-container>
       )}
 
-      <div
-        className="flex items-end gap-2"
+      <nldd-container
+        layout="row"
+        gap="8"
+        vertical-alignment="bottom"
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         role="group"
@@ -232,7 +250,7 @@ export function ChatInput() {
           onChange={handleFileInputChange}
         />
 
-        <div className="flex-1 min-w-0 chat-editor">
+        <nldd-container width="full" min-width="0" gap="0">
           <RichTextEditor
             key={editorKey}
             value={value}
@@ -242,7 +260,7 @@ export function ChatInput() {
             readOnly={isLoading}
             autoFocus
           />
-        </div>
+        </nldd-container>
         <NlddIconButton
           icon="paper-plane"
           accessibleLabel="Versturen"
@@ -251,21 +269,7 @@ export function ChatInput() {
           disabled={isLoading || uploadingCount > 0}
           onClick={handleSend}
         />
-      </div>
-      <style>{`
-        .chat-editor .rich-text-editor {
-          border-radius: 0.5rem;
-        }
-        .chat-editor .rich-text-editor .ProseMirror {
-          min-height: 1.5rem !important;
-          max-height: 7.5rem;
-          overflow-y: auto;
-        }
-        .chat-editor .EditorContent,
-        .chat-editor [class*="prose"] {
-          padding: 0.375rem 0.75rem;
-        }
-      `}</style>
+      </nldd-container>
     </div>
   );
 }
