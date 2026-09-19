@@ -187,12 +187,49 @@ for (const file of files) {
   // expression. So the stack is abandoned as soon as a tag looks like that, and
   // the remaining slots in that file are skipped rather than blamed on the
   // wrong parent. A missed check beats a false accusation.
-  // `\{(?:[^{}]|\{[^{}]*\})*\}` allows ONE level of nesting inside a JSX
-  // expression, which covers `style={{ ... }}` and a template literal holding
-  // `${x}`. Without it a single `<nldd-link href={`/c/${slug}`}>` made the
-  // whole file unscannable, and the file skipped every structural check — the
-  // one that had the bug, in the case that prompted this.
-  const tagRe = /<(\/?)(nldd-[a-z-]+)((?:[^>"'{]|"[^"]*"|'[^']*'|\{(?:[^{}]|\{[^{}]*\})*\})*)>/g;
+  // Braces are counted rather than matched. No regex can balance them at
+  // arbitrary depth, and the real markup goes three levels deep
+  // (`{...(cond ? { 'supporting-text': x } : {})}`). Each failed attempt at a
+  // cleverer pattern left some files unscannable, and an unscannable file
+  // silently skips EVERY structural check below — LeadsPage was in that state
+  // and was exactly the file whose collapsed toolbar item started all this.
+  //
+  // Yields the same shape the old regex did: [, closing, tag, attrs].
+  function* scanTags(src) {
+    const opener = /<(\/?)(nldd-[a-z-]+)/g;
+    let m;
+    while ((m = opener.exec(src))) {
+      let i = opener.lastIndex;
+      let depth = 0;
+      let quote = null;
+      for (; i < src.length; i++) {
+        const c = src[i];
+        if (quote) {
+          if (c === quote && src[i - 1] !== '\\') quote = null;
+          continue;
+        }
+        // A /* … */ comment between attributes. Its prose contains apostrophes
+        // ("whose width"), and treating one as a quote swallows the rest of the
+        // file: AppLayout saw 4 of its 9 tags that way.
+        if (c === '/' && src[i + 1] === '*') {
+          const end = src.indexOf('*/', i + 2);
+          if (end === -1) return;
+          i = end + 1;
+          continue;
+        }
+        if (c === '"' || c === "'" || c === '`') quote = c;
+        else if (c === '{') depth++;
+        else if (c === '}') depth--;
+        else if (c === '>' && depth === 0) break;
+      }
+      if (i >= src.length) return; // unterminated tag: stop rather than guess
+      const attrs = src.slice(opener.lastIndex, i);
+      const out = [src.slice(m.index, i + 1), m[1], m[2], attrs];
+      out.index = m.index;
+      yield out;
+      opener.lastIndex = i + 1;
+    }
+  }
 
   // An open tag the regex cannot consume (a nested `style={{ ... }}` object,
   // say) is skipped entirely, which silently leaves the wrong element on the
@@ -204,10 +241,10 @@ for (const file of files) {
   const attrsByDepth = [];
 
   const openTagCount = (source.match(/<nldd-[a-z-]+/g) ?? []).length;
-  const scannedCount = [...source.matchAll(tagRe)].filter((m) => !m[1]).length;
+  const scannedCount = [...scanTags(source)].filter((m) => !m[1]).length;
   const stackIsReliable = scannedCount === openTagCount;
 
-  for (const m of source.matchAll(tagRe)) {
+  for (const m of scanTags(source)) {
     const [, closing, tag, rawAttrs] = m;
     const selfClosing = rawAttrs.trimEnd().endsWith('/');
     const attrText = rawAttrs;
