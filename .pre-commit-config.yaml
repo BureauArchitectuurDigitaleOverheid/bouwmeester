@@ -42,3 +42,16 @@ repos:
         language: system
         files: ^frontend/src/.*\.tsx$
         pass_filenames: false
+
+      # Every design-system CSS variable the app names must exist. An undefined
+      # custom property renders nothing and says nothing; written with a
+      # fallback it is worse, because the fallback ships and the token is
+      # decoration. Fourteen invented names were in the tree when this was
+      # added, six of them behind a hex fallback that made them look right in
+      # light mode and freeze in dark.
+      - id: nldd-tokens
+        name: nldd tokens
+        entry: bash -c 'cd frontend && node scripts/validate-nldd-tokens.mjs'
+        language: system
+        files: ^frontend/src/.*\.(tsx?|css)$
+        pass_filenames: false
