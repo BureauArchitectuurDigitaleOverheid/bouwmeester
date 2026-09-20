@@ -23,7 +23,7 @@ App runs at http://localhost:5173, API at http://localhost:8000.
 ## Architecture
 
 - **Backend**: FastAPI + SQLAlchemy 2.0 async + Alembic + PostgreSQL
-- **Frontend**: React + TypeScript + React Query + Tailwind CSS + Vite
+- **Frontend**: React + TypeScript + React Query + @nldd/design-system + Vite
 - **Infra**: Docker Compose (dev), Kubernetes manifests in `k8s/`
 
 ## Seed data and PII

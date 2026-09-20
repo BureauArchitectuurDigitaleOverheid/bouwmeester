@@ -102,9 +102,8 @@ async def render_mattermost_message_to_markdown(
     doc = {"type": "doc", "content": paragraphs}
     person_ids = [pid for pid, _ in resolved.values()]
 
-    # Het TipTap-document is hier een tussenvorm, geen opslagvorm. Migratie
-    # 6b1e04a7c8d2 heeft `lead_activity.content` naar markdown geschreven, dus
-    # verse JSON in diezelfde kolom kwam na de deploy als letterlijke tekst in
-    # beeld. Dezelfde converter als de migratie, zodat er één plek is die
+    # Het TipTap-document is hier een tussenvorm, geen opslagvorm:
+    # `lead_activity.content` bevat markdown, en JSON zou daar als letterlijke
+    # tekst in beeld komen. Via dezelfde converter als de rest, zodat één plek
     # bepaalt hoe een mention eruitziet.
     return tiptap_to_markdown(json.dumps(doc, ensure_ascii=False)), person_ids

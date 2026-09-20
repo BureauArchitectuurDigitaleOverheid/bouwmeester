@@ -26,9 +26,8 @@ repos:
         language: system
         files: ^frontend/src/.*\.(ts|tsx)$
         pass_filenames: false
-      # `tsc -b`, the same command CI runs. It used to be `--noEmit`, which
-      # checks a different set of files: a stale required prop survived every
-      # local commit and only turned CI red.
+      # `tsc -b`, the same command CI runs. `--noEmit` checks a different set
+      # of files, so a hook using it can pass while CI fails.
       - id: tsc
         name: tsc
         entry: bash -c 'cd frontend && npx tsc -b'
@@ -60,13 +59,8 @@ repos:
         pass_filenames: false
 
       # Every class the app renders must have a rule behind it, and every rule
-      # in utilities.css must have a user. While Tailwind was installed its
-      # compiler invented a rule for anything it recognised, so a class could
-      # work without existing in any stylesheet we own; once the package left,
-      # those kept compiling and stopped doing anything. This is the check for
-      # that, and it was the only one of the three not wired in here — which is
-      # how 112 dead classes survived, including a table that rendered as bare
-      # HTML and three traffic lights that rendered as nothing at all.
+      # in utilities.css must have a user. A class with no CSS is silent: it
+      # compiles, passes tsc and eslint, and renders nothing.
       - id: nldd-css-classes
         name: nldd css classes
         entry: bash -c 'cd frontend && node scripts/validate-css-classes.mjs'

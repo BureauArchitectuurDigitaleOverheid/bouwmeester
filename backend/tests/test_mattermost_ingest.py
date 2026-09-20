@@ -329,8 +329,8 @@ async def test_lead_channel_renders_at_mentions_as_markdown(
     """``@username`` van een gekoppeld persoon wordt een markdown-mention
     zodat de frontend een klikbare badge kan tonen.
 
-    Was TipTap-JSON. Migratie 6b1e04a7c8d2 heeft deze kolom naar markdown
-    geschreven, dus verse JSON erin kwam als letterlijke tekst in beeld."""
+    ``lead_activity.content`` bevat markdown; JSON zou er als letterlijke
+    tekst in beeld komen."""
     from bouwmeester.core.tiptap_markdown import extract_markdown_mentions
     from bouwmeester.models.mention import Mention
     from bouwmeester.models.notification import Notification

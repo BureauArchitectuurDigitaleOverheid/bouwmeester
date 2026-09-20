@@ -1,9 +1,9 @@
 """Tests for the TipTap -> markdown conversion.
 
-The migration rewrites real descriptions in place, so the cases that matter are
-the ones where a wrong conversion is invisible afterwards: a mention that loses
-its id, a name that breaks out of its link, and a value that was never TipTap
-being mangled anyway.
+This rewrites real descriptions, so the cases that matter are the ones where a
+wrong conversion is invisible afterwards: a mention that loses its id, a name
+that breaks out of its link, and a value that was never TipTap being mangled
+anyway.
 """
 
 import json
@@ -227,12 +227,11 @@ def mention(node_type: str, mention_type: str, id_: str, label: str) -> dict:
 
 
 class TestMentionsSurviveTheRoundTrip:
-    """What the migration converts, the app has to be able to read back.
+    """What this writes, the app has to be able to read back.
 
     `MentionService` populates the mention table and fires the notifications.
-    It parsed only TipTap, so after the migration rewrote its columns it
-    extracted nothing: the first edit of a row deleted its mentions and
-    replaced them with none, and every `@` in the app went quietly dead.
+    It clears a row's mentions before re-extracting, so a format it cannot
+    parse costs that row every notification, silently.
     """
 
     def test_person_and_node_mentions_round_trip(self):

@@ -19,9 +19,8 @@ text is escaped for `[` and `]` too, so that typing the literal string
 `[@Directeur BZK](user:0000...)` cannot forge a mention this converter never
 wrote.
 
-Used by the one-off migration, and by `MentionService` to read the format back
-out. Kept in the package rather than in scripts/ so the migration, the service
-and the tests import the same code.
+`extract_markdown_mentions` reads the same format back out, so the two sides of
+it live in one module and cannot drift apart.
 """
 
 from __future__ import annotations
@@ -265,10 +264,9 @@ def tiptap_to_markdown(value: str | None) -> str | None:
 def extract_markdown_mentions(value: str | None) -> list[dict[str, str]]:
     """Read the mentions back out of the markdown form.
 
-    The inverse of `_mention_to_markdown`, and the reason both live in this
-    module: the migration rewrote the columns `MentionService` reads, so
-    without a reader every `@` in the app went quietly dead. Returns the same
-    shape that service's TipTap parser returns, in document order.
+    The inverse of `_mention_to_markdown`. Returns dicts of `mention_type` and
+    `target_id` in document order, the same shape `MentionService` builds the
+    mention table from.
     """
     if not value:
         return []

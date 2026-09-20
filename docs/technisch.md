@@ -7,7 +7,7 @@ Bouwmeester is opgebouwd uit drie hoofdcomponenten:
 | Component | Technologie | Beschrijving |
 |---|---|---|
 | **Backend** | FastAPI + SQLAlchemy 2.0 + Alembic | REST API met async PostgreSQL |
-| **Frontend** | React + TypeScript + React Query + Tailwind CSS | Single-page applicatie |
+| **Frontend** | React + TypeScript + React Query + @nldd/design-system | Single-page applicatie |
 | **Database** | PostgreSQL 16 | Relationele database met UUID primary keys |
 
 ```mermaid

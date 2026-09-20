@@ -38,7 +38,7 @@ Run `just` to see all available commands. Key ones:
 ## Architecture
 
 - **Backend**: FastAPI + SQLAlchemy 2.0 async + Alembic + PostgreSQL (asyncpg)
-- **Frontend**: React + TypeScript + React Query + Tailwind CSS + Vite
+- **Frontend**: React + TypeScript + React Query + @nldd/design-system + Vite
 - **Infra**: Docker Compose (dev)
 - **Python**: Use `uv` for ALL python operations (never pip/poetry)
 

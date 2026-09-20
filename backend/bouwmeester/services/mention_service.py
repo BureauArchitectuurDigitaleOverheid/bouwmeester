@@ -31,12 +31,11 @@ class MentionService:
         Returns list of dicts with keys: mention_type, target_id.
         mention_type is 'person' for @mentions, derived from attrs for #mentions.
 
-        Both formats are read because both exist. The editor writes markdown
-        (`[@Anne](user:<id>)`) and migration 6b1e04a7c8d2 rewrote the stored
-        columns to match, but a row written before that migration and never
-        edited since is still TipTap JSON. Reading only one of the two meant
-        `sync_mentions` deleted a row's mentions and re-extracted nothing, so
-        the first edit after deploy silently stopped every notification for it.
+        Both formats are read because both occur. The editor writes markdown
+        (`[@Anne](user:<id>)`), and older rows still hold TipTap JSON. Reading
+        only one of the two is silent: `sync_mentions` clears a row's mentions
+        before re-extracting, so a format it cannot parse costs that row every
+        notification without raising anything.
         """
         if not description_json:
             return []
