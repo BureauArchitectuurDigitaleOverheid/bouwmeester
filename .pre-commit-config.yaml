@@ -26,9 +26,12 @@ repos:
         language: system
         files: ^frontend/src/.*\.(ts|tsx)$
         pass_filenames: false
+      # `tsc -b`, the same command CI runs. It used to be `--noEmit`, which
+      # checks a different set of files: a stale required prop survived every
+      # local commit and only turned CI red.
       - id: tsc
         name: tsc
-        entry: bash -c 'cd frontend && npx tsc --noEmit'
+        entry: bash -c 'cd frontend && npx tsc -b'
         language: system
         files: ^frontend/src/.*\.(ts|tsx)$
         pass_filenames: false

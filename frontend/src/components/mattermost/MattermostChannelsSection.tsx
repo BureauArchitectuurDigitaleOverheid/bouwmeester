@@ -26,9 +26,6 @@ type Scope =
 
 interface Props {
   scope: Scope;
-  /** z-index van de parent-modal (lead/initiatief detail). De picker
-   *  opent met +10 bovenop deze waarde zodat hij niet achter de
-   *  parent-modal verdwijnt. */
 }
 
 export function MattermostChannelsSection({ scope }: Props) {
@@ -184,7 +181,6 @@ function ChannelPickerModal({
   open: boolean;
   onClose: () => void;
   scope: Scope;
-  zIndex: number;
 }) {
   const [q, setQ] = useState('');
   const debounced = useDebounce(q, 250);
