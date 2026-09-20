@@ -640,3 +640,36 @@
   box-shadow: var(--components-card-box-shadow);
   overflow: hidden;
 }
+
+/* # A button that is not a chip
+ *
+ * Text that happens to be operable: a name that discloses a panel, a mention
+ * that opens what it names. A `<button>` is the right element, and the
+ * user-agent's own styling is wrong for it, since a grey box with a border
+ * around every name in a list turns a page of people into a page of chrome.
+ *
+ * The element keeps its semantics, its tab stop and its focus ring; only the
+ * paint goes. Not for anything that should look like a control: that is
+ * `nldd-button`.
+ */
+.plain-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+/* # A badge in a flex row
+ *
+ * A row lays its children out with `align-items: stretch`, so a badge grows
+ * to the full row height and reads as a filled block rather than a label on
+ * the line it belongs to. This keeps it its own size, vertically centred, and
+ * stops it from shrinking when the text beside it is long.
+ */
+.row-badge {
+  align-self: center;
+  flex-shrink: 0;
+}

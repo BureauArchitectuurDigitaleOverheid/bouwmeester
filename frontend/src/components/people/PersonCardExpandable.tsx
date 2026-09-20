@@ -114,14 +114,14 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
         <PersonAvatar person={person} size="32" />
         <nldd-container width="full" style={{ minWidth: 0 }}>
           <nldd-container layout="row" gap="8" vertical-alignment="center">
-            {/* The name is the disclosure control, not the card. The card
-                holds its own "copy e-mail" button, and a control inside a
-                button is invalid, so `nldd-card button` is not available here
-                — without this the whole card was mouse-only, with no tab stop
-                and nothing to announce. Clicking the card still toggles, as a
-                pointer convenience on top of a real control. */}
+            {/* The name is the disclosure control: the card holds its own
+                links and buttons, so it cannot be one itself, and without a
+                control here the card would be mouse-only. It carries no
+                chrome of its own, because a name is a name: the user-agent
+                button styling would put a grey box around every person. */}
             <button
               type="button"
+              className="plain-button"
               aria-expanded={expanded}
               onClick={(e) => {
                 e.stopPropagation();
@@ -148,6 +148,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             {displayEmail && (
               <button
                 type="button"
+                className="plain-button"
                 onClick={handleCopyEmail}
                 title="Klik om e-mail te kopiëren"
                 style={{ display: 'flex', alignItems: 'center', gap: 'var(--primitives-space-4)', overflow: 'hidden' }}
@@ -225,7 +226,10 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
           <NlddButton
             text={person.is_agent ? 'Prompt' : 'Bericht'}
             startIcon={person.is_agent ? 'terminal' : 'message-rectangle-text'}
-            variant="neutral-tinted"
+            // Transparent, not tinted: this is one action per row, and a
+            // filled button on every row competes with the names for
+            // attention. It keeps its own hover and focus state.
+            variant="neutral-transparent"
             size="sm"
             onClick={() => setMessageOpen(true)}
           />

@@ -181,14 +181,14 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
               intrinsic width back up. The list item is itself a flex row, so
               these belong in it as their own items. */}
           {node.bron === 'fcc_import' && (
-            <Badge variant="amber" title="Auto-aangemaakt door FCC-import" className="shrink-0">
+            <Badge variant="amber" title="Auto-aangemaakt door FCC-import" className="row-badge">
               FCC
             </Badge>
           )}
 
           <Badge
             variant={ORGANISATIE_TYPE_BADGE_COLORS[node.type] || 'gray'}
-            className="shrink-0"
+            className="row-badge"
           >
             {formatOrganisatieType(node.type)}
           </Badge>

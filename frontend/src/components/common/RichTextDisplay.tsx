@@ -154,21 +154,10 @@ function Mention({
 }) {
   const tag = <nldd-tag text={label} color={color} size="sm" />;
   if (!onClick) return <span title={title}>{tag}</span>;
-  // Not `all: unset`: that drops the focus ring along with the chrome, and a
-  // control you cannot see focus on fails WCAG 2.4.7. Only the box is reset.
+  // `plain-button`, not `all: unset`: that drops the focus ring along with the
+  // chrome, and a control you cannot see focus on fails WCAG 2.4.7.
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      style={{
-        background: 'none',
-        border: 'none',
-        padding: 0,
-        font: 'inherit',
-        cursor: 'pointer',
-      }}
-    >
+    <button type="button" className="plain-button" onClick={onClick} title={title}>
       {tag}
     </button>
   );

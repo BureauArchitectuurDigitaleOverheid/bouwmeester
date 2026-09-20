@@ -75,9 +75,9 @@ const components: Components = {
       return (
         <button
           type="button"
+          className="plain-button"
           data-mention-kind={mention.kind}
           data-mention-id={mention.id}
-          style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer' }}
         >
           <nldd-tag
             text={`${mentionSigil(mention.kind)}${mention.label}`}
