@@ -556,8 +556,8 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
 
           {/* The dashed drop-zone border and its drag-active highlight are
               driven by live drag state, not a fixed variant, and there is no
-              nldd-container border/dashed-outline attribute — kept as
-              inline style rather than a static Tailwind class. */}
+              nldd-container border/dashed-outline attribute, so this is an
+              inline style. */}
           <div
             onPaste={handlePaste}
             onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
@@ -961,10 +961,8 @@ function StagePill({ name, color, active, onSelect }: StagePillProps) {
 
   return (
     // `current` marks which one is chosen, for the element's own ARIA. The
-    // check mark is the second signal: the color alone carried the selection,
-    // which is nothing to a colorblind user and nothing at all to a screen
-    // reader (WCAG 1.4.1). The old version had a focus ring beside the fill;
-    // this is that second channel, back.
+    // check mark is the second signal: color alone means nothing to a
+    // colorblind user and nothing at all to a screen reader (WCAG 1.4.1).
     <nldd-list-item-segment ref={ref} button {...(active ? { current: true } : {})}>
       <nldd-tag
         text={name}

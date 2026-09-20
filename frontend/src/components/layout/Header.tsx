@@ -88,9 +88,8 @@ function VocabularySwitch({
 /**
  * Local-development person switcher, shown only when OIDC is not configured.
  *
- * An nldd-combo-box: it is a list you filter by typing, which is what the
- * hand-built version was doing with its own text input, its own filter and its
- * own mousedown listener on document to close again.
+ * A list you filter by typing, which the design system models directly; no
+ * text input, filter and document mousedown listener of our own.
  */
 function DevPersonPicker({
   people,
@@ -101,16 +100,16 @@ function DevPersonPicker({
   currentPerson: Person | null | undefined;
   onPick: (id: string) => void;
 }) {
-  // nldd-dropdown, not nldd-combo-box. The combo-box calls itself "a text input
-  // with autocomplete": it showed the chosen name as editable text, truncated
-  // it mid-word and had the browser spell-check it, with a clear button beside.
-  // Picking one of a fixed list of people is a select, and the dropdown wraps a
-  // native one so the browser keeps the keyboard handling and the accessibility.
+  // nldd-dropdown, not nldd-combo-box. The combo-box is "a text input with
+  // autocomplete": it shows the chosen value as editable, spell-checked text
+  // with a clear button beside it. Picking one of a fixed list of people is a
+  // select, and the dropdown wraps a native one, so the browser keeps the
+  // keyboard handling and the accessibility.
+  //
   // The listener sits on the DROPDOWN, not on the slotted <select>. React's
-  // onChange never fired there: its synthetic event system does not reach a
-  // native control slotted into a custom element, so picking a person silently
-  // did nothing at all. The dropdown re-emits the change itself, with the
-  // value in `detail`.
+  // onChange does not fire there: its synthetic event system never reaches a
+  // native control slotted into a custom element. The dropdown re-emits the
+  // change itself, with the value in `detail`.
   const ref = useRef<HTMLElement>(null);
   useNlddEvent(ref, 'change', (event) => {
     const value =
@@ -193,8 +192,8 @@ export function Header() {
   useNlddEvent(barRef, 'back', breadcrumbs ? handleBack : undefined);
 
   return (
-    // The bar renders the h1 itself and, on a detail page, the back affordance
-    // that used to be a hand-rolled breadcrumb trail.
+    // The bar renders the h1 itself and, on a detail page, the back
+    // affordance.
     <nldd-top-title-bar
       ref={barRef}
       text={title}
@@ -244,10 +243,9 @@ export function Header() {
             accessibleLabel="Zoeken (sneltoets /)"
             onClick={() => {
               // On the search page itself, focus the field that is already
-              // there. Opening the modal on top of it gave two search boxes
-              // stacked on one screen, each with its own results. The `/`
-              // shortcut in AppLayout already makes this distinction; the
-              // button did not.
+              // there rather than stacking a modal on top of it: two search
+              // boxes on one screen, each with its own results. The `/`
+              // shortcut in AppLayout makes the same distinction.
               if (location.pathname === '/search') {
                 document.querySelector<HTMLElement & { focus?: () => void }>(
                   'nldd-search-field',

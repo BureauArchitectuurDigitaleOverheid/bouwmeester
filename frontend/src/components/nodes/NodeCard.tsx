@@ -52,10 +52,9 @@ export function NodeCard({ node }: NodeCardProps) {
           )}
         </nldd-container>
 
-        {/* Always visible. This used to be `group-hover-reveal`, on a comment
-            claiming the `group` state came from Card's `hoverable` — Card has
-            never set that class, so the arrow was hidden at all times. The
-            card is a real button now, so the affordance can just be there. */}
+        {/* Always visible: the whole card is a button, so the affordance does
+            not need to wait for hover. Card never sets `group`, so
+            `group-hover-reveal` here would hide the arrow at all times. */}
         <Icon name="arrow-right" size="md" className="shrink-0" />
       </nldd-container>
 

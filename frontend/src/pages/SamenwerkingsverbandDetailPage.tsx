@@ -422,9 +422,9 @@ export function SamenwerkingsverbandDetailPage() {
                 );
               }
               return (
-                // `group`/`group-hover` is plain CSS (a parent-hover selector),
-                // which has no nldd-container equivalent — kept as-is, same
-                // precedent as LeadDetailPanel's hover-reveal action buttons.
+                // `group`/`group-hover` is plain CSS (a parent-hover
+                // selector), which has no nldd-container equivalent. Same
+                // pattern as LeadDetailPanel's hover-reveal action buttons.
                 <nldd-list-item key={lid.id} className="group">
                   <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
                     <nldd-container layout="row" gap="8" vertical-alignment="center" width="full">

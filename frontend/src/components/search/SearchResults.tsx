@@ -174,8 +174,8 @@ function ResultItemContent({ result, compact }: { result: SearchResult; compact?
         </nldd-container>
         <nldd-text size="sm" weight="medium">{result.title}</nldd-text>
         {result.description && (
-          // line-clamp-* has no nldd-text equivalent, so the wrapper
-          // providing it stays plain CSS; color/size convert to nldd-text.
+          // line-clamp-* has no nldd-text equivalent, so the wrapper carries
+          // it as plain CSS while color and size stay on nldd-text.
           <div className={compact ? 'line-clamp-1' : 'line-clamp-2'}>
             <nldd-text size="xs" color="secondary">{richTextToPlain(result.description)}</nldd-text>
           </div>

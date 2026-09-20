@@ -51,12 +51,10 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
         The identity carries the avatar and the name; the details sit under it
         rather than inside its `supporting-text` slot.
 
-        Measured: that slot is a flex column sized by its content, with no
-        `flex: 1`. An nldd-container slotted into it is a block with no
-        intrinsic width, so the column had nothing to measure and collapsed to
-        zero. The name then wrapped after every word and the card grew from 63
-        to 182 pixels tall. An identity with plain attributes measures 456px in
-        the same card, so the component was fine and the markup was not.
+        That slot is a flex column sized by its content, with no `flex: 1`. An
+        nldd-container slotted into it is a block with no intrinsic width, so
+        the column has nothing to measure and collapses to zero: the name then
+        wraps after every word and the card triples in height.
 
         The slots take rich text (a link, a <time>), not a layout of their own.
       */}

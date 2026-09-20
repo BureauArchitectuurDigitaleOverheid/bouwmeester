@@ -34,10 +34,10 @@ const VARIANTS = {
 /**
  * One notification.
  *
- * The element runs its own clock and dismisses itself, then fires `dismiss` for
- * the consumer to remove it — so the timers this provider used to keep are gone.
- * A `critical` notification ignores the clock and waits for the user, which is
- * why an error no longer disappears on its own.
+ * The element runs its own clock and dismisses itself, then fires `dismiss`
+ * for the consumer to remove it; this provider keeps no timers of its own. A
+ * `critical` notification ignores the clock and waits for the user, so an error
+ * never disappears on its own.
  */
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
   const ref = useRef<HTMLElement>(null);
@@ -111,9 +111,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={{ showError, showSuccess, showWarning }}>
       {children}
       {toasts.length > 0 && (
-        // Viewport-fixed stack pinned to a corner: no nldd-container
-        // equivalent for fixed positioning with a z-index, so the outer box
-        // stays plain CSS; the stacking itself converts.
+        // Viewport-fixed stack pinned to a corner. nldd-container has no
+        // fixed positioning or z-index, so the outer box is plain CSS and the
+        // stacking inside it is an nldd-container.
         <div style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 100 }}>
           <nldd-container gap="8">
             {toasts.map((toast) => (

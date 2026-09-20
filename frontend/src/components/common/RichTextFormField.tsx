@@ -16,11 +16,10 @@ const DEFAULT_PLACEHOLDER =
 /**
  * A description field.
  *
- * `nldd-form-field` owns the label, which is why this no longer draws its own:
- * the field associates the two without a for/id pair, and it also sets the
- * editor's accessible name. The previous version wrote a plain `<label>` beside
- * a framed editor, so a description field and a text field on the same form had
- * visibly different borders.
+ * `nldd-form-field` owns the label, so this draws none of its own: the field
+ * associates the two without a for/id pair, and it also sets the editor's
+ * accessible name. A hand-written `<label>` beside the editor would break both,
+ * and leave this field framed differently from a text field on the same form.
  *
  * The design guidelines mark the optional fields rather than the required ones,
  * which the field does itself through `optional`.

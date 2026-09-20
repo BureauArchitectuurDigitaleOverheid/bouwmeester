@@ -129,8 +129,8 @@ export function AppLayout() {
           ref={splitViewRef}
           primary-sidebar-accessible-label="Navigatie"
           inspector-accessible-label="Assistent"
-          /* Below lg the split view moves the sidebar into a sheet itself, which
-             replaces the fixed-position overlay this layout used to hand-roll. */
+          /* Below lg the split view moves the sidebar into a sheet itself, so
+             this layout needs no overlay of its own. */
           primary-sidebar-as-sheet={orUndef(isMobile)}
           /* The width of the sidebar column lives on the split view, not on the
              pane. Its shadow DOM wraps the pane in a div whose width is entirely

@@ -33,7 +33,7 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
   // is not one of the nine design-system patterns — there is no bubble/chat
   // component in nldd — so it stays custom markup. What IS layout (alignment
   // of the bubble to a side, the row it sits in with its hover-revealed
-  // react-button) converts to nldd-container below.
+  // react-button) is an nldd-container below.
   return (
     <nldd-container layout="row" horizontal-alignment={isCurrentUser ? 'right' : 'left'}>
       <div style={{ maxWidth: '80%' }}>
@@ -141,14 +141,6 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [replies]);
-
-  // Escape is the dialog's own business now. This used to be a keydown listener
-  // on document, which the native <dialog> inside nldd-window makes both
-  // redundant and wrong: the window closes on the dialog's `cancel` event, so
-  // both would fire, and a listener on document also sees the key when the
-  // mention popup has already handled it. The `!e.defaultPrevented` guard in
-  // the old version was there for exactly that popup, and it only worked as
-  // long as nothing else closed the modal too.
 
   // Mark as read when opened — only if current user is the recipient (person_id),
   // not the sender.  After a reply the backend marks the root unread for the

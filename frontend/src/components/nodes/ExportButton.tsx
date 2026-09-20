@@ -15,8 +15,8 @@ export function ExportButton({ nodeType, hideLabel }: ExportButtonProps) {
       <Button id={triggerId} variant="secondary" icon="download">
         {/* `Button` reads this exact className to detect a responsively-hidden
             label and turn it into the button's accessible name on narrow
-            screens (see findResponsivelyHiddenLabel in common/Button.tsx) —
-            it is the wrapper's own API contract, not decorative Tailwind. */}
+            screens (see findResponsivelyHiddenLabel in common/Button.tsx).
+            It is the wrapper's own API contract, not decoration. */}
         <span className={hideLabel ? 'hidden-below-sm' : undefined}>Exporteren</span>
       </Button>
 

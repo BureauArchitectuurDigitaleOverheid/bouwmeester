@@ -1,14 +1,14 @@
 import type { BadgeVariant } from '@/types';
 
 /**
- * `nldd-tag` behind the previous Badge API.
+ * A labelled chip, as an `nldd-tag`.
  *
- * nldd-tag accepts the five semantic roles AND the Rijkshuisstijl colors, so the
- * twelve variants this app uses keep their distinctness instead of collapsing
- * into five. Where a variant already carried meaning (red = error, emerald =
- * done, amber = attention) it maps to the semantic role, which keeps it correct
- * in dark mode and for colorblind users; the purely decorative ones map to the
- * nearest Rijkshuisstijl color.
+ * nldd-tag accepts the five semantic roles AND the Rijkshuisstijl colors, so
+ * this app's twelve variants stay distinct rather than collapsing into five. A
+ * variant that carries meaning (red = error, emerald = done, amber = attention)
+ * maps to the semantic role, which keeps it correct in dark mode and for
+ * colorblind users; the purely decorative ones map to the nearest
+ * Rijkshuisstijl color.
  *
  * `nldd-badge` is a different component: a small count or status dot on top of
  * another element, not a labelled chip. Our Badge is a chip, hence the tag.
@@ -46,13 +46,13 @@ export function Badge({ children, variant = 'gray', dot = false, className, titl
   // fall back to the slot for rich content.
   const text = typeof children === 'string' ? children : undefined;
 
-  // The tag paints itself from `color`; a Tailwind color class passed through
-  // `className` now lands on the host and does nothing, because the visible
-  // surface lives in the shadow root. That fails silently — the badge simply
-  // renders in the default color — so say it out loud in development.
+  // The tag paints itself from `color`. A color class passed through
+  // `className` lands on the host and does nothing, because the visible surface
+  // lives in the shadow root, and the badge just renders in the default color.
+  // That is silent, so say it out loud in development.
   if (import.meta.env.DEV && className && /\b(bg|text|border|ring)-/.test(className)) {
     console.warn(
-      `<Badge className="${className}"> — color utilities no longer apply; ` +
+      `<Badge className="${className}"> — color utilities do not apply; ` +
         'the tag paints from `color`. Use the `variant` prop instead.',
     );
   }

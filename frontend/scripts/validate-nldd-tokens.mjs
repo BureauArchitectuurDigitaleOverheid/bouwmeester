@@ -57,8 +57,7 @@ const files = [];
  * Files allowed to name colors literally.
  *
  * The graph canvases hand their colors to reactflow and to raw SVG, which paint
- * outside the cascade and cannot read a custom property off an ancestor. Those
- * were excluded from the migration for the same reason.
+ * outside the cascade and cannot read a custom property off an ancestor.
  */
 const LITERAL_COLOR_OK = /(graph|reactflow|mermaid)/i;
 
@@ -69,9 +68,7 @@ for (const file of files) {
 
   // A hard-coded color in an inline style. The token check above cannot see
   // these: there is no var() to be wrong about, so a color simply sits there
-  // and never follows the theme. Moving a Tailwind class into a style object
-  // with the same literal value lowers the className count and changes
-  // nothing, which is how several of these got written.
+  // and never follows the theme.
   if (!LITERAL_COLOR_OK.test(rel)) {
     for (const m of source.matchAll(
       // The quote is optional: a JS style object writes `color: '#333'`, a

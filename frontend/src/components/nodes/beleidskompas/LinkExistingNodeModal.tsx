@@ -107,8 +107,8 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excl
             text={`Geen ${NODE_TYPE_LABELS[nodeType].toLowerCase()} gevonden.`}
           />
         ) : (
-          // No nldd-container attribute caps height with a scrollbar; this stays
-          // inline style rather than a Tailwind utility class.
+          // No nldd-container attribute caps height with a scrollbar, so this
+          // is an inline style.
           <div style={{ maxHeight: '18rem', overflowY: 'auto' }}>
             <nldd-list variant="box-tinted" dividers="always">
               {filteredNodes.map((node) => (

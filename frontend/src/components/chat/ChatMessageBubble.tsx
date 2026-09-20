@@ -101,9 +101,8 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
         horizontal-alignment={isUser ? 'right' : 'left'}
       >
         {/* No nldd component renders a chat message bubble, so the rounded
-            pill shape and its background stay scoped CSS; the background
-            color itself comes from the design system's own color tokens
-            rather than a hardcoded or Tailwind palette value. */}
+            pill shape and its background are scoped CSS. The background color
+            comes from the design system's color tokens, never a literal. */}
         <div
           style={{
             maxWidth: '85%',
@@ -177,10 +176,8 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
             // nldd-text equivalent for that CSS white-space value.
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : message.content ? (
-            // prose-sm referenced the Tailwind Typography plugin, which was
-            // never installed in this project — MarkdownRenderer styles its
-            // own headings/lists/etc. independently, so the class did nothing
-            // even before this migration. Dropped rather than converted.
+            // MarkdownRenderer styles its own headings and lists, so the
+            // wrapper carries nothing.
             <div>
               <MarkdownRenderer content={fixNumberedBoldHeadings(message.content)} compact onBmLink={handleBmLink} />
             </div>

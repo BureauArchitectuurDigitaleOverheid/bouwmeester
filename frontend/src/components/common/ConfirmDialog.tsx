@@ -15,16 +15,14 @@ interface ConfirmDialogProps {
 }
 
 /**
- * `nldd-modal-dialog` behind the previous API.
+ * A confirmation, as an `nldd-modal-dialog`.
  *
- * Note the button order for a destructive action: the design guidelines put the
- * safe way out FIRST and give it `variant="primary"`, with the destructive
- * action below it as `destructive`. The primary button is where someone lands
- * on autopilot, and that should be the way back, not the irreversible step.
- * The previous version had it the other way round: cancel as a quiet secondary,
- * the red confirm as the prominent one.
+ * Button order for a destructive action: the design guidelines put the safe way
+ * out FIRST and give it `variant="primary"`, with the destructive action below
+ * it as `destructive`. The primary button is where someone lands on autopilot,
+ * and that should be the way back, not the irreversible step.
  *
- * The wider point from the same guidelines still stands and is not solved here:
+ * The wider point from the same guidelines stands and is not solved here:
  * undo beats confirm. People click OK on autopilot, so a confirmation catches
  * few mistakes. Replacing these dialogs with optimistic updates plus an undo is
  * its own piece of work, and the toast already carries an action slot for it.

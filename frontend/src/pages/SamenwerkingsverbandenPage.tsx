@@ -138,7 +138,7 @@ export function SamenwerkingsverbandenPage() {
         {/* `min-width` makes the item fluid, per its own docs, and that is what
             gives the wrap row below a width to break against. Without it the
             item measures its content, the row measures the item, and both end
-            at zero: the filters rendered nothing while taking up 223 pixels. */}
+            at zero: filters that take up space and show nothing. */}
         <nldd-toolbar-item slot="start" priority={1} min-width="464px">
           <nldd-container layout="wrap" gap="12" vertical-alignment="bottom">
             <nldd-container width="256px">

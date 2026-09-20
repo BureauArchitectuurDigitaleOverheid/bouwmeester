@@ -61,10 +61,9 @@ export function normaliseListPaste(text: string): string {
 /**
  * The markdown for a pasted list, or null when the text is not one.
  *
- * Used to produce HTML for ProseMirror to parse into list nodes. The editor
- * stores markdown now, so `1. foo` is already a list and only the normalisation
- * above is still doing work: the bullets and the indenting that markdown would
- * otherwise read as something else.
+ * The editor stores markdown, so `1. foo` is already a list. The work left
+ * here is the normalisation above: the bullets and the indenting that markdown
+ * would otherwise read as something else.
  */
 export function listyTextToMarkdown(text: string): string | null {
   if (!looksLikeListPaste(text)) return null;

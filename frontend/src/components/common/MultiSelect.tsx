@@ -5,11 +5,9 @@ export interface MultiSelectOption {
   value: string;
   label: string;
   /**
-   * No longer drawn. It used to put a colored dot before the label, but
-   * nldd-menu-item has no slots and its `icon` takes a name from the icon set,
-   * not a hex. Only the node-type filter on CorpusPage passed one, where the
-   * label already says which type it is, so the dot repeated the text.
-   * Kept in the type so the call site does not have to change.
+   * Accepted but not drawn: nldd-menu-item has no slots, and its `icon` takes a
+   * name from the icon set rather than a hex. The label already names the
+   * option, so a colored dot would only repeat it.
    */
   color?: string;
 }

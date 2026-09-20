@@ -197,8 +197,8 @@ export function CorpusPage() {
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={2}>
           {/* `Button` reads this className to detect a responsively-hidden
-              label and turn it into the accessible name on narrow screens —
-              the wrapper's own API contract, not decorative Tailwind (see
+              label and turn it into the accessible name on narrow screens. It
+              is the wrapper's own API contract, not decoration (see
               common/Button.tsx). */}
           <Button icon="plus" onClick={() => setShowCreateForm(true)}>
             <span className="hidden-below-sm">Nieuwe node</span>

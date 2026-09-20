@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 interface EmptyStateProps {
-  /** An nldd-icon name. ReactNode is still accepted for not-yet-converted callers. */
+  /** An nldd-icon name, or an element to render in its place. */
   icon?: ReactNode | string;
   title: string;
   description?: string;
@@ -9,7 +9,7 @@ interface EmptyStateProps {
 }
 
 /**
- * `nldd-inline-dialog` behind the previous API.
+ * The "nothing here" state, as an `nldd-inline-dialog`.
  *
  * This is also what belongs in the `empty` / `no-results` slots of nldd-list and
  * nldd-table, which is why those slots ship empty: what an empty list should say

@@ -10,16 +10,15 @@ interface PersonAvatarProps {
 }
 
 /**
- * `nldd-avatar` behind the previous API.
+ * A person's avatar, with an online dot.
  *
  * The element derives initials from `name` itself and falls back to an icon
  * when there is nothing to derive (an empty name) or when `icon` is set
- * explicitly, which is what marks an agent here — 'sparkles' rather than a
- * literal robot glyph, matching the lucide->nldd icon bridge's own choice for
- * `Bot`. The online dot is `nldd-badge`, the design system's small
- * count/status overlay: icon-only with no text or number, it renders as a
- * plain dot, and `pulse` gives it the "live" read a static ring used to
- * imply.
+ * explicitly, which is what marks an agent here: 'sparkles' rather than a
+ * literal robot glyph, matching the icon bridge's own choice for `Bot`. The
+ * online dot is `nldd-badge`, the design system's small count/status overlay:
+ * icon-only with no text or number it renders as a plain dot, and `pulse`
+ * gives it a live read.
  */
 export function PersonAvatar({ person, size = '40' }: PersonAvatarProps) {
   const online = isPersonOnline(person);

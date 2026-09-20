@@ -6,8 +6,8 @@ import { ChatInput } from './ChatInput';
 
 /**
  * Fills the split view's inspector pane. Sizing and resizing (the drag handle,
- * the width clamp) are the split view's job now — this used to be a
- * fixed-position panel it hand-rolled itself; see AppLayout for the pane.
+ * the width clamp) belong to the split view, not to this component; see
+ * AppLayout for the pane.
  */
 export function ChatPanel() {
   const { chatOpen, setChatOpen } = useUIStore();

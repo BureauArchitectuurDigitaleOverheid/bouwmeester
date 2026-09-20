@@ -60,9 +60,9 @@ const STATUS_OPTIONS: MultiSelectOption[] = Object.entries(OPDRACHT_STATUS_LABEL
 
 /** FCC "traffic light" dots. Green, orange and red carry their usual meaning,
  * so `FCC_TRAFFIC_LIGHT_COLORS` (src/types) yields a design-system color token
- * per value and the dot paints from it. It used to yield a Tailwind class,
- * which after the migration rendered nothing at all: three invisible dots that
- * only a title attribute gave away. */
+ * per value and the dot paints from it directly. Anything that is not a real
+ * custom property leaves the dot invisible, with only its title attribute to
+ * give it away. */
 function FccTrafficLights({ opdracht }: { opdracht: Opdracht }) {
   if (!opdracht.fcc_raw_data) return null;
   return (

@@ -11,9 +11,8 @@ import type { Lead, LeadColumn, LeadFilters } from '@/types';
 import { leadColumnTagColor } from './stageColors';
 
 /** The column's top border picks up the same color as its nldd-tag, at the
- *  "100" (solid-fill) primitive step, via a CSS custom property — not a
- *  Tailwind border-color utility, since the color is one of a closed set
- *  chosen at runtime, not a fixed class known at build time. */
+ *  "100" (solid-fill) primitive step, via a CSS custom property: the color is
+ *  one of a closed set chosen at runtime, not known at build time. */
 function columnBorderColorVar(color: string): string {
   return `var(--primitives-color-${leadColumnTagColor(color)}-100)`;
 }
@@ -201,17 +200,11 @@ export function LeadKanbanBoard({
     <nldd-container gap="16">
       <LeadMetricsBar />
 
-      {/* The board itself stays a plain scroll strip: nldd-container's
-          `layout="row"` has no per-child drop-target styling, and every
-          column below needs its own onDragOver/onDragLeave/onDrop, drawn
-          with inline style rather than static Tailwind classes since the
-          highlight is driven by live drag state, not a fixed variant.
-          Dropped from the original: `snap-x snap-mandatory` one-column-at-
-          a-time scrolling and the negative-margin full-bleed edge-to-edge
-          strip on mobile. Both were Tailwind responsive utilities with no
-          nldd-container equivalent (no scroll-snap or breakpoint-negative-
-          margin attribute); flagging in case that mobile behavior mattered
-          on its own rather than as a side effect of the old flex classes. */}
+      {/* The board itself is a plain scroll strip: nldd-container's
+          `layout="row"` has no per-child drop-target styling, and every column
+          below needs its own onDragOver/onDragLeave/onDrop, drawn with inline
+          style because the highlight follows live drag state rather than a
+          fixed variant. */}
       <div style={{ display: 'flex', gap: '12px', minHeight: '500px', overflowX: 'auto', paddingBottom: '8px' }}>
         {visibleColumns.map((col) => (
           <div

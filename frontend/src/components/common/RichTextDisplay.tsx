@@ -89,9 +89,9 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
 
-  // Mention clicks are MarkdownRenderer's own business now. This used to be
-  // handled here, in a wrapper div, which meant the three callers that render
-  // MarkdownRenderer directly had inert mention buttons.
+  // Mention clicks are MarkdownRenderer's own business. Handling them here, in
+  // a wrapper, would leave inert mention buttons in every caller that renders
+  // MarkdownRenderer directly.
   const markdown = (value: string) => <MarkdownRenderer content={value} />;
 
   if (!content) {
@@ -105,8 +105,8 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
   const doc = isTipTapJson(content);
   if (!doc) {
     // Detect markdown syntax and render accordingly
-    // Markdown, or a mention token, which is markdown by construction. After
-    // the TipTap migration this is what every stored description looks like.
+    // Markdown, or a mention token, which is markdown by construction. This is
+    // what a stored description normally looks like.
     if (looksLikeMarkdown(content) || containsMention(content)) {
       // MarkdownRenderer brings its own nldd-rich-text.
       return markdown(content);
@@ -120,8 +120,9 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
     );
   }
 
-  // Handle legacy data: TipTap JSON where markdown syntax was stored as plain
-  // text (before the editor learned to convert markdown on input).
+  // Legacy data: TipTap JSON with markdown syntax stored as plain text. The
+  // editor converts markdown on input, so nothing writes this shape any more,
+  // but old rows still hold it.
   const plainText = extractPlainText(doc);
   if (plainText !== null && looksLikeMarkdown(plainText)) {
     return markdown(plainText);
@@ -136,9 +137,9 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
 /**
  * An @person or #dossier chip inside running text.
  *
- * Clickable ones are a button wrapping the tag; the rest are just a tag. The
- * previous version made both a <button> and told the inert one apart with
- * `cursor-default`, so screen readers offered a control that did nothing.
+ * Clickable ones are a button wrapping the tag; the rest are just a tag. Never
+ * make both a <button> and tell them apart by cursor alone: a screen reader
+ * would offer a control that does nothing.
  */
 function Mention({
   label,
@@ -200,9 +201,9 @@ function renderNode(node: TipTapNode, key: number, handlers: MentionHandlers): R
       const label = node.attrs?.label as string | undefined;
       const mentionType = (node.attrs?.mentionType as string | undefined) ?? 'person';
       const isOrg = mentionType === 'organisatie';
-      // A person mention goes nowhere, so it is not a button. It used to be one
-      // with `cursor-default`, which announced a control to screen readers that
-      // does nothing when activated.
+      // A person mention goes nowhere, so it is not a button: a control that
+      // does nothing when activated is worse than plain text to a screen
+      // reader.
       return (
         <Mention
           key={key}

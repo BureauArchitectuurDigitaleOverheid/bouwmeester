@@ -47,13 +47,11 @@ interface ModalProps {
 }
 
 /**
- * `nldd-window` + `nldd-page` behind the previous API, so the 32 call sites are
- * unchanged.
+ * `nldd-window` + `nldd-page` as a modal dialog.
  *
- * The window is a native `<dialog>`, always modal. That hands the browser four
- * things this component used to carry itself: the backdrop, the top layer (so
- * the shared `openModalCount` and the `zIndex` prop are gone), the focus trap,
- * and Escape.
+ * The window is a native `<dialog>`, always modal, so the browser owns four
+ * things a caller never has to: the backdrop, the top layer (stacking needs no
+ * z-index of its own), the focus trap, and Escape.
  *
  * The title bar is `nldd-top-title-bar` in the page's sticky header, which
  * supplies the heading, the back affordance and the dismiss button, each with

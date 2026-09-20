@@ -24,9 +24,8 @@ interface SearchModalProps {
  * `nldd-list type="listbox"` owns the search field, ArrowUp/Down/Home/End,
  * Enter-to-activate and Escape-to-clear-then-close itself (see list.js): when
  * the search value is empty, Escape falls through instead of being consumed,
- * which is what lets this component's own Escape handler close the modal.
- * That replaced this component's hand-rolled input, selectedIndex state and
- * keydown listener entirely.
+ * which is what lets this component's own Escape handler close the modal. So
+ * there is no input, selected-index state or keydown listener here.
  */
 export function SearchModal({ open, onClose }: SearchModalProps) {
   const [query, setQuery] = useState('');
@@ -56,7 +55,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
   // Mirror `open` onto the window's imperative API rather than mounting and
   // unmounting it, so the open and close animation plays. nldd-window is a
   // native <dialog>, so it brings the backdrop, the scroll lock, the focus trap
-  // and Escape with it — all three hand-rolled effects that used to live here.
+  // and Escape with it; none of that is this component's job.
   useNlddOverlay(windowRef, open, onClose);
 
   // Reset state and focus the listbox's own search field when the modal opens.
@@ -72,8 +71,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
 
   return (
     // A native <dialog>, always modal: it owns the backdrop, the top layer, the
-    // focus trap and Escape. Replaces the hand-rolled fixed overlay, the body
-    // scroll lock and the keydown listener this component used to carry.
+    // focus trap and Escape.
     //
     // The surface belongs here rather than on the list: `variant="box-base"`
     // paints only `.list__main` (the options), because the search bar and the

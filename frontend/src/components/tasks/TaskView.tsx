@@ -149,8 +149,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
             {/* This className is not styling: Button's own responsive-label logic
                 (see components/common/Button.tsx) reads "hidden-below-sm" to find
                 the text it should fall back to as the accessible name when the
-                label itself is hidden below sm. It is a marker Button parses, not
-                a Tailwind utility rendered here — left as-is on purpose. */}
+                label itself is hidden below sm. It is a marker Button parses. */}
             <span className="hidden-below-sm">Nieuwe taak</span>
           </Button>
           <nldd-menu-item slot="overflow" text="Nieuwe taak" icon="plus"></nldd-menu-item>

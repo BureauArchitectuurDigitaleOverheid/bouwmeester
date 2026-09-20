@@ -91,11 +91,9 @@ export function EdgeSchemaManager() {
         This is a from-type x to-type cross-tab matrix (10x10 toggle cells), not
         a record list, so nldd-table's per-record column model does not fit: the
         first column needs to stay sticky while scrolling, which nldd-table has
-        no attribute for. Left as a native <table> per the conversion brief's
-        escape hatch ("if a component fights you, you are probably using the
-        wrong one"); the interactive cells and card chrome are converted. Cell
-        styling here is plain CSS against `--primitives-*` tokens rather than
-        Tailwind utilities, since no nldd-* primitive fits a sticky-column matrix.
+        no attribute for. A native <table> is the right escape hatch here. Cell
+        styling is plain CSS against `--primitives-*` tokens, since no nldd-*
+        primitive fits a sticky-column matrix.
       */}
       <Card padding={false}>
         <div style={{ overflowX: 'auto' }}>

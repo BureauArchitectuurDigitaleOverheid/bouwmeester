@@ -54,11 +54,11 @@ interface CreatableSelectProps {
 }
 
 /**
- * `nldd-combo-box` behind the previous API.
+ * A select you can type into, with an option to create a value that does not
+ * exist yet.
  *
- * This replaces ~345 lines of hand-rolled autocomplete: the element owns the
- * filtering UI, the keyboard (arrows, Home/End, Enter, Escape), the ARIA
- * combobox wiring and the clear button.
+ * `nldd-combo-box` owns the filtering UI, the keyboard (arrows, Home/End,
+ * Enter, Escape), the ARIA combobox wiring and the clear button.
  *
  * What stays ours is the one thing the element has no opinion about: creating an
  * option that does not exist yet. `allow-custom` lets a typed value be
@@ -167,8 +167,7 @@ export function CreatableSelect({
   // The `searchable={false}` branch below renders an nldd-dropdown, which
   // needs its own listener: it stops the slotted select's native `change` and
   // re-emits a CustomEvent from the host, so React's onChange on the select
-  // never fired. 21 call sites pass `searchable={false}`, and in all of them
-  // picking an option did nothing at all.
+  // never fires and picking an option does nothing at all.
   const dropdownRef = useRef<HTMLElement>(null);
   useNlddEvent(dropdownRef, 'change', (event) => {
     const next = eventValue(event);
@@ -210,13 +209,11 @@ export function CreatableSelect({
   /**
    * A plain list, for `searchable={false}`.
    *
-   * An earlier pass rendered the combo box here too, reasoning that two call
-   * sites which look identical should not behave differently. The visible
-   * result argued otherwise: a five-option filter showed its own value as
-   * truncated, spell-checked, editable text with a clear button beside it,
-   * because a combo box is, in its own words, "a text input with autocomplete".
-   * A select is not a quieter combo box; it is a different control, and the
-   * nineteen call sites that pass `searchable={false}` are asking for it.
+   * Not a combo box with filtering switched off. A combo box is, in its own
+   * words, "a text input with autocomplete", so a short filter would show its
+   * own value as truncated, spell-checked, editable text with a clear button
+   * beside it. A select is a different control, and that is what
+   * `searchable={false}` is asking for.
    *
    * nldd-dropdown wraps a native <select>, so the browser owns the keyboard,
    * the form value and the accessibility, including type-to-jump. Nothing is

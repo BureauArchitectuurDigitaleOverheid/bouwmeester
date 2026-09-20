@@ -128,8 +128,7 @@ export function Sidebar({ mobile }: SidebarProps) {
    * Eleven items in one strip is a wall of words to scan. Drawing them per
    * group with a line in between keeps the same routes and rights, and only
    * changes how quickly you find one. The design guidelines push further than
-   * this (they would rather the content carried the navigation), but that is a
-   * redesign, not a migration.
+   * this, preferring the content itself to carry the navigation.
    */
   const renderGrouped = (items: NavItem[]) => {
     const order: NavItem['group'][] = ['werk', 'organisatie', 'kennis'];
@@ -175,8 +174,8 @@ export function Sidebar({ mobile }: SidebarProps) {
 
   return (
     // Full-height flex column: no nldd-container height="full" equivalent
-    // for a column that has to fill the split view's sidebar pane exactly,
-    // so the outer shell stays plain CSS; everything inside converts.
+    // for a column that has to fill the split view's sidebar pane exactly, so
+    // the outer shell is plain CSS and everything inside it is nldd.
     <div style={{ display: 'flex', height: '100%', flexDirection: 'column' }}>
       {/* Collapsed the pane is 64px, which does not fit a 32px logo and a 32px
           button beside each other. They stack there instead, so the toggle stays
@@ -219,9 +218,9 @@ export function Sidebar({ mobile }: SidebarProps) {
           padding to be centred, and the row's own -8px outward margin does not
           move its content, so that is the number here rather than the 12px the
           expanded state uses.
-          The flex-grow/scroll region itself has no nldd-container equivalent
-          (no primitive for "grow to fill remaining column height and scroll
-          independently"), so that part stays plain CSS; the padding converts. */}
+          The flex-grow/scroll region has no nldd-container equivalent (no
+          primitive for "grow to fill remaining column height and scroll
+          independently"), so that part is plain CSS. */}
       <div style={{ flex: 1, overflowY: 'auto', paddingLeft: expanded ? '20px' : '22px', paddingRight: expanded ? '20px' : '22px' }}>
         {renderGrouped(navItems)}
       </div>

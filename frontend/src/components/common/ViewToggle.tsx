@@ -10,9 +10,7 @@ export interface ViewToggleOption<T extends string> {
    *
    * The name is the shorter route: `nldd-segmented-control-item` has its own
    * `icon` attribute, and these call sites already use real design-system
-   * names, so `icon: 'list'` would drop the wrapper. Left as it is because
-   * the wrapper works and eleven working call sites are not worth the churn
-   * inside this PR.
+   * names, so `icon: 'list'` skips the wrapper entirely.
    */
   icon: ReactNode | string;
 }
@@ -24,12 +22,11 @@ interface ViewToggleProps<T extends string> {
 }
 
 /**
- * `nldd-segmented-control` behind the previous API.
+ * One choice out of a few, laid out as a strip.
  *
- * This is what that component is for: one choice out of a few, laid out as a
- * strip. It brings the radio semantics and the arrow-key behaviour, which the
- * hand-rolled row of buttons did not have — those were seven plain buttons with
- * no indication that they belonged together or that only one could be active.
+ * `nldd-segmented-control` brings the radio semantics and the arrow-key
+ * behaviour. A row of plain buttons gives a screen reader no indication that
+ * they belong together or that only one can be active, so use this instead.
  */
 export function ViewToggle<T extends string>({ value, onChange, options }: ViewToggleProps<T>) {
   const ref = useRef<HTMLElement>(null);
@@ -53,8 +50,8 @@ export function ViewToggle<T extends string>({ value, onChange, options }: ViewT
           selected={orUndef(option.value === value)}
           {...(typeof option.icon === 'string' ? { icon: option.icon } : {})}
         >
-          {/* A non-string icon is a leftover element from a caller that has not
-              been converted; it still renders through the icon slot. */}
+          {/* A non-string icon renders through the icon slot instead of the
+              `icon` attribute. */}
           {option.icon && typeof option.icon !== 'string' ? (
             <span slot="icon">{option.icon}</span>
           ) : null}

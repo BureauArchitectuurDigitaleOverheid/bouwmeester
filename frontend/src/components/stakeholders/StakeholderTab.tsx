@@ -37,13 +37,12 @@ const HOUDING_OPTIONS: StakeholderHouding[] = [
 const SCORE_OPTIONS = [1, 2, 3, 4, 5];
 
 /**
- * Houding -> Badge variant, replacing the pre-existing STAKEHOLDER_HOUDING_COLORS
- * (raw Tailwind bg-/text- classes from `@/types`). That constant painted nothing
- * once Badge moved to nldd-tag: the wrapper only takes a semantic/Rijkshuisstijl
- * `variant`, and forwarding arbitrary Tailwind classes as `className` no longer
- * has anything to attach to. Pre-existing bug, not introduced by this
- * conversion — flagged rather than fixed at the source, since `@/types` is
- * outside this pass's scope.
+ * Houding -> Badge variant.
+ *
+ * Badge takes a semantic or Rijkshuisstijl `variant` and nothing else; a color
+ * class handed to it as `className` has nothing to attach to. Do not reach for
+ * STAKEHOLDER_HOUDING_COLORS in `@/types`, which holds class names that paint
+ * nothing.
  */
 const HOUDING_BADGE_VARIANT: Record<StakeholderHouding, BadgeVariant> = {
   tegen: 'red',

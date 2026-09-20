@@ -9,8 +9,8 @@
  *   - an element that is used but never imported in register.ts (renders its
  *     children unstyled, no error anywhere)
  *
- * Each of those cost us real bugs this migration. The design system validates
- * its own documentation the same way, against the same manifest.
+ * The design system validates its own documentation the same way, against the
+ * same manifest.
  *
  * Run: node scripts/validate-nldd-markup.mjs
  */
@@ -85,10 +85,9 @@ for (const file of files) {
   const rel = path.relative(SRC, file);
 
   // Each opening tag with its attribute text, via the brace-counting scanner
-  // below. It used to be a second regex here, which stopped at the first `>`
-  // it saw and therefore read one element's attributes as the previous one's:
-  // six attributes of an nldd-container were reported against the
-  // nldd-list-item-segment above it.
+  // below. A plain regex cannot do this: it stops at the first `>` it sees,
+  // including one inside a JSX expression, and then reads one element's
+  // attributes as the previous one's.
   for (const m of scanTags(source)) {
     const [, closingSlash, tag, attrText] = m;
     if (closingSlash) continue;
@@ -283,9 +282,7 @@ for (const file of files) {
     // A width-less parent holding a child that measures ITS parent. The two
     // wait on each other and both end at zero: the element renders nothing
     // while keeping its height, so a filter row or a set of pills disappears
-    // and leaves a gap. This cost six visible bugs in one afternoon — stacked
-    // pills on Leads, invisible filters on Samenwerkingsverbanden, a view
-    // toggle painting on top of a button on Taken.
+    // and leaves a gap in the layout.
     //
     // A container or toolbar-item needs a measure of its own: `min-width`, a
     // fixed `width`, or `max-width`. `width="fit-content"` is NOT one, since

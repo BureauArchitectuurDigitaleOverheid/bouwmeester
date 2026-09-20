@@ -8,10 +8,9 @@
  * clips and wraps), image fitting, and a few one-offs. Those are properties of
  * a box, not of a design, which is why no component owns them.
  *
- * This file exists so `tailwindcss` can leave package.json. Each class below
- * replaces exactly one Tailwind utility and nothing more; this is not a
- * utility framework and should not grow into one. Before adding a class, check
- * that no nldd-* attribute does the job.
+ * Each class below does exactly one thing. This is not a utility framework and
+ * must not grow into one. Before adding a class, check that no nldd-*
+ * attribute does the job.
  */
 
 /* # Text clipping
@@ -140,9 +139,8 @@
  *
  * `group` marks the hoverable ancestor (a row, a card); `group-hover-reveal`
  * is the child that stays invisible until that ancestor is hovered or has
- * focus within it. Both class names have to exist as real CSS: Tailwind's
- * `group`/`group-hover:*` utilities were compiled on the fly, and nothing
- * else defines a `.group:hover .foo` rule once tailwindcss is gone.
+ * focus within it. Both class names need a real rule here: nothing else in the
+ * app defines a `.group:hover .foo` selector.
  */
 .group-hover-reveal {
   opacity: 0;
@@ -214,9 +212,8 @@
  *
  * `hidden-below-sm` forces `display: inline` above the breakpoint, which is
  * right for a `<span>` of label text and wrong for anything that lays out its
- * children. On an `nldd-container` it flattened a row to inline and the
- * contents measured zero: 53 collapsed elements on the organisation page, all
- * of them role labels ("Directeur", "Coördinator") that simply were not there.
+ * children: on an `nldd-container` it flattens the row to inline and its
+ * contents measure zero.
  *
  * `revert` hands the display back to whatever the component's own stylesheet
  * sets, instead of this file guessing at it.

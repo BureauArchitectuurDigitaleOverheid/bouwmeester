@@ -69,7 +69,7 @@ function parseBmLink(href: string | undefined): { type: 'node' | 'task' | 'lead'
 const components: Components = {
   a: ({ href, children }) => {
     // A mention: a link carrying a scheme, written by the editor and by the
-    // TipTap migration. Rendered as a chip that opens the thing it names.
+    // backend. Rendered as a chip that opens the thing it names.
     const mention = href ? parseMention(href, String(children ?? '')) : null;
     if (mention) {
       return (
@@ -170,12 +170,10 @@ export function MarkdownRenderer({ content, compact, onBmLink }: MarkdownRendere
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
-      // Mentions are handled here rather than by each caller. They used to be
-      // wired up only in RichTextDisplay, which wrapped this component in its
-      // own click handler; the three callers that render MarkdownRenderer
-      // directly (chat, the parlementair summary, the docs page) got a real
-      // button, a real tab stop and a screen reader announcing "button" for
-      // something that did nothing at all.
+      // Mentions are handled here rather than by each caller. The chip above
+      // is a real button with a real tab stop, so any caller that renders
+      // MarkdownRenderer directly (chat, the parlementair summary, the docs
+      // page) would otherwise offer a button that does nothing.
       const mention = (e.target as HTMLElement).closest<HTMLElement>('[data-mention-kind]');
       if (mention) {
         const kind = mention.dataset.mentionKind;

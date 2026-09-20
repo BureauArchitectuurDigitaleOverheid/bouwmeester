@@ -13,9 +13,9 @@
  * the scheme is not understood, which is what makes it safe to store in a
  * column other code reads.
  *
- * The backend writes this same format in the TipTap migration
- * (core/tiptap_markdown.py). The two must agree, so if a scheme changes here it
- * changes there, and a migration rewrites what is already stored.
+ * The backend writes this same format in `core/tiptap_markdown.py`. The two
+ * must agree: a scheme changed here has to change there, and everything
+ * already stored has to be rewritten to match.
  */
 
 /** Mention kind -> URL scheme. Keep in step with _MENTION_SCHEMES in the backend. */

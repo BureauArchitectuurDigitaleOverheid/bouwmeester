@@ -23,20 +23,20 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 const ERROR_ID = 'select-error';
 
 /**
- * `nldd-dropdown` behind the previous API.
+ * A select, as an `nldd-dropdown`.
  *
  * The dropdown is a visual shell around a real `<select>`, which stays slotted
  * as a child. That is deliberate on the design system's part: the browser keeps
  * ownership of the keyboard, the form value and the native picker on mobile, so
- * the ref and the `<select>` props keep working as before.
+ * a ref and the `<select>` props behave normally.
  *
  * `onChange` is the exception, and it has to be relayed. The dropdown listens
  * on the slotted select and calls `stopPropagation()` on the native `change`
  * before re-dispatching its own `CustomEvent` from the host. React 19
  * delegates from the root container, so the stopped native event never
- * reaches the delegate and the replacement is a CustomEvent React does not map
- * to `onChange`: the handler simply never ran. Measured on the auditlog
- * filter, where picking a value left the list unfiltered.
+ * reaches the delegate, and the replacement is a CustomEvent React does not
+ * map to `onChange`. Without the relay the handler never runs at all and
+ * picking a value does nothing.
  *
  * `Input.tsx` documents having fixed the same thing for text fields; this is
  * the select half of it.

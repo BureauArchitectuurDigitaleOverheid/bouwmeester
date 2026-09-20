@@ -274,8 +274,8 @@ export function OrganisatieDetail({
     <nldd-container gap="24">
       {/* Header. The sm-and-up side-by-side vs. stacked-below-sm split has no
           nldd-container equivalent (layout is one fixed mode, not responsive),
-          so the two top-level rows keep their plain flex wrapper; everything
-          inside converts. sm-row-header (utilities.css) carries the `sm`-and-up
+          so the two top-level rows keep a plain flex wrapper and everything
+          inside it is nldd. sm-row-header (utilities.css) carries the `sm`-and-up
           half of the breakpoint switch. */}
       <div className="sm-row-header" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <nldd-container gap="4">
@@ -296,9 +296,9 @@ export function OrganisatieDetail({
           )}
           {/* Externe-data velden uit TOOI/Ministeries.csv/handmatig. A <dl> is
               the correct semantic element for this label/value list, and
-              nldd-text doesn't replace dt/dd — only the grid/spacing utilities
-              that arranged them convert, via inline style since nldd-container
-              doesn't do a two-column label/value CSS grid. */}
+              nldd-text doesn't replace dt/dd. The grid is an inline style
+              because nldd-container doesn't do a two-column label/value CSS
+              grid. */}
           {(eenheid.afkorting ||
             eenheid.oin ||
             eenheid.fte_aantal ||

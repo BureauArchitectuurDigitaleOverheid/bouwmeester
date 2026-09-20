@@ -160,8 +160,8 @@ function getActivityLabel(type: string): string {
 // meaning here — every row is simply "past". It still earns its place as the
 // per-row dot-and-line lane the design already had: `variant="major"`,
 // `status="past"` on every row, `position="between"` throughout (the date
-// group headers already provide the visual break the design used to mark
-// with a sticky label, so the track itself stays one continuous line).
+// group headers provide the visual break, so the track itself is one
+// continuous line).
 function TimelineEventCard({
   event,
   onClickLead,
@@ -304,7 +304,7 @@ export function LeadTimelineView({
               {/* Date header stays sticky while its events scroll underneath;
                   nldd-page's sticky-header is a page-level concept and does
                   not apply to an in-flow label inside a scrolling list, so
-                  this is plain CSS rather than a Tailwind convenience. */}
+                  this is plain CSS. */}
               <nldd-text
                 size="sm"
                 weight="medium"

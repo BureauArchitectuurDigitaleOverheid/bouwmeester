@@ -12,10 +12,10 @@ interface FileUploadProps {
  * `nldd-file-field` with a drop target around it.
  *
  * The field itself is the picker, the chosen file, its size and the button to
- * clear it again; all of that used to be hand-built here. What it does not do
- * is accept a dropped file, and this component is reached by dragging a CSV
- * onto it often enough that the target stays. So the field handles picking and
- * the wrapper handles dropping, and both end at the same callback.
+ * clear it again. What it does not do is accept a dropped file, and this
+ * component is reached by dragging a CSV onto it often enough to be worth a
+ * drop target. So the field handles picking, the wrapper handles dropping, and
+ * both end at the same callback.
  */
 export function FileUpload({
   accept = '.csv',

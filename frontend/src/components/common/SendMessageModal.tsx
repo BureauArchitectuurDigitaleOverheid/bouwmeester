@@ -15,10 +15,9 @@ interface SendMessageModalProps {
 /**
  * Uses the shared Modal rather than its own overlay.
  *
- * This file used to rebuild the whole thing: a fixed backdrop with its own
- * z-index, a header with its own close button, a footer, and the blur. All of
- * that is nldd-window through Modal, which also brings the focus trap and the
- * Escape handling that this version never had.
+ * Modal is nldd-window, which brings the backdrop, the header and its close
+ * button, the footer, the focus trap and the Escape handling. Rebuilding any of
+ * that here would only lose the focus trap.
  */
 export function SendMessageModal({ open, onClose, recipient }: SendMessageModalProps) {
   const [text, setText] = useState('');

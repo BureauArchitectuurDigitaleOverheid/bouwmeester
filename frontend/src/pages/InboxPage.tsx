@@ -112,8 +112,8 @@ export function InboxPage() {
       <nldd-container gap="24">
         {/* Welcome banner. The gradient hero has no nldd equivalent (no
             component paints a two-stop brand gradient), so it stays a plain
-            styled div; the colors are the same accent step the design system
-            itself uses, not an arbitrary Tailwind swatch. */}
+            styled div. The colors are the design system's own accent step,
+            never a literal swatch. */}
         <div
           style={{
             borderRadius: '16px',

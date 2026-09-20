@@ -3,10 +3,9 @@ import { mentionToMarkdown, parseMention, MENTION_SCHEMES } from './mentions';
 
 /**
  * This format is written in two places: here, by the editor, and in
- * `backend/bouwmeester/core/tiptap_markdown.py`, by the migration that
- * converted the TipTap documents. The cases below are the same ones
- * `backend/tests/test_tiptap_markdown.py` asserts, so the two cannot drift
- * apart without a test failing on one side.
+ * `backend/bouwmeester/core/tiptap_markdown.py`, by the backend. The cases
+ * below are the same ones `backend/tests/test_tiptap_markdown.py` asserts, so
+ * the two cannot drift apart without a test failing on one side.
  */
 describe('mention format', () => {
   it('writes a person mention as a link with the design system its own scheme', () => {

@@ -6,18 +6,16 @@ import { formatFunctie, titleCase } from '@/types';
 import type { Person, OrganisatieEenheid } from '@/types';
 
 /**
- * `nldd-text-editor` behind the previous API.
+ * A description editor, as an `nldd-text-editor`.
  *
- * This replaces ~600 lines of TipTap wiring. The document is plain markdown
- * now, not a ProseMirror JSON tree, which is why the editor can be swapped at
- * all: the storage format is the design system's, and `RichTextDisplay` reads
- * the same thing.
+ * The document is plain markdown, not a ProseMirror JSON tree: the storage
+ * format is the design system's, and `RichTextDisplay` reads the same thing.
  *
  * Mentions survive as markdown links carrying a scheme (`[@Anne](user:<id>)`).
  * The `@` list is the element's built-in mention, which writes that format
  * itself; the `#` list is ours, on its own trigger, and its `insert` writes the
  * same shape with our schemes. See `utils/mentions.ts` for the format and
- * `core/tiptap_markdown.py` for the migration that produced it.
+ * `core/tiptap_markdown.py` for the backend side of it.
  */
 
 interface MentionSearchResult {

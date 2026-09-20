@@ -90,9 +90,9 @@ function ExternalDocLink({
 
 /**
  * A node title that opens `NodeDetailModal` on click. `nldd-link` is `href`-
- * only (a real navigation target), which this isn't — it opens a modal — so
- * this is `Button` (the converted `nldd-button` wrapper) at its smallest
- * ghost styling instead of a raw `<button>`.
+ * only (a real navigation target), which this isn't: it opens a modal. So it
+ * is `Button` (the `nldd-button` wrapper) at its smallest ghost styling rather
+ * than a raw `<button>`.
  */
 function NlddButtonLink({ text, onClick }: { text: string; onClick: () => void }) {
   return (
@@ -131,8 +131,8 @@ interface TagTokenFieldProps {
  * (dismissible), the slotted menu is every known tag (the field hides options
  * already present as tokens itself, see `_hideSelectedMenuItems` in
  * token-field.js), and `allow-custom` lets a typed name that matches nothing
- * create a new tag. This replaces ~70 lines of hand-rolled dropdown state
- * (highlight index, click-outside, arrow keys) that the element owns itself.
+ * create a new tag. The element owns the dropdown state itself: highlight
+ * index, click-outside, arrow keys.
  *
  * `.values` is a live property, not a reflected attribute — like
  * `CreatableSelect`'s `.text`, it is written imperatively only when it has

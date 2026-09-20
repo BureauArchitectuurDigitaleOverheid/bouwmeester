@@ -25,8 +25,8 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
   return (
     <nldd-card ref={ref} button accessible-label={lead.title}>
       <nldd-container gap="6" padding="12">
-        {/* nldd-text has no line-clamp attribute; a two-line title clamp on a
-            card is real CSS, not a Tailwind utility, so it stays inline. */}
+        {/* nldd-text has no line-clamp attribute, so the two-line title clamp
+            is an inline style. */}
         <nldd-text
           size="sm"
           weight="medium"

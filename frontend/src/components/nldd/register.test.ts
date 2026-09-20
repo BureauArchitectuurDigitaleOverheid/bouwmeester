@@ -6,9 +6,8 @@ import { describe, it, expect } from 'vitest';
  * A component that is used but never imported does NOT error. The browser keeps
  * it as an unknown element and renders its children unstyled, so the page looks
  * subtly wrong with nothing in the console, nothing in tsc and nothing in
- * eslint. Seven components were in that state before this test existed
- * (nldd-identity, nldd-timeline-track-cell, nldd-toggle-button-group and four
- * more), each one visible on a real page as a block of unstyled markup.
+ * eslint. On a real page it shows up as a block of unstyled markup, which is
+ * what this test catches instead.
  *
  * Some elements register through their parent's module: nldd-table-row ships
  * with nldd-table, nldd-menu-item with nldd-menu. Those are listed below rather
@@ -22,9 +21,7 @@ import { describe, it, expect } from 'vitest';
  * here. token-field.js imports menu.js and nothing else, which makes it look
  * like nldd-token is unregistered; the import sits in token-field.template.js,
  * which pulls in content/token/token.js and that is where
- * customElement('nldd-token') runs. An agent flagged nldd-token as missing on
- * the strength of the component file alone, and the chain turned out to be
- * fine.
+ * customElement('nldd-token') runs.
  *
  * A wrong row here is worse than a missing import, because it exempts the tag
  * from the one check that would have caught it.

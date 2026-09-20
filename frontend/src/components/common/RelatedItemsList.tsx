@@ -24,9 +24,8 @@ function ItemRow({ item }: { item: RelatedItem }) {
   const ref = useRef<HTMLElement>(null);
   useNlddEvent(ref, 'click', item.onClick);
 
-  // The arrow that used to fade in on hover is gone. It pointed at the row
-  // itself, which the row already announces by being a button, and a hint that
-  // only exists on hover never reaches a keyboard or a touch screen.
+  // No hover-revealed arrow: the row announces itself by being a button, and a
+  // hint that only exists on hover never reaches a keyboard or a touch screen.
   return (
     <nldd-list-item ref={ref} size="sm" button>
       {item.icon && <nldd-cell width="fit-content">{item.icon}</nldd-cell>}

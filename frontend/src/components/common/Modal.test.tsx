@@ -3,20 +3,20 @@ import { render, screen } from '@testing-library/react';
 import { Modal } from './Modal';
 
 /**
- * The modal now renders `nldd-window` + `nldd-page`, so these assert the
- * contract rather than the markup.
+ * The modal renders `nldd-window` + `nldd-page`, so these assert the contract
+ * rather than the markup.
  *
- * Three things the previous tests covered can no longer be tested here, and
- * they moved to the Playwright suite rather than being dropped:
+ * Three things belong in the Playwright suite instead, because jsdom cannot
+ * reach them:
  *
  *  - Escape and the backdrop click are the native <dialog>'s own behaviour.
  *    jsdom does not implement `showModal`, so there is no dialog to press
  *    Escape against.
  *  - The close button lives in nldd-top-title-bar's shadow root, which Lit
  *    never renders under jsdom, so there is no button to click.
- *  - The window is always mounted now (it opens and closes through show()/
- *    hide() so the animation plays), so "renders nothing when closed" became
- *    "is not open when closed".
+ *  - The window is always mounted (it opens and closes through show()/hide()
+ *    so the animation plays), so the closed state is "not open", not "not
+ *    rendered".
  */
 describe('Modal', () => {
   const win = (container: HTMLElement) => container.querySelector('nldd-window');

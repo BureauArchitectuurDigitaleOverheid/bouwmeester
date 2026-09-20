@@ -18,19 +18,19 @@ const TEXT_TYPES = new Set(['text', 'email', 'tel', 'url']);
  *
  * The design system splits by type where the browser does: `nldd-text-field`
  * covers text/email/tel/url, `nldd-number-field` a number with its steppers, and
- * `nldd-date-field` a date. Routing here keeps every existing `<Input type=...>`
- * call site working while each one gets the right keyboard and controls.
+ * `nldd-date-field` a date. Routing on `type` here means a call site names the
+ * type once and gets the right keyboard and controls with it.
  *
  * `onChange` is bridged by hand and NOT spread onto the element. These are
  * custom elements, so React's synthetic onChange never fires for them and the
- * value arrives in `event.detail` rather than on `event.target.value`. An
- * earlier version of this file dropped the handler entirely, which left every
- * `<Input onChange=...>` in the app silently ignoring what the user typed.
+ * value arrives in `event.detail` rather than on `event.target.value`. Spread
+ * the handler onto the element instead and the field silently ignores every
+ * keystroke.
  *
- * Two behaviours change for the better: the field associates its own label (the
- * old `id || label.toLowerCase()` fallback could collide between two fields with
- * the same label), and it marks what is OPTIONAL instead of starring what is
- * required, per the design system's convention.
+ * The field associates its own label, so do not derive an id from the label
+ * text: two fields with the same label would collide. It also marks what is
+ * OPTIONAL rather than starring what is required, per the design system's
+ * convention.
  */
 export const Input = forwardRef<HTMLElement, InputProps>(
   (

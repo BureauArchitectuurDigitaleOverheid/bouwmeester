@@ -1,29 +1,28 @@
 /**
- * Bridge from the lucide-react icon names this app grew up with to `nldd-icon`.
+ * Bridge from this app's icon names to `nldd-icon`.
  *
  * The design system ships a closed set (359 icons + 318 aliases). Every name in
- * the map below was checked against that set; do not invent one, an unknown name
- * renders nothing.
+ * the map below is checked against that set; do not invent one, an unknown name
+ * renders nothing at all, with no error.
  *
- * Sizing: lucide took Tailwind classes (`h-4 w-4`), nldd-icon takes pixels. The
- * `size` prop maps the handful of scales this app actually used.
+ * `nldd-icon` sizes in pixels, so the `size` prop maps this app's named scales
+ * onto them.
  */
 import type { CSSProperties } from 'react';
 
 /**
- * Tailwind size classes used with lucide icons in this app, in pixels.
+ * Named icon scales, in pixels.
  *
- * nldd-icon only accepts spacer-aligned sizes (16, 20, 24, 28, 32, 40, ...), so
- * the two smallest lucide scales round up to 16 rather than staying at their
- * literal 12px and 14px. That is the design system's grid, not an approximation
- * to work around.
+ * nldd-icon only accepts spacer-aligned sizes (16, 20, 24, 28, 32, 40, ...),
+ * so `xs` and `sm` both land on 16: that is the design system's grid, not an
+ * approximation to work around.
  */
 export const ICON_SIZES = {
-  xs: '16', // h-3 w-3, rounded up to the smallest supported size
-  sm: '16', // h-3.5 w-3.5, likewise
-  md: '16', // h-4 w-4  (by far the most common)
-  lg: '20', // h-5 w-5
-  xl: '24', // h-6 w-6
+  xs: '16', // the smallest supported size
+  sm: '16',
+  md: '16', // by far the most common
+  lg: '20',
+  xl: '24',
 } as const;
 
 export type IconSize = keyof typeof ICON_SIZES;

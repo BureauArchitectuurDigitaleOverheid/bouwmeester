@@ -33,8 +33,7 @@ import { formatDateLong } from '@/utils/dates';
 /**
  * Icon per node type, for the modal's header. `nldd-icon`'s closed set has no
  * "target"/"crosshair" or "landmark"/"government building" glyph, so `doel`
- * and `politieke_input` map to the nearest honest neighbour rather than the
- * literal lucide icon this used to carry:
+ * and `politieke_input` map to the nearest honest neighbour:
  *   doel             -> flag (a goal you work toward)
  *   politieke_input   -> apartment-building (same glyph Sidebar uses for
  *                        the organisation nav item, i.e. an institution)

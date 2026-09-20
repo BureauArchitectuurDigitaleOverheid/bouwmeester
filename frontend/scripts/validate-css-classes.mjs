@@ -1,20 +1,13 @@
 /**
  * Every class name the app renders must have CSS behind it.
  *
- * This exists because of a whole category of silent breakage. While Tailwind is
- * installed its compiler invents a rule for any class it recognises, so
- * `flex`, `px-4` and `group-hover:opacity-100` work without appearing in any
- * stylesheet we own. Take the package out and they keep compiling, keep passing
- * tsc and eslint, and simply stop having an effect: a hover-reveal button that
- * never reveals, a row that no longer sits on one line.
+ * A class with no rule behind it is silent: it compiles, passes tsc and
+ * eslint, and simply has no effect. A hover-reveal button that never reveals,
+ * a row that does not sit on one line. A comment explaining why a class stays
+ * does not keep it working, so this check reads rules, not intent.
  *
- * 158 of the 176 class names in use were in that state when this was written,
- * including every "leave it as a documented exception" the migration had agreed
- * on. A comment explaining why a class stays does not keep it working.
- *
- * The check is therefore: collect what our own CSS defines, collect what the
- * .tsx files use, and report the difference. While `@import "tailwindcss"` is
- * still in index.css this runs as a warning; once it goes, it fails.
+ * Collect what our own CSS defines, collect what the .tsx files use, report
+ * the difference.
  *
  * Run: node scripts/validate-css-classes.mjs
  */
@@ -32,20 +25,11 @@ for (const entry of readdirSync(SRC)) {
   for (const m of css.matchAll(/\.([a-zA-Z][\w-]*)/g)) defined.add(m[1]);
 }
 
-/** Is Tailwind still compiling classes for us? */
-const stillOnTailwind = /^\s*@import\s+["']tailwindcss["']/m.test(
-  readFileSync(path.join(SRC, 'index.css'), 'utf8'),
-);
-
 /**
  * Class names reactflow itself defines and reads.
  *
- * There used to be a file-level exclusion here for the graph views, on the
- * reasoning that their classes belong to reactflow. That was wrong, and it hid
- * 112 dead classes across six files: `bg-purple-100` and `h-3.5` on our own
- * markup are our utilities, not reactflow's, and reactflow's stylesheet has
- * nothing to say about them. Only the handful of names reactflow genuinely
- * owns are exempt, by name rather than by file.
+ * Exempt by name, never by file: a class on our own markup inside a graph view
+ * is still ours, and reactflow's stylesheet has nothing to say about it.
  */
 const REACTFLOW_OWNED = /^(react-flow|nodrag|nopan|nowheel|selectable|draggable|connectable|dragging|selected|updating|valid|source|target)(__|--|$)/;
 
@@ -54,23 +38,22 @@ const files = [];
   for (const entry of readdirSync(dir)) {
     const full = path.join(dir, entry);
     if (statSync(full).isDirectory()) walk(full);
-    // .ts as well as .tsx: the class names that survived longest were not in
-    // markup at all but in the lookup tables in src/types/index.ts, which this
-    // walk never opened.
+    // .ts as well as .tsx: class names also live in the lookup tables in
+    // src/types/index.ts, never in markup.
     else if (/\.tsx?$/.test(full) && !full.includes('.test.') && !full.endsWith('.d.ts'))
       files.push(full);
   }
 })(SRC);
 
 /**
- * The shape of a Tailwind utility.
+ * The shape of a utility class name.
  *
- * Used for the second pass below, which reads bare string literals rather than
+ * Used by the second pass below, which reads bare string literals rather than
  * attributes. There the check has to be narrow: a lookup table full of Dutch
  * labels is also a bag of strings, and only things that look like utilities
  * should be judged against our stylesheets.
  */
-const TAILWIND_SHAPED =
+const UTILITY_SHAPED =
   /^(bg|text|border|ring|shadow|rounded|p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|w|h|min-w|max-w|min-h|max-h|gap|space|flex|grid|col|row|items|justify|self|order|font|leading|tracking|opacity|z|inset|overflow|cursor|transition|duration|ease|animate|hover|focus|active|disabled|group|sm|md|lg|xl|divide|whitespace|break|truncate|object|aspect|uppercase|lowercase|capitalize|underline|italic)([-:]|$)/;
 
 const unbacked = new Map();
@@ -98,14 +81,12 @@ for (const file of files) {
 
   // Second pass: class lists that never appear in an attribute.
   //
-  // The FCC traffic lights were three invisible dots for exactly this reason.
-  // Their color came from a `Record<..., string>` in src/types holding
-  // `bg-emerald-500`, reached the span through a variable, and so never met
-  // the regex above. Const maps, ternaries and lookup tables are where the
-  // longest-lived Tailwind hides, because nothing about them looks like markup.
-  // Comments first. `h-4 w-4` inside a doc comment explaining what the old
-  // lucide sizing looked like is prose, not markup, and reporting it trains
-  // people to ignore this check.
+  // Const maps, ternaries and lookup tables reach markup through a variable,
+  // so the regex above never sees them. A `Record<..., string>` of color
+  // classes in src/types is the usual shape.
+  //
+  // Comments are blanked first: `h-4 w-4` inside a doc comment is prose, not
+  // markup, and reporting it trains people to ignore this check.
   const code = source
     .replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '))
     .replace(/(^|[^:])\/\/[^\n]*/g, (m0, p1) => p1 + ' '.repeat(m0.length - p1.length));
@@ -113,11 +94,11 @@ for (const file of files) {
   for (const m of code.matchAll(/['"`]([a-z][\w:./[\]%-]*(?:\s+[a-z-][\w:./[\]%-]*)+)['"`]/g)) {
     const parts = m[1].split(/\s+/);
     // Mostly utilities, so a sentence of prose is not mistaken for markup.
-    if (parts.filter((p) => TAILWIND_SHAPED.test(p)).length < parts.length * 0.7) continue;
+    if (parts.filter((p) => UTILITY_SHAPED.test(p)).length < parts.length * 0.7) continue;
     const line = source.slice(0, m.index).split('\n').length;
     for (const cls of parts) {
       if (defined.has(cls) || REACTFLOW_OWNED.test(cls)) continue;
-      if (!TAILWIND_SHAPED.test(cls)) continue;
+      if (!UTILITY_SHAPED.test(cls)) continue;
       if (!unbacked.has(cls)) unbacked.set(cls, `${rel}:${line}`);
     }
   }
@@ -126,11 +107,8 @@ for (const file of files) {
 /**
  * The other direction: CSS nobody uses.
  *
- * This check started by finding classes with no rule behind them, and the
- * reverse crept in unnoticed: five rules in utilities.css that no .tsx
- * mentioned, left behind when their call sites were converted. A file that
- * opens by saying it is not a utility framework has to be held to it, so an
- * orphan rule is an error here too, not a warning.
+ * A rule in utilities.css that no .tsx mentions is an error, not a warning: a
+ * file that opens by saying it is not a utility framework has to be held to it.
  *
  * Only utilities.css is judged. index.css carries element and global rules
  * whose selectors are not class names we look for in markup.
@@ -156,17 +134,6 @@ if (orphans.length > 0 && unbacked.size === 0) {
 }
 
 const lines = [...unbacked].map(([cls, where]) => `  ${cls}  (${where})`);
-
-if (stillOnTailwind) {
-  console.log(
-    `CSS classes: ${unbacked.size} still come from Tailwind's compiler.\n` +
-      'These break the moment `@import "tailwindcss"` leaves index.css. Each one\n' +
-      'needs a component, a rule in utilities.css, or an inline style.\n',
-  );
-  for (const l of lines.slice(0, 30)) console.log(l);
-  if (lines.length > 30) console.log(`  ... and ${lines.length - 30} more`);
-  process.exit(0);
-}
 
 console.error(`\n${unbacked.size} class name(s) with no CSS behind them:\n`);
 for (const l of lines) console.error(l);

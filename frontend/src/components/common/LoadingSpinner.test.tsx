@@ -3,10 +3,9 @@ import { render } from '@testing-library/react';
 import { LoadingSpinner } from './LoadingSpinner';
 
 /**
- * These assert the contract (an activity indicator at the requested scale), not
- * the markup. The previous versions checked for an <svg> with Tailwind classes,
- * which said nothing about whether a spinner was actually shown and broke the
- * moment the internals changed.
+ * These assert the contract (an activity indicator at the requested scale),
+ * not the markup: asserting on internals says nothing about whether a spinner
+ * is actually shown.
  *
  * jsdom does not upgrade custom elements, so nldd-activity-indicator stays an
  * inert tag here. That is enough to check we render the right element with the

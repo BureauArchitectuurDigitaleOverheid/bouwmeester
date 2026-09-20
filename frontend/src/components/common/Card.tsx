@@ -19,17 +19,16 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 /**
- * `nldd-card` behind the previous API, so existing call sites are unchanged.
+ * A surface, optionally with a header and a footer.
  *
  * `hoverable` is only the pointer cursor: it says "this looks clickable"
- * without making it so. On its own that is a keyboard trap in the other
- * direction — five stat tiles on the inbox page were clickable by mouse and
- * unreachable by tab, with no role for a screen reader to announce.
+ * without making it so, which leaves a card operable by mouse, unreachable by
+ * tab and unannounced to a screen reader. Use `actionLabel` when the whole card
+ * is one action; it makes the card a real button.
  *
- * `actionLabel` is the honest version and is what a whole-card action should
- * use. The two are separate because a card that contains buttons cannot become
- * one, so the choice has to be made per call site rather than inferred from
- * `onClick` being present.
+ * The two are separate because a card that contains buttons cannot become one,
+ * so the choice belongs to the call site rather than to the presence of an
+ * `onClick`.
  */
 export function Card({
   children,
@@ -73,8 +72,7 @@ export function Card({
     >
       {header && <div slot="header">{header}</div>}
       {/* nldd-card draws the surface but has no inset of its own, by design, so
-          a container owns the spacing. The sm-* variants are the same
-          breakpoint the Tailwind version used: 12px all round, 20/16 from sm. */}
+          a container owns the spacing: 12px all round, 20/16 from sm. */}
       {padding ? (
         <nldd-container
           padding="12"

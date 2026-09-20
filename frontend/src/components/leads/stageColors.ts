@@ -44,10 +44,9 @@ export function engagementTagColor(type: EngagementType): NlddTagColor {
 }
 
 /**
- * The closed set `LeadColumn.color` may hold, mirrored from backend
- * `schema.lead_column.LEAD_COLUMN_COLORS` (kept in sync by hand; see
- * migration `54ec9a7df491_lead_column_colors_to_names`, which moved the
- * stored values off raw Tailwind strings and onto these names).
+ * The closed set `LeadColumn.color` may hold, mirrored by hand from backend
+ * `schema.lead_column.LEAD_COLUMN_COLORS`. A stored value outside this set
+ * falls back to grey.
  */
 const LEAD_COLUMN_COLORS: ReadonlySet<NlddTagColor> = new Set([
   'neutral',

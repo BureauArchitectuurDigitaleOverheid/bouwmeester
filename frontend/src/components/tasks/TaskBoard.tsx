@@ -70,14 +70,13 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
     // snap carousel on narrow screens that becomes a fixed 3-column grid at
     // md, with negative-margin edge-to-edge bleed below md. nldd-container's
     // `layout` is one fixed mode (no responsive stack->grid switch) and it has
-    // no scroll-snap or negative-margin equivalent, so there is no component
-    // composition that reproduces this without a full custom scroller
-    // component, which is out of scope for a chrome-only pass.
+    // no scroll-snap or negative-margin equivalent, so no composition of
+    // components reproduces this without a full custom scroller.
     <div className="task-board">
       {BOARD_COLUMNS.map((status) => (
         // Left as a plain div: this is the native HTML5 drag-and-drop target
-        // (onDragOver/onDragLeave/onDrop), which the brief calls out to leave
-        // alone. The drag-over highlight is likewise plain CSS state, not
+        // (onDragOver/onDragLeave/onDrop), which no nldd component models.
+        // The drag-over highlight is likewise plain CSS state, not
         // something nldd-container/nldd-card can express as a boolean prop.
         <div
           key={status}
@@ -111,8 +110,8 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
 
             {(tasksByStatus[status]?.length ?? 0) === 0 && (
               // nldd-container has no min-height attribute (only nldd-cell and
-              // a few section components do), so the empty-column height stays
-              // an inline style rather than a Tailwind class.
+              // a few section components do), so the empty-column height is an
+              // inline style.
               <nldd-container layout="row" horizontal-alignment="center" vertical-alignment="center" style={{ minHeight: '100px' }}>
                 <nldd-text size="xs" color="secondary">
                   Sleep taken hierheen

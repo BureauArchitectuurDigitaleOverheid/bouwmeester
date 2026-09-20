@@ -12,10 +12,10 @@ type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 /**
- * `nldd-button` behind the previous API.
+ * This app's variant names, mapped onto `nldd-button`'s.
  *
- * `danger` maps to `destructive` and `ghost` to `neutral-transparent`, which are
- * the design system's names for the same intent.
+ * `danger` is `destructive` and `ghost` is `neutral-transparent`: the design
+ * system's names for the same intent.
  */
 type NlddButtonVariant = NonNullable<React.ComponentProps<'nldd-button'>['variant']>;
 
@@ -46,7 +46,7 @@ function findResponsivelyHiddenLabel(children: ReactNode): string | undefined {
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
-  /** An nldd-icon name, or a node for callers not yet converted. */
+  /** An nldd-icon name, or an element to put in the start-icon slot. */
   icon?: ReactNode | string;
   loading?: boolean;
   children?: ReactNode;
@@ -99,8 +99,8 @@ export function Button({
       {...(disabled ? { disabled: true } : {})}
       {...(props as Record<string, unknown>)}
     >
-      {/* A non-string icon is a leftover lucide element; it still renders in the
-          start-icon slot until the call site is converted. */}
+      {/* A non-string icon renders through the start-icon slot instead of the
+          `start-icon` attribute. */}
       {icon && typeof icon !== 'string' ? <span slot="start-icon">{icon}</span> : null}
       {text ? null : children}
     </nldd-button>

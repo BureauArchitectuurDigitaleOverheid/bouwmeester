@@ -755,10 +755,9 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
  *
  * Same rule as VARIANT_COLORS in common/Badge.tsx: a type that carries meaning
  * gets the semantic role, which keeps it right in dark mode and for colorblind
- * users, and the rest get the nearest Rijkshuisstijl color. Three types are
- * deliberately no longer distinct: node_updated, direct_message and
- * placement_approved all read as "something went well" and all painted the same
- * green before, so `success` loses nothing.
+ * users, and the rest get the nearest Rijkshuisstijl color. node_updated,
+ * direct_message and placement_approved deliberately share `success`: all
+ * three read as "something went well".
  *
  * The label beside the color says which type it is, so the color never carries
  * the meaning on its own (WCAG 1.4.1).
@@ -1457,10 +1456,9 @@ export const SYNC_STATUS_LABELS: Record<SyncStatus, string> = {
 export type FccTrafficLight = 'green' | 'orange' | 'red';
 
 /**
- * A traffic light is semantic, so these are the semantic tokens rather than a
- * color class. They used to be `bg-emerald-500` and friends, which rendered as
- * nothing once Tailwind's compiler stopped inventing a rule for them: three
- * invisible dots with a title attribute.
+ * A traffic light is semantic, so these are design-system color tokens rather
+ * than class names. The dot paints from the value directly, so anything that is
+ * not a real custom property renders as no color at all.
  */
 export const FCC_TRAFFIC_LIGHT_COLORS: Record<FccTrafficLight, string> = {
   green: 'var(--primitives-color-groen-500)',
@@ -1693,9 +1691,9 @@ export const LEAD_STAGE_LABELS: Record<string, string> = {
  * Default column color per lead stage, as an nldd-tag color name.
  *
  * Mirrors the defaults in `backend/bouwmeester/schema/lead_column.py`, which
- * validates `LeadColumn.color` against the same closed set. These used to be
- * Tailwind chip classes; `leadColumnTagColor()` rejects anything outside the
- * set, so every fallback column silently rendered grey.
+ * validates `LeadColumn.color` against the same closed set.
+ * `leadColumnTagColor()` rejects anything outside the set, so a column with an
+ * unknown color name renders grey.
  */
 export const LEAD_STAGE_COLORS: Record<string, string> = {
   [LeadStage.INBOX]: 'lintblauw',
