@@ -121,8 +121,8 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
   }
 
   // Legacy data: TipTap JSON with markdown syntax stored as plain text. The
-  // editor converts markdown on input, so nothing writes this shape any more,
-  // but old rows still hold it.
+  // editor converts markdown on input, so nothing writes this shape, but rows
+  // in the database still hold it.
   const plainText = extractPlainText(doc);
   if (plainText !== null && looksLikeMarkdown(plainText)) {
     return markdown(plainText);

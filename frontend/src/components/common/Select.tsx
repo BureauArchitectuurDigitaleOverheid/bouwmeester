@@ -36,10 +36,8 @@ const ERROR_ID = 'select-error';
  * delegates from the root container, so the stopped native event never
  * reaches the delegate, and the replacement is a CustomEvent React does not
  * map to `onChange`. Without the relay the handler never runs at all and
- * picking a value does nothing.
- *
- * `Input.tsx` documents having fixed the same thing for text fields; this is
- * the select half of it.
+ * picking a value does nothing. `Input.tsx` relays the same way for text
+ * fields.
  */
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   (

@@ -41,7 +41,7 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
     <Card
       // Only a button when there is something to activate. Without a handler
       // it is a card that happens to be draggable, and announcing it as a
-      // button would be the fake-affordance this codebase already fixed once.
+      // button offers a control that does nothing.
       {...(onClick ? { actionLabel: person.naam } : { hoverable: false })}
       onClick={onClick ? () => onClick(person) : undefined}
       draggable={draggable}
