@@ -37,6 +37,7 @@ from bouwmeester.services.import_strategies.tkconv import TkconvSearchStrategy
 from bouwmeester.services.llm import get_llm_service
 from bouwmeester.services.notification_service import NotificationService
 from bouwmeester.services.tk_api_client import EersteKamerClient, TweedeKamerClient
+from bouwmeester.services.zoekterm_passage import knip_rond_termen
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +266,12 @@ class ParlementairImportService:
                 alert = await llm_service.summarize_kamerstuk_alert(
                     titel=parlementair_item.titel,
                     onderwerp=parlementair_item.onderwerp,
-                    document_tekst=parlementair_item.document_tekst,
+                    # Niet de eerste N tekens maar de passages waar de term
+                    # valt: een begroting noemt het onderwerp halverwege,
+                    # en het model zag anders alleen de voorpagina.
+                    document_tekst=knip_rond_termen(
+                        parlementair_item.document_tekst or "", termen
+                    ),
                     zoektermen=termen,
                     # Het model moet weten wát voor stuk dit is: een agenda
                     # die nog moet komen vraagt om een ander bericht dan een

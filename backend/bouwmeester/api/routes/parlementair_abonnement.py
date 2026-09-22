@@ -269,6 +269,8 @@ async def update_abonnement(
         abonnement.actief = payload.actief
     if payload.notitie is not None:
         abonnement.notitie = payload.notitie
+    if payload.minimum_relevantie is not None:
+        abonnement.minimum_relevantie = payload.minimum_relevantie
     if payload.uitgezette_categorieen is not None:
         # Onbekende categorieën weigeren we niet: de TK-API kan er nieuwe
         # bij krijgen, en een filter dat stil een onbekende waarde slikt is

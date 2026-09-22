@@ -81,7 +81,16 @@ CATEGORIE_PRESENTATIE: dict[str, dict[str, str]] = {
     },
     CAT_BIJLAGE: {"emoji": ":paperclip:", "label": "Bijlage", "kleur": "#1E3A8A"},
     CAT_BRIEF: {"emoji": ":envelope:", "label": "Kamerbrief", "kleur": "#1E3A8A"},
-    CAT_EXTERN: {"emoji": ":speech_balloon:", "label": "Extern", "kleur": "#0F766E"},
+    # `herkomst` verschijnt achter het soort in de kopregel, waar het iets
+    # toevoegt dat het soort niet zegt. Bij een position paper is dat het
+    # belangrijkste feit: het komt van buiten de Kamer en is een standpunt
+    # van een belanghebbende, geen beleid.
+    CAT_EXTERN: {
+        "emoji": ":speech_balloon:",
+        "label": "Extern",
+        "kleur": "#0F766E",
+        "herkomst": "van buiten de Kamer",
+    },
     CAT_WETGEVING: {"emoji": ":scroll:", "label": "Wetgeving", "kleur": "#991B1B"},
     CAT_OVERIG: {"emoji": ":page_facing_up:", "label": "Kamerstuk", "kleur": "#64748B"},
 }

@@ -90,15 +90,30 @@ class ParlementairAlertService:
         # wil zien — procedurevergaderingen zijn nuttig maar talrijk. Het
         # stuk is dan wél geïmporteerd en in de webapp zichtbaar; alleen
         # het bericht blijft uit. Zo verliest een filter nooit dekking.
-        categorie = (item.extra_data or {}).get("categorie") or CAT_OVERIG
+        extra = item.extra_data or {}
+        categorie = extra.get("categorie") or CAT_OVERIG
+        score = _relevantie(extra)
         abonnementen = [
-            a for a in abonnementen if categorie not in (a.uitgezette_categorieen or [])
+            a
+            for a in abonnementen
+            if categorie not in (a.uitgezette_categorieen or [])
+            # Onder de drempel geen bericht. Het stuk is wél geïmporteerd
+            # en staat in de webapp: een drempel hoort ruis te schelen,
+            # geen dekking. Een meting over zeven stukken gaf een scherpe
+            # scheiding: alles met inhoud op 15 of hoger, en alleen een
+            # procedureel verslag zonder inhoud op 0. De standaard staat
+            # daarom laag genoeg om een stuk waarin de term als gewoon
+            # woord valt nog door te laten; of dat ruis is, is een oordeel
+            # van de lezer en niet van het model.
+            and score >= (a.minimum_relevantie or 0)
         ]
         if not abonnementen:
             logger.info(
-                "Kamerstuk %s (%s) door alle abonnees uitgezet voor Mattermost",
+                "Kamerstuk %s (%s, score %d) niet gepost: uitgezet of onder "
+                "de drempel van alle abonnees",
                 item.zaak_nummer,
                 categorie,
+                score,
             )
             return 0
 
@@ -202,9 +217,22 @@ class ParlementairAlertService:
         Dit is waar het onderscheid zichtbaar wordt. Een vergadering die
         nog komt krijgt er hoeveel dagen bij, want dat is precies het
         verschil tussen "je kunt hier nog iets mee" en "dit is gebeurd".
+
+        Het label is het `Soort` uit de TK-API en niet onze categorie:
+        "POSITION PAPER" zegt wat het stuk is, "EXTERN" zegt alleen in
+        welk hokje wij het hebben gestopt. De categorie stuurt wel het
+        icoon, de kleur en de instructie aan het taalmodel, en springt in
+        als de API geen soort kent.
         """
-        label = presentatie["label"].upper()
+        label = (extra.get("soort") or presentatie["label"]).upper()
         delen = [f"**{label}**"]
+
+        # Een position paper of burgerbrief komt van buiten de Kamer, en
+        # dat is precies wat je bij zo'n stuk wilt weten: het is een
+        # standpunt van een belanghebbende, geen beleid. Het soort alleen
+        # zegt dat niet.
+        if presentatie.get("herkomst"):
+            delen.append(presentatie["herkomst"])
 
         termijn = _als_datum(extra.get("termijn"))
         if termijn:

@@ -123,6 +123,23 @@ class ParlementairAbonnement(Base):
             "Signaal voor de gebruiker, nooit een automatische deactivering."
         ),
     )
+    minimum_relevantie: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=10,
+        server_default="10",
+        comment=(
+            "Onder deze relevantiescore (0-100) verschijnt een treffer niet "
+            "in Mattermost. Hij wordt wél geïmporteerd en blijft in de "
+            "webapp zichtbaar: een drempel mag ruis schelen, geen dekking. "
+            "De standaard van 10 komt uit een meting over zeven stukken: "
+            "alles met inhoud scoorde 15 of hoger, en alleen een "
+            "procedureel verslag zonder inhoud kwam op 0. Een stuk waarin "
+            "de term als gewoon woord valt (score 15) blijft daarmee "
+            "zichtbaar als grijze regel, want het oordeel of dat ruis is "
+            "hoort bij de lezer."
+        ),
+    )
     ingehaald_op: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

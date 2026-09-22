@@ -96,6 +96,16 @@ def upgrade() -> None:
             ),
         ),
         sa.Column(
+            "minimum_relevantie",
+            sa.Integer(),
+            server_default="10",
+            nullable=False,
+            comment=(
+                "Onder deze score (0-100) geen Mattermost-bericht; het stuk "
+                "wordt wel geïmporteerd."
+            ),
+        ),
+        sa.Column(
             "ingehaald_op",
             sa.DateTime(timezone=True),
             nullable=True,

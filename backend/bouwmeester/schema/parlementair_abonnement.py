@@ -30,6 +30,7 @@ class AbonnementUpdate(BaseModel):
     actief: bool | None = None
     notitie: str | None = None
     uitgezette_categorieen: list[str] | None = None
+    minimum_relevantie: int | None = Field(default=None, ge=0, le=100)
 
 
 class AbonnementResponse(BaseModel):

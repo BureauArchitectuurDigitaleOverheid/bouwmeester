@@ -48,6 +48,16 @@ USER_AGENT = (
 DOCUMENT_TIMEOUT = 60.0
 SEARCH_TIMEOUT = 30.0
 
+# Hoeveel tekst we van een document bewaren. De standaard van
+# `document_extract` is 15.000 tekens, en dat bleek te weinig: de memorie
+# van toelichting bij de EZ-begroting is 409.830 tekens en noemt de
+# Nederlandse Digitale Dienst pas op positie 44.954. Het model kreeg
+# daardoor alleen de voorpagina met begrotingsstaten te zien en gaf een
+# relevantiescore van 8 aan een stuk dat beschrijft wat de dienst gaat
+# doen. `zoekterm_passage` knipt hierna rond de vindplaats, dus dit is
+# opslag en geen promptruimte.
+MAX_DOCUMENT_TEKENS = 500_000
+
 
 @dataclass
 class TkconvItem:
@@ -394,7 +404,8 @@ def _extract_text(payload: bytes, content_type: str, nummer: str) -> str | None:
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(payload)
             tmp_path = Path(tmp.name)
-        return extract_text(tmp_path, resolved)
+        tekst = extract_text(tmp_path, resolved, max_chars=MAX_DOCUMENT_TEKENS)
+        return tekst
     except Exception as e:  # noqa: BLE001 - extractie mag nooit de ronde stoppen
         logger.warning("Tekstextractie faalde voor %s (%s): %s", nummer, resolved, e)
         return None
