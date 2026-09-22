@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
@@ -11,14 +11,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { Icon } from '@/components/nldd/Icon';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
-import { useNlddEvent } from '@/components/nldd/events';
-
-/** An `nldd-link` with its click bridged to React, for an in-page navigation action inside plain text. */
-function ActionLink({ text, onClick }: { text: string; onClick: () => void }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onClick);
-  return <nldd-link ref={ref} text={text} />;
-}
+import { NlddActionText } from '@/components/nldd/NlddLink';
 
 /** `SyncStatus` -> the design system's five semantic roles. */
 const SYNC_STATUS_TAG_COLOR: Record<SyncStatus, 'success' | 'warning' | 'accent' | 'critical'> = {
@@ -310,7 +303,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                     {
                       label: 'Instrument',
                       value: opdracht.instrument ? (
-                        <ActionLink
+                        <NlddActionText
                           text={opdracht.instrument.title}
                           onClick={() => openNodeDetail(opdracht.instrument!.id, opdracht.titel)}
                         />
@@ -319,7 +312,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                     {
                       label: 'Opdrachtnemer',
                       value: opdracht.opdrachtnemer ? (
-                        <ActionLink
+                        <NlddActionText
                           text={opdracht.opdrachtnemer.afkorting || opdracht.opdrachtnemer.naam}
                           onClick={() => { onClose(); navigate('/externe-organisaties'); }}
                         />
@@ -328,7 +321,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                     {
                       label: 'Opdrachtgever',
                       value: opdracht.opdrachtgever ? (
-                        <ActionLink
+                        <NlddActionText
                           text={opdracht.opdrachtgever.naam}
                           onClick={() => { onClose(); navigate('/organisatie'); }}
                         />
@@ -337,7 +330,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                     {
                       label: 'Verantwoordelijke',
                       value: opdracht.verantwoordelijke ? (
-                        <ActionLink
+                        <NlddActionText
                           text={opdracht.verantwoordelijke.naam}
                           onClick={() => { onClose(); navigate('/people'); }}
                         />
@@ -451,7 +444,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                       <nldd-list-item key={member.person_id}>
                         <nldd-cell>
                           <nldd-container layout="row" gap="8" vertical-alignment="center" min-width="0px">
-                            <ActionLink
+                            <NlddActionText
                               text={member.person_naam}
                               onClick={() => { onClose(); navigate(`/people?highlight=${member.person_id}`); }}
                             />
@@ -510,7 +503,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                       <nldd-list-item key={eenheid.eenheid_id}>
                         <nldd-cell>
                           <nldd-container layout="row" gap="8" vertical-alignment="center" min-width="0px">
-                            <ActionLink
+                            <NlddActionText
                               text={eenheid.eenheid_naam}
                               onClick={() => { onClose(); navigate(`/organisatie?highlight=${eenheid.eenheid_id}`); }}
                             />

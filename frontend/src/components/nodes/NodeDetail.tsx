@@ -14,7 +14,7 @@ import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { Icon } from '@/components/nldd/Icon';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton, NlddActionText } from '@/components/nldd/NlddLink';
 import { useNlddEvent } from '@/components/nldd/events';
 import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
@@ -52,13 +52,6 @@ function ClickableListItem({ onClick, children }: { onClick: () => void; childre
       {children}
     </nldd-list-item>
   );
-}
-
-/** An `nldd-link` with its click bridged to React, for an in-page action rather than navigation. */
-function ActionLink({ text, onClick }: { text: string; onClick: () => void }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onClick);
-  return <nldd-link ref={ref} text={text} size="xs" />;
 }
 
 type TabId = 'overview' | 'connections' | 'stakeholders' | 'tasks' | 'activity';
@@ -276,8 +269,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                   <h3>Brongegevens</h3>
                   {!bronEditing && (
                     <span slot="end">
-                      <ActionLink
+                      <NlddActionText
                         text="Bewerken"
+                        size="xs"
                         onClick={() => {
                           setBronType(bronDetail.type);
                           setBronAuteur(bronDetail.auteur ?? '');
@@ -513,8 +507,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                     />
                   ))}
                   {stakeholders.length > 5 && (
-                    <ActionLink
+                    <NlddActionText
                       text={`Bekijk alle ${stakeholders.length} betrokkenen`}
+                      size="xs"
                       onClick={() => setActiveTab('stakeholders')}
                     />
                   )}
@@ -539,8 +534,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                   ))}
                 </nldd-list>
                 {neighbors.length > 5 && (
-                  <ActionLink
+                  <NlddActionText
                     text={`Bekijk alle ${neighbors.length} verbindingen`}
+                    size="xs"
                     onClick={() => setActiveTab('connections')}
                   />
                 )}

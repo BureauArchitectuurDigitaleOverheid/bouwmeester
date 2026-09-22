@@ -3,6 +3,7 @@ import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { orUndef, useNlddEvent } from '@/components/nldd/events';
+import { NlddActionText } from '@/components/nldd/NlddLink';
 import { useNodeGraph } from '@/hooks/useNodes';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useCompletenessAnalysis, type StepStatus } from './useCompletenessAnalysis';
@@ -49,13 +50,6 @@ function DisclosureSegment({
       <nldd-icon-cell icon="chevron-down" size="16" />
     </nldd-list-item-segment>
   );
-}
-
-/** An `nldd-link` with its click bridged to React, for an in-page action rather than navigation. */
-function ActionLink({ text, onClick }: { text: string; onClick: () => void }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onClick);
-  return <nldd-link ref={ref} text={text} size="xs" />;
 }
 
 interface StepActionButtonsProps {
@@ -325,7 +319,7 @@ export function BeleidskompasPanel({ nodeId, stakeholderCount, onNavigateToStake
               horizontal-alignment="left"
             >
               <nldd-container layout="wrap" gap="8">
-                <ActionLink text={`${stakeholderCount} betrokkenen`} onClick={onNavigateToStakeholders} />
+                <NlddActionText text={`${stakeholderCount} betrokkenen`} size="xs" onClick={onNavigateToStakeholders} />
                 <nldd-link href={KCBR_STAKEHOLDERS_URL} target="_blank" accessible-label="Bekijk op KCBR" start-icon="external-link" size="xs" />
               </nldd-container>
             </nldd-inline-dialog>

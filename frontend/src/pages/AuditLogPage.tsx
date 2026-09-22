@@ -8,13 +8,7 @@ import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { Select } from '@/components/common/Select';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useNlddEvent } from '@/components/nldd/events';
-
-/** An `nldd-link` with its click bridged to React, for an in-page action rather than navigation. */
-function ActionLink({ text, onClick }: { text: string; onClick: () => void }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onClick);
-  return <nldd-link ref={ref} text={text} />;
-}
+import { NlddActionText } from '@/components/nldd/NlddLink';
 import {
   Activity,
   EVENT_TYPE_LABELS,
@@ -201,7 +195,7 @@ function DetailCell({
     <nldd-container gap="4">
       {subject && (
         isClickable ? (
-          <ActionLink text={String(subject)} onClick={handleClick} />
+          <NlddActionText text={String(subject)} onClick={handleClick} />
         ) : (
           <nldd-text weight="medium">{String(subject)}</nldd-text>
         )

@@ -141,3 +141,35 @@ export function NlddButton({
     </nldd-button>
   );
 }
+
+interface NlddActionTextProps {
+  text: string;
+  onClick: () => void;
+  /** `xs` for small print; omit to inherit the surrounding size. */
+  size?: 'xs' | 'sm' | 'md';
+  className?: string;
+}
+
+/**
+ * Text that reads as a link but performs an in-page action: opening a panel,
+ * expanding a section, switching a view. There is no URL behind it.
+ *
+ * A `<button>`, not `nldd-link`: a link without `href` emits an `<a>` with no
+ * href attribute, and that is neither focusable nor keyboard-operable, so it
+ * looks operable while it is not. A button is what this is. `plain-button`
+ * takes the control chrome off so it still reads as text, and the underline on
+ * hover and focus is what says it does something.
+ */
+export function NlddActionText({ text, onClick, size, className }: NlddActionTextProps) {
+  return (
+    <button
+      type="button"
+      className={['plain-button', 'link-hover-underline', className].filter(Boolean).join(' ')}
+      onClick={onClick}
+    >
+      <nldd-text {...(size ? { size } : {})} color="accent">
+        {text}
+      </nldd-text>
+    </button>
+  );
+}
