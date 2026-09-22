@@ -261,18 +261,51 @@ def tiptap_to_markdown(value: str | None) -> str | None:
     return "\n\n".join(blocks)
 
 
+def _code_spans(value: str) -> list[tuple[int, int]]:
+    """Character ranges covered by a fenced block or an inline code span.
+
+    Text carrying the `code` mark is written through verbatim, without the
+    escaping every other run gets, because inside code a backslash has to stay
+    a backslash. That leaves one hole: a user who types the literal text of a
+    mention and marks it as code produces a run that `_MENTION_PATTERN` cannot
+    tell from one this module wrote, and the mention lands on whichever id they
+    typed. Code is quoted text, never a link, so these ranges are skipped.
+
+    Fences are matched first: a lone backtick inside a fenced block opens no
+    inline span.
+    """
+    spans: list[tuple[int, int]] = []
+    for match in re.finditer(r"^(`{3,})[^\n]*\n.*?^\1[^\S\n]*$", value, re.S | re.M):
+        spans.append(match.span())
+
+    def in_fence(pos: int) -> bool:
+        return any(start <= pos < end for start, end in spans)
+
+    for match in re.finditer(r"(`+)(?!`).*?(?<!`)\1(?!`)", value, re.S):
+        if not in_fence(match.start()):
+            spans.append(match.span())
+    return spans
+
+
 def extract_markdown_mentions(value: str | None) -> list[dict[str, str]]:
     """Read the mentions back out of the markdown form.
 
     The inverse of `_mention_to_markdown`. Returns dicts of `mention_type` and
     `target_id` in document order, the same shape `MentionService` builds the
     mention table from.
+
+    Anything inside code is quoted, not linked, so it yields no mentions: see
+    `_code_spans`.
     """
     if not value:
         return []
 
+    skip = _code_spans(value)
+
     mentions: list[dict[str, str]] = []
     for match in _MENTION_PATTERN.finditer(value):
+        if any(start <= match.start() < end for start, end in skip):
+            continue
         mention_type = _SCHEME_MENTION_TYPES.get(match.group(2))
         if mention_type:
             mentions.append(

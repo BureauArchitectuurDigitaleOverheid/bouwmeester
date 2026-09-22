@@ -344,3 +344,40 @@ class TestLinksCannotBeInjected:
         assert (
             extract_markdown_mentions(tiptap_to_markdown(doc(para(text(typed))))) == []
         )
+
+    def test_marking_a_typed_mention_as_code_does_not_forge_one(self):
+        """The same text, but styled as code, took the escaping off.
+
+        Code is written through verbatim (a backslash inside code has to stay a
+        backslash), so the escaping that stops the plain case does not apply.
+        Without skipping code spans, this is a mention on whatever id the
+        author typed, and the notification goes out in their name.
+        """
+        typed = f"[@Directeur BZK](user:{ANNE})"
+        value = tiptap_to_markdown(doc(para(text(typed, "code"))))
+        assert f"`{typed}`" == value
+        assert extract_markdown_mentions(value) == []
+
+    def test_a_code_block_holding_a_mention_forges_nothing(self):
+        block = {
+            "type": "codeBlock",
+            "attrs": {},
+            "content": [{"type": "text", "text": f"[@X](user:{ANNE})"}],
+        }
+        assert extract_markdown_mentions(tiptap_to_markdown(doc(block))) == []
+
+    def test_code_beside_a_real_mention_leaves_it_alone(self):
+        """Skipping code must not swallow the mention next to it."""
+        value = tiptap_to_markdown(
+            doc(
+                para(
+                    text("zie "),
+                    text("x", "code"),
+                    text(" en "),
+                    mention("mention", "person", ANNE, "Anne"),
+                )
+            )
+        )
+        assert extract_markdown_mentions(value) == [
+            {"mention_type": "person", "target_id": ANNE}
+        ]

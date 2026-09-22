@@ -7,9 +7,11 @@ nldd-tag and nldd-icon, which only accept a closed set of color names
 (schema.initiatief.INITIATIEF_COLORS) and paint their own accessible text
 color per name, so the stored value has to become one of those names.
 
-Checked the data first: all 4 rows are the 4 seed defaults from seed.py, no
-custom colors, so this is a fixed translation table rather than a per-row
-guess. The column is nullable with no server_default, so only the values move.
+A fixed translation table rather than a per-row guess: in the environment I
+could check, all 4 rows held the 4 seed defaults from seed.py. That is one
+environment, not a guarantee, so a hex outside the table is logged by name
+before it is dropped. The column is nullable with no server_default, so only
+the values move.
 
 Revision ID: 3f9a2c81e5d7
 Revises: 6b1e04a7c8d2
@@ -17,6 +19,7 @@ Create Date: 2026-09-22 00:00:00.000000
 
 """
 
+import logging
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -47,16 +50,35 @@ def upgrade() -> None:
             sa.text("UPDATE initiatief SET kleur = :new WHERE kleur = :old"),
             {"new": new_kleur, "old": old_kleur},
         )
+
     # Any other hex (a color picked in an older UI build) is not translatable
     # to a name, and a hex left behind would render as no color at all. NULL is
     # the column's own "no color", which every consumer already handles.
+    #
+    # Eerst opsommen wat eraan gaat, en dat loggen. De vier waarden hierboven
+    # zijn wat ik in één omgeving aantrof; een andere omgeving kan een kleur
+    # bevatten die hier ongezien verdwijnt. Wie de migratie draait, moet in het
+    # log kunnen terugvinden wat er stond.
+    verloren = conn.execute(
+        sa.text("SELECT id, kleur FROM initiatief WHERE kleur LIKE '#%'")
+    ).fetchall()
+    if verloren:
+        logger = logging.getLogger("alembic.runtime.migration")
+        for row_id, kleur in verloren:
+            logger.warning(
+                "initiatief %s had kleur %s, niet vertaalbaar naar een naam; "
+                "wordt NULL",
+                row_id,
+                kleur,
+            )
+
     conn.execute(sa.text("UPDATE initiatief SET kleur = NULL WHERE kleur LIKE '#%'"))
 
 
 def downgrade() -> None:
-    conn = op.get_bind()
-    for old_kleur, new_kleur in OLD_TO_NEW.items():
-        conn.execute(
-            sa.text("UPDATE initiatief SET kleur = :old WHERE kleur = :new"),
-            {"old": old_kleur, "new": new_kleur},
-        )
+    # Geen waarden terug. Een naam legt niet vast of de rij ooit een hex was,
+    # dus rijen die al met een naam zijn aangemaakt zouden een hex krijgen die
+    # ze nooit hebben gehad, en die keurt de schema-validatie af. De hexes die
+    # de upgrade op NULL zette staan in het log van die run; terugzetten gaat
+    # via een back-up, niet hier.
+    pass
