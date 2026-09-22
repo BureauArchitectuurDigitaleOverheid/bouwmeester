@@ -11,6 +11,40 @@ import {
 } from '@/api/import-export';
 import type { DatabaseBackupInfo, DatabaseResetResult, DatabaseRestoreResult } from '@/types';
 
+/**
+ * The heading of one section: an icon in the section's colour, a title and a
+ * line saying what the action does.
+ *
+ * The colour lives here and nowhere else. Painting the whole card as well put
+ * red inside red inside red on the reset section, where three layers all said
+ * "danger" and none of them said it louder than the others.
+ */
+function SectionHeader({
+  icon,
+  color,
+  title,
+  description,
+}: {
+  icon: string;
+  color: 'accent' | 'warning' | 'critical';
+  title: string;
+  description: string;
+}) {
+  return (
+    <nldd-container layout="row" gap="12" vertical-alignment="top">
+      <nldd-icon name={icon} size="24" color={color} box className="shrink-0" />
+      <nldd-container width="fit-content" className="row-fill" gap="2">
+        <nldd-title size={5}>
+          <h2>{title}</h2>
+        </nldd-title>
+        <nldd-text size="sm" color="secondary">
+          {description}
+        </nldd-text>
+      </nldd-container>
+    </nldd-container>
+  );
+}
+
 export function DatabaseBackup() {
   const { showError, showSuccess } = useToast();
   const [info, setInfo] = useState<DatabaseBackupInfo | null>(null);
@@ -101,66 +135,53 @@ export function DatabaseBackup() {
 
   return (
     <nldd-container max-width="640px" gap="24">
-      {/* Export section */}
+      {/* Exporteren: de veilige, alledaagse actie, dus geen waarschuwing en
+          geen kleur. Wat er in de backup zit staat als bijzin onder de knop,
+          niet als een blok tekst dat eerst gelezen moet worden. */}
       <nldd-card>
-        <nldd-container gap="16">
-          <nldd-container layout="row" gap="12" vertical-alignment="center">
-            <nldd-icon name="download" size="24" color="accent" box />
-            <nldd-container gap="0">
-              <nldd-title size={4}><h2>Database exporteren</h2></nldd-title>
-              <nldd-text size="sm" color="secondary">
-                Download een volledige backup van de database.
-              </nldd-text>
-            </nldd-container>
-          </nldd-container>
+        <nldd-container gap="12">
+          <SectionHeader
+            icon="download"
+            color="accent"
+            title="Database exporteren"
+            description="Download een volledige backup van corpus, organisatie, personen, taken, audit trail en kamerstukken."
+          />
 
-          <nldd-container gap="4">
-            <nldd-text size="sm" color="secondary">
-              Bevat: corpus, organisatie, personen, taken, audit trail, kamerstukken
-            </nldd-text>
+          <nldd-container layout="row" gap="12" vertical-alignment="center">
+            <NlddButton
+              text="Database exporteren"
+              startIcon="database"
+              onClick={handleExport}
+              disabled={exporting}
+              loading={exporting}
+            />
             {loadingInfo ? (
-              <nldd-text size="sm" color="secondary">Laden...</nldd-text>
+              <nldd-text size="xs" color="secondary">Laden...</nldd-text>
             ) : info ? (
-              <>
-                <nldd-text size="sm" color="secondary">
-                  Migratieversie: <code>{info.alembic_revision}</code>
-                </nldd-text>
-                {info.encrypted && (
-                  <nldd-text size="sm" color="secondary">Versleuteling: age-encrypted</nldd-text>
-                )}
-              </>
+              <nldd-text size="xs" color="secondary">
+                versie <code>{info.alembic_revision}</code>
+                {info.encrypted ? ' · age-versleuteld' : ''}
+              </nldd-text>
             ) : (
-              <nldd-text size="sm" color="warning">Kon database-informatie niet ophalen</nldd-text>
+              <nldd-text size="xs" color="warning">
+                Kon database-informatie niet ophalen
+              </nldd-text>
             )}
           </nldd-container>
-
-          <NlddButton
-            text="Database exporteren"
-            startIcon="database"
-            onClick={handleExport}
-            disabled={exporting}
-            loading={exporting}
-          />
         </nldd-container>
       </nldd-card>
 
-      {/* Import section */}
+      {/* Importeren. De waarschuwing stond hier boven het uploadveld, dus je
+          las een alarm over iets wat je nog niet gekozen had. Nu verschijnt
+          hij bij het bestand dat je daadwerkelijk gaat terugzetten, waar hij
+          over iets concreets gaat. */}
       <nldd-card>
-        <nldd-container gap="16">
-          <nldd-container layout="row" gap="12" vertical-alignment="center">
-            <nldd-icon name="upload" size="24" color="warning" box />
-            <nldd-container gap="0">
-              <nldd-title size={4}><h2>Database importeren</h2></nldd-title>
-              <nldd-text size="sm" color="secondary">
-                Herstel de database vanuit een backup-bestand.
-              </nldd-text>
-            </nldd-container>
-          </nldd-container>
-
-          <nldd-banner
-            variant="warning"
-            text="Import vervangt alle huidige data in de database"
-            supporting-text="Maak eerst een export als backup. De import kan enkele minuten duren; tijdens het importeren is de applicatie tijdelijk niet beschikbaar voor andere gebruikers."
+        <nldd-container gap="12">
+          <SectionHeader
+            icon="upload"
+            color="warning"
+            title="Database importeren"
+            description="Herstel de database vanuit een backup-bestand. De huidige data wordt vervangen."
           />
 
           <FileUpload
@@ -172,17 +193,33 @@ export function DatabaseBackup() {
 
           {selectedFile && (
             <nldd-container gap="12">
-              {confirmImport && (
-                <nldd-banner variant="critical" text="Weet je zeker dat je wilt importeren? Alle huidige data wordt vervangen." />
-              )}
+              <nldd-banner
+                variant={confirmImport ? 'critical' : 'warning'}
+                text={
+                  confirmImport
+                    ? 'Dit vervangt alle huidige data. Dit kan niet ongedaan worden gemaakt.'
+                    : 'Import vervangt alle huidige data in de database'
+                }
+                supporting-text="Maak eerst een export als backup. De import kan enkele minuten duren; tijdens het importeren is de applicatie tijdelijk niet beschikbaar voor andere gebruikers."
+              />
 
+              {/* Bij de bevestiging staat annuleren vóór de onomkeerbare
+                  actie: daar gaat de gebruiker op autopilot naartoe, en dat
+                  hoort de veilige uitweg te zijn. */}
               <nldd-container layout="row" gap="8">
+                {confirmImport && (
+                  <NlddButton
+                    text="Annuleren"
+                    variant="primary"
+                    onClick={() => setConfirmImport(false)}
+                  />
+                )}
                 <NlddButton
                   text={
                     importing
-                      ? 'Bezig met importeren... (dit kan enkele minuten duren)'
+                      ? 'Bezig met importeren...'
                       : confirmImport
-                        ? 'Bevestig import'
+                        ? 'Ja, vervang alle data'
                         : 'Database importeren'
                   }
                   startIcon="upload"
@@ -191,9 +228,6 @@ export function DatabaseBackup() {
                   disabled={importing}
                   loading={importing}
                 />
-                {confirmImport && (
-                  <NlddButton text="Annuleren" variant="neutral-tinted" onClick={() => setConfirmImport(false)} />
-                )}
               </nldd-container>
             </nldd-container>
           )}
@@ -214,21 +248,18 @@ export function DatabaseBackup() {
         </nldd-container>
       </nldd-card>
 
-      {/* Reset section */}
-      <nldd-box background="critical">
-        <nldd-container gap="16">
-          <nldd-container layout="row" gap="12" vertical-alignment="center">
-            <nldd-icon name="delete" size="24" color="critical" box />
-            <nldd-container gap="0">
-              <nldd-title size={4}><h2>Database resetten</h2></nldd-title>
-              <nldd-text size="sm" color="secondary">Wis alle data en begin opnieuw.</nldd-text>
-            </nldd-container>
-          </nldd-container>
-
-          <nldd-banner
-            variant="critical"
-            text="Dit wist alle data behalve de toegangslijst en sessies"
-            supporting-text="Corpus, organisatie, personen, taken — alles wordt verwijderd. Admin-accounts worden opnieuw aangemaakt. De applicatie is tijdelijk niet beschikbaar tijdens het resetten."
+      {/* Resetten. Dezelfde kaart als de andere twee, niet een rood vlak met
+          een rode banner met een rode knop erin: drie lagen rood zeggen drie
+          keer hetzelfde en geen van alle luider. Het icoon en de knop dragen
+          de kleur, en de volledige gevolgen staan er pas als je de actie in
+          gang hebt gezet. */}
+      <nldd-card>
+        <nldd-container gap="12">
+          <SectionHeader
+            icon="delete"
+            color="critical"
+            title="Database resetten"
+            description="Wis alle data en begin opnieuw. Dit kan niet ongedaan worden gemaakt."
           />
 
           {!showResetInput ? (
@@ -240,6 +271,12 @@ export function DatabaseBackup() {
             />
           ) : (
             <nldd-container gap="12">
+              <nldd-banner
+                variant="critical"
+                text="Dit wist alle data behalve de toegangslijst en sessies"
+                supporting-text="Corpus, organisatie, personen en taken worden verwijderd. Admin-accounts worden opnieuw aangemaakt. De applicatie is tijdelijk niet beschikbaar tijdens het resetten."
+              />
+
               <nldd-form-field label="Type RESET om te bevestigen">
                 <nldd-text-field
                   ref={resetFieldRef}
@@ -249,23 +286,24 @@ export function DatabaseBackup() {
                 />
               </nldd-form-field>
 
+              {/* Annuleren eerst en als primary: dat is de veilige uitweg. */}
               <nldd-container layout="row" gap="8">
                 <NlddButton
-                  text={resetting ? 'Bezig met resetten...' : 'Bevestig reset'}
-                  startIcon="delete"
-                  variant="destructive"
-                  onClick={handleReset}
-                  disabled={resetting || resetConfirmText !== 'RESET'}
-                  loading={resetting}
-                />
-                <NlddButton
                   text="Annuleren"
-                  variant="neutral-tinted"
+                  variant="primary"
                   disabled={resetting}
                   onClick={() => {
                     setShowResetInput(false);
                     setResetConfirmText('');
                   }}
+                />
+                <NlddButton
+                  text={resetting ? 'Bezig met resetten...' : 'Ja, wis alle data'}
+                  startIcon="delete"
+                  variant="destructive"
+                  onClick={handleReset}
+                  disabled={resetting || resetConfirmText !== 'RESET'}
+                  loading={resetting}
                 />
               </nldd-container>
             </nldd-container>
@@ -284,7 +322,7 @@ export function DatabaseBackup() {
             />
           )}
         </nldd-container>
-      </nldd-box>
+      </nldd-card>
     </nldd-container>
   );
 }

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 import { NlddButton } from '@/components/nldd/NlddLink';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
-import { useNlddEvent, useNlddValue, eventValue } from '@/components/nldd/events';
+import { useNlddEvent, useNlddValue, eventValue, orUndef } from '@/components/nldd/events';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -65,6 +65,27 @@ function ShowBelow({ width, slot, children }: { width: number; slot?: string; ch
   return slot ? <span slot={slot}>{children}</span> : <>{children}</>;
 }
 
+/**
+ * The admin's "view as a regular member" switch.
+ *
+ * `type="button"` rather than a checkbox: it is announced with aria-pressed,
+ * which is what a mode you turn on and off wants.
+ */
+function ViewAsToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', onToggle);
+  return (
+    <nldd-toggle-button
+      ref={ref}
+      type="button"
+      size="sm"
+      icon={active ? 'eye-slash' : 'eye'}
+      selected={orUndef(active)}
+      accessible-label={active ? 'Terug naar beheerweergave' : 'Bekijk als medewerker'}
+    />
+  );
+}
+
 /** The vocabulary choice, as one control rather than a row of buttons. */
 function VocabularySwitch({
   value,
@@ -77,7 +98,14 @@ function VocabularySwitch({
   useNlddValue(ref, value);
   useNlddEvent(ref, 'change', (e) => onChange(eventValue(e) as VocabularyId));
   return (
-    <nldd-segmented-control ref={ref} type="radio" size="sm" value={value} accessible-label="Woordenlijst">
+    <nldd-segmented-control
+      ref={ref}
+      type="radio"
+      size="sm"
+      value={value}
+      accessible-label="Woordenlijst"
+      className="keep-label-width"
+    >
       {(Object.keys(VOCABULARY_LABELS) as VocabularyId[]).map((id) => (
         <nldd-segmented-control-item key={id} value={id} text={VOCABULARY_LABELS[id]} />
       ))}
@@ -215,18 +243,16 @@ export function Header() {
           <VocabularySwitch value={vocabularyId} onChange={setVocabularyId} />
         </ShowAbove>
 
-        {/* Admin view-as-non-admin toggle */}
+        {/* Admin view-as-non-admin toggle.
+
+            A toggle button, not an icon button that swaps its own variant:
+            this is a state you are in, not an action you fire. The element
+            carries aria-pressed and draws both states itself, so it reads as a
+            control in either one. As an icon button it was transparent while
+            off, which left a bare icon with no button shape at all. */}
         {realIsAdmin && (
           <span slot="toolbar">
-          <NlddIconButton
-            icon={viewAsNonAdmin ? 'eye-slash' : 'eye'}
-            variant={viewAsNonAdmin ? 'neutral-tinted' : 'neutral-transparent'}
-            size="sm"
-            accessibleLabel={
-              viewAsNonAdmin ? 'Terug naar beheerweergave' : 'Bekijk als medewerker'
-            }
-            onClick={toggleViewAsNonAdmin}
-          />
+            <ViewAsToggle active={viewAsNonAdmin} onToggle={toggleViewAsNonAdmin} />
           </span>
         )}
 
