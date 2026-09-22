@@ -123,7 +123,18 @@ export function InboxPage() {
               'linear-gradient(to bottom right, var(--primitives-color-lintblauw-900), var(--primitives-color-lintblauw-700))',
           }}
         >
-          <nldd-title size={3} color="inherit"><h2>Welkom bij Bouwmeester</h2></nldd-title>
+          {/* A greeting, not a section, so a <span> rather than a heading: the
+              page already has its h1 in the title bar, and a second heading
+              here, set larger than that h1, put the loudest text on the page
+              outside the document outline entirely.
+
+              It has to be an element, not bare text. The component styles its
+              title through `::slotted(:not([slot]))`, which only matches
+              elements, so a loose text node drops to the surrounding 18px and
+              the banner stops reading as a banner. */}
+          <nldd-title size={5} color="inherit">
+            <span>Welkom bij Bouwmeester</span>
+          </nldd-title>
           <nldd-text color="inherit" style={{ opacity: 0.7 }}>
             Je werkplek voor beleid, taken en samenwerking.
           </nldd-text>
@@ -205,9 +216,14 @@ export function InboxPage() {
           <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
             {/* The heading leads the row and the action trails it, so the
                 heading takes the leftover space rather than the row pushing
-                everything to one side. */}
+                everything to one side.
+
+                Sizes measured on the page: 3 is 32px, 4 is 26px, 5 is 20px,
+                6 is 18px, and the title bar's h1 is 20px. A section of the
+                page sits below that h1, so 6; at 4 it rendered larger than the
+                heading naming the whole page. */}
             <nldd-container width="fit-content" className="row-fill">
-              <nldd-title size={4}><h2>Inbox</h2></nldd-title>
+              <nldd-title size={6}><h2>Meldingen</h2></nldd-title>
             </nldd-container>
             {hasUnread && currentPerson?.id && (
               <Button variant="ghost" size="sm" icon="check-list" onClick={() => markAllRead.mutate()}>
@@ -221,17 +237,17 @@ export function InboxPage() {
           ) : (
             <EmptyState
               icon="inbox"
-              title="Inbox is leeg"
-              description="Er zijn momenteel geen nieuwe meldingen. Begin met het verkennen van het corpus of het aanmaken van taken."
+              title="Geen nieuwe meldingen"
+              description="Toewijzingen en vermeldingen komen hier binnen."
               action={
-                <>
-                  <Button variant="primary" onClick={() => navigate('/corpus')}>
-                    Bekijk corpus
-                  </Button>
-                  <Button variant="secondary" onClick={() => navigate('/tasks')}>
-                    Bekijk taken
-                  </Button>
-                </>
+                /* One suggestion, not two equal ones. A centred dialog lays its
+                   actions out stacked and full-width, so a second button here
+                   became a second 480px bar competing with the first for a
+                   choice nobody is being asked to make. Taken has its own place
+                   in the sidebar. */
+                <Button variant="secondary" onClick={() => navigate('/corpus')}>
+                  Bekijk corpus
+                </Button>
               }
             />
           )}

@@ -52,23 +52,17 @@ interface InitiatiefDetailModalProps {
 }
 
 /**
- * A section heading: an icon and an `<h4>` in `nldd-title`'s slot, sized to sit
- * in a row with an action button on the right.
+ * A section heading: an icon and an `<h4>` in `nldd-title`'s slot.
  *
- * `width="fit-content"` plus `row-fill`, rather than the container default:
- * that default is `width: full`, which takes a hard 100% of the row and leaves
- * the button less room than its own label needs. The label then wraps and the
- * button becomes a two-line block half again as tall as it should be.
+ * Most callers stack this above their content, so it keeps the container
+ * default of `width: full`. The one caller that puts a button beside it wraps
+ * it in `row-fill` itself; putting that here instead gave the other five a
+ * `min-width: 0` with nothing to fill, and the headings collapsed to one
+ * letter per line.
  */
 function SectionHeading({ icon, text }: { icon: string; text: string }) {
   return (
-    <nldd-container
-      layout="row"
-      width="fit-content"
-      className="row-fill"
-      gap="6"
-      vertical-alignment="center"
-    >
+    <nldd-container layout="row" gap="6" vertical-alignment="center">
       <Icon name={icon} size="sm" />
       <nldd-title size={4}>
         <h4>{text}</h4>
@@ -739,10 +733,13 @@ function ToggleRow({
   useNlddEvent(ref, 'change', useCallback(() => onToggle(), [onToggle]));
 
   return (
-    <nldd-container layout="row" gap="12" horizontal-alignment="right" vertical-alignment="top">
-      <nldd-container layout="row" gap="8" vertical-alignment="top">
+    <nldd-container layout="row" gap="12" vertical-alignment="top">
+      {/* The label block takes what the switch does not need. `fit-content`
+          on its own makes a container collapse to its narrowest word, which
+          set this label one letter per line. */}
+      <nldd-container layout="row" width="fit-content" className="row-fill" gap="8" vertical-alignment="top">
         <Icon name={icon} size="sm" />
-        <nldd-container gap="0" width="fit-content">
+        <nldd-container gap="0">
           <nldd-text size="sm" weight="medium">{label}</nldd-text>
           <nldd-text size="xs" color="secondary">{description}</nldd-text>
         </nldd-container>
@@ -848,8 +845,12 @@ function UpdatesSection({
 
   return (
     <nldd-container gap="8">
-      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
-        <SectionHeading icon="megaphone" text={`Updates (${posts.length})`} />
+      <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
+        {/* The heading takes what the button does not need, rather than the
+            row pushing both to one side. */}
+        <nldd-container width="fit-content" className="row-fill">
+          <SectionHeading icon="megaphone" text={`Updates (${posts.length})`} />
+        </nldd-container>
         {canEdit && !composing && (
           <Button variant="secondary" size="sm" onClick={startCompose}>
             Nieuwe update
