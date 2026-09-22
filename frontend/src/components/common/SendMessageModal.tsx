@@ -56,7 +56,10 @@ export function SendMessageModal({ open, onClose, recipient }: SendMessageModalP
       size="lg"
       footer={
         <nldd-container layout="row" gap="12" vertical-alignment="center" width="full">
-          <nldd-container width="full">
+          {/* fit-content + row-fill rather than the container default of full:
+              that default takes a hard 100% of the row and squeezes the
+              buttons beside it below their own labels. */}
+          <nldd-container width="fit-content" className="row-fill">
             <nldd-text size="xs" color="secondary">
               {currentPerson ? `Van: ${currentPerson.naam}` : 'Selecteer eerst een persoon'}
             </nldd-text>

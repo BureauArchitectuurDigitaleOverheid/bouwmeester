@@ -49,13 +49,26 @@ interface InitiatiefDetailModalProps {
   initiatiefId: string;
   open: boolean;
   onClose: () => void;
-  /** z-index van deze modal (default 50). Geneste modals krijgen +10. */
 }
 
-/** A section heading: an icon, an `<h4>` in `nldd-title`'s slot, and an optional count. */
+/**
+ * A section heading: an icon and an `<h4>` in `nldd-title`'s slot, sized to sit
+ * in a row with an action button on the right.
+ *
+ * `width="fit-content"` plus `row-fill`, rather than the container default:
+ * that default is `width: full`, which takes a hard 100% of the row and leaves
+ * the button less room than its own label needs. The label then wraps and the
+ * button becomes a two-line block half again as tall as it should be.
+ */
 function SectionHeading({ icon, text }: { icon: string; text: string }) {
   return (
-    <nldd-container layout="row" gap="6" vertical-alignment="center">
+    <nldd-container
+      layout="row"
+      width="fit-content"
+      className="row-fill"
+      gap="6"
+      vertical-alignment="center"
+    >
       <Icon name={icon} size="sm" />
       <nldd-title size={4}>
         <h4>{text}</h4>
@@ -330,7 +343,7 @@ export function InitiatiefDetailModal({
 
               {isEigenaar && (
                 <nldd-container layout="row" gap="8" vertical-alignment="top">
-                  <nldd-container width="full">
+                  <nldd-container width="fit-content" className="row-fill">
                     <CreatableSelect
                       value={addMemberValue}
                       onChange={(val) => {
@@ -398,7 +411,7 @@ export function InitiatiefDetailModal({
 
               {isEigenaar && (
                 <nldd-container layout="row" gap="8" vertical-alignment="top">
-                  <nldd-container width="full">
+                  <nldd-container width="fit-content" className="row-fill">
                     <CreatableSelect
                       value={addEenheidValue}
                       onChange={(val) => {
@@ -564,7 +577,7 @@ function SettingsSection({ initiatief }: { initiatief: InitiatiefDetail }) {
                     </nldd-text>
                     <nldd-container layout="row" gap="8" vertical-alignment="top">
                       <nldd-text size="sm" color="secondary">/c/</nldd-text>
-                      <nldd-container width="full">
+                      <nldd-container width="fit-content" className="row-fill">
                         <SlugDraftField
                           value={slugDraft}
                           onChange={(v) => {

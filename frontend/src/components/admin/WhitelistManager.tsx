@@ -39,7 +39,7 @@ export function WhitelistManager() {
       {/* Add form */}
       <form onSubmit={handleAdd}>
         <nldd-container layout="row" gap="8">
-          <nldd-container>
+          <nldd-container width="fit-content" className="row-fill">
             <nldd-text-field
               ref={emailFieldRef}
               type="email"

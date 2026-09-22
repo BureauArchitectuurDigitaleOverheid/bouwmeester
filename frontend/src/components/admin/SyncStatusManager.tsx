@@ -109,7 +109,7 @@ export function SyncStatusManager() {
   return (
     <nldd-container gap="16">
       <nldd-container layout="row" gap="16" horizontal-alignment="left">
-        <nldd-container gap="4">
+        <nldd-container width="fit-content" className="row-fill" gap="4">
           <nldd-title size={3}><h2>Sync-status overheidsorganisaties</h2></nldd-title>
           <nldd-text size="sm" color="secondary">
             Per externe bron: laatste sync-tijdstip + handmatige trigger. Worker draait dagelijks

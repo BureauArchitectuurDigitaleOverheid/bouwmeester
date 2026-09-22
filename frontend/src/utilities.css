@@ -669,3 +669,21 @@
   align-self: center;
   flex-shrink: 0;
 }
+
+/* # The growing half of a heading-plus-action row
+ *
+ * `nldd-container` is `width: full` by default, so a heading container placed
+ * in a row beside a button takes a hard 100% of the row. The button then gets
+ * whatever is left, which is less than its own label needs, and since nothing
+ * stops a button label from wrapping it becomes two lines of text in a block
+ * half again as tall as the button should be.
+ *
+ * Pair this with `width="fit-content"`: that drops the 100% claim, and this
+ * hands the leftover space back, so the heading ends up with everything the
+ * button does not need. `min-width: 0` lets a long heading be the thing that
+ * gives way, rather than pushing the button off the end.
+ */
+.row-fill {
+  flex-grow: 1;
+  min-width: 0;
+}

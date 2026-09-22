@@ -129,7 +129,7 @@ function ConfigRow({ entry }: { entry: AppConfigEntry }) {
     <nldd-card>
       <nldd-container gap="8">
         <nldd-container layout="row" gap="16" horizontal-alignment="left" vertical-alignment="top">
-          <nldd-container gap="4">
+          <nldd-container width="fit-content" className="row-fill" gap="4">
             <nldd-container layout="row" gap="8" vertical-alignment="center">
               <nldd-text size="sm" weight="medium">{entry.key}</nldd-text>
               {entry.is_secret && <nldd-tag text="geheim" color="warning" size="sm" />}

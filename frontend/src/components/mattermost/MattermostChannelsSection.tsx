@@ -45,7 +45,12 @@ export function MattermostChannelsSection({ scope }: Props) {
     <nldd-card>
       <nldd-container gap="12">
       <nldd-container layout="row" gap="8" vertical-alignment="center">
-        <nldd-container width="full">
+        {/* A container defaults to width:full, so in a row beside a button it
+            takes a hard 100% and the button is squeezed below its own label:
+            two lines of text in a 48px block where a 32px button belongs.
+            `fit-content` plus `row-fill` makes it take what is left over
+            instead, which is what a heading beside an action wants. */}
+        <nldd-container width="fit-content" className="row-fill">
           <nldd-container layout="row" gap="6" vertical-alignment="center">
             <Icon name="tag" size="md" />
             <nldd-title size={4}>

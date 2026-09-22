@@ -416,7 +416,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
                 </nldd-list>
               )}
               <nldd-container layout="row" gap="8" vertical-alignment="bottom">
-                <nldd-container width="full">
+                <nldd-container width="fit-content" className="row-fill">
                   <CreatableSelect
                     label="Node"
                     value={newKoppelingNodeId}

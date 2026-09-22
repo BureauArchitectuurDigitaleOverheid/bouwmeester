@@ -184,7 +184,11 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
       }
       footer={
         <nldd-container layout="row" gap="8" width="full" vertical-alignment="top">
-          <nldd-container width="full">
+          {/* fit-content + row-fill rather than the container default of full:
+              that default takes a hard 100% of the row, leaving the button
+              less room than its own label, which then wraps into a two-line
+              block. */}
+          <nldd-container width="fit-content" className="row-fill">
             <RichTextEditor
               value={replyText}
               onChange={setReplyText}

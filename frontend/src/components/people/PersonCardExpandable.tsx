@@ -112,7 +112,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
     >
       <nldd-container layout="row" gap="12">
         <PersonAvatar person={person} size="32" />
-        <nldd-container width="full" style={{ minWidth: 0 }}>
+        <nldd-container width="fit-content" className="row-fill">
           <nldd-container layout="row" gap="8" vertical-alignment="center">
             {/* The name is the disclosure control: the card holds its own
                 links and buttons, so it cannot be one itself, and without a

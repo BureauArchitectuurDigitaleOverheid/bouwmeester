@@ -657,7 +657,17 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
             >
               Bestand toevoegen
             </Button>
-            <nldd-container layout="row" gap="12" horizontal-alignment="right">
+            {/* fit-content + row-fill, not the container default of full: that
+                default takes a hard 100% of the row and squeezes the button
+                beside it below its own label, which then wraps into a two-line
+                block. */}
+            <nldd-container
+              layout="row"
+              width="fit-content"
+              className="row-fill"
+              gap="12"
+              horizontal-alignment="right"
+            >
               <Button
                 variant="ghost"
                 onClick={handleSkipParse}
