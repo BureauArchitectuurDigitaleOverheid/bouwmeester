@@ -36,7 +36,7 @@ export function DetailSection({
           </nldd-text>
         </nldd-container>
         {action && (
-          <nldd-container width="fit-content" horizontal-alignment="right">
+          <nldd-container width="fit-content" className="shrink-0" horizontal-alignment="right">
             {action}
           </nldd-container>
         )}

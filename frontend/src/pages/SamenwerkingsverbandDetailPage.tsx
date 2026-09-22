@@ -297,7 +297,7 @@ export function SamenwerkingsverbandDetailPage() {
                     </nldd-container>
                   </nldd-container>
                 </nldd-container>
-                <nldd-container gap="2" width="fit-content" horizontal-alignment="right">
+                <nldd-container gap="2" width="fit-content" className="shrink-0" horizontal-alignment="right">
                   {swv.start_datum && (
                     <nldd-text size="xs" color="secondary" horizontal-alignment="right">
                       Start: {new Date(swv.start_datum).toLocaleDateString('nl-NL')}

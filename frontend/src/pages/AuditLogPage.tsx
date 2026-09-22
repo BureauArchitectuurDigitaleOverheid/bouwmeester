@@ -337,7 +337,7 @@ export function AuditLogPage() {
               {data?.total ?? 0} resultaten — pagina {page + 1} van {totalPages}
             </nldd-text>
           </nldd-container>
-          <nldd-container width="fit-content">
+          <nldd-container width="fit-content" className="shrink-0">
             <nldd-pagination ref={paginationRef} current={page + 1} total={totalPages} />
           </nldd-container>
         </nldd-container>
