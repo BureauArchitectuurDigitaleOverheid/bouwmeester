@@ -283,19 +283,32 @@ class ParlementairAlertService:
         delen.append("via tkconv (berthub.eu)")
         return " · ".join(delen)
 
-    async def post_inhaalslag(self, abonnement, items: list[ParlementairItem]) -> int:
-        """Meld in één bericht wat een nieuwe zoekterm terugvond.
+    async def post_inhaalslag(
+        self, abonnementen: list, items: list[ParlementairItem]
+    ) -> int:
+        """Meld in één bericht wat nieuwe zoektermen terugvonden.
 
-        De feed draagt circa een week. Die stukken los posten zou het
-        kanaal openen met acht berichten tegelijk; één lijst zegt hetzelfde
-        en laat zien dat het om een inhaalslag gaat en niet om nieuws.
+        Eén bericht voor álle termen die tegelijk worden aangezet, niet
+        één per term. Twee termen vinden vaak dezelfde stukken: in
+        productie gaven "van wet naar digitale werking" en "regelrecht"
+        samen twee berichten met vier regels over drie unieke stukken,
+        met de startnotitie NLDD er twee keer in. Bij vijf termen zouden
+        dat vijf berichten zijn.
+
+        De losse alerts ontdubbelen al op documentnummer; dit doet
+        hetzelfde.
         """
         if not await self.mattermost.is_enabled() or not items:
             return 0
+        if not abonnementen:
+            return 0
 
+        # Alle termen delen dezelfde scope (de aanroeper groepeert
+        # daarop), dus de kanalen zijn voor allemaal gelijk.
+        eerste = abonnementen[0]
         stmt = select(MattermostChannelLink).where(
-            MattermostChannelLink.scope_type == abonnement.scope_type,
-            MattermostChannelLink.scope_id == abonnement.scope_id,
+            MattermostChannelLink.scope_type == eerste.scope_type,
+            MattermostChannelLink.scope_id == eerste.scope_id,
             MattermostChannelLink.disabled_at.is_(None),
             MattermostChannelLink.parlementaire_alerts_enabled.is_(True),
         )
@@ -303,7 +316,7 @@ class ParlementairAlertService:
         if not kanalen:
             return 0
 
-        text, props = self.format_inhaalslag(abonnement, items)
+        text, props = self.format_inhaalslag(abonnementen, items)
         gepost = 0
         for link in kanalen:
             if await self.mattermost.send_channel_message(link.channel_id, text, props):
@@ -311,9 +324,9 @@ class ParlementairAlertService:
         return gepost
 
     def format_inhaalslag(
-        self, abonnement, items: list[ParlementairItem]
+        self, abonnementen: list, items: list[ParlementairItem]
     ) -> tuple[str, dict]:
-        """Eén lijst met wat de nieuwe term in de feed terugvond."""
+        """Eén lijst met wat de nieuwe termen in de feed terugvonden."""
         regels = []
         for item in sorted(items, key=lambda i: i.datum or date.min, reverse=True):
             extra = item.extra_data or {}
@@ -330,17 +343,17 @@ class ParlementairAlertService:
                 regel += f" · {datum}"
             regels.append(regel)
 
+        termen = ", ".join(_escape_md(a.term) for a in abonnementen)
+        kop = "Nieuwe zoekterm" if len(abonnementen) == 1 else "Nieuwe zoektermen"
         attachment = {
-            "fallback": (
-                f"{len(items)} eerdere stukken gevonden voor {abonnement.term}"
-            ),
+            "fallback": f"{len(items)} eerdere stukken gevonden voor {termen}",
             "color": "#64748B",
-            "pretext": (f":mag: **Nieuwe zoekterm** · {_escape_md(abonnement.term)}"),
-            "title": (f"{len(items)} stukken uit de afgelopen week gevonden"),
+            "pretext": f":mag: **{kop}** · {termen}",
+            "title": f"{len(items)} stukken uit de afgelopen week gevonden",
             "text": "\n".join(regels),
             "footer": (
-                "Eenmalige inhaalslag bij het aanzetten van deze term. "
-                "Hierna verschijnen alleen nieuwe stukken."
+                "Eenmalige inhaalslag bij het aanzetten. Hierna verschijnen "
+                "alleen nieuwe stukken."
             ),
         }
         return "", {"attachments": [attachment]}

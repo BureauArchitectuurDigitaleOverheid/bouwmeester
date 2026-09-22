@@ -214,38 +214,56 @@ class ParlementairImportService:
         )
 
         service = ParlementairAlertService(self.session)
+
+        # Groepeer per scope: alle termen die tegelijk worden aangezet
+        # delen één bericht. Per term posten gaf in productie twee
+        # berichten over grotendeels dezelfde stukken.
+        per_scope: dict[tuple, dict] = {}
         for abonnement_id, item_ids in per_abonnement.items():
+            abonnement = await self.abonnement_repo.get(abonnement_id)
+            if abonnement is None:
+                continue
+            sleutel = (abonnement.scope_type, abonnement.scope_id)
+            groep = per_scope.setdefault(sleutel, {"abos": [], "items": []})
+            groep["abos"].append(abonnement)
+            for iid in item_ids:
+                if iid not in groep["items"]:
+                    groep["items"].append(iid)
+
+        for groep in per_scope.values():
+            abonnementen = groep["abos"]
             try:
-                abonnement = await self.abonnement_repo.get(abonnement_id)
-                if abonnement is None:
-                    continue
                 geladen = [
-                    await self.session.get(ParlementairItem, iid) for iid in item_ids
+                    await self.session.get(ParlementairItem, iid)
+                    for iid in groep["items"]
                 ]
                 items = [i for i in geladen if i is not None]
-                if items:
-                    # Eerst vastleggen dát de inhaalslag is gedaan, dan
-                    # pas posten. Andersom zou een mislukte commit het
-                    # bericht al de deur uit hebben terwijl `ingehaald_op`
-                    # NULL blijft, en dan stuurt de volgende ronde
-                    # hetzelfde bericht opnieuw. Een bericht is niet terug
-                    # te draaien, een gemiste markering wel te herstellen.
-                    await self.abonnement_repo.markeer_ingehaald([abonnement_id])
-                    await self.session.commit()
 
-                    gepost = await service.post_inhaalslag(abonnement, items)
+                # Eerst vastleggen dát de inhaalslag is gedaan, dan pas
+                # posten. Andersom zou een mislukte commit het bericht al
+                # de deur uit hebben terwijl `ingehaald_op` NULL blijft, en
+                # dan stuurt de volgende ronde hetzelfde bericht opnieuw.
+                # Een bericht is niet terug te draaien, een gemiste
+                # markering wel te herstellen.
+                await self.abonnement_repo.markeer_ingehaald(
+                    [a.id for a in abonnementen]
+                )
+                await self.session.commit()
+
+                if items:
+                    gepost = await service.post_inhaalslag(abonnementen, items)
                     logger.info(
-                        "Inhaalslag voor %r: %d stukken, %d kanalen",
-                        abonnement.term,
+                        "Inhaalslag voor %s: %d stukken, %d kanalen",
+                        ", ".join(repr(a.term) for a in abonnementen),
                         len(items),
                         gepost,
                     )
-                else:
-                    await self.abonnement_repo.markeer_ingehaald([abonnement_id])
-                    await self.session.commit()
             except Exception:
                 await self.session.rollback()
-                logger.exception("Inhaalslag mislukt voor %s", abonnement_id)
+                logger.exception(
+                    "Inhaalslag mislukt voor %s",
+                    ", ".join(str(a.id) for a in abonnementen),
+                )
 
     async def _alert_kamerstuk(self, parlementair_item_id: uuid.UUID) -> None:
         """Vat het stuk samen vanuit de zoekterm en post het in de kanalen.
@@ -328,6 +346,44 @@ class ParlementairImportService:
                 "Alert posten mislukt voor %s", parlementair_item.zaak_nummer
             )
 
+    async def _koppel_aan_bestaand_item(
+        self,
+        bestaand: ParlementairItem,
+        item: FetchedItem,
+        strategy: ImportStrategy,
+    ) -> None:
+        """Leg de treffers vast voor een stuk dat er al was.
+
+        Alleen de koppeling: het stuk is al geïmporteerd, dus er komt geen
+        tweede alert en geen tweede samenvatting. `registreer_treffers`
+        doet ON CONFLICT DO NOTHING, dus een herhaalde ronde telt niet
+        dubbel.
+
+        De inhaalslag krijgt het stuk er wél bij, want voor een verse term
+        is dit een van de stukken uit de afgelopen week — ook al kende het
+        systeem het al via een ander abonnement.
+        """
+        if not isinstance(strategy, TkconvSearchStrategy):
+            return
+
+        abonnement_ids = strategy.treffers.get(item.zaak_id, [])
+        if not abonnement_ids:
+            return
+
+        nieuw = await self.abonnement_repo.registreer_treffers(
+            bestaand.id, abonnement_ids
+        )
+        if nieuw:
+            logger.info(
+                "Kamerstuk %s aan %d extra zoekterm(en) gekoppeld",
+                item.zaak_nummer,
+                nieuw,
+            )
+
+        for aid in abonnement_ids:
+            if aid in strategy.verse_abonnementen:
+                self._inhaalslag.setdefault(aid, []).append(bestaand.id)
+
     async def _process_item(
         self,
         item: FetchedItem,
@@ -340,6 +396,13 @@ class ParlementairImportService:
         # Step 1: Idempotency check
         existing = await self.import_repo.get_by_zaak_id(item.zaak_id)
         if existing:
+            # Het stuk staat er al, maar de zoekterm die het nú aandroeg
+            # misschien nog niet. Twee termen vinden vaak hetzelfde
+            # kamerstuk: in productie kwam de startnotitie NLDD binnen via
+            # "van wet naar digitale werking" én "regelrecht", en zonder
+            # deze stap bleven beide tellers op nul staan terwijl het
+            # bericht het stuk wel noemde.
+            await self._koppel_aan_bestaand_item(existing, item, strategy)
             logger.debug(
                 f"Skipping {strategy.item_type} {item.zaak_nummer}: already imported"
             )
