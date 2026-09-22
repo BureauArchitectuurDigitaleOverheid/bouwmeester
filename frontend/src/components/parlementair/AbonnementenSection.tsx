@@ -320,18 +320,22 @@ function SuggestieLijst({
   onSluiten: () => void;
 }) {
   if (suggesties.length === 0) {
-    // Geen `dismissible`: die knop dispatcht alleen een event, en de
-    // consument moet de banner zelf verbergen. Zonder handler blijft hij
-    // staan en lijkt de X stuk. Sluiten gaat via de knop hieronder, net
-    // als bij een lijst mét suggesties.
+    // De knop staat onder de banner, niet ernaast: een `nldd-banner` in
+    // een rij-container neemt de volle breedte en duwt een buurelement
+    // buiten de modal. Verticaal stapelen houdt beide binnen beeld, ook
+    // op telefoonbreedte.
+    //
+    // Geen `dismissible` op de banner zelf: die knop dispatcht alleen een
+    // event en verwacht dat de consument de banner verbergt. Zonder
+    // handler blijft hij staan en lijkt de X stuk.
     return (
-      <nldd-container layout="row" gap="8" vertical-alignment="center">
+      <nldd-container gap="8">
         <nldd-banner
           variant="neutral"
           size="sm"
           text="Geen aanvullende zoektermen gevonden."
         />
-        <nldd-container width="fit-content" horizontal-alignment="right">
+        <nldd-container width="fit-content">
           <nldd-button
             variant="neutral-transparent"
             size="xs"
@@ -346,7 +350,13 @@ function SuggestieLijst({
   return (
     <nldd-card>
       <nldd-container gap="8">
-        <nldd-container layout="row" gap="8" vertical-alignment="center">
+        <nldd-container
+          layout="row"
+          gap="8"
+          vertical-alignment="center"
+          width="full"
+          min-width="0"
+        >
           <nldd-text size="xs" weight="bold">
             Voorgestelde zoektermen
           </nldd-text>

@@ -268,3 +268,43 @@ class TestKanaalSchakelaar:
         assert (
             "parlementaire_alerts_enabled" in MattermostChannelLinkUpdate.model_fields
         )
+
+
+class TestInhaalberichtBundelt:
+    """Eén bericht voor alle termen die tegelijk worden aangezet.
+
+    Gemeten in productie: twee verse termen gaven twee berichten met samen
+    vier regels over drie unieke stukken, met de startnotitie NLDD er twee
+    keer in. Bij vijf termen zouden dat vijf berichten zijn. De losse
+    alerts ontdubbelen al op documentnummer; dit doet hetzelfde.
+    """
+
+    def test_een_bericht_noemt_alle_termen(self):
+        a1 = _abonnement(term="van wet naar digitale werking")
+        a2 = _abonnement(term="regelrecht")
+        items = [
+            _item(titel="Startnotitie NLDD", zaak_nummer="2026D45065"),
+            _item(titel="Strategische inzet", zaak_nummer="2026D45064"),
+        ]
+
+        _, props = _svc().format_inhaalslag([a1, a2], items)
+        att = props["attachments"][0]
+
+        assert "van wet naar digitale werking" in att["pretext"]
+        assert "regelrecht" in att["pretext"]
+        assert "Nieuwe zoektermen" in att["pretext"]
+
+    def test_een_term_krijgt_enkelvoud(self):
+        _, props = _svc().format_inhaalslag([_abonnement(term="NLDD")], [_item()])
+        assert "**Nieuwe zoekterm**" in props["attachments"][0]["pretext"]
+
+    def test_elk_stuk_staat_er_een_keer_in(self):
+        """De aanroeper ontdubbelt, dus de lijst bevat geen herhalingen."""
+        a1 = _abonnement(term="term-een")
+        a2 = _abonnement(term="term-twee")
+        stuk = _item(titel="Startnotitie NLDD", zaak_nummer="2026D45065")
+
+        _, props = _svc().format_inhaalslag([a1, a2], [stuk])
+        tekst = props["attachments"][0]["text"]
+
+        assert tekst.count("Startnotitie NLDD") == 1
