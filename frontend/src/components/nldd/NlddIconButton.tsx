@@ -12,7 +12,12 @@ interface NlddIconButtonProps {
   icon: string;
   /** Required: the button shows no text, so this is its whole accessible name. */
   accessibleLabel: string;
-  onClick?: () => void;
+  /**
+   * The DOM event is passed through, so a button inside a clickable row can
+   * call `stopPropagation()` on it. Without that the row's own handler fires
+   * too and a click on "mark as read" also opens the notification.
+   */
+  onClick?: (event: Event) => void;
   variant?:
     | 'primary'
     | 'secondary'
@@ -43,7 +48,7 @@ export function NlddIconButton({
   className,
 }: NlddIconButtonProps) {
   const ref = useRef<HTMLElement>(null);
-  const handler = useCallback(() => onClick?.(), [onClick]);
+  const handler = useCallback((event: Event) => onClick?.(event), [onClick]);
   useNlddEvent(ref, 'click', onClick ? handler : undefined);
 
   return (

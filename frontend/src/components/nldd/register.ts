@@ -84,6 +84,8 @@ import '@nldd/design-system/token-field';
 // Navigation
 import '@nldd/design-system/breadcrumbs';
 import '@nldd/design-system/link';
+import '@nldd/design-system/menu-bar';
+import '@nldd/design-system/menu-bar-item';
 import '@nldd/design-system/pagination';
 import '@nldd/design-system/skip-link';
 import '@nldd/design-system/tab-bar';

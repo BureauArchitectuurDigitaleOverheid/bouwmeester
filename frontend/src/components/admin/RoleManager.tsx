@@ -240,15 +240,13 @@ function PersonRolesPanel({
 
       {/* Add role button / form — directly after roles */}
       {!showForm ? (
-        <nldd-container width="fit-content">
-          <NlddButton
-            text="Rol toewijzen"
-            startIcon="plus"
-            variant="neutral-transparent"
-            size="sm"
-            onClick={() => setShowForm(true)}
-          />
-        </nldd-container>
+        <NlddButton
+          text="Rol toewijzen"
+          startIcon="plus"
+          variant="neutral-transparent"
+          size="sm"
+          onClick={() => setShowForm(true)}
+        />
       ) : (
         <form onSubmit={handleAssign}>
           <nldd-container gap="12">
@@ -538,15 +536,13 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
       )}
 
       {!canManageRp ? null : !showForm ? (
-        <nldd-container width="fit-content">
-          <NlddButton
-            text="Resource permissie toevoegen"
-            startIcon="plus"
-            variant="neutral-transparent"
-            size="sm"
-            onClick={() => setShowForm(true)}
-          />
-        </nldd-container>
+        <NlddButton
+          text="Resource permissie toevoegen"
+          startIcon="plus"
+          variant="neutral-transparent"
+          size="sm"
+          onClick={() => setShowForm(true)}
+        />
       ) : (
         <form onSubmit={handleAdd}>
           <nldd-container gap="12">

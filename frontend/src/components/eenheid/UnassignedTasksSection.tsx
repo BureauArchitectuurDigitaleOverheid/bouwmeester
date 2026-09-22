@@ -137,13 +137,19 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
     <div className="unassigned-task-row hover-tinted">
       <nldd-container width="full" min-width="0" gap="4">
         {/* nldd-button rather than the NlddButton wrapper: this needs
-            width="full" + left alignment, which the wrapper does not expose. */}
+            width="full" + left alignment, which the wrapper does not expose.
+
+            `single-line` because a task title is a sentence, and without it
+            the label wraps. In the narrow column left over beside the two
+            224px dropdowns that becomes one word per line, a column of text
+            the row grows to fit. */}
         <nldd-button
           ref={titleRef}
           text={task.title}
           variant="neutral-transparent"
           size="sm"
           width="full"
+          single-line
           horizontal-alignment="left"
         />
         <nldd-container layout="row" gap="8" vertical-alignment="center">

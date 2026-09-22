@@ -59,13 +59,29 @@ export function AdminPage() {
     setSearchParams(tab === defaultTab ? {} : { tab });
   };
 
-  const tabBarRef = useRef<HTMLElement>(null);
+  // A menu bar, not a tab bar: twelve sections do not fit on one row, and
+  // nldd-tab-bar has no overflow of its own, so every label ellipsed away to
+  // "Toegan…", "Verzoek…". The menu bar measures what fits and puts the rest
+  // behind one overflow button, so the visible labels stay whole.
+  //
+  // Its items are buttons, so the click comes off the item rather than a
+  // `tabchange` event. The listener sits on the bar and reads the id back off
+  // the item, which keeps working when items move into the overflow menu.
+  const menuBarRef = useRef<HTMLElement>(null);
   useNlddEvent(
-    tabBarRef,
-    'tabchange',
+    menuBarRef,
+    'click',
     useCallback(
       (event: Event) => {
-        const item = (event as CustomEvent<{ item?: HTMLElement }>).detail?.item;
+        // Walk the composed path rather than `closest`: the click starts on a
+        // button inside the item's shadow root, and `closest` stops at that
+        // root instead of crossing back out to the host.
+        const item = event
+          .composedPath()
+          .find(
+            (node): node is HTMLElement =>
+              node instanceof HTMLElement && node.localName === 'nldd-menu-bar-item',
+          );
         const tab = item?.dataset.tabId as Tab | undefined;
         if (tab) handleTabChange(tab);
       },
@@ -121,16 +137,20 @@ export function AdminPage() {
   return (
     <nldd-container max-width="1152px" gap="24">
       {/* Tab bar */}
-      <nldd-tab-bar ref={tabBarRef} variant="text" accessible-label="Beheeronderdelen">
+      <nldd-menu-bar
+        ref={menuBarRef}
+        accessible-label="Beheeronderdelen"
+        overflow-text="Meer"
+      >
         {tabs.map((tab) => (
-          <nldd-tab-bar-item
+          <nldd-menu-bar-item
             key={tab.id}
             text={tab.label}
             current={activeTab === tab.id ? true : undefined}
             data-tab-id={tab.id}
           />
         ))}
-      </nldd-tab-bar>
+      </nldd-menu-bar>
 
       {/* Tab content — only render if the tab is in the visible set */}
       {tabs.some((t) => t.id === activeTab) ? (
