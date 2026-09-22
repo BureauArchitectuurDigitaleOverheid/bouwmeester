@@ -107,10 +107,18 @@ async def _vraag_kandidaten(
         logger.exception("Kon geen zoekterm-suggesties ophalen")
         return []
 
+    # Wat de gebruiker al volgt hoeft hij niet voorgesteld te krijgen. Het
+    # model kijkt er overheen (de prompt zegt het wel, maar een taalmodel
+    # is geen filter), en een suggestie die al in de lijst staat is geen
+    # suggestie.
+    al_gevolgd = {_normaliseer(t) for t in huidige_termen}
+
     kandidaten = []
     for rij in (data or {}).get("suggesties", [])[:MAX_KANDIDATEN]:
         term = str(rij.get("term", "")).strip().strip('"')
         if len(term) < 3:
+            continue
+        if _normaliseer(term) in al_gevolgd:
             continue
         kandidaten.append(
             Suggestie(
@@ -120,6 +128,15 @@ async def _vraag_kandidaten(
             )
         )
     return kandidaten
+
+
+def _normaliseer(term: str) -> str:
+    """Dezelfde vorm als `ParlementairAbonnement.normaliseer`.
+
+    Hier herhaald in plaats van geïmporteerd: deze module weet niets van
+    de database, en dat wil ik zo houden.
+    """
+    return " ".join(term.strip().strip('"').split()).lower()
 
 
 async def _documenten_van(termen: list[str], client: TkconvClient) -> set[str]:

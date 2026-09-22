@@ -396,8 +396,10 @@ function SuggestieLijst({
           />
         </nldd-container>
         <nldd-text size="xs" color="secondary">
-          Het aantal achter elke term is gemeten bij de bron. &quot;Nieuw&quot; telt
-          alleen stukken die je huidige termen nog niet vinden.
+          De aantallen zijn gemeten bij de bron. &quot;Nieuw&quot; telt alleen
+          stukken die je huidige termen nog niet vinden; een term zonder
+          nieuwe treffers kan alsnog nuttig zijn als je een van je andere
+          termen later weghaalt.
         </nldd-text>
         {suggesties.map((s) => (
           <nldd-container key={s.term} layout="row" gap="8" vertical-alignment="center">
@@ -406,6 +408,9 @@ function SuggestieLijst({
                 <nldd-text size="xs" weight="bold">
                   {s.term}
                 </nldd-text>
+                <nldd-text size="xs" color="secondary">
+                  {s.treffers === 1 ? '1 treffer' : `${s.treffers} treffers`}
+                </nldd-text>
                 {s.nieuwe_treffers > 0 ? (
                   <nldd-tag
                     size="sm"
@@ -413,11 +418,10 @@ function SuggestieLijst({
                     text={`${s.nieuwe_treffers} nieuw`}
                   />
                 ) : (
-                  <nldd-tag size="sm" color="neutral" text="geen nieuwe" />
+                  <nldd-text size="xs" color="secondary">
+                    · geen nieuwe
+                  </nldd-text>
                 )}
-                <nldd-text size="xs" color="secondary">
-                  {s.treffers} treffers
-                </nldd-text>
               </nldd-container>
               <nldd-text size="xs" color="secondary">
                 {s.reden}
