@@ -26,6 +26,8 @@ import { useEffect, useRef, type RefObject } from 'react';
 export interface NlddOverlayElement extends HTMLElement {
   show?: () => void;
   hide?: () => void;
+  /** Lit's promise for the first render of the shadow root. */
+  updateComplete?: Promise<boolean>;
 }
 
 /** A field element that mirrors its value as a property. */
@@ -112,6 +114,20 @@ export function useNlddValue<T extends NlddValueElement>(
  * `open`, or React would re-open it on the next render. Calling `hide()` from
  * the close handler instead would give a hide -> close -> hide loop, so we only
  * report the close upward when React still believes the overlay is open.
+ *
+ * `show()` waits for the element's first render. A caller that mounts the
+ * overlay only while it is open (`{isOpen && <Modal open … />}`) hands us
+ * `open === true` on the very first render. React's effect then runs in the
+ * same task as the mount, while Lit renders on a microtask: `show()` looks for
+ * the `<dialog>` in its own shadow root, does not find it, and returns without
+ * doing anything and without complaining. Since `open` never changes
+ * afterwards, the effect never runs again, and the result is a window that
+ * sits in the DOM fully rendered and never opens.
+ *
+ * So wait for `updateComplete` (the design system is Lit throughout) before
+ * calling in. The element is already defined in the common case, so this costs
+ * a microtask, and the cancel flag covers an overlay that closes or unmounts
+ * inside that gap.
  */
 export function useNlddOverlay<T extends NlddOverlayElement>(
   ref: RefObject<T | null>,
@@ -126,8 +142,27 @@ export function useNlddOverlay<T extends NlddOverlayElement>(
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (open) el.show?.();
-    else el.hide?.();
+    let cancelled = false;
+
+    const apply = () => {
+      if (cancelled) return;
+      if (open) el.show?.();
+      else el.hide?.();
+    };
+
+    // Hiding is safe straight away: an element that has not rendered yet has
+    // nothing open to close. Only show() needs the shadow root to exist.
+    if (open) {
+      customElements.upgrade(el);
+      if (el.updateComplete) void el.updateComplete.then(apply);
+      else apply();
+    } else {
+      apply();
+    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [ref, open]);
 
   useEffect(() => {
