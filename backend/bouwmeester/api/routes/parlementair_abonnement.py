@@ -10,7 +10,7 @@ langs een beheerder moet, en dan gebeurt het niet.
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
 )
+from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.parlementair_abonnement import (
     SCOPE_INITIATIEF,
@@ -35,13 +36,20 @@ from bouwmeester.schema.parlementair_abonnement import (
     SuggestieResponse,
 )
 from bouwmeester.services.activity_service import log_activity
-from bouwmeester.services.llm import get_llm_service
+from bouwmeester.services.llm import get_llm_service_for
+from bouwmeester.services.llm.base import DataSensitivity
 from bouwmeester.services.tkconv_client import TkconvClient
 from bouwmeester.services.zoekterm_suggesties import stel_voor
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/initiatieven", tags=["parlementair-abonnement"])
+
+# Suggesties kosten een LLM-call plus negen verzoeken aan berthub.eu, een
+# privéserver zonder SLA. Vijf per vijf minuten is ruim voor iemand die
+# zoektermen aan het instellen is, en smal genoeg om er geen lus van te
+# kunnen maken. Dezelfde waarden als de access-request-limiter.
+_suggestie_limiter = InMemoryRateLimiter(window=300, max_requests=5)
 
 
 async def _require_initiatief_toegang(
@@ -190,6 +198,7 @@ async def create_abonnement(
 )
 async def suggereer_zoektermen(
     initiatief_id: UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: OptionalUser = None,
     ctx: InitiatiefContext = Depends(get_initiatief_context),
@@ -208,6 +217,11 @@ async def suggereer_zoektermen(
     """
     initiatief = await _require_initiatief_toegang(db, ctx, initiatief_id)
 
+    # Eén aanroep kost een LLM-call plus negen verzoeken aan een server
+    # van derden. Zonder limiet kan iedereen met toegang tot één
+    # initiatief dat in een lus doen, en dat komt bij berthub.eu terecht.
+    _suggestie_limiter.check(request)
+
     repo = ParlementairAbonnementRepository(db)
     abonnementen = await repo.list_for_scope(SCOPE_INITIATIEF, initiatief_id)
     huidige = [a.term for a in abonnementen if a.actief]
@@ -217,10 +231,18 @@ async def suggereer_zoektermen(
             detail="Voeg eerst een zoekterm toe; suggesties bouwen daarop voort.",
         )
 
-    llm_service = await get_llm_service(db)
+    # INTERNAL, niet PUBLIC: de prompt draagt de beschrijving van het
+    # initiatief mee, en dat is beleidsinhoud uit onze eigen database —
+    # precies wat `DataSensitivity.INTERNAL` dekt. De kamerstukken zelf
+    # zijn publiek, de context eromheen niet.
+    llm_service = await get_llm_service_for(DataSensitivity.INTERNAL, db)
     if llm_service is None:
         raise HTTPException(
-            status_code=503, detail="Er is geen taalmodel geconfigureerd."
+            status_code=503,
+            detail=(
+                "Er is geen taalmodel dat interne gegevens mag verwerken. "
+                "Stel een provider in die dat wel mag."
+            ),
         )
 
     async with TkconvClient() as client:

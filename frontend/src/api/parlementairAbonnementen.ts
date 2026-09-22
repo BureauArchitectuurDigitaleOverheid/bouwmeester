@@ -16,6 +16,8 @@ export interface ParlementairAbonnement {
   notitie: string | null;
   /** Soorten kamerstukken waarvan deze term geen Mattermost-bericht geeft. */
   uitgezette_categorieen: string[] | null;
+  /** Onder deze score (0-100) geen Mattermost-bericht; wel bewaard. */
+  minimum_relevantie: number;
   /** Wanneer de eenmalige inhaalslag is gedaan; null = nog niet. */
   ingehaald_op: string | null;
   created_by_id: string | null;

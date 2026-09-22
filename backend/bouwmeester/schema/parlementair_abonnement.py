@@ -47,6 +47,10 @@ class AbonnementResponse(BaseModel):
     weggeklikt_totaal: int
     notitie: str | None
     uitgezette_categorieen: list[str] | None
+    minimum_relevantie: int
+    # Null zolang de eenmalige inhaalslag nog niet is gedaan; de UI kan
+    # daarmee tonen dat een verse term nog de feed-week gaat ophalen.
+    ingehaald_op: datetime | None
     created_by_id: UUID | None
     created_at: datetime
 

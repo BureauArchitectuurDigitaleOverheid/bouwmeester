@@ -146,12 +146,17 @@ class _FakeClient(TkconvClient):
         self.feed_gewijzigd = feed_gewijzigd
         self.opgehaalde_documenten: list[str] = []
         self.zoekopdrachten: list[str] = []
+        self.cache_omzeild: list[str] = []
 
     async def globale_feed_gewijzigd(self) -> bool | None:
         return self.feed_gewijzigd
 
-    async def search(self, query: str) -> list[TkconvItem]:
+    async def search(
+        self, query: str, *, negeer_cache: bool = False
+    ) -> list[TkconvItem]:
         self.zoekopdrachten.append(query)
+        if negeer_cache:
+            self.cache_omzeild.append(query)
         return [
             TkconvItem(**{**i.__dict__, "matched_terms": [query]})
             for i in self.per_query.get(query, [])
@@ -573,7 +578,11 @@ class TestInhaalslag:
         s = TkconvSearchStrategy(abonnementen=[vers])
         await s.fetch_items(client=client, since=None, limit=100)
 
-        assert s.inhaalslag[vers.id] == ["2026D45065"]
+        # De strategie draagt wélke abonnementen vers zijn; welke
+        # stukken erbij horen blijkt pas ná de idempotency-check in
+        # de import-service, want een stuk dat al binnen was mag geen
+        # treffer-loze vermelding in het inhaalbericht opleveren.
+        assert s.verse_abonnementen == {vers.id}
 
     @pytest.mark.asyncio
     async def test_lopende_term_haalt_niet_opnieuw_in(self):
@@ -585,7 +594,7 @@ class TestInhaalslag:
         resultaten = await s.fetch_items(client=client, since=None, limit=100)
 
         assert resultaten == []
-        assert s.inhaalslag == {}
+        assert s.verse_abonnementen == set()
 
     @pytest.mark.asyncio
     async def test_verse_en_lopende_term_op_hetzelfde_stuk(self):
@@ -606,3 +615,145 @@ class TestInhaalslag:
         assert len(resultaten) == 1
         # Alleen de verse term is aan dit stuk gekoppeld.
         assert s.treffers["2026D38772"] == [vers.id]
+
+
+class TestGeenStilVerlies:
+    """De vier stil-verlies-bugs uit de review.
+
+    Rode draad: toestand per *stuk* of per *query* bijhouden terwijl de
+    beslissing per *abonnement* valt. Geen van deze bugs laat een spoor in
+    de logs achter, dus ze horen hier vastgepind.
+    """
+
+    def setup_method(self):
+        reset_watermerk()
+        reset_etag_cache()
+
+    def teardown_method(self):
+        reset_watermerk()
+        reset_etag_cache()
+
+    @pytest.mark.asyncio
+    async def test_afgekapte_ronde_verliest_niets(self):
+        """Onder een limiet mag geen stuk permanent wegvallen.
+
+        `search_many` sorteert nieuw-eerst. Kapte de lus daarop af, dan
+        bleven de oudste stukken liggen én schoof het watermerk naar het
+        nieuwste verwerkte stuk — waarmee de rest voorgoed onder de
+        drempel viel. Gemeten: 3 van de 5 stukken verdwenen stil.
+        """
+        import bouwmeester.services.import_strategies.tkconv as mod
+
+        a = _abonnement("NLDD")
+        mod._WATERMERK = datetime(2026, 9, 1, tzinfo=UTC)
+        stukken = [
+            _item(f"2026D0000{i}", datetime(2026, 9, 10 + i, tzinfo=UTC))
+            for i in range(5)
+        ]
+
+        gezien: set[str] = set()
+        for _ in range(5):
+            s = TkconvSearchStrategy(abonnementen=[a])
+            r = await s.fetch_items(
+                client=_FakeClient({'"NLDD"': stukken}), since=None, limit=2
+            )
+            gezien |= {x.zaak_nummer for x in r}
+
+        assert gezien == {s.document_nummer for s in stukken}
+
+    @pytest.mark.asyncio
+    async def test_oudste_eerst_verwerken(self):
+        """De volgorde is wat de afkapping veilig maakt."""
+        import bouwmeester.services.import_strategies.tkconv as mod
+
+        a = _abonnement("NLDD")
+        mod._WATERMERK = datetime(2026, 9, 1, tzinfo=UTC)
+        oud = _item("2026D00001", datetime(2026, 9, 10, tzinfo=UTC))
+        nieuw = _item("2026D00002", datetime(2026, 9, 20, tzinfo=UTC))
+
+        s = TkconvSearchStrategy(abonnementen=[a])
+        r = await s.fetch_items(
+            client=_FakeClient({'"NLDD"': [oud, nieuw]}), since=None, limit=1
+        )
+
+        # De oudste gaat eerst; de nieuwste blijft liggen en is de
+        # volgende ronde nog steeds nieuwer dan het watermerk.
+        assert [x.zaak_nummer for x in r] == ["2026D00001"]
+
+    @pytest.mark.asyncio
+    async def test_verse_term_omzeilt_de_etag_cache(self):
+        """Een verse term moet de hele feed zien, niet alleen het nieuwe.
+
+        De ETag-cache heeft de query als sleutel en weet niets van wie er
+        zoekt. Had de poller die term al eens gedaan, dan gaf de volgende
+        ronde 304 met een lege lijst — en kreeg een nieuw abonnement op
+        diezelfde term zijn inhaalslag nooit.
+        """
+        vers = _abonnement("NLDD", ingehaald=False)
+        lopend = _abonnement("RegelRecht", ingehaald=True)
+        client = _FakeClient(
+            {
+                '"NLDD"': [_item("2026D00001", datetime(2026, 9, 15, tzinfo=UTC))],
+                '"RegelRecht"': [
+                    _item("2026D00002", datetime(2026, 9, 15, tzinfo=UTC))
+                ],
+            }
+        )
+
+        s = TkconvSearchStrategy(abonnementen=[vers, lopend])
+        await s.fetch_items(client=client, since=None, limit=10)
+
+        # Alleen de verse term omzeilt de cache; de lopende niet, want die
+        # heeft juist baat bij een goedkope 304.
+        assert client.cache_omzeild == ['"NLDD"']
+
+    @pytest.mark.asyncio
+    async def test_verse_term_dooft_andermans_alert_niet(self):
+        """Eén verse term mag de losse alert van anderen niet onderdrukken.
+
+        De oude check was per stuk: stond het document in iemands
+        inhaalslag, dan kreeg niemand een losse alert. Het
+        inhaalslag-bericht gaat alleen naar de scope van die ene term, dus
+        de andere abonnees kregen helemaal niets.
+        """
+        import bouwmeester.services.import_strategies.tkconv as mod
+
+        mod._WATERMERK = datetime(2026, 9, 1, tzinfo=UTC)
+        lopend = _abonnement("RegelRecht", ingehaald=True)
+        vers = _abonnement("NLDD", ingehaald=False)
+        stuk = _item("2026D00222", datetime(2026, 9, 21, tzinfo=UTC))
+
+        s = TkconvSearchStrategy(abonnementen=[lopend, vers])
+        await s.fetch_items(
+            client=_FakeClient({'"RegelRecht"': [stuk], '"NLDD"': [stuk]}),
+            since=None,
+            limit=10,
+        )
+
+        ids = s.treffers["2026D00222"]
+        assert len(ids) == 2, "beide abonnementen horen gekoppeld te zijn"
+        inhaal = [x for x in ids if x in s.verse_abonnementen]
+        assert len(inhaal) == 1, "alleen de verse term doet een inhaalslag"
+        # De import-service leidt hieruit af dat er nog een losse alert moet.
+        assert len(inhaal) < len(ids)
+
+    @pytest.mark.asyncio
+    async def test_verse_abonnementen_draagt_ids_geen_stukken(self):
+        """Welke stukken erbij horen blijkt pas ná de idempotency-check.
+
+        Zou de strategie documentnummers bijhouden, dan zou een stuk dat
+        al via een andere term binnen was in het inhaalbericht belanden
+        zonder dat er ooit een treffer-rij voor is aangemaakt — en
+        `ingehaald_op` werd dan gezet voor een term die zijn treffers
+        nooit kreeg.
+        """
+        vers = _abonnement("NLDD", ingehaald=False)
+        s = TkconvSearchStrategy(abonnementen=[vers])
+        await s.fetch_items(
+            client=_FakeClient(
+                {'"NLDD"': [_item("2026D00001", datetime(2026, 9, 15, tzinfo=UTC))]}
+            ),
+            since=None,
+            limit=10,
+        )
+        assert s.verse_abonnementen == {vers.id}

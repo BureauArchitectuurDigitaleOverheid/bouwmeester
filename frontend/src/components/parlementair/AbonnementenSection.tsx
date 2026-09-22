@@ -32,14 +32,23 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
   // hergebruikt tussen initiatieven, dus een traag antwoord van het vorige
   // initiatief kan anders over het nieuwe heen landen.
   const verzoekTeller = useRef(0);
+  const gemonteerd = useRef(true);
+  useEffect(() => {
+    gemonteerd.current = true;
+    return () => {
+      gemonteerd.current = false;
+    };
+  }, []);
 
   const laden = useCallback(async () => {
     const mijnVerzoek = ++verzoekTeller.current;
     try {
       const data = await getAbonnementen(initiatiefId);
-      if (mijnVerzoek === verzoekTeller.current) setAbonnementen(data);
+      if (gemonteerd.current && mijnVerzoek === verzoekTeller.current) {
+        setAbonnementen(data);
+      }
     } catch {
-      if (mijnVerzoek === verzoekTeller.current) {
+      if (gemonteerd.current && mijnVerzoek === verzoekTeller.current) {
         setFout('Kon de zoektermen niet ophalen.');
       }
     }
@@ -62,6 +71,10 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
   }, [initiatiefId]);
 
   const toevoegen = useCallback(async () => {
+    // Een tweede klik terwijl de eerste nog loopt levert een 409 op over
+    // een term die je zojuist zelf toevoegde. De backend vangt de botsing
+    // netjes af, maar de melding is dan onbegrijpelijk.
+    if (bezig) return;
     const term = nieuweTerm.trim();
     if (term.length < 3) {
       setFout('Een zoekterm van minder dan drie tekens levert te veel ruis op.');
@@ -85,7 +98,7 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
     } finally {
       setBezig(false);
     }
-  }, [initiatiefId, laden, nieuweTerm]);
+  }, [bezig, initiatiefId, laden, nieuweTerm]);
 
   // Welke rij een mutatie heeft lopen. Zonder dit vuurt een dubbelklik
   // twee PATCH-calls, en kunnen de antwoorden in omgekeerde volgorde
@@ -307,13 +320,26 @@ function SuggestieLijst({
   onSluiten: () => void;
 }) {
   if (suggesties.length === 0) {
+    // Geen `dismissible`: die knop dispatcht alleen een event, en de
+    // consument moet de banner zelf verbergen. Zonder handler blijft hij
+    // staan en lijkt de X stuk. Sluiten gaat via de knop hieronder, net
+    // als bij een lijst mét suggesties.
     return (
-      <nldd-banner
-        variant="neutral"
-        size="sm"
-        text="Geen aanvullende zoektermen gevonden."
-        dismissible
-      />
+      <nldd-container layout="row" gap="8" vertical-alignment="center">
+        <nldd-banner
+          variant="neutral"
+          size="sm"
+          text="Geen aanvullende zoektermen gevonden."
+        />
+        <nldd-container width="fit-content" horizontal-alignment="right">
+          <nldd-button
+            variant="neutral-transparent"
+            size="xs"
+            text="Sluiten"
+            onClick={onSluiten}
+          />
+        </nldd-container>
+      </nldd-container>
     );
   }
 

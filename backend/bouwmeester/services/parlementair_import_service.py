@@ -69,6 +69,10 @@ class ParlementairImportService:
         # Items die na een geslaagde commit nog een Mattermost-bericht
         # moeten krijgen. Zie `_process_item` stap 8b.
         self._te_alerteren: list[uuid.UUID] = []
+        # abonnement-id -> item-ids die via de eenmalige inhaalslag
+        # binnenkwamen. Gevuld ná de idempotency-check, dus alleen voor
+        # stukken waarvoor ook echt een treffer is vastgelegd.
+        self._inhaalslag: dict[uuid.UUID, list[uuid.UUID]] = {}
 
     async def poll_and_import(
         self,
@@ -170,6 +174,7 @@ class ParlementairImportService:
 
         all_items = tk_items + ek_items
 
+        self._inhaalslag = {}
         for item in all_items:
             self._te_alerteren = []
             try:
@@ -192,8 +197,8 @@ class ParlementairImportService:
             for item_id in self._te_alerteren:
                 await self._alert_kamerstuk(item_id)
 
-        if isinstance(strategy, TkconvSearchStrategy) and strategy.inhaalslag:
-            await self._post_inhaalslag(strategy.inhaalslag)
+        if self._inhaalslag:
+            await self._post_inhaalslag(self._inhaalslag)
 
         return imported_count
 
@@ -209,13 +214,25 @@ class ParlementairImportService:
         )
 
         service = ParlementairAlertService(self.session)
-        for abonnement_id, nummers in per_abonnement.items():
+        for abonnement_id, item_ids in per_abonnement.items():
             try:
                 abonnement = await self.abonnement_repo.get(abonnement_id)
                 if abonnement is None:
                     continue
-                items = await self.import_repo.get_by_zaak_ids(nummers)
+                geladen = [
+                    await self.session.get(ParlementairItem, iid) for iid in item_ids
+                ]
+                items = [i for i in geladen if i is not None]
                 if items:
+                    # Eerst vastleggen dát de inhaalslag is gedaan, dan
+                    # pas posten. Andersom zou een mislukte commit het
+                    # bericht al de deur uit hebben terwijl `ingehaald_op`
+                    # NULL blijft, en dan stuurt de volgende ronde
+                    # hetzelfde bericht opnieuw. Een bericht is niet terug
+                    # te draaien, een gemiste markering wel te herstellen.
+                    await self.abonnement_repo.markeer_ingehaald([abonnement_id])
+                    await self.session.commit()
+
                     gepost = await service.post_inhaalslag(abonnement, items)
                     logger.info(
                         "Inhaalslag voor %r: %d stukken, %d kanalen",
@@ -223,8 +240,9 @@ class ParlementairImportService:
                         len(items),
                         gepost,
                     )
-                await self.abonnement_repo.markeer_ingehaald([abonnement_id])
-                await self.session.commit()
+                else:
+                    await self.abonnement_repo.markeer_ingehaald([abonnement_id])
+                    await self.session.commit()
             except Exception:
                 await self.session.rollback()
                 logger.exception("Inhaalslag mislukt voor %s", abonnement_id)
@@ -497,12 +515,25 @@ class ParlementairImportService:
                 # terug terwijl het bericht blijft staan — en de volgende
                 # ronde importeert en post hetzelfde stuk opnieuw, elke
                 # twee minuten.
-                # Stukken uit een eenmalige inhaalslag krijgen samen één
-                # bericht na de ronde, niet elk een eigen alert.
-                in_inhaalslag = any(
-                    item.zaak_id in nummers for nummers in strategy.inhaalslag.values()
-                )
-                if not in_inhaalslag:
+                # Splits per abonnement: wie nog zijn eenmalige inhaalslag
+                # doet krijgt dit stuk in het samenvattende bericht, de
+                # rest krijgt een losse alert.
+                #
+                # Dat onderscheid moet hier vallen en niet in
+                # `fetch_items`. Daar is de idempotency-check nog niet
+                # gedaan, dus een stuk dat al via een andere term
+                # binnenkwam zou in de inhaalslag-lijst belanden zonder dat
+                # er ooit een treffer-rij voor is aangemaakt — en
+                # `ingehaald_op` zou gezet worden voor een term die zijn
+                # treffers nooit heeft gekregen.
+                inhaal_ids = [
+                    aid for aid in abonnement_ids if aid in strategy.verse_abonnementen
+                ]
+                for aid in inhaal_ids:
+                    self._inhaalslag.setdefault(aid, []).append(parlementair_item.id)
+                # Eén verse term mag de losse alert van de andere abonnees
+                # niet doven: die krijgen hem gewoon.
+                if len(inhaal_ids) < len(abonnement_ids):
                     self._te_alerteren.append(parlementair_item.id)
 
         # Step 9: Create SuggestedEdge records for matching nodes

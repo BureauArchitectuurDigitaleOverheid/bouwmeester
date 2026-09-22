@@ -90,10 +90,15 @@ class TkconvSearchStrategy(ImportStrategy):
         # Gevuld tijdens fetch_items: documentnummer -> abonnement-ids.
         # De aanroeper gebruikt dit om treffers vast te leggen.
         self.treffers: dict[str, list] = {}
-        # abonnement-id -> documentnummers die via de eenmalige inhaalslag
-        # binnenkwamen. De aanroeper post daar één samenvattend bericht
-        # over, in plaats van acht losse.
-        self.inhaalslag: dict = {}
+        # De abonnementen die deze ronde hun eenmalige inhaalslag doen.
+        # De aanroeper splitst daarop: die krijgen één samenvattend
+        # bericht, de andere abonnees een losse alert.
+        #
+        # Alleen de ids, niet de gevonden stukken: welke stukken er
+        # daadwerkelijk bij horen blijkt pas ná de idempotency-check in
+        # `_process_item`, en een stuk dat al binnen was mag geen
+        # treffer-loze vermelding in het inhaalbericht opleveren.
+        self.verse_abonnementen: set = set()
 
     @property
     def item_type(self) -> str:
@@ -158,12 +163,28 @@ class TkconvSearchStrategy(ImportStrategy):
         for abonnement in self.abonnementen:
             per_query.setdefault(abonnement.zoekopdracht(), []).append(abonnement)
 
-        items = await client.search_many(list(per_query))
+        # Een verse term moet de feed zien, ook als de poller die query al
+        # eerder heeft gedaan: de ETag-cache zit op de query, niet op het
+        # abonnement, en zou anders een 304 met een lege lijst geven.
+        verse_queries = {
+            query
+            for query, abos in per_query.items()
+            if any(a.ingehaald_op is None for a in abos)
+        }
+        items = await client.search_many(list(per_query), negeer_cache=verse_queries)
+        # Oud naar nieuw verwerken. `search_many` sorteert nieuw-eerst, en
+        # met de `limit`-break zou dat de oudste stukken laten liggen —
+        # precies degene die daarna onder het opgeschoven watermerk
+        # vallen en dus nooit meer langskomen.
+        items = list(reversed(items))
 
         drempel = self._drempel(since)
         resultaten: list[FetchedItem] = []
+        afgekapt = False
         self.treffers = {}
-        self.inhaalslag = {}
+        self.verse_abonnementen = {
+            a.id for a in self.abonnementen if a.ingehaald_op is None
+        }
 
         for item in items:
             # De drempel geldt per abonnement, niet per stuk: een term die
@@ -178,16 +199,13 @@ class TkconvSearchStrategy(ImportStrategy):
                         continue
                     if self._telt_mee(abonnement, item, drempel):
                         abonnement_ids.append(abonnement.id)
-                        if abonnement.ingehaald_op is None:
-                            self.inhaalslag.setdefault(abonnement.id, []).append(
-                                item.document_nummer
-                            )
             if not abonnement_ids:
                 continue
 
             # Afkappen vóór het ophalen van de tekst: anders halen we
             # documenten op bij Berts server die we daarna weggooien.
             if len(resultaten) >= limit:
+                afgekapt = True
                 logger.warning(
                     "tkconv: meer dan %d treffers in één ronde, rest volgt "
                     "de volgende ronde",
@@ -206,7 +224,7 @@ class TkconvSearchStrategy(ImportStrategy):
             self.treffers[item.document_nummer] = abonnement_ids
             resultaten.append(self._to_fetched_item(item, tekst, content_type, context))
 
-        self._verschuif_watermerk(items, resultaten, limit)
+        self._verschuif_watermerk(items, resultaten, afgekapt)
 
         logger.info(
             "tkconv: %d van %d documenten na de datumdrempel",
@@ -217,17 +235,23 @@ class TkconvSearchStrategy(ImportStrategy):
 
     @staticmethod
     def _verschuif_watermerk(
-        items: list[TkconvItem], resultaten: list[FetchedItem], limit: int
+        items: list[TkconvItem], resultaten: list[FetchedItem], afgekapt: bool
     ) -> None:
-        """Zet het watermerk op het nieuwste stuk dat deze ronde is verwerkt.
+        """Schuif het watermerk op tot waar deze ronde is gekomen.
 
-        Niet op "nu": tussen het ophalen van de feed en dit moment kan een
-        stuk verschijnen dat we nog niet gezien hebben, en dat zou dan stil
-        wegvallen. Het nieuwste verwerkte tijdstip is de enige grens die we
-        echt kunnen verantwoorden.
+        Niet naar "nu": tussen het ophalen van de feed en dit moment kan
+        een stuk verschijnen dat we nog niet gezien hebben, en dat zou dan
+        stil wegvallen. Het nieuwste verwerkte tijdstip is de enige grens
+        die we echt kunnen verantwoorden.
 
-        Bij een afgekapte ronde schuift het watermerk bewust niet op voorbij
-        wat is verwerkt, zodat de rest de volgende ronde alsnog langskomt.
+        Bij een afgekapte ronde is dat nieuwste verwerkte tijdstip nog
+        steeds veilig, want de items worden oud-naar-nieuw verwerkt: alles
+        wat blijft liggen is jonger dan wat we hebben gedaan. Zo kruipt de
+        grens elke ronde een stukje op tot de achterstand is ingelopen,
+        zonder ooit over iets ongeziens heen te gaan.
+
+        Het omgekeerde (nieuw-naar-oud, zoals de feed sorteert) zou de
+        oudste stukken permanent onder het watermerk begraven.
         """
         global _WATERMERK  # noqa: PLW0603
 
@@ -241,7 +265,7 @@ class TkconvSearchStrategy(ImportStrategy):
             # Niets verwerkt. Bij een eerste ronde (watermerk nog leeg) is
             # dat het moment om te beginnen; anders blijft het staan, zodat
             # een ronde zonder treffers niets overslaat.
-            if _WATERMERK is None:
+            if _WATERMERK is None and not afgekapt:
                 _WATERMERK = datetime.now(UTC)
             return
 

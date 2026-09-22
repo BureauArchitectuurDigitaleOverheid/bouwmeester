@@ -128,7 +128,12 @@ async def _documenten_van(termen: list[str], client: TkconvClient) -> set[str]:
     for index, term in enumerate(termen):
         kern = term.strip().strip('"')
         zoekopdracht = f'"{kern}"'
-        for item in await client.search(zoekopdracht):
+        # De ETag-cache van de poller zou hier lege lijsten opleveren
+        # voor elke query die de poller al heeft gedaan, en dan toont het
+        # scherm verzonnen getallen: de referentieset leeg (dus elke
+        # kandidaat lijkt alles toe te voegen) en een gemeten kandidaat op
+        # nul treffers.
+        for item in await client.search(zoekopdracht, negeer_cache=True):
             nummers.add(item.document_nummer)
         # tkconv draait op andermans server; ga er rustig overheen.
         if index < len(termen) - 1:

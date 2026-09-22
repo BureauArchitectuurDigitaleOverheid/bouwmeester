@@ -238,7 +238,8 @@ class MattermostSlashService:
             "- `/bouwmeester kanaal` — toon de huidige koppeling\n"
             "- `/bouwmeester volg <zoekterm>` — "
             "volg een term in nieuwe kamerstukken\n"
-            "- `/bouwmeester ontvolg <zoekterm>` — stop met volgen\n"
+            "- `/bouwmeester ontvolg <zoekterm>` — "
+            "verwijder de term (inclusief telling)\n"
             "- `/bouwmeester volgt` — welke termen dit initiatief volgt\n"
             "- `/bouwmeester help` — Dit overzicht\n"
         )
@@ -519,7 +520,11 @@ class MattermostSlashService:
         bewaard = abonnement.term
         await repo.delete(abonnement)
         await self.session.commit()
-        return _ephemeral(f":wastebasket: **{_escape_md(bewaard)}** niet meer gevolgd.")
+        return _ephemeral(
+            f":wastebasket: **{_escape_md(bewaard)}** verwijderd, inclusief "
+            "de telling. Wil je hem alleen tijdelijk stilzetten, gebruik "
+            "dan de pauzeknop op de initiatief-pagina."
+        )
 
     async def _handle_volgt(
         self, mattermost_user_id: str, args: str, ch: _ChannelCtx

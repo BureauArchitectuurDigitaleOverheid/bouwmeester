@@ -173,7 +173,11 @@ class ParlementairAlertService:
 
         kop = self._kopregel(extra, presentatie)
 
-        samenvatting = (item.llm_samenvatting or "").strip()
+        # Escapen, ook al komt dit van ons eigen taalmodel: het model vat
+        # een kamerstuk van derden samen, dus een stuk dat het overhaalt
+        # om `@channel` of een link in de samenvatting te zetten krijgt
+        # dat anders ongefilterd in het kanaal.
+        samenvatting = _escape_md((item.llm_samenvatting or "").strip())
         if not samenvatting:
             samenvatting = _escape_md((item.onderwerp or "")[:300])
 
@@ -359,9 +363,15 @@ def _relevantie(extra: dict) -> int:
     schreeuwend. Een ontbrekende score mag nooit stilte betekenen.
     """
     waarde = extra.get("relevantie_score")
-    if isinstance(waarde, int | float):
+    # `bool` is een `int` in Python, en True zou dan score 1 worden — onder
+    # elke drempel, dus stilte. En `int(float("nan"))` gooit een ValueError;
+    # een taalmodel dat NaN in zijn JSON zet is niet exotisch.
+    if isinstance(waarde, bool) or not isinstance(waarde, int | float):
+        return DREMPEL_MIDDEN
+    try:
         return max(0, min(100, int(waarde)))
-    return DREMPEL_MIDDEN
+    except (ValueError, OverflowError):
+        return DREMPEL_MIDDEN
 
 
 def _als_datum(waarde) -> date | None:

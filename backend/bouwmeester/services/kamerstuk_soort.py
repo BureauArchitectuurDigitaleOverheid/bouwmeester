@@ -172,12 +172,19 @@ def categorie_van(soort: str | None) -> str:
     return CAT_OVERIG
 
 
-def _parse_datum(waarde: str | None) -> date | None:
+def _parse_datum(waarde: object) -> date | None:
+    """Lees een datum uit de API-respons.
+
+    `except ValueError` alleen is te smal: JSON mag een getal of een object
+    leveren waar wij een string verwachten, en `.replace` gooit dan een
+    AttributeError die `haal_context` niet vangt. Dan valt de hele ronde om
+    op één afwijkend veld, terwijl dit zacht hoort te falen.
+    """
     if not waarde:
         return None
     try:
-        return datetime.fromisoformat(waarde.replace("Z", "+00:00")).date()
-    except ValueError:
+        return datetime.fromisoformat(str(waarde).replace("Z", "+00:00")).date()
+    except (ValueError, TypeError):
         return None
 
 

@@ -185,19 +185,27 @@ class TkconvClient:
     async def __aexit__(self, *exc: object) -> None:
         await self.close()
 
-    async def search(self, query: str) -> list[TkconvItem]:
+    async def search(
+        self, query: str, *, negeer_cache: bool = False
+    ) -> list[TkconvItem]:
         """Zoek op één term en geef de treffers terug.
 
         `query` moet al gequote zijn voor een frase — zie
         `ParlementairAbonnement.zoekopdracht()`. Een ongequote meerwoordsterm
         OR't de woorden en levert willekeurige treffers op.
+
+        `negeer_cache` slaat de ETag over. Nodig wanneer de aanroeper de
+        volledige feed moet zien en niet alleen wat er sinds de vorige
+        ronde bij kwam: een verse zoekterm die zijn inhaalslag doet, of een
+        meting die de werkelijke trefferaantallen nodig heeft. De cache zit
+        op de query en weet niets van wie er zoekt.
         """
         client = self._get_http_client()
         url = f"{self.base_url}/search/index.xml"
         cache_key = f"{url}?q={query}"
 
         headers = {}
-        vorige = self._etags.get(cache_key)
+        vorige = None if negeer_cache else self._etags.get(cache_key)
         if vorige:
             headers["If-None-Match"] = vorige
 
@@ -277,7 +285,10 @@ class TkconvClient:
         return items
 
     async def search_many(
-        self, queries: list[str], pause_seconds: float = 1.0
+        self,
+        queries: list[str],
+        pause_seconds: float = 1.0,
+        negeer_cache: set[str] | None = None,
     ) -> list[TkconvItem]:
         """Zoek op meerdere termen en geef ontdubbelde documenten terug.
 
@@ -291,8 +302,9 @@ class TkconvClient:
         zodat het bericht kan tonen waaróm het binnenkwam.
         """
         gevonden: dict[str, TkconvItem] = {}
+        zonder_cache = negeer_cache or set()
         for query in queries:
-            for item in await self.search(query):
+            for item in await self.search(query, negeer_cache=query in zonder_cache):
                 bestaand = gevonden.get(item.document_nummer)
                 if bestaand is None:
                     gevonden[item.document_nummer] = item
