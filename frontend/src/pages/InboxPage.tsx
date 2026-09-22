@@ -202,8 +202,13 @@ export function InboxPage() {
 
         {/* Inbox section */}
         <nldd-container gap="12">
-          <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
-            <nldd-title size={4}><h2>Inbox</h2></nldd-title>
+          <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
+            {/* The heading leads the row and the action trails it, so the
+                heading takes the leftover space rather than the row pushing
+                everything to one side. */}
+            <nldd-container width="fit-content" className="row-fill">
+              <nldd-title size={4}><h2>Inbox</h2></nldd-title>
+            </nldd-container>
             {hasUnread && currentPerson?.id && (
               <Button variant="ghost" size="sm" icon="check-list" onClick={() => markAllRead.mutate()}>
                 Alles gelezen
@@ -219,14 +224,14 @@ export function InboxPage() {
               title="Inbox is leeg"
               description="Er zijn momenteel geen nieuwe meldingen. Begin met het verkennen van het corpus of het aanmaken van taken."
               action={
-                <nldd-container layout="row" gap="12" vertical-alignment="center">
+                <>
                   <Button variant="primary" onClick={() => navigate('/corpus')}>
                     Bekijk corpus
                   </Button>
                   <Button variant="secondary" onClick={() => navigate('/tasks')}>
                     Bekijk taken
                   </Button>
-                </nldd-container>
+                </>
               }
             />
           )}

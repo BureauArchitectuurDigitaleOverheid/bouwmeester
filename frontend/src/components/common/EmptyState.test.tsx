@@ -39,6 +39,28 @@ describe('EmptyState', () => {
     expect(action.closest('[slot="actions"]')).not.toBeNull();
   });
 
+  it('puts the slot on each action inside a fragment', () => {
+    // The regression this covers: a fragment counts as one child, so putting
+    // the slot on what the caller passed left it on the fragment, where it does
+    // nothing. Both buttons then landed in the default slot, which the element
+    // reads as a task and aligns left instead of under the centred heading.
+    render(
+      <EmptyState
+        title="Leeg"
+        action={
+          <>
+            <button>Eerste</button>
+            <button>Tweede</button>
+          </>
+        }
+      />,
+    );
+
+    for (const label of ['Eerste', 'Tweede']) {
+      expect(screen.getByText(label)).toHaveAttribute('slot', 'actions');
+    }
+  });
+
   it('uses a named icon', () => {
     const { container } = render(<EmptyState title="Leeg" icon="inbox" />);
     expect(dialog(container)).toHaveAttribute('icon', 'inbox');

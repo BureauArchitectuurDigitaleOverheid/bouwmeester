@@ -19,8 +19,15 @@
  * is why the parent usually needs `min-width: 0` in a flex row. The design
  * system leaves this alone deliberately: whether a name is cut off or wraps is
  * the app's call, not the system's.
+ *
+ * `display: block` is part of the clipping, not a layout choice. `overflow`
+ * does nothing on an inline box, so on a `<span>` this class promised an
+ * ellipsis and delivered nothing: the text kept growing past its parent and
+ * ran over whatever sat beside it. The chat attachment names carry their own
+ * `max-width` for exactly this and were still not being cut off.
  */
 .truncate {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
