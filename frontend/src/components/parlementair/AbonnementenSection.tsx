@@ -368,7 +368,7 @@ function SuggestieLijst({
 
   return (
     <nldd-card>
-      <nldd-container gap="8">
+      <nldd-container gap="8" padding="16">
         <nldd-container
           layout="row"
           gap="8"

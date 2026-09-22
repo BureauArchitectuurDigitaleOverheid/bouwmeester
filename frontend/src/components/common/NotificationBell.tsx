@@ -54,8 +54,14 @@ function NotificationItem({
       {/* `width="full"` because a cell does not claim the leftover space on
           its own: without it this one measured zero and the title came out
           one letter per line. */}
+      {/* De inset zit op de inhoud, niet op de lijst. `variant="simple"` is
+          "a plain vertical strip with no chrome", dus die levert zelf geen
+          zijmarge en de tekst plakte tegen de rand van de popover. Op de
+          lijst zou de padding ook de achtergrond van een geselecteerde rij
+          inkorten; hier loopt die door en springt alleen de tekst in, gelijk
+          met de kop erboven. */}
       <nldd-cell width="full">
-        <nldd-container gap="4">
+        <nldd-container gap="4" padding-inline="12">
           <nldd-container layout="row" gap="8" vertical-alignment="center">
             <nldd-tag
               text={label}

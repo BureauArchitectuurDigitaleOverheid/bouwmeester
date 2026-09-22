@@ -127,7 +127,7 @@ function ConfigRow({ entry }: { entry: AppConfigEntry }) {
 
   return (
     <nldd-card>
-      <nldd-container gap="8">
+      <nldd-container gap="8" padding="16">
         <nldd-container layout="row" gap="16" horizontal-alignment="left" vertical-alignment="top">
           <nldd-container width="fit-content" className="row-fill" gap="4">
             <nldd-container layout="row" gap="8" vertical-alignment="center">
