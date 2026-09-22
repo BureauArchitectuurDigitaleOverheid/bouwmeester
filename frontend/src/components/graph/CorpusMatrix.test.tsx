@@ -95,10 +95,11 @@ describe('CorpusMatrix', () => {
       />,
       { wrapper },
     );
-    expect(screen.getByText('Doel A')).toBeInTheDocument();
-    expect(screen.getByText('Doel B')).toBeInTheDocument();
-    expect(screen.getByText('Instrument X')).toBeInTheDocument();
-    expect(screen.getByText('Instrument Y')).toBeInTheDocument();
+    // Headers are nldd-link, which carries its label in the `text` attribute.
+    expect(getByNlddText('Doel A')).toBeInTheDocument();
+    expect(getByNlddText('Doel B')).toBeInTheDocument();
+    expect(getByNlddText('Instrument X')).toBeInTheDocument();
+    expect(getByNlddText('Instrument Y')).toBeInTheDocument();
   });
 
   it('renders connection dots for edges', () => {

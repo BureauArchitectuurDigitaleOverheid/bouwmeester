@@ -418,7 +418,9 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                             {confirmDeleteId === p.id ? (
                               <nldd-container layout="row" gap="4" vertical-alignment="center">
                                 <nldd-text size="xs" color="critical">Zeker?</nldd-text>
-                                <button
+                                <NlddTextButtonInline
+                                  text="Ja"
+                                  variant="critical-transparent"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     removePlacement.mutate(
@@ -426,17 +428,15 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                                       { onSettled: () => setConfirmDeleteId(null) },
                                     );
                                   }}
-                                >
-                                  <nldd-text size="xs" color="critical" weight="medium">Ja</nldd-text>
-                                </button>
-                                <button
+                                />
+                                <NlddTextButtonInline
+                                  text="Nee"
+                                  variant="neutral-transparent"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setConfirmDeleteId(null);
                                   }}
-                                >
-                                  <nldd-text size="xs" color="secondary">Nee</nldd-text>
-                                </button>
+                                />
                               </nldd-container>
                             ) : (
                               <NlddIconButtonInline
@@ -554,4 +554,21 @@ function NlddIconButtonInline({
       accessible-label={accessibleLabel}
     />
   );
+}
+
+/** The text-labelled twin of NlddIconButtonInline, for the Ja/Nee confirm on a
+ *  placement row: same xs sizing and same click-stopping, transparent so a row
+ *  of actions does not become a row of filled blocks. */
+function NlddTextButtonInline({
+  text,
+  variant,
+  onClick,
+}: {
+  text: string;
+  variant: 'critical-transparent' | 'neutral-transparent';
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', (e) => onClick(e as unknown as React.MouseEvent));
+  return <nldd-button ref={ref} text={text} variant={variant} size="xs" />;
 }

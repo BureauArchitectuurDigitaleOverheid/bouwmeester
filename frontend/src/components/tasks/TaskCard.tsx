@@ -27,6 +27,49 @@ const priorityIcons: Record<TaskPriority, React.ReactNode> = {
   [TaskPriority.LAAG]: null,
 };
 
+/**
+ * A task title that opens the task's editor.
+ *
+ * It opens an in-page editor rather than a URL, so `nldd-link` does not fit:
+ * without an `href` the design system emits an `<a>` with no href at all,
+ * which is neither focusable nor keyboard-operable. `nldd-button` does not fit
+ * either: it renders only its `text` attribute, a plain string, so it cannot
+ * carry the `nldd-text` that gives the title its weight and its done-state
+ * color — and its control padding and min-size would box a title in.
+ *
+ * So this is a native button stripped by `plain-button`, which keeps the tab
+ * stop, the focus ring and Enter/Space while leaving the title looking like a
+ * title. Same treatment as the person name in PersonCardExpandable.
+ *
+ * The click is stopped here so it does not also reach the card's own onClick,
+ * which listens on the host element and would open the task a second time.
+ */
+function TaskTitleButton({
+  title,
+  isDone,
+  onOpen,
+}: {
+  title: string;
+  isDone: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="plain-button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      style={{ textAlign: 'left', minWidth: 0 }}
+    >
+      <nldd-text size="sm" weight="medium" color={isDone ? 'secondary' : 'content'}>
+        {title}
+      </nldd-text>
+    </button>
+  );
+}
+
 export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
   const updateTask = useUpdateTask();
   const isDone = task.status === TaskStatus.DONE;
@@ -72,18 +115,11 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
               the done-checkbox, and a control inside a button is invalid. The
               card's own onClick stays as a pointer convenience on top of it. */}
           {onEdit ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCardClick();
-              }}
-              style={{ textAlign: 'left', minWidth: 0 }}
-            >
-              <nldd-text size="sm" weight="medium" color={isDone ? 'secondary' : 'content'}>
-                {task.title}
-              </nldd-text>
-            </button>
+            <TaskTitleButton
+              title={task.title}
+              isDone={isDone}
+              onOpen={handleCardClick}
+            />
           ) : (
             <nldd-text size="sm" weight="medium" color={isDone ? 'secondary' : 'content'}>
               {task.title}

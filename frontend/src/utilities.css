@@ -466,16 +466,9 @@
   min-width: 40px;
 }
 
-.matrix-header-button {
-  display: block;
-  width: 100%;
-  transition: color 150ms;
-}
-
-.matrix-header-button:hover {
-  color: var(--semantics-buttons-accent-transparent-content-color);
-}
-
+/* Column header: the label is rotated by this wrapper, since a custom element's
+ * shadow content cannot be transformed from outside. The nldd-link inside
+ * inherits the writing mode and so runs along the rotated axis. */
 .matrix-header-label {
   display: inline-block;
   max-height: 140px;
@@ -498,16 +491,15 @@
   max-width: 220px;
 }
 
-.matrix-row-header-button {
+/* Row header: the link fills the cell and clips its own long title, so the
+ * header keeps its max-width instead of the title widening the column. */
+.matrix-row-header-link {
   display: block;
-  width: 100%;
-  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 500;
-  transition: color 150ms;
-}
-
-.matrix-row-header-button:hover {
-  color: var(--semantics-buttons-accent-transparent-content-color);
 }
 
 /* Row/cell hover highlight — `.group` is the `<tr>`, this is any cell that
@@ -605,6 +597,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* A pill, not a browser button: without this the user-agent border draws a
+   * grey box around every toggle in the row. */
+  border: none;
+  cursor: pointer;
   border-radius: 9999px;
   padding: 4px 12px;
   font-size: var(--primitives-font-size-80);

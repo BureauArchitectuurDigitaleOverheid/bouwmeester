@@ -121,7 +121,9 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
             <nldd-container layout="wrap" gap="6" padding-bottom="6">
               {attachments.map((att) =>
                 isImageContentType(att.content_type) ? (
-                  // Thumbnail button opening the lightbox.
+                  // Thumbnail button opening the lightbox. `plain-button`
+                  // strips the user-agent chrome so the thumbnail is the whole
+                  // control, without a grey frame around the image.
                   <button
                     key={att.id}
                     onClick={() =>
@@ -130,7 +132,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                         alt: att.bestandsnaam,
                       })
                     }
-                    className="hover-dim"
+                    className="plain-button hover-dim"
                     style={{ display: 'block', cursor: 'pointer' }}
                   >
                     <nldd-image

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -7,9 +7,60 @@ import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { NODE_TYPE_HEX_COLORS } from '@/types';
 import type { NodeType, CorpusNode, GraphViewResponse } from '@/types';
+import { useNlddEvent } from '@/components/nldd/events';
 import { buildMatrixAdjacency, countUniqueEdges, type CellEdge } from '@/utils/matrixAdjacency';
 
 const MAX_MATRIX_DIMENSION = 100;
+
+/**
+ * A node's title in a matrix header, as a link to that node.
+ *
+ * `nldd-link` with no `size` inherits the surrounding typography and stays
+ * inline, so it sits in a header cell without reshaping it.
+ *
+ * `href` is the node's real route, so the browser's own gestures keep working:
+ * cmd-click and middle-click open it in a tab, and the status bar shows where
+ * it goes. A plain click is intercepted and opens the detail surface instead,
+ * which keeps the matrix on screen behind it.
+ *
+ * The color rides on `--semantics-links-color`, not `color`: the link paints
+ * itself from that token inside its shadow root, where a `color` set on the
+ * host does not reach.
+ */
+function NodeTitleLink({
+  nodeId,
+  title,
+  color,
+  onOpen,
+  className,
+}: {
+  nodeId: string;
+  title: string;
+  color: string;
+  onOpen: () => void;
+  className?: string;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', (event: Event) => {
+    const mouse = event as MouseEvent;
+    // A modified click asked for a new tab or window; let the browser do it.
+    if (mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.altKey || mouse.button === 1) {
+      return;
+    }
+    event.preventDefault();
+    onOpen();
+  });
+  return (
+    <nldd-link
+      ref={ref}
+      href={`/nodes/${nodeId}`}
+      text={title}
+      title={title}
+      className={className}
+      style={{ '--semantics-links-color': color } as React.CSSProperties}
+    />
+  );
+}
 
 interface CorpusMatrixProps {
   rowNodeType: NodeType;
@@ -129,14 +180,14 @@ export function CorpusMatrix({
               Volledige matrix ({allRowNodes.length}&times;{allColNodes.length} = {totalCells.toLocaleString('nl-NL')} cellen) kan de browser vertragen.{' '}
               <button
                 onClick={() => setShowFullMatrix(true)}
-                className="link-hover-underline matrix-notice-action"
+                className="plain-button link-hover-underline matrix-notice-action"
               >
                 Toch tonen
               </button>
               {' '}of{' '}
               <button
                 onClick={() => setPendingExpand(false)}
-                className="link-hover-underline matrix-notice-action"
+                className="plain-button link-hover-underline matrix-notice-action"
               >
                 annuleren
               </button>.
@@ -147,7 +198,7 @@ export function CorpusMatrix({
               Gebruik de zoekbalk om te filteren, of{' '}
               <button
                 onClick={() => totalCells > 10000 ? setPendingExpand(true) : setShowFullMatrix(true)}
-                className="link-hover-underline matrix-notice-action"
+                className="plain-button link-hover-underline matrix-notice-action"
               >
                 toon alles ({allRowNodes.length}&times;{allColNodes.length})
               </button>.
@@ -162,7 +213,7 @@ export function CorpusMatrix({
             Volledige matrix wordt getoond.{' '}
             <button
               onClick={() => setShowFullMatrix(false)}
-              className="link-hover-underline matrix-notice-action"
+              className="plain-button link-hover-underline matrix-notice-action"
             >
               Beperk tot {MAX_MATRIX_DIMENSION}&times;{MAX_MATRIX_DIMENSION}
             </button>
@@ -183,22 +234,20 @@ export function CorpusMatrix({
                     role="columnheader"
                     aria-colindex={colIdx + 2}
                   >
-                    <button
-                      onClick={() => openNodeDetail(col.id)}
-                      className="matrix-header-button"
-                      title={col.title}
+                    {/* The rotation lives on the wrapper, not the link: a
+                        custom element cannot have its shadow content rotated
+                        from outside, but it does inherit the writing mode. */}
+                    <span
+                      className="matrix-header-label"
+                      style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
                     >
-                      <span
-                        className="matrix-header-label"
-                        style={{
-                          writingMode: 'vertical-rl',
-                          transform: 'rotate(180deg)',
-                          color: colColor,
-                        }}
-                      >
-                        {col.title}
-                      </span>
-                    </button>
+                      <NodeTitleLink
+                        nodeId={col.id}
+                        title={col.title}
+                        color={colColor}
+                        onOpen={() => openNodeDetail(col.id)}
+                      />
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -208,14 +257,13 @@ export function CorpusMatrix({
                 <tr key={row.id} className="group" role="row" aria-rowindex={rowIdx + 2}>
                   {/* Row header — opaque bg prevents bleed-through on horizontal scroll */}
                   <td className="matrix-row-header group-hover-bg" role="rowheader">
-                    <button
-                      onClick={() => openNodeDetail(row.id)}
-                      className="matrix-row-header-button truncate"
+                    <NodeTitleLink
+                      nodeId={row.id}
                       title={row.title}
-                      style={{ color: rowColor }}
-                    >
-                      {row.title}
-                    </button>
+                      color={rowColor}
+                      onOpen={() => openNodeDetail(row.id)}
+                      className="matrix-row-header-link"
+                    />
                   </td>
                   {colNodes.map((col: CorpusNode) => {
                     const key = `${row.id}_${col.id}`;
@@ -240,7 +288,7 @@ export function CorpusMatrix({
                         ) : hasEdge ? (
                           <button
                             onClick={() => openNodeDetail(row.id)}
-                            className="matrix-dot-button"
+                            className="plain-button matrix-dot-button"
                             title={tooltip}
                             aria-label={tooltip}
                           >

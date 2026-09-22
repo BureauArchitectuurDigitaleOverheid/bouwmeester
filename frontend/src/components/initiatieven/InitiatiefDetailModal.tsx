@@ -1084,6 +1084,9 @@ function EditForm({
               style={{
                 height: '32px',
                 width: '32px',
+                // The swatch IS the color, so the user-agent padding has to go
+                // or the fill sits inset inside the circle.
+                padding: 0,
                 borderRadius: 'var(--primitives-corner-radius-full)',
                 borderWidth: '2px',
                 borderStyle: 'solid',

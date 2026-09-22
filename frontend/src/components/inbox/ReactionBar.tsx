@@ -46,9 +46,12 @@ export function ReactionBar({ reactions, onReact }: ReactionBarProps) {
       {/* EmojiPicker anchors itself via getBoundingClientRect on a real DOM
           button ref, so this trigger stays a native <button> (matching the
           special case documented in EmojiPicker.tsx) rather than becoming an
-          nldd-icon-button, which would nest one control inside another. */}
+          nldd-icon-button, which would nest one control inside another.
+          `plain-button` supplies the background/border reset the design system
+          would otherwise give it, so the chip row is not a row of grey boxes. */}
       <button
         ref={btnRef}
+        className="plain-button hover-tinted"
         onClick={() => setPickerOpen(!pickerOpen)}
         style={{
           display: 'inline-flex',

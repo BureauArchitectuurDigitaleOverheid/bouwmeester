@@ -1238,7 +1238,7 @@ function AttachmentRow({ attachment: att, downloadUrl, onDelete, onZoom }: Attac
           <button
             type="button"
             onClick={() => onZoom(downloadUrl, att.bestandsnaam ?? 'bijlage')}
-            className="group"
+            className="plain-button group"
             style={{ position: 'relative', marginLeft: '8px', display: 'block' }}
           >
             <img

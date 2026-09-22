@@ -466,6 +466,11 @@ function ColorSwatches({
           style={{
             height: '16px',
             width: '16px',
+            // The swatch IS the color, and at 16px the user-agent border and
+            // padding would leave almost no fill visible.
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
             borderRadius: '9999px',
             backgroundColor: `var(${preset.swatchVar})`,
             boxShadow:

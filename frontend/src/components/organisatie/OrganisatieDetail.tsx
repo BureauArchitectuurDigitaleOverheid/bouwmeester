@@ -166,9 +166,13 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
             composite of an icon, a badge, a name and a count, none of which
             nldd-button's text/icon slots can carry together (its children only
             reach the `text` slot, not a default slot for arbitrary content).
+            `plain-button` strips the user-agent chrome that would otherwise
+            box in the whole header, keeping the tab stop and focus ring.
             width: 100% stays inline: nldd-container's width="full" fills the
             parent, not the host button's own box. */}
         <button
+          className="plain-button"
+          aria-expanded={expanded}
           style={{ width: '100%', textAlign: 'left' }}
           onClick={() => setExpanded(!expanded)}
         >

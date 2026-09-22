@@ -244,6 +244,10 @@ export function LeadsPage() {
                 key={ini.id}
                 onClick={() => setSelectedInitiatiefId(ini.id)}
                 style={{
+                  // A pill, not a browser button: the user-agent border and
+                  // background would box in every initiative name.
+                  border: 'none',
+                  cursor: 'pointer',
                   borderRadius: '9999px',
                   padding: '4px 12px',
                   fontSize: '12px',
@@ -482,6 +486,10 @@ export function LeadsPage() {
                     style={{
                       height: '32px',
                       width: '32px',
+                      // The swatch IS the color, so the user-agent padding has
+                      // to go or the fill sits inset inside the circle.
+                      padding: 0,
+                      cursor: 'pointer',
                       borderRadius: '9999px',
                       border: `2px solid ${createForm.kleur === color ? 'var(--primitives-color-accent-75)' : 'transparent'}`,
                       transform: createForm.kleur === color ? 'scale(1.1)' : 'scale(1)',

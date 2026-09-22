@@ -53,6 +53,8 @@ export function EmojiPicker({ onSelect, onClose, anchorRef }: EmojiPickerProps) 
     // trigger button (see anchorRef), on a fixed 6-column emoji grid: no
     // nldd component renders a viewport-anchored popup with computed
     // top/left coordinates, so the panel and its emoji buttons stay plain CSS.
+    // The buttons carry `plain-button` for the chrome reset: an emoji is the
+    // whole label, and a border around each one would read as a grid of boxes.
     <div
       ref={ref}
       style={{
@@ -79,7 +81,7 @@ export function EmojiPicker({ onSelect, onClose, anchorRef }: EmojiPickerProps) 
             onSelect(emoji);
             onClose();
           }}
-          className="hover-tinted"
+          className="plain-button hover-tinted"
           style={{
             width: '32px',
             height: '32px',
