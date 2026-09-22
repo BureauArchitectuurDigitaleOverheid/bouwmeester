@@ -39,14 +39,11 @@ function NotificationItem({
   const rowRef = useRef<HTMLElement>(null);
   useNlddEvent(rowRef, 'click', onClick);
 
-  // A row is built from cells, never from loose text: the cell sets the type
-  // scale, the color and the alignment against the row height. Text dropped
-  // straight into a button row inherits the browser's button styling instead.
-  //
-  // The tag and the timestamp sit ABOVE the title, in the same cell, not
-  // beside it. A list item lays its cells out in one row, so as separate
-  // cells they competed with the title for the popover's 360px and the two
-  // printed over each other.
+  // One cell holding a stack, rather than three cells side by side. A list
+  // item lays its cells out in a row, so as separate cells the tag, the time
+  // and the title all competed for the popover's 360px and printed over each
+  // other. Inside the cell they are ordinary nldd-text elements, which is what
+  // belongs in a column.
   return (
     <nldd-list-item
       ref={rowRef}
@@ -70,10 +67,23 @@ function NotificationItem({
               {timeAgo(notification.last_activity_at ?? notification.created_at)}
             </nldd-text>
           </nldd-container>
-          <nldd-text-cell
-            text={notification.title}
-            {...(body ? { 'supporting-text': body } : {})}
-          />
+          {/* `nldd-text`, not `nldd-text-cell`. A cell is built to be a column
+              of a row, and its styling sets `flex-basis: 0`. In this stack
+              that basis sizes its HEIGHT, so the host stayed 20px tall while
+              the text inside it ran to 45px: a title of two lines printed
+              straight over the tag and the timestamp above it, and over the
+              row below.
+
+              `truncate` keeps a long title to one line. The whole notification
+              is in the supporting text underneath, and the row opens it. */}
+          <nldd-text weight="medium" className="truncate">
+            {notification.title}
+          </nldd-text>
+          {body && (
+            <nldd-text size="sm" color="secondary" className="truncate">
+              {body}
+            </nldd-text>
+          )}
         </nldd-container>
       </nldd-cell>
 
