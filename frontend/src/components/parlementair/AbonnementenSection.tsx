@@ -7,6 +7,7 @@ import {
   getAbonnementen,
   getGekoppeldeKanalen,
   suggereerZoektermen,
+  suggestieFoutmelding,
   updateAbonnement,
   type GekoppeldKanaal,
   type ParlementairAbonnement,
@@ -107,18 +108,25 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
   const [bezigeRij, setBezigeRij] = useState<string | null>(null);
   const [kanalen, setKanalen] = useState<GekoppeldKanaal[] | null>(null);
   const [suggesties, setSuggesties] = useState<Zoektermsuggestie[] | null>(null);
+  // Los van `fout`: een mislukte aanvraag mag niet als "niets gevonden"
+  // op het scherm komen. En de reden verschilt — te vaak gevraagd, geen
+  // taalmodel, bron onbereikbaar — wat bepaalt of de lezer moet wachten,
+  // iets moet instellen of het later opnieuw moet proberen.
+  const [suggestieFout, setSuggestieFout] = useState<string | null>(null);
   const [suggestiesBezig, setSuggestiesBezig] = useState(false);
 
   const haalSuggesties = useCallback(async () => {
     setSuggestiesBezig(true);
     setFout(null);
+    setSuggestieFout(null);
     try {
       setSuggesties(await suggereerZoektermen(initiatiefId));
-    } catch {
+    } catch (e) {
       // De meting doet verzoeken aan een server van derden en een
       // LLM-call; als daar iets misgaat is dat geen reden om de rest van
       // het paneel onbruikbaar te maken.
-      setFout('Kon geen suggesties ophalen.');
+      setSuggestieFout(suggestieFoutmelding(e));
+      setSuggesties([]);
     } finally {
       setSuggestiesBezig(false);
     }
@@ -217,8 +225,12 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
         {suggesties !== null && (
           <SuggestieLijst
             suggesties={suggesties}
+            foutmelding={suggestieFout}
             onToevoegen={voegSuggestieToe}
-            onSluiten={() => setSuggesties(null)}
+            onSluiten={() => {
+              setSuggesties(null);
+              setSuggestieFout(null);
+            }}
           />
         )}
 
@@ -312,10 +324,12 @@ function Bezorging({ kanalen }: { kanalen: GekoppeldKanaal[] | null }) {
  */
 function SuggestieLijst({
   suggesties,
+  foutmelding,
   onToevoegen,
   onSluiten,
 }: {
   suggesties: Zoektermsuggestie[];
+  foutmelding: string | null;
   onToevoegen: (s: Zoektermsuggestie) => void;
   onSluiten: () => void;
 }) {
@@ -331,9 +345,14 @@ function SuggestieLijst({
     return (
       <nldd-container gap="8">
         <nldd-banner
-          variant="neutral"
+          variant={foutmelding ? 'warning' : 'neutral'}
           size="sm"
-          text="Geen aanvullende zoektermen gevonden."
+          text={foutmelding ?? 'Geen aanvullende zoektermen gevonden.'}
+          supporting-text={
+            foutmelding
+              ? undefined
+              : 'Het model vond geen varianten die iets toevoegen aan wat je al volgt.'
+          }
         />
         <nldd-container width="fit-content">
           <nldd-button

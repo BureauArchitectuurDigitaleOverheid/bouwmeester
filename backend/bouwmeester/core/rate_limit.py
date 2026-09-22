@@ -42,9 +42,21 @@ class InMemoryRateLimiter:
         """
         return request.client.host if request.client else "unknown"
 
+    def check_key(self, key: str) -> None:
+        """Raise 429 if this key has exceeded the rate limit.
+
+        Voor endpoints waar het IP de verkeerde sleutel is. Achter een
+        ingress delen alle gebruikers één adres, dus een IP-limiet laat
+        collega's elkaar verdringen op een endpoint dat per persoon
+        bedoeld is.
+        """
+        self._check(key)
+
     def check(self, request: Request) -> None:
         """Raise 429 if the client IP has exceeded the rate limit."""
-        client_ip = self.get_client_ip(request)
+        self._check(self.get_client_ip(request))
+
+    def _check(self, client_ip: str) -> None:
         now = time.monotonic()
         window_start = now - self.window
 

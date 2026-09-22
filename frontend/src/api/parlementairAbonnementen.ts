@@ -73,6 +73,24 @@ export async function suggereerZoektermen(initiatiefId: string): Promise<Zoekter
   return apiPost<Zoektermsuggestie[]>(`/api/initiatieven/${initiatiefId}/abonnementen/suggesties`);
 }
 
+/**
+ * De melding uit een mislukte suggestie-aanvraag.
+ *
+ * De backend zegt per geval iets anders (te vaak gevraagd, geen taalmodel,
+ * bron onbereikbaar). Die tekst is bruikbaarder dan een generiek "er ging
+ * iets mis", want hij zegt of de lezer moet wachten, iets moet instellen,
+ * of het later nog eens moet proberen.
+ */
+export function suggestieFoutmelding(fout: unknown): string {
+  // ApiError draagt de responsbody in `body`, niet in `data`.
+  const detail = (fout as { body?: { detail?: string } })?.body?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  const status = (fout as { status?: number })?.status;
+  if (status === 429) return 'Je hebt net al vaak om suggesties gevraagd; probeer het over een paar minuten opnieuw.';
+  if (status === 503) return 'Er is geen taalmodel beschikbaar. Kijk in Beheer of er een sleutel is ingesteld.';
+  return 'Suggesties ophalen is niet gelukt. Het taalmodel of de bron was niet bereikbaar.';
+}
+
 /** Een Mattermost-kanaal dat aan dit initiatief hangt. */
 export interface GekoppeldKanaal {
   id: string;
