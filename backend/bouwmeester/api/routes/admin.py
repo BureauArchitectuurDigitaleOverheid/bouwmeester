@@ -317,7 +317,18 @@ _DEFAULT_CONFIG = [
     {
         "key": "ANTHROPIC_API_KEY",
         "value": "",
-        "description": "Anthropic API-sleutel voor Claude",
+        "description": "Anthropic API-sleutel voor Claude (afrekening per token)",
+        "is_secret": True,
+    },
+    {
+        "key": "CLAUDE_CODE_OAUTH_TOKEN",
+        "value": "",
+        "description": (
+            "Abonnementstoken uit `claude setup-token`. Gaat vóór op de "
+            "API-sleutel: dezelfde modellen, maar op een abonnement in "
+            "plaats van per token. Werkt alleen als de `claude`-binary in "
+            "de image zit."
+        ),
         "is_secret": True,
     },
     {

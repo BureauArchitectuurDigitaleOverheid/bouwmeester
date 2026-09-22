@@ -24,6 +24,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 libasound2 libatspi2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Claude Code CLI: de enige route waarlangs een abonnementstoken
+# (CLAUDE_CODE_OAUTH_TOKEN uit `claude setup-token`) werkt. De Anthropic SDK
+# accepteert dat token niet, dus zonder deze binary valt de LLM-laag terug
+# op een API-sleutel die per token afrekent. De install faalt zacht: een
+# image zonder CLI werkt gewoon, alleen die ene route niet.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nodejs npm \
+    && npm install -g @anthropic-ai/claude-code \
+    && apt-get purge -y npm && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* /root/.npm \
+    || echo "Claude CLI install gefaald; abonnementsroute niet beschikbaar"
+
 RUN useradd --create-home --uid 1001 appuser && \
     mkdir -p /data/bijlagen/chat /data/bijlagen/leads && \
     chgrp -R 0 /data && \

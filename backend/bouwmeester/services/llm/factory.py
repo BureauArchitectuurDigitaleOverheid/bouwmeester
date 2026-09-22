@@ -101,6 +101,7 @@ _last_logged_summary: tuple | None = None
 def _log_llm_configuration(
     *,
     claude_built: bool,
+    claude_via: str,
     claude_model: str,
     vlam_built: bool,
     vlam_key: str,
@@ -125,6 +126,7 @@ def _log_llm_configuration(
     global _last_logged_summary  # noqa: PLW0603
     summary = (
         claude_built,
+        claude_via,
         claude_model,
         vlam_built,
         vlam_url,
@@ -137,9 +139,10 @@ def _log_llm_configuration(
     _last_logged_summary = summary
 
     logger.info(
-        "LLM-providers: claude=%s (model=%s), vlam=%s, voorkeur=%s",
+        "LLM-providers: claude=%s (model=%s, via=%s), vlam=%s, voorkeur=%s",
         "ja" if claude_built else "nee",
         claude_model or "-",
+        claude_via or "-",
         "ja" if vlam_built else "nee",
         preferred or "-",
     )
@@ -193,13 +196,38 @@ async def _ensure_services(db: AsyncSession) -> None:
     config = await _load_config(db)
     settings = get_settings()
 
-    # Build Claude
+    # Build Claude. Het abonnementstoken gaat vóór op de API-sleutel: die
+    # laatste rekent per token af, het eerste loopt op een abonnement. Ze
+    # spreken hetzelfde model aan, dus als beide gezet zijn is de
+    # goedkoopste route de juiste.
     api_key = config.get("ANTHROPIC_API_KEY") or settings.ANTHROPIC_API_KEY
     model = config.get("LLM_MODEL") or settings.LLM_MODEL
-    if api_key:
+    oauth_token = (
+        config.get("CLAUDE_CODE_OAUTH_TOKEN") or settings.CLAUDE_CODE_OAUTH_TOKEN
+    )
+    claude_via = ""
+    if oauth_token:
+        from bouwmeester.services.llm.claude_cli_service import (
+            ClaudeCliLLMService,
+            cli_available,
+        )
+
+        # Zonder binary geen provider: hem toch opbouwen zou elke call laten
+        # falen op een FileNotFoundError, terwijl terugvallen op de
+        # API-sleutel of VLAM precies is wat je dan wilt.
+        if cli_available():
+            _claude_cache = ClaudeCliLLMService(model=model, oauth_token=oauth_token)
+            claude_via = "cli (abonnement)"
+        else:
+            logger.warning(
+                "CLAUDE_CODE_OAUTH_TOKEN is gezet maar de `claude`-binary "
+                "ontbreekt in deze image; val terug op de API-sleutel"
+            )
+    if _claude_cache is None and api_key:
         from bouwmeester.services.llm.claude_service import ClaudeLLMService
 
         _claude_cache = ClaudeLLMService(api_key=api_key, model=model)
+        claude_via = "api-sleutel"
 
     # Build VLAM. Het platform-adres (ZAD-dienst `vlam`) gaat vóór op een
     # handmatig ingestelde URL; zie resolve_vlam_base_url.
@@ -217,6 +245,7 @@ async def _ensure_services(db: AsyncSession) -> None:
 
     _log_llm_configuration(
         claude_built=_claude_cache is not None,
+        claude_via=claude_via,
         claude_model=model,
         vlam_built=_vlam_cache is not None,
         vlam_key=vlam_key,

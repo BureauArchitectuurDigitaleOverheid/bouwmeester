@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     WEBAUTHN_SESSION_TTL_SECONDS: int = 86400  # 24 hours (shorter than OIDC's 7 days)
 
     ANTHROPIC_API_KEY: str = ""
+    # Abonnementstoken uit `claude setup-token`, voor de Claude Code CLI.
+    # Gaat vóór op ANTHROPIC_API_KEY: dezelfde modellen, maar op een
+    # abonnement in plaats van per token. Werkt alleen via de CLI-binary;
+    # de Anthropic SDK accepteert dit token niet. Persoonlijk token, dus
+    # het hoort in de secretstore en niet in de repo.
+    CLAUDE_CODE_OAUTH_TOKEN: str = ""
     TK_API_BASE_URL: str = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0"
     EK_API_BASE_URL: str = "https://opendata.eerstekamer.nl"
     TK_POLL_INTERVAL_SECONDS: int = 3600
