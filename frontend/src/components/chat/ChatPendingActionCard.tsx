@@ -19,7 +19,7 @@ export function ChatPendingActionCard({ pendingAction }: ChatPendingActionCardPr
 
   return (
     <nldd-card>
-      <nldd-container gap="6">
+      <nldd-container gap="6" padding="12">
         <nldd-text-cell size="sm" color="warning" text={pendingAction.description} width="full" />
         <nldd-container layout="row" gap="8">
           <NlddButton

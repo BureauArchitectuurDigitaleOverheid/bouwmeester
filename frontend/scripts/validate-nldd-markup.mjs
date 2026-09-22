@@ -337,6 +337,35 @@ for (const file of files) {
       }
     }
 
+    // A container sitting directly inside a card, without padding of its own.
+    // `nldd-card` draws the frame and the fill but no inset (measured: zero,
+    // with and without `href`), so the text ends up against the border. Three
+    // screens shipped that way: the database sections, the environment
+    // variables and the Mattermost block.
+    //
+    // A card holding only a list is fine, and says so by having no container
+    // in between: a list row brings its own padding and its background is
+    // meant to run edge to edge.
+    if (
+      stackIsReliable &&
+      tag === 'nldd-container' &&
+      stack[stack.length - 1] === 'nldd-card' &&
+      !/\bpadding/.test(attrText)
+    ) {
+      // Unless it opens with a divider or a list. Both are meant to run to
+      // the card's edge, and an inset there would leave the line floating
+      // short of the border it is drawn against.
+      const rest = source.slice(m.index + m[0].length, m.index + m[0].length + 200);
+      const opensEdgeToEdge = /^\s*\{?\s*<nldd-(divider|list|table)\b/.test(rest);
+      if (!opensEdgeToEdge) {
+        const line = source.slice(0, m.index).split('\n').length;
+        problems.push(
+          `${rel}:${line} <nldd-container> directly in a <nldd-card> without ` +
+            'padding: a card has no inset of its own, so the content touches its border.',
+        );
+      }
+    }
+
     if (!selfClosing) {
       attrsByDepth[stack.length] = attrText;
       stack.push(tag);

@@ -139,7 +139,7 @@ export function DatabaseBackup() {
           geen kleur. Wat er in de backup zit staat als bijzin onder de knop,
           niet als een blok tekst dat eerst gelezen moet worden. */}
       <nldd-card>
-        <nldd-container gap="12">
+        <nldd-container gap="12" padding="16">
           <SectionHeader
             icon="download"
             color="accent"
@@ -176,7 +176,7 @@ export function DatabaseBackup() {
           hij bij het bestand dat je daadwerkelijk gaat terugzetten, waar hij
           over iets concreets gaat. */}
       <nldd-card>
-        <nldd-container gap="12">
+        <nldd-container gap="12" padding="16">
           <SectionHeader
             icon="upload"
             color="warning"
@@ -254,7 +254,7 @@ export function DatabaseBackup() {
           de kleur, en de volledige gevolgen staan er pas als je de actie in
           gang hebt gezet. */}
       <nldd-card>
-        <nldd-container gap="12">
+        <nldd-container gap="12" padding="16">
           <SectionHeader
             icon="delete"
             color="critical"

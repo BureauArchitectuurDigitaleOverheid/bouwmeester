@@ -59,7 +59,7 @@ function SamenwerkingsverbandCard({ swv }: SamenwerkingsverbandCardProps) {
 
   return (
     <nldd-card ref={ref} href={to} accessible-label={swv.naam}>
-      <nldd-container gap="8">
+      <nldd-container gap="8" padding="16">
         <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
           <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
             {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}
