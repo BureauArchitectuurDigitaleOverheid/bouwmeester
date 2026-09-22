@@ -59,6 +59,17 @@ class ParlementairAbonnementRepository:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def markeer_ingehaald(self, abonnement_ids: list[UUID]) -> None:
+        """Leg vast dat deze termen hun eenmalige inhaalslag hebben gehad."""
+        if not abonnement_ids:
+            return
+        now = datetime.now(UTC)
+        for aid in abonnement_ids:
+            abonnement = await self.session.get(ParlementairAbonnement, aid)
+            if abonnement is not None and abonnement.ingehaald_op is None:
+                abonnement.ingehaald_op = now
+        await self.session.flush()
+
     async def create(
         self,
         *,

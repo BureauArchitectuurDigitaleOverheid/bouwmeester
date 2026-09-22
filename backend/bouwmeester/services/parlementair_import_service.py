@@ -191,7 +191,42 @@ class ParlementairImportService:
             for item_id in self._te_alerteren:
                 await self._alert_kamerstuk(item_id)
 
+        if isinstance(strategy, TkconvSearchStrategy) and strategy.inhaalslag:
+            await self._post_inhaalslag(strategy.inhaalslag)
+
         return imported_count
+
+    async def _post_inhaalslag(self, per_abonnement: dict) -> None:
+        """Eén samenvattend bericht per nieuwe zoekterm.
+
+        Draait na de hele ronde, dus met alle stukken van die term bij
+        elkaar. De losse alerts zijn voor die stukken overgeslagen (zie
+        `_process_item`), anders zou het kanaal ze dubbel krijgen.
+        """
+        from bouwmeester.services.parlementair_alert_service import (
+            ParlementairAlertService,
+        )
+
+        service = ParlementairAlertService(self.session)
+        for abonnement_id, nummers in per_abonnement.items():
+            try:
+                abonnement = await self.abonnement_repo.get(abonnement_id)
+                if abonnement is None:
+                    continue
+                items = await self.import_repo.get_by_zaak_ids(nummers)
+                if items:
+                    gepost = await service.post_inhaalslag(abonnement, items)
+                    logger.info(
+                        "Inhaalslag voor %r: %d stukken, %d kanalen",
+                        abonnement.term,
+                        len(items),
+                        gepost,
+                    )
+                await self.abonnement_repo.markeer_ingehaald([abonnement_id])
+                await self.session.commit()
+            except Exception:
+                await self.session.rollback()
+                logger.exception("Inhaalslag mislukt voor %s", abonnement_id)
 
     async def _alert_kamerstuk(self, parlementair_item_id: uuid.UUID) -> None:
         """Vat het stuk samen vanuit de zoekterm en post het in de kanalen.
@@ -226,17 +261,25 @@ class ParlementairImportService:
         llm_service = await get_llm_service(self.session)
         if llm_service is not None and termen:
             try:
+                bestaand = parlementair_item.extra_data or {}
                 alert = await llm_service.summarize_kamerstuk_alert(
                     titel=parlementair_item.titel,
                     onderwerp=parlementair_item.onderwerp,
                     document_tekst=parlementair_item.document_tekst,
                     zoektermen=termen,
+                    # Het model moet weten wát voor stuk dit is: een agenda
+                    # die nog moet komen vraagt om een ander bericht dan een
+                    # besluitenlijst van een vergadering die geweest is.
+                    categorie=bestaand.get("categorie") or "overig",
+                    soort=bestaand.get("soort"),
+                    context_regels=_context_regels(bestaand),
                 )
                 if alert.samenvatting:
                     parlementair_item.llm_samenvatting = alert.samenvatting
-                extra = dict(parlementair_item.extra_data or {})
+                extra = dict(bestaand)
                 extra["relevantie_score"] = alert.relevantie_score
                 extra["relevantie_reden"] = alert.reden
+                extra["actie"] = alert.actie
                 parlementair_item.extra_data = extra
                 # Eigen commit: we draaien na de commit van het item, dus
                 # zonder dit blijft de samenvatting in de sessie hangen tot
@@ -448,7 +491,13 @@ class ParlementairImportService:
                 # terug terwijl het bericht blijft staan — en de volgende
                 # ronde importeert en post hetzelfde stuk opnieuw, elke
                 # twee minuten.
-                self._te_alerteren.append(parlementair_item.id)
+                # Stukken uit een eenmalige inhaalslag krijgen samen één
+                # bericht na de ronde, niet elk een eigen alert.
+                in_inhaalslag = any(
+                    item.zaak_id in nummers for nummers in strategy.inhaalslag.values()
+                )
+                if not in_inhaalslag:
+                    self._te_alerteren.append(parlementair_item.id)
 
         # Step 9: Create SuggestedEdge records for matching nodes
         affected_nodes: list[CorpusNode] = []
@@ -1011,3 +1060,26 @@ class ParlementairImportService:
         self.session.add(person)
         await self.session.flush()
         return person
+
+
+def _context_regels(extra: dict) -> list[str]:
+    """Feiten uit de TK-API die het model niet uit de tekst kan halen.
+
+    Een agenda zegt zelden in zijn eigen tekst wanneer de vergadering is,
+    en een bijlage noemt niet bij welke brief hij hoort. Die feiten staan
+    in de API, dus geven we ze mee in plaats van het model te laten raden.
+    """
+    regels: list[str] = []
+    if extra.get("bijlage_bij_nummer"):
+        onderwerp = extra.get("bijlage_bij_onderwerp") or ""
+        regels.append(
+            f"DIT IS EEN BIJLAGE BIJ: {extra['bijlage_bij_nummer']} {onderwerp}".strip()
+        )
+    if extra.get("activiteit_datum"):
+        soort = extra.get("activiteit_soort") or "vergadering"
+        regels.append(f"VERGADERDATUM: {extra['activiteit_datum']} ({soort})")
+    if extra.get("termijn"):
+        regels.append(f"ANTWOORDTERMIJN: {extra['termijn']}")
+    if extra.get("commissie"):
+        regels.append(f"COMMISSIE: {extra['commissie']}")
+    return regels

@@ -29,6 +29,7 @@ class AbonnementCreate(BaseModel):
 class AbonnementUpdate(BaseModel):
     actief: bool | None = None
     notitie: str | None = None
+    uitgezette_categorieen: list[str] | None = None
 
 
 class AbonnementResponse(BaseModel):
@@ -44,6 +45,7 @@ class AbonnementResponse(BaseModel):
     treffers_totaal: int
     weggeklikt_totaal: int
     notitie: str | None
+    uitgezette_categorieen: list[str] | None
     created_by_id: UUID | None
     created_at: datetime
 
@@ -58,3 +60,18 @@ class AbonnementMetTellingResponse(AbonnementResponse):
     """
 
     treffers: int = 0
+
+
+class SuggestieResponse(BaseModel):
+    """Een voorgestelde zoekterm, met wat hij bij de bron oplevert.
+
+    `nieuwe_treffers` is het getal dat telt: een term die alleen dubbelt
+    met wat je al volgt voegt niets toe, hoeveel treffers hij ook heeft.
+    """
+
+    term: str
+    reden: str
+    soort: str
+    treffers: int
+    nieuwe_treffers: int
+    voorbeelden: list[str] = []

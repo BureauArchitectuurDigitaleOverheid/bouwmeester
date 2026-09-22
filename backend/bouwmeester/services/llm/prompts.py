@@ -82,20 +82,96 @@ def build_extract_tags_prompt(
     )
 
 
+# Wat elk soort kamerstuk is, in de woorden die een beleidsanalist zou
+# gebruiken. De LLM schrijft een alert, geen samenvatting: de lezer wil
+# weten wat er gebeurt en of hij iets moet doen. Dat verschilt per soort,
+# en zonder deze context behandelt het model een agenda hetzelfde als een
+# eindrapport.
+_CATEGORIE_CONTEXT: dict[str, str] = {
+    "vraag": (
+        "Dit zijn schriftelijke vragen van Kamerleden aan een "
+        "bewindspersoon. Er hoort een antwoord op te komen, meestal binnen "
+        "drie weken.\n"
+        "Let op: WIE stelt de vraag (lid en fractie), AAN WIE, en wat "
+        "wordt er precies gevraagd over de zoekterm. Een vraag is geen "
+        "standpunt van het kabinet, dus schrijf niet alsof het beleid is.\n"
+        "Zijn het antwoorden op eerder gestelde vragen, zeg dan wat het "
+        "kabinet antwoordt."
+    ),
+    "vergadering_vooruit": (
+        "Dit is de AGENDA van een procedurevergadering die nog MOET "
+        "plaatsvinden. In zo'n vergadering besluit een commissie wat er "
+        "met stukken gebeurt: een rondetafelgesprek organiseren, een brief "
+        "vragen, een debat inplannen.\n"
+        "Dit is dus een vooruitblik, en dat is het belangrijkste aan dit "
+        "bericht: er kan nog invloed op worden uitgeoefend. Zeg welk "
+        "agendapunt de zoekterm raakt en wat de commissie daarover gaat "
+        "besluiten. Speculeer niet over de uitkomst."
+    ),
+    "vergadering_terug": (
+        "Dit is een besluitenlijst of verslag van een vergadering die AL "
+        "is geweest. Hier staat wat er daadwerkelijk is besloten.\n"
+        "Zeg welk besluit is genomen rond de zoekterm, en door wie. Een "
+        "besluit om iets aan te houden of uit te stellen is ook een "
+        "besluit, noem dat expliciet."
+    ),
+    "bijlage": (
+        "Dit is een bijlage bij een ander kamerstuk, vaak een kamerbrief. "
+        "Bijlagen dragen doorgaans de inhoudelijke onderbouwing: een "
+        "startnotitie, een onderzoeksrapport, een beslisnota.\n"
+        "Een beslisnota kan deels gelakt zijn. Citeer wat er staat en "
+        "speculeer niet over weggelakte passages."
+    ),
+    "brief": (
+        "Dit is een brief van het kabinet (of een commissie) aan de Kamer. "
+        "Hier staat een standpunt of een aankondiging van beleid.\n"
+        "Zeg wat het kabinet zegt te gaan doen rond de zoekterm, en "
+        "onderscheid een voornemen van een besluit."
+    ),
+    "extern": (
+        "Dit stuk komt van BUITEN de Kamer en het kabinet: een position "
+        "paper van een organisatie, of een burgerbrief. Het is een "
+        "standpunt van een belanghebbende, geen beleid.\n"
+        "Noem WIE dit schrijft en wat diegene wil. Schrijf nooit alsof het "
+        "een kabinetsstandpunt is."
+    ),
+    "wetgeving": (
+        "Dit is een wetgevingsstuk: een wetsvoorstel, een memorie van "
+        "toelichting, een amendement of een motie.\n"
+        "Bij een memorie van toelichting: dat is de onderbouwing bij een "
+        "wetsvoorstel, niet de wettekst zelf. Bij een motie of amendement: "
+        "zeg wie hem indient en wat er precies wordt gevraagd."
+    ),
+    "overig": (
+        "Het soort van dit stuk is niet vastgesteld. Leid uit de tekst af "
+        "wat het is en zeg dat in de eerste zin."
+    ),
+}
+
+
 def build_kamerstuk_alert_prompt(
     titel: str,
     onderwerp: str,
     document_tekst: str | None,
     zoektermen: list[str],
+    categorie: str = "overig",
+    soort: str | None = None,
+    context_regels: list[str] | None = None,
 ) -> str:
     """Prompt voor een alert over een kamerstuk dat op een zoekterm matchte.
 
-    Twee dingen die deze prompt anders maakt dan `build_extract_tags_prompt`:
+    Drie dingen die deze prompt anders maken dan `build_extract_tags_prompt`:
 
-    De term staat vaak maar één keer in een lang stuk. Een kamerbrief van
-    veertig pagina's kan RegelRecht in één zin noemen. De samenvatting moet
+    De term staat vaak maar een keer in een lang stuk. Een kamerbrief van
+    veertig pagina's kan RegelRecht in een zin noemen. De samenvatting moet
     daarom over de passage gaan waar de term valt, niet over het stuk als
-    geheel — anders leest de alert als een samenvatting van de begroting.
+    geheel, anders leest de alert als een samenvatting van de begroting.
+
+    Het model krijgt te horen wat voor stuk dit is. Een agenda van een
+    procedurevergadering die nog moet komen vraagt om een ander bericht dan
+    een besluitenlijst van een vergadering die is geweest: het eerste is
+    een kans om nog iets te doen, het tweede een vaststelling. Zonder die
+    context behandelt het model ze hetzelfde.
 
     En er komt een relevantiescore uit. Het vangnet staat bewust breed
     (recall boven precisie), dus er komen stukken langs waar de term
@@ -103,23 +179,35 @@ def build_kamerstuk_alert_prompt(
     score, zodat het bericht stiller kan zijn zonder iets te verbergen.
     """
     item_content = f"TITEL: {titel}\nONDERWERP: {onderwerp}"
+    if soort:
+        item_content += f"\nSOORT: {soort}"
+    for regel in context_regels or []:
+        item_content += f"\n{regel}"
     if document_tekst:
         item_content += f"\n\nDOCUMENTTEKST:\n{document_tekst[:MAX_TEXT_IN_PROMPT]}"
 
     termen_json = json.dumps(zoektermen, ensure_ascii=False)
+    soort_uitleg = _CATEGORIE_CONTEXT.get(categorie, _CATEGORIE_CONTEXT["overig"])
+
     return (
         "Je bent een beleidsanalist van het ministerie van BZK"
-        " (Binnenlandse Zaken en Koninkrijksrelaties).\n\n"
+        " (Binnenlandse Zaken en Koninkrijksrelaties). Je schrijft een"
+        " alert voor collega's die dit dossier volgen.\n\n"
         "Dit kamerstuk kwam binnen omdat er op deze zoektermen is gezocht"
         " in de volledige tekst:\n"
         f"{termen_json}\n\n"
+        f"WAT VOOR STUK DIT IS:\n{soort_uitleg}\n\n"
         f"KAMERSTUK:\n{item_content}\n\n"
         "Instructies:\n"
         "- Vat in maximaal 3 zinnen samen wat dit stuk zegt OVER de"
-        " zoekterm. Niet het hele stuk samenvatten: als de term in één"
+        " zoekterm. Niet het hele stuk samenvatten: als de term in een"
         " passage valt, gaat de samenvatting over die passage.\n"
+        "- Begin met wat er gebeurt, niet met wat het stuk is. De lezer"
+        " ziet het soort al boven het bericht staan.\n"
         "- Citeer de relevante zin letterlijk als die kort genoeg is."
         " Speculeer niet over weggelakte of ontbrekende passages.\n"
+        "- Noem mensen bij hun rol en achternaam zoals het stuk dat doet"
+        " (het lid Zwinkels, de staatssecretaris).\n"
         "- Geef een relevantie-score van 0 tot 100: hoe centraal staat de"
         " zoekterm in dit stuk? 80+ = het stuk gaat er wezenlijk over."
         " 40-79 = een herkenbare passage. 0-39 = terloopse vermelding of"
@@ -128,13 +216,82 @@ def build_kamerstuk_alert_prompt(
         " bijwoord, en 'regelrechter' is een ander begrip. Een stuk over"
         " de Rotterdamse Regelrechter matcht de term maar gaat niet over"
         " het programma RegelRecht. Score dan laag en zeg dat erbij.\n"
-        "- Schrijf zakelijk Nederlands, geen uitroeptekens.\n\n"
+        "- Als er een concrete vervolgactie voor de lezer in zit (een"
+        " termijn, een vergadering waar nog input op kan), noem die in"
+        " `actie`. Anders laat je `actie` leeg. Verzin niets.\n"
+        "- Schrijf zakelijk Nederlands, geen uitroeptekens, geen"
+        " aanbevelingen over wat de lezer zou moeten vinden.\n\n"
         "Geef je analyse als JSON"
         " (en ALLEEN JSON, geen andere tekst):\n"
         "{\n"
         '  "samenvatting": "...",\n'
         '  "relevantie_score": 0,\n'
-        '  "reden": "waarom deze score"\n'
+        '  "reden": "waarom deze score",\n'
+        '  "actie": ""\n'
+        "}"
+    )
+
+
+def build_zoekterm_suggestie_prompt(
+    huidige_termen: list[str],
+    onderwerp: str | None = None,
+) -> str:
+    """Prompt voor varianten op zoektermen in kamerstukken.
+
+    Het model stelt voor, het systeem meet, de gebruiker kiest. Daarom
+    vraagt deze prompt om een REDEN per term: die reden is wat de
+    gebruiker straks leest naast het gemeten trefferaantal, en zonder
+    reden kan hij niet beoordelen of een term bij zijn onderwerp hoort of
+    net ernaast valt.
+
+    De grens tussen variant en ander onderwerp is waar het misgaat. Bij een
+    meting bracht "digitale overheid" acht extra stukken binnen op een
+    abonnement voor "Nederlandse Digitale Dienst", maar dat is een ander
+    onderwerp volgen. En "regelrechter" is morfologisch verwant aan
+    "RegelRecht" en semantisch iets heel anders. De prompt benoemt die twee
+    gevallen expliciet.
+    """
+    termen_json = json.dumps(huidige_termen, ensure_ascii=False)
+    context = f"\n\nWAAR HET DOSSIER OVER GAAT:\n{onderwerp}" if onderwerp else ""
+
+    return (
+        "Je helpt een beleidsmedewerker van het ministerie van BZK bij het"
+        " volgen van kamerstukken. Hij krijgt een melding zodra een van"
+        " zijn zoektermen in de volledige tekst van een nieuw kamerstuk"
+        " voorkomt.\n\n"
+        f"WAT HIJ NU VOLGT:\n{termen_json}{context}\n\n"
+        "Stel maximaal 6 extra zoektermen voor die stukken kunnen vinden"
+        " die deze termen missen.\n\n"
+        "Denk aan:\n"
+        "- Afkortingen en voluit-vormen (NLDD naast Nederlandse Digitale"
+        " Dienst)\n"
+        "- Spellingvarianten en samenstellingen zoals ambtenaren ze"
+        " schrijven\n"
+        "- De naam van een programma, wet of voorziening die bij dit"
+        " onderwerp hoort\n"
+        "- Vakjargon dat in kamerstukken gebruikt wordt voor hetzelfde"
+        " ding\n\n"
+        "Niet doen:\n"
+        "- Geen bredere onderwerpen. 'digitale overheid' naast"
+        " 'Nederlandse Digitale Dienst' is een ander onderwerp volgen,"
+        " geen variant. Dat levert veel stukken op die niets met het"
+        " dossier te maken hebben.\n"
+        "- Geen woorden die er alleen op lijken. 'regelrechter' lijkt op"
+        " 'RegelRecht' maar is een ander begrip (een rechter), en levert"
+        " stukken over de rechtspraak op.\n"
+        "- Geen losse veelvoorkomende woorden. Een term van één algemeen"
+        " woord matcht honderden stukken.\n"
+        "- Niets voorstellen wat al in de lijst staat.\n\n"
+        "Geef per term een reden van één zin: waarom zou dit stukken"
+        " vinden die de huidige termen missen? Wees eerlijk als je het"
+        " niet zeker weet; het systeem meet daarna hoeveel treffers elke"
+        " term werkelijk oplevert en toont dat erbij.\n\n"
+        "Geef je voorstel als JSON (en ALLEEN JSON, geen andere tekst):\n"
+        "{\n"
+        '  "suggesties": [\n'
+        '    {"term": "...", "soort": "variant|verwant|afkorting",'
+        ' "reden": "..."}\n'
+        "  ]\n"
         "}"
     )
 

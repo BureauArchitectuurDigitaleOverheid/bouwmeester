@@ -96,6 +96,24 @@ def upgrade() -> None:
             ),
         ),
         sa.Column(
+            "ingehaald_op",
+            sa.DateTime(timezone=True),
+            nullable=True,
+            comment=(
+                "Wanneer de eenmalige inhaalslag is gedaan; NULL betekent "
+                "nog niet ingehaald."
+            ),
+        ),
+        sa.Column(
+            "uitgezette_categorieen",
+            postgresql.JSON(astext_type=sa.Text()),
+            nullable=True,
+            comment=(
+                "Soorten kamerstukken waarvan deze term geen alert geeft. "
+                "Leeg betekent alles."
+            ),
+        ),
+        sa.Column(
             "notitie",
             sa.Text(),
             nullable=True,

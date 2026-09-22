@@ -70,6 +70,19 @@ class ParlementairItemRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_zaak_ids(self, zaak_ids: list[str]) -> list[ParlementairItem]:
+        """Meerdere items in één query.
+
+        Voor de inhaalslag bij een nieuwe zoekterm: die post één bericht
+        over alles wat de term terugvond, dus die heeft ze in één keer
+        nodig in plaats van per stuk.
+        """
+        if not zaak_ids:
+            return []
+        stmt = select(ParlementairItem).where(ParlementairItem.zaak_id.in_(zaak_ids))
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def create(self, **kwargs) -> ParlementairItem:
         item = ParlementairItem(**kwargs)
         self.session.add(item)

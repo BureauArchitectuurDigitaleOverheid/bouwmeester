@@ -5,8 +5,10 @@ import {
   createAbonnement,
   deleteAbonnement,
   getAbonnementen,
+  suggereerZoektermen,
   updateAbonnement,
   type ParlementairAbonnement,
+  type Zoektermsuggestie,
 } from '@/api/parlementairAbonnementen';
 
 /**
@@ -76,6 +78,39 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
   // binnenkomen — dan staat de pil op het tegenovergestelde van wat de
   // server weet.
   const [bezigeRij, setBezigeRij] = useState<string | null>(null);
+  const [suggesties, setSuggesties] = useState<Zoektermsuggestie[] | null>(null);
+  const [suggestiesBezig, setSuggestiesBezig] = useState(false);
+
+  const haalSuggesties = useCallback(async () => {
+    setSuggestiesBezig(true);
+    setFout(null);
+    try {
+      setSuggesties(await suggereerZoektermen(initiatiefId));
+    } catch {
+      // De meting doet verzoeken aan een server van derden en een
+      // LLM-call; als daar iets misgaat is dat geen reden om de rest van
+      // het paneel onbruikbaar te maken.
+      setFout('Kon geen suggesties ophalen.');
+    } finally {
+      setSuggestiesBezig(false);
+    }
+  }, [initiatiefId]);
+
+  const voegSuggestieToe = useCallback(
+    async (suggestie: Zoektermsuggestie) => {
+      setFout(null);
+      try {
+        await createAbonnement(initiatiefId, { term: suggestie.term });
+        setSuggesties((huidig) =>
+          (huidig || []).filter((s) => s.term !== suggestie.term),
+        );
+        await laden();
+      } catch {
+        setFout(`Kon '${suggestie.term}' niet toevoegen.`);
+      }
+    },
+    [initiatiefId, laden],
+  );
 
   const schakel = useCallback(
     async (abonnement: ParlementairAbonnement) => {
@@ -138,7 +173,25 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
             loading={orUndef(bezig)}
             onClick={toevoegen}
           />
+          {abonnementen.length > 0 && (
+            <nldd-button
+              variant="neutral-transparent"
+              size="sm"
+              text="Suggesties"
+              start-icon="ai"
+              loading={orUndef(suggestiesBezig)}
+              onClick={haalSuggesties}
+            />
+          )}
         </nldd-container>
+
+        {suggesties !== null && (
+          <SuggestieLijst
+            suggesties={suggesties}
+            onToevoegen={voegSuggestieToe}
+            onSluiten={() => setSuggesties(null)}
+          />
+        )}
 
         {abonnementen.length === 0 ? (
           <nldd-text size="xs" color="secondary">
@@ -181,6 +234,94 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
         </nldd-text>
       </nldd-container>
     </DetailSection>
+  );
+}
+
+/**
+ * Voorgestelde zoektermen, met wat ze bij de bron opleveren.
+ *
+ * Het getal dat telt is `nieuwe_treffers`: een term die alleen dubbelt met
+ * wat je al volgt voegt niets toe, hoeveel treffers hij ook heeft. Bij een
+ * meting leverden vijf van de zes voorgestelde termen nul stukken op, dus
+ * zonder deze getallen zou je vooral ruis aanzetten.
+ */
+function SuggestieLijst({
+  suggesties,
+  onToevoegen,
+  onSluiten,
+}: {
+  suggesties: Zoektermsuggestie[];
+  onToevoegen: (s: Zoektermsuggestie) => void;
+  onSluiten: () => void;
+}) {
+  if (suggesties.length === 0) {
+    return (
+      <nldd-banner
+        variant="neutral"
+        size="sm"
+        text="Geen aanvullende zoektermen gevonden."
+        dismissible
+      />
+    );
+  }
+
+  return (
+    <nldd-card>
+      <nldd-container gap="8">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <nldd-text size="xs" weight="bold">
+            Voorgestelde zoektermen
+          </nldd-text>
+          <nldd-container width="fit-content" horizontal-alignment="right">
+            <nldd-button
+              variant="neutral-transparent"
+              size="xs"
+              text="Sluiten"
+              onClick={onSluiten}
+            />
+          </nldd-container>
+        </nldd-container>
+        <nldd-text size="xs" color="secondary">
+          Het aantal achter elke term is gemeten bij de bron. &quot;Nieuw&quot; telt
+          alleen stukken die je huidige termen nog niet vinden.
+        </nldd-text>
+        {suggesties.map((s) => (
+          <nldd-container key={s.term} layout="row" gap="8" vertical-alignment="center">
+            <nldd-container gap="2">
+              <nldd-container layout="row" gap="6" vertical-alignment="center">
+                <nldd-text size="xs" weight="bold">
+                  {s.term}
+                </nldd-text>
+                {s.nieuwe_treffers > 0 ? (
+                  <nldd-tag
+                    size="sm"
+                    color="groen"
+                    text={`${s.nieuwe_treffers} nieuw`}
+                  />
+                ) : (
+                  <nldd-tag size="sm" color="neutral" text="geen nieuwe" />
+                )}
+                <nldd-text size="xs" color="secondary">
+                  {s.treffers} treffers
+                </nldd-text>
+              </nldd-container>
+              <nldd-text size="xs" color="secondary">
+                {s.reden}
+              </nldd-text>
+            </nldd-container>
+            <nldd-container width="fit-content" horizontal-alignment="right">
+              <nldd-button
+                variant="secondary"
+                size="xs"
+                text="Volgen"
+                accessible-label={`Volg ${s.term}`}
+                onClick={() => onToevoegen(s)}
+              />
+            </nldd-container>
+          </nldd-container>
+        ))}
+      </nldd-container>
+    </nldd-card>
   );
 }
 

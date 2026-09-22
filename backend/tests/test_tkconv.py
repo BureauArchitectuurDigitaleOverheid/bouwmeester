@@ -90,7 +90,15 @@ class TestDescription:
         assert _split_description("") == (None, None)
 
 
-def _abonnement(term: str, *, is_frase: bool = True) -> ParlementairAbonnement:
+def _abonnement(
+    term: str, *, is_frase: bool = True, ingehaald: bool = True
+) -> ParlementairAbonnement:
+    """Een abonnement voor tests.
+
+    `ingehaald=True` is de standaard omdat de meeste tests het gedrag ná
+    de eenmalige inhaalslag toetsen: een verse term haalt bewust op wat de
+    feed draagt, en dan zegt een watermerk-test niets.
+    """
     a = ParlementairAbonnement(
         scope_type="initiatief",
         scope_id=uuid4(),
@@ -99,6 +107,7 @@ def _abonnement(term: str, *, is_frase: bool = True) -> ParlementairAbonnement:
         is_frase=is_frase,
     )
     a.id = uuid4()
+    a.ingehaald_op = datetime(2026, 1, 1, tzinfo=UTC) if ingehaald else None
     return a
 
 
@@ -518,3 +527,82 @@ class TestWatermerk:
 
         assert len(r) == 2
         assert len(client.opgehaalde_documenten) == 2
+
+
+class TestInhaalslag:
+    """Een verse zoekterm haalt eenmalig op wat de feed draagt.
+
+    Dat is meestal juist de aanleiding om de term toe te voegen: je zag
+    iets langskomen en wilt weten wat er verder over is verschenen. Daarna
+    telt alleen nog wat nieuw is.
+    """
+
+    def setup_method(self):
+        reset_watermerk()
+        reset_etag_cache()
+
+    def teardown_method(self):
+        reset_watermerk()
+        reset_etag_cache()
+
+    @pytest.mark.asyncio
+    async def test_verse_term_krijgt_de_hele_feed(self):
+        vers = _abonnement("NLDD", ingehaald=False)
+        oud = _item("2026D38772", datetime(2026, 9, 15, tzinfo=UTC))
+        nieuwer = _item("2026D45065", datetime(2026, 9, 21, tzinfo=UTC))
+        client = _FakeClient({'"NLDD"': [oud, nieuwer]})
+
+        s = TkconvSearchStrategy(abonnementen=[vers])
+        resultaten = await s.fetch_items(client=client, since=None, limit=100)
+
+        # Beide stukken, ook die van een week geleden.
+        assert {r.zaak_nummer for r in resultaten} == {"2026D38772", "2026D45065"}
+
+    @pytest.mark.asyncio
+    async def test_verse_term_meldt_zich_voor_een_samenvattend_bericht(self):
+        """De stukken komen in `inhaalslag`, niet als losse alerts.
+
+        Acht losse berichten bij het aanzetten van een term zou het kanaal
+        overspoelen met stukken waar niemand om vroeg; één lijst zegt
+        hetzelfde.
+        """
+        vers = _abonnement("NLDD", ingehaald=False)
+        stuk = _item("2026D45065", datetime(2026, 9, 21, tzinfo=UTC))
+        client = _FakeClient({'"NLDD"': [stuk]})
+
+        s = TkconvSearchStrategy(abonnementen=[vers])
+        await s.fetch_items(client=client, since=None, limit=100)
+
+        assert s.inhaalslag[vers.id] == ["2026D45065"]
+
+    @pytest.mark.asyncio
+    async def test_lopende_term_haalt_niet_opnieuw_in(self):
+        lopend = _abonnement("NLDD", ingehaald=True)
+        oud = _item("2026D38772", datetime(2026, 9, 15, tzinfo=UTC))
+        client = _FakeClient({'"NLDD"': [oud]})
+
+        s = TkconvSearchStrategy(abonnementen=[lopend])
+        resultaten = await s.fetch_items(client=client, since=None, limit=100)
+
+        assert resultaten == []
+        assert s.inhaalslag == {}
+
+    @pytest.mark.asyncio
+    async def test_verse_en_lopende_term_op_hetzelfde_stuk(self):
+        """Twee termen, verschillende leeftijd, één document.
+
+        De verse term moet het stuk krijgen, de lopende niet. Zonder een
+        drempel per abonnement zou het stuk voor allebei gelden of voor
+        geen van beide.
+        """
+        vers = _abonnement("NLDD", ingehaald=False)
+        lopend = _abonnement("RegelRecht", ingehaald=True)
+        oud = _item("2026D38772", datetime(2026, 9, 15, tzinfo=UTC))
+        client = _FakeClient({'"NLDD"': [oud], '"RegelRecht"': [oud]})
+
+        s = TkconvSearchStrategy(abonnementen=[vers, lopend])
+        resultaten = await s.fetch_items(client=client, since=None, limit=100)
+
+        assert len(resultaten) == 1
+        # Alleen de verse term is aan dit stuk gekoppeld.
+        assert s.treffers["2026D38772"] == [vers.id]

@@ -32,8 +32,12 @@ from bouwmeester.schema.parlementair_abonnement import (
     AbonnementCreate,
     AbonnementMetTellingResponse,
     AbonnementUpdate,
+    SuggestieResponse,
 )
 from bouwmeester.services.activity_service import log_activity
+from bouwmeester.services.llm import get_llm_service
+from bouwmeester.services.tkconv_client import TkconvClient
+from bouwmeester.services.zoekterm_suggesties import stel_voor
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +62,20 @@ async def _require_initiatief_toegang(
     if not ctx.is_admin and initiatief_id not in ctx.visible_initiatief_ids:
         raise HTTPException(status_code=404, detail="Initiatief niet gevonden")
     return initiatief
+
+
+def _onderwerp_van(initiatief: Initiatief) -> str:
+    """Waar dit initiatief over gaat, als platte tekst voor de prompt.
+
+    De beschrijving staat als tiptap-JSON in de database; zonder conversie
+    zou de prompt een documentboom te lezen krijgen in plaats van een zin.
+    """
+    from bouwmeester.utils.tiptap import tiptap_to_plain
+
+    beschrijving = (tiptap_to_plain(initiatief.beschrijving) or "").strip()
+    if beschrijving:
+        return f"{initiatief.naam}. {beschrijving[:600]}"
+    return initiatief.naam
 
 
 def _hoort_bij(abonnement: ParlementairAbonnement | None, initiatief_id: UUID) -> bool:
@@ -166,6 +184,67 @@ async def create_abonnement(
     return _met_telling(abonnement, tellingen)
 
 
+@router.post(
+    "/{initiatief_id}/abonnementen/suggesties",
+    response_model=list[SuggestieResponse],
+)
+async def suggereer_zoektermen(
+    initiatief_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: OptionalUser = None,
+    ctx: InitiatiefContext = Depends(get_initiatief_context),
+) -> list[SuggestieResponse]:
+    """Stel extra zoektermen voor bij wat dit initiatief al volgt.
+
+    Het taalmodel doet het voorstel, daarna meet dit endpoint bij de bron
+    hoeveel treffers elke term werkelijk oplevert en hoeveel daarvan nieuw
+    zijn. Die getallen gaan mee naar de gebruiker, want zonder meting is
+    een suggestie een gok: bij een test leverden vijf van de zes
+    voorgestelde termen nul stukken op.
+
+    POST en geen GET: het kost een LLM-call en een handvol verzoeken aan
+    een server van derden, dus het hoort een bewuste handeling te zijn en
+    niet iets wat een pagina bij het laden doet.
+    """
+    initiatief = await _require_initiatief_toegang(db, ctx, initiatief_id)
+
+    repo = ParlementairAbonnementRepository(db)
+    abonnementen = await repo.list_for_scope(SCOPE_INITIATIEF, initiatief_id)
+    huidige = [a.term for a in abonnementen if a.actief]
+    if not huidige:
+        raise HTTPException(
+            status_code=400,
+            detail="Voeg eerst een zoekterm toe; suggesties bouwen daarop voort.",
+        )
+
+    llm_service = await get_llm_service(db)
+    if llm_service is None:
+        raise HTTPException(
+            status_code=503, detail="Er is geen taalmodel geconfigureerd."
+        )
+
+    async with TkconvClient() as client:
+        suggesties = await stel_voor(
+            huidige_termen=huidige,
+            llm_service=llm_service,
+            client=client,
+            # De beschrijving is tiptap-JSON; de prompt wil platte tekst.
+            onderwerp=_onderwerp_van(initiatief),
+        )
+
+    return [
+        SuggestieResponse(
+            term=s.term,
+            reden=s.reden,
+            soort=s.soort,
+            treffers=s.treffers,
+            nieuwe_treffers=s.nieuwe_treffers,
+            voorbeelden=s.voorbeelden or [],
+        )
+        for s in suggesties
+    ]
+
+
 @router.patch(
     "/{initiatief_id}/abonnementen/{abonnement_id}",
     response_model=AbonnementMetTellingResponse,
@@ -190,6 +269,11 @@ async def update_abonnement(
         abonnement.actief = payload.actief
     if payload.notitie is not None:
         abonnement.notitie = payload.notitie
+    if payload.uitgezette_categorieen is not None:
+        # Onbekende categorieën weigeren we niet: de TK-API kan er nieuwe
+        # bij krijgen, en een filter dat stil een onbekende waarde slikt is
+        # beter dan een 422 op iets dat morgen wel bestaat.
+        abonnement.uitgezette_categorieen = payload.uitgezette_categorieen or None
     await db.commit()
     await db.refresh(abonnement)
 

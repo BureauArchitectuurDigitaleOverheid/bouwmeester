@@ -24,7 +24,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from bouwmeester.core.database import Base
@@ -121,6 +121,28 @@ class ParlementairAbonnement(Base):
         comment=(
             "Hoe vaak een treffer van deze term als niet-relevant is gemarkeerd. "
             "Signaal voor de gebruiker, nooit een automatische deactivering."
+        ),
+    )
+    ingehaald_op: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment=(
+            "Wanneer de eenmalige inhaalslag is gedaan. Een verse term haalt "
+            "eerst op wat de feed draagt (circa een week), want dat is "
+            "meestal juist de aanleiding om de term toe te voegen. Daarna "
+            "telt alleen nog wat nieuw verschijnt. NULL betekent: nog niet "
+            "ingehaald."
+        ),
+    )
+    uitgezette_categorieen: Mapped[list | None] = mapped_column(
+        JSON,
+        nullable=True,
+        comment=(
+            "Soorten kamerstukken waarvan deze term géén alert geeft, bv. "
+            "['vergadering_terug']. Leeg betekent alles, in lijn met recall "
+            "boven precisie. Een uitgezette categorie wordt wél "
+            "geïmporteerd en is in de webapp zichtbaar; alleen het "
+            "Mattermost-bericht blijft uit."
         ),
     )
     notitie: Mapped[str | None] = mapped_column(

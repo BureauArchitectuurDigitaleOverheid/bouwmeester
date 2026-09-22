@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 
 from bouwmeester.models.parlementair_abonnement import ParlementairAbonnement
 from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrategy
+from bouwmeester.services.kamerstuk_soort import KamerstukContext, haal_context
 from bouwmeester.services.tkconv_client import TkconvClient, TkconvItem
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,10 @@ class TkconvSearchStrategy(ImportStrategy):
         # Gevuld tijdens fetch_items: documentnummer -> abonnement-ids.
         # De aanroeper gebruikt dit om treffers vast te leggen.
         self.treffers: dict[str, list] = {}
+        # abonnement-id -> documentnummers die via de eenmalige inhaalslag
+        # binnenkwamen. De aanroeper post daar één samenvattend bericht
+        # over, in plaats van acht losse.
+        self.inhaalslag: dict = {}
 
     @property
     def item_type(self) -> str:
@@ -158,16 +163,25 @@ class TkconvSearchStrategy(ImportStrategy):
         drempel = self._drempel(since)
         resultaten: list[FetchedItem] = []
         self.treffers = {}
+        self.inhaalslag = {}
 
         for item in items:
-            if drempel and item.gepubliceerd_op and item.gepubliceerd_op <= drempel:
-                continue
-
+            # De drempel geldt per abonnement, niet per stuk: een term die
+            # vandaag is toegevoegd heeft nog geen inhaalslag gehad en mag
+            # de hele feed zien (dat is meestal juist de aanleiding om hem
+            # toe te voegen), terwijl een term die al loopt alleen nieuwe
+            # stukken krijgt.
             abonnement_ids = []
             for query in item.matched_terms:
                 for abonnement in per_query.get(query, []):
-                    if abonnement.id not in abonnement_ids:
+                    if abonnement.id in abonnement_ids:
+                        continue
+                    if self._telt_mee(abonnement, item, drempel):
                         abonnement_ids.append(abonnement.id)
+                        if abonnement.ingehaald_op is None:
+                            self.inhaalslag.setdefault(abonnement.id, []).append(
+                                item.document_nummer
+                            )
             if not abonnement_ids:
                 continue
 
@@ -182,8 +196,15 @@ class TkconvSearchStrategy(ImportStrategy):
                 break
 
             tekst, content_type = await client.fetch_document_text(item.document_nummer)
+            # Wat voor stuk is dit? tkconv levert dat niet, de officiële
+            # API wel. Eén call per nieuw stuk, niet per ronde: het soort
+            # bepaalt de vorm van het bericht en wat de LLM ervan moet
+            # maken, en zonder dit heet alles "Kamerstuk".
+            context = await haal_context(
+                item.document_nummer, client._get_http_client()
+            )
             self.treffers[item.document_nummer] = abonnement_ids
-            resultaten.append(self._to_fetched_item(item, tekst, content_type))
+            resultaten.append(self._to_fetched_item(item, tekst, content_type, context))
 
         self._verschuif_watermerk(items, resultaten, limit)
 
@@ -228,6 +249,24 @@ class TkconvSearchStrategy(ImportStrategy):
         if _WATERMERK is None or nieuwste > _WATERMERK:
             _WATERMERK = nieuwste
 
+    @staticmethod
+    def _telt_mee(
+        abonnement: ParlementairAbonnement,
+        item: TkconvItem,
+        drempel: datetime | None,
+    ) -> bool:
+        """Mag dit stuk voor dit abonnement meetellen?
+
+        Een abonnement zonder `ingehaald_op` doet zijn eenmalige
+        inhaalslag: alles wat de feed draagt telt mee. Daarna geldt het
+        gewone watermerk.
+        """
+        if abonnement.ingehaald_op is None:
+            return True
+        if drempel is None or item.gepubliceerd_op is None:
+            return True
+        return item.gepubliceerd_op > drempel
+
     def _drempel(self, since: date | None) -> datetime | None:
         """Vanaf wanneer een stuk meetelt.
 
@@ -253,11 +292,23 @@ class TkconvSearchStrategy(ImportStrategy):
 
     @staticmethod
     def _to_fetched_item(
-        item: TkconvItem, tekst: str | None, content_type: str | None
+        item: TkconvItem,
+        tekst: str | None,
+        content_type: str | None,
+        context: KamerstukContext | None = None,
     ) -> FetchedItem:
         # `zaak_id` draagt het documentnummer: dat is de stabiele
         # dedup-sleutel uit de guid, en `_import_item` checkt er al op via
         # `get_by_zaak_id`. Zo werkt idempotentie zonder schemawijziging.
+        context = context or KamerstukContext()
+        extra = {
+            "herkomst": "tkconv",
+            "commissie": item.commissie,
+            "matched_terms": item.matched_terms,
+            "raw_url": item.raw_url,
+            "content_type": content_type,
+        }
+        extra.update(context.as_extra_data())
         return FetchedItem(
             zaak_id=item.document_nummer,
             zaak_nummer=item.document_nummer,
@@ -268,13 +319,10 @@ class TkconvSearchStrategy(ImportStrategy):
             document_tekst=tekst,
             document_url=item.document_url,
             bron="tweede_kamer",
-            extra_data={
-                "herkomst": "tkconv",
-                "commissie": item.commissie,
-                "matched_terms": item.matched_terms,
-                "raw_url": item.raw_url,
-                "content_type": content_type,
-            },
+            # Bij een kamervraag is de antwoordtermijn een echte deadline;
+            # de pipeline zet die op de review-taak.
+            deadline=context.termijn,
+            extra_data=extra,
         )
 
     def task_title(self, item: FetchedItem) -> str:

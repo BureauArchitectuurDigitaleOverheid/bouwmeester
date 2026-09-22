@@ -14,6 +14,10 @@ export interface ParlementairAbonnement {
   /** Hoe vaak een treffer van deze term als niet-relevant is gemarkeerd. */
   weggeklikt_totaal: number;
   notitie: string | null;
+  /** Soorten kamerstukken waarvan deze term geen Mattermost-bericht geeft. */
+  uitgezette_categorieen: string[] | null;
+  /** Wanneer de eenmalige inhaalslag is gedaan; null = nog niet. */
+  ingehaald_op: string | null;
   created_by_id: string | null;
   created_at: string;
   /** Aantal kamerstukken dat er nu aan hangt. */
@@ -50,4 +54,19 @@ export async function updateAbonnement(
 
 export async function deleteAbonnement(initiatiefId: string, abonnementId: string): Promise<void> {
   return apiDelete(`/api/initiatieven/${initiatiefId}/abonnementen/${abonnementId}`);
+}
+
+/** Een voorgestelde zoekterm, met wat hij bij de bron oplevert. */
+export interface Zoektermsuggestie {
+  term: string;
+  reden: string;
+  soort: string;
+  treffers: number;
+  /** Documenten die de huidige termen nog niet vinden. Dit getal telt. */
+  nieuwe_treffers: number;
+  voorbeelden: string[];
+}
+
+export async function suggereerZoektermen(initiatiefId: string): Promise<Zoektermsuggestie[]> {
+  return apiPost<Zoektermsuggestie[]>(`/api/initiatieven/${initiatiefId}/abonnementen/suggesties`);
 }

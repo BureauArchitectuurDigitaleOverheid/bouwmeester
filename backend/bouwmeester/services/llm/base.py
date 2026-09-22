@@ -43,6 +43,10 @@ class KamerstukAlertResult(BaseModel):
     # breed en niets valt stil weg.
     relevantie_score: int
     reden: str
+    # Een concrete vervolgactie als het stuk er een draagt: een
+    # antwoordtermijn, een vergadering waar nog input op kan. Leeg als er
+    # niets te doen is; het model mag niets verzinnen.
+    actie: str = ""
 
 
 class TagSuggestionResult(BaseModel):
@@ -171,8 +175,16 @@ class BaseLLMService(ABC):
         onderwerp: str,
         document_tekst: str | None,
         zoektermen: list[str],
+        categorie: str = "overig",
+        soort: str | None = None,
+        context_regels: list[str] | None = None,
     ) -> "KamerstukAlertResult":
         """Vat een kamerstuk samen vanuit de zoekterm die het aandroeg.
+
+        `categorie` en `soort` komen uit de TK-API en vertellen het model
+        wát voor stuk dit is: een agenda van een vergadering die nog moet
+        komen vraagt om een ander bericht dan een besluitenlijst van een
+        vergadering die geweest is.
 
         Alleen publieke tekst en de zoektermen gaan de LLM in; het stuk
         staat op tweedekamer.nl.
@@ -184,6 +196,9 @@ class BaseLLMService(ABC):
             onderwerp=onderwerp,
             document_tekst=document_tekst,
             zoektermen=zoektermen,
+            categorie=categorie,
+            soort=soort,
+            context_regels=context_regels,
         )
         try:
             text = await self._complete(prompt)
@@ -195,6 +210,7 @@ class BaseLLMService(ABC):
                 samenvatting=str(result.get("samenvatting", "")).strip(),
                 relevantie_score=max(0, min(100, int(score))),
                 reden=str(result.get("reden", "")).strip(),
+                actie=str(result.get("actie", "") or "").strip(),
             )
         except Exception:
             logger.exception("Fout bij LLM-samenvatting van kamerstuk")
