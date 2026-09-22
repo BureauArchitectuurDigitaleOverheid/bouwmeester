@@ -36,8 +36,7 @@ from bouwmeester.schema.parlementair_abonnement import (
     SuggestieResponse,
 )
 from bouwmeester.services.activity_service import log_activity
-from bouwmeester.services.llm import get_llm_service_for
-from bouwmeester.services.llm.base import DataSensitivity
+from bouwmeester.services.llm import get_llm_service
 from bouwmeester.services.tkconv_client import TkconvClient
 from bouwmeester.services.zoekterm_suggesties import stel_voor
 
@@ -231,18 +230,19 @@ async def suggereer_zoektermen(
             detail="Voeg eerst een zoekterm toe; suggesties bouwen daarop voort.",
         )
 
-    # INTERNAL, niet PUBLIC: de prompt draagt de beschrijving van het
-    # initiatief mee, en dat is beleidsinhoud uit onze eigen database —
-    # precies wat `DataSensitivity.INTERNAL` dekt. De kamerstukken zelf
-    # zijn publiek, de context eromheen niet.
-    llm_service = await get_llm_service_for(DataSensitivity.INTERNAL, db)
+    # PUBLIC: dit gaat over kamerstukken, en die zijn openbaar. De prompt
+    # krijgt de naam van het initiatief en de zoektermen mee — beide
+    # publiek — plus de beschrijving, die op de publieke initiatief-pagina
+    # kan staan.
+    #
+    # Een eerdere versie zette dit op INTERNAL. Dat maakte de functie
+    # onbruikbaar voor wie op een Claude-abonnement draait: alleen VLAM
+    # declareert INTERNAL, dus de route gaf een 503 en het scherm meldde
+    # "geen aanvullende zoektermen gevonden".
+    llm_service = await get_llm_service(db)
     if llm_service is None:
         raise HTTPException(
-            status_code=503,
-            detail=(
-                "Er is geen taalmodel dat interne gegevens mag verwerken. "
-                "Stel een provider in die dat wel mag."
-            ),
+            status_code=503, detail="Er is geen taalmodel geconfigureerd."
         )
 
     async with TkconvClient() as client:

@@ -357,17 +357,24 @@ function SuggestieLijst({
           width="full"
           min-width="0"
         >
-          <nldd-text size="xs" weight="bold">
-            Voorgestelde zoektermen
-          </nldd-text>
-          <nldd-container width="fit-content" horizontal-alignment="right">
-            <nldd-button
-              variant="neutral-transparent"
-              size="xs"
-              text="Sluiten"
-              onClick={onSluiten}
-            />
+          {/* De tekst vult de rij, zodat de knop erachter rechts komt.
+              `space-between` bestaat niet op nldd-container: die kent
+              alleen left|center|right, en een onbekende waarde faalt
+              stil omdat het type te ruim is om hem te vangen. */}
+          <nldd-container width="full" min-width="0">
+            <nldd-text size="xs" weight="bold">
+              Voorgestelde zoektermen
+            </nldd-text>
           </nldd-container>
+          {/* Geen `width="fit-content"`-wrapper: die klapt dicht zonder
+              min-width (zie de nldd-markup-hook). De knop bepaalt zijn
+              eigen breedte en de ouder duwt hem naar rechts. */}
+          <nldd-button
+            variant="neutral-transparent"
+            size="xs"
+            text="Sluiten"
+            onClick={onSluiten}
+          />
         </nldd-container>
         <nldd-text size="xs" color="secondary">
           Het aantal achter elke term is gemeten bij de bron. &quot;Nieuw&quot; telt
@@ -397,15 +404,13 @@ function SuggestieLijst({
                 {s.reden}
               </nldd-text>
             </nldd-container>
-            <nldd-container width="fit-content" horizontal-alignment="right">
-              <nldd-button
-                variant="secondary"
-                size="xs"
-                text="Volgen"
-                accessible-label={`Volg ${s.term}`}
-                onClick={() => onToevoegen(s)}
-              />
-            </nldd-container>
+            <nldd-button
+              variant="secondary"
+              size="xs"
+              text="Volgen"
+              accessible-label={`Volg ${s.term}`}
+              onClick={() => onToevoegen(s)}
+            />
           </nldd-container>
         ))}
       </nldd-container>
