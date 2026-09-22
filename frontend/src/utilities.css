@@ -662,12 +662,29 @@
  *
  * A row lays its children out with `align-items: stretch`, so a badge grows
  * to the full row height and reads as a filled block rather than a label on
- * the line it belongs to. This keeps it its own size, vertically centred, and
- * stops it from shrinking when the text beside it is long.
+ * the line it belongs to. This keeps it its own size and stops it from
+ * shrinking when the text beside it is long.
  */
 .row-badge {
   align-self: center;
   flex-shrink: 0;
+}
+
+/* # A badge beside text that may run to a second line
+ *
+ * `row-badge` centres over the whole row, which is right while every row is
+ * one line tall. Once a long name wraps, centring puts the badge in the gap
+ * between the two lines, belonging to neither. This pins it to the first line
+ * instead, where the name it labels starts.
+ *
+ * The 12px is measured, not guessed: an md list row puts the middle of its
+ * first line 22px below its own top, and an sm tag is 20px tall, so its top
+ * belongs at 22 - 10.
+ */
+.row-badge-first-line {
+  align-self: flex-start;
+  flex-shrink: 0;
+  margin-top: 12px;
 }
 
 /* # The growing half of a heading-plus-action row
