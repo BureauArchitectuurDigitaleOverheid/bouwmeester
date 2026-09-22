@@ -54,8 +54,11 @@ function NotificationItem({
       button={orUndef(Boolean(onClick))}
       selected={orUndef(!notification.is_read)}
     >
-      <nldd-cell>
-        <nldd-container gap="4" min-width="0">
+      {/* `width="full"` because a cell does not claim the leftover space on
+          its own: without it this one measured zero and the title came out
+          one letter per line. */}
+      <nldd-cell width="full">
+        <nldd-container gap="4">
           <nldd-container layout="row" gap="8" vertical-alignment="center">
             <nldd-tag
               text={label}

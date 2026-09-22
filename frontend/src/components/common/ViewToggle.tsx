@@ -60,6 +60,7 @@ export function ViewToggle<T extends string>({
       size="sm"
       value={value}
       accessible-label={accessibleLabel}
+      className="keep-label-width"
     >
       {options.map((option) => (
         <nldd-segmented-control-item

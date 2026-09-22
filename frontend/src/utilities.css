@@ -142,6 +142,22 @@
   flex-shrink: 0;
 }
 
+/* # A control that must keep its labels whole
+ *
+ * `shrink-0` on its own is not enough for a component that sets `min-width: 0`
+ * inside its own shadow root: the flex item then has no content floor to stop
+ * at, so it keeps shrinking and the component ellipses its own text.
+ * `nldd-segmented-control` does this, and in a narrow toolbar "Beleid" and
+ * "Architectuur" came out as "B…" and "A…".
+ *
+ * `max-content` is the width the labels actually need, so the control gives
+ * way to nothing and whatever sits beside it yields instead.
+ */
+.keep-label-width {
+  flex-shrink: 0;
+  min-width: max-content;
+}
+
 /* # Hover-reveal within a group
  *
  * `group` marks the hoverable ancestor (a row, a card); `group-hover-reveal`
