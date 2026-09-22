@@ -45,6 +45,13 @@ export default defineConfig({
       },
       workbox: {
         importScripts: ['sw-share-target.js'],
+        // Take over on the next load instead of waiting for every tab to
+        // close. `autoUpdate` only fetches the new worker; without these two
+        // it sits in "waiting" while the old one keeps serving its precached
+        // bundle, so a deploy reaches nobody who leaves a tab open. Fixes
+        // shipped and were reported as still broken because of exactly this.
+        skipWaiting: true,
+        clientsClaim: true,
         // 5 MB: the main chunk carries mermaid, reactflow and the NLDD design
         // system. Below this the chunk silently drops out of the precache and
         // the app stops working offline.
