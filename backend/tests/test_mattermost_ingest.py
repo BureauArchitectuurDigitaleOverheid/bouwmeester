@@ -403,17 +403,24 @@ async def test_lead_channel_renders_at_mentions_as_markdown(
     assert [m.target_id for m in mentions] == [anne.id]
 
     # Anne krijgt een notification, Daan (de auteur) niet.
+    #
+    # Ook op de lead filteren, niet alleen op het type: zonder dat leest de
+    # query elke mention-notification in de database, en dan hangt de uitslag
+    # af van wat er verder in staat. Op een schone CI-database slaagt hij, op
+    # een ontwikkelmachine met echte data niet.
     notifs = (
         (
             await db_session.execute(
-                select(Notification).where(Notification.type == "mention")
+                select(Notification).where(
+                    Notification.type == "mention",
+                    Notification.related_lead_id == sample_lead.id,
+                )
             )
         )
         .scalars()
         .all()
     )
     assert [n.person_id for n in notifs] == [anne.id]
-    assert notifs[0].related_lead_id == sample_lead.id
 
 
 async def test_lead_channel_unknown_username_stays_plain_text(db_session, sample_lead):
