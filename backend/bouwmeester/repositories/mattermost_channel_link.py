@@ -59,6 +59,7 @@ class MattermostChannelLinkRepository:
         auto_note_enabled: bool,
         suggest_leads_enabled: bool,
         created_by_id: UUID | None,
+        parlementaire_alerts_enabled: bool = False,
     ) -> MattermostChannelLink:
         link = MattermostChannelLink(
             channel_id=channel_id,
@@ -69,6 +70,7 @@ class MattermostChannelLinkRepository:
             scope_id=scope_id,
             auto_note_enabled=auto_note_enabled,
             suggest_leads_enabled=suggest_leads_enabled,
+            parlementaire_alerts_enabled=parlementaire_alerts_enabled,
             created_by_id=created_by_id,
         )
         self.session.add(link)
@@ -82,12 +84,15 @@ class MattermostChannelLinkRepository:
         *,
         auto_note_enabled: bool | None = None,
         suggest_leads_enabled: bool | None = None,
+        parlementaire_alerts_enabled: bool | None = None,
         reenable: bool | None = None,
     ) -> MattermostChannelLink:
         if auto_note_enabled is not None:
             link.auto_note_enabled = auto_note_enabled
         if suggest_leads_enabled is not None:
             link.suggest_leads_enabled = suggest_leads_enabled
+        if parlementaire_alerts_enabled is not None:
+            link.parlementaire_alerts_enabled = parlementaire_alerts_enabled
         if reenable:
             link.disabled_at = None
         await self.session.flush()

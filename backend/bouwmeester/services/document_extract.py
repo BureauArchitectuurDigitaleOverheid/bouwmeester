@@ -12,27 +12,35 @@ MAX_EXTRACTED_CHARS = 15_000
 IMAGE_CONTENT_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 
-def extract_text(path: Path, content_type: str) -> str | None:
-    """Extract text from a document file. Returns None for images."""
+def extract_text(
+    path: Path, content_type: str, max_chars: int = MAX_EXTRACTED_CHARS
+) -> str | None:
+    """Extract text from a document file. Returns None for images.
+
+    `max_chars` overrides the default cap. Parliamentary documents can run
+    to hundreds of thousands of characters and mention a search term
+    halfway through, so the caller that searches within the text needs the
+    whole thing; it does its own trimming around the match.
+    """
     if content_type in IMAGE_CONTENT_TYPES:
         return None
 
     try:
         if content_type == "application/pdf":
-            return _extract_pdf(path)
+            return _extract_pdf(path, max_chars)
         docx_type = (
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
         if content_type == docx_type:
-            return _extract_docx(path)
+            return _extract_docx(path, max_chars)
         if content_type == "application/msword":
             # Old binary .doc format — python-docx only handles .docx
             logger.info("Skipping text extraction for legacy .doc file: %s", path)
             return None
         if content_type == "application/vnd.oasis.opendocument.text":
-            return _extract_odt(path)
+            return _extract_odt(path, max_chars)
         if content_type == "text/plain":
-            return _extract_txt(path)
+            return _extract_txt(path, max_chars)
     except Exception:
         logger.exception("Failed to extract text from %s (%s)", path, content_type)
         return None
@@ -40,23 +48,23 @@ def extract_text(path: Path, content_type: str) -> str | None:
     return None
 
 
-def _extract_pdf(path: Path) -> str | None:
+def _extract_pdf(path: Path, max_chars: int = MAX_EXTRACTED_CHARS) -> str | None:
     from pdfminer.high_level import extract_text as pdf_extract
 
     text = pdf_extract(str(path))
-    return _truncate(text)
+    return _truncate(text, max_chars)
 
 
-def _extract_docx(path: Path) -> str | None:
+def _extract_docx(path: Path, max_chars: int = MAX_EXTRACTED_CHARS) -> str | None:
     from docx import Document
 
     doc = Document(str(path))
     paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
     text = "\n".join(paragraphs)
-    return _truncate(text)
+    return _truncate(text, max_chars)
 
 
-def _extract_odt(path: Path) -> str | None:
+def _extract_odt(path: Path, max_chars: int = MAX_EXTRACTED_CHARS) -> str | None:
     from odf.opendocument import load
     from odf.text import P
 
@@ -71,18 +79,18 @@ def _extract_odt(path: Path) -> str | None:
                 text += str(node)
         if text.strip():
             paragraphs.append(text)
-    return _truncate("\n".join(paragraphs))
+    return _truncate("\n".join(paragraphs), max_chars)
 
 
-def _extract_txt(path: Path) -> str | None:
+def _extract_txt(path: Path, max_chars: int = MAX_EXTRACTED_CHARS) -> str | None:
     content = path.read_text(encoding="utf-8", errors="replace")
-    return _truncate(content)
+    return _truncate(content, max_chars)
 
 
-def _truncate(text: str) -> str | None:
+def _truncate(text: str, max_chars: int = MAX_EXTRACTED_CHARS) -> str | None:
     text = text.strip()
     if not text:
         return None
-    if len(text) > MAX_EXTRACTED_CHARS:
-        return text[:MAX_EXTRACTED_CHARS] + "\n\n[... tekst afgekapt ...]"
+    if len(text) > max_chars:
+        return text[:max_chars] + "\n\n[... tekst afgekapt ...]"
     return text

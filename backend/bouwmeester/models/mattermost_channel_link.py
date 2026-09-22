@@ -54,6 +54,18 @@ class MattermostChannelLink(Base):
     suggest_leads_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    parlementaire_alerts_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment=(
+            "Stuur kamerstukken die op een zoekterm van dit initiatief "
+            "matchen naar dit kanaal. Staat standaard uit: een kanaal dat "
+            "voor leads is gekoppeld hoort niet ongevraagd elk kamerstuk "
+            "te krijgen. De zoektermen zelf staan op het initiatief."
+        ),
+    )
     last_seen_post_at: Mapped[int | None] = mapped_column(
         BigInteger,
         nullable=True,

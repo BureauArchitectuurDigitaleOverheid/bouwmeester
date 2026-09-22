@@ -22,6 +22,9 @@ from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.politieke_input import PolitiekeInput
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
+from bouwmeester.repositories.parlementair_abonnement import (
+    ParlementairAbonnementRepository,
+)
 from bouwmeester.repositories.parlementair_item import (
     ParlementairItemRepository,
     SuggestedEdgeRepository,
@@ -30,9 +33,11 @@ from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import TagCreate
 from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrategy
 from bouwmeester.services.import_strategies.registry import get_strategy
+from bouwmeester.services.import_strategies.tkconv import TkconvSearchStrategy
 from bouwmeester.services.llm import get_llm_service
 from bouwmeester.services.notification_service import NotificationService
 from bouwmeester.services.tk_api_client import EersteKamerClient, TweedeKamerClient
+from bouwmeester.services.zoekterm_passage import knip_rond_termen
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +64,15 @@ class ParlementairImportService:
         self.import_repo = ParlementairItemRepository(session)
         self.edge_repo = SuggestedEdgeRepository(session)
         self.tag_repo = TagRepository(session)
+        self.abonnement_repo = ParlementairAbonnementRepository(session)
         self.notification_service = NotificationService(session)
+        # Items die na een geslaagde commit nog een Mattermost-bericht
+        # moeten krijgen. Zie `_process_item` stap 8b.
+        self._te_alerteren: list[uuid.UUID] = []
+        # abonnement-id -> item-ids die via de eenmalige inhaalslag
+        # binnenkwamen. Gevuld ná de idempotency-check, dus alleen voor
+        # stukken waarvoor ook echt een treffer is vastgelegd.
+        self._inhaalslag: dict[uuid.UUID, list[uuid.UUID]] = {}
 
     async def poll_and_import(
         self,
@@ -83,6 +96,14 @@ class ParlementairImportService:
                 logger.warning(f"Unknown import type: {item_type}, skipping")
                 continue
 
+            # De tkconv-strategie zoekt naar wat gebruikers volgen, dus de
+            # termen komen uit de database in plaats van uit config.
+            if isinstance(strategy, TkconvSearchStrategy):
+                strategy.abonnementen = await self.abonnement_repo.list_actief()
+                if not strategy.abonnementen:
+                    logger.info("Geen actieve abonnementen, tkconv overgeslagen")
+                    continue
+
             count = await self._import_type(strategy)
             imported_count += count
 
@@ -92,24 +113,40 @@ class ParlementairImportService:
         """Import all items for a single strategy/type."""
         imported_count = 0
 
-        # Poll Tweede Kamer
-        tk_client = TweedeKamerClient(
-            base_url=self.settings.TK_API_BASE_URL,
-            session=self.session,
-        )
-        try:
-            async with tk_client:
-                tk_items = await strategy.fetch_items(
-                    client=tk_client,
-                    since=None,
-                    limit=self.settings.TK_IMPORT_LIMIT,
-                )
-            logger.info(
-                f"Fetched {len(tk_items)} {strategy.item_type} items from Tweede Kamer"
+        # Poll Tweede Kamer — or the strategy's own source when it does not
+        # use the OData API (tkconv searches full text, which OData cannot).
+        if strategy.uses_tk_api:
+            tk_client = TweedeKamerClient(
+                base_url=self.settings.TK_API_BASE_URL,
+                session=self.session,
             )
-        except Exception:
-            logger.exception(f"Error fetching {strategy.item_type} from Tweede Kamer")
+            bron_naam = "Tweede Kamer"
+        else:
+            tk_client = strategy.build_client()
+            bron_naam = strategy.item_type
+
+        if tk_client is None:
+            logger.warning(
+                f"{strategy.item_type} has no client to fetch with, skipping"
+            )
             tk_items = []
+        else:
+            try:
+                async with tk_client:
+                    tk_items = await strategy.fetch_items(
+                        client=tk_client,
+                        since=None,
+                        limit=self.settings.TK_IMPORT_LIMIT,
+                    )
+                logger.info(
+                    f"Fetched {len(tk_items)} {strategy.item_type} items "
+                    f"from {bron_naam}"
+                )
+            except Exception:
+                logger.exception(
+                    f"Error fetching {strategy.item_type} from {bron_naam}"
+                )
+                tk_items = []
 
         # Poll Eerste Kamer (only if strategy supports it)
         ek_items: list[FetchedItem] = []
@@ -137,7 +174,9 @@ class ParlementairImportService:
 
         all_items = tk_items + ek_items
 
+        self._inhaalslag = {}
         for item in all_items:
+            self._te_alerteren = []
             try:
                 result = await self._process_item(item, strategy)
                 await self.session.commit()
@@ -148,8 +187,146 @@ class ParlementairImportService:
                     f"Error processing {strategy.item_type} {item.zaak_id}"
                 )
                 await self.session.rollback()
+                # Niet posten: het item bestaat niet meer.
+                continue
+
+            # Pas hier, met het item veilig in de database. Faalt het
+            # posten, dan blijft het item staan en wordt het niet opnieuw
+            # geïmporteerd — een gemist bericht is beter dan een bericht
+            # over een stuk dat is teruggedraaid.
+            for item_id in self._te_alerteren:
+                await self._alert_kamerstuk(item_id)
+
+        if self._inhaalslag:
+            await self._post_inhaalslag(self._inhaalslag)
 
         return imported_count
+
+    async def _post_inhaalslag(self, per_abonnement: dict) -> None:
+        """Eén samenvattend bericht per nieuwe zoekterm.
+
+        Draait na de hele ronde, dus met alle stukken van die term bij
+        elkaar. De losse alerts zijn voor die stukken overgeslagen (zie
+        `_process_item`), anders zou het kanaal ze dubbel krijgen.
+        """
+        from bouwmeester.services.parlementair_alert_service import (
+            ParlementairAlertService,
+        )
+
+        service = ParlementairAlertService(self.session)
+        for abonnement_id, item_ids in per_abonnement.items():
+            try:
+                abonnement = await self.abonnement_repo.get(abonnement_id)
+                if abonnement is None:
+                    continue
+                geladen = [
+                    await self.session.get(ParlementairItem, iid) for iid in item_ids
+                ]
+                items = [i for i in geladen if i is not None]
+                if items:
+                    # Eerst vastleggen dát de inhaalslag is gedaan, dan
+                    # pas posten. Andersom zou een mislukte commit het
+                    # bericht al de deur uit hebben terwijl `ingehaald_op`
+                    # NULL blijft, en dan stuurt de volgende ronde
+                    # hetzelfde bericht opnieuw. Een bericht is niet terug
+                    # te draaien, een gemiste markering wel te herstellen.
+                    await self.abonnement_repo.markeer_ingehaald([abonnement_id])
+                    await self.session.commit()
+
+                    gepost = await service.post_inhaalslag(abonnement, items)
+                    logger.info(
+                        "Inhaalslag voor %r: %d stukken, %d kanalen",
+                        abonnement.term,
+                        len(items),
+                        gepost,
+                    )
+                else:
+                    await self.abonnement_repo.markeer_ingehaald([abonnement_id])
+                    await self.session.commit()
+            except Exception:
+                await self.session.rollback()
+                logger.exception("Inhaalslag mislukt voor %s", abonnement_id)
+
+    async def _alert_kamerstuk(self, parlementair_item_id: uuid.UUID) -> None:
+        """Vat het stuk samen vanuit de zoekterm en post het in de kanalen.
+
+        Draait ná de commit van het item, dus met een id in plaats van een
+        object: de sessie is op dat moment schoon en het item wordt vers
+        geladen.
+
+        Twee stappen in één methode omdat de samenvatting alleen voor het
+        bericht wordt gemaakt: de score bepaalt de vorm, niet of er gepost
+        wordt. Een mislukte LLM-call mag het stuk niet verzwijgen, dus
+        beide stappen falen zacht.
+        """
+        from bouwmeester.services.parlementair_alert_service import (
+            ParlementairAlertService,
+        )
+
+        parlementair_item = await self.session.get(
+            ParlementairItem, parlementair_item_id
+        )
+        if parlementair_item is None:
+            logger.warning(
+                "Kamerstuk %s verdwenen vóór het alert", parlementair_item_id
+            )
+            return
+
+        abonnementen = await self.abonnement_repo.list_abonnementen_voor_item(
+            parlementair_item.id
+        )
+        termen = [a.term for a in abonnementen]
+
+        llm_service = await get_llm_service(self.session)
+        if llm_service is not None and termen:
+            try:
+                bestaand = parlementair_item.extra_data or {}
+                alert = await llm_service.summarize_kamerstuk_alert(
+                    titel=parlementair_item.titel,
+                    onderwerp=parlementair_item.onderwerp,
+                    # Niet de eerste N tekens maar de passages waar de term
+                    # valt: een begroting noemt het onderwerp halverwege,
+                    # en het model zag anders alleen de voorpagina.
+                    document_tekst=knip_rond_termen(
+                        parlementair_item.document_tekst or "", termen
+                    ),
+                    zoektermen=termen,
+                    # Het model moet weten wát voor stuk dit is: een agenda
+                    # die nog moet komen vraagt om een ander bericht dan een
+                    # besluitenlijst van een vergadering die geweest is.
+                    categorie=bestaand.get("categorie") or "overig",
+                    soort=bestaand.get("soort"),
+                    context_regels=_context_regels(bestaand),
+                )
+                if alert.samenvatting:
+                    parlementair_item.llm_samenvatting = alert.samenvatting
+                extra = dict(bestaand)
+                extra["relevantie_score"] = alert.relevantie_score
+                extra["relevantie_reden"] = alert.reden
+                extra["actie"] = alert.actie
+                parlementair_item.extra_data = extra
+                # Eigen commit: we draaien na de commit van het item, dus
+                # zonder dit blijft de samenvatting in de sessie hangen tot
+                # de volgende commit en gaat hij bij een fout verloren.
+                await self.session.commit()
+            except Exception:
+                await self.session.rollback()
+                logger.exception(
+                    "Samenvatting mislukt voor %s", parlementair_item.zaak_nummer
+                )
+
+        try:
+            service = ParlementairAlertService(self.session)
+            gepost = await service.post_alert(parlementair_item)
+            logger.info(
+                "Kamerstuk %s in %d kanaal/kanalen gepost",
+                parlementair_item.zaak_nummer,
+                gepost,
+            )
+        except Exception:
+            logger.exception(
+                "Alert posten mislukt voor %s", parlementair_item.zaak_nummer
+            )
 
     async def _process_item(
         self,
@@ -321,6 +498,43 @@ class ParlementairImportService:
             ministerie=item.ministerie,
             extra_data=item.extra_data,
         )
+
+        # Step 8b: Leg vast welke zoektermen dit stuk aandroegen. Eén
+        # document matcht in de praktijk op meerdere termen tegelijk, dus
+        # dit is een aparte tabel: het item wordt één keer geïmporteerd en
+        # één keer gepost, met alle termen eronder.
+        if isinstance(strategy, TkconvSearchStrategy):
+            abonnement_ids = strategy.treffers.get(item.zaak_id, [])
+            if abonnement_ids:
+                await self.abonnement_repo.registreer_treffers(
+                    parlementair_item.id, abonnement_ids
+                )
+                # Posten gebeurt pas ná de commit, in `_import_type`. Een
+                # bericht is niet terug te draaien: gaat het eruit vóór de
+                # commit en faalt daarna een latere stap, dan rolt het item
+                # terug terwijl het bericht blijft staan — en de volgende
+                # ronde importeert en post hetzelfde stuk opnieuw, elke
+                # twee minuten.
+                # Splits per abonnement: wie nog zijn eenmalige inhaalslag
+                # doet krijgt dit stuk in het samenvattende bericht, de
+                # rest krijgt een losse alert.
+                #
+                # Dat onderscheid moet hier vallen en niet in
+                # `fetch_items`. Daar is de idempotency-check nog niet
+                # gedaan, dus een stuk dat al via een andere term
+                # binnenkwam zou in de inhaalslag-lijst belanden zonder dat
+                # er ooit een treffer-rij voor is aangemaakt — en
+                # `ingehaald_op` zou gezet worden voor een term die zijn
+                # treffers nooit heeft gekregen.
+                inhaal_ids = [
+                    aid for aid in abonnement_ids if aid in strategy.verse_abonnementen
+                ]
+                for aid in inhaal_ids:
+                    self._inhaalslag.setdefault(aid, []).append(parlementair_item.id)
+                # Eén verse term mag de losse alert van de andere abonnees
+                # niet doven: die krijgen hem gewoon.
+                if len(inhaal_ids) < len(abonnement_ids):
+                    self._te_alerteren.append(parlementair_item.id)
 
         # Step 9: Create SuggestedEdge records for matching nodes
         affected_nodes: list[CorpusNode] = []
@@ -883,3 +1097,26 @@ class ParlementairImportService:
         self.session.add(person)
         await self.session.flush()
         return person
+
+
+def _context_regels(extra: dict) -> list[str]:
+    """Feiten uit de TK-API die het model niet uit de tekst kan halen.
+
+    Een agenda zegt zelden in zijn eigen tekst wanneer de vergadering is,
+    en een bijlage noemt niet bij welke brief hij hoort. Die feiten staan
+    in de API, dus geven we ze mee in plaats van het model te laten raden.
+    """
+    regels: list[str] = []
+    if extra.get("bijlage_bij_nummer"):
+        onderwerp = extra.get("bijlage_bij_onderwerp") or ""
+        regels.append(
+            f"DIT IS EEN BIJLAGE BIJ: {extra['bijlage_bij_nummer']} {onderwerp}".strip()
+        )
+    if extra.get("activiteit_datum"):
+        soort = extra.get("activiteit_soort") or "vergadering"
+        regels.append(f"VERGADERDATUM: {extra['activiteit_datum']} ({soort})")
+    if extra.get("termijn"):
+        regels.append(f"ANTWOORDTERMIJN: {extra['termijn']}")
+    if extra.get("commissie"):
+        regels.append(f"COMMISSIE: {extra['commissie']}")
+    return regels

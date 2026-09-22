@@ -34,6 +34,21 @@ class TagExtractionResult(BaseModel):
     samenvatting: str
 
 
+class KamerstukAlertResult(BaseModel):
+    """Samenvatting van een kamerstuk vanuit de zoekterm die het aandroeg."""
+
+    samenvatting: str
+    # 0-100: hoe centraal de zoekterm in het stuk staat. Stuurt de vorm van
+    # het bericht, nooit of het gepost wordt — het vangnet staat bewust
+    # breed en niets valt stil weg.
+    relevantie_score: int
+    reden: str
+    # Een concrete vervolgactie als het stuk er een draagt: een
+    # antwoordtermijn, een vergadering waar nog input op kan. Leeg als er
+    # niets te doen is; het model mag niets verzinnen.
+    actie: str = ""
+
+
 class TagSuggestionResult(BaseModel):
     matched_tags: list[str]
     suggested_new_tags: list[str]
@@ -152,6 +167,59 @@ class BaseLLMService(ABC):
                 matched_tags=[],
                 suggested_new_tags=[],
                 samenvatting="Tag-extractie mislukt",
+            )
+
+    async def summarize_kamerstuk_alert(
+        self,
+        titel: str,
+        onderwerp: str,
+        document_tekst: str | None,
+        zoektermen: list[str],
+        categorie: str = "overig",
+        soort: str | None = None,
+        context_regels: list[str] | None = None,
+    ) -> "KamerstukAlertResult":
+        """Vat een kamerstuk samen vanuit de zoekterm die het aandroeg.
+
+        `categorie` en `soort` komen uit de TK-API en vertellen het model
+        wát voor stuk dit is: een agenda van een vergadering die nog moet
+        komen vraagt om een ander bericht dan een besluitenlijst van een
+        vergadering die geweest is.
+
+        Alleen publieke tekst en de zoektermen gaan de LLM in; het stuk
+        staat op tweedekamer.nl.
+        """
+        from bouwmeester.services.llm.prompts import build_kamerstuk_alert_prompt
+
+        prompt = build_kamerstuk_alert_prompt(
+            titel=titel,
+            onderwerp=onderwerp,
+            document_tekst=document_tekst,
+            zoektermen=zoektermen,
+            categorie=categorie,
+            soort=soort,
+            context_regels=context_regels,
+        )
+        try:
+            text = await self._complete(prompt)
+            result = self._parse_json(text)
+            score = result.get("relevantie_score", 50)
+            if not isinstance(score, int | float):
+                score = 50
+            return KamerstukAlertResult(
+                samenvatting=str(result.get("samenvatting", "")).strip(),
+                relevantie_score=max(0, min(100, int(score))),
+                reden=str(result.get("reden", "")).strip(),
+                actie=str(result.get("actie", "") or "").strip(),
+            )
+        except Exception:
+            logger.exception("Fout bij LLM-samenvatting van kamerstuk")
+            # Geen samenvatting is geen reden om het stuk te verzwijgen:
+            # het bericht valt terug op titel en onderwerp.
+            return KamerstukAlertResult(
+                samenvatting="",
+                relevantie_score=50,
+                reden="samenvatting mislukt",
             )
 
     async def suggest_tags(

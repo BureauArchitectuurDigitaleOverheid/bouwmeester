@@ -317,7 +317,18 @@ _DEFAULT_CONFIG = [
     {
         "key": "ANTHROPIC_API_KEY",
         "value": "",
-        "description": "Anthropic API-sleutel voor Claude",
+        "description": "Anthropic API-sleutel voor Claude (afrekening per token)",
+        "is_secret": True,
+    },
+    {
+        "key": "CLAUDE_CODE_OAUTH_TOKEN",
+        "value": "",
+        "description": (
+            "Abonnementstoken uit `claude setup-token`. Gaat vóór op de "
+            "API-sleutel: dezelfde modellen, maar op een abonnement in "
+            "plaats van per token. Werkt alleen als de `claude`-binary in "
+            "de image zit."
+        ),
         "is_secret": True,
     },
     {
@@ -802,6 +813,10 @@ def _worker_expected_cadence_sec() -> dict[str, float]:
     settings = get_settings()
     return {
         "parlementair": float(settings.TK_POLL_INTERVAL_SECONDS),
+        # De tkconv-loop pollt sneller overdag dan 's nachts, dus de
+        # verwachting is het tráágste interval: met de kantooruren-waarde
+        # zou een gezonde loop elke nacht als "Vertraagd" verschijnen.
+        "tkconv": float(settings.TKCONV_POLL_INTERVAL_NACHT_SECONDS),
         "mattermost_websocket": 90.0,  # idle-heartbeat is once per 60s
         "opdracht_task": float(settings.OPDRACHT_TASK_INTERVAL_SECONDS),
         "fcc_sync": float(settings.FCC_POLL_INTERVAL_SECONDS),

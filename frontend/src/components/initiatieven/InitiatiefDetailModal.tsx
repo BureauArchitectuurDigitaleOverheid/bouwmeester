@@ -43,6 +43,7 @@ import type {
 } from '@/types';
 import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
 import { MattermostChannelsSection } from '@/components/mattermost/MattermostChannelsSection';
+import { AbonnementenSection } from '@/components/parlementair/AbonnementenSection';
 import { ColumnsManager } from '@/components/leads/ColumnsManager';
 
 interface InitiatiefDetailModalProps {
@@ -447,6 +448,10 @@ export function InitiatiefDetailModal({
             <MattermostChannelsSection
               scope={{ type: 'initiatief', id: detail.id }}
             />
+
+            {/* Zoektermen in kamerstukken — staat onder de kanalen omdat de
+                alerts naar precies die kanalen gaan. */}
+            <AbonnementenSection initiatiefId={detail.id} />
 
             {/* Updates (publication posts) */}
             <UpdatesSection initiatief={detail} canEdit={canEdit} />

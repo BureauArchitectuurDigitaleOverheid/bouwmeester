@@ -14,6 +14,7 @@ from bouwmeester.services.import_strategies.registry import (
     get_all_strategies,
     get_strategy,
 )
+from bouwmeester.services.import_strategies.tkconv import TkconvSearchStrategy
 from bouwmeester.services.import_strategies.toezegging import ToezeggingStrategy
 from bouwmeester.services.tk_api_client import (
     MotieData,
@@ -51,10 +52,11 @@ class TestRegistry:
 
     def test_get_all_strategies(self):
         all_s = get_all_strategies()
-        assert len(all_s) == 3
+        assert len(all_s) == 4
         assert isinstance(all_s["motie"], MotieStrategy)
         assert isinstance(all_s["kamervraag"], KamervraagStrategy)
         assert isinstance(all_s["toezegging"], ToezeggingStrategy)
+        assert isinstance(all_s["tkconv_document"], TkconvSearchStrategy)
 
 
 # ---------------------------------------------------------------------------

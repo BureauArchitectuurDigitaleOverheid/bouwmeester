@@ -68,6 +68,25 @@ class ImportStrategy(ABC):
         """
         return False
 
+    @property
+    def uses_tk_api(self) -> bool:
+        """Whether this strategy polls the official TK OData API.
+
+        When False, `_import_type` skips building a TweedeKamerClient and
+        calls `build_client()` instead. The TK API only searches metadata,
+        so a strategy that needs full-text search over documents (including
+        bijlagen, which carry no Zaak link) has to go elsewhere.
+        """
+        return True
+
+    def build_client(self) -> object | None:
+        """Build the client this strategy fetches with, when not the TK API.
+
+        Returns an async context manager. Only called when `uses_tk_api`
+        is False.
+        """
+        return None
+
     @abstractmethod
     async def fetch_items(
         self,

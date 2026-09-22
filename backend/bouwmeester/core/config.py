@@ -64,10 +64,32 @@ class Settings(BaseSettings):
     WEBAUTHN_SESSION_TTL_SECONDS: int = 86400  # 24 hours (shorter than OIDC's 7 days)
 
     ANTHROPIC_API_KEY: str = ""
+    # Abonnementstoken uit `claude setup-token`, voor de Claude Code CLI.
+    # Gaat vóór op ANTHROPIC_API_KEY: dezelfde modellen, maar op een
+    # abonnement in plaats van per token. Werkt alleen via de CLI-binary;
+    # de Anthropic SDK accepteert dit token niet. Persoonlijk token, dus
+    # het hoort in de secretstore en niet in de repo.
+    CLAUDE_CODE_OAUTH_TOKEN: str = ""
     TK_API_BASE_URL: str = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0"
     EK_API_BASE_URL: str = "https://opendata.eerstekamer.nl"
     TK_POLL_INTERVAL_SECONDS: int = 3600
     TK_IMPORT_LIMIT: int = 100
+
+    # tkconv (berthub.eu) draait op een privéserver zonder SLA en heeft een
+    # eigen poll-ritme, los van de officiële TK-API. Het ritme volgt wanneer
+    # kamerstukken verschijnen: een meting over 1010 stukken in acht dagen
+    # gaf 08:00-18:00 met een piek om 16:00, en daarbuiten 2 stukken in acht
+    # dagen. 's Nachts elke twee minuten pollen zou dus alleen Berts server
+    # belasten. Beide feeds ondersteunen If-None-Match, dus een ronde die
+    # niets vindt kost 0 bytes body.
+    TKCONV_POLL_INTERVAL_KANTOORUREN_SECONDS: int = 120
+    TKCONV_POLL_INTERVAL_AVOND_SECONDS: int = 600
+    TKCONV_POLL_INTERVAL_NACHT_SECONDS: int = 3600
+    # Grenzen in lokale tijd (Europe/Amsterdam). Kantooruren [start, eind),
+    # daarna avond tot `avond_eind`, daarna nacht.
+    TKCONV_KANTOORUREN_START: int = 8
+    TKCONV_KANTOORUREN_EIND: int = 18
+    TKCONV_AVOND_EIND: int = 23
     LLM_MODEL: str = "claude-haiku-4-5-20251001"
     LLM_PROVIDER: str = "claude"  # "claude" or "vlam"
     VLAM_API_KEY: str = ""

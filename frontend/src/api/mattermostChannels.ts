@@ -10,6 +10,8 @@ export interface MattermostChannelLink {
   scope_id: string;
   auto_note_enabled: boolean;
   suggest_leads_enabled: boolean;
+  /** Kamerstukken die op een zoekterm van dit initiatief matchen. */
+  parlementaire_alerts_enabled: boolean;
   last_seen_post_at: number | null;
   disabled_at: string | null;
   created_by_id: string | null;
@@ -33,11 +35,13 @@ export interface MattermostChannelLinkCreate {
   team_id?: string | null;
   auto_note_enabled?: boolean;
   suggest_leads_enabled?: boolean;
+  parlementaire_alerts_enabled?: boolean;
 }
 
 export interface MattermostChannelLinkUpdate {
   auto_note_enabled?: boolean;
   suggest_leads_enabled?: boolean;
+  parlementaire_alerts_enabled?: boolean;
   /** Alleen ``true`` is geldig; backend rejecteert ``false``. */
   reenable?: true;
 }
