@@ -397,7 +397,47 @@ class MattermostSlashService:
                 "`/bouwmeester koppel initiatief <naam>`; de zoektermen "
                 "horen bij het initiatief, niet bij het kanaal.",
             )
+
+        # Toegang tot het kanaal is niet hetzelfde als toegang tot het
+        # initiatief: in Mattermost kan iedereen een open kanaal joinen,
+        # terwijl het initiatief in Bouwmeester op een beperkte kring kan
+        # staan. Zonder deze check zou `volgt` de zoektermen en tellingen
+        # van zo'n dossier prijsgeven, en `ontvolg` ze stil kunnen
+        # weghalen. `koppel` doet deze check al via `_lookup_initiatief`.
+        if not await self._mag_scope_zien(link, person_id):
+            return (
+                person_id,
+                None,
+                "Dit kanaal is gekoppeld aan een initiatief waar je geen "
+                "toegang toe hebt.",
+            )
         return person_id, link, ""
+
+    async def _mag_scope_zien(self, link, person_id: UUID) -> bool:
+        """Mag deze persoon het initiatief/de lead achter dit kanaal zien?"""
+        from bouwmeester.core.initiatief_context import build_initiatief_context
+        from bouwmeester.models.person import Person
+
+        person = await self.session.get(Person, person_id)
+        if person is None:
+            return False
+        ctx = await build_initiatief_context(self.session, person)
+        if ctx.is_admin:
+            return True
+
+        if link.scope_type == SCOPE_INITIATIEF:
+            return link.scope_id in ctx.visible_initiatief_ids
+
+        # Een lead erft de zichtbaarheid van zijn initiatief; een lead
+        # zonder initiatief is voor iedereen zichtbaar, net als in
+        # `_lookup_lead`.
+        lead = await self.session.get(Lead, link.scope_id)
+        if lead is None:
+            return False
+        return (
+            lead.initiatief_id is None
+            or lead.initiatief_id in ctx.visible_initiatief_ids
+        )
 
     async def _scope_naam(self, link) -> str:
         if link.scope_type == SCOPE_INITIATIEF:

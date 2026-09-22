@@ -78,19 +78,34 @@ class TkconvItem:
         return f"{BASE_URL}/getraw/{self.document_nummer}"
 
 
-class TkconvClient:
-    """Bevraagt de zoek-RSS en haalt documentteksten op.
+# feed-URL (inclusief query) -> laatst geziene ETag.
+#
+# Deze cache staat op moduleniveau en niet op de client, omdat de
+# import-service elke ronde een verse client bouwt. Op de instantie zou de
+# cache dus altijd leeg zijn: elke ronde stuurt dan geen `If-None-Match`,
+# krijgt 200 met de volle body terug in plaats van een 304 van 0 bytes, en
+# de hele besparing waarop het twee-minuten-ritme berust verdampt — 360
+# volledige GET's per dag op een feed van een halve megabyte.
+#
+# Toestand op moduleniveau leeft zo lang als het workerproces. Dat is
+# precies de bedoelde levensduur: het is een optimalisatie, niet iets wat
+# een herstart hoeft te overleven. Na een herstart is het één volle GET per
+# feed en daarna weer 304's.
+_ETAGS: dict[str, str] = {}
 
-    De ETags leven op de client, niet in de database: ze zijn een
-    optimalisatie, geen toestand die iets waard is als hij wegvalt. Een
-    herstart doet één volle GET per feed en gaat daarna weer 304's krijgen.
-    """
+
+def reset_etag_cache() -> None:
+    """Leeg de ETag-cache. Voor tests, zodat die elkaar niet beïnvloeden."""
+    _ETAGS.clear()
+
+
+class TkconvClient:
+    """Bevraagt de zoek-RSS en haalt documentteksten op."""
 
     def __init__(self, base_url: str = BASE_URL) -> None:
         self.base_url = base_url.rstrip("/")
         self._http_client: httpx.AsyncClient | None = None
-        # feed-URL (inclusief query) -> laatst geziene ETag
-        self._etags: dict[str, str] = {}
+        self._etags = _ETAGS
 
     def _get_http_client(self) -> httpx.AsyncClient:
         if self._http_client is None:

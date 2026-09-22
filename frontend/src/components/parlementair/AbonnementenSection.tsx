@@ -24,11 +24,20 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState<string | null>(null);
 
+  // Alleen het nieuwste verzoek mag de state schrijven. De modal wordt
+  // hergebruikt tussen initiatieven, dus een traag antwoord van het vorige
+  // initiatief kan anders over het nieuwe heen landen.
+  const verzoekTeller = useRef(0);
+
   const laden = useCallback(async () => {
+    const mijnVerzoek = ++verzoekTeller.current;
     try {
-      setAbonnementen(await getAbonnementen(initiatiefId));
+      const data = await getAbonnementen(initiatiefId);
+      if (mijnVerzoek === verzoekTeller.current) setAbonnementen(data);
     } catch {
-      setFout('Kon de zoektermen niet ophalen.');
+      if (mijnVerzoek === verzoekTeller.current) {
+        setFout('Kon de zoektermen niet ophalen.');
+      }
     }
   }, [initiatiefId]);
 
@@ -62,20 +71,46 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
     }
   }, [initiatiefId, laden, nieuweTerm]);
 
+  // Welke rij een mutatie heeft lopen. Zonder dit vuurt een dubbelklik
+  // twee PATCH-calls, en kunnen de antwoorden in omgekeerde volgorde
+  // binnenkomen — dan staat de pil op het tegenovergestelde van wat de
+  // server weet.
+  const [bezigeRij, setBezigeRij] = useState<string | null>(null);
+
   const schakel = useCallback(
     async (abonnement: ParlementairAbonnement) => {
-      await updateAbonnement(initiatiefId, abonnement.id, { actief: !abonnement.actief });
-      await laden();
+      if (bezigeRij) return;
+      setBezigeRij(abonnement.id);
+      setFout(null);
+      try {
+        await updateAbonnement(initiatiefId, abonnement.id, {
+          actief: !abonnement.actief,
+        });
+        await laden();
+      } catch {
+        setFout(`Kon '${abonnement.term}' niet aanpassen.`);
+      } finally {
+        setBezigeRij(null);
+      }
     },
-    [initiatiefId, laden],
+    [bezigeRij, initiatiefId, laden],
   );
 
   const verwijder = useCallback(
     async (abonnement: ParlementairAbonnement) => {
-      await deleteAbonnement(initiatiefId, abonnement.id);
-      await laden();
+      if (bezigeRij) return;
+      setBezigeRij(abonnement.id);
+      setFout(null);
+      try {
+        await deleteAbonnement(initiatiefId, abonnement.id);
+        await laden();
+      } catch {
+        setFout(`Kon '${abonnement.term}' niet verwijderen.`);
+      } finally {
+        setBezigeRij(null);
+      }
     },
-    [initiatiefId, laden],
+    [bezigeRij, initiatiefId, laden],
   );
 
   return (
@@ -112,26 +147,27 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
           </nldd-text>
         ) : (
           <nldd-table
-            columns="minmax(160px,2fr) 90px 110px 120px 80px"
-            sm-columns="1fr 80px"
-            md-columns="minmax(160px,2fr) 90px 110px"
+            columns="minmax(160px,2fr) 90px 110px 120px 140px"
+            sm-columns="1fr 70px 140px"
+            md-columns="minmax(160px,2fr) 90px 110px 140px"
             accessible-label="Gevolgde zoektermen"
           >
             <nldd-table-row slot="header">
               <nldd-text-cell text="Term" />
               <nldd-text-cell text="Treffers" horizontal-alignment="right" />
-              <nldd-cell hide-below="md" horizontal-alignment="right">
-                <nldd-text size="xs" weight="bold">Weggeklikt</nldd-text>
-              </nldd-cell>
-              <nldd-cell hide-below="lg">
-                <nldd-text size="xs" weight="bold">Laatste</nldd-text>
-              </nldd-cell>
+              <nldd-text-cell
+                text="Weggeklikt"
+                horizontal-alignment="right"
+                hide-below="md"
+              />
+              <nldd-text-cell text="Laatste" hide-below="lg" />
               <nldd-text-cell />
             </nldd-table-row>
             {abonnementen.map((a) => (
               <AbonnementRow
                 key={a.id}
                 abonnement={a}
+                bezig={bezigeRij === a.id}
                 onToggle={() => schakel(a)}
                 onDelete={() => verwijder(a)}
               />
@@ -189,10 +225,12 @@ function TermField({
 
 function AbonnementRow({
   abonnement,
+  bezig,
   onToggle,
   onDelete,
 }: {
   abonnement: ParlementairAbonnement;
+  bezig: boolean;
   onToggle: () => void;
   onDelete: () => void;
 }) {
@@ -213,22 +251,20 @@ function AbonnementRow({
       <nldd-text-cell
         text={String(abonnement.treffers)}
         horizontal-alignment="right"
-        size="sm"
       />
-      {/* `hide-below` bestaat op nldd-cell, niet op nldd-text-cell, dus de
-          responsieve kolommen zitten in een nldd-cell eromheen. */}
-      <nldd-cell hide-below="md" horizontal-alignment="right">
-        <nldd-text size="xs">{abonnement.weggeklikt_totaal}</nldd-text>
-      </nldd-cell>
-      <nldd-cell hide-below="lg">
-        <nldd-text size="xs">{laatste}</nldd-text>
-      </nldd-cell>
+      <nldd-text-cell
+        text={String(abonnement.weggeklikt_totaal)}
+        horizontal-alignment="right"
+        hide-below="md"
+      />
+      <nldd-text-cell text={laatste} hide-below="lg" />
       <nldd-cell>
         <nldd-container layout="row" gap="4" horizontal-alignment="right">
           <nldd-button
             variant="neutral-transparent"
             size="xs"
             text={abonnement.actief ? 'Pauzeer' : 'Hervat'}
+            disabled={orUndef(bezig)}
             accessible-label={
               abonnement.actief
                 ? `Pauzeer ${abonnement.term}`
@@ -240,6 +276,7 @@ function AbonnementRow({
             variant="critical-transparent"
             size="xs"
             start-icon="delete"
+            disabled={orUndef(bezig)}
             accessible-label={`Verwijder ${abonnement.term}`}
             onClick={onDelete}
           />

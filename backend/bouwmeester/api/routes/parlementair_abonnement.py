@@ -11,6 +11,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
@@ -57,6 +58,20 @@ async def _require_initiatief_toegang(
     if not ctx.is_admin and initiatief_id not in ctx.visible_initiatief_ids:
         raise HTTPException(status_code=404, detail="Initiatief niet gevonden")
     return initiatief
+
+
+def _hoort_bij(abonnement: ParlementairAbonnement | None, initiatief_id: UUID) -> bool:
+    """Hoort dit abonnement bij dít initiatief?
+
+    `scope_id` is polymorf en draagt geen FK, dus het kan ook een `lead.id`
+    zijn. De sleutel is het paar (scope_type, scope_id); alleen op
+    `scope_id` vergelijken laat de helft daarvan liggen.
+    """
+    return (
+        abonnement is not None
+        and abonnement.scope_type == SCOPE_INITIATIEF
+        and abonnement.scope_id == initiatief_id
+    )
 
 
 def _met_telling(
@@ -134,7 +149,17 @@ async def create_abonnement(
         "parlementair.abonnement_toegevoegd",
         details={"initiatief_id": str(initiatief_id), "term": abonnement.term},
     )
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # `get_by_term` en de insert zijn niet atomair: twee snelle klikken
+        # op "Volgen" zien allebei niets bestaan en botsen daarna op
+        # `uq_abonnement_scope_term`. Dat is dezelfde situatie als hierboven,
+        # dus hetzelfde antwoord — niet een 500.
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail=f"'{payload.term}' wordt al gevolgd"
+        ) from None
     await db.refresh(abonnement)
 
     tellingen = await repo.telling_per_abonnement(SCOPE_INITIATIEF, initiatief_id)
@@ -158,7 +183,7 @@ async def update_abonnement(
 
     repo = ParlementairAbonnementRepository(db)
     abonnement = await repo.get(abonnement_id)
-    if abonnement is None or abonnement.scope_id != initiatief_id:
+    if not _hoort_bij(abonnement, initiatief_id):
         raise HTTPException(status_code=404, detail="Abonnement niet gevonden")
 
     if payload.actief is not None:
@@ -186,7 +211,7 @@ async def delete_abonnement(
 
     repo = ParlementairAbonnementRepository(db)
     abonnement = await repo.get(abonnement_id)
-    if abonnement is None or abonnement.scope_id != initiatief_id:
+    if not _hoort_bij(abonnement, initiatief_id):
         raise HTTPException(status_code=404, detail="Abonnement niet gevonden")
 
     term = abonnement.term

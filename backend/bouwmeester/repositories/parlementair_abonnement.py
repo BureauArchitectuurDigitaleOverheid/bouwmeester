@@ -111,20 +111,25 @@ class ParlementairAbonnementRepository:
                 ]
             )
             .on_conflict_do_nothing(constraint="uq_treffer_item_abonnement")
-            .returning(ParlementairTreffer.id)
+            # Geef de abonnement-ids terug, niet de treffer-ids: alleen de
+            # rijen die er echt bij kwamen mogen meetellen. Ophogen over de
+            # volledige `abonnement_ids` zou een abonnement dat dit item al
+            # had nogmaals tellen, en dan lopen `treffers_totaal` en de
+            # COUNT(*) uit `telling_per_abonnement` uiteen.
+            .returning(ParlementairTreffer.abonnement_id)
         )
         result = await self.session.execute(stmt)
-        nieuw = len(list(result.scalars().all()))
+        nieuwe_ids = list(result.scalars().all())
 
-        if nieuw:
+        if nieuwe_ids:
             now = datetime.now(UTC)
-            for aid in abonnement_ids:
+            for aid in nieuwe_ids:
                 abonnement = await self.session.get(ParlementairAbonnement, aid)
                 if abonnement is not None:
                     abonnement.laatste_treffer_op = now
                     abonnement.treffers_totaal += 1
             await self.session.flush()
-        return nieuw
+        return len(nieuwe_ids)
 
     async def list_abonnementen_voor_item(
         self, parlementair_item_id: UUID

@@ -44,18 +44,63 @@ def upgrade() -> None:
             server_default=sa.text("gen_random_uuid()"),
             nullable=False,
         ),
-        sa.Column("scope_type", sa.String(32), nullable=False),
-        sa.Column("scope_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("term", sa.String(255), nullable=False),
-        sa.Column("term_genormaliseerd", sa.String(255), nullable=False),
-        sa.Column("is_frase", sa.Boolean(), server_default="true", nullable=False),
-        sa.Column("actief", sa.Boolean(), server_default="true", nullable=False),
-        sa.Column("laatste_treffer_op", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("treffers_totaal", sa.Integer(), server_default="0", nullable=False),
         sa.Column(
-            "weggeklikt_totaal", sa.Integer(), server_default="0", nullable=False
+            "scope_type", sa.String(32), nullable=False, comment="initiatief|lead"
         ),
-        sa.Column("notitie", sa.Text(), nullable=True),
+        sa.Column("scope_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "term",
+            sa.String(255),
+            nullable=False,
+            comment="Zoekterm zoals de gebruiker hem intypte, inclusief hoofdletters",
+        ),
+        sa.Column(
+            "term_genormaliseerd",
+            sa.String(255),
+            nullable=False,
+            comment=(
+                "Lowercase, whitespace-genormaliseerde vorm, alleen voor de "
+                "unique constraint. De zoekopdracht gaat met `term` de bron in."
+            ),
+        ),
+        sa.Column(
+            "is_frase",
+            sa.Boolean(),
+            server_default="true",
+            nullable=False,
+            comment="Quote de term bij het zoeken; ongequote termen OR'en de woorden",
+        ),
+        sa.Column("actief", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column(
+            "laatste_treffer_op",
+            sa.DateTime(timezone=True),
+            nullable=True,
+            comment="Wanneer deze term voor het laatst iets opleverde",
+        ),
+        sa.Column(
+            "treffers_totaal",
+            sa.Integer(),
+            server_default="0",
+            nullable=False,
+            comment="Aantal documenten dat deze term ooit aandroeg",
+        ),
+        sa.Column(
+            "weggeklikt_totaal",
+            sa.Integer(),
+            server_default="0",
+            nullable=False,
+            comment=(
+                "Hoe vaak een treffer van deze term als niet-relevant is "
+                "gemarkeerd. Signaal voor de gebruiker, nooit een "
+                "automatische deactivering."
+            ),
+        ),
+        sa.Column(
+            "notitie",
+            sa.Text(),
+            nullable=True,
+            comment="Waarom deze term gevolgd wordt",
+        ),
         sa.Column("created_by_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column(
             "created_at",

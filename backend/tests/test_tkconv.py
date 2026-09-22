@@ -6,17 +6,21 @@ het ontwerp bepalen (een bijlage zonder zaak-koppeling, en een stuk dat
 alleen in de body matcht) zijn allebei publieke kamerstukken.
 """
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 
 from bouwmeester.models.parlementair_abonnement import ParlementairAbonnement
-from bouwmeester.services.import_strategies.tkconv import TkconvSearchStrategy
+from bouwmeester.services.import_strategies.tkconv import (
+    TkconvSearchStrategy,
+    reset_watermerk,
+)
 from bouwmeester.services.tkconv_client import (
     TkconvClient,
     TkconvItem,
     _split_description,
+    reset_etag_cache,
 )
 from bouwmeester.worker import _AMSTERDAM
 
@@ -385,3 +389,132 @@ class TestPollRitme:
         assert _tkconv_interval(s, d.replace(hour=22)) == 600
         assert _tkconv_interval(s, d.replace(hour=23)) == 3600
         assert _tkconv_interval(s, d.replace(hour=7)) == 3600
+
+
+class TestEtagCache:
+    """De ETag-cache moet een ronde overleven.
+
+    De import-service bouwt elke ronde een verse client. Stond de cache op
+    de instantie, dan was hij altijd leeg: geen `If-None-Match`, dus 200
+    met de volle body in plaats van een 304 van 0 bytes, en het
+    twee-minuten-ritme zou 360 volledige GET's per dag doen op een feed van
+    een halve megabyte.
+    """
+
+    def setup_method(self):
+        reset_etag_cache()
+
+    def teardown_method(self):
+        reset_etag_cache()
+
+    def test_survives_a_new_client(self):
+        c1 = TkconvClient()
+        c1._etags["https://berthub.eu/tkconv/index.xml"] = '"abc"'
+
+        c2 = TkconvClient()
+
+        assert c2._etags.get("https://berthub.eu/tkconv/index.xml") == '"abc"'
+
+    def test_survives_a_new_strategy_round(self):
+        # Precies wat _import_type doet: per ronde een verse client.
+        s = TkconvSearchStrategy()
+        s.build_client()._etags["feed"] = '"v1"'
+
+        assert s.build_client()._etags.get("feed") == '"v1"'
+
+    def test_reset_empties_it(self):
+        TkconvClient()._etags["feed"] = '"v1"'
+        reset_etag_cache()
+        assert TkconvClient()._etags == {}
+
+
+class TestWatermerk:
+    """Het watermerk moet een ronde overleven en opschuiven.
+
+    De import-service bouwt elke ronde een verse strategie en geeft altijd
+    `since=None` mee. Stond het watermerk op de instantie, dan was de
+    drempel elke ronde "nu" — en een stuk uit de feed is per definitie al
+    gepubliceerd, dus altijd ouder. De feature importeerde daardoor
+    structureel nul stukken.
+    """
+
+    def setup_method(self):
+        reset_watermerk()
+        reset_etag_cache()
+
+    def teardown_method(self):
+        reset_watermerk()
+        reset_etag_cache()
+
+    @pytest.mark.asyncio
+    async def test_recent_item_is_imported_with_since_none(self):
+        """Het geval uit productie: since=None, stuk van 30 seconden oud."""
+        a = _abonnement("NLDD")
+        net = _item("2026D45065", datetime.now(UTC) - timedelta(seconds=30))
+        client = _FakeClient({'"NLDD"': [net]})
+
+        # Eerste ronde zet het watermerk op nu; dit stuk is ouder.
+        s1 = TkconvSearchStrategy(abonnementen=[a])
+        eerste = await s1.fetch_items(client=client, since=None, limit=100)
+        assert eerste == []
+
+        # Tweede ronde, verse strategie, stuk dat ná het watermerk komt.
+        later = _item("2026D45099", datetime.now(UTC) + timedelta(seconds=5))
+        client2 = _FakeClient({'"NLDD"': [later]})
+        s2 = TkconvSearchStrategy(abonnementen=[a])
+        tweede = await s2.fetch_items(client=client2, since=None, limit=100)
+
+        assert [r.zaak_nummer for r in tweede] == ["2026D45099"]
+
+    @pytest.mark.asyncio
+    async def test_watermark_survives_a_new_strategy(self):
+        a = _abonnement("NLDD")
+        stuk = _item("2026D45065", datetime(2026, 9, 21, 12, 0, tzinfo=UTC))
+
+        s1 = TkconvSearchStrategy(abonnementen=[a], importeer_backlog=True)
+        await s1.fetch_items(
+            client=_FakeClient({'"NLDD"': [stuk]}), since=None, limit=100
+        )
+
+        # Verse strategie: hetzelfde stuk mag niet nog eens langskomen.
+        s2 = TkconvSearchStrategy(abonnementen=[a])
+        opnieuw = await s2.fetch_items(
+            client=_FakeClient({'"NLDD"': [stuk]}), since=None, limit=100
+        )
+        assert opnieuw == []
+
+    @pytest.mark.asyncio
+    async def test_empty_round_does_not_advance_the_watermark(self):
+        """Een ronde zonder treffers mag niets overslaan."""
+        a = _abonnement("NLDD")
+
+        s1 = TkconvSearchStrategy(abonnementen=[a])
+        await s1.fetch_items(client=_FakeClient({'"NLDD"': []}), since=None, limit=100)
+
+        from bouwmeester.services.import_strategies import tkconv as mod
+
+        eerste_watermerk = mod._WATERMERK
+
+        s2 = TkconvSearchStrategy(abonnementen=[a])
+        await s2.fetch_items(client=_FakeClient({'"NLDD"': []}), since=None, limit=100)
+
+        assert mod._WATERMERK == eerste_watermerk
+
+    @pytest.mark.asyncio
+    async def test_limit_does_not_fetch_documents_it_discards(self):
+        """Afkappen gebeurt vóór het ophalen, niet erna.
+
+        Anders halen we documenten op bij Berts server die we weggooien.
+        """
+        a = _abonnement("NLDD")
+        stukken = [
+            _item(f"2026D{i:05d}", datetime(2026, 9, 21, 12, i, tzinfo=UTC))
+            for i in range(5)
+        ]
+        client = _FakeClient({'"NLDD"': stukken})
+
+        s = TkconvSearchStrategy(abonnementen=[a], importeer_backlog=True)
+        r = await s.fetch_items(client=client, since=None, limit=2)
+
+        assert len(r) == 2
+        assert len(client.opgehaalde_documenten) == 2

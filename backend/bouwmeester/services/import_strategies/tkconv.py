@@ -24,6 +24,7 @@ Deze strategie wijkt op drie punten af van de andere:
 
 import logging
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 from bouwmeester.models.parlementair_abonnement import ParlementairAbonnement
 from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrategy
@@ -33,11 +34,38 @@ logger = logging.getLogger(__name__)
 
 ITEM_TYPE = "tkconv_document"
 
+# De feed levert pubDate in Nederlandse tijd; de poller draait op dezelfde
+# zone (zie worker._AMSTERDAM).
+_AMSTERDAM = ZoneInfo("Europe/Amsterdam")
+
 # Bij de eerste ronde voor een nieuwe term importeren we geen backlog. De
 # zoek-RSS draagt ongeveer een week aan stukken; die in één keer posten zou
 # de feature openen met een reeks berichten over stukken die niemand
 # gevraagd heeft. De eerste ronde zet alleen het watermerk.
 EERSTE_RONDE_IMPORTEERT = False
+
+# Het watermerk: alles dat later is verschenen dan dit tijdstip telt mee.
+#
+# Dit staat op moduleniveau en niet op de instantie, omdat de import-service
+# elke ronde een verse strategie bouwt. Op de instantie zou het watermerk
+# elke ronde opnieuw op "nu" staan, en dan komt er nooit iets door: een
+# stuk uit de feed is per definitie al gepubliceerd, dus altijd ouder dan
+# het moment waarop de ronde draait. De feature importeerde daardoor
+# structureel nul stukken.
+#
+# Procesgeheugen is hier de juiste levensduur. Na een herstart is het
+# watermerk weer "nu", dus een stuk dat precies tijdens die herstart
+# verscheen kan wegvallen. Dat is een bewuste afweging: de dedup op
+# documentnummer zit in de database, dus het alternatief (watermerk in de
+# database) koopt alleen dat ene randgeval af, en kost een schrijfactie per
+# ronde plus een migratie.
+_WATERMERK: datetime | None = None
+
+
+def reset_watermerk() -> None:
+    """Zet het watermerk terug. Voor tests, zodat die elkaar niet raken."""
+    global _WATERMERK  # noqa: PLW0603
+    _WATERMERK = None
 
 
 class TkconvSearchStrategy(ImportStrategy):
@@ -132,7 +160,7 @@ class TkconvSearchStrategy(ImportStrategy):
         self.treffers = {}
 
         for item in items:
-            if drempel and item.gepubliceerd_op and item.gepubliceerd_op < drempel:
+            if drempel and item.gepubliceerd_op and item.gepubliceerd_op <= drempel:
                 continue
 
             abonnement_ids = []
@@ -143,28 +171,85 @@ class TkconvSearchStrategy(ImportStrategy):
             if not abonnement_ids:
                 continue
 
+            # Afkappen vóór het ophalen van de tekst: anders halen we
+            # documenten op bij Berts server die we daarna weggooien.
+            if len(resultaten) >= limit:
+                logger.warning(
+                    "tkconv: meer dan %d treffers in één ronde, rest volgt "
+                    "de volgende ronde",
+                    limit,
+                )
+                break
+
             tekst, content_type = await client.fetch_document_text(item.document_nummer)
             self.treffers[item.document_nummer] = abonnement_ids
             resultaten.append(self._to_fetched_item(item, tekst, content_type))
+
+        self._verschuif_watermerk(items, resultaten, limit)
 
         logger.info(
             "tkconv: %d van %d documenten na de datumdrempel",
             len(resultaten),
             len(items),
         )
-        return resultaten[:limit]
+        return resultaten
+
+    @staticmethod
+    def _verschuif_watermerk(
+        items: list[TkconvItem], resultaten: list[FetchedItem], limit: int
+    ) -> None:
+        """Zet het watermerk op het nieuwste stuk dat deze ronde is verwerkt.
+
+        Niet op "nu": tussen het ophalen van de feed en dit moment kan een
+        stuk verschijnen dat we nog niet gezien hebben, en dat zou dan stil
+        wegvallen. Het nieuwste verwerkte tijdstip is de enige grens die we
+        echt kunnen verantwoorden.
+
+        Bij een afgekapte ronde schuift het watermerk bewust niet op voorbij
+        wat is verwerkt, zodat de rest de volgende ronde alsnog langskomt.
+        """
+        global _WATERMERK  # noqa: PLW0603
+
+        verwerkt = {r.zaak_id for r in resultaten}
+        tijden = [
+            i.gepubliceerd_op
+            for i in items
+            if i.gepubliceerd_op and i.document_nummer in verwerkt
+        ]
+        if not tijden:
+            # Niets verwerkt. Bij een eerste ronde (watermerk nog leeg) is
+            # dat het moment om te beginnen; anders blijft het staan, zodat
+            # een ronde zonder treffers niets overslaat.
+            if _WATERMERK is None:
+                _WATERMERK = datetime.now(UTC)
+            return
+
+        nieuwste = max(tijden)
+        if _WATERMERK is None or nieuwste > _WATERMERK:
+            _WATERMERK = nieuwste
 
     def _drempel(self, since: date | None) -> datetime | None:
         """Vanaf wanneer een stuk meetelt.
 
-        Zonder `since` en zonder backlog-vlag telt niets mee: dat is de
-        eerste ronde, die alleen het watermerk zet.
+        `since` wint als de aanroeper hem meegeeft; de poller doet dat niet,
+        die leunt op het watermerk uit de vorige ronde. Is dat er nog niet
+        (eerste ronde na een start), dan is de drempel "nu": dan importeren
+        we de backlog van een week niet, maar alles wat daarna verschijnt
+        wel.
         """
         if since is not None:
-            return datetime.combine(since, datetime.min.time(), tzinfo=UTC)
+            # De feed levert `pubDate` in Nederlandse tijd en de poller
+            # draait op Europe/Amsterdam, dus een kale datum hoort ook in
+            # die zone te worden uitgelegd. Met UTC zou een stuk van
+            # 00:30 Amsterdam op de grensdag wegvallen.
+            return datetime.combine(since, datetime.min.time(), tzinfo=_AMSTERDAM)
         if self.importeer_backlog:
             return None
-        return datetime.now(UTC)
+        # Geen watermerk betekent: eerste ronde na een start. Dan is de
+        # grens "nu", zodat de backlog van een week niet in één keer wordt
+        # gepost. `None` zou hier "geen grens" betekenen en precies dat
+        # veroorzaken.
+        return _WATERMERK if _WATERMERK is not None else datetime.now(UTC)
 
     @staticmethod
     def _to_fetched_item(

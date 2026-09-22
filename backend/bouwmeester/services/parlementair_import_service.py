@@ -65,6 +65,9 @@ class ParlementairImportService:
         self.tag_repo = TagRepository(session)
         self.abonnement_repo = ParlementairAbonnementRepository(session)
         self.notification_service = NotificationService(session)
+        # Items die na een geslaagde commit nog een Mattermost-bericht
+        # moeten krijgen. Zie `_process_item` stap 8b.
+        self._te_alerteren: list[uuid.UUID] = []
 
     async def poll_and_import(
         self,
@@ -167,6 +170,7 @@ class ParlementairImportService:
         all_items = tk_items + ek_items
 
         for item in all_items:
+            self._te_alerteren = []
             try:
                 result = await self._process_item(item, strategy)
                 await self.session.commit()
@@ -177,11 +181,24 @@ class ParlementairImportService:
                     f"Error processing {strategy.item_type} {item.zaak_id}"
                 )
                 await self.session.rollback()
+                # Niet posten: het item bestaat niet meer.
+                continue
+
+            # Pas hier, met het item veilig in de database. Faalt het
+            # posten, dan blijft het item staan en wordt het niet opnieuw
+            # geïmporteerd — een gemist bericht is beter dan een bericht
+            # over een stuk dat is teruggedraaid.
+            for item_id in self._te_alerteren:
+                await self._alert_kamerstuk(item_id)
 
         return imported_count
 
-    async def _alert_kamerstuk(self, parlementair_item: ParlementairItem) -> None:
+    async def _alert_kamerstuk(self, parlementair_item_id: uuid.UUID) -> None:
         """Vat het stuk samen vanuit de zoekterm en post het in de kanalen.
+
+        Draait ná de commit van het item, dus met een id in plaats van een
+        object: de sessie is op dat moment schoon en het item wordt vers
+        geladen.
 
         Twee stappen in één methode omdat de samenvatting alleen voor het
         bericht wordt gemaakt: de score bepaalt de vorm, niet of er gepost
@@ -191,6 +208,15 @@ class ParlementairImportService:
         from bouwmeester.services.parlementair_alert_service import (
             ParlementairAlertService,
         )
+
+        parlementair_item = await self.session.get(
+            ParlementairItem, parlementair_item_id
+        )
+        if parlementair_item is None:
+            logger.warning(
+                "Kamerstuk %s verdwenen vóór het alert", parlementair_item_id
+            )
+            return
 
         abonnementen = await self.abonnement_repo.list_abonnementen_voor_item(
             parlementair_item.id
@@ -212,8 +238,12 @@ class ParlementairImportService:
                 extra["relevantie_score"] = alert.relevantie_score
                 extra["relevantie_reden"] = alert.reden
                 parlementair_item.extra_data = extra
-                await self.session.flush()
+                # Eigen commit: we draaien na de commit van het item, dus
+                # zonder dit blijft de samenvatting in de sessie hangen tot
+                # de volgende commit en gaat hij bij een fout verloren.
+                await self.session.commit()
             except Exception:
+                await self.session.rollback()
                 logger.exception(
                     "Samenvatting mislukt voor %s", parlementair_item.zaak_nummer
                 )
@@ -412,7 +442,13 @@ class ParlementairImportService:
                 await self.abonnement_repo.registreer_treffers(
                     parlementair_item.id, abonnement_ids
                 )
-                await self._alert_kamerstuk(parlementair_item)
+                # Posten gebeurt pas ná de commit, in `_import_type`. Een
+                # bericht is niet terug te draaien: gaat het eruit vóór de
+                # commit en faalt daarna een latere stap, dan rolt het item
+                # terug terwijl het bericht blijft staan — en de volgende
+                # ronde importeert en post hetzelfde stuk opnieuw, elke
+                # twee minuten.
+                self._te_alerteren.append(parlementair_item.id)
 
         # Step 9: Create SuggestedEdge records for matching nodes
         affected_nodes: list[CorpusNode] = []
