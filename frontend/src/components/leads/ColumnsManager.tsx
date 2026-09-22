@@ -1,18 +1,10 @@
-import { useMemo, useState } from 'react';
-import {
-  Plus,
-  Trash2,
-  ArrowUp,
-  ArrowDown,
-  Eye,
-  EyeOff,
-  Globe,
-  Check,
-  X,
-} from 'lucide-react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/common/Button';
+import { Select } from '@/components/common/Select';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import {
   useCreateLeadColumn,
   useDeleteLeadColumn,
@@ -21,18 +13,43 @@ import {
   useUpdateLeadColumn,
 } from '@/hooks/useLeadColumns';
 import type { LeadColumn } from '@/types';
+import { leadColumnTagColor } from './stageColors';
 
-const COLOR_PRESETS: { label: string; value: string }[] = [
-  { label: 'Indigo', value: 'bg-indigo-100 text-indigo-800' },
-  { label: 'Blauw', value: 'bg-blue-100 text-blue-800' },
-  { label: 'Geel', value: 'bg-yellow-100 text-yellow-800' },
-  { label: 'Oranje', value: 'bg-orange-100 text-orange-800' },
-  { label: 'Paars', value: 'bg-purple-100 text-purple-800' },
-  { label: 'Groen', value: 'bg-green-100 text-green-800' },
-  { label: 'Grijs', value: 'bg-gray-100 text-gray-800' },
-  { label: 'Roze', value: 'bg-pink-100 text-pink-800' },
-  { label: 'Rood', value: 'bg-red-100 text-red-800' },
-  { label: 'Smaragd', value: 'bg-emerald-100 text-emerald-800' },
+type NlddTagColor = NonNullable<React.ComponentProps<'nldd-tag'>['color']>;
+
+/**
+ * The closed set of nldd-tag color names `LeadColumn.color` may hold,
+ * mirrored from backend `schema.lead_column.LEAD_COLUMN_COLORS` (kept in
+ * sync by hand). `swatchVar` is the CSS custom property whose value IS that
+ * color, at the "100" step (the tag's own solid-fill weight), so the picker
+ * shows the real hue rather than a guessed one.
+ */
+const COLOR_PRESETS: { label: string; value: NlddTagColor; swatchVar: string }[] = [
+  // Semantic roles
+  { label: 'Neutraal', value: 'neutral', swatchVar: '--primitives-color-neutral-400' },
+  { label: 'Accent', value: 'accent', swatchVar: '--primitives-color-accent-100' },
+  { label: 'Succes', value: 'success', swatchVar: '--primitives-color-success-100' },
+  { label: 'Waarschuwing', value: 'warning', swatchVar: '--primitives-color-warning-100' },
+  { label: 'Kritiek', value: 'critical', swatchVar: '--primitives-color-critical-100' },
+  // Rijkshuisstijl
+  { label: 'Lintblauw', value: 'lintblauw', swatchVar: '--primitives-color-lintblauw-100' },
+  { label: 'Donkerblauw', value: 'donkerblauw', swatchVar: '--primitives-color-donkerblauw-100' },
+  { label: 'Hemelblauw', value: 'hemelblauw', swatchVar: '--primitives-color-hemelblauw-100' },
+  { label: 'Lichtblauw', value: 'lichtblauw', swatchVar: '--primitives-color-lichtblauw-100' },
+  { label: 'Paars', value: 'paars', swatchVar: '--primitives-color-paars-100' },
+  { label: 'Violet', value: 'violet', swatchVar: '--primitives-color-violet-100' },
+  { label: 'Robijnrood', value: 'robijnrood', swatchVar: '--primitives-color-robijnrood-100' },
+  { label: 'Roze', value: 'roze', swatchVar: '--primitives-color-roze-100' },
+  { label: 'Rood', value: 'rood', swatchVar: '--primitives-color-rood-100' },
+  { label: 'Oranje', value: 'oranje', swatchVar: '--primitives-color-oranje-100' },
+  { label: 'Donkergeel', value: 'donkergeel', swatchVar: '--primitives-color-donkergeel-100' },
+  { label: 'Geel', value: 'geel', swatchVar: '--primitives-color-geel-100' },
+  { label: 'Donkerbruin', value: 'donkerbruin', swatchVar: '--primitives-color-donkerbruin-100' },
+  { label: 'Bruin', value: 'bruin', swatchVar: '--primitives-color-bruin-100' },
+  { label: 'Donkergroen', value: 'donkergroen', swatchVar: '--primitives-color-donkergroen-100' },
+  { label: 'Groen', value: 'groen', swatchVar: '--primitives-color-groen-100' },
+  { label: 'Mosgroen', value: 'mosgroen', swatchVar: '--primitives-color-mosgroen-100' },
+  { label: 'Mintgroen', value: 'mintgroen', swatchVar: '--primitives-color-mintgroen-100' },
 ];
 
 interface ColumnsManagerProps {
@@ -48,6 +65,10 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
 
   const [adding, setAdding] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const draftNameRef = useRef<HTMLElement>(null);
+  // `input` rather than `change`: a controlled field has to follow every
+  // keystroke, or "Toevoegen" only enables after the field loses focus.
+  useNlddEvent(draftNameRef, 'input', (event) => setDraftName(eventValue(event) ?? ''));
   const [draftColor, setDraftColor] = useState(COLOR_PRESETS[0].value);
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -127,183 +148,85 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
   };
 
   if (isLoading) {
-    return <LoadingSpinner className="py-6" />;
+    return <LoadingSpinner padding="24" />;
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-text-secondary">
+    <nldd-container gap="12">
+      <nldd-text size="xs" color="secondary">
         Eigenaren beheren hier de funnel-kolommen voor dit initiatief. Slug
         blijft vast na aanmaken zodat bestaande leads gekoppeld blijven.
         "Actieve fase" telt mee voor de overdue-filter; "Publiek zichtbaar"
         toont casuses op de publieke pagina.
-      </p>
+      </nldd-text>
 
-      <ul className="divide-y divide-border rounded-xl border border-border">
-        {sortedColumns.map((col, idx) => {
-          const isFirst = idx === 0;
-          const isLast = idx === sortedColumns.length - 1;
-          return (
-            <li key={col.id} className="px-3 py-2.5 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${col.color}`}
-                  >
-                    {col.slug}
-                  </span>
-                  {editing === col.id ? (
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      onBlur={commitEdit}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitEdit();
-                        if (e.key === 'Escape') setEditing(null);
-                      }}
-                      autoFocus
-                      className="flex-1 text-sm rounded-lg border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => startEdit(col)}
-                      className="text-sm font-medium text-text hover:text-primary-700 truncate text-left"
-                      title="Klik om te hernoemen"
-                    >
-                      {col.name}
-                    </button>
-                  )}
-                  <span className="text-xs text-text-secondary tabular-nums">
-                    {col.lead_count} {col.lead_count === 1 ? 'lead' : 'leads'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => moveColumn(col, 'up')}
-                    disabled={isFirst || reorderMutation.isPending}
-                    className="p-1 rounded hover:bg-gray-100 text-text-secondary disabled:opacity-30"
-                    title="Omhoog"
-                  >
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveColumn(col, 'down')}
-                    disabled={isLast || reorderMutation.isPending}
-                    className="p-1 rounded hover:bg-gray-100 text-text-secondary disabled:opacity-30"
-                    title="Omlaag"
-                  >
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeletingId(col.id)}
-                    disabled={sortedColumns.length <= 1}
-                    className="p-1 rounded hover:bg-gray-100 text-text-secondary hover:text-red-500 disabled:opacity-30 disabled:hover:text-text-secondary"
-                    title={
-                      sortedColumns.length <= 1
-                        ? 'Laatste kolom kan niet weg'
-                        : 'Verwijderen'
-                    }
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 flex-wrap pl-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => toggleActive(col)}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
-                    col.is_active_stage
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}
-                  title="Telt mee voor overdue/stale-filter"
-                >
-                  {col.is_active_stage ? (
-                    <Check className="h-3 w-3" />
-                  ) : (
-                    <X className="h-3 w-3" />
-                  )}
-                  Actieve fase
-                </button>
-                <button
-                  type="button"
-                  onClick={() => togglePublic(col)}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
-                    col.is_public_visible
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}
-                  title="Toont casuses op publieke pagina"
-                >
-                  {col.is_public_visible ? (
-                    <Eye className="h-3 w-3" />
-                  ) : (
-                    <EyeOff className="h-3 w-3" />
-                  )}
-                  Publiek zichtbaar
-                </button>
-                <div className="flex items-center gap-1">
-                  <Globe className="h-3 w-3 text-text-secondary" />
-                  <ColorSwatches
-                    selected={col.color}
-                    onSelect={(color) => setColor(col, color)}
-                  />
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      <nldd-list variant="box-tinted" dividers="always" accessible-label="Funnel-kolommen">
+        {sortedColumns.map((col, idx) => (
+          <ColumnRow
+            key={col.id}
+            col={col}
+            isFirst={idx === 0}
+            isLast={idx === sortedColumns.length - 1}
+            reordering={reorderMutation.isPending}
+            canDelete={sortedColumns.length > 1}
+            editing={editing === col.id}
+            editName={editName}
+            onEditNameChange={setEditName}
+            onStartEdit={() => startEdit(col)}
+            onCommitEdit={commitEdit}
+            onCancelEdit={() => setEditing(null)}
+            onMoveUp={() => moveColumn(col, 'up')}
+            onMoveDown={() => moveColumn(col, 'down')}
+            onDelete={() => setDeletingId(col.id)}
+            onToggleActive={() => toggleActive(col)}
+            onTogglePublic={() => togglePublic(col)}
+            onSetColor={(color) => setColor(col, color)}
+          />
+        ))}
+      </nldd-list>
 
       {adding ? (
-        <div className="rounded-xl border border-border p-3 space-y-2">
-          <input
-            type="text"
-            value={draftName}
-            onChange={(e) => setDraftName(e.target.value)}
-            placeholder="Kolomnaam (bv. Strategisch)"
-            className="w-full text-sm rounded-lg border border-border px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary"
-            autoFocus
-          />
-          <div className="flex items-center justify-between gap-2">
-            <ColorSwatches selected={draftColor} onSelect={setDraftColor} />
-            <div className="flex gap-1">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setAdding(false);
-                  setDraftName('');
-                }}
-              >
-                Annuleren
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleAdd}
-                loading={createMutation.isPending}
-                disabled={!draftName.trim()}
-              >
-                Toevoegen
-              </Button>
-            </div>
-          </div>
-        </div>
+        <nldd-card background="tinted">
+          <nldd-container gap="8" padding="12">
+            {/* The listener sits on the element, not on a React onChange:
+                nldd-text-field owns a shadow input and re-emits as a
+                CustomEvent, which React does not map to onChange. Without
+                this `draftName` stayed empty, so "Toevoegen" below was
+                permanently disabled and a column could never be created. */}
+            <nldd-text-field
+              ref={draftNameRef}
+              value={draftName}
+              placeholder="Kolomnaam (bv. Strategisch)"
+              accessible-label="Kolomnaam"
+              autoFocus
+            />
+            <nldd-container layout="row" gap="8" vertical-alignment="center">
+              <ColorSwatches selected={draftColor} onSelect={setDraftColor} />
+              <nldd-container layout="row" gap="4" horizontal-alignment="right">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setAdding(false);
+                    setDraftName('');
+                  }}
+                >
+                  Annuleren
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleAdd}
+                  loading={createMutation.isPending}
+                  disabled={!draftName.trim()}
+                >
+                  Toevoegen
+                </Button>
+              </nldd-container>
+            </nldd-container>
+          </nldd-container>
+        </nldd-card>
       ) : (
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<Plus className="h-3.5 w-3.5" />}
-          onClick={() => setAdding(true)}
-        >
+        <Button variant="secondary" size="sm" icon="plus" onClick={() => setAdding(true)}>
           Kolom toevoegen
         </Button>
       )}
@@ -321,40 +244,207 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
         loading={deleteMutation.isPending}
       >
         {deletingColumn && (
-          <div className="space-y-3">
-            <p>
+          <nldd-container gap="12">
+            <nldd-text size="sm">
               Weet je zeker dat je <strong>{deletingColumn.name}</strong> wilt
               verwijderen?
-            </p>
+            </nldd-text>
             {deletingColumn.lead_count > 0 ? (
-              <div className="space-y-1">
-                <p className="text-sm text-text-secondary">
+              <nldd-container gap="4">
+                <nldd-text size="sm" color="secondary">
                   Deze kolom bevat {deletingColumn.lead_count}{' '}
                   {deletingColumn.lead_count === 1 ? 'lead' : 'leads'}. Kies een
                   doel-kolom waar ze heen gaan:
-                </p>
-                <select
+                </nldd-text>
+                <Select
                   value={moveTarget}
+                  aria-label="Kolom om leads naartoe te verplaatsen"
                   onChange={(e) => setMoveTarget(e.target.value)}
-                  className="w-full text-sm rounded-lg border border-border px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="">— Kies kolom —</option>
-                  {otherColumns.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  placeholder="— Kies kolom —"
+                  options={otherColumns.map((c) => ({ value: c.id, label: c.name }))}
+                />
+              </nldd-container>
             ) : (
-              <p className="text-sm text-text-secondary">
+              <nldd-text size="sm" color="secondary">
                 De kolom is leeg en wordt direct verwijderd.
-              </p>
+              </nldd-text>
             )}
-          </div>
+          </nldd-container>
         )}
       </ConfirmDialog>
-    </div>
+    </nldd-container>
+  );
+}
+
+interface ColumnRowProps {
+  col: LeadColumn;
+  isFirst: boolean;
+  isLast: boolean;
+  reordering: boolean;
+  canDelete: boolean;
+  editing: boolean;
+  editName: string;
+  onEditNameChange: (value: string) => void;
+  onStartEdit: () => void;
+  onCommitEdit: () => void;
+  onCancelEdit: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onDelete: () => void;
+  onToggleActive: () => void;
+  onTogglePublic: () => void;
+  onSetColor: (color: string) => void;
+}
+
+/**
+ * One column row: a segmented `nldd-list-item` (rename control, reorder and
+ * delete icon buttons) plus a second line of toggle chips. The chips stay
+ * plain buttons rather than nldd-tag: they are two-state toggles the user
+ * clicks to flip, not status labels, and nldd-tag has no click semantics.
+ */
+function ColumnRow({
+  col,
+  isFirst,
+  isLast,
+  reordering,
+  canDelete,
+  editing,
+  editName,
+  onEditNameChange,
+  onStartEdit,
+  onCommitEdit,
+  onCancelEdit,
+  onMoveUp,
+  onMoveDown,
+  onDelete,
+  onToggleActive,
+  onTogglePublic,
+  onSetColor,
+}: ColumnRowProps) {
+  const nameFieldRef = useRef<HTMLElement>(null);
+  const renameTriggerRef = useRef<HTMLElement>(null);
+
+  useNlddEvent(nameFieldRef, 'input', (e) => onEditNameChange(eventValue(e)));
+  useNlddEvent(
+    nameFieldRef,
+    'blur',
+    useCallback(() => onCommitEdit(), [onCommitEdit]),
+  );
+  useNlddEvent(renameTriggerRef, 'click', onStartEdit);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') onCommitEdit();
+    if (e.key === 'Escape') onCancelEdit();
+  };
+
+  return (
+    <nldd-list-item>
+      <nldd-container gap="8" padding-block="4" width="full">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <nldd-container layout="row" gap="8" vertical-alignment="center" width="full">
+            <nldd-tag text={col.slug} color={leadColumnTagColor(col.color)} size="sm" />
+            {editing ? (
+              <nldd-text-field
+                ref={nameFieldRef}
+                value={editName}
+                onKeyDown={handleKeyDown}
+                autoFocus
+                accessible-label="Kolomnaam"
+                style={{ flex: 1 }}
+              />
+            ) : (
+              <nldd-list-item-segment ref={renameTriggerRef} button accessible-label={`${col.name} hernoemen`}>
+                {col.name}
+              </nldd-list-item-segment>
+            )}
+            <nldd-text size="xs" color="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {col.lead_count} {col.lead_count === 1 ? 'lead' : 'leads'}
+            </nldd-text>
+          </nldd-container>
+
+          <nldd-container layout="row" gap="4">
+            <NlddIconButton
+              icon="chevron-up"
+              accessibleLabel="Omhoog"
+              variant="neutral-transparent"
+              size="sm"
+              disabled={isFirst || reordering}
+              onClick={onMoveUp}
+            />
+            <NlddIconButton
+              icon="chevron-down"
+              accessibleLabel="Omlaag"
+              variant="neutral-transparent"
+              size="sm"
+              disabled={isLast || reordering}
+              onClick={onMoveDown}
+            />
+            <NlddIconButton
+              icon="trash"
+              accessibleLabel={canDelete ? 'Verwijderen' : 'Laatste kolom kan niet weg'}
+              variant="neutral-transparent"
+              size="sm"
+              disabled={!canDelete}
+              onClick={onDelete}
+            />
+          </nldd-container>
+        </nldd-container>
+
+        <nldd-container layout="wrap" gap="12" padding-left="4">
+          <ToggleChip
+            active={col.is_active_stage}
+            activeIcon="check-mark"
+            inactiveIcon="close"
+            label="Actieve fase"
+            title="Telt mee voor overdue/stale-filter"
+            activeColor="success"
+            onToggle={onToggleActive}
+          />
+          <ToggleChip
+            active={col.is_public_visible}
+            activeIcon="eye"
+            inactiveIcon="eye-slash"
+            label="Publiek zichtbaar"
+            title="Toont casuses op publieke pagina"
+            activeColor="lintblauw"
+            onToggle={onTogglePublic}
+          />
+          <nldd-container layout="row" gap="4" vertical-alignment="center">
+            <nldd-icon name="globe" size="16" color="secondary-content" aria-hidden="true" />
+            <ColorSwatches selected={col.color} onSelect={onSetColor} />
+          </nldd-container>
+        </nldd-container>
+      </nldd-container>
+    </nldd-list-item>
+  );
+}
+
+interface ToggleChipProps {
+  active: boolean;
+  activeIcon: string;
+  inactiveIcon: string;
+  label: string;
+  title: string;
+  /** nldd-tag color to show while active; inactive always reads neutral. */
+  activeColor: NlddTagColor;
+  onToggle: () => void;
+}
+
+/**
+ * A two-state toggle the user clicks to flip, not a status label, so it
+ * stays a clickable segment rather than nldd-tag (which has no click
+ * semantics) — the color still comes from the same closed set nldd-tag uses,
+ * carried via a CSS custom property since nldd-list-item-segment has no
+ * `color` attribute of its own.
+ */
+function ToggleChip({ active, activeIcon, inactiveIcon, label, title, activeColor, onToggle }: ToggleChipProps) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onToggle);
+
+  return (
+    <nldd-list-item-segment ref={ref} button title={title}>
+      <nldd-tag text={label} icon={active ? activeIcon : inactiveIcon} color={active ? activeColor : 'neutral'} size="sm" />
+    </nldd-list-item-segment>
   );
 }
 
@@ -363,23 +453,34 @@ function ColorSwatches({
   onSelect,
 }: {
   selected: string;
-  onSelect: (color: string) => void;
+  onSelect: (color: NlddTagColor) => void;
 }) {
   return (
-    <div className="flex gap-1">
+    <nldd-container layout="wrap" gap="4">
       {COLOR_PRESETS.map((preset) => (
         <button
           key={preset.value}
           type="button"
           onClick={() => onSelect(preset.value)}
           title={preset.label}
-          className={`h-4 w-4 rounded-full border ${
-            preset.value
-          } ${selected === preset.value ? 'ring-2 ring-offset-1 ring-current' : ''}`}
-        >
-          <span className="sr-only">{preset.label}</span>
-        </button>
+          aria-label={preset.label}
+          style={{
+            height: '16px',
+            width: '16px',
+            // The swatch IS the color, and at 16px the user-agent border and
+            // padding would leave almost no fill visible.
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            borderRadius: '9999px',
+            backgroundColor: `var(${preset.swatchVar})`,
+            boxShadow:
+              selected === preset.value
+                ? `0 0 0 2px white, 0 0 0 4px var(${preset.swatchVar})`
+                : '0 0 0 1px var(--primitives-color-neutral-300)',
+          }}
+        />
       ))}
-    </div>
+    </nldd-container>
   );
 }

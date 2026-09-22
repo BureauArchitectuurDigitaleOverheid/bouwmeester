@@ -103,52 +103,54 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
         />
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          label="Titel"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Voer een titel in..."
-          required
-          autoFocus
-        />
+      <form onSubmit={handleSubmit}>
+        <nldd-container gap="16">
+          <Input
+            label="Titel"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Voer een titel in..."
+            required
+            autoFocus
+          />
 
-        <DuplicateWarning title={title} excludeNodeId={node.id} />
+          <DuplicateWarning title={title} excludeNodeId={node.id} />
 
-        <CreatableSelect
-          label="Type"
-          value={nodeType}
-          onChange={setNodeType}
-          options={nodeTypeOptions}
-          disabled
-        />
+          <CreatableSelect
+            label="Type"
+            value={nodeType}
+            onChange={setNodeType}
+            options={nodeTypeOptions}
+            disabled
+          />
 
-        <RichTextFormField label="Beschrijving" value={description} onChange={setDescription} rows={4} />
+          <RichTextFormField label="Beschrijving" value={description} onChange={setDescription} rows={4} />
 
-        <TagSuggestions
-          title={title}
-          description={description}
-          nodeType={nodeType}
-          existingTagNames={nodeTags?.map((nt) => nt.tag.name) ?? []}
-          onAcceptTag={(tagName, isNew) => {
-            setPendingTags((prev) => {
-              if (prev.some((t) => t.name === tagName)) return prev;
-              return [...prev, { name: tagName, isNew }];
-            });
-          }}
-        />
+          <TagSuggestions
+            title={title}
+            description={description}
+            nodeType={nodeType}
+            existingTagNames={nodeTags?.map((nt) => nt.tag.name) ?? []}
+            onAcceptTag={(tagName, isNew) => {
+              setPendingTags((prev) => {
+                if (prev.some((t) => t.name === tagName)) return prev;
+                return [...prev, { name: tagName, isNew }];
+              });
+            }}
+          />
 
-        <PendingTagsList
-          tags={pendingTags}
-          onRemove={(name) => setPendingTags((prev) => prev.filter((t) => t.name !== name))}
-        />
+          <PendingTagsList
+            tags={pendingTags}
+            onRemove={(name) => setPendingTags((prev) => prev.filter((t) => t.name !== name))}
+          />
 
-        <Select
-          label="Status"
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          options={Object.entries(NODE_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
-        />
+          <Select
+            label="Status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            options={Object.entries(NODE_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+          />
+        </nldd-container>
       </form>
 
       <AutoTagDialog

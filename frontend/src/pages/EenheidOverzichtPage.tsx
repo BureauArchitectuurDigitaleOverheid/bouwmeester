@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Building2, Users, AlertTriangle } from 'lucide-react';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
+import { Icon } from '@/components/nldd/Icon';
 import { UnassignedTasksSection } from '@/components/eenheid/UnassignedTasksSection';
 import { PersonTasksRow } from '@/components/eenheid/PersonTasksRow';
 import { SubeenheidCard } from '@/components/eenheid/SubeenheidCard';
@@ -52,9 +52,9 @@ export function EenheidOverzichtPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Org unit selector */}
-      <div className="max-w-md">
+      <nldd-container max-width="448px">
         <CreatableSelect
           label="Organisatie-eenheid"
           value={selectedEenheidId}
@@ -62,31 +62,32 @@ export function EenheidOverzichtPage() {
           options={eenheidOptions}
           placeholder="Selecteer een eenheid..."
         />
-      </div>
+      </nldd-container>
 
       {!selectedEenheidId && (
         <EmptyState
-          icon={<Building2 className="h-16 w-16" />}
+          icon="apartment-building"
           title="Selecteer een eenheid"
           description="Kies een organisatie-eenheid om het takenoverzicht te bekijken."
         />
       )}
 
       {selectedEenheidId && isLoading && (
-        <LoadingSpinner className="py-8" />
+        <nldd-container padding="32">
+          <LoadingSpinner />
+        </nldd-container>
       )}
 
       {selectedEenheidId && isError && (
-        <Card>
-          <div className="flex items-center gap-3 text-red-600">
-            <AlertTriangle className="h-5 w-5" />
-            <p className="text-sm">Kon het overzicht niet laden. Probeer het opnieuw.</p>
-          </div>
-        </Card>
+        <nldd-banner
+          variant="critical"
+          size="sm"
+          text="Kon het overzicht niet laden. Probeer het opnieuw."
+        />
       )}
 
       {selectedEenheidId && overview && (
-        <div className="space-y-6">
+        <nldd-container gap="24">
           {/* Section 1: Onverdeeld */}
           <UnassignedTasksSection
             noUnitTasks={overview.unassigned_no_unit}
@@ -98,54 +99,52 @@ export function EenheidOverzichtPage() {
           />
 
           {/* Section 2: Teamoverzicht */}
-          <div>
-            <h2 className="text-base font-semibold text-text mb-3 flex items-center gap-2">
-              <Users className="h-5 w-5 text-text-secondary" />
-              Teamoverzicht
-            </h2>
+          <nldd-container gap="12">
+            <nldd-container layout="row" gap="8" vertical-alignment="center">
+              <Icon name="users" />
+              <nldd-title size={5}>
+                <h2>Teamoverzicht</h2>
+              </nldd-title>
+            </nldd-container>
             {overview.by_person.length === 0 ? (
               <Card>
-                <p className="text-sm text-text-secondary">
-                  Geen personen in deze eenheid.
-                </p>
+                <nldd-text color="secondary">Geen personen in deze eenheid.</nldd-text>
               </Card>
             ) : (
-              <Card padding={false}>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-left text-text-secondary">
-                        <th className="px-3 md:px-5 py-3 font-medium">Persoon</th>
-                        <th className="px-3 md:px-5 py-3 font-medium text-right">Open</th>
-                        <th className="px-3 md:px-5 py-3 font-medium text-right">In uitvoering</th>
-                        <th className="px-3 md:px-5 py-3 font-medium text-right">Afgerond</th>
-                        <th className="px-3 md:px-5 py-3 font-medium text-right">Verlopen</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {overview.by_person.map((person) => (
-                        <PersonTasksRow
-                          key={person.person_id}
-                          person={person}
-                          isExpanded={expandedPersonId === person.person_id}
-                          onToggle={() => handleTogglePerson(person.person_id)}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
+              <nldd-table
+                columns="minmax(200px,1fr) 100px 140px 100px 100px"
+                sm-columns="minmax(0,1fr) 72px"
+                accessible-label="Taken per persoon"
+              >
+                <nldd-table-row slot="header">
+                  <nldd-text-cell text="Persoon" />
+                  <nldd-text-cell text="Open" horizontal-alignment="right" hide-below="lg" />
+                  <nldd-text-cell text="In uitvoering" horizontal-alignment="right" hide-below="lg" />
+                  <nldd-text-cell text="Afgerond" horizontal-alignment="right" hide-below="lg" />
+                  <nldd-text-cell text="Verlopen" horizontal-alignment="right" />
+                </nldd-table-row>
+                {overview.by_person.map((person) => (
+                  <PersonTasksRow
+                    key={person.person_id}
+                    person={person}
+                    isExpanded={expandedPersonId === person.person_id}
+                    onToggle={() => handleTogglePerson(person.person_id)}
+                  />
+                ))}
+              </nldd-table>
             )}
-          </div>
+          </nldd-container>
 
           {/* Section 3: Subeenheden */}
           {overview.by_subeenheid.length > 0 && (
-            <div>
-              <h2 className="text-base font-semibold text-text mb-3 flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-text-secondary" />
-                Subeenheden
-              </h2>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <nldd-container gap="12">
+              <nldd-container layout="row" gap="8" vertical-alignment="center">
+                <Icon name="apartment-building" />
+                <nldd-title size={5}>
+                  <h2>Subeenheden</h2>
+                </nldd-title>
+              </nldd-container>
+              <nldd-container layout="grid" sm-column-count={2} lg-column-count={3} gap="12">
                 {overview.by_subeenheid.map((sub) => (
                   <SubeenheidCard
                     key={sub.eenheid_id}
@@ -153,11 +152,11 @@ export function EenheidOverzichtPage() {
                     onSelect={handleSelectSubeenheid}
                   />
                 ))}
-              </div>
-            </div>
+              </nldd-container>
+            </nldd-container>
           )}
-        </div>
+        </nldd-container>
       )}
-    </div>
+    </nldd-container>
   );
 }

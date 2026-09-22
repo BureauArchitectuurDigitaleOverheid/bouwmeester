@@ -1,6 +1,9 @@
-import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { useWhitelist, useAddWhitelistEmail, useRemoveWhitelistEmail } from '@/hooks/useAdmin';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { EmptyState } from '@/components/common/EmptyState';
 
 export function WhitelistManager() {
   const { data: emails, isLoading } = useWhitelist();
@@ -8,6 +11,9 @@ export function WhitelistManager() {
   const removeEmail = useRemoveWhitelistEmail();
   const [newEmail, setNewEmail] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const emailFieldRef = useRef<HTMLElement>(null);
+
+  useNlddEvent(emailFieldRef, 'input', (e) => setNewEmail(eventValue(e)));
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,96 +31,93 @@ export function WhitelistManager() {
   };
 
   if (isLoading) {
-    return <div className="text-sm text-text-secondary py-8 text-center">Laden...</div>;
+    return <nldd-activity-indicator size="32" style={{ margin: '2rem auto', display: 'block' }} />;
   }
 
   return (
-    <div className="space-y-4">
+    <nldd-container gap="16">
       {/* Add form */}
-      <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2">
-        <input
-          type="email"
-          value={newEmail}
-          onChange={(e) => setNewEmail(e.target.value)}
-          placeholder="E-mailadres toevoegen..."
-          className="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
-          required
-        />
-        <button
-          type="submit"
-          disabled={addEmail.isPending || !newEmail.trim()}
-          className="flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors shrink-0"
-        >
-          <Plus className="h-4 w-4" />
-          Toevoegen
-        </button>
+      <form onSubmit={handleAdd}>
+        <nldd-container layout="row" gap="8">
+          <nldd-container width="fit-content" className="row-fill">
+            <nldd-text-field
+              ref={emailFieldRef}
+              type="email"
+              value={newEmail}
+              placeholder="E-mailadres toevoegen..."
+              accessible-label="E-mailadres toevoegen"
+              autocomplete="email"
+              required
+            />
+          </nldd-container>
+          <NlddButton
+            type="submit"
+            text="Toevoegen"
+            startIcon="plus"
+            disabled={addEmail.isPending || !newEmail.trim()}
+          />
+        </nldd-container>
       </form>
 
       {/* Email list */}
-      <div className="border border-border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-border">
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary">E-mailadres</th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden sm:table-cell">Toegevoegd door</th>
-              <th className="text-left px-4 py-2.5 font-medium text-text-secondary hidden sm:table-cell">Datum</th>
-              <th className="w-10 px-4 py-2.5"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {emails?.map((entry) => (
-              <tr key={entry.id} className="border-b border-border last:border-b-0 hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-2.5 text-text break-all">{entry.email}</td>
-                <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
-                  {entry.added_by || '-'}
-                </td>
-                <td className="px-4 py-2.5 text-text-secondary hidden sm:table-cell">
-                  {new Date(entry.created_at).toLocaleDateString('nl-NL')}
-                </td>
-                <td className="px-4 py-2.5">
-                  {confirmDeleteId === entry.id ? (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleDelete(entry.id)}
-                        disabled={removeEmail.isPending}
-                        className="px-2 py-0.5 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-                      >
-                        Ja
-                      </button>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        className="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-text hover:bg-gray-300 transition-colors"
-                      >
-                        Nee
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmDeleteId(entry.id)}
-                      className="p-1 rounded hover:bg-red-50 text-text-secondary hover:text-red-600 transition-colors"
-                      title="Verwijderen"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {(!emails || emails.length === 0) && (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-text-secondary">
-                  Geen e-mailadressen op de toegangslijst
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <nldd-table
+        columns="minmax(200px,1fr) 160px 120px 48px"
+        sm-columns="1fr 48px"
+        accessible-label="Toegangslijst e-mailadressen"
+      >
+        <nldd-table-row slot="header">
+          <nldd-text-cell text="E-mailadres" />
+          <nldd-text-cell text="Toegevoegd door" hide-below="md" />
+          <nldd-text-cell text="Datum" hide-below="md" />
+          <nldd-text-cell />
+        </nldd-table-row>
+        {emails?.map((entry) => (
+          <nldd-table-row key={entry.id}>
+            <nldd-text-cell text={entry.email} />
+            <nldd-text-cell text={entry.added_by || '-'} color="secondary" hide-below="md" />
+            <nldd-text-cell
+              text={new Date(entry.created_at).toLocaleDateString('nl-NL')}
+              color="secondary"
+              hide-below="md"
+            />
+            <nldd-text-cell>
+              {confirmDeleteId === entry.id ? (
+                <nldd-container layout="row" gap="4" vertical-alignment="center">
+                  <NlddButton
+                    text="Ja"
+                    variant="destructive"
+                    size="xs"
+                    disabled={removeEmail.isPending}
+                    onClick={() => handleDelete(entry.id)}
+                  />
+                  <NlddButton
+                    text="Nee"
+                    variant="neutral-tinted"
+                    size="xs"
+                    onClick={() => setConfirmDeleteId(null)}
+                  />
+                </nldd-container>
+              ) : (
+                <NlddIconButton
+                  icon="trash"
+                  accessibleLabel="Verwijderen"
+                  variant="neutral-transparent"
+                  size="sm"
+                  onClick={() => setConfirmDeleteId(entry.id)}
+                />
+              )}
+            </nldd-text-cell>
+          </nldd-table-row>
+        ))}
+        <div slot="empty">
+          <EmptyState icon="inbox" title="Geen e-mailadressen op de toegangslijst" />
+        </div>
+      </nldd-table>
 
-      <p className="text-xs text-text-secondary">
-        Alleen personen met een e-mailadres op deze lijst kunnen inloggen.
-        Wanneer de lijst leeg is, is alle toegang open (lokale ontwikkeling).
-      </p>
-    </div>
+      <nldd-text size="xs" color="secondary">
+        Alleen personen met een e-mailadres op deze lijst kunnen inloggen. Wanneer de lijst leeg is,
+        is alle toegang open (lokale ontwikkeling).
+      </nldd-text>
+    </nldd-container>
   );
 }

@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { renderWithProviders } from '@/test/utils';
+import { renderWithProviders, clickNldd, getByNlddLabel, getByNlddText } from '@/test/utils';
 import { SyncStatusManager } from './SyncStatusManager';
+
+/** The row header is an NlddButton; clicking the host is what its handler hears. */
+function clickRow(label: string) {
+  clickNldd(getByNlddLabel(label));
+}
 
 vi.mock('@/api/syncStatus', async () => {
   const actual = await vi.importActual<typeof import('@/api/syncStatus')>(
@@ -59,8 +63,10 @@ describe('SyncStatusManager', () => {
   it('renders sync-bron rijen met laatste run-tijd', async () => {
     renderWithProviders(<SyncStatusManager />);
 
-    expect(await screen.findByText('TOOI-waardelijsten')).toBeInTheDocument();
-    expect(screen.getByText('Kabinet (rijksoverheid.nl)')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getByNlddText('TOOI-waardelijsten')).toBeInTheDocument();
+    });
+    expect(getByNlddText('Kabinet (rijksoverheid.nl)')).toBeInTheDocument();
   });
 
   it('toont actief-per-bron tellers en open conflicten', async () => {
@@ -75,16 +81,14 @@ describe('SyncStatusManager', () => {
   });
 
   it('vouwt log-entries uit bij klikken op rij', async () => {
-    const user = userEvent.setup();
     const { getSyncLog } = await import('@/api/syncStatus');
 
     renderWithProviders(<SyncStatusManager />);
 
-    const tooiButton = await screen.findByRole('button', {
-      name: /TOOI-waardelijsten/,
+    await waitFor(() => {
+      expect(getByNlddText('TOOI-waardelijsten')).toBeInTheDocument();
     });
-
-    await user.click(tooiButton);
+    clickRow('TOOI-waardelijsten');
 
     await waitFor(() => {
       expect(getSyncLog).toHaveBeenCalledWith('tooi', 30);
@@ -97,29 +101,29 @@ describe('SyncStatusManager', () => {
   });
 
   it('rendert action-badges met action-naam', async () => {
-    const user = userEvent.setup();
     renderWithProviders(<SyncStatusManager />);
 
-    const tooiButton = await screen.findByRole('button', {
-      name: /TOOI-waardelijsten/,
+    await waitFor(() => {
+      expect(getByNlddText('TOOI-waardelijsten')).toBeInTheDocument();
     });
-    await user.click(tooiButton);
+    clickRow('TOOI-waardelijsten');
 
-    expect(await screen.findByText('add')).toBeInTheDocument();
-    expect(screen.getByText('soft_delete')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getByNlddText('add')).toBeInTheDocument();
+    });
+    expect(getByNlddText('soft_delete')).toBeInTheDocument();
   });
 
   it('vouwt log weer in bij tweede klik', async () => {
-    const user = userEvent.setup();
     renderWithProviders(<SyncStatusManager />);
 
-    const tooiButton = await screen.findByRole('button', {
-      name: /TOOI-waardelijsten/,
+    await waitFor(() => {
+      expect(getByNlddText('TOOI-waardelijsten')).toBeInTheDocument();
     });
-    await user.click(tooiButton);
+    clickRow('TOOI-waardelijsten');
     expect(await screen.findByText('Gemeente Verzonnen')).toBeInTheDocument();
 
-    await user.click(tooiButton);
+    clickRow('TOOI-waardelijsten');
     await waitFor(() => {
       expect(screen.queryByText('Gemeente Verzonnen')).not.toBeInTheDocument();
     });

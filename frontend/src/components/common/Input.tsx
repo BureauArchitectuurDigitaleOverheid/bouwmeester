@@ -1,6 +1,5 @@
-import { forwardRef, type InputHTMLAttributes } from 'react';
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { forwardRef, useCallback, useRef, type ChangeEvent, type InputHTMLAttributes } from 'react';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -8,45 +7,142 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   helperText?: string;
 }
 
-export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helperText, className, id, ...props }, ref) => {
-    const inputId = id || label?.toLowerCase().replace(/\s+/g, '-');
+/** Id linking the input's `unmet` to the validation item that explains it. */
+const ERROR_ID = 'input-error';
+
+/** The types nldd-text-field itself accepts; everything else needs its own element. */
+const TEXT_TYPES = new Set(['text', 'email', 'tel', 'url']);
+
+/**
+ * `nldd-form-field` plus the input element that matches the requested type.
+ *
+ * The design system splits by type where the browser does: `nldd-text-field`
+ * covers text/email/tel/url, `nldd-number-field` a number with its steppers, and
+ * `nldd-date-field` a date. Routing on `type` here means a call site names the
+ * type once and gets the right keyboard and controls with it.
+ *
+ * `onChange` is bridged by hand and NOT spread onto the element. These are
+ * custom elements, so React's synthetic onChange never fires for them and the
+ * value arrives in `event.detail` rather than on `event.target.value`. Spread
+ * the handler onto the element instead and the field silently ignores every
+ * keystroke.
+ *
+ * The field associates its own label, so do not derive an id from the label
+ * text: two fields with the same label would collide. It also marks what is
+ * OPTIONAL rather than starring what is required, per the design system's
+ * convention.
+ */
+export const Input = forwardRef<HTMLElement, InputProps>(
+  (
+    {
+      label,
+      error,
+      helperText,
+      className,
+      id,
+      type = 'text',
+      required,
+      disabled,
+      onChange,
+      placeholder,
+      name,
+      value,
+      autoComplete,
+      readOnly,
+      ...rest
+    },
+    ref,
+  ) => {
+    const innerRef = useRef<HTMLElement>(null);
+
+    // Hand the caller something shaped like the change event it expects, so the
+    // existing `e.target.value` call sites keep working untouched.
+    const relay = useCallback(
+      (event: Event) => {
+        if (!onChange) return;
+        const next = eventValue(event);
+        const target = { value: next, name: name ?? '' } as EventTarget & HTMLInputElement;
+        onChange({
+          ...(event as unknown as ChangeEvent<HTMLInputElement>),
+          target,
+          currentTarget: target,
+        });
+      },
+      [onChange, name],
+    );
+
+    // `input` fires per keystroke, which is what a controlled React field wants.
+    useNlddEvent(innerRef, 'input', onChange ? relay : undefined);
+
+    const setRefs = useCallback(
+      (el: HTMLElement | null) => {
+        innerRef.current = el;
+        if (typeof ref === 'function') ref(el);
+        else if (ref) (ref as React.MutableRefObject<HTMLElement | null>).current = el;
+      },
+      [ref],
+    );
+
+    // Shared across all three elements. `value` is deliberately left out: the
+    // number field takes a number where the others take a string.
+    const shared = {
+      ref: setRefs,
+      className,
+      ...(id ? { 'input-id': id } : {}),
+      ...(required ? { required: true as const } : {}),
+      ...(disabled ? { disabled: true as const } : {}),
+      ...(readOnly ? { readonly: true as const } : {}),
+      ...(error ? { invalid: true as const, unmet: ERROR_ID } : {}),
+      ...(label ? {} : { 'accessible-label': placeholder ?? '' }),
+      ...(placeholder ? { placeholder } : {}),
+      ...(name ? { name } : {}),
+      ...(autoComplete ? { autocomplete: autoComplete } : {}),
+      ...(rest.maxLength !== undefined ? { maxlength: rest.maxLength } : {}),
+      ...(rest.minLength !== undefined ? { minlength: rest.minLength } : {}),
+    };
+
+    const stringValue = value !== undefined ? String(value) : undefined;
+
+    let field;
+    if (type === 'number') {
+      const numeric =
+        stringValue === undefined || stringValue === '' ? undefined : Number(stringValue);
+      field = (
+        <nldd-number-field
+          {...shared}
+          {...(numeric !== undefined && !Number.isNaN(numeric) ? { value: numeric } : {})}
+        />
+      );
+    } else if (type === 'date') {
+      field = <nldd-date-field {...shared} {...(stringValue ? { value: stringValue } : {})} />;
+    } else {
+      // Only the four types the element supports reach its `type`; anything else
+      // (password, search, ...) falls back to a plain text field rather than
+      // landing an attribute the element does not understand.
+      const textType =
+        TEXT_TYPES.has(type) && type !== 'text' ? (type as 'email' | 'tel' | 'url') : undefined;
+      field = (
+        <nldd-text-field
+          {...shared}
+          {...(stringValue !== undefined ? { value: stringValue } : {})}
+          {...(textType ? { type: textType } : {})}
+        />
+      );
+    }
+
+    if (!label) return field;
 
     return (
-      <div className="space-y-1.5">
-        {label && (
-          <label
-            htmlFor={inputId}
-            className="block text-sm font-medium text-text"
-          >
-            {label}
-            {props.required && (
-              <span className="text-red-500 ml-0.5">*</span>
-            )}
-          </label>
+      <nldd-form-field label={label} {...(required ? {} : { optional: true })}>
+        {field}
+        {error ? (
+          <nldd-validation-list>
+            <nldd-validation-item id={ERROR_ID}>{error}</nldd-validation-item>
+          </nldd-validation-list>
+        ) : (
+          helperText && <nldd-form-field-help-text>{helperText}</nldd-form-field-help-text>
         )}
-        <input
-          ref={ref}
-          id={inputId}
-          className={twMerge(
-            clsx(
-              'block w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-text',
-              'placeholder:text-text-secondary/50',
-              'transition-colors duration-150',
-              'focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500',
-              error
-                ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500'
-                : 'border-border hover:border-border-hover',
-              className,
-            ),
-          )}
-          {...props}
-        />
-        {error && <p className="text-xs text-red-600">{error}</p>}
-        {helperText && !error && (
-          <p className="text-xs text-text-secondary">{helperText}</p>
-        )}
-      </div>
+      </nldd-form-field>
     );
   },
 );

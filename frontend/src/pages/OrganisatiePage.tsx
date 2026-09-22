@@ -1,14 +1,16 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Building2, Search, X } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
+import { Select } from '@/components/common/Select';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { OrganisatieTree } from '@/components/organisatie/OrganisatieTree';
 import { OrganisatieDetail } from '@/components/organisatie/OrganisatieDetail';
 import { OrganisatieForm } from '@/components/organisatie/OrganisatieForm';
 import { PersonEditForm } from '@/components/people/PersonEditForm';
+import { Icon } from '@/components/nldd/Icon';
+import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
 import {
   useOrganisatieTree,
   useCreateOrganisatieEenheid,
@@ -20,6 +22,37 @@ import { usePersonFormSubmit } from '@/hooks/usePersonFormSubmit';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { todayISO } from '@/utils/dates';
 import type { OrganisatieEenheid, OrganisatieEenheidCreate, OrganisatieEenheidUpdate, Person } from '@/types';
+
+/** Reads `checked` off an nldd-checkbox-field's `change` detail. */
+function checkedValue(event: Event): boolean {
+  return Boolean((event as CustomEvent<{ checked?: boolean }>).detail?.checked);
+}
+
+function HistorischCheckbox({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', useCallback((e: Event) => onChange(checkedValue(e)), [onChange]));
+  return <nldd-checkbox-field ref={ref} label="Historisch" checked={orUndef(checked)} />;
+}
+
+/** The organisatie tree search field: `nldd-search-field` with its `input` event bridged to React. */
+function OrganisatieSearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
+  return (
+    <nldd-search-field
+      ref={ref}
+      value={value}
+      placeholder="Zoek organisatie of afkorting..."
+      accessible-label="Zoek organisatie of afkorting"
+    />
+  );
+}
 
 export function OrganisatiePage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -210,33 +243,31 @@ export function OrganisatiePage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner className="py-12" />;
+    return <LoadingSpinner padding="48" />;
   }
 
   const isEmpty = tree.length === 0;
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <p className="text-sm text-text-secondary">
+      <nldd-toolbar label="Organisatieacties">
+        <nldd-toolbar-item slot="start" priority={1}>
+          <nldd-text size="sm" color="secondary">
             Beheer de organisatiestructuur: Ministerie, DG, Directie, Afdeling, Team.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            icon={<Plus className="h-4 w-4" />}
-            onClick={() => handleAdd(null)}
-          >
-            <span className="hidden sm:inline">Eenheid toevoegen</span>
+          </nldd-text>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end">
+          <Button icon="plus" onClick={() => handleAdd(null)}>
+            Eenheid toevoegen
           </Button>
-        </div>
-      </div>
+          <nldd-menu-item slot="overflow" text="Eenheid toevoegen" icon="plus" />
+        </nldd-toolbar-item>
+      </nldd-toolbar>
 
       {isEmpty ? (
         <EmptyState
-          icon={<Building2 className="h-16 w-16" />}
+          icon="apartment-building"
           title="Nog geen organisatie-eenheden"
           description="Begin met het opzetten van de organisatiestructuur door een top-niveau eenheid toe te voegen."
           action={
@@ -246,72 +277,48 @@ export function OrganisatiePage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <nldd-container layout="grid" column-count={1} lg-column-count={3} gap="24">
           {/* Left panel: Tree */}
-          <div className="lg:col-span-1">
-            <Card>
-              <div className="p-2">
-                <div className="relative mb-2">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Zoek organisatie of afkorting..."
-                    className="w-full pl-8 pr-8 py-1.5 text-sm rounded border border-gray-200 focus:border-primary-500 focus:outline-none"
-                  />
-                  {searchTerm && (
-                    <button
-                      onClick={() => setSearchTerm('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 flex items-center justify-center text-text-secondary hover:text-text"
-                      title="Wis zoekterm"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center justify-between gap-2 mb-2 px-1">
-                  <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={includeHistorisch}
-                      onChange={(e) => setIncludeHistorisch(e.target.checked)}
-                      className="h-3 w-3"
-                    />
-                    Historisch
-                  </label>
-                  <select
+          <Card>
+            <nldd-container gap="8" padding="8">
+              <OrganisatieSearchField value={searchTerm} onChange={setSearchTerm} />
+              <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center" padding-inline="4">
+                <HistorischCheckbox checked={includeHistorisch} onChange={setIncludeHistorisch} />
+                <nldd-container width="160px">
+                  <Select
                     value={bronFilter}
-                    onChange={(e) =>
-                      setBronFilter(e.target.value as typeof bronFilter)
-                    }
-                    className="text-xs rounded border border-gray-200 bg-white px-1 py-0.5"
-                    title="Filter op bron"
-                  >
-                    <option value="alle">Alle bronnen</option>
-                    <option value="handmatig">Alleen handmatig</option>
-                    <option value="tooi">Alleen TOOI</option>
-                    <option value="scrape">Alleen scrape/import</option>
-                  </select>
-                </div>
-                <OrganisatieTree
-                  tree={filteredTree}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                  onAdd={handleAdd}
-                  onDropPerson={handleDropPerson}
-                  searchTerm={searchTerm}
-                  expandedByDefaultIds={expandedByDefaultIds}
-                />
-              </div>
-            </Card>
-          </div>
+                    onChange={(e) => setBronFilter(e.target.value as typeof bronFilter)}
+                    // `title` is a tooltip, not a name: a screen reader
+                    // announces the select as unlabelled and reads only the
+                    // selected option, so "Alleen TOOI" arrives without
+                    // anything saying what it filters.
+                    aria-label="Filter op bron"
+                    options={[
+                      { value: 'alle', label: 'Alle bronnen' },
+                      { value: 'handmatig', label: 'Alleen handmatig' },
+                      { value: 'tooi', label: 'Alleen TOOI' },
+                      { value: 'scrape', label: 'Alleen scrape/import' },
+                    ]}
+                  />
+                </nldd-container>
+              </nldd-container>
+              <OrganisatieTree
+                tree={filteredTree}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onAdd={handleAdd}
+                onDropPerson={handleDropPerson}
+                searchTerm={searchTerm}
+                expandedByDefaultIds={expandedByDefaultIds}
+              />
+            </nldd-container>
+          </Card>
 
-          {/* Right panel: Detail */}
-          <div className="lg:col-span-2">
+          {/* Right panel: Detail — spans the remaining two columns at lg */}
+          <div style={{ gridColumn: 'span 2' }}>
             {selectedId ? (
               <Card>
-                <div className="p-2">
+                <nldd-container padding="8">
                   <OrganisatieDetail
                     selectedId={selectedId}
                     onEdit={handleEdit}
@@ -323,18 +330,20 @@ export function OrganisatiePage() {
                     onDragStartPerson={handleDragStartPerson}
                     onDropPerson={handleDropPerson}
                   />
-                </div>
+                </nldd-container>
               </Card>
             ) : (
               <Card>
-                <div className="text-center py-12 text-text-secondary">
-                  <Building2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">Selecteer een eenheid in de boomstructuur.</p>
-                </div>
+                <nldd-container gap="12" padding="48" horizontal-alignment="center">
+                  <Icon name="apartment-building" size="32" style={{ opacity: 0.3 }} aria-hidden="true" />
+                  <nldd-text size="sm" color="secondary" horizontal-alignment="center">
+                    Selecteer een eenheid in de boomstructuur.
+                  </nldd-text>
+                </nldd-container>
               </Card>
             )}
           </div>
-        </div>
+        </nldd-container>
       )}
 
       {/* Create/Edit org form */}
@@ -361,6 +370,6 @@ export function OrganisatiePage() {
         defaultOrgEenheidId={selectedId || undefined}
         createdApiKey={createdApiKey}
       />
-    </div>
+    </nldd-container>
   );
 }

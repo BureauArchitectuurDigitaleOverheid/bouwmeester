@@ -1,96 +1,110 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { Modal } from './Modal';
 
+/**
+ * The modal renders `nldd-window` + `nldd-page`, so these assert the contract
+ * rather than the markup.
+ *
+ * Three things belong in the Playwright suite instead, because jsdom cannot
+ * reach them:
+ *
+ *  - Escape and the backdrop click are the native <dialog>'s own behaviour.
+ *    jsdom does not implement `showModal`, so there is no dialog to press
+ *    Escape against.
+ *  - The close button lives in nldd-top-title-bar's shadow root, which Lit
+ *    never renders under jsdom, so there is no button to click.
+ *  - The window is always mounted (it opens and closes through show()/hide()
+ *    so the animation plays), so the closed state is "not open", not "not
+ *    rendered".
+ */
 describe('Modal', () => {
-  it('renders nothing when not open', () => {
-    render(
+  const win = (container: HTMLElement) => container.querySelector('nldd-window');
+  const bar = (container: HTMLElement) => container.querySelector('nldd-top-title-bar');
+
+  it('stays mounted but closed when not open', () => {
+    const { container } = render(
       <Modal open={false} onClose={vi.fn()} title="Test">
         Content
       </Modal>,
     );
-    expect(screen.queryByText('Test')).not.toBeInTheDocument();
-    expect(screen.queryByText('Content')).not.toBeInTheDocument();
+    // Mounted, so the enter animation has something to animate.
+    expect(win(container)).toBeInTheDocument();
+    expect(win(container)).not.toHaveAttribute('open');
   });
 
-  it('renders title and children when open', () => {
-    render(
-      <Modal open={true} onClose={vi.fn()} title="Bewerken">
+  it('puts the title on the title bar', () => {
+    const { container } = render(
+      <Modal open onClose={vi.fn()} title="Bewerken">
         <p>Modal inhoud</p>
       </Modal>,
     );
-    expect(screen.getByText('Bewerken')).toBeInTheDocument();
+    expect(bar(container)).toHaveAttribute('text', 'Bewerken');
     expect(screen.getByText('Modal inhoud')).toBeInTheDocument();
   });
 
-  it('renders footer when provided', () => {
+  it('names the window for assistive technology', () => {
+    const { container } = render(
+      <Modal open onClose={vi.fn()} title="Taak bewerken">
+        Content
+      </Modal>,
+    );
+    expect(win(container)).toHaveAttribute('accessible-label', 'Taak bewerken');
+  });
+
+  it('renders the footer in the page footer slot', () => {
     render(
-      <Modal open={true} onClose={vi.fn()} title="Test" footer={<button>Opslaan</button>}>
+      <Modal open onClose={vi.fn()} title="Test" footer={<button>Opslaan</button>}>
         Body
       </Modal>,
     );
-    expect(screen.getByText('Opslaan')).toBeInTheDocument();
+    const action = screen.getByText('Opslaan');
+    expect(action).toBeInTheDocument();
+    expect(action.closest('[slot="footer"]')).not.toBeNull();
   });
 
-  it('calls onClose when close button is clicked', async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    render(
-      <Modal open={true} onClose={onClose} title="Sluiten">
-        Content
-      </Modal>,
-    );
-
-    // The close button contains an X icon - find the button near the title
-    const buttons = screen.getAllByRole('button');
-    await user.click(buttons[0]); // Close button is first
-    expect(onClose).toHaveBeenCalledOnce();
-  });
-
-  it('calls onClose when Escape is pressed', async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    render(
-      <Modal open={true} onClose={onClose} title="Escape test">
-        Content
-      </Modal>,
-    );
-
-    await user.keyboard('{Escape}');
-    expect(onClose).toHaveBeenCalledOnce();
-  });
-
-  it('calls onClose when overlay is clicked', async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
+  it('offers a dismiss button when closeable', () => {
     const { container } = render(
-      <Modal open={true} onClose={onClose} title="Overlay">
+      <Modal open onClose={vi.fn()} title="Sluiten">
         Content
       </Modal>,
     );
-
-    // Wait past the 250ms suppression window applied at mount
-    await new Promise((r) => setTimeout(r, 300));
-
-    const overlay = container.querySelector('.backdrop-blur-sm');
-    if (overlay) await user.click(overlay);
-    expect(onClose).toHaveBeenCalledOnce();
+    expect(bar(container)).toHaveAttribute('dismiss-text', 'Sluiten');
   });
 
-  it('ignores overlay clicks within 250ms of opening (drag-and-drop guard)', async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
+  it('offers no dismiss and no light dismiss when not closeable', () => {
     const { container } = render(
-      <Modal open={true} onClose={onClose} title="Drop">
+      <Modal open closeable={false} onClose={vi.fn()} title="Vast">
         Content
       </Modal>,
     );
+    expect(bar(container)).not.toHaveAttribute('dismiss-text');
+    // A click on the backdrop must not throw away work either.
+    expect(win(container)).toHaveAttribute('no-light-dismiss');
+  });
 
-    // Click immediately, simulating the synthetic post-drop click from
-    // Outlook on Windows/Citrix.
-    const overlay = container.querySelector('.backdrop-blur-sm');
-    if (overlay) await user.click(overlay);
-    expect(onClose).not.toHaveBeenCalled();
+  it('shows a back affordance only with both a label and a handler', () => {
+    const withBoth = render(
+      <Modal open onClose={vi.fn()} title="Sub" backLabel="Taak" onBack={vi.fn()}>
+        Content
+      </Modal>,
+    );
+    expect(bar(withBoth.container)).toHaveAttribute('back-text', 'Terug naar Taak');
+
+    const labelOnly = render(
+      <Modal open onClose={vi.fn()} title="Sub" backLabel="Taak">
+        Content
+      </Modal>,
+    );
+    expect(bar(labelOnly.container)).not.toHaveAttribute('back-text');
+  });
+
+  it('names the entity type as supporting text', () => {
+    const { container } = render(
+      <Modal open onClose={vi.fn()} title="Iets" entityLabel="Taak">
+        Content
+      </Modal>,
+    );
+    expect(bar(container)).toHaveAttribute('supporting-text', 'Taak');
   });
 });

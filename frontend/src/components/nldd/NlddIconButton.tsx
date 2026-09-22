@@ -1,0 +1,61 @@
+/**
+ * `nldd-icon-button` with a React-shaped onClick.
+ *
+ * An icon-only control has no visible label, so `accessibleLabel` is required
+ * rather than optional: without it the button is announced as nothing.
+ */
+import { useCallback, useRef } from 'react';
+import { useNlddEvent } from './events';
+
+interface NlddIconButtonProps {
+  /** An nldd-icon name from the closed set. */
+  icon: string;
+  /** Required: the button shows no text, so this is its whole accessible name. */
+  accessibleLabel: string;
+  onClick?: () => void;
+  variant?:
+    | 'primary'
+    | 'secondary'
+    | 'destructive'
+    | 'accent-filled'
+    | 'accent-transparent'
+    | 'neutral-tinted'
+    | 'neutral-base'
+    | 'neutral-transparent'
+    | 'critical-tinted'
+    | 'critical-transparent'
+    | 'inherit-filled'
+    | 'inherit-tinted';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
+  disabled?: boolean;
+  type?: 'button' | 'submit' | 'reset';
+  className?: string;
+}
+
+export function NlddIconButton({
+  icon,
+  accessibleLabel,
+  onClick,
+  variant = 'neutral-transparent',
+  size = 'md',
+  disabled,
+  type = 'button',
+  className,
+}: NlddIconButtonProps) {
+  const ref = useRef<HTMLElement>(null);
+  const handler = useCallback(() => onClick?.(), [onClick]);
+  useNlddEvent(ref, 'click', onClick ? handler : undefined);
+
+  return (
+    <nldd-icon-button
+      ref={ref}
+      icon={icon}
+      variant={variant}
+      size={size}
+      type={type}
+      accessible-label={accessibleLabel}
+      className={className}
+      {...(disabled ? { disabled: true } : {})}
+    />
+  );
+}

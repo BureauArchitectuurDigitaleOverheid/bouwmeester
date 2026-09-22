@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Plus, LayoutList, Columns3, User } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
 import { Button } from '@/components/common/Button';
 import { ViewToggle } from '@/components/common/ViewToggle';
 import type { ViewToggleOption } from '@/components/common/ViewToggle';
@@ -26,9 +26,9 @@ import type { SelectOption } from '@/components/common/CreatableSelect';
 type ViewMode = 'list' | 'board' | 'personal';
 
 const VIEW_OPTIONS: ViewToggleOption<ViewMode>[] = [
-  { value: 'list', label: 'Lijst', icon: <LayoutList className="h-3.5 w-3.5" /> },
-  { value: 'board', label: 'Bord', icon: <Columns3 className="h-3.5 w-3.5" /> },
-  { value: 'personal', label: 'Persoonlijk', icon: <User className="h-3.5 w-3.5" /> },
+  { value: 'list', label: 'Lijst', icon: <Icon name="list" size="sm" /> },
+  { value: 'board', label: 'Bord', icon: <Icon name="columns-3" size="sm" /> },
+  { value: 'personal', label: 'Persoonlijk', icon: <Icon name="person" size="sm" /> },
 ];
 
 const VIEW_STORAGE_KEY = 'tasks-view-mode';
@@ -130,62 +130,74 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
   }, [tasks, statusFilter, priorityFilter, personFilter, eenheidFilter, currentPerson]);
 
   return (
-    <div className="space-y-6">
-      {/* Toolbar */}
-      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
-        {/* View toggle + New task (above filters on mobile/tablet, right on xl) */}
-        <div className="flex items-center gap-2 shrink-0 order-first xl:order-last">
+    <nldd-container gap="24">
+      {/* The view switcher and the new-task action, right-aligned, with the
+          filters below. nldd-toolbar owns the start/end split, so "push this
+          to the right" is a slot rather than a spacer, and it moves items into
+          an overflow menu when the row runs out of room. Same structure as
+          CorpusPage. */}
+      <nldd-toolbar label="Taakacties">
+        <nldd-toolbar-item slot="end" priority={3}>
+          {/* A view switcher, not a single action, so it gets the highest
+              priority: a lower number overflows FIRST, and a switcher that
+              disappears into a menu leaves no way to tell which view you are
+              looking at. Matches CorpusPage. */}
           <ViewToggle value={viewMode} onChange={handleViewChange} options={VIEW_OPTIONS} />
-
-          <Button
-            icon={<Plus className="h-4 w-4" />}
-            onClick={() => setShowCreateForm(true)}
-          >
-            <span className="hidden sm:inline">Nieuwe taak</span>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end" priority={2}>
+          <Button icon="plus" onClick={() => setShowCreateForm(true)}>
+            {/* This className is not styling: Button's own responsive-label logic
+                (see components/common/Button.tsx) reads "hidden-below-sm" to find
+                the text it should fall back to as the accessible name when the
+                label itself is hidden below sm. It is a marker Button parses. */}
+            <span className="hidden-below-sm">Nieuwe taak</span>
           </Button>
-        </div>
+          <nldd-menu-item slot="overflow" text="Nieuwe taak" icon="plus"></nldd-menu-item>
+        </nldd-toolbar-item>
+      </nldd-toolbar>
 
-        {/* Filters */}
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
-          <div className="w-full sm:w-44">
-            <CreatableSelect
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={statusOptions}
-              placeholder="Alle statussen"
-              searchable={false}
-            />
-          </div>
+      {/* Filters, in one flat wrap. Each keeps a min-width: that is what stops
+          a fit-content container from collapsing, since it then has something
+          of its own to measure rather than waiting on its children. */}
+      <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+        <nldd-container width="fit-content" min-width="176px">
+          <CreatableSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={statusOptions}
+            placeholder="Alle statussen"
+            searchable={false}
+          />
+        </nldd-container>
 
-          <div className="w-full sm:w-44">
-            <CreatableSelect
-              value={priorityFilter}
-              onChange={setPriorityFilter}
-              options={priorityOptions}
-              placeholder="Alle prioriteiten"
-              searchable={false}
-            />
-          </div>
+        <nldd-container width="fit-content" min-width="176px">
+          <CreatableSelect
+            value={priorityFilter}
+            onChange={setPriorityFilter}
+            options={priorityOptions}
+            placeholder="Alle prioriteiten"
+            searchable={false}
+          />
+        </nldd-container>
 
-          <div className="w-full sm:w-52">
-            <CreatableSelect
-              value={personFilter}
-              onChange={setPersonFilter}
-              options={personOptions}
-              placeholder="Alle personen"
-            />
-          </div>
+        <nldd-container width="fit-content" min-width="208px">
+          <CreatableSelect
+            value={personFilter}
+            onChange={setPersonFilter}
+            options={personOptions}
+            placeholder="Alle personen"
+          />
+        </nldd-container>
 
-          <div className="w-full sm:w-52">
-            <CreatableSelect
-              value={eenheidFilter}
-              onChange={setEenheidFilter}
-              options={eenheidOptions}
-              placeholder="Alle eenheden"
-            />
-          </div>
-        </div>
-      </div>
+        <nldd-container width="fit-content" min-width="208px">
+          <CreatableSelect
+            value={eenheidFilter}
+            onChange={setEenheidFilter}
+            options={eenheidOptions}
+            placeholder="Alle eenheden"
+          />
+        </nldd-container>
+      </nldd-container>
 
       {/* Content */}
       {viewMode === 'list' ? (
@@ -202,6 +214,6 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
         onClose={() => setShowCreateForm(false)}
         nodeId={defaultNodeId}
       />
-    </div>
+    </nldd-container>
   );
 }

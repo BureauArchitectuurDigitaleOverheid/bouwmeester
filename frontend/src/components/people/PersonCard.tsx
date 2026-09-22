@@ -1,5 +1,8 @@
-import { Mail, Briefcase, Phone, Tag } from 'lucide-react';
+import { useRef } from 'react';
 import { Card } from '@/components/common/Card';
+import { Badge } from '@/components/common/Badge';
+import { Icon } from '@/components/nldd/Icon';
+import { useNlddEvent } from '@/components/nldd/events';
 import { PersonAvatar } from '@/components/people/PersonAvatar';
 import { formatFunctie } from '@/types';
 import { richTextToPlain } from '@/utils/richtext';
@@ -12,68 +15,86 @@ interface PersonCardProps {
   onDragStart?: (e: React.DragEvent, person: Person) => void;
 }
 
+interface ContactLinkProps {
+  href: string;
+  text: string;
+  startIcon: string;
+}
+
+/**
+ * `nldd-link` for a contact detail (email, phone) inside a card that is
+ * itself clickable. The click bubbles same as a native anchor would, so it
+ * is stopped here before it reaches the card's own open-detail handler.
+ */
+function ContactLink({ href, text, startIcon }: ContactLinkProps) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', (e) => e.stopPropagation());
+  return (
+    <nldd-link ref={ref} href={href} text={text} start-icon={startIcon} size="xs" />
+  );
+}
+
 export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCardProps) {
+  const email = person.default_email || person.email;
+
   return (
     <Card
-      hoverable
+      // Only a button when there is something to activate. Without a handler
+      // it is a card that happens to be draggable, and announcing it as a
+      // button offers a control that does nothing.
+      {...(onClick ? { actionLabel: person.naam } : { hoverable: false })}
       onClick={onClick ? () => onClick(person) : undefined}
       draggable={draggable}
       onDragStart={onDragStart ? (e: React.DragEvent) => onDragStart(e, person) : undefined}
     >
-      <div className="flex items-start gap-3">
-        <PersonAvatar person={person} />
+      {/*
+        The identity carries the avatar and the name; the details sit under it
+        rather than inside its `supporting-text` slot.
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-text truncate">
-              {person.naam}
-            </h3>
-            {person.is_agent && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">
-                Agent
-              </span>
-            )}
-          </div>
+        That slot is a flex column sized by its content, with no `flex: 1`. An
+        nldd-container slotted into it is a block with no intrinsic width, so
+        the column has nothing to measure and collapses to zero: the name then
+        wraps after every word and the card triples in height.
 
-          <div className="space-y-1 mt-1.5">
-            {(person.default_email || person.email) && (
-              <a
-                href={`mailto:${person.default_email || person.email}`}
-                className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary-600 transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Mail className="h-3 w-3 shrink-0" />
-                <span className="truncate">{person.default_email || person.email}</span>
-              </a>
-            )}
-            {person.default_phone && (
-              <a
-                href={`tel:${person.default_phone}`}
-                className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary-600 transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Phone className="h-3 w-3 shrink-0" />
-                <span className="truncate">{person.default_phone}</span>
-              </a>
-            )}
-            {person.functie && (
-              <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-                <Briefcase className="h-3 w-3 shrink-0" />
-                <span className="truncate">{formatFunctie(person.functie)}</span>
-              </div>
-            )}
-            {person.expertise && (
-              <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-                <Tag className="h-3 w-3 shrink-0" />
-                <span className="truncate">{person.expertise}</span>
-              </div>
-            )}
-            {person.is_agent && person.description && (
-              <p className="text-xs text-text-secondary truncate">{richTextToPlain(person.description)}</p>
-            )}
+        The slots take rich text (a link, a <time>), not a layout of their own.
+      */}
+      <nldd-container gap="8">
+        <nldd-identity text={person.naam}>
+          {/* The avatar composes its own online dot, so it is slotted rather
+              than left to nldd-identity's avatar-src (which only takes an
+              image). */}
+          <div slot="avatars">
+            <PersonAvatar person={person} />
           </div>
-        </div>
-      </div>
+          {person.is_agent && (
+            <span slot="text">
+              {person.naam} <Badge variant="purple">Agent</Badge>
+            </span>
+          )}
+        </nldd-identity>
+
+        <nldd-container gap="4">
+          {email && <ContactLink href={`mailto:${email}`} text={email} startIcon="envelope" />}
+          {person.default_phone && (
+            <ContactLink href={`tel:${person.default_phone}`} text={person.default_phone} startIcon="at" />
+          )}
+          {person.functie && (
+            <nldd-container layout="row" gap="6" vertical-alignment="center">
+              <Icon name="Briefcase" size="xs" />
+              <nldd-text size="xs" color="secondary">{formatFunctie(person.functie)}</nldd-text>
+            </nldd-container>
+          )}
+          {person.expertise && (
+            <nldd-container layout="row" gap="6" vertical-alignment="center">
+              <Icon name="Tag" size="xs" />
+              <nldd-text size="xs" color="secondary">{person.expertise}</nldd-text>
+            </nldd-container>
+          )}
+          {person.is_agent && person.description && (
+            <nldd-text size="xs" color="secondary">{richTextToPlain(person.description)}</nldd-text>
+          )}
+        </nldd-container>
+      </nldd-container>
     </Card>
   );
 }

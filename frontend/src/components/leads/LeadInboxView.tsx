@@ -1,9 +1,9 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
-import { Inbox, UserPlus, Snowflake, ChevronDown, Users, Paperclip, Calendar } from 'lucide-react';
+import { useMemo, useState, useRef, useCallback } from 'react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { Button } from '@/components/common/Button';
+import { NlddButton } from '@/components/nldd/NlddLink';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
+import { orUndef, useNlddEvent, useNlddOverlay } from '@/components/nldd/events';
 import { useLeads, useUpdateLead, useMoveLead } from '@/hooks/useLeads';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -58,19 +58,6 @@ export function LeadInboxView({
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [assignDropdownId, setAssignDropdownId] = useState<string | null>(null);
-  const assignDropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close assign dropdown on click outside
-  useEffect(() => {
-    if (!assignDropdownId) return;
-    const handleClick = (e: MouseEvent) => {
-      if (assignDropdownRef.current && !assignDropdownRef.current.contains(e.target as Node)) {
-        setAssignDropdownId(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [assignDropdownId]);
 
   const filteredLeads = useMemo(() => {
     if (!leads) return [];
@@ -167,13 +154,13 @@ export function LeadInboxView({
   );
 
   if (isLoading) {
-    return <LoadingSpinner className="py-8" />;
+    return <LoadingSpinner padding="32" />;
   }
 
   if (filteredLeads.length === 0) {
     return (
       <EmptyState
-        icon={<Inbox className="h-10 w-10" />}
+        icon="inbox"
         title="Geen nieuwe leads"
         description="Alles is opgepakt! Nieuwe leads verschijnen hier automatisch."
       />
@@ -183,38 +170,43 @@ export function LeadInboxView({
   const groupOrder: DateGroup[] = ['vandaag', 'gisteren', 'deze_week', 'ouder'];
 
   return (
-    <div className="space-y-2">
+    <nldd-container gap="8">
       {/* Batch action bar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 rounded-xl bg-primary-50 border border-primary-200 px-4 py-2.5">
-          <span className="text-sm font-medium text-primary-700">
-            {selectedIds.size} geselecteerd
-          </span>
-          <Button size="sm" onClick={handleBatchClaim} disabled={!currentPerson}>
-            Oppakken
-          </Button>
-          <Button size="sm" variant="secondary" onClick={handleBatchKoelkast}>
-            Koelkast
-          </Button>
-          <button
-            onClick={() => setSelectedIds(new Set())}
-            className="ml-auto text-sm text-text-secondary hover:text-text"
-          >
-            Deselecteren
-          </button>
-        </div>
+        <nldd-banner variant="accent" size="sm" text={`${selectedIds.size} geselecteerd`}>
+          <div slot="actions">
+            <NlddButton
+              size="sm"
+              text="Oppakken"
+              onClick={handleBatchClaim}
+              disabled={!currentPerson}
+            />
+            <NlddButton
+              size="sm"
+              variant="secondary"
+              text="Koelkast"
+              onClick={handleBatchKoelkast}
+            />
+            <NlddButton
+              size="sm"
+              variant="neutral-transparent"
+              text="Deselecteren"
+              onClick={() => setSelectedIds(new Set())}
+            />
+          </div>
+        </nldd-banner>
       )}
 
       {/* Select all */}
       {filteredLeads.length > 1 && selectedIds.size === 0 && (
-        <div className="px-3">
-          <button
+        <nldd-container padding-inline="12">
+          <NlddButton
+            size="xs"
+            variant="neutral-transparent"
+            text={`Alles selecteren (${filteredLeads.length})`}
             onClick={toggleSelectAll}
-            className="text-xs text-text-secondary hover:text-text transition-colors"
-          >
-            Alles selecteren ({filteredLeads.length})
-          </button>
-        </div>
+          />
+        </nldd-container>
       )}
 
       {groupOrder.map((group) => {
@@ -222,148 +214,192 @@ export function LeadInboxView({
         if (items.length === 0) return null;
 
         return (
-          <div key={group}>
-            <div className="px-3 py-1.5">
-              <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
+          <nldd-container key={group} gap="0">
+            <nldd-container padding-inline="12" padding-block="6">
+              <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {DATE_GROUP_LABELS[group]}
-              </span>
-            </div>
+              </nldd-text>
+            </nldd-container>
 
-            <div className="space-y-1">
+            <nldd-list variant="simple" dividers="always" accessible-label={`Leads: ${DATE_GROUP_LABELS[group]}`}>
               {items.map((lead) => (
-                <div
+                <LeadInboxRow
                   key={lead.id}
-                  className="group flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-xl border border-border bg-white px-3 sm:px-4 py-3 hover:border-primary-200 hover:shadow-sm transition-all"
-                >
-                  <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                    {/* Checkbox */}
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(lead.id)}
-                      onChange={() => toggleSelect(lead.id)}
-                      className="h-4 w-4 mt-0.5 sm:mt-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500 shrink-0"
-                    />
-
-                    {/* Main content - clickable */}
-                    <button
-                      onClick={() => openLeadDetail(lead.id)}
-                      className="flex-1 min-w-0 text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-text truncate block w-full">
-                          {lead.title}
-                        </span>
-                      </div>
-
-                      {lead.description && (
-                        <div className="text-xs text-text-secondary mt-1 line-clamp-2 break-words [&_p]:m-0 [&_p]:leading-snug">
-                          <RichTextDisplay content={lead.description} fallback="" />
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-1 text-xs text-text-secondary">
-                        {lead.brought_by && (
-                          <span className="truncate max-w-[160px]">via {lead.brought_by.naam}</span>
-                        )}
-                        {lead.organization && (
-                          <span className="truncate max-w-[160px]">
-                            {lead.organisatie_eenheid?.naam ?? lead.organization}
-                          </span>
-                        )}
-                        {lead.contact_names.length > 0 && (
-                          <span className="inline-flex items-center gap-0.5 truncate max-w-[160px]" title={lead.contact_names.join(', ')}>
-                            <Users className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{lead.contact_names[0]}</span>
-                            {lead.contact_names.length > 1 && (
-                              <span className="shrink-0">+{lead.contact_names.length - 1}</span>
-                            )}
-                          </span>
-                        )}
-                        {lead.next_action_date && (
-                          <span className="inline-flex items-center gap-0.5">
-                            <Calendar className="h-3 w-3" />
-                            {formatDateShort(lead.next_action_date)}
-                          </span>
-                        )}
-                        {lead.attachment_count > 0 && (
-                          <span className="inline-flex items-center gap-0.5">
-                            <Paperclip className="h-3 w-3" />
-                            {lead.attachment_count}
-                          </span>
-                        )}
-                        <span>{timeAgo(lead.created_at)}</span>
-                      </div>
-
-                      {lead.tags.length > 0 && (
-                        <div className="flex gap-1 flex-wrap mt-1">
-                          {lead.tags.slice(0, 4).map((tag) => (
-                            <span
-                              key={tag}
-                              className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-text-secondary truncate max-w-[160px]"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                          {lead.tags.length > 4 && (
-                            <span className="text-[10px] text-text-secondary">+{lead.tags.length - 4}</span>
-                          )}
-                        </div>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Actions - always visible on mobile, hover-revealed on desktop */}
-                  <div className="flex items-center gap-1.5 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity shrink-0 ml-7 sm:ml-0">
-                    <Button
-                      size="sm"
-                      onClick={() => handleClaim(lead)}
-                      disabled={!currentPerson}
-                      title="Zelf oppakken"
-                    >
-                      Oppakken
-                    </Button>
-
-                    <div className="relative" ref={assignDropdownId === lead.id ? assignDropdownRef : undefined}>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        icon={<UserPlus className="h-3.5 w-3.5" />}
-                        onClick={() =>
-                          setAssignDropdownId(
-                            assignDropdownId === lead.id ? null : lead.id,
-                          )
-                        }
-                        title="Toewijzen aan iemand anders"
-                      >
-                        <ChevronDown className="h-3 w-3" />
-                      </Button>
-
-                      {assignDropdownId === lead.id && (
-                        <div className="absolute right-0 top-full mt-1 z-20 w-56">
-                          <CreatableSelect
-                            value=""
-                            onChange={(personId) => handleAssign(lead.id, personId)}
-                            options={personOptions}
-                            placeholder="Zoek een persoon..."
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      icon={<Snowflake className="h-3.5 w-3.5" />}
-                      onClick={() => handleKoelkast(lead.id)}
-                      title="Naar koelkast"
-                    />
-                  </div>
-                </div>
+                  lead={lead}
+                  selected={selectedIds.has(lead.id)}
+                  onToggleSelect={() => toggleSelect(lead.id)}
+                  onOpen={() => openLeadDetail(lead.id)}
+                  onClaim={() => handleClaim(lead)}
+                  canClaim={!!currentPerson}
+                  assignOpen={assignDropdownId === lead.id}
+                  onToggleAssign={() =>
+                    setAssignDropdownId(assignDropdownId === lead.id ? null : lead.id)
+                  }
+                  onAssign={(personId) => handleAssign(lead.id, personId)}
+                  personOptions={personOptions}
+                  onKoelkast={() => handleKoelkast(lead.id)}
+                />
               ))}
-            </div>
-          </div>
+            </nldd-list>
+          </nldd-container>
         );
       })}
-    </div>
+    </nldd-container>
+  );
+}
+
+interface LeadInboxRowProps {
+  lead: Lead;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onOpen: () => void;
+  onClaim: () => void;
+  canClaim: boolean;
+  assignOpen: boolean;
+  onToggleAssign: () => void;
+  onAssign: (personId: string) => void;
+  personOptions: { value: string; label: string }[];
+  onKoelkast: () => void;
+}
+
+/**
+ * One inbox row: a checkbox segment, the clickable lead summary, and three
+ * action segments. `nldd-list-item` only supports one control type at a time
+ * (button/checkbox/href), so a row needing several lives entirely in segments
+ * — the item itself carries none of the three.
+ */
+function LeadInboxRow({
+  lead,
+  selected,
+  onToggleSelect,
+  onOpen,
+  onClaim,
+  canClaim,
+  assignOpen,
+  onToggleAssign,
+  onAssign,
+  personOptions,
+  onKoelkast,
+}: LeadInboxRowProps) {
+  const checkboxRef = useRef<HTMLElement>(null);
+  const openRef = useRef<HTMLElement>(null);
+  const claimRef = useRef<HTMLElement>(null);
+  const assignTriggerRef = useRef<HTMLElement>(null);
+  const koelkastRef = useRef<HTMLElement>(null);
+  const popoverRef = useRef<HTMLElement & { show?: () => void; hide?: () => void }>(null);
+
+  useNlddEvent(checkboxRef, 'change', onToggleSelect);
+  useNlddEvent(openRef, 'click', onOpen);
+  useNlddEvent(claimRef, 'click', useCallback(() => onClaim(), [onClaim]));
+  useNlddEvent(assignTriggerRef, 'click', onToggleAssign);
+  useNlddEvent(koelkastRef, 'click', useCallback(() => onKoelkast(), [onKoelkast]));
+  // The third argument is what carries a dismissal back up. `close` has
+  // `bubbles: false`, so an Escape or a click outside hid the element while
+  // the parent still had this lead in `assignDropdownId`. The next click on
+  // the trigger then only cleared that state, calling hide() on something
+  // already hidden: the popover took two clicks to reopen. The hook swallows
+  // the echo of its own hide(), so the toggle is safe to pass here.
+  useNlddOverlay(popoverRef, assignOpen, onToggleAssign);
+
+  return (
+    <nldd-list-item>
+      <nldd-list-item-segment ref={checkboxRef} checkbox checked={orUndef(selected)} accessible-label={`Selecteer ${lead.title}`} />
+
+      <nldd-list-item-segment ref={openRef} button width="full" accessible-label={lead.title}>
+        <nldd-text-cell text={lead.title}>
+          <span slot="supporting-text">
+            <nldd-container gap="4">
+              {lead.description && (
+                <nldd-text
+                  size="xs"
+                  color="secondary"
+                  style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                >
+                  <RichTextDisplay content={lead.description} fallback="" />
+                </nldd-text>
+              )}
+
+              <nldd-container layout="wrap" gap="4">
+                {lead.brought_by && (
+                  <nldd-text size="xs" color="secondary">via {lead.brought_by.naam}</nldd-text>
+                )}
+                {lead.organization && (
+                  <nldd-text size="xs" color="secondary">
+                    {lead.organisatie_eenheid?.naam ?? lead.organization}
+                  </nldd-text>
+                )}
+                {lead.contact_names.length > 0 && (
+                  <nldd-container layout="row" gap="2" vertical-alignment="center" title={lead.contact_names.join(', ')}>
+                    <nldd-icon name="users" size="16" aria-hidden="true" />
+                    <nldd-text size="xs" color="secondary">
+                      {lead.contact_names[0]}
+                      {lead.contact_names.length > 1 && ` +${lead.contact_names.length - 1}`}
+                    </nldd-text>
+                  </nldd-container>
+                )}
+                {lead.next_action_date && (
+                  <nldd-container layout="row" gap="2" vertical-alignment="center">
+                    <nldd-icon name="calendar" size="16" aria-hidden="true" />
+                    <nldd-text size="xs" color="secondary">{formatDateShort(lead.next_action_date)}</nldd-text>
+                  </nldd-container>
+                )}
+                {lead.attachment_count > 0 && (
+                  <nldd-container layout="row" gap="2" vertical-alignment="center">
+                    <nldd-icon name="paperclip" size="16" aria-hidden="true" />
+                    <nldd-text size="xs" color="secondary">{lead.attachment_count}</nldd-text>
+                  </nldd-container>
+                )}
+                <nldd-text size="xs" color="secondary">{timeAgo(lead.created_at)}</nldd-text>
+              </nldd-container>
+
+              {lead.tags.length > 0 && (
+                <nldd-container layout="wrap" gap="4">
+                  {lead.tags.slice(0, 4).map((tag) => (
+                    <nldd-tag key={tag} text={tag} color="neutral" size="sm" />
+                  ))}
+                  {lead.tags.length > 4 && (
+                    <nldd-text size="xs" color="secondary">+{lead.tags.length - 4}</nldd-text>
+                  )}
+                </nldd-container>
+              )}
+            </nldd-container>
+          </span>
+        </nldd-text-cell>
+      </nldd-list-item-segment>
+
+      <nldd-list-item-segment ref={claimRef} button disabled={orUndef(!canClaim)} accessible-label="Zelf oppakken">
+        Oppakken
+      </nldd-list-item-segment>
+
+      <nldd-list-item-segment
+        ref={assignTriggerRef}
+        button
+        id={`assign-trigger-${lead.id}`}
+        accessible-label="Toewijzen aan iemand anders"
+      >
+        <nldd-icon name="person-badge-plus" size="16" aria-hidden="true" />
+        <nldd-icon name="chevron-down" size="16" aria-hidden="true" />
+      </nldd-list-item-segment>
+      {/* Popovers render at the document root: this one sits after the row
+          rather than nested in it, anchored by id so it never gets sized by
+          the row's own layout. */}
+      <nldd-popover
+        ref={popoverRef}
+        anchor={`assign-trigger-${lead.id}`}
+        accessible-label="Toewijzen aan iemand anders"
+        width="280px"
+      >
+        <CreatableSelect
+          value=""
+          onChange={onAssign}
+          options={personOptions}
+          placeholder="Zoek een persoon..."
+        />
+      </nldd-popover>
+
+      <nldd-list-item-segment ref={koelkastRef} button accessible-label="Naar koelkast">
+        <nldd-icon name="snowflake" size="16" aria-hidden="true" />
+      </nldd-list-item-segment>
+    </nldd-list-item>
   );
 }

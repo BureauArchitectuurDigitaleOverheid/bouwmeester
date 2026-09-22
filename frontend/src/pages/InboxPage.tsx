@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import { Inbox, CheckSquare, CheckCheck, Network, TrendingUp, Users, Euro, X, BookOpen } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { InboxList } from '@/components/inbox/InboxList';
 import { MessageThread } from '@/components/inbox/MessageThread';
 import { EmptyState } from '@/components/common/EmptyState';
+import { useNlddEvent } from '@/components/nldd/events';
 import { useNotifications, useDashboardStats, useMarkAllNotificationsRead, useMarkNotificationRead } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -39,47 +39,35 @@ function GettingStartedCard() {
   const navigate = useNavigate();
   const { person, refreshAuthStatus } = useAuth();
   const dismissMutation = useDismissOnboardingFeature();
+  const bannerRef = useRef<HTMLElement>(null);
 
   const showIntro = person?.onboarding_features?.some(
     (f) => f.key === 'intro_handleiding',
   );
 
-  if (!showIntro) return null;
-
-  const handleDismiss = async () => {
+  const handleDismiss = useCallback(async () => {
     await dismissMutation.mutateAsync({ featureKey: 'intro_handleiding', permanent: true });
     await refreshAuthStatus();
-  };
+  }, [dismissMutation, refreshAuthStatus]);
+  useNlddEvent(bannerRef, 'dismiss', handleDismiss);
+
+  if (!showIntro) return null;
 
   return (
-    <Card className="border-primary-200 bg-primary-50/50">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3 flex-1">
-          <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-primary-100 text-primary-700 shrink-0">
-            <BookOpen className="h-5 w-5" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold text-text mb-1">
-              Nieuw hier?
-            </h3>
-            <p className="text-sm text-text-secondary mb-3">
-              Lees de introductie om te ontdekken wat je met Bouwmeester kunt doen en hoe je snel op weg komt.
-            </p>
-            <Button variant="primary" size="sm" onClick={() => navigate('/docs?tab=introductie')}>
-              Ontdek Bouwmeester
-            </Button>
-          </div>
-        </div>
-        <button
-          onClick={handleDismiss}
-          disabled={dismissMutation.isPending}
-          aria-label="Verberg introductie"
-          className="text-text-secondary hover:text-text p-1 shrink-0 disabled:opacity-50"
-        >
-          <X className="h-4 w-4" />
-        </button>
+    <nldd-banner
+      ref={bannerRef}
+      variant="accent"
+      icon="book"
+      text="Nieuw hier?"
+      supporting-text="Lees de introductie om te ontdekken wat je met Bouwmeester kunt doen en hoe je snel op weg komt."
+      dismissible
+    >
+      <div slot="actions">
+        <Button variant="primary" size="sm" onClick={() => navigate('/docs?tab=introductie')}>
+          Ontdek Bouwmeester
+        </Button>
       </div>
-    </Card>
+    </nldd-banner>
   );
 }
 
@@ -120,151 +108,159 @@ export function InboxPage() {
   const hasUnread = inboxItems.some((item) => !item.read);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Welcome banner */}
-      <div className="bg-gradient-to-br from-primary-900 to-primary-700 rounded-2xl p-6 text-white">
-        <h2 className="text-xl font-bold mb-1">Welkom bij Bouwmeester</h2>
-        <p className="text-white/70 text-sm">
-          Je werkplek voor beleid, taken en samenwerking.
-        </p>
-      </div>
-
-      {/* Getting started card for new users */}
-      <GettingStartedCard />
-
-      {/* Quick stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <Card
-          hoverable
-          onClick={() => navigate('/corpus')}
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-blue-50 text-blue-600">
-              <Network className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-text">{stats?.corpus_node_count ?? '-'}</p>
-              <p className="text-xs text-text-secondary">Corpus nodes</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card
-          hoverable
-          onClick={() => navigate('/tasks')}
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-amber-50 text-amber-600">
-              <CheckSquare className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-text">{stats?.open_task_count ?? '-'}</p>
-              <p className="text-xs text-text-secondary">Open taken</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card
-          hoverable
-          onClick={() => navigate('/tasks')}
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-red-50 text-red-600">
-              <TrendingUp className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-text">{stats?.overdue_task_count ?? '-'}</p>
-              <p className="text-xs text-text-secondary">Achterstallig</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card
-          hoverable
-          onClick={() => {
-            const params = currentPerson?.id ? `?verantwoordelijke_id=${currentPerson.id}` : '';
-            navigate(`/opdrachten${params}`);
+    <nldd-simple-section width="960px" horizontal-alignment="center">
+      <nldd-container gap="24">
+        {/* Welcome banner. The gradient hero has no nldd equivalent (no
+            component paints a two-stop brand gradient), so it stays a plain
+            styled div. The colors are the design system's own accent step,
+            never a literal swatch. */}
+        <div
+          style={{
+            borderRadius: '16px',
+            padding: '24px',
+            color: 'white',
+            background:
+              'linear-gradient(to bottom right, var(--primitives-color-lintblauw-900), var(--primitives-color-lintblauw-700))',
           }}
         >
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-green-50 text-green-600">
-              <Euro className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-text whitespace-nowrap">
-                {stats?.active_opdracht_budget != null ? formatCurrencyCompact(stats.active_opdracht_budget) : '-'}
-              </p>
-              <p className="text-xs text-text-secondary">Actief budget</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+          {/* A greeting, not a section, so a <span> rather than a heading: the
+              page already has its h1 in the title bar, and a second heading
+              here, set larger than that h1, put the loudest text on the page
+              outside the document outline entirely.
 
-      {/* Manager stats card */}
-      {managedEenheidId && visibleUnassignedCount > 0 && (
-        <Card
-          hoverable
-          onClick={() => navigate('/eenheid-overzicht')}
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-purple-50 text-purple-600">
-              <Users className="h-5 w-5" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-text">
-                {visibleUnassignedCount} onverdeelde {visibleUnassignedCount === 1 ? 'taak' : 'taken'}
-              </p>
-              <p className="text-xs text-text-secondary">
-                In jouw eenheid - klik om te verdelen
-              </p>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Inbox section */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-text">Inbox</h2>
-          {hasUnread && currentPerson?.id && (
-            <button
-              onClick={() => markAllRead.mutate()}
-              className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 transition-colors"
-            >
-              <CheckCheck className="h-3.5 w-3.5" />
-              Alles gelezen
-            </button>
-          )}
+              It has to be an element, not bare text. The component styles its
+              title through `::slotted(:not([slot]))`, which only matches
+              elements, so a loose text node drops to the surrounding 18px and
+              the banner stops reading as a banner. */}
+          <nldd-title size={5} color="inherit">
+            <span>Welkom bij Bouwmeester</span>
+          </nldd-title>
+          <nldd-text color="inherit" style={{ opacity: 0.7 }}>
+            Je werkplek voor beleid, taken en samenwerking.
+          </nldd-text>
         </div>
 
-        {inboxItems.length > 0 ? (
-          <InboxList items={inboxItems} onOpenThread={setOpenThreadId} onMarkRead={(id) => markRead.mutate(id)} />
-        ) : (
-          <EmptyState
-            icon={<Inbox className="h-16 w-16" />}
-            title="Inbox is leeg"
-            description="Er zijn momenteel geen nieuwe meldingen. Begin met het verkennen van het corpus of het aanmaken van taken."
-            action={
-              <div className="flex items-center gap-3">
-                <Button variant="primary" onClick={() => navigate('/corpus')}>
+        {/* Getting started card for new users */}
+        <GettingStartedCard />
+
+        {/* Quick stats */}
+        <nldd-collection layout="grid" item-width="200px" gap="16">
+          <Card actionLabel="Corpus nodes bekijken" onClick={() => navigate('/corpus')}>
+            <nldd-container layout="row" gap="12" vertical-alignment="center">
+              <nldd-icon name="network-structure" size="40" color="lintblauw" box />
+              <nldd-container gap="0">
+                <nldd-text size="lg" weight="bold">{stats?.corpus_node_count ?? '-'}</nldd-text>
+                <nldd-text size="xs" color="secondary">Corpus nodes</nldd-text>
+              </nldd-container>
+            </nldd-container>
+          </Card>
+
+          <Card actionLabel="Open taken bekijken" onClick={() => navigate('/tasks')}>
+            <nldd-container layout="row" gap="12" vertical-alignment="center">
+              <nldd-icon name="check-list" size="40" color="geel" box />
+              <nldd-container gap="0">
+                <nldd-text size="lg" weight="bold">{stats?.open_task_count ?? '-'}</nldd-text>
+                <nldd-text size="xs" color="secondary">Open taken</nldd-text>
+              </nldd-container>
+            </nldd-container>
+          </Card>
+
+          <Card actionLabel="Achterstallige taken bekijken" onClick={() => navigate('/tasks')}>
+            <nldd-container layout="row" gap="12" vertical-alignment="center">
+              <nldd-icon name="chart-x-y-axis-line" size="40" color="robijnrood" box />
+              <nldd-container gap="0">
+                <nldd-text size="lg" weight="bold">{stats?.overdue_task_count ?? '-'}</nldd-text>
+                <nldd-text size="xs" color="secondary">Achterstallig</nldd-text>
+              </nldd-container>
+            </nldd-container>
+          </Card>
+
+          <Card
+            actionLabel="Actief budget bekijken"
+            onClick={() => {
+              const params = currentPerson?.id ? `?verantwoordelijke_id=${currentPerson.id}` : '';
+              navigate(`/opdrachten${params}`);
+            }}
+          >
+            <nldd-container layout="row" gap="12" vertical-alignment="center">
+              <nldd-icon name="euro-sign" size="40" color="mosgroen" box />
+              <nldd-container gap="0">
+                <nldd-text size="lg" weight="bold" style={{ whiteSpace: 'nowrap' }}>
+                  {stats?.active_opdracht_budget != null ? formatCurrencyCompact(stats.active_opdracht_budget) : '-'}
+                </nldd-text>
+                <nldd-text size="xs" color="secondary">Actief budget</nldd-text>
+              </nldd-container>
+            </nldd-container>
+          </Card>
+        </nldd-collection>
+
+        {/* Manager stats card */}
+        {managedEenheidId && visibleUnassignedCount > 0 && (
+          <Card actionLabel="Onverdeelde taken verdelen" onClick={() => navigate('/eenheid-overzicht')}>
+            <nldd-container layout="row" gap="12" vertical-alignment="center">
+              <nldd-icon name="users" size="40" color="violet" box />
+              <nldd-container gap="0" width="full">
+                <nldd-text size="sm" weight="medium">
+                  {visibleUnassignedCount} onverdeelde {visibleUnassignedCount === 1 ? 'taak' : 'taken'}
+                </nldd-text>
+                <nldd-text size="xs" color="secondary">
+                  In jouw eenheid - klik om te verdelen
+                </nldd-text>
+              </nldd-container>
+            </nldd-container>
+          </Card>
+        )}
+
+        {/* Inbox section */}
+        <nldd-container gap="12">
+          <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
+            {/* The heading leads the row and the action trails it, so the
+                heading takes the leftover space rather than the row pushing
+                everything to one side.
+
+                Sizes measured on the page: 3 is 32px, 4 is 26px, 5 is 20px,
+                6 is 18px, and the title bar's h1 is 20px. A section of the
+                page sits below that h1, so 6; at 4 it rendered larger than the
+                heading naming the whole page. */}
+            <nldd-container width="fit-content" className="row-fill">
+              <nldd-title size={6}><h2>Meldingen</h2></nldd-title>
+            </nldd-container>
+            {hasUnread && currentPerson?.id && (
+              <Button variant="ghost" size="sm" icon="check-list" onClick={() => markAllRead.mutate()}>
+                Alles gelezen
+              </Button>
+            )}
+          </nldd-container>
+
+          {inboxItems.length > 0 ? (
+            <InboxList items={inboxItems} onOpenThread={setOpenThreadId} onMarkRead={(id) => markRead.mutate(id)} />
+          ) : (
+            <EmptyState
+              icon="inbox"
+              title="Geen nieuwe meldingen"
+              description="Toewijzingen en vermeldingen komen hier binnen."
+              action={
+                /* One suggestion, not two equal ones. A centred dialog lays its
+                   actions out stacked and full-width, so a second button here
+                   became a second 480px bar competing with the first for a
+                   choice nobody is being asked to make. Taken has its own place
+                   in the sidebar. */
+                <Button variant="secondary" onClick={() => navigate('/corpus')}>
                   Bekijk corpus
                 </Button>
-                <Button variant="secondary" onClick={() => navigate('/tasks')}>
-                  Bekijk taken
-                </Button>
-              </div>
-            }
+              }
+            />
+          )}
+        </nldd-container>
+
+        {/* Thread modal */}
+        {openThreadId && (
+          <MessageThread
+            notificationId={openThreadId}
+            onClose={() => setOpenThreadId(null)}
           />
         )}
-      </div>
-
-      {/* Thread modal */}
-      {openThreadId && (
-        <MessageThread
-          notificationId={openThreadId}
-          onClose={() => setOpenThreadId(null)}
-        />
-      )}
-    </div>
+      </nldd-container>
+    </nldd-simple-section>
   );
 }

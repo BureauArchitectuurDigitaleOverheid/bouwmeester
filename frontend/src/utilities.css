@@ -1,0 +1,713 @@
+/**
+ * The handful of CSS utilities this app needs that the design system has no
+ * opinion about.
+ *
+ * Everything the design system DOES have an opinion about lives in its
+ * components: layout is nldd-container, type is nldd-text and nldd-title,
+ * color is an attribute. What is left here is line-box behaviour (how text
+ * clips and wraps), image fitting, and a few one-offs. Those are properties of
+ * a box, not of a design, which is why no component owns them.
+ *
+ * Each class below does exactly one thing. This is not a utility framework and
+ * must not grow into one. Before adding a class, check that no nldd-*
+ * attribute does the job.
+ */
+
+/* # Text clipping
+ *
+ * `text-overflow` needs `overflow: hidden` and a width to clip against, which
+ * is why the parent usually needs `min-width: 0` in a flex row. The design
+ * system leaves this alone deliberately: whether a name is cut off or wraps is
+ * the app's call, not the system's.
+ *
+ * `display: block` is part of the clipping, not a layout choice. `overflow`
+ * does nothing on an inline box, so on a `<span>` this class promised an
+ * ellipsis and delivered nothing: the text kept growing past its parent and
+ * ran over whatever sat beside it. The chat attachment names carry their own
+ * `max-width` for exactly this and were still not being cut off.
+ */
+.truncate {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line-clamp-1,
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-1 {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.line-clamp-2 {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* # Whitespace
+ *
+ * `pre-wrap` is content, not styling: in a plain-text description the line
+ * breaks are the only structure there is.
+ */
+.whitespace-pre-wrap {
+  white-space: pre-wrap;
+}
+
+/* # Type treatments the system does not offer
+ *
+ * nldd-text has size, weight and color, but no case or letter-spacing. Both
+ * appear on the small all-caps section labels this app uses.
+ */
+.uppercase {
+  text-transform: uppercase;
+}
+
+.tracking-wider {
+  letter-spacing: 0.05em;
+}
+
+.tracking-tight {
+  letter-spacing: -0.015em;
+}
+
+.font-mono {
+  font-family: var(--primitives-font-family-monospace);
+}
+
+/* # Hover-dim
+ *
+ * A clickable image thumbnail (a chat attachment preview opening a lightbox)
+ * dims slightly on hover as its only affordance — it has no visible chrome
+ * of its own to change state. No nldd component wraps an arbitrary thumbnail
+ * this way.
+ */
+.hover-dim {
+  transition: opacity 150ms;
+}
+.hover-dim:hover {
+  opacity: 0.8;
+}
+
+/* # Visibility without reflow
+ *
+ * `invisible` keeps the box so a hover-revealed control does not shift the row
+ * it sits in. `display: none` would, which is the whole point.
+ */
+.invisible {
+  visibility: hidden;
+}
+
+/* # Responsive stack-to-row
+ *
+ * A header that stacks its title block above its actions on a narrow screen,
+ * and sits them side by side from `sm` up. nldd-container's layout is one
+ * fixed mode (not responsive), so a header that needs to change shape at a
+ * breakpoint stays a plain flex div; this is that div's `sm`-and-up half.
+ * The narrow-screen (stacked) styles are the element's own inline style.
+ */
+@media (min-width: 640px) {
+  .sm-row-header {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+}
+
+/* Org-tree group card: 8px inset below `sm`, 12px from `sm` up. Same reason
+ * as .sm-row-header — this is a plain div (see OrganisatieDetail's
+ * PersonGroupSection), not an nldd-container, so its responsive padding has
+ * nowhere else to live. */
+.org-group-padding {
+  padding: 8px;
+}
+@media (min-width: 640px) {
+  .org-group-padding {
+    padding: 12px;
+  }
+}
+
+/* # Flex sizing
+ *
+ * nldd-container has no flex-shrink attribute, so a child that must not
+ * shrink inside a row (an avatar, an icon, a fixed-size badge column) needs
+ * this on the light-DOM element itself.
+ */
+.shrink-0 {
+  flex-shrink: 0;
+}
+
+/* # Hover-reveal within a group
+ *
+ * `group` marks the hoverable ancestor (a row, a card); `group-hover-reveal`
+ * is the child that stays invisible until that ancestor is hovered or has
+ * focus within it. Both class names need a real rule here: nothing else in the
+ * app defines a `.group:hover .foo` selector.
+ */
+.group-hover-reveal {
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.group:hover .group-hover-reveal,
+.group:focus-within .group-hover-reveal {
+  opacity: 1;
+}
+
+/* Same idea, but only above the `sm` breakpoint: on a touch screen there is
+ * no hover, so the control stays visible there and only hides once a pointer
+ * can reveal it again. Used for a row action (e.g. a delete icon-button) that
+ * would otherwise sit permanently in a busy list. */
+@media (min-width: 640px) {
+  .group-hover-reveal-above-sm {
+    opacity: 0;
+    transition: opacity 150ms;
+  }
+  .group:hover .group-hover-reveal-above-sm,
+  .group:focus-within .group-hover-reveal-above-sm {
+    opacity: 1;
+  }
+}
+
+/* Pushes a single child to the end of a row without affecting its siblings —
+ * nldd-container's alignment attributes apply to all children at once, so a
+ * "last item flush right, rest left" row still needs this on the light-DOM
+ * child. */
+.margin-left-auto {
+  margin-left: auto;
+}
+
+/* A dark tint that fades in over an image thumbnail on hover/focus of the
+ * `.group` ancestor, the backdrop for a zoom or preview affordance that fades
+ * in on top of it (typically `.group-hover-reveal`).
+ *
+ * On the overlay backdrop token, not a hand-picked black: that token is
+ * exactly "the scrim the system puts over content", the same one its dialogs
+ * draw, so a thumbnail here matches a lightbox two clicks later. */
+.group-hover-dim-overlay {
+  background-color: transparent;
+  transition: background-color 150ms;
+}
+.group:hover .group-hover-dim-overlay,
+.group:focus-within .group-hover-dim-overlay {
+  background-color: var(--semantics-overlays-backdrop-color);
+}
+
+/* # Responsive label inside a Button
+ *
+ * A label that only shows once there is room for it beside an icon: hidden
+ * below `sm`, inline from `sm` up. `Button.tsx` also reads this exact class
+ * name off a slotted `<span>` to pull the text out as the button's
+ * accessible name while it is visually hidden — see
+ * `findResponsivelyHiddenLabel`.
+ */
+.hidden-below-sm {
+  display: none;
+}
+@media (min-width: 640px) {
+  .hidden-below-sm {
+    display: inline;
+  }
+}
+
+/**
+ * The same, for an element that brings its own `display`.
+ *
+ * `hidden-below-sm` forces `display: inline` above the breakpoint, which is
+ * right for a `<span>` of label text and wrong for anything that lays out its
+ * children: on an `nldd-container` it flattens the row to inline and its
+ * contents measure zero.
+ *
+ * `revert` hands the display back to whatever the component's own stylesheet
+ * sets, instead of this file guessing at it.
+ */
+.hidden-below-sm-block {
+  display: none;
+}
+@media (min-width: 640px) {
+  .hidden-below-sm-block {
+    display: revert;
+  }
+}
+
+/* # Mobile-card vs. desktop-table switch
+ *
+ * The opposite direction from `hidden-below-sm-block`: visible below `sm`
+ * (the card list), hidden from `sm` up (the table takes over). See
+ * OpdrachtenPage's opdrachten list — nldd-table's own `sm-columns` collapses
+ * tracks rather than swapping to an entirely different layout, so the two
+ * views are separate markup and this pair of classes picks which one shows.
+ */
+.hidden-from-sm {
+  display: revert;
+}
+@media (min-width: 640px) {
+  .hidden-from-sm {
+    display: none;
+  }
+}
+
+.visible-from-sm {
+  display: none;
+}
+@media (min-width: 640px) {
+  .visible-from-sm {
+    display: revert;
+  }
+}
+
+/* # Underline on hover
+ *
+ * A link whose text underlines on hover/focus, either on itself
+ * (`link-hover-underline`, e.g. a bare href inside a list row where
+ * nldd-list-item-segment isn't in play) or on an ancestor `.group`
+ * (`group-hover-underline`, e.g. underlining a span nested inside the
+ * clickable element). No nldd-* component exposes this on its own text.
+ */
+.link-hover-underline:hover,
+.link-hover-underline:focus-visible {
+  text-decoration: underline;
+}
+.group:hover .group-hover-underline,
+.group:focus-within .group-hover-underline {
+  text-decoration: underline;
+}
+
+/* # Surfaces
+ *
+ * Two treatments our own markup still needs, on design-system tokens rather
+ * than a fixed grey. Classes and not inline style, because both describe a
+ * :hover state and a style attribute cannot express one.
+ */
+.surface-tinted {
+  background-color: var(--semantics-surfaces-tinted-background-color);
+}
+
+.hover-tinted:hover {
+  background-color: var(--semantics-buttons-neutral-base-is-hovered-background-color);
+}
+
+/* # Unassigned-task row
+ *
+ * One row per task with two dropdowns beside it: stacked below `md`, side by
+ * side from `md` up, with a divider between rows. nldd-container's layout is a
+ * single fixed mode rather than a responsive one, so a row that changes shape
+ * at a breakpoint cannot be one. Scoped to this one use (see
+ * eenheid/UnassignedTasksSection) rather than offered as a general row.
+ */
+.unassigned-task-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+}
+
+.unassigned-task-row:last-child {
+  border-bottom: 0;
+}
+
+@media (min-width: 768px) {
+  .unassigned-task-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+}
+
+/* The two dropdowns in that row: full width while stacked, a fixed column once
+ * the row turns horizontal. */
+.unassigned-task-field {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .unassigned-task-field {
+    width: 224px;
+  }
+}
+
+/* # Read-only key field
+ *
+ * The API key on a person's profile, shown but never edited. Not an
+ * nldd-text-field: that is a control you type in, and this one refuses input
+ * on purpose. It keeps the field's look so it reads as "a value that lives
+ * here", with a monospace face because a key is compared character by
+ * character.
+ */
+.readonly-key-field {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: var(--semantics-surfaces-border-width) solid var(--semantics-surfaces-base-border-color);
+  border-radius: var(--primitives-corner-radius-md);
+  background-color: var(--semantics-surfaces-tinted-background-color);
+  color: var(--semantics-content-secondary-color);
+  font-family: var(--primitives-font-family-monospace);
+  font-size: 0.875rem;
+}
+
+/* The placeholder row, when there is no key to show. */
+.readonly-key-field-empty {
+  opacity: 0.5;
+}
+
+/* # Task board
+ *
+ * A snap carousel below `md` that becomes a three-column grid above it, with
+ * the columns bleeding to the screen edge while it scrolls. nldd-container's
+ * `layout` is a single fixed mode with no responsive switch, no scroll-snap
+ * and no negative margin, so this is the one layout in the app that is a
+ * stylesheet rather than a composition.
+ */
+.task-board {
+  display: flex;
+  gap: 16px;
+  min-height: 400px;
+  margin-inline: -16px;
+  padding-inline: 16px;
+  padding-bottom: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+}
+
+@media (min-width: 768px) {
+  .task-board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-inline: 0;
+    padding-inline: 0;
+    padding-bottom: 0;
+    overflow-x: visible;
+    scroll-snap-type: none;
+  }
+}
+
+/* A column on that board: most of the viewport while it scrolls, an equal
+ * share of the grid once it stops. `is-drag-over` is the highlight while a
+ * card hovers over it, on accent tokens rather than a fixed blue. */
+.task-board-column {
+  border: var(--semantics-surfaces-border-width) solid var(--semantics-surfaces-base-border-color);
+  border-radius: var(--primitives-corner-radius-xl);
+  background-color: var(--semantics-surfaces-tinted-background-color);
+  width: 85vw;
+  flex-shrink: 0;
+  scroll-snap-align: center;
+  transition: background-color 150ms, border-color 150ms;
+}
+
+.task-board-column.is-drag-over {
+  background-color: var(--primitives-color-accent-25);
+  border-color: var(--primitives-color-accent-200);
+}
+
+@media (min-width: 768px) {
+  .task-board-column {
+    width: auto;
+    flex-shrink: 1;
+    flex: 1;
+  }
+}
+
+/* The grab cursor on a draggable card. Native HTML5 drag-and-drop, so the card
+ * itself stays a plain element (see the note in TaskBoard). */
+.draggable-card {
+  cursor: grab;
+}
+
+.draggable-card:active {
+  cursor: grabbing;
+}
+
+/* # Relatiematrix (CorpusMatrix)
+ *
+ * A real `<table role="grid">`, not something an nldd-* component models: it
+ * needs a sticky header row AND a sticky first column at once, plus per-cell
+ * borders on a grid that can run to 100x100. No component in the design
+ * system does two independent sticky axes on a native table, so this stays
+ * hand-built CSS on plain table elements.
+ */
+.matrix-scroll-area {
+  overflow: auto;
+  max-height: calc(100vh - 280px);
+}
+
+.matrix-table {
+  /* Same step nldd-text size="xs" uses (see text.styles.js). */
+  font-size: var(--primitives-font-size-80);
+  border-collapse: collapse;
+}
+
+/* Sticky header row, above the sticky corner/row-header column (z-index 2)
+ * so a header cell wins over a row header sliding underneath it. */
+.matrix-thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* Corner cell: sticky on both axes (header row AND first column), so it has
+ * to sit above everything else in the table (z-index 3). */
+.matrix-corner-cell {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background-color: var(--semantics-surfaces-tinted-background-color);
+  border-bottom: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+  border-right: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+  min-width: 180px;
+  max-width: 220px;
+  padding: 8px 12px;
+}
+
+.matrix-header-cell {
+  background-color: var(--semantics-surfaces-tinted-background-color);
+  border-bottom: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+  padding: 8px 4px;
+  font-weight: 500;
+  text-align: center;
+  min-width: 40px;
+}
+
+/* Column header: the label is rotated by this wrapper, since a custom element's
+ * shadow content cannot be transformed from outside. The nldd-link inside
+ * inherits the writing mode and so runs along the rotated axis. */
+.matrix-header-label {
+  display: inline-block;
+  max-height: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Row header: sticky on the left only (z-index 1, below the corner cell).
+ * Opaque background prevents cell content from bleeding through underneath
+ * it on horizontal scroll. */
+.matrix-row-header {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--semantics-surfaces-base-background-color);
+  border-right: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+  padding: 6px 12px;
+  min-width: 180px;
+  max-width: 220px;
+}
+
+/* Row header: the link fills the cell and clips its own long title, so the
+ * header keeps its max-width instead of the title widening the column. */
+.matrix-row-header-link {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* Row/cell hover highlight — `.group` is the `<tr>`, this is any cell that
+ * should shade along with the hovered row (row header included). */
+.group:hover .group-hover-bg {
+  background-color: var(--semantics-surfaces-tinted-background-color);
+}
+
+.matrix-cell {
+  border-bottom: var(--semantics-dividers-thickness) solid var(--semantics-dividers-color);
+  padding: 6px 4px;
+  text-align: center;
+}
+
+.matrix-cell-diagonal {
+  background-color: var(--primitives-color-neutral-100);
+}
+
+.matrix-dot-slot {
+  display: inline-block;
+  height: 24px;
+  width: 24px;
+}
+
+.matrix-diagonal-mark {
+  color: var(--primitives-color-neutral-300);
+}
+
+.matrix-dot-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  width: 24px;
+  border-radius: 9999px;
+  transition: box-shadow 150ms;
+}
+
+.matrix-dot-button:hover {
+  box-shadow: 0 0 0 2px var(--primitives-color-accent-300);
+}
+
+.matrix-dot {
+  display: block;
+  height: 12px;
+  width: 12px;
+  border-radius: 9999px;
+}
+
+/* Truncation banners above the matrix (dimension cap warning / full-matrix
+ * notice). Two color roles, on tokens rather than a fixed amber/blue. */
+.matrix-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: var(--primitives-corner-radius-lg);
+  border: var(--semantics-surfaces-border-width) solid;
+  padding: 8px 12px;
+  font-size: var(--primitives-font-size-80);
+}
+
+.matrix-notice-warning {
+  border-color: var(--primitives-color-oranje-200);
+  background-color: var(--primitives-color-oranje-25);
+  color: var(--primitives-color-oranje-800);
+}
+
+.matrix-notice-info {
+  border-color: var(--primitives-color-hemelblauw-200);
+  background-color: var(--primitives-color-hemelblauw-25);
+  color: var(--primitives-color-hemelblauw-800);
+}
+
+.matrix-notice-action {
+  font-weight: 500;
+}
+
+/* # Community graph node-type filter chips (LeadGraphView)
+ *
+ * A row of toggle pills above the reactflow canvas plus one "clear focus"
+ * pill pushed to the row's far end. Each toggle carries its own active-state
+ * color (a Rijkshuisstijl scale name picked per node type) as an inline style
+ * from the component, since that color varies per button; this class holds
+ * only the shape and the inactive/hover states that are the same for all of
+ * them.
+ */
+.node-type-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.node-type-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* A pill, not a browser button: without this the user-agent border draws a
+   * grey box around every toggle in the row. */
+  border: none;
+  cursor: pointer;
+  border-radius: 9999px;
+  padding: 4px 12px;
+  font-size: var(--primitives-font-size-80);
+  font-weight: 500;
+  color: var(--semantics-content-secondary-color);
+  background-color: var(--semantics-surfaces-tinted-background-color);
+  transition: color 150ms, background-color 150ms;
+}
+
+.node-type-toggle-focus {
+  margin-left: auto;
+  color: var(--primitives-color-paars-800);
+  background-color: var(--primitives-color-paars-100);
+}
+
+.node-type-toggle-focus:hover {
+  background-color: var(--primitives-color-paars-200);
+}
+
+/* # ReactFlow canvas frame
+ *
+ * The card-like wrapper around a reactflow canvas (CorpusGraph, LeadGraphView):
+ * white surface, rounded corners, a border, a light shadow, clipped so the
+ * canvas doesn't draw past the rounded corners. Not nldd-card: that component
+ * insets its content with its own padding, and a reactflow canvas has to fill
+ * the frame edge to edge with zero inset for pan/zoom to feel right.
+ */
+.graph-canvas-frame {
+  background-color: var(--semantics-surfaces-base-background-color);
+  border-radius: var(--primitives-corner-radius-xl);
+  border: var(--semantics-surfaces-border-width) solid var(--semantics-surfaces-base-border-color);
+  /* Same token nldd-card itself uses for its shadow. */
+  box-shadow: var(--components-card-box-shadow);
+  overflow: hidden;
+}
+
+/* # A button that is not a chip
+ *
+ * Text that happens to be operable: a name that discloses a panel, a mention
+ * that opens what it names. A `<button>` is the right element, and the
+ * user-agent's own styling is wrong for it, since a grey box with a border
+ * around every name in a list turns a page of people into a page of chrome.
+ *
+ * The element keeps its semantics, its tab stop and its focus ring; only the
+ * paint goes. Not for anything that should look like a control: that is
+ * `nldd-button`.
+ */
+.plain-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+/* # A badge in a flex row
+ *
+ * A row lays its children out with `align-items: stretch`, so a badge grows
+ * to the full row height and reads as a filled block rather than a label on
+ * the line it belongs to. This keeps it its own size and stops it from
+ * shrinking when the text beside it is long.
+ */
+.row-badge {
+  align-self: center;
+  flex-shrink: 0;
+}
+
+/* # A badge beside text that may run to a second line
+ *
+ * `row-badge` centres over the whole row, which is right while every row is
+ * one line tall. Once a long name wraps, centring puts the badge in the gap
+ * between the two lines, belonging to neither. This pins it to the first line
+ * instead, where the name it labels starts.
+ *
+ * The 12px is measured, not guessed: an md list row puts the middle of its
+ * first line 22px below its own top, and an sm tag is 20px tall, so its top
+ * belongs at 22 - 10.
+ */
+.row-badge-first-line {
+  align-self: flex-start;
+  flex-shrink: 0;
+  margin-top: 12px;
+}
+
+/* # The growing half of a heading-plus-action row
+ *
+ * `nldd-container` is `width: full` by default, so a heading container placed
+ * in a row beside a button takes a hard 100% of the row. The button then gets
+ * whatever is left, which is less than its own label needs, and since nothing
+ * stops a button label from wrapping it becomes two lines of text in a block
+ * half again as tall as the button should be.
+ *
+ * Pair this with `width="fit-content"`: that drops the 100% claim, and this
+ * hands the leftover space back, so the heading ends up with everything the
+ * button does not need. `min-width: 0` lets a long heading be the thing that
+ * gives way, rather than pushing the button off the end.
+ */
+.row-fill {
+  flex-grow: 1;
+  min-width: 0;
+}

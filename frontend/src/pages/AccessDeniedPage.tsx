@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { BASE_URL, getCsrfToken } from '@/api/client';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { NlddButton } from '@/components/nldd/NlddLink';
 import logoImg from '/logo.png?url';
 
 interface AccessDeniedPageProps {
@@ -19,6 +21,7 @@ type RequestState =
 export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
   const [state, setState] = useState<RequestState>({ step: 'idle' });
   const [naam, setNaam] = useState('');
+  const naamFieldRef = useRef<HTMLElement>(null);
 
   const handleLogout = () => {
     window.location.href = `${BASE_URL}/api/auth/logout`;
@@ -118,126 +121,119 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
     [email, naam]
   );
 
+  useNlddEvent(naamFieldRef, 'input', (e) => setNaam(eventValue(e)));
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="max-w-md w-full space-y-6 text-center">
-        <div>
-          <img src={logoImg} alt="Bouwmeester" className="h-20 w-20 rounded-full mx-auto mb-3" />
-          <h1 className="text-2xl font-semibold text-text">Bouwmeester</h1>
-          <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-6">
-            <h2 className="text-lg font-medium text-amber-800">Geen toegang</h2>
-            {email && (
-              <p className="mt-2 text-sm text-amber-700">
-                Ingelogd als <span className="font-medium">{email}</span>
-              </p>
-            )}
+    <nldd-app-view background="tinted">
+      <nldd-simple-section width="480px" horizontal-alignment="left" vertical-alignment="center">
+        <nldd-container gap="24" horizontal-alignment="center" style={{ textAlign: 'center' }}>
+          <nldd-container gap="12" horizontal-alignment="center">
+            <nldd-image src={logoImg} alt="Bouwmeester" width="80" height={80} shape="circle" />
+            <nldd-title size={3}>
+              <h1>Bouwmeester</h1>
+            </nldd-title>
+          </nldd-container>
 
-            {/* Idle state — show request button */}
-            {state.step === 'idle' && (
-              <>
-                <p className="mt-3 text-sm text-amber-700">
-                  Je account staat niet op de toegangslijst voor deze applicatie.
-                </p>
-                <button
-                  onClick={() => setState({ step: 'form' })}
-                  className="mt-4 w-full flex justify-center py-2.5 px-4 rounded-lg text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-colors"
-                >
-                  Toegang aanvragen
-                </button>
-              </>
-            )}
+          <nldd-inline-dialog
+            variant="alert"
+            text="Geen toegang"
+            {...(email ? { 'supporting-text': `Ingelogd als ${email}` } : {})}
+          >
+            <nldd-container gap="16" horizontal-alignment="center" style={{ marginTop: '16px' }}>
+              {state.step === 'idle' && (
+                <>
+                  <nldd-text color="secondary">
+                    Je account staat niet op de toegangslijst voor deze applicatie.
+                  </nldd-text>
+                  <NlddButton
+                    text="Toegang aanvragen"
+                    width="full"
+                    onClick={() => setState({ step: 'form' })}
+                  />
+                </>
+              )}
 
-            {/* Form state — name input */}
-            {state.step === 'form' && (
-              <form onSubmit={handleSubmit} className="mt-4 space-y-3">
-                <p className="text-sm text-amber-700 text-left">
-                  Vul je naam in om toegang aan te vragen.
-                </p>
-                <input
-                  type="text"
-                  value={naam}
-                  onChange={(e) => setNaam(e.target.value)}
-                  placeholder="Je volledige naam"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:outline-none focus:border-primary-400"
-                  required
-                  autoFocus
+              {state.step === 'form' && (
+                <form onSubmit={handleSubmit} style={{ width: '100%', textAlign: 'left' }}>
+                  <nldd-container gap="12">
+                    <nldd-form-field label="Je volledige naam">
+                      <nldd-text-field
+                        ref={naamFieldRef}
+                        value={naam}
+                        placeholder="Je volledige naam"
+                        required
+                        width="full"
+                      />
+                    </nldd-form-field>
+                    <NlddButton
+                      type="submit"
+                      text="Verzoek versturen"
+                      width="full"
+                      disabled={!naam.trim()}
+                    />
+                  </nldd-container>
+                </form>
+              )}
+
+              {state.step === 'submitting' && (
+                <nldd-text color="secondary">Verzoek wordt verstuurd...</nldd-text>
+              )}
+
+              {(state.step === 'pending' || state.step === 'already_pending') && (
+                <nldd-banner
+                  variant="warning"
+                  size="sm"
+                  text="Je verzoek is verstuurd."
+                  supporting-text="Een beheerder zal je verzoek beoordelen. Wachten op goedkeuring..."
                 />
-                <button
-                  type="submit"
-                  disabled={!naam.trim()}
-                  className="w-full flex justify-center py-2.5 px-4 rounded-lg text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
-                >
-                  Verzoek versturen
-                </button>
-              </form>
-            )}
+              )}
 
-            {/* Submitting */}
-            {state.step === 'submitting' && (
-              <p className="mt-3 text-sm text-amber-700">Verzoek wordt verstuurd...</p>
-            )}
+              {state.step === 'approved' && (
+                <nldd-banner
+                  variant="success"
+                  size="sm"
+                  text="Je toegang is goedgekeurd!"
+                  supporting-text="Pagina wordt herladen..."
+                />
+              )}
 
-            {/* Pending state */}
-            {(state.step === 'pending' || state.step === 'already_pending') && (
-              <div className="mt-3">
-                <p className="text-sm text-green-700">
-                  Je verzoek is verstuurd. Een beheerder zal je verzoek beoordelen.
-                </p>
-                <div className="mt-2 flex items-center justify-center gap-2 text-xs text-amber-600">
-                  <span className="inline-block h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-                  Wachten op goedkeuring...
-                </div>
-              </div>
-            )}
+              {state.step === 'denied' && (
+                <>
+                  <nldd-banner
+                    variant="critical"
+                    size="sm"
+                    text="Je verzoek is afgewezen."
+                    {...(state.reason ? { 'supporting-text': `Reden: ${state.reason}` } : {})}
+                  />
+                  <NlddButton
+                    text="Opnieuw aanvragen"
+                    width="full"
+                    onClick={() => setState({ step: 'form' })}
+                  />
+                </>
+              )}
 
-            {/* Approved state */}
-            {state.step === 'approved' && (
-              <div className="mt-3">
-                <p className="text-sm text-green-700 font-medium">
-                  Je toegang is goedgekeurd! Pagina wordt herladen...
-                </p>
-              </div>
-            )}
+              {state.step === 'error' && (
+                <>
+                  <nldd-text color="critical">{state.message}</nldd-text>
+                  <NlddButton
+                    text="Opnieuw proberen"
+                    variant="neutral-transparent"
+                    onClick={() => setState({ step: 'idle' })}
+                  />
+                </>
+              )}
+            </nldd-container>
+          </nldd-inline-dialog>
 
-            {/* Denied state */}
-            {state.step === 'denied' && (
-              <div className="mt-3">
-                <p className="text-sm text-red-700">
-                  Je verzoek is afgewezen.
-                  {state.reason && (
-                    <span className="block mt-1 text-red-600">Reden: {state.reason}</span>
-                  )}
-                </p>
-                <button
-                  onClick={() => setState({ step: 'form' })}
-                  className="mt-3 w-full flex justify-center py-2.5 px-4 rounded-lg text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-colors"
-                >
-                  Opnieuw aanvragen
-                </button>
-              </div>
-            )}
-
-            {/* Error state */}
-            {state.step === 'error' && (
-              <div className="mt-3">
-                <p className="text-sm text-red-700">{state.message}</p>
-                <button
-                  onClick={() => setState({ step: 'idle' })}
-                  className="mt-3 text-sm text-primary-600 hover:text-primary-800 transition-colors"
-                >
-                  Opnieuw proberen
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        <button
-          onClick={handleLogout}
-          className="w-full flex justify-center py-2.5 px-4 border border-border rounded-lg shadow-sm text-sm font-medium text-text hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
-        >
-          Uitloggen en opnieuw proberen
-        </button>
-      </div>
-    </div>
+          <NlddButton
+            text="Uitloggen en opnieuw proberen"
+            variant="secondary"
+            width="full"
+            onClick={handleLogout}
+          />
+        </nldd-container>
+      </nldd-simple-section>
+    </nldd-app-view>
   );
 }

@@ -1,8 +1,8 @@
-import { CheckCircle2, MinusCircle, XCircle } from 'lucide-react';
 import {
   useMattermostChannelOverview,
   type MattermostChannelOverview as Channel,
 } from '@/hooks/useAdmin';
+import { EmptyState } from '@/components/common/EmptyState';
 
 function formatRelative(iso: string | null): string {
   if (!iso) return 'nog niets gezien';
@@ -13,48 +13,34 @@ function formatRelative(iso: string | null): string {
   return `${Math.round(ms / 86_400_000)} dagen geleden`;
 }
 
-function ScopeLabel({ channel }: { channel: Channel }) {
+function scopeText(channel: Channel): string {
   const label = channel.scope_label ?? '(niet gevonden)';
   const prefix = channel.scope_type === 'lead' ? 'Lead' : 'Initiatief';
-  return (
-    <span>
-      <span className="text-text-secondary">{prefix}:</span> {label}
-    </span>
-  );
+  return `${prefix}: ${label}`;
+}
+
+function modeCell(channel: Channel) {
+  if (channel.disabled_at) {
+    return <nldd-tag text="Uitgeschakeld" icon="dismiss-circle" color="critical" size="sm" />;
+  }
+  if (channel.auto_note_enabled || channel.suggest_leads_enabled) {
+    const parts = [
+      channel.auto_note_enabled ? 'Notities' : null,
+      channel.suggest_leads_enabled ? 'Lead-suggesties' : null,
+    ].filter(Boolean);
+    return <nldd-tag text={parts.join(' + ')} icon="check-mark-circle" color="success" size="sm" />;
+  }
+  return <nldd-tag text="Niets actief" icon="minus-circle" color="neutral" size="sm" />;
 }
 
 function ChannelRow({ channel }: { channel: Channel }) {
   return (
-    <tr className="border-t border-border align-top">
-      <td className="py-2 pr-4">
-        <div className="font-medium">#{channel.channel_display_name}</div>
-        <div className="font-mono text-xs text-text-secondary">{channel.channel_name}</div>
-      </td>
-      <td className="py-2 pr-4 text-sm">
-        <ScopeLabel channel={channel} />
-      </td>
-      <td className="py-2 pr-4 text-sm">
-        {channel.disabled_at ? (
-          <span className="inline-flex items-center gap-1 text-red-700">
-            <XCircle className="h-3.5 w-3.5" /> Uitgeschakeld
-          </span>
-        ) : channel.auto_note_enabled || channel.suggest_leads_enabled ? (
-          <span className="inline-flex items-center gap-1 text-green-800">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            {channel.auto_note_enabled ? 'Notities' : ''}
-            {channel.auto_note_enabled && channel.suggest_leads_enabled ? ' + ' : ''}
-            {channel.suggest_leads_enabled ? 'Lead-suggesties' : ''}
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 text-text-secondary">
-            <MinusCircle className="h-3.5 w-3.5" /> Niets actief
-          </span>
-        )}
-      </td>
-      <td className="py-2 pr-4 text-sm text-text-secondary">
-        {formatRelative(channel.last_seen_post_at)}
-      </td>
-    </tr>
+    <nldd-table-row>
+      <nldd-title-cell text={`#${channel.channel_display_name}`} supporting-text={channel.channel_name} />
+      <nldd-text-cell text={scopeText(channel)} />
+      <nldd-text-cell>{modeCell(channel)}</nldd-text-cell>
+      <nldd-text-cell text={formatRelative(channel.last_seen_post_at)} color="secondary" hide-below="md" />
+    </nldd-table-row>
   );
 }
 
@@ -62,52 +48,52 @@ export function MattermostChannelOverviewTable() {
   const { data, isLoading, error } = useMattermostChannelOverview();
 
   if (isLoading) {
-    return <div className="text-sm text-text-secondary">Kanalen laden…</div>;
+    return <nldd-text size="sm" color="secondary">Kanalen laden…</nldd-text>;
   }
   if (error) {
-    return (
-      <div className="text-sm text-red-700">Kon kanaaloverzicht niet ophalen.</div>
-    );
+    return <nldd-text size="sm" color="critical">Kon kanaaloverzicht niet ophalen.</nldd-text>;
   }
   if (!data || data.length === 0) {
     return (
-      <div className="space-y-2">
-        <h3 className="text-base font-semibold">Mattermost-kanalen</h3>
-        <p className="text-sm text-text-secondary">
-          Nog geen kanalen gekoppeld. Koppel er eentje vanuit een lead of
-          initiatief om hier een overzicht te zien.
-        </p>
-      </div>
+      <nldd-container gap="8">
+        <nldd-title size={4}><h3>Mattermost-kanalen</h3></nldd-title>
+        <EmptyState
+          icon="message-rectangle-text"
+          title="Nog geen kanalen gekoppeld"
+          description="Koppel er eentje vanuit een lead of initiatief om hier een overzicht te zien."
+        />
+      </nldd-container>
     );
   }
 
   return (
-    <div className="space-y-3">
-      <div>
-        <h3 className="text-base font-semibold">Mattermost-kanalen</h3>
-        <p className="text-sm text-text-secondary">
-          Gekoppelde kanalen waar de bot meeleest. "Laatste post" is de meest
-          recente verwerkte post; ontbreekt deze, dan is er sinds de koppeling
-          niets binnengekomen — of de websocket loopt niet.
-        </p>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="text-xs uppercase tracking-wide text-text-secondary">
-              <th className="py-2 pr-4 font-medium">Kanaal</th>
-              <th className="py-2 pr-4 font-medium">Gekoppeld aan</th>
-              <th className="py-2 pr-4 font-medium">Modus</th>
-              <th className="py-2 pr-4 font-medium">Laatste post</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((c) => (
-              <ChannelRow key={c.id} channel={c} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <nldd-container gap="12">
+      <nldd-container gap="4">
+        <nldd-title size={4}><h3>Mattermost-kanalen</h3></nldd-title>
+        <nldd-text size="sm" color="secondary">
+          Gekoppelde kanalen waar de bot meeleest. &quot;Laatste post&quot; is de meest recente
+          verwerkte post; ontbreekt deze, dan is er sinds de koppeling niets binnengekomen, of de
+          websocket loopt niet.
+        </nldd-text>
+      </nldd-container>
+      <nldd-table
+        columns="minmax(200px,1fr) minmax(160px,1fr) 160px 140px"
+        sm-columns="1fr 160px"
+        accessible-label="Mattermost-kanalen"
+      >
+        <nldd-table-row slot="header">
+          <nldd-text-cell text="Kanaal" />
+          <nldd-text-cell text="Gekoppeld aan" hide-below="md" />
+          <nldd-text-cell text="Modus" />
+          <nldd-text-cell text="Laatste post" hide-below="md" />
+        </nldd-table-row>
+        {data.map((c) => (
+          <ChannelRow key={c.id} channel={c} />
+        ))}
+        <div slot="empty">
+          <EmptyState icon="message-rectangle-text" title="Nog geen kanalen gekoppeld" />
+        </div>
+      </nldd-table>
+    </nldd-container>
   );
 }

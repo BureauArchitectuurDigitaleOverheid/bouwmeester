@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
-import { Send, Paperclip, X, FileText, Loader2 } from 'lucide-react';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useChat } from '@/contexts/ChatContext';
 import { useToast } from '@/contexts/ToastContext';
 import { chatAttachmentPreviewUrl, isImageContentType } from '@/api/chat';
+import { Icon } from '@/components/nldd/Icon';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import type { ChatMention } from '@/api/chat';
 
 const ACCEPTED_TYPES = 'image/*,.pdf,.doc,.docx,.odt,.txt';
@@ -163,75 +164,100 @@ export function ChatInput() {
   const hasAttachments = pendingAttachments.length > 0 || uploadingCount > 0;
 
   return (
+    // border-top + the drag-over ring: a focus/drag-state ring around the
+    // whole input strip has no nldd-container equivalent (container has no
+    // border or ring styling at all, only padding/gap/layout), so this outer
+    // chrome stays plain CSS.
     <div
-      className={`border-t border-border p-3 bg-white ${isDragging ? 'ring-2 ring-primary-400 ring-inset' : ''}`}
+      style={{
+        borderTop: '1px solid var(--primitives-color-neutral-50)',
+        padding: '12px',
+        boxShadow: isDragging ? 'inset 0 0 0 2px var(--primitives-color-accent-400)' : undefined,
+      }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* Attachment preview strip */}
       {hasAttachments && (
-        <div className="flex flex-wrap gap-2 mb-2">
+        <nldd-container layout="wrap" gap="8" padding-bottom="8">
           {pendingAttachments.map((att) => (
+            // An attachment pill: no nldd-tag/nldd-token fits a file preview
+            // with a thumbnail and a remove button, so the chip's own
+            // background/rounding stays scoped CSS around nldd-container's
+            // flex layout.
             <div
               key={att.id}
-              className="relative group flex items-center gap-1.5 bg-gray-100 rounded-lg px-2 py-1.5 text-xs"
+              style={{ borderRadius: '8px', paddingInline: '8px', paddingBlock: '6px', fontSize: '12px', backgroundColor: 'var(--primitives-color-coolgray-100)' }}
             >
-              {isImageContentType(att.content_type) ? (
-                <img
-                  src={chatAttachmentPreviewUrl(att.id)}
-                  alt={att.bestandsnaam}
-                  className="w-8 h-8 object-cover rounded"
+              <nldd-container layout="row" gap="6" vertical-alignment="center">
+                {isImageContentType(att.content_type) ? (
+                  <nldd-image
+                    src={chatAttachmentPreviewUrl(att.id)}
+                    alt={att.bestandsnaam}
+                    width="32"
+                    height={32}
+                    object-fit="cover"
+                    shape="rounded"
+                  />
+                ) : (
+                  <Icon name="file-text" size="md" />
+                )}
+                {/* truncate + fixed max-width: no nldd-text single-line
+                    ellipsis equivalent. */}
+                <span className="truncate" style={{ maxWidth: '120px' }} title={att.bestandsnaam}>
+                  {att.bestandsnaam}
+                </span>
+                <NlddIconButton
+                  icon="close"
+                  accessibleLabel="Verwijderen"
+                  variant="neutral-transparent"
+                  size="xs"
+                  onClick={() => removeAttachment(att.id)}
                 />
-              ) : (
-                <FileText className="w-4 h-4 text-gray-500 shrink-0" />
-              )}
-              <span className="truncate max-w-[120px]" title={att.bestandsnaam}>
-                {att.bestandsnaam}
-              </span>
-              <button
-                onClick={() => removeAttachment(att.id)}
-                className="ml-0.5 p-0.5 rounded-full hover:bg-gray-200 text-gray-400 hover:text-gray-600"
-                title="Verwijderen"
-              >
-                <X className="w-3 h-3" />
-              </button>
+              </nldd-container>
             </div>
           ))}
           {uploadingCount > 0 && (
-            <div className="flex items-center gap-1.5 bg-gray-100 rounded-lg px-2 py-1.5 text-xs text-gray-500">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Uploaden...</span>
+            <div
+              style={{ borderRadius: '8px', paddingInline: '8px', paddingBlock: '6px', fontSize: '12px', backgroundColor: 'var(--primitives-color-coolgray-100)' }}
+            >
+              <nldd-container layout="row" gap="6" vertical-alignment="center">
+                <nldd-activity-indicator size="16" />
+                <nldd-text size="xs" color="secondary">Uploaden...</nldd-text>
+              </nldd-container>
             </div>
           )}
-        </div>
+        </nldd-container>
       )}
 
-      <div
-        className="flex items-end gap-2"
+      <nldd-container
+        layout="row"
+        gap="8"
+        vertical-alignment="bottom"
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         role="group"
       >
         {/* File picker button */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
+        <NlddIconButton
+          icon="paperclip"
+          accessibleLabel="Bestand toevoegen"
+          variant="neutral-transparent"
+          size="md"
           disabled={isLoading}
-          className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
-          title="Bestand toevoegen"
-        >
-          <Paperclip className="w-4 h-4" />
-        </button>
+          onClick={() => fileInputRef.current?.click()}
+        />
         <input
           ref={fileInputRef}
           type="file"
           accept={ACCEPTED_TYPES}
           multiple
-          className="hidden"
+          style={{ display: 'none' }}
           onChange={handleFileInputChange}
         />
 
-        <div className="flex-1 min-w-0 chat-editor">
+        <nldd-container width="full" min-width="0" gap="0">
           <RichTextEditor
             key={editorKey}
             value={value}
@@ -241,30 +267,16 @@ export function ChatInput() {
             readOnly={isLoading}
             autoFocus
           />
-        </div>
-        <button
-          onClick={handleSend}
+        </nldd-container>
+        <NlddIconButton
+          icon="paper-plane"
+          accessibleLabel="Versturen"
+          variant="primary"
+          size="md"
           disabled={isLoading || uploadingCount > 0}
-          className="p-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
-          title="Versturen"
-        >
-          <Send className="w-4 h-4" />
-        </button>
-      </div>
-      <style>{`
-        .chat-editor .rich-text-editor {
-          border-radius: 0.5rem;
-        }
-        .chat-editor .rich-text-editor .ProseMirror {
-          min-height: 1.5rem !important;
-          max-height: 7.5rem;
-          overflow-y: auto;
-        }
-        .chat-editor .EditorContent,
-        .chat-editor [class*="prose"] {
-          padding: 0.375rem 0.75rem;
-        }
-      `}</style>
+          onClick={handleSend}
+        />
+      </nldd-container>
     </div>
   );
 }

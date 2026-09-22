@@ -1,50 +1,62 @@
-@import "tailwindcss";
+/* NLDD design system: components + tokens/fonts.
+ * Imported here rather than in main.tsx so the cascade order is explicit:
+ * the design system's :root variables land before our own rules below. */
+@import "@nldd/design-system/styles";
 
-@theme {
-  --color-primary-50: #e8edf4;
-  --color-primary-100: #c5d1e3;
-  --color-primary-200: #9fb3d0;
-  --color-primary-300: #7895bd;
-  --color-primary-400: #5b7eaf;
-  --color-primary-500: #3e67a1;
-  --color-primary-600: #365a8e;
-  --color-primary-700: #2c4a75;
-  --color-primary-800: #233b5e;
-  --color-primary-900: #1E3A5F;
-  --color-primary-950: #0f1e32;
+/* Our own utilities, after the design system so they can reference its tokens
+ * and win over anything it sets on a bare element. */
+@import "./utilities.css";
 
-  --color-accent-50: #fdf0e2;
-  --color-accent-100: #fadab7;
-  --color-accent-200: #f6c288;
-  --color-accent-300: #f2a958;
-  --color-accent-400: #ef9634;
-  --color-accent-500: #E17000;
-  --color-accent-600: #d06700;
-  --color-accent-700: #b85b00;
-  --color-accent-800: #a04f00;
-  --color-accent-900: #7a3d00;
 
-  --color-surface: #ffffff;
-  --color-background: #F8F9FA;
-  --color-text: #1A1A2E;
-  --color-text-secondary: #64748b;
-  --color-border: #e2e8f0;
-  --color-border-hover: #cbd5e1;
-
-  --font-family-sans: 'Inter', system-ui, -apple-system, sans-serif;
+/* Still light-only. The palette is `light-dark()` throughout, so turning dark
+ * mode on is now a one-line change, but it needs a pass over every screen
+ * before it is a promise we can keep. */
+:root {
+  color-scheme: light;
 }
 
 * {
   box-sizing: border-box;
 }
 
+/* The design system's reset gives `html` and `body` a height of 100% when an
+ * nldd-app-view is on the page, because it assumes the app-view is a child of
+ * body. React mounts into #root in between, and that div gets no height of its
+ * own, so the app-view had nothing to fill and the whole application rendered at
+ * zero height: present in the DOM, invisible on screen.
+ *
+ * Only applied when an app-view is actually inside #root, so the pages that
+ * render outside the shell (login, access denied, the public page) keep their
+ * own document flow. */
+#root:has(nldd-app-view) {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  font-family: var(--font-family-sans);
-  background-color: var(--color-background);
-  color: var(--color-text);
+  font-family: var(--primitives-font-family-sans-serif);
+  color: var(--semantics-content-color);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* A heading is a heading whether or not it looks like one.
+ *
+ * Several small section labels carry their own type from an `nldd-text` or
+ * `nldd-title` inside them, and only need the tag for the outline: a screen
+ * reader lists them and can jump to them, which a styled `<div>` does not
+ * offer. The user-agent's own size and margin would fight the component that
+ * owns the type, so they go. Headings inside `nldd-rich-text` are excluded:
+ * that component styles rendered markdown itself, and this would flatten it. */
+h1:not(nldd-rich-text h1),
+h2:not(nldd-rich-text h2),
+h3:not(nldd-rich-text h3),
+h4:not(nldd-rich-text h4),
+h5:not(nldd-rich-text h5),
+h6:not(nldd-rich-text h6) {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
 }
 
 /* Scrollbar styling */
@@ -58,31 +70,30 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: var(--color-border);
+  background-color: var(--semantics-dividers-color);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: var(--color-border-hover);
+  background-color: var(--semantics-surfaces-base-border-color);
 }
 
-/* Hide scrollbar utility for horizontal tab scrolling */
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
 
-/* Smooth transitions for interactive elements */
-button, a, input, select, textarea {
+/* Smooth transitions for interactive elements.
+ * Scoped away from nldd-* elements: `transition: all` fights the components'
+ * own animations, notably the slotted <select> inside nldd-dropdown. */
+button:not(nldd-app-view *),
+a:not(nldd-app-view *),
+input:not(nldd-app-view *),
+select:not(nldd-app-view *),
+textarea:not(nldd-app-view *) {
   transition: all 0.15s ease-in-out;
 }
 
-/* Focus styles */
-*:focus-visible {
-  outline: 2px solid var(--color-primary-500);
+/* Focus styles for our own markup only. NLDD components draw their own focus
+ * ring inside their shadow root; without this exclusion both render at once. */
+*:focus-visible:not(:is([class*="nldd-"], nldd-app-view, nldd-app-view *)) {
+  outline: 2px solid var(--primitives-color-accent-500);
   outline-offset: 2px;
   border-radius: 4px;
 }

@@ -2,44 +2,72 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { EmptyState } from './EmptyState';
 
+/**
+ * The title and description are attributes on nldd-inline-dialog rather than
+ * text nodes, so these read the attributes. jsdom does not upgrade custom
+ * elements, so there is no shadow content to query for.
+ */
 describe('EmptyState', () => {
+  const dialog = (container: HTMLElement) => container.querySelector('nldd-inline-dialog');
+
   it('renders title', () => {
-    render(<EmptyState title="Geen resultaten" />);
-    expect(screen.getByText('Geen resultaten')).toBeInTheDocument();
+    const { container } = render(<EmptyState title="Geen resultaten" />);
+    expect(dialog(container)).toHaveAttribute('text', 'Geen resultaten');
   });
 
   it('renders description when provided', () => {
-    render(
-      <EmptyState
-        title="Leeg"
-        description="Er zijn nog geen items aangemaakt."
-      />,
+    const { container } = render(
+      <EmptyState title="Leeg" description="Er zijn nog geen items aangemaakt." />,
     );
-    expect(screen.getByText('Er zijn nog geen items aangemaakt.')).toBeInTheDocument();
+    expect(dialog(container)).toHaveAttribute(
+      'supporting-text',
+      'Er zijn nog geen items aangemaakt.',
+    );
   });
 
-  it('does not render description when not provided', () => {
+  it('omits the description when not provided', () => {
     const { container } = render(<EmptyState title="Leeg" />);
-    expect(container.querySelectorAll('p').length).toBe(0);
+    expect(dialog(container)).not.toHaveAttribute('supporting-text');
   });
 
-  it('renders action when provided', () => {
+  it('renders action in the actions slot', () => {
+    render(<EmptyState title="Leeg" action={<button>Nieuw item</button>} />);
+    const action = screen.getByText('Nieuw item');
+    expect(action).toBeInTheDocument();
+    // The element wraps slotted actions in a button group, so they have to be
+    // in the named slot rather than loose in the body.
+    expect(action.closest('[slot="actions"]')).not.toBeNull();
+  });
+
+  it('puts the slot on each action inside a fragment', () => {
+    // The regression this covers: a fragment counts as one child, so putting
+    // the slot on what the caller passed left it on the fragment, where it does
+    // nothing. Both buttons then landed in the default slot, which the element
+    // reads as a task and aligns left instead of under the centred heading.
     render(
       <EmptyState
         title="Leeg"
-        action={<button>Nieuw item</button>}
+        action={
+          <>
+            <button>Eerste</button>
+            <button>Tweede</button>
+          </>
+        }
       />,
     );
-    expect(screen.getByText('Nieuw item')).toBeInTheDocument();
+
+    for (const label of ['Eerste', 'Tweede']) {
+      expect(screen.getByText(label)).toHaveAttribute('slot', 'actions');
+    }
   });
 
-  it('renders custom icon when provided', () => {
-    render(
-      <EmptyState
-        title="Leeg"
-        icon={<span data-testid="custom-icon">!</span>}
-      />,
-    );
-    expect(screen.getByTestId('custom-icon')).toBeInTheDocument();
+  it('uses a named icon', () => {
+    const { container } = render(<EmptyState title="Leeg" icon="inbox" />);
+    expect(dialog(container)).toHaveAttribute('icon', 'inbox');
+  });
+
+  it('falls back to a default icon', () => {
+    const { container } = render(<EmptyState title="Leeg" />);
+    expect(dialog(container)).toHaveAttribute('icon', 'question-mark-circle');
   });
 });

@@ -4793,11 +4793,13 @@ async def seed(db: AsyncSession) -> None:
     from bouwmeester.models.resource_permission import ResourcePermission
     from bouwmeester.repositories.lead_column import LeadColumnRepository
 
+    # kleur is an nldd-tag color name from schema.initiatief.INITIATIEF_COLORS,
+    # never a hex.
     initiatieven_data = [
-        ("Regelrecht", "#3B82F6", "Community-tool voor team Regelrecht"),
-        ("Fundament", "#10B981", "Fundament programma"),
-        ("Appmanager", "#F59E0B", "Appmanager initiatief"),
-        ("Nerds", "#8B5CF6", "Nederlandse Richtlijn Digitale Systemen"),
+        ("Regelrecht", "lintblauw", "Community-tool voor team Regelrecht"),
+        ("Fundament", "groen", "Fundament programma"),
+        ("Appmanager", "oranje", "Appmanager initiatief"),
+        ("Nerds", "paars", "Nederlandse Richtlijn Digitale Systemen"),
     ]
     for naam, kleur, beschrijving in initiatieven_data:
         init = Initiatief(

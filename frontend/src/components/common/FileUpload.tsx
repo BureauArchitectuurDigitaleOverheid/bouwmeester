@@ -1,5 +1,5 @@
-import { useCallback, useState, type DragEvent, type ChangeEvent } from 'react';
-import { Upload, FileText, X } from 'lucide-react';
+import { useCallback, useRef, useState, type DragEvent } from 'react';
+import { useNlddEvent, orUndef } from '@/components/nldd/events';
 
 interface FileUploadProps {
   accept?: string;
@@ -8,14 +8,28 @@ interface FileUploadProps {
   label?: string;
 }
 
+/**
+ * `nldd-file-field` with a drop target around it.
+ *
+ * The field itself is the picker, the chosen file, its size and the button to
+ * clear it again. What it does not do is accept a dropped file, and this
+ * component is reached by dragging a CSV onto it often enough to be worth a
+ * drop target. So the field handles picking, the wrapper handles dropping, and
+ * both end at the same callback.
+ */
 export function FileUpload({
   accept = '.csv',
   onFileSelect,
   disabled = false,
   label = 'Sleep een bestand hierheen of klik om te uploaden',
 }: FileUploadProps) {
+  const fieldRef = useRef<HTMLElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  useNlddEvent(fieldRef, 'change', (e) => {
+    const file = (e as CustomEvent<{ files: File[] }>).detail?.files?.[0];
+    if (file) onFileSelect(file);
+  });
 
   const handleDragOver = useCallback(
     (e: DragEvent<HTMLDivElement>) => {
@@ -35,76 +49,40 @@ export function FileUpload({
       e.preventDefault();
       setIsDragging(false);
       if (disabled) return;
-
       const file = e.dataTransfer.files[0];
-      if (file) {
-        setSelectedFile(file);
-        onFileSelect(file);
-      }
+      if (file) onFileSelect(file);
     },
     [disabled, onFileSelect],
   );
 
-  const handleChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        setSelectedFile(file);
-        onFileSelect(file);
-      }
-    },
-    [onFileSelect],
-  );
-
-  const handleClear = useCallback(() => {
-    setSelectedFile(null);
-  }, []);
-
   return (
-    <div className="space-y-2">
+    <nldd-container gap="8">
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`
-          relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 transition-colors
-          ${isDragging ? 'border-primary-500 bg-primary-50' : 'border-border hover:border-border-hover'}
-          ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
-        `}
+        // A dashed outline that appears while a file hovers over the target.
+        // Not a component: the design system has no drop zone, and this is the
+        // one thing the field does not cover.
+        style={{
+          borderRadius: 'var(--primitives-corner-radius-lg)',
+          outline: isDragging
+            ? '2px dashed var(--primitives-color-accent-500)'
+            : '2px dashed transparent',
+          outlineOffset: '4px',
+          transition: 'outline-color 150ms',
+        }}
       >
-        <input
-          type="file"
+        <nldd-file-field
+          ref={fieldRef}
           accept={accept}
-          onChange={handleChange}
-          disabled={disabled}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          accessible-label={label}
+          disabled={orUndef(disabled)}
         />
-        <Upload className="h-8 w-8 text-text-secondary" />
-        <div className="text-center">
-          <p className="text-sm font-medium text-text">{label}</p>
-          <p className="mt-1 text-xs text-text-secondary">
-            Ondersteunde formaten: {accept}
-          </p>
-        </div>
       </div>
-
-      {selectedFile && (
-        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
-          <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-text-secondary" />
-            <span className="text-sm text-text">{selectedFile.name}</span>
-            <span className="text-xs text-text-secondary">
-              ({(selectedFile.size / 1024).toFixed(1)} KB)
-            </span>
-          </div>
-          <button
-            onClick={handleClear}
-            className="rounded p-1 text-text-secondary hover:bg-gray-200 hover:text-text transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-    </div>
+      <nldd-text size="xs" color="secondary">
+        Ondersteunde formaten: {accept}
+      </nldd-text>
+    </nldd-container>
   );
 }

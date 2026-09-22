@@ -323,13 +323,15 @@ async def test_lead_channel_unlinked_author_uses_via_prefix(db_session, sample_l
     assert f"via mm:@{mm_uid}" in activity.content
 
 
-async def test_lead_channel_renders_at_mentions_as_tiptap(
+async def test_lead_channel_renders_at_mentions_as_markdown(
     db_session, sample_lead, create_person
 ):
-    """``@username`` van een gekoppeld persoon wordt een TipTap-mention
-    zodat de frontend een klikbare badge kan tonen."""
-    import json
+    """``@username`` van een gekoppeld persoon wordt een markdown-mention
+    zodat de frontend een klikbare badge kan tonen.
 
+    ``lead_activity.content`` bevat markdown; JSON zou er als letterlijke
+    tekst in beeld komen."""
+    from bouwmeester.core.tiptap_markdown import extract_markdown_mentions
     from bouwmeester.models.mention import Mention
     from bouwmeester.models.notification import Notification
 
@@ -377,14 +379,13 @@ async def test_lead_channel_renders_at_mentions_as_tiptap(
         )
     ).scalar_one()
 
-    doc = json.loads(activity.content)
-    assert doc["type"] == "doc"
-    inline = doc["content"][0]["content"]
-    mention_nodes = [n for n in inline if n["type"] == "mention"]
-    assert len(mention_nodes) == 1
-    assert mention_nodes[0]["attrs"]["id"] == str(anne.id)
-    assert mention_nodes[0]["attrs"]["label"] == "Anne Schuth"
-    assert mention_nodes[0]["attrs"]["mentionType"] == "person"
+    # Markdown, geen JSON: de naam staat er leesbaar in en het id zit in de
+    # link, zodat dezelfde tekst ook zonder de editor nog iets betekent.
+    assert not activity.content.lstrip().startswith("{")
+    assert f"[@Anne Schuth](user:{anne.id})" in activity.content
+    assert extract_markdown_mentions(activity.content) == [
+        {"mention_type": "person", "target_id": str(anne.id)}
+    ]
 
     # Mention-record voor back-references.
     mentions = (
@@ -402,17 +403,24 @@ async def test_lead_channel_renders_at_mentions_as_tiptap(
     assert [m.target_id for m in mentions] == [anne.id]
 
     # Anne krijgt een notification, Daan (de auteur) niet.
+    #
+    # Ook op de lead filteren, niet alleen op het type: zonder dat leest de
+    # query elke mention-notification in de database, en dan hangt de uitslag
+    # af van wat er verder in staat. Op een schone CI-database slaagt hij, op
+    # een ontwikkelmachine met echte data niet.
     notifs = (
         (
             await db_session.execute(
-                select(Notification).where(Notification.type == "mention")
+                select(Notification).where(
+                    Notification.type == "mention",
+                    Notification.related_lead_id == sample_lead.id,
+                )
             )
         )
         .scalars()
         .all()
     )
     assert [n.person_id for n in notifs] == [anne.id]
-    assert notifs[0].related_lead_id == sample_lead.id
 
 
 async def test_lead_channel_unknown_username_stays_plain_text(db_session, sample_lead):

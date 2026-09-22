@@ -10,10 +10,15 @@ import type {
   PublicInitiatiefUpdate,
 } from '@/types';
 
+import { initiatiefAccentVar, initiatiefIconColor } from '@/components/initiatieven/initiatiefColors';
+
 type Status = 'loading' | 'ok' | 'not-found' | 'error';
 
-const DEFAULT_ACCENT = '#3B82F6';
-
+/**
+ * The only page outside the auth shell and outside `nldd-app-view`
+ * (`/c/:slug` in App.tsx), so it needs its own `nldd-app-view` wrapper for
+ * the color-scheme context that every other page gets from AppLayout.
+ */
 export function PublicInitiatiefPage() {
   const { slug } = useParams<{ slug: string }>();
   const [status, setStatus] = useState<Status>('loading');
@@ -64,109 +69,128 @@ export function PublicInitiatiefPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <LoadingSpinner />
-      </div>
+      <nldd-app-view background="tinted">
+        <nldd-simple-section horizontal-alignment="center" vertical-alignment="center" height="100dvh">
+          <LoadingSpinner />
+        </nldd-simple-section>
+      </nldd-app-view>
     );
   }
 
   if (status === 'not-found') {
-    return <PublicMessage title="Pagina niet gevonden" body="Deze pagina bestaat niet of is niet (meer) publiek toegankelijk." />;
+    return (
+      <PublicMessage
+        title="Pagina niet gevonden"
+        body="Deze pagina bestaat niet of is niet (meer) publiek toegankelijk."
+      />
+    );
   }
 
   if (status === 'error' || !data) {
     return <PublicMessage title="Er ging iets mis" body="Probeer het later opnieuw." />;
   }
 
-  const accent = data.kleur || DEFAULT_ACCENT;
+  // The stored kleur is an nldd color name. The bars need a CSS color, so they
+  // read the token the name stands for; the dots are icons, which take the
+  // name itself.
+  const accent = initiatiefAccentVar(data.kleur);
+  const accentIcon = initiatiefIconColor(data.kleur);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Top accent stripe — subtiele kleur-identiteit per initiatief */}
-      <div className="h-1.5 w-full" style={{ backgroundColor: accent }} />
+    <nldd-app-view background="tinted">
+      {/* Top accent stripe — subtiele kleur-identiteit per initiatief. A full-
+          bleed bar is not a component the system has, so it stays a plain div
+          painted from the initiative's own category token. */}
+      <div aria-hidden style={{ height: '6px', width: '100%', backgroundColor: accent }} />
 
-      <header className="relative overflow-hidden">
-        {/* Heel zachte color-wash op de achtergrond, gradient naar wit */}
-        <div
-          aria-hidden
-          className="absolute inset-0"
-          style={{
-            background: `linear-gradient(180deg, ${accent}14 0%, ${accent}06 35%, transparent 100%)`,
-          }}
-        />
-        <div className="relative max-w-3xl mx-auto px-6 pt-16 pb-12">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-slate-500 mb-4">
-            <span
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ backgroundColor: accent }}
-            />
-            Community
-          </div>
-          <h1 className="text-4xl sm:text-5xl font-semibold text-slate-900 tracking-tight">
-            {data.naam}
-          </h1>
+      <nldd-full-bleed-section width="768px" padding-top="64" padding-bottom="48">
+        <nldd-container gap="16">
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            <nldd-icon name="circle-filled-small" size="16" color={accentIcon} />
+            <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Community
+            </nldd-text>
+          </nldd-container>
+          <nldd-title size={1}>
+            <h1>{data.naam}</h1>
+          </nldd-title>
           {data.beschrijving && (
-            <div className="mt-6 text-lg text-slate-600 leading-relaxed max-w-2xl">
+            <nldd-container max-width="640px">
               <RichTextDisplay content={data.beschrijving} />
-            </div>
+            </nldd-container>
           )}
-        </div>
-      </header>
+        </nldd-container>
+      </nldd-full-bleed-section>
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-6 pb-20 space-y-12">
-        {data.casussen.length > 0 && (
+      <nldd-simple-section width="768px" padding-bottom="80">
+        <nldd-container gap="48">
+          {data.casussen.length > 0 && (
+            <section>
+              <nldd-container
+                layout="row"
+                gap="8"
+                horizontal-alignment="left"
+                style={{ alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '24px' }}
+              >
+                <nldd-title size={4}>
+                  <h2>Lopende casussen</h2>
+                </nldd-title>
+                <nldd-text size="sm" color="secondary">
+                  {data.casussen.length} {data.casussen.length === 1 ? 'casus' : 'casussen'}
+                </nldd-text>
+              </nldd-container>
+              <nldd-collection layout="grid" item-width="280px" gap="16">
+                {data.casussen.map((c, idx) => (
+                  <CasusCard key={idx} casus={c} accentIcon={accentIcon} />
+                ))}
+              </nldd-collection>
+            </section>
+          )}
+
           <section>
-            <div className="flex items-baseline justify-between mt-4 mb-6">
-              <h2 className="text-xl font-semibold text-slate-900">
-                Lopende casussen
-              </h2>
-              <span className="text-sm text-slate-500">
-                {data.casussen.length}{' '}
-                {data.casussen.length === 1 ? 'casus' : 'casussen'}
-              </span>
-            </div>
-            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {data.casussen.map((c, idx) => (
-                <CasusCard key={idx} casus={c} accent={accent} />
-              ))}
-            </ul>
-          </section>
-        )}
+            <nldd-container
+              layout="row"
+              gap="8"
+              style={{ alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '24px' }}
+            >
+              <nldd-title size={4}>
+                <h2>Updates</h2>
+              </nldd-title>
+              {data.updates.length > 0 && (
+                <nldd-text size="sm" color="secondary">
+                  {data.updates.length} {data.updates.length === 1 ? 'bericht' : 'berichten'}
+                </nldd-text>
+              )}
+            </nldd-container>
 
-        <section>
-          <div className="flex items-baseline justify-between mt-4 mb-6">
-            <h2 className="text-xl font-semibold text-slate-900">Updates</h2>
-            {data.updates.length > 0 && (
-              <span className="text-sm text-slate-500">
-                {data.updates.length}{' '}
-                {data.updates.length === 1 ? 'bericht' : 'berichten'}
-              </span>
+            {data.updates.length === 0 ? (
+              <UpdatesEmptyState naam={data.naam} />
+            ) : (
+              <nldd-container gap="32">
+                {data.updates.map((u, idx) => (
+                  <UpdateCard key={idx} update={u} accent={accent} />
+                ))}
+              </nldd-container>
             )}
-          </div>
+          </section>
+        </nldd-container>
+      </nldd-simple-section>
 
-          {data.updates.length === 0 ? (
-            <EmptyState accent={accent} naam={data.naam} />
-          ) : (
-            <ol className="space-y-8">
-              {data.updates.map((u, idx) => (
-                <UpdateCard key={idx} update={u} accent={accent} />
-              ))}
-            </ol>
-          )}
-        </section>
-      </main>
-
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="max-w-3xl mx-auto px-6 py-6 text-sm text-slate-500 flex flex-wrap items-center justify-between gap-2">
-          <span>
-            Publieke pagina van <span className="font-medium text-slate-700">{data.naam}</span>
-          </span>
-          <span className="text-xs text-slate-400">
+      <nldd-page-footer width="768px">
+        <nldd-container
+          layout="row"
+          gap="8"
+          style={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}
+        >
+          <nldd-text size="sm" color="secondary">
+            Publieke pagina van <strong>{data.naam}</strong>
+          </nldd-text>
+          <nldd-text size="xs" color="secondary">
             Gepubliceerd via Bouwmeester
-          </span>
-        </div>
-      </footer>
-    </div>
+          </nldd-text>
+        </nldd-container>
+      </nldd-page-footer>
+    </nldd-app-view>
   );
 }
 
@@ -185,127 +209,126 @@ function UpdateCard({
   });
 
   return (
-    <li className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-      <article className="relative px-6 py-6 sm:px-8 sm:py-7">
-        {/* Kleur-streepje links als verticale accent */}
-        <div
-          aria-hidden
-          className="absolute left-0 top-6 bottom-6 w-1 rounded-r-full"
-          style={{ backgroundColor: accent }}
-        />
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mb-3">
-          <time dateTime={update.published_at} className="font-medium">
-            {formattedDate}
-          </time>
-          {update.published_by_naam && (
-            <>
-              <span className="text-slate-300">·</span>
-              <span>{update.published_by_naam}</span>
-            </>
-          )}
-        </div>
-        <h3 className="text-xl sm:text-2xl font-semibold text-slate-900 leading-snug">
-          {update.titel}
-        </h3>
-        {update.body && (
-          <div className="mt-4 text-slate-700 leading-relaxed prose-public">
-            <RichTextDisplay content={update.body} />
-          </div>
-        )}
-      </article>
-    </li>
-  );
-}
-
-function CasusCard({ casus, accent }: { casus: PublicCasus; accent: string }) {
-  return (
-    <li className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:shadow-md transition-shadow">
-      <div className="flex items-center gap-2 mb-2">
-        <span
-          className="inline-block h-2 w-2 rounded-full"
-          style={{ backgroundColor: accent }}
-        />
-        <span className="text-xs font-medium uppercase tracking-wider text-slate-500">
-          Casus
-        </span>
-      </div>
-      <h3 className="text-base font-semibold text-slate-900 leading-snug">
-        {casus.titel}
-      </h3>
-      {casus.samenvatting && (
-        <p className="mt-2 text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-          {casus.samenvatting}
-        </p>
-      )}
-      {casus.updates.length > 0 && (
-        <ul className="mt-4 space-y-3 border-t border-slate-100 pt-3">
-          {casus.updates.map((u, idx) => (
-            <li key={idx} className="text-sm">
-              <div className="flex items-baseline gap-2 mb-0.5">
-                <span className="font-medium text-slate-800">{u.titel}</span>
-                <span className="text-xs text-slate-400">
-                  {new Date(u.published_at).toLocaleDateString('nl-NL', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </span>
-              </div>
-              {u.body_public && (
-                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-                  {u.body_public}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}
-
-function EmptyState({ accent, naam }: { accent: string; naam: string }) {
-  return (
-    <div
-      className="rounded-2xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"
-    >
-      <div
-        className="inline-flex items-center justify-center h-12 w-12 rounded-full mb-4"
-        style={{ backgroundColor: `${accent}1a` }}
-      >
-        <svg
-          className="h-6 w-6"
-          fill="none"
-          stroke={accent}
-          strokeWidth="2"
-          viewBox="0 0 24 24"
-          aria-hidden
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"
+    <nldd-card>
+      {/* position: relative + the accent bar below are a decorative left accent
+          rail; there is no nldd primitive for one, so it stays a plain
+          positioned div painted from the initiative's category token. */}
+      <div style={{ position: 'relative' }}>
+        <nldd-container padding="24" sm-padding-inline="32" sm-padding-block="28">
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: '24px',
+              bottom: '24px',
+              width: '4px',
+              borderRadius: '0 9999px 9999px 0',
+              backgroundColor: accent,
+            }}
           />
-        </svg>
+          <nldd-container layout="wrap" gap="8" vertical-alignment="center" padding-bottom="12">
+            <nldd-text size="xs" weight="medium" color="secondary">
+              <time dateTime={update.published_at}>{formattedDate}</time>
+            </nldd-text>
+            {update.published_by_naam && (
+              <nldd-text size="xs" color="secondary">
+                · {update.published_by_naam}
+              </nldd-text>
+            )}
+          </nldd-container>
+          <nldd-title size={3}>
+            <h3>{update.titel}</h3>
+          </nldd-title>
+          {update.body && (
+            <nldd-container padding-top="16">
+              <RichTextDisplay content={update.body} />
+            </nldd-container>
+          )}
+        </nldd-container>
       </div>
-      <h3 className="text-base font-semibold text-slate-900">
-        Nog geen updates
-      </h3>
-      <p className="mt-2 text-sm text-slate-500 max-w-sm mx-auto">
-        Hier verschijnen updates die het team van {naam} publiceert. Kom later
-        terug, of bookmark deze pagina.
-      </p>
-    </div>
+    </nldd-card>
+  );
+}
+
+function CasusCard({
+  casus,
+  accentIcon,
+}: {
+  casus: PublicCasus;
+  accentIcon: React.ComponentProps<'nldd-icon'>['color'];
+}) {
+  return (
+    <nldd-card>
+      <nldd-container padding="20">
+        <nldd-container layout="row" gap="8" vertical-alignment="center" padding-bottom="8">
+          <nldd-icon name="circle-filled-small" size="16" color={accentIcon} />
+          <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Casus
+          </nldd-text>
+        </nldd-container>
+        <nldd-title size={5}>
+          <h3>{casus.titel}</h3>
+        </nldd-title>
+        {casus.samenvatting && (
+          <nldd-container padding-top="8">
+            <nldd-text size="sm" color="secondary">
+              {casus.samenvatting}
+            </nldd-text>
+          </nldd-container>
+        )}
+        {casus.updates.length > 0 && (
+          <nldd-container gap="12" padding-top="16" style={{ borderTop: '1px solid var(--color-border)' }}>
+            {casus.updates.map((u, idx) => (
+              <div key={idx}>
+                <nldd-container layout="row" gap="8" vertical-alignment="center">
+                  <nldd-text size="sm" weight="medium">
+                    {u.titel}
+                  </nldd-text>
+                  <nldd-text size="xs" color="secondary">
+                    {new Date(u.published_at).toLocaleDateString('nl-NL', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                  </nldd-text>
+                </nldd-container>
+                {u.body_public && (
+                  <nldd-text size="sm" color="secondary">
+                    {u.body_public}
+                  </nldd-text>
+                )}
+              </div>
+            ))}
+          </nldd-container>
+        )}
+      </nldd-container>
+    </nldd-card>
+  );
+}
+
+function UpdatesEmptyState({ naam }: { naam: string }) {
+  return (
+    <nldd-inline-dialog
+      icon="megaphone"
+      icon-color="accent"
+      text="Nog geen updates"
+      supporting-text={`Hier verschijnen updates die het team van ${naam} publiceert. Kom later terug, of bookmark deze pagina.`}
+    />
   );
 }
 
 function PublicMessage({ title, body }: { title: string; body: string }) {
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-slate-50">
-      <div className="max-w-md text-center space-y-3">
-        <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
-        <p className="text-slate-500">{body}</p>
-      </div>
-    </div>
+    <nldd-app-view background="tinted">
+      <nldd-simple-section horizontal-alignment="center" vertical-alignment="center" height="100dvh">
+        <nldd-container gap="12" horizontal-alignment="center" style={{ textAlign: 'center' }}>
+          <nldd-title size={2}>
+            <h2>{title}</h2>
+          </nldd-title>
+          <nldd-text color="secondary">{body}</nldd-text>
+        </nldd-container>
+      </nldd-simple-section>
+    </nldd-app-view>
   );
 }

@@ -15,11 +15,14 @@ const BOARD_COLUMNS: TaskStatus[] = [
   TaskStatus.DONE,
 ];
 
-const COLUMN_COLORS: Record<TaskStatus, string> = {
-  [TaskStatus.OPEN]: 'border-t-blue-400',
-  [TaskStatus.IN_PROGRESS]: 'border-t-amber-400',
-  [TaskStatus.DONE]: 'border-t-emerald-400',
-  [TaskStatus.CANCELLED]: 'border-t-gray-400',
+/** Column accent, using the semantic roles rather than literal colors. */
+type NlddTagColor = NonNullable<React.ComponentProps<'nldd-tag'>['color']>;
+
+const COLUMN_TAG_COLOR: Record<TaskStatus, NlddTagColor> = {
+  [TaskStatus.OPEN]: 'accent',
+  [TaskStatus.IN_PROGRESS]: 'warning',
+  [TaskStatus.DONE]: 'success',
+  [TaskStatus.CANCELLED]: 'neutral',
 };
 
 export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
@@ -63,44 +66,59 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
   };
 
   return (
-    <div className="-mx-4 px-4 md:mx-0 md:px-0 flex gap-4 min-h-[400px] overflow-x-auto pb-2 snap-x snap-mandatory md:grid md:grid-cols-3 md:overflow-x-visible md:snap-none md:pb-0">
+    // Left as a plain div, deliberately: this frame is a horizontal-scroll
+    // snap carousel on narrow screens that becomes a fixed 3-column grid at
+    // md, with negative-margin edge-to-edge bleed below md. nldd-container's
+    // `layout` is one fixed mode (no responsive stack->grid switch) and it has
+    // no scroll-snap or negative-margin equivalent, so no composition of
+    // components reproduces this without a full custom scroller.
+    <div className="task-board">
       {BOARD_COLUMNS.map((status) => (
+        // Left as a plain div: this is the native HTML5 drag-and-drop target
+        // (onDragOver/onDragLeave/onDrop), which no nldd component models.
+        // The drag-over highlight is likewise plain CSS state, not
+        // something nldd-container/nldd-card can express as a boolean prop.
         <div
           key={status}
           onDragOver={(e) => handleDragOver(e, status)}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, status)}
-          className={`rounded-xl border border-border bg-gray-50/50 border-t-4 w-[85vw] shrink-0 snap-center md:w-auto md:shrink md:flex-1 ${COLUMN_COLORS[status]} transition-colors ${
-            dragOverColumn === status ? 'bg-primary-50/50 border-primary-200' : ''
-          }`}
+          className={`task-board-column${dragOverColumn === status ? ' is-drag-over' : ''}`}
         >
-          <div className="px-4 py-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-text">
+          <nldd-container layout="row" gap="8" vertical-alignment="center" padding="16" padding-bottom="12">
+            <nldd-text size="sm" weight="bold">
               {TASK_STATUS_LABELS[status]}
-            </h3>
-            <span className="text-xs text-text-secondary bg-white rounded-full px-2 py-0.5 border border-border">
-              {tasksByStatus[status]?.length ?? 0}
-            </span>
-          </div>
+            </nldd-text>
+            {/* Pushes the count badge to the far edge, the container-level
+                equivalent of nldd-spacer-cell in a row of cells. */}
+            <nldd-spacer size="flexible" direction="horizontal" />
+            <nldd-badge color={COLUMN_TAG_COLOR[status]} number={tasksByStatus[status]?.length ?? 0} decorative />
+          </nldd-container>
 
-          <div className="px-3 pb-3 space-y-2 min-h-[100px]">
+          <nldd-container gap="8" padding-inline="12" padding-bottom="12">
             {tasksByStatus[status]?.map((task) => (
+              // Plain div: this is the native drag SOURCE (draggable + onDragStart).
               <div
                 key={task.id}
                 draggable
                 onDragStart={(e) => handleDragStart(e, task)}
-                className="cursor-grab active:cursor-grabbing"
+                className="draggable-card"
               >
                 <TaskCard task={task} onEdit={onEditTask} compact />
               </div>
             ))}
 
             {(tasksByStatus[status]?.length ?? 0) === 0 && (
-              <div className="flex items-center justify-center h-[100px] text-xs text-text-secondary">
-                Sleep taken hierheen
-              </div>
+              // nldd-container has no min-height attribute (only nldd-cell and
+              // a few section components do), so the empty-column height is an
+              // inline style.
+              <nldd-container layout="row" horizontal-alignment="center" vertical-alignment="center" style={{ minHeight: '100px' }}>
+                <nldd-text size="xs" color="secondary">
+                  Sleep taken hierheen
+                </nldd-text>
+              </nldd-container>
             )}
-          </div>
+          </nldd-container>
         </div>
       ))}
     </div>

@@ -1,32 +1,9 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import {
-  Calendar,
-  Link as LinkIcon,
-  Pencil,
-  Trash2,
-  ExternalLink,
-  Users,
-  Tag as TagIcon,
-  CheckCircle2,
-  Circle,
-  Clock,
-  CheckSquare,
-  Plus,
-  FolderOpen,
-  Target,
-  Wrench,
-  BookOpen,
-  Shield,
-  Landmark,
-  AlertTriangle,
-  TrendingUp,
-  GitBranch,
-  FileText,
-} from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
+import { Icon } from '@/components/nldd/Icon';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { ReferencesList } from '@/components/common/ReferencesList';
 import { DetailSection } from '@/components/common/DetailSection';
@@ -53,27 +30,34 @@ import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { formatDateLong } from '@/utils/dates';
 
+/**
+ * Icon per node type, for the modal's header. `nldd-icon`'s closed set has no
+ * "target"/"crosshair" or "landmark"/"government building" glyph, so `doel`
+ * and `politieke_input` map to the nearest honest neighbour:
+ *   doel             -> flag (a goal you work toward)
+ *   politieke_input   -> apartment-building (same glyph Sidebar uses for
+ *                        the organisation nav item, i.e. an institution)
+ */
 const NODE_TYPE_ICONS: Record<string, React.ReactNode> = {
-  dossier: <FolderOpen className="h-5 w-5" />,
-  doel: <Target className="h-5 w-5" />,
-  instrument: <Wrench className="h-5 w-5" />,
-  beleidskader: <BookOpen className="h-5 w-5" />,
-  maatregel: <Shield className="h-5 w-5" />,
-  politieke_input: <Landmark className="h-5 w-5" />,
-  probleem: <AlertTriangle className="h-5 w-5" />,
-  effect: <TrendingUp className="h-5 w-5" />,
-  beleidsoptie: <GitBranch className="h-5 w-5" />,
-  bron: <FileText className="h-5 w-5" />,
+  dossier: <Icon name="folder-open" size="lg" />,
+  doel: <Icon name="flag" size="lg" />,
+  instrument: <Icon name="screwdriver-wrench" size="lg" />,
+  beleidskader: <Icon name="BookOpen" size="lg" />,
+  maatregel: <Icon name="Shield" size="lg" />,
+  politieke_input: <Icon name="apartment-building" size="lg" />,
+  probleem: <Icon name="AlertTriangle" size="lg" />,
+  effect: <Icon name="TrendingUp" size="lg" />,
+  beleidsoptie: <Icon name="GitBranch" size="lg" />,
+  bron: <Icon name="FileText" size="lg" />,
 };
 
 interface NodeDetailModalProps {
   nodeId: string | null;
   open: boolean;
   onClose: () => void;
-  zIndex?: number;
 }
 
-export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailModalProps) {
+export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps) {
   const { data: node, isLoading } = useNode(nodeId ?? undefined);
   const { data: stakeholders } = useNodeStakeholders(nodeId ?? undefined);
   const { data: neighbors } = useNodeNeighbors(nodeId ?? undefined);
@@ -140,7 +124,6 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
         onClose={onClose}
         title={isLoading ? 'Laden...' : node?.title ?? 'Node niet gevonden'}
         size="lg"
-        zIndex={zIndex}
         accentColor={accentColor}
         headerIcon={node ? NODE_TYPE_ICONS[node.node_type] : undefined}
         entityLabel={node ? nodeLabel(node.node_type) : undefined}
@@ -154,7 +137,7 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
                 <Button
                   variant="secondary"
                   size="sm"
-                  icon={<Pencil className="h-4 w-4" />}
+                  icon="pencil"
                   onClick={() => setShowEdit(true)}
                   disabled={!node}
                 >
@@ -163,7 +146,7 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
                 <Button
                   variant="secondary"
                   size="sm"
-                  icon={<ExternalLink className="h-4 w-4" />}
+                  icon="external-link"
                   onClick={() => {
                     onClose();
                     navigate(`/nodes/${nodeId}`, { state: { fromCorpus: location.pathname + location.search } });
@@ -173,12 +156,11 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
                   Openen
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant="danger"
                   size="sm"
-                  icon={<Trash2 className="h-4 w-4" />}
+                  icon="trash"
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={!node}
-                  className="text-red-500 hover:bg-red-50 hover:text-red-600"
                 >
                   Verwijderen
                 </Button>
@@ -188,107 +170,86 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
         }
       >
         {isLoading ? (
-          <div className="flex items-center justify-center py-8 text-text-secondary text-sm">
-            Laden...
-          </div>
+          <nldd-container layout="row" horizontal-alignment="center" vertical-alignment="center" padding="16">
+            <nldd-text size="sm" color="secondary">Laden...</nldd-text>
+          </nldd-container>
         ) : !node ? (
-          <div className="flex items-center justify-center py-8 text-text-secondary text-sm">
-            Node niet gevonden.
-          </div>
+          <nldd-container layout="row" horizontal-alignment="center" vertical-alignment="center" padding="16">
+            <nldd-text size="sm" color="secondary">Node niet gevonden.</nldd-text>
+          </nldd-container>
         ) : (
-          <div className="space-y-5">
+          <nldd-container gap="20">
             {/* Type, status, edge count badges */}
-            <div className="flex items-center gap-2 flex-wrap">
+            <nldd-container layout="wrap" gap="8" vertical-alignment="center">
               <Badge variant={NODE_TYPE_COLORS[node.node_type] ?? 'gray'} dot title={nodeAltLabel(node.node_type)}>
                 {nodeLabel(node.node_type)}
               </Badge>
               {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
               {node.edge_count != null && (
-                <span className="inline-flex items-center gap-1 text-sm text-text-secondary">
-                  <LinkIcon className="h-4 w-4" />
-                  {node.edge_count} verbindingen
-                </span>
+                <nldd-container layout="row" gap="4" vertical-alignment="center">
+                  <nldd-icon name="link" size="16" aria-hidden="true" />
+                  <nldd-text size="sm" color="secondary">{node.edge_count} verbindingen</nldd-text>
+                </nldd-container>
               )}
               {parlementairItem?.document_url && (
-                <a
+                <nldd-link
                   href={parlementairItem.document_url}
                   target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-800 hover:underline transition-colors"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  tweedekamer.nl
-                </a>
+                  text="tweedekamer.nl"
+                  start-icon="external-link"
+                />
               )}
-            </div>
+            </nldd-container>
 
             {/* Eigenaar / stakeholders compact row */}
             {stakeholders && stakeholders.length > 0 && (
-              <div className="flex items-start gap-4">
+              <nldd-container layout="row" gap="16" vertical-alignment="top">
                 {eigenaren.length > 0 && (
-                  <div className="min-w-0">
-                    <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
-                      <Users className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
-                      Eigenaar
-                    </h4>
-                    <div className="flex flex-wrap gap-1.5">
+                  <nldd-container gap="6" min-width="0px" width="fit-content">
+                    <nldd-container layout="row" gap="4" vertical-alignment="center">
+                      <nldd-icon name="users" size="16" aria-hidden="true" />
+                      <nldd-text size="xs" weight="bold" color="secondary"><h4>Eigenaar</h4></nldd-text>
+                    </nldd-container>
+                    <nldd-container layout="wrap" gap="6">
                       {eigenaren.map((s) => (
-                        <span
-                          key={s.id}
-                          className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 text-primary-800 px-2.5 py-1 text-sm font-medium"
-                        >
-                          {s.person.naam}
-                        </span>
+                        <nldd-tag key={s.id} text={s.person.naam} color="accent" />
                       ))}
-                    </div>
-                  </div>
+                    </nldd-container>
+                  </nldd-container>
                 )}
                 {otherStakeholders.length > 0 && (
-                  <div className="min-w-0">
-                    <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
-                      Betrokkenen
-                    </h4>
-                    <div className="flex flex-wrap gap-1.5">
+                  <nldd-container gap="6" min-width="0px" width="fit-content">
+                    <nldd-text size="xs" weight="bold" color="secondary"><h4>Betrokkenen</h4></nldd-text>
+                    <nldd-container layout="wrap" gap="6">
                       {otherStakeholders.slice(0, 6).map((s) => (
-                        <span
+                        <nldd-tag
                           key={s.id}
-                          className="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-700 px-2.5 py-1 text-xs"
-                        >
-                          {s.person.naam}
-                          <span className="text-gray-400">
-                            ({STAKEHOLDER_ROL_LABELS[s.rol] ?? s.rol})
-                          </span>
-                        </span>
+                          color="neutral"
+                          text={`${s.person.naam} (${STAKEHOLDER_ROL_LABELS[s.rol] ?? s.rol})`}
+                        />
                       ))}
                       {otherStakeholders.length > 6 && (
-                        <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-500 px-2.5 py-1 text-xs">
-                          +{otherStakeholders.length - 6}
-                        </span>
+                        <nldd-tag color="neutral" text={`+${otherStakeholders.length - 6}`} />
                       )}
-                    </div>
-                  </div>
+                    </nldd-container>
+                  </nldd-container>
                 )}
-              </div>
+              </nldd-container>
             )}
 
             {/* Tags */}
             {nodeTags && nodeTags.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
-                  <TagIcon className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
-                  Tags
-                </h4>
-                <div className="flex flex-wrap gap-1.5">
+              <nldd-container gap="6">
+                <nldd-container layout="row" gap="4" vertical-alignment="center">
+                  <nldd-icon name="tag" size="16" aria-hidden="true" />
+                  <nldd-text size="xs" weight="bold" color="secondary"><h4>Tags</h4></nldd-text>
+                </nldd-container>
+                <nldd-container layout="wrap" gap="6">
                   {nodeTags.map((nt) => (
-                    <span
-                      key={nt.id}
-                      className="inline-flex items-center rounded-full bg-slate-100 text-slate-700 px-2.5 py-0.5 text-xs font-medium"
-                    >
-                      {nt.tag.name}
-                    </span>
+                    <nldd-tag key={nt.id} text={nt.tag.name} color="neutral" />
                   ))}
-                </div>
-              </div>
+                </nldd-container>
+              </nldd-container>
             )}
 
             {/* Description */}
@@ -302,7 +263,7 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
             {neighbors && neighbors.length > 0 && (
               <DetailSection
                 title="Verbonden nodes"
-                icon={<LinkIcon className="h-3.5 w-3.5" />}
+                icon={<Icon name="link" size="sm" />}
                 count={neighbors.length}
                 separated
               >
@@ -330,14 +291,14 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
             {/* Tasks */}
             <DetailSection
               title="Taken"
-              icon={<CheckSquare className="h-3.5 w-3.5" />}
+              icon={<Icon name="check-list" size="sm" />}
               count={openTasks.length}
               separated
               action={
                 <Button
                   variant="ghost"
                   size="sm"
-                  icon={<Plus className="h-3.5 w-3.5" />}
+                  icon="plus"
                   onClick={() => setShowTaskCreate(true)}
                 >
                   Taak
@@ -349,10 +310,10 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
                   id: task.id,
                   label: task.title,
                   icon: task.status === TaskStatus.DONE
-                    ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                    ? <nldd-icon name="check-mark-circle" size="16" color="success" aria-hidden="true" />
                     : task.status === TaskStatus.IN_PROGRESS
-                      ? <Clock className="h-4 w-4 text-blue-500 shrink-0" />
-                      : <Circle className="h-4 w-4 text-gray-300 shrink-0" />,
+                      ? <nldd-icon name="clock" size="16" color="accent" aria-hidden="true" />
+                      : <nldd-icon name="circle" size="16" color="" aria-hidden="true" />,
                   secondaryText: task.assignee?.naam,
                   onClick: () => openTaskDetail(task.id, node.title),
                 }))}
@@ -365,9 +326,9 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
                 emptyLabel="Geen taken"
               />
               {doneTasks.length > 0 && (
-                <p className="text-xs text-text-secondary pt-1">
-                  {doneTasks.length} afgerond
-                </p>
+                <nldd-container padding-top="4">
+                  <nldd-text size="xs" color="secondary">{doneTasks.length} afgerond</nldd-text>
+                </nldd-container>
               )}
             </DetailSection>
 
@@ -381,16 +342,16 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
                 {
                   label: 'Aangemaakt',
                   value: formatDateLong(node.created_at),
-                  icon: <Calendar className="h-4 w-4" />,
+                  icon: <Icon name="calendar" size="md" />,
                 },
                 {
                   label: 'Laatst bijgewerkt',
                   value: formatDateLong(node.updated_at),
-                  icon: <Calendar className="h-4 w-4" />,
+                  icon: <Icon name="calendar" size="md" />,
                 },
               ]}
             />
-          </div>
+          </nldd-container>
         )}
       </Modal>
 
@@ -416,17 +377,19 @@ export function NodeDetailModal({ nodeId, open, onClose, zIndex }: NodeDetailMod
         variant="danger"
         loading={deleteNode.isPending}
       >
-        <p>Weet je zeker dat je <strong>{node?.title}</strong> wilt verwijderen?</p>
-        {hasRelated && (
-          <ul className="mt-2 space-y-1 list-disc list-inside">
-            {neighbors && neighbors.length > 0 && (
-              <li>{neighbors.length} verbinding(en) worden verwijderd</li>
-            )}
-            {tasks && tasks.length > 0 && (
-              <li>{tasks.length} gekoppelde taak/taken worden verwijderd</li>
-            )}
-          </ul>
-        )}
+        <nldd-rich-text>
+          <p>Weet je zeker dat je <strong>{node?.title}</strong> wilt verwijderen?</p>
+          {hasRelated && (
+            <ul>
+              {neighbors && neighbors.length > 0 && (
+                <li>{neighbors.length} verbinding(en) worden verwijderd</li>
+              )}
+              {tasks && tasks.length > 0 && (
+                <li>{tasks.length} gekoppelde taak/taken worden verwijderd</li>
+              )}
+            </ul>
+          )}
+        </nldd-rich-text>
       </ConfirmDialog>
     </>
   );

@@ -60,7 +60,7 @@ from bouwmeester.services.mattermost_doc_link_extractor import (
     extract_doc_links,
 )
 from bouwmeester.services.mattermost_mention_renderer import (
-    render_mattermost_message_to_tiptap,
+    render_mattermost_message_to_markdown,
 )
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 
@@ -645,14 +645,14 @@ class MattermostIngestService:
             prefix = f"_(via mm:@{mm_user_id})_  \n"
         plain_content = prefix + body
 
-        # Probeer @username-vermeldingen om te zetten naar TipTap-mentions
+        # Probeer @username-vermeldingen om te zetten naar markdown-mentions
         # zodat het frontend ze als klikbare badge rendert. Als geen enkele
         # username aan een Person gekoppeld is, vallen we terug op platte
         # tekst (bestaand gedrag).
-        tiptap_json, mentioned_ids = await render_mattermost_message_to_tiptap(
+        rendered_markdown, mentioned_ids = await render_mattermost_message_to_markdown(
             self.session, plain_content
         )
-        content = tiptap_json or plain_content
+        content = rendered_markdown or plain_content
 
         metadata = {
             "source": "mattermost",

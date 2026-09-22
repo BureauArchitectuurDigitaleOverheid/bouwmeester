@@ -1,4 +1,4 @@
-import { AlertTriangle, ExternalLink } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useVersionInfo } from '@/hooks/useAdmin';
 import { MattermostChannelOverviewTable } from './MattermostChannelOverview';
 import { WorkerHealthTable } from './WorkerHealthTable';
@@ -18,32 +18,32 @@ function formatBuildTime(iso: string): string {
 }
 
 function CommitLink({ sha, repoUrl }: { sha: string; repoUrl: string }) {
-  if (!sha) return <span className="text-text-secondary">–</span>;
-  if (!repoUrl) return <span className="font-mono">{sha}</span>;
+  if (!sha) return <nldd-text color="secondary">–</nldd-text>;
+  if (!repoUrl) return <nldd-text>{sha}</nldd-text>;
   return (
-    <a
-      href={`${repoUrl}/commit/${sha}`}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center gap-1 font-mono text-primary-700 hover:underline"
-    >
-      {sha}
-      <ExternalLink className="h-3.5 w-3.5" />
-    </a>
+    <nldd-link href={`${repoUrl}/commit/${sha}`} target="_blank" end-icon="square-arrow-right-top" text={sha} />
+  );
+}
+
+/** One label/value row of the version info, label at a fixed width so values line up. */
+function InfoRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <nldd-container layout="row" gap="16" vertical-alignment="center">
+      <nldd-container width="160px">
+        <nldd-text size="sm" color="secondary">{label}</nldd-text>
+      </nldd-container>
+      <nldd-text size="sm">{children}</nldd-text>
+    </nldd-container>
   );
 }
 
 export function SystemInfo() {
   const { data, isLoading, error } = useVersionInfo();
 
-  if (isLoading) return <div className="text-sm text-text-secondary">Laden…</div>;
+  if (isLoading) return <nldd-text size="sm" color="secondary">Laden…</nldd-text>;
 
   if (error) {
-    return (
-      <div className="text-sm text-red-700">
-        Kon versie-informatie niet ophalen.
-      </div>
-    );
+    return <nldd-text size="sm" color="critical">Kon versie-informatie niet ophalen.</nldd-text>;
   }
 
   const backendSha = data?.git_sha || '';
@@ -53,51 +53,42 @@ export function SystemInfo() {
   const drift = backendSha && FRONTEND_GIT_SHA && backendSha !== FRONTEND_GIT_SHA;
 
   return (
-    <div className="space-y-8 max-w-3xl">
-      <div>
-        <h2 className="text-lg font-semibold mb-1">Systeem</h2>
-        <p className="text-sm text-text-secondary">
+    <nldd-container max-width="720px" gap="32">
+      <nldd-container gap="4">
+        <nldd-title size={3}><h2>Systeem</h2></nldd-title>
+        <nldd-text size="sm" color="secondary">
           Welke versie van Bouwmeester draait er nu, en zijn de
           achtergrondprocessen gezond.
-        </p>
-      </div>
+        </nldd-text>
+      </nldd-container>
 
       {!hasAny ? (
-        <div className="rounded-md border border-border bg-gray-50 p-4 text-sm text-text-secondary">
-          Geen versie-informatie beschikbaar. In lokale dev-builds zijn de
-          build-args niet gezet; ze worden alleen door de CI-build gevuld.
-        </div>
+        <nldd-inline-dialog
+          text="Geen versie-informatie beschikbaar"
+          supporting-text="In lokale dev-builds zijn de build-args niet gezet; ze worden alleen door de CI-build gevuld."
+        />
       ) : (
-        <>
+        <nldd-container gap="16">
           {drift ? (
-            <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-              <div>
-                Backend en frontend draaien op verschillende commits. Dit kan
-                tijdelijk voorkomen tijdens een deploy, maar mag niet blijvend zijn.
-              </div>
-            </div>
+            <nldd-banner
+              variant="warning"
+              text="Backend en frontend draaien op verschillende commits"
+              supporting-text="Dit kan tijdelijk voorkomen tijdens een deploy, maar mag niet blijvend zijn."
+            />
           ) : null}
 
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-3 text-sm">
-            <dt className="font-medium text-text-secondary">Backend-commit</dt>
-            <dd><CommitLink sha={backendSha} repoUrl={repoUrl} /></dd>
-
-            <dt className="font-medium text-text-secondary">Backend gebouwd</dt>
-            <dd>{formatBuildTime(backendBuildTime)}</dd>
-
-            <dt className="font-medium text-text-secondary">Frontend-commit</dt>
-            <dd><CommitLink sha={FRONTEND_GIT_SHA} repoUrl={repoUrl} /></dd>
-
-            <dt className="font-medium text-text-secondary">Frontend gebouwd</dt>
-            <dd>{formatBuildTime(FRONTEND_BUILD_TIME)}</dd>
-          </dl>
-        </>
+          <nldd-container gap="12">
+            <InfoRow label="Backend-commit"><CommitLink sha={backendSha} repoUrl={repoUrl} /></InfoRow>
+            <InfoRow label="Backend gebouwd">{formatBuildTime(backendBuildTime)}</InfoRow>
+            <InfoRow label="Frontend-commit"><CommitLink sha={FRONTEND_GIT_SHA} repoUrl={repoUrl} /></InfoRow>
+            <InfoRow label="Frontend gebouwd">{formatBuildTime(FRONTEND_BUILD_TIME)}</InfoRow>
+          </nldd-container>
+        </nldd-container>
       )}
 
       <WorkerHealthTable />
 
       <MattermostChannelOverviewTable />
-    </div>
+    </nldd-container>
   );
 }

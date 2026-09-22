@@ -142,7 +142,10 @@ export const queryKeys = {
   activityFeed: (params?: ActivityFeedParams) => ['activity-feed', params] as const,
 
   // --- Dashboard ---
-  dashboardStats: () => ['dashboard-stats'] as const,
+  // Keyed by person: the stats are that person's counts, and without the id in
+  // the key React Query serves the previous person's cached numbers after a
+  // switch and never refetches.
+  dashboardStats: (personId: string | undefined) => ['dashboard-stats', personId] as const,
 
   // --- Graph ---
   graph: {

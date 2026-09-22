@@ -1,11 +1,11 @@
-import { Pencil, Trash2, Plus, Users, Building2, User, Bot, ChevronDown, ChevronRight } from 'lucide-react';
 import { useState, useCallback } from 'react';
-import { clsx } from 'clsx';
 import { Button } from '@/components/common/Button';
 import { Badge } from '@/components/common/Badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { EmptyState } from '@/components/common/EmptyState';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
+import { Icon } from '@/components/nldd/Icon';
 import { useOrganisatieEenheid, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
 import { formatOrganisatieType, ORGANISATIE_TYPE_BADGE_COLORS, formatFunctie } from '@/types';
 import type { Person, OrganisatieEenheidPersonenGroup } from '@/types';
@@ -19,13 +19,15 @@ function managerLabelForType(orgType: string, functie?: string | null): string {
   return COORDINATOR_TYPES.has(orgType) ? 'Coördinator' : 'Manager';
 }
 
-// Tailwind bg classes for each badge color (green uses emerald in our design system)
-const BADGE_BG_CLASS: Record<string, string> = {
-  blue: 'bg-blue-50/40', purple: 'bg-purple-50/40', amber: 'bg-amber-50/40',
-  cyan: 'bg-cyan-50/40', green: 'bg-emerald-50/40', gray: 'bg-gray-50/40',
+// Rijkshuisstijl primitive per badge color, at 40% opacity against the page
+// background, mirroring Badge's own color families (see ORGANISATIE_TYPE_BADGE_COLORS).
+const BADGE_TINT_PRIMITIVE: Record<string, string> = {
+  blue: 'hemelblauw', purple: 'paars', amber: 'oranje',
+  cyan: 'lichtblauw', green: 'mintgroen', gray: 'coolgray',
 };
 function orgTypeBg(type: string): string {
-  return BADGE_BG_CLASS[ORGANISATIE_TYPE_BADGE_COLORS[type] ?? 'gray'] ?? '';
+  const primitive = BADGE_TINT_PRIMITIVE[ORGANISATIE_TYPE_BADGE_COLORS[type] ?? 'gray'] ?? 'coolgray';
+  return `color-mix(in oklch, var(--primitives-color-${primitive}-50) 40%, transparent)`;
 }
 
 function countAllPersonen(group: OrganisatieEenheidPersonenGroup): number {
@@ -93,8 +95,8 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
 
   if (isRoot) {
     return (
-      <div
-        className="space-y-2"
+      <nldd-container
+        gap="8"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -133,81 +135,103 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
             onDropPerson={onDropPerson}
           />
         ))}
-      </div>
+      </nldd-container>
     );
   }
 
   return (
+    // A plain div, not nldd-box: the drag-over ring highlight and the
+    // per-org-type tint (orgTypeBg) are dynamic border/ring colors with no
+    // nldd-box equivalent (only background="tinted"/"base"/"critical").
+    // The sm-and-up padding bump has no nldd-container equivalent for a plain
+    // div, so it stays a small responsive utility class; everything else is
+    // inline since it depends on drag state.
     <div
-      className={clsx(
-        'border rounded-lg p-2 sm:p-3 space-y-2 transition-all duration-150',
-        orgTypeBg(group.eenheid.type),
-        dragOver
-          ? 'border-primary-400 ring-2 ring-primary-200'
-          : 'border-border',
-      )}
+      className="org-group-padding"
+      style={{
+        borderRadius: '8px',
+        transition: 'all 150ms',
+        backgroundColor: orgTypeBg(group.eenheid.type),
+        border: dragOver
+          ? '1px solid var(--primitives-color-accent-400)'
+          : '1px solid var(--primitives-color-neutral-50)',
+        boxShadow: dragOver ? '0 0 0 2px var(--primitives-color-accent-200)' : undefined,
+      }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Group header */}
-      <button
-        className="flex items-center gap-2 w-full text-left"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-        )}
-        <Badge
-          variant={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}
-          className="text-xs px-2 py-0.5"
+      <nldd-container gap="8">
+        {/* Group header. A plain button rather than NlddButton: the label is a
+            composite of an icon, a badge, a name and a count, none of which
+            nldd-button's text/icon slots can carry together (its children only
+            reach the `text` slot, not a default slot for arbitrary content).
+            `plain-button` strips the user-agent chrome that would otherwise
+            box in the whole header, keeping the tab stop and focus ring.
+            width: 100% stays inline: nldd-container's width="full" fills the
+            parent, not the host button's own box. */}
+        <button
+          className="plain-button"
+          aria-expanded={expanded}
+          style={{ width: '100%', textAlign: 'left' }}
+          onClick={() => setExpanded(!expanded)}
         >
-          {formatOrganisatieType(group.eenheid.type)}
-        </Badge>
-        <span className="text-sm font-medium text-text truncate">{group.eenheid.naam}</span>
-        <span className="text-xs text-text-secondary">({totalCount})</span>
-      </button>
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size="sm" />
+            <Badge variant={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}>
+              {formatOrganisatieType(group.eenheid.type)}
+            </Badge>
+            <nldd-text size="sm" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {group.eenheid.naam}
+            </nldd-text>
+            <nldd-text size="xs" color="secondary">({totalCount})</nldd-text>
+          </nldd-container>
+        </button>
 
-      {expanded && (
-        <div className="space-y-2 ml-1">
-          {/* Manager at top of group */}
-          {managerPerson && (
-            <PersonCardExpandable
-              person={managerPerson}
-              onEditPerson={onEditPerson}
-              onDragStartPerson={onDragStartPerson}
-              isManager
-              managerLabel={managerLabelForType(group.eenheid.type, managerPerson.functie)}
-              showPlacementActions
-            />
-          )}
+        {expanded && (
+          // 4px left margin stays inline: no nldd-container margin equivalent,
+          // and padding-left here would also inset the nested group's own
+          // border/background rather than just this list.
+          <div style={{ marginLeft: '4px' }}>
+            <nldd-container gap="8">
+              {/* Manager at top of group */}
+              {managerPerson && (
+                <PersonCardExpandable
+                  person={managerPerson}
+                  onEditPerson={onEditPerson}
+                  onDragStartPerson={onDragStartPerson}
+                  isManager
+                  managerLabel={managerLabelForType(group.eenheid.type, managerPerson.functie)}
+                  showPlacementActions
+                />
+              )}
 
-          {/* Direct people */}
-          {otherPersonen.map((person) => (
-            <PersonCardExpandable
-              key={person.id}
-              person={person}
-              onEditPerson={onEditPerson}
-              onDragStartPerson={onDragStartPerson}
-              showPlacementActions
-            />
-          ))}
+              {/* Direct people */}
+              {otherPersonen.map((person) => (
+                <PersonCardExpandable
+                  key={person.id}
+                  person={person}
+                  onEditPerson={onEditPerson}
+                  onDragStartPerson={onDragStartPerson}
+                  showPlacementActions
+                />
+              ))}
 
-          {/* Nested child groups */}
-          {group.children.map((child) => (
-            <PersonGroupSection
-              key={child.eenheid.id}
-              group={child}
-              isRoot={false}
-              onEditPerson={onEditPerson}
-              onDragStartPerson={onDragStartPerson}
-              onDropPerson={onDropPerson}
-            />
-          ))}
-        </div>
-      )}
+              {/* Nested child groups */}
+              {group.children.map((child) => (
+                <PersonGroupSection
+                  key={child.eenheid.id}
+                  group={child}
+                  isRoot={false}
+                  onEditPerson={onEditPerson}
+                  onDragStartPerson={onDragStartPerson}
+                  onDropPerson={onDropPerson}
+                />
+              ))}
+            </nldd-container>
+          </div>
+        )}
+      </nldd-container>
     </div>
   );
 }
@@ -243,168 +267,128 @@ export function OrganisatieDetail({
   const personenCount = totalCount - agentCount;
 
   if (isLoading) {
-    return <LoadingSpinner className="py-12" />;
+    return <LoadingSpinner padding="48" />;
   }
 
   if (!eenheid) {
-    return (
-      <div className="text-center py-12 text-text-secondary">
-        <Building2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-        <p className="text-sm">Eenheid niet gevonden.</p>
-      </div>
-    );
+    return <EmptyState icon="apartment-building" title="Eenheid niet gevonden" />;
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Badge
-              variant={ORGANISATIE_TYPE_BADGE_COLORS[eenheid.type] || 'gray'}
-              dot
-            >
-              {formatOrganisatieType(eenheid.type)}
-            </Badge>
-          </div>
-          <h2 className="text-xl font-semibold text-text">{eenheid.naam}</h2>
+    <nldd-container gap="24">
+      {/* Header. The sm-and-up side-by-side vs. stacked-below-sm split has no
+          nldd-container equivalent (layout is one fixed mode, not responsive),
+          so the two top-level rows keep a plain flex wrapper and everything
+          inside it is nldd. sm-row-header (utilities.css) carries the `sm`-and-up
+          half of the breakpoint switch. */}
+      <div className="sm-row-header" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <nldd-container gap="4">
+          <Badge
+            variant={ORGANISATIE_TYPE_BADGE_COLORS[eenheid.type] || 'gray'}
+            dot
+          >
+            {formatOrganisatieType(eenheid.type)}
+          </Badge>
+          <nldd-title size={4}><h2>{eenheid.naam}</h2></nldd-title>
           {eenheid.manager && (
-            <p className="text-sm text-text-secondary mt-0.5">
+            <nldd-text size="sm" color="secondary">
               {eenheid.manager.naam}{eenheid.manager.functie ? ` — ${formatFunctie(eenheid.manager.functie)}` : ''}
-            </p>
+            </nldd-text>
           )}
           {eenheid.beschrijving && (
-            <div className="mt-1">
-              <RichTextDisplay content={eenheid.beschrijving} fallback="" />
-            </div>
+            <RichTextDisplay content={eenheid.beschrijving} fallback="" />
           )}
-          {/* Externe-data velden uit TOOI/Ministeries.csv/handmatig */}
+          {/* Externe-data velden uit TOOI/Ministeries.csv/handmatig. A <dl> is
+              the correct semantic element for this label/value list, and
+              nldd-text doesn't replace dt/dd. The grid is an inline style
+              because nldd-container doesn't do a two-column label/value CSS
+              grid. */}
           {(eenheid.afkorting ||
             eenheid.oin ||
             eenheid.fte_aantal ||
             eenheid.website ||
             eenheid.kvk_nummer ||
             eenheid.tooi_uri) && (
-            <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
+            <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', columnGap: '16px', rowGap: '4px', fontSize: '12px' }}>
               {eenheid.afkorting && (
                 <>
-                  <dt className="text-text-secondary">Afkorting</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>Afkorting</dt>
                   <dd>{eenheid.afkorting}</dd>
                 </>
               )}
               {eenheid.oin && (
                 <>
-                  <dt className="text-text-secondary">OIN</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>OIN</dt>
                   <dd className="font-mono">{eenheid.oin}</dd>
                 </>
               )}
               {eenheid.fte_aantal != null && (
                 <>
-                  <dt className="text-text-secondary">FTE</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>FTE</dt>
                   <dd>{eenheid.fte_aantal}</dd>
                 </>
               )}
               {eenheid.website && (
                 <>
-                  <dt className="text-text-secondary">Website</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>Website</dt>
                   <dd>
-                    <a
-                      href={eenheid.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary-600 hover:underline truncate block max-w-[400px]"
-                    >
-                      {eenheid.website}
-                    </a>
+                    <nldd-link href={eenheid.website} target="_blank" text={eenheid.website} size="xs" style={{ maxWidth: '400px', display: 'block' }} />
                   </dd>
                 </>
               )}
               {eenheid.kvk_nummer && (
                 <>
-                  <dt className="text-text-secondary">KvK</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>KvK</dt>
                   <dd className="font-mono">{eenheid.kvk_nummer}</dd>
                 </>
               )}
               {eenheid.tooi_uri && (
                 <>
-                  <dt className="text-text-secondary">TOOI</dt>
+                  <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>TOOI</dt>
                   <dd>
-                    <a
-                      href={eenheid.tooi_uri}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary-600 hover:underline font-mono text-[10px] truncate block max-w-[400px]"
-                    >
-                      {eenheid.tooi_uri}
-                    </a>
+                    <nldd-link href={eenheid.tooi_uri} target="_blank" text={eenheid.tooi_uri} size="xs" className="font-mono" style={{ maxWidth: '400px', display: 'block' }} />
                   </dd>
                 </>
               )}
             </dl>
           )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Pencil className="h-3.5 w-3.5" />}
-            onClick={onEdit}
-          >
+        </nldd-container>
+        <nldd-container layout="row" gap="8">
+          <Button variant="secondary" size="sm" icon="pencil" onClick={onEdit}>
             Bewerken
           </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            icon={<Trash2 className="h-3.5 w-3.5" />}
-            onClick={onDelete}
-          >
+          <Button variant="danger" size="sm" icon="trash" onClick={onDelete}>
             Verwijderen
           </Button>
-        </div>
+        </nldd-container>
       </div>
 
       {/* Action buttons */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<Plus className="h-3.5 w-3.5" />}
-          onClick={onAddChild}
-        >
+      <nldd-container layout="wrap" gap="8">
+        <Button variant="secondary" size="sm" icon="plus" onClick={onAddChild}>
           Subeenheid toevoegen
         </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<User className="h-3.5 w-3.5" />}
-          onClick={onAddPerson}
-        >
+        <Button variant="secondary" size="sm" icon="person" onClick={onAddPerson}>
           Persoon toevoegen
         </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<Bot className="h-3.5 w-3.5" />}
-          onClick={onAddAgent}
-        >
+        <Button variant="secondary" size="sm" icon="sparkles" onClick={onAddAgent}>
           Agent toevoegen
         </Button>
-      </div>
+      </nldd-container>
 
       {/* People — recursive grouped view */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Users className="h-4 w-4 text-text-secondary" />
-          <h3 className="text-sm font-semibold text-text">
-            Personen ({personenCount}){agentCount > 0 && ` · Agents (${agentCount})`}
-          </h3>
-        </div>
+      <nldd-container gap="12">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <Icon name="Users" size="sm" />
+          <nldd-title size={6}>
+            <h3>Personen ({personenCount}){agentCount > 0 && ` · Agents (${agentCount})`}</h3>
+          </nldd-title>
+        </nldd-container>
 
         {!personenGroup || totalCount === 0 ? (
-          <p className="text-sm text-text-secondary">
+          <nldd-text size="sm" color="secondary">
             Geen personen of agents gekoppeld aan deze eenheid.
-          </p>
+          </nldd-text>
         ) : (
           <PersonGroupSection
             group={personenGroup}
@@ -414,7 +398,7 @@ export function OrganisatieDetail({
             onDropPerson={onDropPerson}
           />
         )}
-      </div>
-    </div>
+      </nldd-container>
+    </nldd-container>
   );
 }

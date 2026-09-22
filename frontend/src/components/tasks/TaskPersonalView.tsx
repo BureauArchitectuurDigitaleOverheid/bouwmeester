@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AlertTriangle, CalendarDays, Calendar, Clock } from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
 import { TaskCard } from './TaskCard';
 import { TaskStatus } from '@/types';
 import type { Task } from '@/types';
@@ -14,7 +14,8 @@ interface TaskGroup {
   label: string;
   icon: React.ReactNode;
   tasks: Task[];
-  headerClass?: string;
+  /** nldd-text color for the group header; unset falls back to 'content'. */
+  headerColor?: 'critical';
 }
 
 export function TaskPersonalView({ tasks, onEditTask }: TaskPersonalViewProps) {
@@ -56,60 +57,60 @@ export function TaskPersonalView({ tasks, onEditTask }: TaskPersonalViewProps) {
       {
         key: 'overdue',
         label: 'Verlopen',
-        icon: <AlertTriangle className="h-4 w-4 text-red-500" />,
+        icon: <Icon name="exclamation-triangle" size="md" />,
         tasks: overdue,
-        headerClass: 'text-red-700',
+        headerColor: 'critical' as const,
       },
       {
         key: 'today',
         label: 'Vandaag',
-        icon: <CalendarDays className="h-4 w-4 text-blue-500" />,
+        icon: <Icon name="calendar-event" size="md" />,
         tasks: today,
       },
       {
         key: 'week',
         label: 'Deze week',
-        icon: <Calendar className="h-4 w-4 text-amber-500" />,
+        icon: <Icon name="calendar" size="md" />,
         tasks: thisWeek,
       },
       {
         key: 'later',
         label: 'Later',
-        icon: <Clock className="h-4 w-4 text-text-secondary" />,
+        icon: <Icon name="clock" size="md" />,
         tasks: later,
       },
     ];
   }, [tasks]);
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {groups.map((group) =>
         group.tasks.length > 0 ? (
           <section key={group.key}>
-            <div className="flex items-center gap-2 mb-3">
+            <nldd-container layout="row" gap="8" vertical-alignment="center" padding-bottom="12">
               {group.icon}
-              <h3 className={`text-sm font-semibold ${group.headerClass ?? 'text-text'}`}>
+              <nldd-text size="sm" weight="bold" {...(group.headerColor ? { color: group.headerColor } : {})}>
                 {group.label}
-              </h3>
-              <span className="inline-flex items-center justify-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-text-secondary">
-                {group.tasks.length}
-              </span>
-            </div>
-            <div className="space-y-2">
+              </nldd-text>
+              <nldd-badge color="neutral" number={group.tasks.length} decorative />
+            </nldd-container>
+            <nldd-container gap="8">
               {group.tasks.map((task) => (
                 <TaskCard key={task.id} task={task} onEdit={onEditTask} />
               ))}
-            </div>
+            </nldd-container>
           </section>
         ) : null,
       )}
 
       {/* Empty state when no tasks at all */}
       {groups.every((g) => g.tasks.length === 0) && (
-        <p className="text-sm text-text-secondary italic py-4 text-center">
-          Geen taken gevonden.
-        </p>
+        <nldd-container padding-block="16" horizontal-alignment="center">
+          <nldd-text size="sm" color="secondary">
+            Geen taken gevonden.
+          </nldd-text>
+        </nldd-container>
       )}
-    </div>
+    </nldd-container>
   );
 }

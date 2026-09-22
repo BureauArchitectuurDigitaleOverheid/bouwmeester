@@ -4,10 +4,10 @@ import { WebAuthnSettings } from '@/components/settings/WebAuthnSettings';
 
 export function InstellingenPage() {
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <nldd-container max-width="640px" horizontal-alignment="center" gap="24">
       <VocabularySettings />
       <WebAuthnSettings />
       <MattermostLinkSection />
-    </div>
+    </nldd-container>
   );
 }

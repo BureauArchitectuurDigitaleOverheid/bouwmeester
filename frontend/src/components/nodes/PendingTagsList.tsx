@@ -1,4 +1,5 @@
-import { X } from 'lucide-react';
+import { useRef } from 'react';
+import { useNlddEvent } from '@/components/nldd/events';
 
 interface PendingTag {
   name: string;
@@ -14,22 +15,19 @@ export function PendingTagsList({ tags, onRemove }: PendingTagsListProps) {
   if (tags.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <nldd-container layout="wrap" gap="6">
       {tags.map((tag) => (
-        <span
-          key={tag.name}
-          className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2.5 py-0.5 text-xs font-medium"
-        >
-          {tag.name}
-          <button
-            type="button"
-            onClick={() => onRemove(tag.name)}
-            className="hover:text-red-500 transition-colors ml-0.5"
-          >
-            <X className="h-3 w-3" />
-          </button>
-        </span>
+        <PendingTagToken key={tag.name} name={tag.name} onRemove={() => onRemove(tag.name)} />
       ))}
-    </div>
+    </nldd-container>
+  );
+}
+
+/** A single pending-tag chip: `nldd-token` with its `dismiss` event bridged to React. */
+function PendingTagToken({ name, onRemove }: { name: string; onRemove: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'dismiss', onRemove);
+  return (
+    <nldd-token ref={ref} text={name} control="dismiss" dismiss-text={`Verwijder tag ${name}`} />
   );
 }

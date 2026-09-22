@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useActivityFeed } from '@/hooks/useActivity';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
+import { Select } from '@/components/common/Select';
+import { EmptyState } from '@/components/common/EmptyState';
+import { useNlddEvent } from '@/components/nldd/events';
+import { NlddActionText } from '@/components/nldd/NlddLink';
 import {
   Activity,
   EVENT_TYPE_LABELS,
@@ -189,41 +192,28 @@ function DetailCell({
     (item.task_id && item.event_type.startsWith('task.')) || item.node_id;
 
   return (
-    <div className="space-y-1">
+    <nldd-container gap="4">
       {subject && (
-        <div className="font-medium text-text">
-          {isClickable ? (
-            <button
-              onClick={handleClick}
-              className="text-left hover:text-primary-600 hover:underline cursor-pointer"
-            >
-              {String(subject)}
-            </button>
-          ) : (
-            String(subject)
-          )}
-        </div>
+        isClickable ? (
+          <NlddActionText text={String(subject)} onClick={handleClick} />
+        ) : (
+          <nldd-text weight="medium">{String(subject)}</nldd-text>
+        )
       )}
       {chips.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <nldd-container layout="wrap" gap="6">
           {chips.map((chip, i) => (
-            <span
+            <nldd-tag
               key={i}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${
-                chip.highlight
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'bg-gray-100 text-text-secondary'
-              }`}
-            >
-              <span className="font-medium">{chip.label}:</span> {chip.value}
-            </span>
+              size="sm"
+              color={chip.highlight ? 'accent' : 'neutral'}
+              text={`${chip.label}: ${chip.value}`}
+            />
           ))}
-        </div>
+        </nldd-container>
       )}
-      {!subject && chips.length === 0 && (
-        <span className="text-text-tertiary">—</span>
-      )}
-    </div>
+      {!subject && chips.length === 0 && <nldd-text color="secondary">—</nldd-text>}
+    </nldd-container>
   );
 }
 
@@ -234,6 +224,7 @@ export function AuditLogPage() {
   const [category, setCategory] = useState('');
   const { openNodeDetail } = useNodeDetail();
   const { openTaskDetail } = useTaskDetail();
+  const paginationRef = useRef<HTMLElement>(null);
 
   const { data, isLoading, isError } = useActivityFeed({
     skip: page * PAGE_SIZE,
@@ -250,161 +241,107 @@ export function AuditLogPage() {
     }
   }, [totalPages, page]);
 
+  useNlddEvent(paginationRef, 'page-change', (e) => {
+    const detail = (e as CustomEvent<{ page?: number }>).detail;
+    if (detail?.page) setPage(detail.page - 1);
+  });
+
   if (loading) return null;
   if (viewAsNonAdmin || (oidcConfigured && (!person || !hasPermission('audit:read')))) {
     return <Navigate to="/" replace />;
   }
 
   return (
-    <div className="space-y-6">
+    <nldd-container gap="24">
       {/* Filters */}
-      <div className="flex items-center gap-3">
-        <select
+      <nldd-container max-width="320px">
+        <Select
           value={category}
+          aria-label="Filter op categorie"
           onChange={(e) => {
             setCategory(e.target.value);
             setPage(0);
           }}
-          className="px-3 py-2 rounded-lg border border-border text-sm bg-white focus:outline-none focus:border-primary-400"
-        >
-          {CATEGORY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
+          options={CATEGORY_OPTIONS}
+        />
+      </nldd-container>
 
-      {/* Mobile card layout */}
-      <div className="md:hidden space-y-3">
-        {isLoading ? (
-          <p className="text-center text-text-secondary py-8">Laden...</p>
-        ) : isError ? (
-          <p className="text-center text-red-600 py-8">Fout bij laden van activiteiten</p>
-        ) : !data?.items.length ? (
-          <p className="text-center text-text-secondary py-8">Geen activiteit gevonden</p>
-        ) : (
+      {/* Table */}
+      <nldd-table
+        columns="160px 220px 160px minmax(240px,1fr)"
+        sm-columns="minmax(0,1fr)"
+        lg-columns="160px 220px 160px minmax(240px,1fr)"
+        accessible-label="Auditlog"
+      >
+        <nldd-table-row slot="header">
+          <nldd-text-cell text="Tijdstip" hide-below="lg" />
+          <nldd-text-cell text="Actie" hide-below="lg" />
+          <nldd-text-cell text="Actor" hide-below="lg" />
+          <nldd-text-cell text="Details" hide-below="lg" />
+          <nldd-text-cell text="Activiteit" hide-above="md" />
+        </nldd-table-row>
+        {isLoading || isError || !data?.items.length ? null : (
           data.items.map((item) => (
-            <div key={item.id} className="border border-border rounded-xl bg-white p-4 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-text-secondary">{formatDate(item.created_at)}</span>
-                {item.actor_naam && (
-                  <span className="text-xs font-medium text-text">{item.actor_naam}</span>
-                )}
-              </div>
-              <div className="text-sm font-medium text-text">
-                {EVENT_TYPE_LABELS[item.event_type] || item.event_type}
-              </div>
-              <DetailCell item={item} onOpenNode={openNodeDetail} onOpenTask={openTaskDetail} />
-            </div>
+            <nldd-table-row key={item.id}>
+              <nldd-text-cell text={formatDate(item.created_at)} color="secondary" hide-below="lg" />
+              <nldd-text-cell text={EVENT_TYPE_LABELS[item.event_type] || item.event_type} hide-below="lg" />
+              <nldd-text-cell text={item.actor_naam || '—'} color="secondary" hide-below="lg" />
+              <nldd-cell hide-below="lg">
+                <DetailCell item={item} onOpenNode={openNodeDetail} onOpenTask={openTaskDetail} />
+              </nldd-cell>
+              {/* Below lg (sm and md both fall back to sm-columns, one track)
+                  the four columns collapse into this single cell instead. */}
+              <nldd-cell hide-above="md">
+                <nldd-container gap="6">
+                  <nldd-container layout="row" gap="8" horizontal-alignment="left">
+                    <nldd-text size="xs" color="secondary">
+                      {formatDate(item.created_at)}
+                    </nldd-text>
+                    {item.actor_naam && (
+                      <nldd-text size="xs" weight="medium">
+                        {item.actor_naam}
+                      </nldd-text>
+                    )}
+                  </nldd-container>
+                  <nldd-text size="sm" weight="medium">
+                    {EVENT_TYPE_LABELS[item.event_type] || item.event_type}
+                  </nldd-text>
+                  <DetailCell item={item} onOpenNode={openNodeDetail} onOpenTask={openTaskDetail} />
+                </nldd-container>
+              </nldd-cell>
+            </nldd-table-row>
           ))
         )}
-      </div>
-
-      {/* Desktop table */}
-      <div className="hidden md:block border border-border rounded-xl overflow-hidden bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-border">
-              <th className="text-left px-4 py-3 font-medium text-text-secondary w-40">
-                Tijdstip
-              </th>
-              <th className="text-left px-4 py-3 font-medium text-text-secondary w-56">
-                Actie
-              </th>
-              <th className="text-left px-4 py-3 font-medium text-text-secondary w-40">
-                Actor
-              </th>
-              <th className="text-left px-4 py-3 font-medium text-text-secondary">
-                Details
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-4 py-8 text-center text-text-secondary"
-                >
-                  Laden...
-                </td>
-              </tr>
-            ) : isError ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-4 py-8 text-center text-red-600"
-                >
-                  Fout bij laden van activiteiten
-                </td>
-              </tr>
-            ) : !data?.items.length ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-4 py-8 text-center text-text-secondary"
-                >
-                  Geen activiteit gevonden
-                </td>
-              </tr>
-            ) : (
-              data.items.map((item) => (
-                <tr
-                  key={item.id}
-                  className="border-b border-border last:border-b-0 hover:bg-gray-50"
-                >
-                  <td className="px-4 py-3 text-text-secondary whitespace-nowrap align-top">
-                    {formatDate(item.created_at)}
-                  </td>
-                  <td className="px-4 py-3 text-text align-top">
-                    {EVENT_TYPE_LABELS[item.event_type] || item.event_type}
-                  </td>
-                  <td className="px-4 py-3 text-text align-top">
-                    {item.actor_naam || (
-                      <span className="text-text-tertiary">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <DetailCell
-                      item={item}
-                      onOpenNode={openNodeDetail}
-                      onOpenTask={openTaskDetail}
-                    />
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+        <div slot="empty">
+          {isLoading ? (
+            <nldd-inline-dialog variant="loading" text="Activiteiten laden..." />
+          ) : isError ? (
+            <EmptyState icon="exclamation-triangle" title="Fout bij laden van activiteiten" />
+          ) : category ? (
+            <EmptyState
+              icon="magnifier"
+              title="Geen activiteit gevonden"
+              description="Pas de categorie aan om andere activiteit te zien."
+            />
+          ) : (
+            <EmptyState icon="inbox" title="Geen activiteit gevonden" />
+          )}
+        </div>
+      </nldd-table>
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-text-secondary">
-            {data?.total ?? 0} resultaten — pagina {page + 1} van {totalPages}
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-sm disabled:opacity-40 hover:bg-gray-50 transition-colors"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Vorige
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-sm disabled:opacity-40 hover:bg-gray-50 transition-colors"
-            >
-              Volgende
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+        <nldd-container layout="row" gap="16">
+          <nldd-container vertical-alignment="center">
+            <nldd-text size="sm" color="secondary">
+              {data?.total ?? 0} resultaten — pagina {page + 1} van {totalPages}
+            </nldd-text>
+          </nldd-container>
+          <nldd-container width="fit-content">
+            <nldd-pagination ref={paginationRef} current={page + 1} total={totalPages} />
+          </nldd-container>
+        </nldd-container>
       )}
-    </div>
+    </nldd-container>
   );
 }

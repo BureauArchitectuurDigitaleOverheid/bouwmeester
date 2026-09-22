@@ -1,45 +1,48 @@
-import { clsx } from 'clsx';
-import { User, Bot } from 'lucide-react';
 import { isPersonOnline } from '@/utils/people';
+
+/** nldd-avatar only accepts spacer-aligned pixel sizes. */
+type AvatarSize = '24' | '28' | '32' | '40' | '44' | '48';
 
 interface PersonAvatarProps {
   person: { naam: string; is_agent: boolean; last_seen_at?: string | null };
-  /** Tailwind h-/w- size class, e.g. "h-10 w-10". Defaults to "h-10 w-10". */
-  size?: string;
-  /** Icon size class, e.g. "h-5 w-5". Defaults to "h-5 w-5". */
-  iconSize?: string;
-  /** Agent avatar color classes. Defaults to "bg-purple-100 text-purple-700". */
-  agentColor?: string;
+  /** A size from the spacer-aligned set nldd-avatar accepts. Defaults to '40'. */
+  size?: AvatarSize;
 }
 
-export function PersonAvatar({
-  person,
-  size = 'h-10 w-10',
-  iconSize = 'h-5 w-5',
-  agentColor = 'bg-purple-100 text-purple-700',
-}: PersonAvatarProps) {
-  const initials = person.naam
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
+/**
+ * A person's avatar, with an online dot.
+ *
+ * The element derives initials from `name` itself and falls back to an icon
+ * when there is nothing to derive (an empty name) or when `icon` is set
+ * explicitly, which is what marks an agent here: 'sparkles' rather than a
+ * literal robot glyph, matching the icon bridge's own choice for `Bot`. The
+ * online dot is `nldd-badge`, the design system's small count/status overlay:
+ * icon-only with no text or number it renders as a plain dot, and `pulse`
+ * gives it a live read.
+ */
+export function PersonAvatar({ person, size = '40' }: PersonAvatarProps) {
   const online = isPersonOnline(person);
 
   return (
-    <div className="relative shrink-0">
-      {person.is_agent ? (
-        <div className={clsx('flex items-center justify-center rounded-full', size, agentColor)}>
-          <Bot className={iconSize} />
-        </div>
-      ) : (
-        <div className={clsx('flex items-center justify-center rounded-full bg-primary-100 text-primary-700 font-semibold text-sm', size)}>
-          {initials || <User className={iconSize} />}
-        </div>
-      )}
+    // The badge anchors to this box with absolute positioning, which is layout
+    // math a component can't express — nldd-container has no relative/absolute
+    // concept, so this one div stays plain CSS (inline style, no className).
+    <div style={{ position: 'relative', flexShrink: 0, width: `${size}px`, height: `${size}px` }}>
+      <nldd-avatar
+        name={person.naam}
+        size={size}
+        {...(person.is_agent ? { icon: 'sparkles', color: 'inherit' } : {})}
+      />
       {online && (
-        <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-white" />
+        // Same reason: the online dot is pinned to a corner of the avatar box,
+        // not laid out relative to a sibling.
+        <nldd-badge
+          color="success"
+          icon="circle-filled-extra-small"
+          pulse
+          decorative
+          style={{ position: 'absolute', bottom: 0, right: 0 }}
+        />
       )}
     </div>
   );

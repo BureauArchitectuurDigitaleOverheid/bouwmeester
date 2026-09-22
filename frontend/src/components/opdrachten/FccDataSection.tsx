@@ -1,13 +1,19 @@
-import { Cloud } from 'lucide-react';
-
 import { Badge } from '@/components/common/Badge';
 import { DetailSection } from '@/components/common/DetailSection';
+import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
+import { Icon } from '@/components/nldd/Icon';
 import {
-  FCC_TRAFFIC_LIGHT_COLORS,
   FCC_TRAFFIC_LIGHT_FIELDS,
   type FccTrafficLight,
 } from '@/types';
 import { formatCurrency } from '@/utils/format';
+
+/** `FccTrafficLight` -> the design system's five semantic roles. */
+const TRAFFIC_LIGHT_TAG_COLOR: Record<FccTrafficLight, 'success' | 'warning' | 'critical'> = {
+  green: 'success',
+  orange: 'warning',
+  red: 'critical',
+};
 
 interface FccDataSectionProps {
   data: Record<string, unknown>;
@@ -61,60 +67,52 @@ export function FccDataSection({
   return (
     <DetailSection
       title="Fortes Change Cloud"
-      icon={<Cloud className="h-3.5 w-3.5" />}
+      icon={<Icon name="cloud" size="sm" />}
       separated
     >
-      <div className="space-y-3">
+      <nldd-container gap="12">
         {/* Traffic lights */}
         {trafficLights.length > 0 && (
-          <div className="flex flex-wrap gap-3">
+          <nldd-container layout="wrap" gap="12">
             {trafficLights.map(({ label, value }) => (
-              <div key={label} className="flex items-center gap-1.5 text-xs text-text-secondary">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${FCC_TRAFFIC_LIGHT_COLORS[value as FccTrafficLight] || 'bg-gray-300'}`}
-                  title={`${label}: ${value}`}
-                />
-                {label}
-              </div>
+              <nldd-tag
+                key={label}
+                text={label}
+                icon="circle-filled-extra-small"
+                color={TRAFFIC_LIGHT_TAG_COLOR[value as FccTrafficLight] ?? 'neutral'}
+                size="sm"
+                title={`${label}: ${value}`}
+              />
             ))}
-          </div>
+          </nldd-container>
         )}
 
         {/* Metadata grid */}
-        {metaItems.length > 0 && (
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-            {metaItems.map(({ label, value }) => (
-              <div key={label} className="contents">
-                <dt className="text-text-secondary text-xs">{label}</dt>
-                <dd className="text-text text-xs">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
+        <DetailMetadataGrid items={metaItems} />
 
         {/* Labels */}
         {labelList.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <nldd-container layout="wrap" gap="6">
             {labelList.map((label) => (
               <Badge key={label} variant="slate">
                 {label}
               </Badge>
             ))}
-          </div>
+          </nldd-container>
         )}
 
         {/* Multi-year totals */}
         {(budgetTotaal != null || gerealiseerTotaal != null) && (
-          <div className="flex gap-4 text-xs text-text-secondary">
+          <nldd-container layout="row" gap="16">
             {budgetTotaal != null && (
-              <span>Budget totaal: {formatCurrency(budgetTotaal)}</span>
+              <nldd-text size="xs" color="secondary">Budget totaal: {formatCurrency(budgetTotaal)}</nldd-text>
             )}
             {gerealiseerTotaal != null && (
-              <span>Gerealiseerd totaal: {formatCurrency(gerealiseerTotaal)}</span>
+              <nldd-text size="xs" color="secondary">Gerealiseerd totaal: {formatCurrency(gerealiseerTotaal)}</nldd-text>
             )}
-          </div>
+          </nldd-container>
         )}
-      </div>
+      </nldd-container>
     </DetailSection>
   );
 }

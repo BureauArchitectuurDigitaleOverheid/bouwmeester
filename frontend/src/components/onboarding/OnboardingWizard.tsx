@@ -6,6 +6,7 @@ import {
 } from '@/hooks/useOnboarding';
 import { ProfileStep } from '@/components/onboarding/ProfileStep';
 import { MattermostStep } from '@/components/onboarding/MattermostStep';
+import { NlddButton } from '@/components/nldd/NlddLink';
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 
 interface StepComponentProps {
@@ -53,22 +54,22 @@ export function OnboardingWizard({
   let footer: ReactNode = null;
   if (current.dismissible) {
     footer = (
-      <div className="flex items-center justify-between w-full">
-        <button
+      <nldd-container layout="row" vertical-alignment="center" width="full">
+        <NlddButton
+          text="Later"
+          variant="neutral-transparent"
+          disabled={dismissMutation.isPending}
           onClick={() => handleDismiss(false)}
+        />
+        <nldd-spacer size="flexible" direction="horizontal" />
+        <NlddButton
+          text="Niet meer tonen"
+          variant="neutral-transparent"
+          size="sm"
           disabled={dismissMutation.isPending}
-          className="px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:text-text hover:bg-gray-50 transition-colors disabled:opacity-50"
-        >
-          Later
-        </button>
-        <button
           onClick={() => handleDismiss(true)}
-          disabled={dismissMutation.isPending}
-          className="text-xs text-text-secondary/60 hover:text-text-secondary underline transition-colors disabled:opacity-50"
-        >
-          Niet meer tonen
-        </button>
-      </div>
+        />
+      </nldd-container>
     );
   }
 
@@ -102,7 +103,10 @@ export function OnboardingWizard({
       closeable={false}
       footer={footer}
     >
-      <div className="min-h-[350px]">
+      {/* No nldd-container attribute sets a min-height (only the cell family does),
+          so this stays a plain div. It reserves vertical space between steps of
+          differing height, purely a layout dimension, not a color or utility class. */}
+      <div style={{ minHeight: '350px' }}>
         <StepComponent onComplete={handleComplete} />
       </div>
     </Modal>

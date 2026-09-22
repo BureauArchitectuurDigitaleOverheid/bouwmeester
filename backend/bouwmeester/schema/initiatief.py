@@ -4,17 +4,64 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Canonical eenheid-rol type — used in schemas, routes, and repository
 InitiatiefEenheidRol = Literal["eigenaar", "contributor", "viewer"]
 EENHEID_ROL_RANK: dict[str, int] = {"eigenaar": 3, "contributor": 2, "viewer": 1}
 
+# The closed set of nldd-tag color names an Initiatief.kleur may hold, the same
+# set LeadColumn.color uses (schema.lead_column.LEAD_COLUMN_COLORS): five
+# semantic roles plus the Rijkshuisstijl hues. The frontend passes this straight
+# to nldd-tag's `color` and nldd-icon's `color`, which ignore anything outside
+# their own set, so a hex or a CSS class here renders as no color at all.
+# Mirrored by hand in frontend/src/types/index.ts (INITIATIEF_COLORS).
+INITIATIEF_COLORS: frozenset[str] = frozenset(
+    {
+        # Semantic roles
+        "neutral",
+        "accent",
+        "success",
+        "warning",
+        "critical",
+        # Rijkshuisstijl
+        "lintblauw",
+        "donkerblauw",
+        "hemelblauw",
+        "lichtblauw",
+        "paars",
+        "violet",
+        "robijnrood",
+        "roze",
+        "rood",
+        "oranje",
+        "donkergeel",
+        "geel",
+        "donkerbruin",
+        "bruin",
+        "donkergroen",
+        "groen",
+        "mosgroen",
+        "mintgroen",
+    }
+)
+
+
+def _validate_kleur(kleur: str | None) -> str | None:
+    if kleur is not None and kleur not in INITIATIEF_COLORS:
+        allowed = ", ".join(sorted(INITIATIEF_COLORS))
+        raise ValueError(f"kleur must be one of: {allowed}")
+    return kleur
+
 
 class InitiatiefBase(BaseModel):
     naam: str = Field(min_length=1, max_length=200)
     beschrijving: str | None = Field(None, max_length=5000)
-    kleur: str | None = Field(None, max_length=20)
+    kleur: str | None = Field(
+        None, max_length=20, description="One of INITIATIEF_COLORS."
+    )
+
+    _validate_kleur = field_validator("kleur")(_validate_kleur)
 
 
 class InitiatiefCreate(InitiatiefBase):
@@ -24,7 +71,11 @@ class InitiatiefCreate(InitiatiefBase):
 class InitiatiefUpdate(BaseModel):
     naam: str | None = Field(None, min_length=1, max_length=200)
     beschrijving: str | None = Field(None, max_length=5000)
-    kleur: str | None = Field(None, max_length=20)
+    kleur: str | None = Field(
+        None, max_length=20, description="One of INITIATIEF_COLORS."
+    )
+
+    _validate_kleur = field_validator("kleur")(_validate_kleur)
 
 
 class InitiatiefSettingsUpdate(BaseModel):

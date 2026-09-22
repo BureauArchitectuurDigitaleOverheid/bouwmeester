@@ -1,27 +1,17 @@
-import { useState, useMemo } from 'react';
-import {
-  ArrowRight,
-  MessageSquare,
-  Phone,
-  Mail,
-  CalendarDays,
-  Plus,
-  ChevronDown,
-  Sparkles,
-} from 'lucide-react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { format, isToday, isYesterday, subDays, subMonths } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
+import { NlddButton } from '@/components/nldd/NlddLink';
+import { Icon } from '@/components/nldd/Icon';
+import { useNlddEvent } from '@/components/nldd/events';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { useLeadTimeline } from '@/hooks/useLeads';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
-import {
-  LeadStage,
-  LEAD_STAGE_LABELS,
-  LEAD_STAGE_COLORS,
-} from '@/types';
+import { LeadStage, LEAD_STAGE_LABELS } from '@/types';
 import type { LeadTimelineEvent } from '@/types';
+import { stageTagColor } from './stageColors';
 
 // -- Period presets --
 type PeriodKey = 'week' | 'month' | 'quarter' | 'all';
@@ -47,44 +37,18 @@ function periodToDates(period: PeriodKey): { date_from?: string; date_to?: strin
   }
 }
 
-// -- Event dot colors --
-const EVENT_DOT_COLORS: Record<string, string> = {
-  created: '#10B981',
-  stage_change: '#3B82F6',
-  note: '#6B7280',
-  meeting: '#8B5CF6',
-  call: '#F59E0B',
-  email: '#06B6D4',
+// -- Event type icons (nldd-icon names) --
+const EVENT_ICONS: Record<string, string> = {
+  meeting: 'calendar-event',
+  call: 'at',
+  email: 'envelope',
+  note: 'message-rectangle-text',
+  created: 'plus',
+  stage_change: 'arrow-right',
 };
 
-const EVENT_DOT_RING_COLORS: Record<string, string> = {
-  created: 'ring-green-100',
-  stage_change: 'ring-blue-100',
-  note: 'ring-gray-100',
-  meeting: 'ring-purple-100',
-  call: 'ring-yellow-100',
-  email: 'ring-cyan-100',
-};
-
-// -- Event type icons --
-function EventIcon({ type }: { type: string }) {
-  const cls = 'h-3.5 w-3.5';
-  switch (type) {
-    case 'meeting':
-      return <CalendarDays className={cls} />;
-    case 'call':
-      return <Phone className={cls} />;
-    case 'email':
-      return <Mail className={cls} />;
-    case 'note':
-      return <MessageSquare className={cls} />;
-    case 'created':
-      return <Plus className={cls} />;
-    case 'stage_change':
-      return <ArrowRight className={cls} />;
-    default:
-      return <Sparkles className={cls} />;
-  }
+function eventIconName(type: string): string {
+  return EVENT_ICONS[type] ?? 'sparkles';
 }
 
 // -- Date group label --
@@ -113,66 +77,68 @@ function groupEventsByDate(events: LeadTimelineEvent[]): Map<string, LeadTimelin
 
 // -- Stage badge --
 function StageBadge({ stage }: { stage: string }) {
-  const stageKey = stage as LeadStage;
-  const colors = LEAD_STAGE_COLORS[stageKey] ?? 'bg-gray-100 text-gray-800';
-  const label = LEAD_STAGE_LABELS[stageKey] ?? stage;
-  return (
-    <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${colors}`}
-    >
-      {label}
-    </span>
-  );
+  const label = LEAD_STAGE_LABELS[stage as LeadStage] ?? stage;
+  return <nldd-tag text={label} color={stageTagColor(stage)} size="sm" />;
 }
 
 // -- Event description --
+/** Two-line clamp shared by the rich-text event bodies below. */
+const clampStyle: React.CSSProperties = {
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+};
+
 function EventDescription({ event }: { event: LeadTimelineEvent }) {
   switch (event.event_type) {
     case 'created':
       return (
-        <div className="mt-2 flex items-center gap-2 text-sm text-text-secondary">
-          <span>Nieuwe lead aangemaakt</span>
+        <nldd-container layout="row" gap="8" vertical-alignment="center" padding-top="8">
+          <nldd-text size="sm" color="secondary">Nieuwe lead aangemaakt</nldd-text>
           <StageBadge stage={event.stage} />
-        </div>
+        </nldd-container>
       );
 
     case 'stage_change':
       return (
-        <div className="mt-2 flex items-center gap-2 text-sm flex-wrap">
+        <nldd-container layout="wrap" gap="8" vertical-alignment="center" padding-top="8">
           {event.from_stage && <StageBadge stage={event.from_stage} />}
-          <ArrowRight className="h-3.5 w-3.5 text-text-secondary shrink-0" />
+          <Icon name="arrow-right" size="sm" color="secondary-content" style={{ flexShrink: 0 }} />
           {event.to_stage && <StageBadge stage={event.to_stage} />}
-        </div>
+        </nldd-container>
       );
 
     case 'note':
       return event.content ? (
-        <div className="mt-2 line-clamp-2 [&_p]:m-0 [&_p]:leading-snug">
+        <nldd-text size="sm" style={{ ...clampStyle, display: '-webkit-box', marginTop: '8px' }}>
           <RichTextDisplay content={event.content} fallback="" />
-        </div>
+        </nldd-text>
       ) : null;
 
     case 'meeting':
     case 'call':
     case 'email':
       return (
-        <div className="mt-2 flex items-start gap-2 text-sm text-text-secondary">
-          <EventIcon type={event.event_type} />
+        <nldd-container layout="row" gap="8" padding-top="8">
+          <Icon name={eventIconName(event.event_type)} size="sm" color="secondary-content" style={{ flexShrink: 0 }} />
           {event.content ? (
-            <div className="line-clamp-2 flex-1 [&_p]:m-0 [&_p]:leading-snug">
+            <nldd-text size="sm" color="secondary" style={{ ...clampStyle, flex: 1 }}>
               <RichTextDisplay content={event.content} fallback="" />
-            </div>
+            </nldd-text>
           ) : (
-            <span className="line-clamp-2">{getActivityLabel(event.event_type)}</span>
+            <nldd-text size="sm" color="secondary" style={clampStyle}>
+              {getActivityLabel(event.event_type)}
+            </nldd-text>
           )}
-        </div>
+        </nldd-container>
       );
 
     default:
       return event.content ? (
-        <div className="mt-2 line-clamp-2 [&_p]:m-0 [&_p]:leading-snug">
+        <nldd-text size="sm" style={{ ...clampStyle, marginTop: '8px' }}>
           <RichTextDisplay content={event.content} fallback="" />
-        </div>
+        </nldd-text>
       ) : null;
   }
 }
@@ -186,7 +152,16 @@ function getActivityLabel(type: string): string {
   }
 }
 
-// -- Single timeline event card --
+// -- Single timeline event row --
+//
+// This is a feed of distinct events across many leads, not a single entity's
+// progress toward a known end, so nldd-timeline-track-cell's `status`
+// (past/current/future relative to where *you* are) doesn't carry real
+// meaning here — every row is simply "past". It still earns its place as the
+// per-row dot-and-line lane the design already had: `variant="major"`,
+// `status="past"` on every row, `position="between"` throughout (the date
+// group headers provide the visual break, so the track itself is one
+// continuous line).
 function TimelineEventCard({
   event,
   onClickLead,
@@ -195,57 +170,44 @@ function TimelineEventCard({
   onClickLead: (leadId: string) => void;
 }) {
   const time = format(new Date(event.timestamp), 'HH:mm');
-  const dotColor = EVENT_DOT_COLORS[event.event_type] ?? '#6B7280';
-  const ringColor = EVENT_DOT_RING_COLORS[event.event_type] ?? 'ring-gray-100';
+  const ref = useRef<HTMLElement>(null);
+  const handleClick = useCallback(() => onClickLead(event.lead_id), [onClickLead, event.lead_id]);
+  useNlddEvent(ref, 'click', handleClick);
 
   return (
-    <div className="relative flex items-start gap-4 pl-14 py-2 group">
-      {/* Timeline dot */}
-      <div
-        className={`absolute left-[18px] w-3.5 h-3.5 rounded-full ring-4 ${ringColor} z-10 transition-transform group-hover:scale-125`}
-        style={{ backgroundColor: dotColor }}
-      />
+    <nldd-list-item>
+      <nldd-timeline-track-cell status="past" variant="major" position="between" />
+      <nldd-list-item-segment ref={ref} button width="full" accessible-label={event.lead_title}>
+        <nldd-container width="full" gap="0">
+          <nldd-container layout="row" gap="8" vertical-alignment="top">
+            <nldd-container gap="2" width="full">
+              <nldd-container layout="row" gap="8" vertical-alignment="center">
+                <nldd-text size="xs" color="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>{time}</nldd-text>
+                <Icon name={eventIconName(event.event_type)} size="sm" style={{ opacity: 0.5 }} />
+              </nldd-container>
+              <nldd-title-cell text={event.lead_title} size={6} />
+              {event.organization && (
+                <nldd-text size="sm" color="secondary">
+                  {event.organization}
+                </nldd-text>
+              )}
+            </nldd-container>
+            <StageBadge stage={event.stage} />
+          </nldd-container>
 
-      {/* Card */}
-      <div
-        className="flex-1 bg-white rounded-xl border border-border p-4 hover:shadow-md transition-all duration-200 cursor-pointer hover:border-gray-300"
-        onClick={() => onClickLead(event.lead_id)}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs text-text-secondary tabular-nums">{time}</span>
-              <span className="text-xs text-text-secondary opacity-50">
-                <EventIcon type={event.event_type} />
-              </span>
-            </div>
-            <h4
-              className="font-medium text-text truncate hover:text-primary-600 transition-colors"
-              title={event.lead_title}
-            >
-              {event.lead_title}
-            </h4>
-            {event.organization && (
-              <p className="text-sm text-text-secondary truncate">{event.organization}</p>
-            )}
-          </div>
-          <StageBadge stage={event.stage} />
-        </div>
+          <EventDescription event={event} />
 
-        <EventDescription event={event} />
-
-        {(event.actor_naam || event.assignee_naam) && (
-          <div className="mt-2.5 flex items-center gap-3 text-xs text-text-secondary">
-            {event.actor_naam && (
-              <span>Door {event.actor_naam}</span>
-            )}
-            {event.assignee_naam && event.assignee_naam !== event.actor_naam && (
-              <span className="opacity-60">Verantwoordelijk: {event.assignee_naam}</span>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+          {(event.actor_naam || event.assignee_naam) && (
+            <nldd-container layout="row" gap="12" padding-top="10">
+              {event.actor_naam && <nldd-text size="xs" color="secondary">Door {event.actor_naam}</nldd-text>}
+              {event.assignee_naam && event.assignee_naam !== event.actor_naam && (
+                <nldd-text size="xs" color="secondary">Verantwoordelijk: {event.assignee_naam}</nldd-text>
+              )}
+            </nldd-container>
+          )}
+        </nldd-container>
+      </nldd-list-item-segment>
+    </nldd-list-item>
   );
 }
 
@@ -306,94 +268,95 @@ export function LeadTimelineView({
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <LeadMetricsBar />
-      </div>
+    <nldd-container gap="16">
+      <LeadMetricsBar />
 
       {/* Period selector + event count */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5">
+      <nldd-container layout="row" gap="12" vertical-alignment="center">
+        <nldd-container layout="row" gap="2">
           {PERIOD_OPTIONS.map((opt) => (
-            <button
+            <NlddButton
               key={opt.value}
+              size="sm"
+              variant={period === opt.value ? 'neutral-base' : 'neutral-transparent'}
+              text={opt.label}
               onClick={() => setPeriod(opt.value)}
-              className={`px-3 py-1.5 rounded-md text-sm transition-all duration-150 ${
-                period === opt.value
-                  ? 'bg-white shadow-sm font-medium text-text'
-                  : 'text-text-secondary hover:text-text'
-              }`}
-            >
-              {opt.label}
-            </button>
+            />
           ))}
-        </div>
+        </nldd-container>
 
         {!isLoading && (
-          <span className="ml-auto text-xs text-text-secondary">
+          <nldd-text size="xs" color="secondary">
             {totalEvents} {totalEvents === 1 ? 'activiteit' : 'activiteiten'}
-          </span>
+          </nldd-text>
         )}
-      </div>
+      </nldd-container>
 
       {/* Timeline */}
       {isLoading ? (
-        <LoadingSpinner className="py-12" />
+        <LoadingSpinner padding="48" />
       ) : filteredEvents.length === 0 ? (
         <EmptyTimeline />
       ) : (
-        <div className="relative pb-8">
-          {/* Vertical timeline line */}
-          <div className="absolute left-6 top-4 bottom-0 w-0.5 bg-gradient-to-b from-gray-300 via-gray-200 to-transparent" />
-
+        <nldd-container gap="8" padding-bottom="32">
           {Array.from(groupedEvents.entries()).map(([dateKey, dayEvents]) => (
-            <div key={dateKey} className="mb-2">
-              {/* Date header */}
-              <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm py-2.5 pl-14">
-                <h3 className="text-sm font-semibold text-text-secondary tracking-wide">
-                  {formatDateGroupLabel(dateKey)}
-                </h3>
-              </div>
+            <nldd-container key={dateKey} gap="0">
+              {/* Date header stays sticky while its events scroll underneath;
+                  nldd-page's sticky-header is a page-level concept and does
+                  not apply to an in-flow label inside a scrolling list, so
+                  this is plain CSS. */}
+              <nldd-text
+                size="sm"
+                weight="medium"
+                color="secondary"
+                style={{
+                  display: 'block',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 20,
+                  padding: '10px 0',
+                  backgroundColor: 'var(--primitives-color-neutral-0)',
+                }}
+              >
+                {formatDateGroupLabel(dateKey)}
+              </nldd-text>
 
               {/* Events for this date */}
-              {dayEvents.map((event) => (
-                <TimelineEventCard
-                  key={event.id}
-                  event={event}
-                  onClickLead={openLeadDetail}
-                />
-              ))}
-            </div>
+              <nldd-list variant="simple" dividers="never" accessible-label={`Activiteit op ${formatDateGroupLabel(dateKey)}`}>
+                {dayEvents.map((event) => (
+                  <TimelineEventCard
+                    key={event.id}
+                    event={event}
+                    onClickLead={openLeadDetail}
+                  />
+                ))}
+              </nldd-list>
+            </nldd-container>
           ))}
 
           {/* Load more */}
           {hasMore && (
-            <div className="pl-14 pt-4">
-              <button
-                onClick={() => setDisplayLimit((prev) => prev + 50)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border text-sm text-text-secondary hover:text-text hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
-              >
-                <ChevronDown className="h-4 w-4" />
-                Meer laden ({filteredEvents.length - displayLimit} overig)
-              </button>
-            </div>
+            <NlddButton
+              text={`Meer laden (${filteredEvents.length - displayLimit} overig)`}
+              startIcon="chevron-down"
+              variant="secondary"
+              size="sm"
+              onClick={() => setDisplayLimit((prev) => prev + 50)}
+            />
           )}
-        </div>
+        </nldd-container>
       )}
-    </div>
+    </nldd-container>
   );
 }
 
 function EmptyTimeline() {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-        <CalendarDays className="h-7 w-7 text-gray-400" />
-      </div>
-      <h3 className="text-base font-medium text-text mb-1">Nog geen activiteit</h3>
-      <p className="text-sm text-text-secondary max-w-sm">
-        Maak een nieuwe lead aan om te beginnen. Alle activiteit verschijnt hier in chronologische volgorde.
-      </p>
-    </div>
+    <nldd-inline-dialog
+      icon="calendar-event"
+      text="Nog geen activiteit"
+      supporting-text="Maak een nieuwe lead aan om te beginnen. Alle activiteit verschijnt hier in chronologische volgorde."
+      heading-level={2}
+    />
   );
 }

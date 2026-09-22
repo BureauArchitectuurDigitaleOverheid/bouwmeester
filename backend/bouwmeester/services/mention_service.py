@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.org_context import OrgContext, apply_org_filter
+from bouwmeester.core.tiptap_markdown import extract_markdown_mentions
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.mention import Mention
 from bouwmeester.models.task import Task
@@ -25,10 +26,16 @@ class MentionService:
 
     @staticmethod
     def extract_mentions(description_json: str) -> list[dict]:
-        """Parse TipTap JSON and extract mention nodes.
+        """Extract mentions from a description, in either storage format.
 
         Returns list of dicts with keys: mention_type, target_id.
         mention_type is 'person' for @mentions, derived from attrs for #mentions.
+
+        Both formats are read because both occur. The editor writes markdown
+        (`[@Anne](user:<id>)`), and older rows still hold TipTap JSON. Reading
+        only one of the two is silent: `sync_mentions` clears a row's mentions
+        before re-extracting, so a format it cannot parse costs that row every
+        notification without raising anything.
         """
         if not description_json:
             return []
@@ -36,7 +43,12 @@ class MentionService:
         try:
             doc = json.loads(description_json)
         except (json.JSONDecodeError, TypeError):
-            return []
+            return extract_markdown_mentions(description_json)
+
+        # A JSON string that is not a TipTap document (a bare number, or a
+        # quoted string holding markdown) parses fine and walks to nothing.
+        if not isinstance(doc, dict):
+            return extract_markdown_mentions(description_json)
 
         mentions: list[dict] = []
         _walk_tiptap(doc, mentions)

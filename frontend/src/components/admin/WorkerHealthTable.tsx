@@ -1,5 +1,5 @@
-import { CheckCircle2, AlertTriangle, XCircle, MinusCircle } from 'lucide-react';
 import { useWorkerHealth, type WorkerHealth, type WorkerHeartbeat } from '@/hooks/useAdmin';
+import { EmptyState } from '@/components/common/EmptyState';
 
 const LOOP_LABELS: Record<string, string> = {
   parlementair: 'Parlementaire import',
@@ -20,38 +20,23 @@ function formatAge(seconds: number | null): string {
   return `${Math.round(seconds / 86400)} dagen geleden`;
 }
 
+const HEALTH_CONFIG: Record<WorkerHealth, { icon: string; color: 'success' | 'warning' | 'critical' | 'neutral'; label: string }> = {
+  healthy: { icon: 'check-mark-circle', color: 'success', label: 'Draait' },
+  stale: { icon: 'exclamation-triangle', color: 'warning', label: 'Vertraagd' },
+  down: { icon: 'dismiss-circle', color: 'critical', label: 'Niet actief' },
+  disabled: { icon: 'minus-circle', color: 'neutral', label: 'Uitgeschakeld' },
+};
+
 function HealthBadge({ health, one_shot = false }: { health: WorkerHealth; one_shot?: boolean }) {
-  const config: Record<WorkerHealth, { Icon: typeof CheckCircle2; cls: string; label: string }> = {
-    healthy: {
-      Icon: CheckCircle2,
-      cls: 'bg-green-100 text-green-800 border-green-200',
-      // Een lock "draait" niet, die is gehouden.
-      label: one_shot ? 'Actief' : 'Draait',
-    },
-    stale: {
-      Icon: AlertTriangle,
-      cls: 'bg-amber-100 text-amber-900 border-amber-200',
-      label: 'Vertraagd',
-    },
-    down: {
-      Icon: XCircle,
-      cls: 'bg-red-100 text-red-800 border-red-200',
-      label: 'Niet actief',
-    },
-    disabled: {
-      Icon: MinusCircle,
-      cls: 'bg-gray-100 text-gray-700 border-gray-200',
-      label: 'Uitgeschakeld',
-    },
-  };
-  const { Icon, cls, label } = config[health];
+  const { icon, color, label } = HEALTH_CONFIG[health];
+  // Een lock "draait" niet, die is gehouden.
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      {label}
-    </span>
+    <nldd-tag
+      text={health === 'healthy' && one_shot ? 'Actief' : label}
+      icon={icon}
+      color={color}
+      size="sm"
+    />
   );
 }
 
@@ -59,32 +44,28 @@ function WorkerRow({ worker }: { worker: WorkerHeartbeat }) {
   const label = LOOP_LABELS[worker.loop_name] ?? worker.loop_name;
   const age = formatAge(worker.seconds_since_last_tick);
   return (
-    <tr className="border-t border-border align-top">
-      <td className="py-2 pr-4">
-        <div className="font-medium">{label}</div>
-        <div className="font-mono text-xs text-text-secondary">{worker.loop_name}</div>
-      </td>
-      <td className="py-2 pr-4">
+    <nldd-table-row>
+      <nldd-title-cell text={label} supporting-text={worker.loop_name} />
+      <nldd-text-cell>
         <HealthBadge health={worker.health} one_shot={worker.one_shot} />
-      </td>
-      <td className="py-2 pr-4 text-sm">
-        {/* Een one-shot tickt per ontwerp maar één keer, dus de leeftijd is
-            "sinds wanneer", niet een achterstallige hartslag. */}
-        {worker.one_shot && worker.seconds_since_last_tick !== null
-          ? `sinds ${age.replace(/ geleden$/, '')}`
-          : age}
-      </td>
-      <td className="py-2 pr-4 text-sm text-text-secondary">
-        {worker.status === 'never_started' ? (
-          <span className="text-red-700">Nooit gestart</span>
-        ) : (
-          worker.status
-        )}
-        {worker.detail ? (
-          <div className="mt-0.5 text-xs text-text-secondary">{worker.detail}</div>
-        ) : null}
-      </td>
-    </tr>
+      </nldd-text-cell>
+      {/* Een one-shot tickt per ontwerp maar één keer, dus de leeftijd is
+          "sinds wanneer", niet een achterstallige hartslag. */}
+      <nldd-text-cell
+        text={
+          worker.one_shot && worker.seconds_since_last_tick !== null
+            ? `sinds ${age.replace(/ geleden$/, '')}`
+            : age
+        }
+        hide-below="md"
+      />
+      <nldd-text-cell
+        text={worker.status === 'never_started' ? 'Nooit gestart' : worker.status}
+        color={worker.status === 'never_started' ? 'critical' : 'secondary'}
+        supporting-text={worker.detail ?? undefined}
+        hide-below="lg"
+      />
+    </nldd-table-row>
   );
 }
 
@@ -92,68 +73,66 @@ export function WorkerHealthTable() {
   const { data, isLoading, error } = useWorkerHealth();
 
   if (isLoading) {
-    return <div className="text-sm text-text-secondary">Workers laden…</div>;
+    return <nldd-text size="sm" color="secondary">Workers laden…</nldd-text>;
   }
   if (error) {
     return (
-      <div className="text-sm text-red-700">
-        Kon worker-status niet ophalen.
-      </div>
+      <nldd-text size="sm" color="critical">Kon worker-status niet ophalen.</nldd-text>
     );
   }
   if (!data || data.workers.length === 0) {
     return (
-      <div className="text-sm text-text-secondary">
-        Geen worker-data beschikbaar.
-      </div>
+      <nldd-text size="sm" color="secondary">Geen worker-data beschikbaar.</nldd-text>
     );
   }
 
   const downWorkers = data.workers.filter((w) => w.health === 'down');
 
   return (
-    <div className="space-y-3">
-      <div>
-        <h3 className="text-base font-semibold">Achtergrondprocessen</h3>
-        <p className="text-sm text-text-secondary">
-          De worker draait naast de webserver en doet polling, sync en de
-          Mattermost-websocket. Elke loop schrijft hier een hartslag.
-        </p>
-      </div>
+    <nldd-container gap="12">
+      <nldd-container gap="4">
+        <nldd-title size={4}><h3>Achtergrondprocessen</h3></nldd-title>
+        <nldd-text size="sm" color="secondary">
+          De worker draait naast de webserver en doet polling, sync en de Mattermost-websocket. Elke
+          loop schrijft hier een hartslag.
+        </nldd-text>
+      </nldd-container>
 
       {downWorkers.length > 0 ? (
-        <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
-          <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
-          <div>
-            {downWorkers.length === 1 ? 'Deze loop draait niet: ' : 'Deze loops draaien niet: '}
-            {downWorkers.map((w) => LOOP_LABELS[w.loop_name] ?? w.loop_name).join(', ')}. De
-            bijbehorende functionaliteit werkt nu mogelijk niet. Check de container-logs voor de
-            oorzaak.
-          </div>
-        </div>
+        <nldd-inline-dialog
+          variant="alert"
+          text={
+            downWorkers.length === 1 ? 'Deze loop draait niet' : 'Deze loops draaien niet'
+          }
+          supporting-text={`${downWorkers
+            .map((w) => LOOP_LABELS[w.loop_name] ?? w.loop_name)
+            .join(', ')}. De bijbehorende functionaliteit werkt nu mogelijk niet. Check de container-logs voor de oorzaak.`}
+        />
       ) : null}
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="text-xs uppercase tracking-wide text-text-secondary">
-              <th className="py-2 pr-4 font-medium">Loop</th>
-              <th className="py-2 pr-4 font-medium">Status</th>
-              <th className="py-2 pr-4 font-medium">Laatste hartslag</th>
-              <th className="py-2 pr-4 font-medium">Detail</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.workers.map((w) => (
-              <WorkerRow key={w.loop_name} worker={w} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <nldd-table
+        columns="minmax(200px,1fr) 140px 160px minmax(160px,1fr)"
+        sm-columns="1fr 140px"
+        md-columns="1fr 140px 160px"
+        accessible-label="Status achtergrondprocessen"
+      >
+        <nldd-table-row slot="header">
+          <nldd-text-cell text="Loop" />
+          <nldd-text-cell text="Status" />
+          <nldd-text-cell text="Laatste hartslag" hide-below="md" />
+          <nldd-text-cell text="Detail" hide-below="lg" />
+        </nldd-table-row>
+        {data.workers.map((w) => (
+          <WorkerRow key={w.loop_name} worker={w} />
+        ))}
+        <div slot="empty">
+          <EmptyState icon="inbox" title="Geen worker-data beschikbaar" />
+        </div>
+      </nldd-table>
 
-      <p className="text-xs text-text-secondary">
+      <nldd-text size="xs" color="secondary">
         Server-tijd: {new Date(data.server_now).toLocaleString('nl-NL')}. Auto-refresh elke 15 sec.
-      </p>
-    </div>
+      </nldd-text>
+    </nldd-container>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { looksLikeListPaste, listyTextToHtml } from './richTextPaste';
+import { looksLikeListPaste, listyTextToMarkdown } from './richTextPaste';
 
 describe('looksLikeListPaste', () => {
   it('detects numbered lists', () => {
@@ -47,69 +47,40 @@ describe('looksLikeListPaste', () => {
   });
 });
 
-describe('listyTextToHtml', () => {
+describe('listyTextToMarkdown', () => {
   it('returns null for non-list text', () => {
-    expect(listyTextToHtml('Gewone tekst.')).toBeNull();
+    expect(listyTextToMarkdown('Gewone tekst.')).toBeNull();
   });
 
-  it('converts a numbered list to <ol>', () => {
-    const html = listyTextToHtml('1. eerste\n2. tweede\n3. derde');
-    expect(html).toContain('<ol>');
-    expect(html).toContain('<li>eerste</li>');
-    expect(html).toContain('<li>tweede</li>');
-    expect(html).toContain('<li>derde</li>');
+  it('leaves a markdown list as it is', () => {
+    expect(listyTextToMarkdown('1. eerste\n2. tweede\n3. derde')).toBe(
+      '1. eerste\n2. tweede\n3. derde',
+    );
+    expect(listyTextToMarkdown('- alpha\n- bravo')).toBe('- alpha\n- bravo');
   });
 
-  it('converts a bullet list to <ul>', () => {
-    const html = listyTextToHtml('- alpha\n- bravo');
-    expect(html).toContain('<ul>');
-    expect(html).toContain('<li>alpha</li>');
-    expect(html).toContain('<li>bravo</li>');
+  it('converts bullets markdown does not know', () => {
+    expect(listyTextToMarkdown('• alpha\n• bravo')).toBe('- alpha\n- bravo');
   });
 
-  it('converts • bullets', () => {
-    const html = listyTextToHtml('• alpha\n• bravo');
-    expect(html).toContain('<ul>');
-    expect(html).toContain('<li>alpha</li>');
+  it('converts the 1) 2) numbering style', () => {
+    expect(listyTextToMarkdown('1) eerste\n2) tweede')).toBe('1. eerste\n2. tweede');
   });
 
-  it('converts 1) 2) numbered style', () => {
-    const html = listyTextToHtml('1) eerste\n2) tweede');
-    expect(html).toContain('<ol>');
-    expect(html).toContain('<li>eerste</li>');
-  });
-
-  it('handles indented list lines from mail clients', () => {
-    const html = listyTextToHtml('    1. eerste\n    2. tweede');
-    expect(html).toContain('<ol>');
-    expect(html).toContain('<li>eerste</li>');
-    expect(html).toContain('<li>tweede</li>');
+  it('strips the indent mail clients add', () => {
+    // Four spaces of indent is a code block in markdown, not a list.
+    expect(listyTextToMarkdown('    1. eerste\n    2. tweede')).toBe(
+      '1. eerste\n2. tweede',
+    );
   });
 
   it('preserves prose around the list', () => {
-    const html = listyTextToHtml(
-      'Inleiding.\n\n1. punt een\n2. punt twee\n\nAfsluiting.',
-    );
-    expect(html).toContain('<p>Inleiding.</p>');
-    expect(html).toContain('<ol>');
-    expect(html).toContain('<p>Afsluiting.</p>');
+    expect(
+      listyTextToMarkdown('Inleiding.\n\n1. punt een\n2. punt twee\n\nAfsluiting.'),
+    ).toBe('Inleiding.\n\n1. punt een\n2. punt twee\n\nAfsluiting.');
   });
 
-  it('handles Windows line endings', () => {
-    const html = listyTextToHtml('1. eerste\r\n2. tweede');
-    expect(html).toContain('<ol>');
-    expect(html).toContain('<li>eerste</li>');
-    expect(html).toContain('<li>tweede</li>');
-  });
-
-  it('preserves the realistic Abram-style mail content', () => {
-    const input =
-      '1. Pilot van Abv met de SVB. (actie Abv)\n' +
-      '2. Pilot van Abv met DUO. (actie Abv)\n' +
-      '3. Een student doet onderzoek. (actie RR)';
-    const html = listyTextToHtml(input);
-    expect(html).toContain('<ol>');
-    expect(html).toContain('<li>Pilot van Abv met de SVB. (actie Abv)</li>');
-    expect(html).toContain('<li>Een student doet onderzoek. (actie RR)</li>');
+  it('collapses windows line endings', () => {
+    expect(listyTextToMarkdown('- alpha\r\n- bravo')).toBe('- alpha\n- bravo');
   });
 });

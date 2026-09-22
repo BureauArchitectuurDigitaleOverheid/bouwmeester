@@ -8,41 +8,26 @@ import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 
-const BASE_Z = 50;
 
 /**
- * Dynamic stacking: the most recently triggered modal gets the highest z-index.
+ * The four detail surfaces, mounted once and driven by their contexts.
  *
- * Each context exposes a monotonically increasing `openSeq` counter that bumps
- * on every `open*Detail()` call. We sort open modals by their seq — the modal
- * with the highest seq was opened most recently and gets the highest z-index.
- * This correctly handles:
- *  - Opening a fresh modal (new entry, highest seq → top)
- *  - Re-opening a modal that was already open underneath (seq bumps → moves to top)
- *  - Opening the same modal with a different ID (seq bumps → moves to top)
+ * Stacking is the browser's. These are native `<dialog>` elements, so the last
+ * one opened is on top by definition, including when one is re-opened from
+ * underneath another.
  */
 export function DetailModals() {
-  const { taskDetailId, closeTaskDetail, taskOpenSeq } = useTaskDetail();
-  const { nodeDetailId, closeNodeDetail, nodeOpenSeq } = useNodeDetail();
-  const { opdrachtDetailId, closeOpdrachtDetail, opdrachtOpenSeq } = useOpdrachtDetail();
-  const { leadDetailId, closeLeadDetail, leadOpenSeq } = useLeadDetail();
+  const { taskDetailId, closeTaskDetail } = useTaskDetail();
+  const { nodeDetailId, closeNodeDetail } = useNodeDetail();
+  const { opdrachtDetailId, closeOpdrachtDetail } = useOpdrachtDetail();
+  const { leadDetailId, closeLeadDetail } = useLeadDetail();
 
-  const modals = [
-    { key: 'opdracht', open: !!opdrachtDetailId, seq: opdrachtOpenSeq },
-    { key: 'node', open: !!nodeDetailId, seq: nodeOpenSeq },
-    { key: 'task', open: !!taskDetailId, seq: taskOpenSeq },
-    { key: 'lead', open: !!leadDetailId, seq: leadOpenSeq },
-  ];
-
-  // Sort open modals by seq (ascending) — last element gets highest z-index
-  const openModals = modals
-    .filter((m) => m.open)
-    .sort((a, b) => a.seq - b.seq);
-
-  function zIndexFor(key: string): number {
-    const idx = openModals.findIndex((m) => m.key === key);
-    return idx === -1 ? BASE_Z : BASE_Z + (idx + 1) * 10;
-  }
+  // No stacking order is computed here. `nldd-window` is a native `<dialog>`,
+  // so the browser's top layer decides: the last one opened is on top, by
+  // definition.
+  //
+  // The `*OpenSeq` values the contexts expose have no reader left; they can go
+  // whenever the contexts themselves are touched.
 
   return (
     <>
@@ -51,25 +36,21 @@ export function DetailModals() {
         opdrachtId={opdrachtDetailId}
         open={!!opdrachtDetailId}
         onClose={closeOpdrachtDetail}
-        zIndex={zIndexFor('opdracht')}
       />
       <NodeDetailModal
         nodeId={nodeDetailId}
         open={!!nodeDetailId}
         onClose={closeNodeDetail}
-        zIndex={zIndexFor('node')}
       />
       <TaskDetailModal
         taskId={taskDetailId}
         open={!!taskDetailId}
         onClose={closeTaskDetail}
-        zIndex={zIndexFor('task')}
       />
       <LeadDetailPanel
         leadId={leadDetailId}
         open={!!leadDetailId}
         onClose={closeLeadDetail}
-        zIndex={zIndexFor('lead')}
       />
     </>
   );
