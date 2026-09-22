@@ -117,7 +117,9 @@ function NlddToggleButton({
 }) {
   const ref = useRef<HTMLElement>(null);
   useNlddEvent(ref, 'click', (e) => onClick?.(e as MouseEvent));
-  return <nldd-toggle-button ref={ref} {...props} />;
+  // `shrink-0`: these sit in the popover header beside a heading that takes
+  // the leftover space, and an icon button has nothing to give up.
+  return <nldd-toggle-button ref={ref} className="shrink-0" {...props} />;
 }
 
 function BrowserNotificationToggle() {
@@ -259,31 +261,28 @@ export function NotificationBell() {
           sm-full-height
         >
           <nldd-container gap="0">
-            <nldd-container layout="row" gap="8" vertical-alignment="center" padding="12">
-              {/* The heading takes what the buttons leave; without this the
-                  button container claimed 251 of the popover's 360px and
-                  "Meldingen" broke across two lines. */}
+            {/* The buttons sit in the row themselves, without a container of
+                their own. Wrapped in one they measured zero and hung over the
+                popover's right edge: `width="fit-content"` gives a container
+                no floor, so the heading beside it took all 360px. Each button
+                keeps its own width through `shrink-0`, and the heading gets
+                what is left. */}
+            <nldd-container layout="row" gap="4" vertical-alignment="center" padding="12">
               <nldd-container width="fit-content" className="row-fill">
                 <nldd-title size={5}><h2>Meldingen</h2></nldd-title>
               </nldd-container>
-              <nldd-container
-                layout="row"
-                width="fit-content"
-                gap="4"
-                vertical-alignment="center"
-              >
-                <BrowserNotificationToggle />
-                <NotificationSoundToggle />
-                {unreadCount > 0 && (
-                  <NlddIconButton
-                    icon="checked"
-                    variant="neutral-transparent"
-                    size="sm"
-                    accessible-label="Alles markeren als gelezen"
-                    onClick={() => markAllRead.mutate()}
-                  />
-                )}
-              </nldd-container>
+              <BrowserNotificationToggle />
+              <NotificationSoundToggle />
+              {unreadCount > 0 && (
+                <NlddIconButton
+                  icon="checked"
+                  variant="neutral-transparent"
+                  size="sm"
+                  accessible-label="Alles markeren als gelezen"
+                  onClick={() => markAllRead.mutate()}
+                  className="shrink-0"
+                />
+              )}
             </nldd-container>
 
             <nldd-divider />
