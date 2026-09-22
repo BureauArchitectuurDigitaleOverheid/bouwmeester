@@ -171,6 +171,35 @@ describe('useNlddOverlay', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('opens an overlay that mounts already open, once it has rendered', async () => {
+    // The regression this covers: a caller that mounts the overlay only while
+    // it is open hands the hook open=true on the very first render, so the
+    // effect runs once and never again. Calling show() straight away there
+    // finds no <dialog> in the shadow root yet and does nothing at all,
+    // silently, leaving a window in the DOM that never opens.
+    const el = makeOverlay();
+    let renderDone: (v: boolean) => void = () => {};
+    (el as unknown as { updateComplete: Promise<boolean> }).updateComplete =
+      new Promise<boolean>((resolve) => {
+        renderDone = resolve;
+      });
+
+    function Harness() {
+      const ref = useRef(el);
+      useNlddOverlay(ref, true);
+      return null;
+    }
+
+    render(<Harness />);
+    expect(el.calls).toEqual([]);
+
+    await act(async () => {
+      renderDone(true);
+    });
+
+    expect(el.calls).toEqual(['show']);
+  });
+
   it('swallows the close that follows our own hide()', () => {
     const el = makeOverlay();
     const onClose = vi.fn();
