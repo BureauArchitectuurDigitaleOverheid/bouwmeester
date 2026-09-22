@@ -101,8 +101,12 @@ _last_logged_summary: tuple | None = None
 def _log_llm_configuration(
     *,
     claude_built: bool,
-    claude_via: str,
     claude_model: str,
+    # Welke route Claude gebruikt: "cli (abonnement)" of "api-sleutel".
+    # Optioneel, zodat aanroepers die alleen willen weten óf er een
+    # provider is (en de tests die dat controleren) niets hoeven te weten
+    # van de betaalroute.
+    claude_via: str = "",
     vlam_built: bool,
     vlam_key: str,
     vlam_url: str,

@@ -17,6 +17,18 @@ if ! touch /data/bijlagen/chat/.write_test_$$ 2>/dev/null; then
 fi
 rm -f /data/bijlagen/chat/.write_test_$$ 2>/dev/null || true
 
+# De Claude CLI (abonnementsroute voor de LLM-laag) schrijft configuratie in
+# $HOME. ZAD draait de container onder een willekeurige UID uit groep 0, en
+# dan wijst $HOME naar `/` — niet schrijfbaar, dus elke CLI-call zou falen.
+# Wijk in dat geval uit naar de groepschrijfbare map uit de image. Geen
+# harde fout: zonder CLI valt de LLM-laag terug op de API-sleutel of VLAM.
+if ! touch "${HOME:-/}/.write_test_$$" 2>/dev/null; then
+    export HOME=/home/claude
+    echo "[entrypoint] HOME niet schrijfbaar; uitgeweken naar $HOME voor de Claude CLI"
+else
+    rm -f "${HOME}/.write_test_$$" 2>/dev/null || true
+fi
+
 echo "Running database migrations..."
 alembic upgrade head
 

@@ -29,17 +29,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # accepteert dat token niet, dus zonder deze binary valt de LLM-laag terug
 # op een API-sleutel die per token afrekent. De install faalt zacht: een
 # image zonder CLI werkt gewoon, alleen die ene route niet.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    nodejs npm \
-    && npm install -g @anthropic-ai/claude-code \
-    && apt-get purge -y npm && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* /root/.npm \
-    || echo "Claude CLI install gefaald; abonnementsroute niet beschikbaar"
+#
+# npm gaat er na de install weer uit (de CLI draait op node, niet op npm),
+# en de apt-lists worden binnen dezelfde laag opgeruimd — ook op het
+# faalpad, anders houdt een mislukte install de cache in de image.
+RUN set -eux; \
+    { apt-get update \
+      && apt-get install -y --no-install-recommends nodejs npm \
+      && npm install -g @anthropic-ai/claude-code \
+      && apt-get purge -y npm \
+      && apt-get autoremove -y; } \
+    || echo "Claude CLI install gefaald; abonnementsroute niet beschikbaar"; \
+    rm -rf /var/lib/apt/lists/* /root/.npm /tmp/*
 
 RUN useradd --create-home --uid 1001 appuser && \
     mkdir -p /data/bijlagen/chat /data/bijlagen/leads && \
     chgrp -R 0 /data && \
     chmod -R g=u /data
+
+# De Claude CLI schrijft zijn configuratie in $HOME. ZAD/OpenShift draait
+# de container vaak onder een willekeurige UID uit groep 0, en dan is $HOME
+# `/` en niet schrijfbaar — de CLI faalt dan op elke call. Deze map is
+# groepschrijfbaar volgens hetzelfde patroon als /data, en `entrypoint.sh`
+# wijst HOME hierheen als het bestaande HOME niet schrijfbaar is.
+RUN mkdir -p /home/claude && \
+    chgrp -R 0 /home/claude && \
+    chmod -R g=u /home/claude
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
