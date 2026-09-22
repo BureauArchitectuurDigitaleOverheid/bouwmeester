@@ -10,9 +10,9 @@ import type {
   PublicInitiatiefUpdate,
 } from '@/types';
 
-type Status = 'loading' | 'ok' | 'not-found' | 'error';
+import { initiatiefAccentVar, initiatiefIconColor } from '@/components/initiatieven/initiatiefColors';
 
-const DEFAULT_ACCENT = '#3B82F6';
+type Status = 'loading' | 'ok' | 'not-found' | 'error';
 
 /**
  * The only page outside the auth shell and outside `nldd-app-view`
@@ -90,25 +90,23 @@ export function PublicInitiatiefPage() {
     return <PublicMessage title="Er ging iets mis" body="Probeer het later opnieuw." />;
   }
 
-  const accent = data.kleur || DEFAULT_ACCENT;
+  // The stored kleur is an nldd color name. The bars need a CSS color, so they
+  // read the token the name stands for; the dots are icons, which take the
+  // name itself.
+  const accent = initiatiefAccentVar(data.kleur);
+  const accentIcon = initiatiefIconColor(data.kleur);
 
   return (
     <nldd-app-view background="tinted">
-      {/* Top accent stripe — subtiele kleur-identiteit per initiatief. An
-          arbitrary per-initiatief hex color, not a semantic role, so this
-          stays a plain styled div (same reasoning as the color swatches in
-          InitiatiefDetailModal / LeadsPage). */}
+      {/* Top accent stripe — subtiele kleur-identiteit per initiatief. A full-
+          bleed bar is not a component the system has, so it stays a plain div
+          painted from the initiative's own category token. */}
       <div aria-hidden style={{ height: '6px', width: '100%', backgroundColor: accent }} />
 
       <nldd-full-bleed-section width="768px" padding-top="64" padding-bottom="48">
         <nldd-container gap="16">
           <nldd-container layout="row" gap="8" vertical-alignment="center">
-            {/* Arbitrary per-initiatief accent color, not a semantic role — see
-                the top stripe above. */}
-            <span
-              aria-hidden
-              style={{ display: 'inline-block', height: '8px', width: '8px', borderRadius: '9999px', backgroundColor: accent }}
-            />
+            <nldd-icon name="circle-filled-small" size="16" color={accentIcon} />
             <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Community
             </nldd-text>
@@ -143,7 +141,7 @@ export function PublicInitiatiefPage() {
               </nldd-container>
               <nldd-collection layout="grid" item-width="280px" gap="16">
                 {data.casussen.map((c, idx) => (
-                  <CasusCard key={idx} casus={c} accent={accent} />
+                  <CasusCard key={idx} casus={c} accentIcon={accentIcon} />
                 ))}
               </nldd-collection>
             </section>
@@ -212,9 +210,9 @@ function UpdateCard({
 
   return (
     <nldd-card>
-      {/* position: relative + the accent bar below are a decorative left
-          accent rail with an arbitrary per-initiatief color; there's no nldd
-          primitive for that, so this stays a plain positioned div. */}
+      {/* position: relative + the accent bar below are a decorative left accent
+          rail; there is no nldd primitive for one, so it stays a plain
+          positioned div painted from the initiative's category token. */}
       <div style={{ position: 'relative' }}>
         <nldd-container padding="24" sm-padding-inline="32" sm-padding-block="28">
           <div
@@ -253,16 +251,18 @@ function UpdateCard({
   );
 }
 
-function CasusCard({ casus, accent }: { casus: PublicCasus; accent: string }) {
+function CasusCard({
+  casus,
+  accentIcon,
+}: {
+  casus: PublicCasus;
+  accentIcon: React.ComponentProps<'nldd-icon'>['color'];
+}) {
   return (
     <nldd-card>
       <nldd-container padding="20">
         <nldd-container layout="row" gap="8" vertical-alignment="center" padding-bottom="8">
-          {/* Arbitrary per-initiatief accent color, not a semantic role. */}
-          <span
-            aria-hidden
-            style={{ display: 'inline-block', height: '8px', width: '8px', borderRadius: '9999px', backgroundColor: accent }}
-          />
+          <nldd-icon name="circle-filled-small" size="16" color={accentIcon} />
           <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Casus
           </nldd-text>

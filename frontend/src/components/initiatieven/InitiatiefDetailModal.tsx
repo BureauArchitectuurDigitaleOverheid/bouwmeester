@@ -31,7 +31,9 @@ import {
 } from '@/hooks/useInitiatieven';
 import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
-import { INITIATIEF_COLORS, INITIATIEF_ROL_LABELS } from '@/types';
+import { INITIATIEF_ROL_LABELS } from '@/types';
+import { InitiatiefKleurPicker } from './InitiatiefKleurPicker';
+import { initiatiefIconColor } from './initiatiefColors';
 import type {
   Initiatief,
   InitiatiefDetail,
@@ -253,18 +255,7 @@ export function InitiatiefDetailModal({
         footer={footer}
         headerIcon={
           detail?.kleur ? (
-            // A free-form hex swatch, not a semantic color: there is no nldd
-            // primitive for "a dot that IS an arbitrary color" (see the color
-            // picker at the bottom of this file for the same reasoning).
-            <span
-              style={{
-                display: 'inline-block',
-                height: '16px',
-                width: '16px',
-                borderRadius: 'var(--primitives-corner-radius-full)',
-                backgroundColor: detail.kleur,
-              }}
-            />
+            <nldd-icon name="circle-filled" size="16" color={initiatiefIconColor(detail.kleur)} />
           ) : undefined
         }
       >
@@ -1069,39 +1060,10 @@ function EditForm({
         rows={4}
       />
       <nldd-form-field label="Kleur">
-        {/* A free-form hex swatch picker, not a semantic radio: nldd-radio-button
-            renders a fixed dot glyph rather than swapping its own fill to an
-            arbitrary color, so there is no nldd primitive for "a circle that IS
-            the color". Left as a plain button grid with its own CSS. */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {INITIATIEF_COLORS.map((color) => (
-            <button
-              key={color}
-              type="button"
-              onClick={() => onChange({ ...form, kleur: color })}
-              aria-label={`Kleur ${color}`}
-              aria-pressed={form.kleur === color}
-              style={{
-                height: '32px',
-                width: '32px',
-                // The swatch IS the color, so the user-agent padding has to go
-                // or the fill sits inset inside the circle.
-                padding: 0,
-                borderRadius: 'var(--primitives-corner-radius-full)',
-                borderWidth: '2px',
-                borderStyle: 'solid',
-                borderColor:
-                  form.kleur === color
-                    ? 'var(--primitives-color-accent-500)'
-                    : 'transparent',
-                transform: form.kleur === color ? 'scale(1.1)' : undefined,
-                transition: 'transform 150ms, border-color 150ms',
-                backgroundColor: color,
-                cursor: 'pointer',
-              }}
-            />
-          ))}
-        </div>
+        <InitiatiefKleurPicker
+          value={form.kleur}
+          onChange={(kleur) => onChange({ ...form, kleur })}
+        />
       </nldd-form-field>
     </nldd-container>
   );

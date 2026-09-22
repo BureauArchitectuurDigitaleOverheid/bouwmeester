@@ -51,6 +51,7 @@ import {
 } from '@/types';
 import type { LeadUpdate, LeadActivityCreate, EngagementType, LeadAttachment } from '@/types';
 import { stageTagColor, engagementTagColor } from './stageColors';
+import { initiatiefTagColor } from '@/components/initiatieven/initiatiefColors';
 
 /** Stages where a lead can publicly appear; mirrors the backend filter in
  *  public_initiatief.py — keep in sync. */
@@ -552,23 +553,12 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
               },
               {
                 label: 'Initiatief',
-                // Per-initiatief color is an arbitrary hex on the record, not
-                // one of nldd-tag's closed color names — stays a styled span
-                // (same call as the initiatief chip in LeadListView).
                 value: lead.initiatief ? (
-                  <span
-                    style={{
-                      display: 'inline-block',
-                      borderRadius: '9999px',
-                      padding: '2px 8px',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      color: 'white',
-                      backgroundColor: lead.initiatief.kleur || '#6B7280',
-                    }}
-                  >
-                    {lead.initiatief.naam}
-                  </span>
+                  <nldd-tag
+                    text={lead.initiatief.naam}
+                    color={initiatiefTagColor(lead.initiatief.kleur)}
+                    size="sm"
+                  />
                 ) : (
                   '-'
                 ),

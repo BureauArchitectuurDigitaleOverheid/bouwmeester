@@ -2200,16 +2200,29 @@ export interface InitiatiefDetail extends Initiatief {
   access_level: 'eigenaar' | 'contributor' | 'viewer' | null;
 }
 
+/**
+ * The closed set `Initiatief.kleur` may hold, mirrored by hand from backend
+ * `schema.initiatief.INITIATIEF_COLORS`. These are nldd color names, not CSS:
+ * `nldd-tag` and `nldd-icon` paint their own accessible fill and content color
+ * per name. A subset of the 23 the backend accepts, so the picker stays a
+ * choice rather than a catalogue; a stored value outside it still renders,
+ * since the helpers in `components/initiatieven/initiatiefColors.ts` validate
+ * against the full backend set.
+ */
 export const INITIATIEF_COLORS = [
-  '#3B82F6', // blue
-  '#10B981', // green
-  '#F59E0B', // amber
-  '#EF4444', // red
-  '#8B5CF6', // purple
-  '#EC4899', // pink
-  '#06B6D4', // cyan
-  '#F97316', // orange
-];
+  'lintblauw',
+  'hemelblauw',
+  'groen',
+  'mosgroen',
+  'geel',
+  'oranje',
+  'rood',
+  'robijnrood',
+  'paars',
+  'violet',
+  'roze',
+  'bruin',
+] as const;
 
 export interface LeadParseResult {
   title: string | null;

@@ -14,6 +14,8 @@ import { usePeople } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { InitiatiefDetailModal } from '@/components/initiatieven/InitiatiefDetailModal';
+import { InitiatiefTogglePill } from '@/components/initiatieven/InitiatiefTogglePill';
+import { InitiatiefKleurPicker } from '@/components/initiatieven/InitiatiefKleurPicker';
 import { LeadKanbanBoard } from '@/components/leads/LeadKanbanBoard';
 import { LeadListView } from '@/components/leads/LeadListView';
 import { LeadGraphView } from '@/components/leads/LeadGraphView';
@@ -232,38 +234,27 @@ export function LeadsPage() {
             to fill the available space." Without it the item measures its
             content, a wrap container inside measures its parent, and the two
             collapse to zero width — the pills then stacked one per line and the
-            row grew from 64 to 198 pixels tall. */}
-        <nldd-toolbar-item slot="start" priority={1} min-width="320px">
-          {/* Initiative pills: per-initiatief color is an arbitrary hex on
-              the record, not one of nldd-tag's closed color names, so this
-              stays a styled button rather than a guessed tag color (same
-              call as the initiatief chips in LeadListView/LeadDetailPanel). */}
-          <nldd-container layout="wrap" gap="6">
-            {initiatieven?.map((ini) => (
-              <button
-                key={ini.id}
-                onClick={() => setSelectedInitiatiefId(ini.id)}
-                style={{
-                  // A pill, not a browser button: the user-agent border and
-                  // background would box in every initiative name.
-                  border: 'none',
-                  cursor: 'pointer',
-                  borderRadius: '9999px',
-                  padding: '4px 12px',
-                  fontSize: '12px',
-                  fontWeight: 500,
-                  color: 'white',
-                  backgroundColor: ini.kleur || '#6B7280',
-                  opacity: selectedInitiatiefId === ini.id ? 1 : 0.4,
-                  boxShadow:
-                    selectedInitiatiefId === ini.id
-                      ? '0 0 0 2px white, 0 0 0 4px var(--primitives-color-neutral-400), 0 1px 2px rgba(0,0,0,0.1)'
-                      : 'none',
-                }}
-              >
-                {ini.naam}
-              </button>
-            ))}
+            row grew from 64 to 198 pixels tall. A percentage keeps that fluidity
+            without pinning a width the pills outgrow: a fixed 320px was narrower
+            than the four pills plus their gaps, so the last one wrapped while
+            the toolbar still had room. */}
+        <nldd-toolbar-item slot="start" priority={1} min-width="60%">
+          {/* One initiative at a time, so a radio group: it draws its own
+              selected state and gives the row arrow-key navigation, where a
+              row of buttons left selection to opacity and a ring. The pill
+              carries the initiative's color as a dot, since the group styles
+              the pill itself. */}
+          <nldd-container layout="wrap" gap="6" vertical-alignment="center">
+            <nldd-toggle-button-group type="radio" size="sm" accessible-label="Initiatief">
+              {initiatieven?.map((ini) => (
+                <InitiatiefTogglePill
+                  key={ini.id}
+                  initiatief={ini}
+                  selected={selectedInitiatiefId === ini.id}
+                  onSelect={setSelectedInitiatiefId}
+                />
+              ))}
+            </nldd-toggle-button-group>
             <NlddIconButton
               icon="plus"
               accessibleLabel="Nieuw initiatief"
@@ -474,30 +465,10 @@ export function LeadsPage() {
               placeholder="Korte beschrijving..."
             />
             <nldd-form-field label="Kleur">
-              {/* Free-form hex swatch picker: no nldd primitive renders a circle
-                  that IS an arbitrary color (nldd-radio-button is a fixed dot
-                  glyph), same as InitiatiefDetailModal's EditForm. */}
-              <nldd-container layout="wrap" gap="8">
-                {INITIATIEF_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setCreateForm({ ...createForm, kleur: color })}
-                    style={{
-                      height: '32px',
-                      width: '32px',
-                      // The swatch IS the color, so the user-agent padding has
-                      // to go or the fill sits inset inside the circle.
-                      padding: 0,
-                      cursor: 'pointer',
-                      borderRadius: '9999px',
-                      border: `2px solid ${createForm.kleur === color ? 'var(--primitives-color-accent-75)' : 'transparent'}`,
-                      transform: createForm.kleur === color ? 'scale(1.1)' : 'scale(1)',
-                      backgroundColor: color,
-                    }}
-                  />
-                ))}
-              </nldd-container>
+              <InitiatiefKleurPicker
+                value={createForm.kleur}
+                onChange={(kleur) => setCreateForm({ ...createForm, kleur })}
+              />
             </nldd-form-field>
           </nldd-container>
         </Modal>

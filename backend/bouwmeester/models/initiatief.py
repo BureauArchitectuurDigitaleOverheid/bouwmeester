@@ -25,6 +25,12 @@ class Initiatief(Base):
     naam: Mapped[str] = mapped_column(nullable=False)
     slug: Mapped[str | None] = mapped_column(nullable=True)
     beschrijving: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # One of the nldd-tag color names in schema.initiatief.INITIATIEF_COLORS
+    # (five semantic roles plus the Rijkshuisstijl hue set), e.g. "lintblauw"
+    # or "success". Never a hex value: the frontend passes this straight to
+    # nldd-tag's `color` and nldd-icon's `color`, which ignore anything outside
+    # their own set. Pydantic validates it on every write via InitiatiefCreate
+    # and InitiatiefUpdate; there is no CHECK constraint behind it.
     kleur: Mapped[str | None] = mapped_column(nullable=True)
     funnel_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"

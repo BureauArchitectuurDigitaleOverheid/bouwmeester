@@ -13,6 +13,7 @@ import { LeadMetricsBar } from './LeadMetricsBar';
 import type { Lead, LeadColumn, LeadFilters } from '@/types';
 import { isOverdue, formatDateShort, timeAgo } from '@/utils/dates';
 import { leadColumnTagColor } from './stageColors';
+import { initiatiefTagColor } from '@/components/initiatieven/initiatiefColors';
 
 const SORT_OPTIONS: SelectOption[] = [
   { value: '', label: 'Standaard' },
@@ -270,23 +271,11 @@ function LeadListRow({ lead, column, selected, onToggleSelect, onOpen }: LeadLis
       <nldd-text-cell text={lead.organisatie_eenheid?.naam ?? lead.organization ?? '-'} hide-below="md" />
       <nldd-text-cell hide-below="lg">
         {lead.initiatief ? (
-          // Per-initiatief color is an arbitrary hex stored on the record, not
-          // one of nldd-tag's closed color names, so this stays a styled span
-          // rather than a guessed tag color.
-          <span
-            style={{
-              display: 'inline-block',
-              borderRadius: '9999px',
-              padding: '2px 8px',
-              fontSize: '10px',
-              fontWeight: 500,
-              color: 'white',
-              whiteSpace: 'nowrap',
-              backgroundColor: lead.initiatief.kleur || '#6B7280',
-            }}
-          >
-            {lead.initiatief.naam}
-          </span>
+          <nldd-tag
+            text={lead.initiatief.naam}
+            color={initiatiefTagColor(lead.initiatief.kleur)}
+            size="sm"
+          />
         ) : (
           '-'
         )}
