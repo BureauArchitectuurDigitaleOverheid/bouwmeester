@@ -288,7 +288,11 @@ export function OrganisatiePage() {
                   <Select
                     value={bronFilter}
                     onChange={(e) => setBronFilter(e.target.value as typeof bronFilter)}
-                    title="Filter op bron"
+                    // `title` is a tooltip, not a name: a screen reader
+                    // announces the select as unlabelled and reads only the
+                    // selected option, so "Alleen TOOI" arrives without
+                    // anything saying what it filters.
+                    aria-label="Filter op bron"
                     options={[
                       { value: 'alle', label: 'Alle bronnen' },
                       { value: 'handmatig', label: 'Alleen handmatig' },

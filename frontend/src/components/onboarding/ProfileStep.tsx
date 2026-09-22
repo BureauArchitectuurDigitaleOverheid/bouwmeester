@@ -90,6 +90,7 @@ function PhoneRow({
       <nldd-text-field ref={ref} type="tel" value={phone.phone_number} placeholder="Telefoonnummer" autocomplete="tel" width="full" />
       <Select
         value={phone.label}
+        aria-label="Soort telefoonnummer"
         onChange={(e) => onChangeLabel(e.target.value)}
         options={PHONE_LABEL_OPTIONS}
       />

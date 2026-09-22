@@ -3,7 +3,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { NlddButton } from '@/components/nldd/NlddLink';
-import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import {
@@ -300,12 +300,17 @@ function InitiatiefRow({
 }) {
   const rolRef = useRef<HTMLElement>(null);
   useNlddEvent(rolRef, 'change', (e) => onRolChange(eventValue(e)));
+  // The value goes onto the DOM property rather than a JSX `value`: React
+  // would read that as a controlled field missing its onChange, since the
+  // handler lives on the nldd-dropdown around it.
+  const rolSelectRef = useRef<HTMLSelectElement>(null);
+  useNlddValue(rolSelectRef, rol);
 
   return (
     <nldd-list-item>
       <nldd-text-cell text={naam} />
       <nldd-dropdown ref={rolRef} size="sm">
-        <select value={rol} aria-label={`Rol van ${naam}`}>
+        <select ref={rolSelectRef} aria-label={`Rol van ${naam}`}>
           {Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
           ))}

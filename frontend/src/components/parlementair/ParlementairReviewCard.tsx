@@ -96,7 +96,7 @@ function ExternalDocLink({
  */
 function NlddButtonLink({ text, onClick }: { text: string; onClick: () => void }) {
   return (
-    <Button variant="ghost" size="sm" onClick={onClick} className="truncate">
+    <Button variant="ghost" size="sm" onClick={onClick} singleLine>
       {text}
     </Button>
   );
@@ -553,6 +553,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                           {edge.status === 'pending' ? (
                             <Select
                               value={edge.edge_type_id}
+                              aria-label="Relatietype"
                               onChange={(e) =>
                                 updateSuggestedEdge.mutate({
                                   id: edge.id,

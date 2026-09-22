@@ -49,6 +49,16 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** An nldd-icon name, or an element to put in the start-icon slot. */
   icon?: ReactNode | string;
   loading?: boolean;
+  /**
+   * Clips an over-long label with an ellipsis instead of letting it wrap.
+   *
+   * This has to be the element's own attribute, not a `truncate` class: the
+   * label lives in the shadow root, so `overflow` set on the host never
+   * reaches it, and the class silently does nothing. The element gates those
+   * same three properties on this attribute. Give the button (or an ancestor)
+   * a width to clip against, or there is nothing to cut off.
+   */
+  singleLine?: boolean;
   children?: ReactNode;
 }
 
@@ -57,6 +67,7 @@ export function Button({
   size = 'md',
   icon,
   loading = false,
+  singleLine = false,
   children,
   className,
   disabled,
@@ -96,6 +107,7 @@ export function Button({
       {...(hiddenLabel ? { 'accessible-label': hiddenLabel } : {})}
       {...(typeof icon === 'string' ? { 'start-icon': icon } : {})}
       {...(loading ? { loading: true } : {})}
+      {...(singleLine ? { 'single-line': true } : {})}
       {...(disabled ? { disabled: true } : {})}
       {...(props as Record<string, unknown>)}
     >

@@ -378,6 +378,7 @@ export function InitiatiefDetailModal({
                           {isEigenaar ? (
                             <Select
                               value={eenheid.rol}
+                              aria-label="Rol van deze eenheid"
                               onChange={(e) => handleUpdateEenheidRol(eenheid.eenheid_id, e.target.value)}
                               options={Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => ({
                                 value,

@@ -257,6 +257,7 @@ export function AuditLogPage() {
       <nldd-container max-width="320px">
         <Select
           value={category}
+          aria-label="Filter op categorie"
           onChange={(e) => {
             setCategory(e.target.value);
             setPage(0);

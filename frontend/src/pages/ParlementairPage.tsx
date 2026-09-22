@@ -95,7 +95,7 @@ function StatusTabBar({
   );
 
   return (
-    <nldd-tab-bar ref={ref} variant="text">
+    <nldd-tab-bar ref={ref} variant="text" accessible-label="Filter op status">
       {statusFilters.map((filter) => (
         <nldd-tab-bar-item
           key={filter.value}

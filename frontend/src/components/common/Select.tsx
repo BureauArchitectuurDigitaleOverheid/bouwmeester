@@ -1,11 +1,12 @@
 import {
   forwardRef,
   useCallback,
+  useImperativeHandle,
   useRef,
   type ChangeEvent,
   type SelectHTMLAttributes,
 } from 'react';
-import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 
 interface SelectOption {
   value: string;
@@ -52,11 +53,22 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
       disabled,
       onChange,
       name,
+      value,
       ...props
     },
     ref,
   ) => {
     const dropdownRef = useRef<HTMLElement>(null);
+
+    // `value` goes onto the DOM property instead of staying a JSX prop. As a
+    // prop it makes the select a controlled field, and React then warns that
+    // it has no `onChange`. That is true and deliberate: the handler sits on
+    // the nldd-dropdown, because the element stops the native change event and
+    // re-dispatches its own. Writing the property keeps the select in step
+    // without claiming React owns it.
+    const selectRef = useRef<HTMLSelectElement>(null);
+    useImperativeHandle(ref, () => selectRef.current as HTMLSelectElement, []);
+    useNlddValue(selectRef, typeof value === 'string' ? value : undefined);
 
     // Hand the caller something shaped like the change event it expects, so
     // the existing `e.target.value` call sites keep working untouched.
@@ -83,7 +95,14 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         {...(disabled ? { disabled: true } : {})}
         {...(error ? { invalid: true, unmet: ERROR_ID } : {})}
       >
-        <select ref={ref} id={id} name={name} required={required} disabled={disabled} {...props}>
+        <select
+          ref={selectRef}
+          id={id}
+          name={name}
+          required={required}
+          disabled={disabled}
+          {...props}
+        >
           {placeholder && (
             <option value="" disabled>
               {placeholder}

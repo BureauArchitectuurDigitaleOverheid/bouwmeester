@@ -121,7 +121,7 @@ export function AdminPage() {
   return (
     <nldd-container max-width="1152px" gap="24">
       {/* Tab bar */}
-      <nldd-tab-bar ref={tabBarRef} variant="text">
+      <nldd-tab-bar ref={tabBarRef} variant="text" accessible-label="Beheeronderdelen">
         {tabs.map((tab) => (
           <nldd-tab-bar-item
             key={tab.id}

@@ -457,6 +457,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                         <nldd-cell width="144px">
                           <Select
                             value={member.rol}
+                            aria-label="Rol van dit contact"
                             onChange={(e) => handleUpdateMemberRole(member.person_id, e.target.value)}
                             options={Object.entries(OPDRACHT_CONTACT_ROL_LABELS).map(([value, label]) => ({ value, label }))}
                           />
@@ -516,6 +517,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                         <nldd-cell width="144px">
                           <Select
                             value={eenheid.rol}
+                            aria-label="Rol van deze eenheid"
                             onChange={(e) => handleUpdateEenheidRol(eenheid.eenheid_id, e.target.value)}
                             options={Object.entries(OPDRACHT_CONTACT_ROL_LABELS).map(([value, label]) => ({ value, label }))}
                           />

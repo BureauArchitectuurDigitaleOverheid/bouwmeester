@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Icon } from '@/components/nldd/Icon';
-import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import { useEdgeSchemaRules, useCreateEdgeSchemaRule, useDeleteEdgeSchemaRule } from '@/hooks/useEdgeTypes';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
@@ -32,6 +32,12 @@ export function EdgeSchemaManager() {
   const [selectedEdgeType, setSelectedEdgeType] = useState(EDGE_TYPE_IDS[0] ?? '');
   const edgeTypeRef = useRef<HTMLElement>(null);
   useNlddEvent(edgeTypeRef, 'change', (e) => setSelectedEdgeType(eventValue(e)));
+  // The selected option is written to the DOM property, not passed as a JSX
+  // `value`. React would read that as a controlled field and warn that it has
+  // no onChange, because the handler sits on the nldd-dropdown around it: the
+  // element stops the native change event and re-dispatches its own.
+  const edgeSelectRef = useRef<HTMLSelectElement>(null);
+  useNlddValue(edgeSelectRef, selectedEdgeType);
 
   // Build a lookup: `${from}_${to}_${edgeType}` -> rule.id
   const ruleMap = useMemo(() => {
@@ -77,7 +83,7 @@ export function EdgeSchemaManager() {
       {/* Edge type selector */}
       <nldd-form-field label="Relatietype">
         <nldd-dropdown ref={edgeTypeRef} width="320px">
-          <select value={selectedEdgeType}>
+          <select ref={edgeSelectRef}>
             {EDGE_TYPE_IDS.map((id) => (
               <option key={id} value={id}>
                 {edgeLabel(id)}

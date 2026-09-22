@@ -258,6 +258,7 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
                 </nldd-text>
                 <Select
                   value={moveTarget}
+                  aria-label="Kolom om leads naartoe te verplaatsen"
                   onChange={(e) => setMoveTarget(e.target.value)}
                   placeholder="— Kies kolom —"
                   options={otherColumns.map((c) => ({ value: c.id, label: c.name }))}

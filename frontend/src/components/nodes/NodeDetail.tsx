@@ -618,6 +618,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                     <nldd-container width="192px">
                       <Select
                         value={s.rol}
+                        aria-label="Rol van de stakeholder"
                         onChange={(e) => {
                           updateStakeholder.mutate({
                             nodeId,
