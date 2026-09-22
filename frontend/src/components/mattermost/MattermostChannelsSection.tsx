@@ -107,6 +107,12 @@ export function MattermostChannelsSection({ scope }: Props) {
                   data: { suggest_leads_enabled: value },
                 })
               }
+              onToggleAlerts={(value) =>
+                updateMutation.mutate({
+                  linkId: link.id,
+                  data: { parlementaire_alerts_enabled: value },
+                })
+              }
               onDelete={() => deleteMutation.mutate(link.id)}
             />
           ))}
@@ -132,17 +138,21 @@ function ChannelRow({
   link,
   onToggleAutoNote,
   onToggleSuggest,
+  onToggleAlerts,
   onDelete,
 }: {
   link: MattermostChannelLink;
   onToggleAutoNote: (value: boolean) => void;
   onToggleSuggest: (value: boolean) => void;
+  onToggleAlerts: (value: boolean) => void;
   onDelete: () => void;
 }) {
   const autoNoteRef = useRef<HTMLElement>(null);
   const suggestRef = useRef<HTMLElement>(null);
+  const alertsRef = useRef<HTMLElement>(null);
   useNlddEvent(autoNoteRef, 'change', (e) => onToggleAutoNote(checkedValue(e)));
   useNlddEvent(suggestRef, 'change', (e) => onToggleSuggest(checkedValue(e)));
+  useNlddEvent(alertsRef, 'change', (e) => onToggleAlerts(checkedValue(e)));
 
   return (
     <nldd-list-item>
@@ -163,6 +173,15 @@ function ChannelRow({
               ref={suggestRef}
               label="Leads voorstellen"
               checked={orUndef(link.suggest_leads_enabled)}
+            />
+            {/* Kamerstukken die op een zoekterm van dit initiatief matchen.
+                Standaard uit: een kanaal dat voor leads is gekoppeld hoort
+                niet ongevraagd elk kamerstuk te krijgen. De zoektermen zelf
+                staan onder "Parlementaire signalen". */}
+            <nldd-checkbox-field
+              ref={alertsRef}
+              label="Kamerstuk-alerts"
+              checked={orUndef(link.parlementaire_alerts_enabled)}
             />
           </nldd-container>
         </nldd-container>

@@ -124,13 +124,17 @@ class ParlementairAlertService:
                 MattermostChannelLink.scope_type == abonnement.scope_type,
                 MattermostChannelLink.scope_id == abonnement.scope_id,
                 MattermostChannelLink.disabled_at.is_(None),
+                # Per kanaal aan te zetten, net als auto-notes en
+                # lead-suggesties. Een kanaal dat voor leads is gekoppeld
+                # hoort niet ongevraagd elk kamerstuk te krijgen.
+                MattermostChannelLink.parlementaire_alerts_enabled.is_(True),
             )
             for link in (await self.session.execute(stmt)).scalars().all():
                 kanalen.setdefault(link.channel_id, link)
 
         if not kanalen:
             logger.info(
-                "Kamerstuk %s heeft abonnees maar geen gekoppeld kanaal",
+                "Kamerstuk %s heeft abonnees maar geen kanaal met alerts aan",
                 item.zaak_nummer,
             )
             return 0
@@ -289,6 +293,7 @@ class ParlementairAlertService:
             MattermostChannelLink.scope_type == abonnement.scope_type,
             MattermostChannelLink.scope_id == abonnement.scope_id,
             MattermostChannelLink.disabled_at.is_(None),
+            MattermostChannelLink.parlementaire_alerts_enabled.is_(True),
         )
         kanalen = list((await self.session.execute(stmt)).scalars().all())
         if not kanalen:

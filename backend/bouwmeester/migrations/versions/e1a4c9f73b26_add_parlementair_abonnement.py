@@ -208,8 +208,26 @@ def upgrade() -> None:
         ["abonnement_id"],
     )
 
+    # Alerts per kanaal aan/uit, naast de bestaande `auto_note_enabled` en
+    # `suggest_leads_enabled`. Standaard uit: een kanaal dat voor leads is
+    # gekoppeld hoort niet ongevraagd elk kamerstuk te krijgen.
+    op.add_column(
+        "mattermost_channel_link",
+        sa.Column(
+            "parlementaire_alerts_enabled",
+            sa.Boolean(),
+            server_default="false",
+            nullable=False,
+            comment=(
+                "Stuur kamerstukken die op een zoekterm van dit initiatief "
+                "matchen naar dit kanaal."
+            ),
+        ),
+    )
+
 
 def downgrade() -> None:
+    op.drop_column("mattermost_channel_link", "parlementaire_alerts_enabled")
     op.drop_table("parlementair_treffer")
     op.drop_index(
         "ix_parlementair_abonnement_actief", table_name="parlementair_abonnement"

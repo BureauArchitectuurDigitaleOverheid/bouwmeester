@@ -224,3 +224,47 @@ class TestDrempel:
     def test_standaard_zet_niets_uit(self):
         # Recall boven precisie: een nieuw abonnement volgt alles.
         assert _abonnement().uitgezette_categorieen is None
+
+
+class TestKanaalSchakelaar:
+    """Alerts staan per kanaal aan of uit, net als de andere functies.
+
+    Een kanaal draagt al `auto_note_enabled` en `suggest_leads_enabled`,
+    elk met een eigen vinkje. Zonder een derde schakelaar zou een kanaal
+    dat voor leads is gekoppeld ook elk kamerstuk krijgen.
+    """
+
+    def test_staat_standaard_uit(self):
+        """Koppelen voor leads mag niet stilzwijgend kamerstukken opleveren."""
+        from bouwmeester.models.mattermost_channel_link import (
+            MattermostChannelLink,
+        )
+
+        kolom = MattermostChannelLink.__table__.c.parlementaire_alerts_enabled
+        assert kolom.server_default.arg == "false"
+        assert kolom.nullable is False
+
+    def test_staat_los_van_de_andere_schakelaars(self):
+        from bouwmeester.models.mattermost_channel_link import (
+            MattermostChannelLink,
+        )
+
+        kolommen = MattermostChannelLink.__table__.c
+        # Drie onafhankelijke functies, drie kolommen.
+        assert "auto_note_enabled" in kolommen
+        assert "suggest_leads_enabled" in kolommen
+        assert "parlementaire_alerts_enabled" in kolommen
+
+    def test_schema_laat_het_veld_door(self):
+        from bouwmeester.schema.mattermost_channel_link import (
+            MattermostChannelLinkResponse,
+            MattermostChannelLinkUpdate,
+        )
+
+        # De UI moet de stand kunnen tonen én wijzigen.
+        assert (
+            "parlementaire_alerts_enabled" in MattermostChannelLinkResponse.model_fields
+        )
+        assert (
+            "parlementaire_alerts_enabled" in MattermostChannelLinkUpdate.model_fields
+        )

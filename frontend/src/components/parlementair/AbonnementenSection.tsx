@@ -5,8 +5,10 @@ import {
   createAbonnement,
   deleteAbonnement,
   getAbonnementen,
+  getGekoppeldeKanalen,
   suggereerZoektermen,
   updateAbonnement,
+  type GekoppeldKanaal,
   type ParlementairAbonnement,
   type Zoektermsuggestie,
 } from '@/api/parlementairAbonnementen';
@@ -47,6 +49,18 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
     void laden();
   }, [laden]);
 
+  // Waar de alerts landen. Zonder gekoppeld kanaal blijven ze in de
+  // webapp, en dat hoort zichtbaar te zijn vóór iemand zoektermen instelt.
+  useEffect(() => {
+    let actueel = true;
+    getGekoppeldeKanalen(initiatiefId)
+      .then((k) => actueel && setKanalen(k))
+      .catch(() => actueel && setKanalen([]));
+    return () => {
+      actueel = false;
+    };
+  }, [initiatiefId]);
+
   const toevoegen = useCallback(async () => {
     const term = nieuweTerm.trim();
     if (term.length < 3) {
@@ -78,6 +92,7 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
   // binnenkomen — dan staat de pil op het tegenovergestelde van wat de
   // server weet.
   const [bezigeRij, setBezigeRij] = useState<string | null>(null);
+  const [kanalen, setKanalen] = useState<GekoppeldKanaal[] | null>(null);
   const [suggesties, setSuggesties] = useState<Zoektermsuggestie[] | null>(null);
   const [suggestiesBezig, setSuggestiesBezig] = useState(false);
 
@@ -156,10 +171,11 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
     >
       <nldd-container gap="12">
         <nldd-text size="xs" color="secondary">
-          Nieuwe kamerstukken waarin een van deze termen voorkomt, verschijnen in de
-          gekoppelde Mattermost-kanalen. Er wordt in de volledige tekst gezocht, dus ook
-          in bijlagen en beslisnota&apos;s.
+          Nieuwe kamerstukken waarin een van deze termen voorkomt. Er wordt in de
+          volledige tekst gezocht, dus ook in bijlagen en beslisnota&apos;s.
         </nldd-text>
+
+        <Bezorging kanalen={kanalen} />
 
         {fout && <nldd-banner variant="critical" size="sm" text={fout} />}
 
@@ -234,6 +250,42 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
         </nldd-text>
       </nldd-container>
     </DetailSection>
+  );
+}
+
+/**
+ * Waar de alerts van dit initiatief naartoe gaan.
+ *
+ * Dit stond eerst als belofte in de inleiding ("verschijnen in de
+ * gekoppelde Mattermost-kanalen"), maar die kanalen kunnen er niet zijn.
+ * Dan landen de treffers alleen in de webapp, en dat is iets anders dan
+ * wat de tekst suggereerde.
+ */
+function Bezorging({ kanalen }: { kanalen: GekoppeldKanaal[] | null }) {
+  if (kanalen === null) return null;
+
+  if (kanalen.length === 0) {
+    return (
+      <nldd-banner
+        variant="warning"
+        size="sm"
+        text="Dit initiatief heeft geen gekoppeld Mattermost-kanaal"
+        supporting-text={
+          'Treffers worden wel bewaard en zijn hier zichtbaar, maar er gaat ' +
+          'geen bericht uit. Koppel een kanaal met /bouwmeester koppel ' +
+          'initiatief <naam>.'
+        }
+      />
+    );
+  }
+
+  const namen = kanalen
+    .map((k) => `~${k.channel_name}`)
+    .join(', ');
+  return (
+    <nldd-text size="xs" color="secondary">
+      Berichten gaan naar {kanalen.length === 1 ? 'kanaal' : 'de kanalen'} {namen}.
+    </nldd-text>
   );
 }
 

@@ -70,3 +70,22 @@ export interface Zoektermsuggestie {
 export async function suggereerZoektermen(initiatiefId: string): Promise<Zoektermsuggestie[]> {
   return apiPost<Zoektermsuggestie[]>(`/api/initiatieven/${initiatiefId}/abonnementen/suggesties`);
 }
+
+/** Een Mattermost-kanaal dat aan dit initiatief hangt. */
+export interface GekoppeldKanaal {
+  id: string;
+  channel_id: string;
+  channel_name: string;
+  channel_display_name: string;
+}
+
+/**
+ * Waar de alerts van dit initiatief terechtkomen.
+ *
+ * Nul kanalen is een geldige uitkomst: de treffers staan dan alleen in de
+ * webapp. Dat hoort de gebruiker te weten vóór hij zoektermen instelt,
+ * anders belooft het scherm berichten die nergens aankomen.
+ */
+export async function getGekoppeldeKanalen(initiatiefId: string): Promise<GekoppeldKanaal[]> {
+  return apiGet<GekoppeldKanaal[]>(`/api/initiatieven/${initiatiefId}/mattermost-channels`);
+}
