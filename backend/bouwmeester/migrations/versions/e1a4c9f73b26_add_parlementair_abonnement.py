@@ -78,6 +78,12 @@ def upgrade() -> None:
         "parlementair_abonnement",
         ["scope_id"],
     )
+    # Elke FK krijgt een index; `test_fk_index_inventory` bewaakt dat.
+    op.create_index(
+        "ix_parlementair_abonnement_created_by_id",
+        "parlementair_abonnement",
+        ["created_by_id"],
+    )
     # De poller haalt elke ronde de actieve termen op; dat is de enige
     # query die op volume draait.
     op.create_index(
@@ -134,6 +140,10 @@ def downgrade() -> None:
     op.drop_table("parlementair_treffer")
     op.drop_index(
         "ix_parlementair_abonnement_actief", table_name="parlementair_abonnement"
+    )
+    op.drop_index(
+        "ix_parlementair_abonnement_created_by_id",
+        table_name="parlementair_abonnement",
     )
     op.drop_index(
         "ix_parlementair_abonnement_scope_id", table_name="parlementair_abonnement"
