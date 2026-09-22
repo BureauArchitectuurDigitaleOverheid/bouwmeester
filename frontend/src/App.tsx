@@ -99,13 +99,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
             text="Verbindingsfout"
             supporting-text={error}
           >
-            <div slot="actions">
-              <NlddButton
-                text="Opnieuw proberen"
-                variant="primary"
-                onClick={() => window.location.reload()}
-              />
-            </div>
+            <NlddButton
+              slot="actions"
+              text="Opnieuw proberen"
+              variant="primary"
+              onClick={() => window.location.reload()}
+            />
           </nldd-inline-dialog>
         </nldd-container>
       </FullScreenState>

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 import { NlddButton } from '@/components/nldd/NlddLink';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
-import { useNlddEvent, useNlddValue, eventValue, orUndef } from '@/components/nldd/events';
+import { useNlddEvent, useNlddValue, eventValue } from '@/components/nldd/events';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -68,20 +68,23 @@ function ShowBelow({ width, slot, children }: { width: number; slot?: string; ch
 /**
  * The admin's "view as a regular member" switch.
  *
- * `type="button"` rather than a checkbox: it is announced with aria-pressed,
- * which is what a mode you turn on and off wants.
+ * Transparent in both states, so it sits in the toolbar as an icon rather than
+ * a boxed control: a toggle button draws a border it cannot be talked out of,
+ * and that put a frame around this one glyph and nothing else up there.
+ *
+ * Which state it is in rides on the icon (an eye, or an eye struck through)
+ * and on the label, which says what pressing it does next. `aria-pressed`
+ * would be the nicer semantic, but nldd-icon-button does not carry it and the
+ * border is the price of the element that does.
  */
 function ViewAsToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'change', onToggle);
   return (
-    <nldd-toggle-button
-      ref={ref}
-      type="button"
-      size="sm"
+    <NlddIconButton
       icon={active ? 'eye-slash' : 'eye'}
-      selected={orUndef(active)}
-      accessible-label={active ? 'Terug naar beheerweergave' : 'Bekijk als medewerker'}
+      variant="neutral-transparent"
+      size="sm"
+      accessibleLabel={active ? 'Terug naar beheerweergave' : 'Bekijk als medewerker'}
+      onClick={onToggle}
     />
   );
 }
@@ -293,15 +296,29 @@ export function Header() {
             />
           </span>
         ) : (
-          <nldd-container slot="toolbar" layout="row" gap="8" vertical-alignment="center">
+          // The name only appears where the toolbar has room for it. It sat at
+          // `sm` and up, which is not the same thing: on a wide window the
+          // toolbar can still be full of controls, and the name then slid in
+          // behind the logout button. At 1280 there is room for both, and
+          // below that the avatar carries the identity on its own.
+          <nldd-container
+            slot="toolbar"
+            layout="row"
+            width="fit-content"
+            className="shrink-0"
+            gap="8"
+            vertical-alignment="center"
+          >
             <nldd-avatar
               size="24"
               {...(currentPerson ? { name: currentPerson.naam } : { icon: 'person' })}
               decorative
             />
             {currentPerson && (
-              <ShowAbove width={640}>
-                <nldd-text size="sm">{currentPerson.naam}</nldd-text>
+              <ShowAbove width={1280}>
+                <nldd-text size="sm" className="truncate">
+                  {currentPerson.naam}
+                </nldd-text>
               </ShowAbove>
             )}
           </nldd-container>

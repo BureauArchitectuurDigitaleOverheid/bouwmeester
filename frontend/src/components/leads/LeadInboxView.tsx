@@ -309,14 +309,24 @@ function LeadInboxRow({
         <nldd-text-cell text={lead.title}>
           <span slot="supporting-text">
             <nldd-container gap="4">
+              {/* A plain div, not nldd-text. The clamp needs
+                  `display: -webkit-box` on the element that holds the lines,
+                  and nldd-text sets its own display in its shadow root: the
+                  same style on the host is simply overruled, which is why
+                  this description ran to four lines in a row meant to be
+                  scanned. The design system has no clamp of its own, so this
+                  is `line-clamp-2` from utilities.css, as in the three other
+                  places that need it. */}
               {lead.description && (
-                <nldd-text
-                  size="xs"
-                  color="secondary"
-                  style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                <div
+                  className="line-clamp-2"
+                  style={{
+                    font: 'var(--primitives-font-body-xs-regular-snug)',
+                    color: 'var(--semantics-content-secondary-color)',
+                  }}
                 >
                   <RichTextDisplay content={lead.description} fallback="" />
-                </nldd-text>
+                </div>
               )}
 
               <nldd-container layout="wrap" gap="4">

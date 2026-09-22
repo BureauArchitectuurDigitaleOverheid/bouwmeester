@@ -305,6 +305,38 @@ for (const file of files) {
       }
     }
 
+    // `width="fit-content"` on a container that is a flex item, with nothing
+    // saying how much room it may take. The mode means "measure my content",
+    // and as a flex item that leaves it without a floor: it settles on zero,
+    // or on its narrowest word. All three have shipped. A button squeezed into
+    // a two-letter block, a heading set one letter per line, and a row of
+    // controls hanging over the edge of the popover it belonged in.
+    //
+    // It needs one of three: `row-fill` (grow into what is left), `shrink-0` /
+    // `keep-label-width` (never give way), or an explicit `min-width`. Without
+    // one the attribute does the opposite of what the call site wants.
+    //
+    // Only inside a row. In a stack the container is a block that fills its
+    // parent anyway, and `fit-content` there is a deliberate shrink-wrap
+    // around something with a width of its own, like a progress bar.
+    if (
+      stackIsReliable &&
+      tag === 'nldd-container' &&
+      /\bwidth="fit-content"/.test(attrText) &&
+      /\blayout="row"/.test(attrsByDepth[stack.length - 1] ?? '')
+    ) {
+      const guarded =
+        /\bclassName="[^"]*\b(row-fill|shrink-0|keep-label-width)\b/.test(attrText) ||
+        /\bmin-width="/.test(attrText);
+      if (!guarded) {
+        const line = source.slice(0, m.index).split('\n').length;
+        problems.push(
+          `${rel}:${line} <nldd-container width="fit-content"> without row-fill, ` +
+            'shrink-0 or min-width: it collapses to zero or to its narrowest word.',
+        );
+      }
+    }
+
     if (!selfClosing) {
       attrsByDepth[stack.length] = attrText;
       stack.push(tag);

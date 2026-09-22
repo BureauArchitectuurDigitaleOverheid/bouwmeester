@@ -373,9 +373,18 @@ export function InitiatiefDetailModal({
                 <nldd-list type="list" variant="box-tinted">
                   {detail.eenheden.map((eenheid) => (
                     <nldd-list-item key={eenheid.eenheid_id}>
-                      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
-                        <nldd-text-cell text={eenheid.eenheid_naam} width="fit-content" />
-                        <nldd-container layout="row" gap="6" vertical-alignment="center">
+                      <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
+                        {/* De naam krijgt wat de rol-kolom overlaat. Met
+                            `fit-content` zonder bodem kromp hij tot binnen een
+                            woord: "RegelRecht" brak af als "RegelRec/ht". */}
+                        <nldd-text-cell text={eenheid.eenheid_naam} width="full" />
+                        <nldd-container
+                          layout="row"
+                          width="fit-content"
+                          className="shrink-0"
+                          gap="6"
+                          vertical-alignment="center"
+                        >
                           {isEigenaar ? (
                             <Select
                               value={eenheid.rol}

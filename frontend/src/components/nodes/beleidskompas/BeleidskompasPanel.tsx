@@ -300,7 +300,7 @@ export function BeleidskompasPanel({ nodeId, stakeholderCount, onNavigateToStake
             <nldd-title size={6}><h3>Beleidskompas</h3></nldd-title>
             <nldd-link href={KCBR_MAIN_URL} target="_blank" accessible-label="Bekijk Beleidskompas op KCBR" start-icon="external-link" />
             <nldd-spacer size="flexible" />
-            <nldd-container width="fit-content">
+            <nldd-container width="fit-content" className="shrink-0">
               <nldd-progress-bar
                 value={completedCount}
                 max={totalSteps}
