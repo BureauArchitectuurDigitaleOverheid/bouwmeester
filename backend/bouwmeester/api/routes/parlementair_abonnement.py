@@ -10,7 +10,7 @@ langs een beheerder moet, en dan gebeurt het niet.
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,10 +45,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/initiatieven", tags=["parlementair-abonnement"])
 
 # Suggesties kosten een LLM-call plus negen verzoeken aan berthub.eu, een
-# privéserver zonder SLA. Vijf per vijf minuten is ruim voor iemand die
-# zoektermen aan het instellen is, en smal genoeg om er geen lus van te
-# kunnen maken. Dezelfde waarden als de access-request-limiter.
-_suggestie_limiter = InMemoryRateLimiter(window=300, max_requests=5)
+# privéserver zonder SLA. De limiet is er om een lus te stoppen, niet om
+# iemand die zoektermen zit in te stellen in de weg te zitten: twintig per
+# vijf minuten haalt niemand bij de hand, en begrenst het ergste geval nog
+# steeds tot ~36 verzoeken per minuut.
+_suggestie_limiter = InMemoryRateLimiter(window=300, max_requests=20)
 
 
 async def _require_initiatief_toegang(
@@ -69,6 +70,11 @@ async def _require_initiatief_toegang(
     if not ctx.is_admin and initiatief_id not in ctx.visible_initiatief_ids:
         raise HTTPException(status_code=404, detail="Initiatief niet gevonden")
     return initiatief
+
+
+def _client_sleutel(request: Request) -> str:
+    """Terugval als er geen gebruiker is; dan is het IP het enige dat we hebben."""
+    return request.client.host if request.client else "onbekend"
 
 
 def _onderwerp_van(initiatief: Initiatief) -> str:
@@ -219,7 +225,29 @@ async def suggereer_zoektermen(
     # Eén aanroep kost een LLM-call plus negen verzoeken aan een server
     # van derden. Zonder limiet kan iedereen met toegang tot één
     # initiatief dat in een lus doen, en dat komt bij berthub.eu terecht.
-    _suggestie_limiter.check(request)
+    #
+    # Per gebruiker, niet per IP: achter de ingress delen alle gebruikers
+    # één adres, en dan gold de limiet voor de hele organisatie samen. Dat
+    # leverde een 429 op die het scherm als "geen aanvullende zoektermen
+    # gevonden" toonde — stil en onnavolgbaar.
+    try:
+        _suggestie_limiter.check_key(
+            str(current_user.id) if current_user else _client_sleutel(request)
+        )
+    except HTTPException as exc:
+        if exc.status_code != status.HTTP_429_TOO_MANY_REQUESTS:
+            raise
+        # De generieke tekst zegt alleen "te veel verzoeken"; hier weet de
+        # lezer daar niets mee. Zeg wat er wordt beschermd en wanneer het
+        # weer kan.
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Je hebt net al vaak om suggesties gevraagd. Elke aanvraag "
+                "doet negen zoekopdrachten bij de bron, dus even wachten "
+                "(een paar minuten) en het kan weer."
+            ),
+        ) from exc
 
     repo = ParlementairAbonnementRepository(db)
     abonnementen = await repo.list_for_scope(SCOPE_INITIATIEF, initiatief_id)
@@ -242,7 +270,11 @@ async def suggereer_zoektermen(
     llm_service = await get_llm_service(db)
     if llm_service is None:
         raise HTTPException(
-            status_code=503, detail="Er is geen taalmodel geconfigureerd."
+            status_code=503,
+            detail=(
+                "Er is geen taalmodel geconfigureerd. Zet in Beheer een "
+                "CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY of VLAM-sleutel."
+            ),
         )
 
     async with TkconvClient() as client:
