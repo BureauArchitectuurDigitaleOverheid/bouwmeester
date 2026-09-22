@@ -1,0 +1,388 @@
+"""Client voor de zoek-RSS van tkconv (berthub.eu/tkconv).
+
+Waarom naast `tk_api_client`, die al bij de Tweede Kamer ophaalt: de
+officiele OData-API doorzoekt alleen metadata (Titel, Onderwerp), tkconv
+doorzoekt de volledige tekst van documenten inclusief bijlagen en
+beslisnota's. Een meting op 22 september 2026 over de termen "Nederlandse
+Digitale Dienst" en "Regelrecht" gaf nul overlap met wat de zaak-API
+oplevert:
+
+- 2026D45065 ("Startnotitie Nederlandse Digitale Dienst") is een Bijlage
+  zonder Zaak-koppeling, alleen bereikbaar via BronDocument. Zaak-gebaseerd
+  importeren ziet die nooit.
+- 2026D45064 heet "Strategische inzet digitalisering". Noch de titel noch
+  het onderwerp noemt de term; die staat pas in de body. Geen enkele
+  metadata-query vindt dit stuk.
+
+De zoek-RSS is niet gedocumenteerd. Behandel hem navenant: identificeer
+jezelf in de User-Agent, poll rustig, en faal zacht als het formaat wijzigt.
+"""
+
+import asyncio
+import logging
+import tempfile
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from pathlib import Path
+
+import httpx
+
+from bouwmeester.services.document_extract import extract_text
+
+logger = logging.getLogger(__name__)
+
+BASE_URL = "https://berthub.eu/tkconv"
+
+# tkconv draait op een privéserver zonder SLA. Een herkenbare UA laat de
+# beheerder zien wie er langskomt en hoe hij ons bereikt als het endpoint
+# wijzigt.
+USER_AGENT = (
+    "bouwmeester-parlementaire-alerts/1.0 "
+    "(+https://github.com/MinBZK; Nederlandse Digitale Dienst)"
+)
+
+# Hoe lang we op één document wachten. De PDF's zijn klein (~100KB), maar
+# de server is van één persoon; geef hem de tijd in plaats van te retryen.
+DOCUMENT_TIMEOUT = 60.0
+SEARCH_TIMEOUT = 30.0
+
+
+@dataclass
+class TkconvItem:
+    """Eén treffer uit de zoek-RSS."""
+
+    document_nummer: str
+    titel: str
+    commissie: str | None
+    onderwerp: str | None
+    link: str
+    gepubliceerd_op: datetime | None
+    # Welke zoektermen dit document aandroegen. Wordt gevuld door de
+    # zoekronde, niet door de feed zelf.
+    matched_terms: list[str] = field(default_factory=list)
+
+    @property
+    def document_url(self) -> str:
+        """Publieke URL naar het stuk op tkconv."""
+        return f"{BASE_URL}/document.html?nummer={self.document_nummer}"
+
+    @property
+    def raw_url(self) -> str:
+        """URL naar het ruwe bestand.
+
+        Let op het pad-segment: `getraw/<nr>` werkt, `getraw?nummer=<nr>`
+        geeft 404.
+        """
+        return f"{BASE_URL}/getraw/{self.document_nummer}"
+
+
+class TkconvClient:
+    """Bevraagt de zoek-RSS en haalt documentteksten op.
+
+    De ETags leven op de client, niet in de database: ze zijn een
+    optimalisatie, geen toestand die iets waard is als hij wegvalt. Een
+    herstart doet één volle GET per feed en gaat daarna weer 304's krijgen.
+    """
+
+    def __init__(self, base_url: str = BASE_URL) -> None:
+        self.base_url = base_url.rstrip("/")
+        self._http_client: httpx.AsyncClient | None = None
+        # feed-URL (inclusief query) -> laatst geziene ETag
+        self._etags: dict[str, str] = {}
+
+    def _get_http_client(self) -> httpx.AsyncClient:
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(SEARCH_TIMEOUT),
+                follow_redirects=True,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    # De feeds zijn XML en comprimeren tot ~10%.
+                    "Accept-Encoding": "gzip",
+                },
+            )
+        return self._http_client
+
+    async def globale_feed_gewijzigd(self) -> bool | None:
+        """Is er sinds de vorige ronde iets nieuws verschenen?
+
+        `/index.xml` draagt alle stukken van de afgelopen acht dagen en
+        verandert zodra er één bij komt. Eén HEAD met een bekende ETag
+        kost 0 bytes body en vertelt of de zoektermen überhaupt bevraagd
+        hoeven worden. Dat maakt een ronde van twee minuten goedkoper voor
+        Berts server dan het uurlijkse rondje dat er eerst stond.
+
+        Geeft True (er is iets nieuws), False (niets gewijzigd), of None
+        als de klopper zelf niet werkte — dan zoeken we gewoon door, want
+        een kapotte optimalisatie mag geen gemiste alert opleveren.
+        """
+        client = self._get_http_client()
+        url = f"{self.base_url}/index.xml"
+        headers = {}
+        vorige = self._etags.get(url)
+        if vorige:
+            headers["If-None-Match"] = vorige
+
+        try:
+            response = await client.head(url, headers=headers)
+        except httpx.RequestError as e:
+            logger.warning("tkconv-klopper onbereikbaar: %s", e)
+            return None
+
+        if response.status_code == 304:
+            return False
+        if response.status_code != 200:
+            logger.warning("tkconv-klopper gaf %s", response.status_code)
+            return None
+
+        etag = response.headers.get("etag")
+        if not etag:
+            # Zonder ETag kan de klopper niets uitsluiten.
+            return None
+        if vorige is None:
+            # Eerste ronde: we weten niet of er iets nieuws is.
+            self._etags[url] = etag
+            return None
+        gewijzigd = etag != vorige
+        self._etags[url] = etag
+        return gewijzigd
+
+    async def close(self) -> None:
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
+
+    async def __aenter__(self) -> "TkconvClient":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.close()
+
+    async def search(self, query: str) -> list[TkconvItem]:
+        """Zoek op één term en geef de treffers terug.
+
+        `query` moet al gequote zijn voor een frase — zie
+        `ParlementairAbonnement.zoekopdracht()`. Een ongequote meerwoordsterm
+        OR't de woorden en levert willekeurige treffers op.
+        """
+        client = self._get_http_client()
+        url = f"{self.base_url}/search/index.xml"
+        cache_key = f"{url}?q={query}"
+
+        headers = {}
+        vorige = self._etags.get(cache_key)
+        if vorige:
+            headers["If-None-Match"] = vorige
+
+        try:
+            response = await client.get(url, params={"q": query}, headers=headers)
+            if response.status_code == 304:
+                # Deze term leverde niets nieuws op sinds de vorige ronde.
+                # Leeg teruggeven is correct: de items die er al waren zijn
+                # allang geïmporteerd en zouden op zaak_id afketsen.
+                return []
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "tkconv-zoekopdracht %r faalde: %s %s",
+                query,
+                e.response.status_code,
+                e.response.text[:200],
+            )
+            return []
+        except httpx.RequestError as e:
+            logger.error("tkconv onbereikbaar voor %r: %s", query, e)
+            return []
+
+        etag = response.headers.get("etag")
+        if etag:
+            self._etags[cache_key] = etag
+
+        return self._parse_feed(response.content, query)
+
+    @staticmethod
+    def _parse_feed(payload: bytes, query: str) -> list[TkconvItem]:
+        """Parse de RSS. Een formaatwijziging mag de poller niet omleggen."""
+        try:
+            root = ET.fromstring(payload)
+        except ET.ParseError as e:
+            logger.error("tkconv gaf onleesbare XML voor %r: %s", query, e)
+            return []
+
+        items: list[TkconvItem] = []
+        for node in root.findall(".//item"):
+
+            def text_of(tag: str) -> str:
+                el = node.find(tag)
+                return (el.text or "").strip() if el is not None else ""
+
+            guid = text_of("guid")
+            # De guid heeft de vorm `tkconv_<documentnummer>` en is de
+            # stabiele dedup-sleutel.
+            nummer = guid.removeprefix("tkconv_").strip()
+            if not nummer:
+                logger.warning("tkconv-item zonder bruikbare guid: %r", guid)
+                continue
+
+            commissie, onderwerp = _split_description(text_of("description"))
+
+            gepubliceerd = None
+            pub = text_of("pubDate")
+            if pub:
+                try:
+                    gepubliceerd = parsedate_to_datetime(pub)
+                    if gepubliceerd.tzinfo is None:
+                        gepubliceerd = gepubliceerd.replace(tzinfo=UTC)
+                except (TypeError, ValueError):
+                    logger.warning("tkconv-item %s heeft pubDate %r", nummer, pub)
+
+            items.append(
+                TkconvItem(
+                    document_nummer=nummer,
+                    titel=text_of("title") or nummer,
+                    commissie=commissie,
+                    onderwerp=onderwerp,
+                    link=text_of("link") or f"{BASE_URL}/document.html?nummer={nummer}",
+                    gepubliceerd_op=gepubliceerd,
+                    matched_terms=[query],
+                )
+            )
+        return items
+
+    async def search_many(
+        self, queries: list[str], pause_seconds: float = 1.0
+    ) -> list[TkconvItem]:
+        """Zoek op meerdere termen en geef ontdubbelde documenten terug.
+
+        Dedup is hier de kern, niet een detail. Bij een meting op 22
+        september 2026 leverden elf termen 24 losse treffers op over maar
+        acht unieke documenten; de startnotitie NLDD matchte op zeven
+        termen tegelijk. Zonder ontdubbeling zou dat ene stuk zeven
+        berichten opleveren.
+
+        Het resultaat draagt per document álle termen die hem aandroegen,
+        zodat het bericht kan tonen waaróm het binnenkwam.
+        """
+        gevonden: dict[str, TkconvItem] = {}
+        for query in queries:
+            for item in await self.search(query):
+                bestaand = gevonden.get(item.document_nummer)
+                if bestaand is None:
+                    gevonden[item.document_nummer] = item
+                elif query not in bestaand.matched_terms:
+                    bestaand.matched_terms.append(query)
+            # tkconv draait op andermans server; ga er rustig overheen.
+            if pause_seconds > 0 and query != queries[-1]:
+                await asyncio.sleep(pause_seconds)
+
+        items = list(gevonden.values())
+        items.sort(
+            key=lambda i: i.gepubliceerd_op or datetime.min.replace(tzinfo=UTC),
+            reverse=True,
+        )
+        logger.info(
+            "tkconv: %d termen gaven %d unieke documenten",
+            len(queries),
+            len(items),
+        )
+        return items
+
+    async def fetch_document_text(self, nummer: str) -> tuple[str | None, str | None]:
+        """Haal de tekst van één document op.
+
+        Geeft (tekst, content_type) terug. `getraw` levert niet altijd PDF:
+        2026D45064 komt terug als docx. Daarom splitsen op content-type in
+        plaats van op aanname.
+        """
+        client = self._get_http_client()
+        url = f"{self.base_url}/getraw/{nummer}"
+
+        try:
+            response = await client.get(url, timeout=httpx.Timeout(DOCUMENT_TIMEOUT))
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.warning("getraw %s gaf %s", nummer, e.response.status_code)
+            return None, None
+        except httpx.RequestError as e:
+            logger.warning("getraw %s onbereikbaar: %s", nummer, e)
+            return None, None
+
+        raw_type = response.headers.get("content-type") or ""
+        content_type = raw_type.split(";")[0].strip()
+        text = _extract_text(response.content, content_type, nummer)
+        return text, content_type
+
+
+def _split_description(description: str) -> tuple[str | None, str | None]:
+    """Splits `commissie | onderwerp` uit de RSS-description.
+
+    Niet elk item heeft een commissie; bijlagen komen binnen als `| onderwerp`.
+    """
+    if not description:
+        return None, None
+    if "|" in description:
+        left, _, right = description.partition("|")
+        return (left.strip() or None), (right.strip() or None)
+    return None, description.strip() or None
+
+
+DOCX_CONTENT_TYPE = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+)
+
+SUFFIXES = {
+    "application/pdf": ".pdf",
+    DOCX_CONTENT_TYPE: ".docx",
+    "application/vnd.oasis.opendocument.text": ".odt",
+    "text/plain": ".txt",
+}
+
+
+def _sniff_content_type(payload: bytes, declared: str) -> str:
+    """Bepaal het content-type, met de bytes als correctie op de header.
+
+    `getraw` levert niet altijd wat je verwacht: 2026D45065 komt als PDF
+    terug, 2026D45064 als docx. De header is doorgaans correct, maar een
+    magic-byte-check kost niets en vangt een generieke
+    `application/octet-stream` op.
+    """
+    if payload[:4] == b"%PDF":
+        return "application/pdf"
+    if payload[:2] == b"PK" and "wordprocessingml" in declared:
+        return DOCX_CONTENT_TYPE
+    if payload[:2] == b"PK" and "opendocument" in declared:
+        return "application/vnd.oasis.opendocument.text"
+    return declared
+
+
+def _extract_text(payload: bytes, content_type: str, nummer: str) -> str | None:
+    """Haal platte tekst uit het ruwe bestand.
+
+    Delegeert aan `document_extract.extract_text`, dezelfde route die
+    geüploade bijlagen nemen — inclusief de truncatie op 15.000 tekens die
+    de LLM-prompt binnen de perken houdt. Die functie werkt op een pad, dus
+    het antwoord gaat door een tempfile.
+
+    Faalt zacht: zonder tekst kan het item nog steeds gemeld worden met
+    alleen zijn titel, en dat is beter dan de hele ronde laten omvallen.
+    """
+    resolved = _sniff_content_type(payload, content_type)
+    suffix = SUFFIXES.get(resolved)
+    if suffix is None:
+        logger.info("Onbekend content-type %r voor %s", resolved, nummer)
+        return None
+
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(payload)
+            tmp_path = Path(tmp.name)
+        return extract_text(tmp_path, resolved)
+    except Exception as e:  # noqa: BLE001 - extractie mag nooit de ronde stoppen
+        logger.warning("Tekstextractie faalde voor %s (%s): %s", nummer, resolved, e)
+        return None
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)

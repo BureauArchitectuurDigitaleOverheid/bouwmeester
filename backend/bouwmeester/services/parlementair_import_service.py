@@ -22,6 +22,9 @@ from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.politieke_input import PolitiekeInput
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
+from bouwmeester.repositories.parlementair_abonnement import (
+    ParlementairAbonnementRepository,
+)
 from bouwmeester.repositories.parlementair_item import (
     ParlementairItemRepository,
     SuggestedEdgeRepository,
@@ -30,6 +33,7 @@ from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import TagCreate
 from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrategy
 from bouwmeester.services.import_strategies.registry import get_strategy
+from bouwmeester.services.import_strategies.tkconv import TkconvSearchStrategy
 from bouwmeester.services.llm import get_llm_service
 from bouwmeester.services.notification_service import NotificationService
 from bouwmeester.services.tk_api_client import EersteKamerClient, TweedeKamerClient
@@ -59,6 +63,7 @@ class ParlementairImportService:
         self.import_repo = ParlementairItemRepository(session)
         self.edge_repo = SuggestedEdgeRepository(session)
         self.tag_repo = TagRepository(session)
+        self.abonnement_repo = ParlementairAbonnementRepository(session)
         self.notification_service = NotificationService(session)
 
     async def poll_and_import(
@@ -83,6 +88,14 @@ class ParlementairImportService:
                 logger.warning(f"Unknown import type: {item_type}, skipping")
                 continue
 
+            # De tkconv-strategie zoekt naar wat gebruikers volgen, dus de
+            # termen komen uit de database in plaats van uit config.
+            if isinstance(strategy, TkconvSearchStrategy):
+                strategy.abonnementen = await self.abonnement_repo.list_actief()
+                if not strategy.abonnementen:
+                    logger.info("Geen actieve abonnementen, tkconv overgeslagen")
+                    continue
+
             count = await self._import_type(strategy)
             imported_count += count
 
@@ -92,24 +105,40 @@ class ParlementairImportService:
         """Import all items for a single strategy/type."""
         imported_count = 0
 
-        # Poll Tweede Kamer
-        tk_client = TweedeKamerClient(
-            base_url=self.settings.TK_API_BASE_URL,
-            session=self.session,
-        )
-        try:
-            async with tk_client:
-                tk_items = await strategy.fetch_items(
-                    client=tk_client,
-                    since=None,
-                    limit=self.settings.TK_IMPORT_LIMIT,
-                )
-            logger.info(
-                f"Fetched {len(tk_items)} {strategy.item_type} items from Tweede Kamer"
+        # Poll Tweede Kamer — or the strategy's own source when it does not
+        # use the OData API (tkconv searches full text, which OData cannot).
+        if strategy.uses_tk_api:
+            tk_client = TweedeKamerClient(
+                base_url=self.settings.TK_API_BASE_URL,
+                session=self.session,
             )
-        except Exception:
-            logger.exception(f"Error fetching {strategy.item_type} from Tweede Kamer")
+            bron_naam = "Tweede Kamer"
+        else:
+            tk_client = strategy.build_client()
+            bron_naam = strategy.item_type
+
+        if tk_client is None:
+            logger.warning(
+                f"{strategy.item_type} has no client to fetch with, skipping"
+            )
             tk_items = []
+        else:
+            try:
+                async with tk_client:
+                    tk_items = await strategy.fetch_items(
+                        client=tk_client,
+                        since=None,
+                        limit=self.settings.TK_IMPORT_LIMIT,
+                    )
+                logger.info(
+                    f"Fetched {len(tk_items)} {strategy.item_type} items "
+                    f"from {bron_naam}"
+                )
+            except Exception:
+                logger.exception(
+                    f"Error fetching {strategy.item_type} from {bron_naam}"
+                )
+                tk_items = []
 
         # Poll Eerste Kamer (only if strategy supports it)
         ek_items: list[FetchedItem] = []
@@ -150,6 +179,57 @@ class ParlementairImportService:
                 await self.session.rollback()
 
         return imported_count
+
+    async def _alert_kamerstuk(self, parlementair_item: ParlementairItem) -> None:
+        """Vat het stuk samen vanuit de zoekterm en post het in de kanalen.
+
+        Twee stappen in één methode omdat de samenvatting alleen voor het
+        bericht wordt gemaakt: de score bepaalt de vorm, niet of er gepost
+        wordt. Een mislukte LLM-call mag het stuk niet verzwijgen, dus
+        beide stappen falen zacht.
+        """
+        from bouwmeester.services.parlementair_alert_service import (
+            ParlementairAlertService,
+        )
+
+        abonnementen = await self.abonnement_repo.list_abonnementen_voor_item(
+            parlementair_item.id
+        )
+        termen = [a.term for a in abonnementen]
+
+        llm_service = await get_llm_service(self.session)
+        if llm_service is not None and termen:
+            try:
+                alert = await llm_service.summarize_kamerstuk_alert(
+                    titel=parlementair_item.titel,
+                    onderwerp=parlementair_item.onderwerp,
+                    document_tekst=parlementair_item.document_tekst,
+                    zoektermen=termen,
+                )
+                if alert.samenvatting:
+                    parlementair_item.llm_samenvatting = alert.samenvatting
+                extra = dict(parlementair_item.extra_data or {})
+                extra["relevantie_score"] = alert.relevantie_score
+                extra["relevantie_reden"] = alert.reden
+                parlementair_item.extra_data = extra
+                await self.session.flush()
+            except Exception:
+                logger.exception(
+                    "Samenvatting mislukt voor %s", parlementair_item.zaak_nummer
+                )
+
+        try:
+            service = ParlementairAlertService(self.session)
+            gepost = await service.post_alert(parlementair_item)
+            logger.info(
+                "Kamerstuk %s in %d kanaal/kanalen gepost",
+                parlementair_item.zaak_nummer,
+                gepost,
+            )
+        except Exception:
+            logger.exception(
+                "Alert posten mislukt voor %s", parlementair_item.zaak_nummer
+            )
 
     async def _process_item(
         self,
@@ -321,6 +401,18 @@ class ParlementairImportService:
             ministerie=item.ministerie,
             extra_data=item.extra_data,
         )
+
+        # Step 8b: Leg vast welke zoektermen dit stuk aandroegen. Eén
+        # document matcht in de praktijk op meerdere termen tegelijk, dus
+        # dit is een aparte tabel: het item wordt één keer geïmporteerd en
+        # één keer gepost, met alle termen eronder.
+        if isinstance(strategy, TkconvSearchStrategy):
+            abonnement_ids = strategy.treffers.get(item.zaak_id, [])
+            if abonnement_ids:
+                await self.abonnement_repo.registreer_treffers(
+                    parlementair_item.id, abonnement_ids
+                )
+                await self._alert_kamerstuk(parlementair_item)
 
         # Step 9: Create SuggestedEdge records for matching nodes
         affected_nodes: list[CorpusNode] = []

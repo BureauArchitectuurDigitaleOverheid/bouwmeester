@@ -23,6 +23,9 @@ from bouwmeester.repositories.mattermost_channel_link import (
     MattermostChannelLinkRepository,
 )
 from bouwmeester.repositories.mattermost_user import MattermostUserRepository
+from bouwmeester.repositories.parlementair_abonnement import (
+    ParlementairAbonnementRepository,
+)
 from bouwmeester.repositories.search import SearchRepository
 from bouwmeester.services.mattermost_utils import escape_mattermost_md as _escape_md
 
@@ -69,6 +72,9 @@ class MattermostSlashService:
             "koppel": self._handle_koppel,
             "ontkoppel": self._handle_ontkoppel,
             "kanaal": self._handle_kanaal_status,
+            "volg": self._handle_volg,
+            "ontvolg": self._handle_ontvolg,
+            "volgt": self._handle_volgt,
         }
 
         handler = handlers.get(subcommand, self._handle_help)
@@ -230,6 +236,10 @@ class MattermostSlashService:
             "koppel dit kanaal aan een lead\n"
             "- `/bouwmeester ontkoppel` — verwijder de kanaal-koppeling\n"
             "- `/bouwmeester kanaal` — toon de huidige koppeling\n"
+            "- `/bouwmeester volg <zoekterm>` — "
+            "volg een term in nieuwe kamerstukken\n"
+            "- `/bouwmeester ontvolg <zoekterm>` — stop met volgen\n"
+            "- `/bouwmeester volgt` — welke termen dit initiatief volgt\n"
             "- `/bouwmeester help` — Dit overzicht\n"
         )
 
@@ -356,6 +366,164 @@ class MattermostSlashService:
             f"Auto-note: {'aan' if link.auto_note_enabled else 'uit'} · "
             f"Suggesties: {'aan' if link.suggest_leads_enabled else 'uit'}"
         )
+
+    async def _resolve_abonnement_scope(
+        self, mattermost_user_id: str, ch: _ChannelCtx
+    ) -> tuple[UUID | None, object, str]:
+        """Bepaal namens welk initiatief/lead dit kanaal abonnementen beheert.
+
+        Geeft (person_id, link, foutmelding) terug; bij een fout is `link`
+        None en draagt de string de reden. De scope komt uit de bestaande
+        kanaalkoppeling, zodat een abonnement bij het initiatief hoort en
+        niet bij het kanaal: kanalen worden ontkoppeld, initiatieven niet.
+        """
+        if not ch.channel_id:
+            return None, None, "Ik kan dit kanaal niet bepalen vanuit het commando."
+        person_id = await self._resolve_person_id(mattermost_user_id)
+        if not person_id:
+            return (
+                None,
+                None,
+                "Je Mattermost-account is niet gekoppeld aan Bouwmeester. "
+                "Ga naar Instellingen om te koppelen.",
+            )
+        link_repo = MattermostChannelLinkRepository(self.session)
+        link = await link_repo.get_by_channel_id(ch.channel_id)
+        if link is None:
+            return (
+                person_id,
+                None,
+                "Dit kanaal is nog niet gekoppeld. Gebruik eerst "
+                "`/bouwmeester koppel initiatief <naam>`; de zoektermen "
+                "horen bij het initiatief, niet bij het kanaal.",
+            )
+        return person_id, link, ""
+
+    async def _scope_naam(self, link) -> str:
+        if link.scope_type == SCOPE_INITIATIEF:
+            init = await self.session.get(Initiatief, link.scope_id)
+            return init.naam if init else str(link.scope_id)
+        lead = await self.session.get(Lead, link.scope_id)
+        return lead.title if lead else str(link.scope_id)
+
+    async def _handle_volg(
+        self, mattermost_user_id: str, args: str, ch: _ChannelCtx
+    ) -> dict:
+        """Voeg een zoekterm toe aan het initiatief achter dit kanaal."""
+        person_id, link, fout = await self._resolve_abonnement_scope(
+            mattermost_user_id, ch
+        )
+        if fout:
+            return _ephemeral(fout)
+
+        term = args.strip().strip('"').strip()
+        if not term:
+            return _ephemeral(
+                "Gebruik: `/bouwmeester volg <zoekterm>`, bijvoorbeeld "
+                "`/bouwmeester volg Nederlandse Digitale Dienst`."
+            )
+        if len(term) < 3:
+            return _ephemeral(
+                "Een zoekterm van minder dan drie tekens levert te veel ruis op."
+            )
+
+        repo = ParlementairAbonnementRepository(self.session)
+        bestaand = await repo.get_by_term(link.scope_type, link.scope_id, term)
+        if bestaand is not None:
+            if not bestaand.actief:
+                bestaand.actief = True
+                await self.session.commit()
+                return _ephemeral(f":mag: **{_escape_md(bestaand.term)}** weer actief.")
+            return _ephemeral(f"**{_escape_md(bestaand.term)}** wordt al gevolgd.")
+
+        abonnement = await repo.create(
+            scope_type=link.scope_type,
+            scope_id=link.scope_id,
+            term=term,
+            # Meerdere woorden worden als frase gezocht. Een ongequote
+            # meerwoordsterm OR't de woorden en levert willekeurige
+            # treffers op; dat is bijna nooit de bedoeling.
+            is_frase=True,
+            created_by_id=person_id,
+        )
+        await self.session.commit()
+
+        naam = await self._scope_naam(link)
+        return _ephemeral(
+            f":mag: **{_escape_md(abonnement.term)}** wordt nu gevolgd voor "
+            f"**{_escape_md(naam)}**. Nieuwe kamerstukken met deze term in de "
+            "volledige tekst verschijnen in dit kanaal. Bestaande stukken van "
+            "voor nu worden niet opnieuw gemeld."
+        )
+
+    async def _handle_ontvolg(
+        self, mattermost_user_id: str, args: str, ch: _ChannelCtx
+    ) -> dict:
+        person_id, link, fout = await self._resolve_abonnement_scope(
+            mattermost_user_id, ch
+        )
+        if fout:
+            return _ephemeral(fout)
+
+        term = args.strip().strip('"').strip()
+        if not term:
+            return _ephemeral("Gebruik: `/bouwmeester ontvolg <zoekterm>`.")
+
+        repo = ParlementairAbonnementRepository(self.session)
+        abonnement = await repo.get_by_term(link.scope_type, link.scope_id, term)
+        if abonnement is None:
+            return _ephemeral(
+                f"**{_escape_md(term)}** wordt niet gevolgd. "
+                "`/bouwmeester volgt` toont wat er wel staat."
+            )
+        bewaard = abonnement.term
+        await repo.delete(abonnement)
+        await self.session.commit()
+        return _ephemeral(f":wastebasket: **{_escape_md(bewaard)}** niet meer gevolgd.")
+
+    async def _handle_volgt(
+        self, mattermost_user_id: str, args: str, ch: _ChannelCtx
+    ) -> dict:
+        """Toon de zoektermen van dit initiatief, met wat ze opleveren."""
+        person_id, link, fout = await self._resolve_abonnement_scope(
+            mattermost_user_id, ch
+        )
+        if fout:
+            return _ephemeral(fout)
+
+        repo = ParlementairAbonnementRepository(self.session)
+        abonnementen = await repo.list_for_scope(link.scope_type, link.scope_id)
+        naam = await self._scope_naam(link)
+
+        if not abonnementen:
+            return _ephemeral(
+                f"**{_escape_md(naam)}** volgt nog geen zoektermen. "
+                "Voeg er een toe met `/bouwmeester volg <zoekterm>`."
+            )
+
+        tellingen = await repo.telling_per_abonnement(link.scope_type, link.scope_id)
+        regels = [f"**Zoektermen voor {_escape_md(naam)}**", ""]
+        regels.append("| Term | Treffers | Weggeklikt | Laatste |")
+        regels.append("|---|---:|---:|---|")
+        for a in abonnementen:
+            laatste = (
+                a.laatste_treffer_op.strftime("%d-%m-%Y")
+                if a.laatste_treffer_op
+                else "—"
+            )
+            term = _escape_md(a.term)
+            if not a.actief:
+                term = f"~~{term}~~"
+            regels.append(
+                f"| {term} | {tellingen.get(a.id, 0)} | "
+                f"{a.weggeklikt_totaal} | {laatste} |"
+            )
+        regels.append("")
+        regels.append(
+            "_Een term die niets oplevert is niet per se fout; een term die "
+            "vaak wordt weggeklikt is te breed._"
+        )
+        return _ephemeral("\n".join(regels))
 
     async def _lookup_initiatief(
         self, query: str, person_id: UUID

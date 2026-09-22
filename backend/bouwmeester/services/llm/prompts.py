@@ -13,6 +13,7 @@ _TYPE_LABELS: dict[str, str] = {
     "toezegging": "toezegging",
     "amendement": "amendement",
     "commissiedebat": "commissiedebat",
+    "tkconv_document": "kamerstuk",
 }
 
 _NODE_TYPE_LABELS: dict[str, str] = {
@@ -77,6 +78,63 @@ def build_extract_tags_prompt(
         ' "specifieke/tag2"],\n'
         '  "suggested_new_tags":'
         ' ["nieuwe/specifieke/tag"]\n'
+        "}"
+    )
+
+
+def build_kamerstuk_alert_prompt(
+    titel: str,
+    onderwerp: str,
+    document_tekst: str | None,
+    zoektermen: list[str],
+) -> str:
+    """Prompt voor een alert over een kamerstuk dat op een zoekterm matchte.
+
+    Twee dingen die deze prompt anders maakt dan `build_extract_tags_prompt`:
+
+    De term staat vaak maar één keer in een lang stuk. Een kamerbrief van
+    veertig pagina's kan RegelRecht in één zin noemen. De samenvatting moet
+    daarom over de passage gaan waar de term valt, niet over het stuk als
+    geheel — anders leest de alert als een samenvatting van de begroting.
+
+    En er komt een relevantiescore uit. Het vangnet staat bewust breed
+    (recall boven precisie), dus er komen stukken langs waar de term
+    zijdelings valt. Die worden niet weggegooid maar krijgen een lagere
+    score, zodat het bericht stiller kan zijn zonder iets te verbergen.
+    """
+    item_content = f"TITEL: {titel}\nONDERWERP: {onderwerp}"
+    if document_tekst:
+        item_content += f"\n\nDOCUMENTTEKST:\n{document_tekst[:MAX_TEXT_IN_PROMPT]}"
+
+    termen_json = json.dumps(zoektermen, ensure_ascii=False)
+    return (
+        "Je bent een beleidsanalist van het ministerie van BZK"
+        " (Binnenlandse Zaken en Koninkrijksrelaties).\n\n"
+        "Dit kamerstuk kwam binnen omdat er op deze zoektermen is gezocht"
+        " in de volledige tekst:\n"
+        f"{termen_json}\n\n"
+        f"KAMERSTUK:\n{item_content}\n\n"
+        "Instructies:\n"
+        "- Vat in maximaal 3 zinnen samen wat dit stuk zegt OVER de"
+        " zoekterm. Niet het hele stuk samenvatten: als de term in één"
+        " passage valt, gaat de samenvatting over die passage.\n"
+        "- Citeer de relevante zin letterlijk als die kort genoeg is."
+        " Speculeer niet over weggelakte of ontbrekende passages.\n"
+        "- Geef een relevantie-score van 0 tot 100: hoe centraal staat de"
+        " zoekterm in dit stuk? 80+ = het stuk gaat er wezenlijk over."
+        " 40-79 = een herkenbare passage. 0-39 = terloopse vermelding of"
+        " een andere betekenis van hetzelfde woord.\n"
+        "- Let op homoniemen: 'regelrecht' is ook een gewoon Nederlands"
+        " bijwoord, en 'regelrechter' is een ander begrip. Een stuk over"
+        " de Rotterdamse Regelrechter matcht de term maar gaat niet over"
+        " het programma RegelRecht. Score dan laag en zeg dat erbij.\n"
+        "- Schrijf zakelijk Nederlands, geen uitroeptekens.\n\n"
+        "Geef je analyse als JSON"
+        " (en ALLEEN JSON, geen andere tekst):\n"
+        "{\n"
+        '  "samenvatting": "...",\n'
+        '  "relevantie_score": 0,\n'
+        '  "reden": "waarom deze score"\n'
         "}"
     )
 

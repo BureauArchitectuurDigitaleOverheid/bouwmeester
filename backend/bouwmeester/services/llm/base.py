@@ -34,6 +34,17 @@ class TagExtractionResult(BaseModel):
     samenvatting: str
 
 
+class KamerstukAlertResult(BaseModel):
+    """Samenvatting van een kamerstuk vanuit de zoekterm die het aandroeg."""
+
+    samenvatting: str
+    # 0-100: hoe centraal de zoekterm in het stuk staat. Stuurt de vorm van
+    # het bericht, nooit of het gepost wordt — het vangnet staat bewust
+    # breed en niets valt stil weg.
+    relevantie_score: int
+    reden: str
+
+
 class TagSuggestionResult(BaseModel):
     matched_tags: list[str]
     suggested_new_tags: list[str]
@@ -152,6 +163,47 @@ class BaseLLMService(ABC):
                 matched_tags=[],
                 suggested_new_tags=[],
                 samenvatting="Tag-extractie mislukt",
+            )
+
+    async def summarize_kamerstuk_alert(
+        self,
+        titel: str,
+        onderwerp: str,
+        document_tekst: str | None,
+        zoektermen: list[str],
+    ) -> "KamerstukAlertResult":
+        """Vat een kamerstuk samen vanuit de zoekterm die het aandroeg.
+
+        Alleen publieke tekst en de zoektermen gaan de LLM in; het stuk
+        staat op tweedekamer.nl.
+        """
+        from bouwmeester.services.llm.prompts import build_kamerstuk_alert_prompt
+
+        prompt = build_kamerstuk_alert_prompt(
+            titel=titel,
+            onderwerp=onderwerp,
+            document_tekst=document_tekst,
+            zoektermen=zoektermen,
+        )
+        try:
+            text = await self._complete(prompt)
+            result = self._parse_json(text)
+            score = result.get("relevantie_score", 50)
+            if not isinstance(score, int | float):
+                score = 50
+            return KamerstukAlertResult(
+                samenvatting=str(result.get("samenvatting", "")).strip(),
+                relevantie_score=max(0, min(100, int(score))),
+                reden=str(result.get("reden", "")).strip(),
+            )
+        except Exception:
+            logger.exception("Fout bij LLM-samenvatting van kamerstuk")
+            # Geen samenvatting is geen reden om het stuk te verzwijgen:
+            # het bericht valt terug op titel en onderwerp.
+            return KamerstukAlertResult(
+                samenvatting="",
+                relevantie_score=50,
+                reden="samenvatting mislukt",
             )
 
     async def suggest_tags(

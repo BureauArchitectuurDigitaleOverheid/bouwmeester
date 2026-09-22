@@ -4,6 +4,8 @@ and running the persistent Mattermost websocket."""
 import asyncio
 import logging
 import traceback
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import async_session, engine
@@ -20,6 +22,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Het poll-ritme van tkconv volgt de Nederlandse kantooruren, dus de
+# tijdzone is die van de Tweede Kamer en niet die van de server.
+_AMSTERDAM = ZoneInfo("Europe/Amsterdam")
 
 
 def _short_error(exc: BaseException) -> str:
@@ -47,6 +53,63 @@ async def _parlementair_loop(settings) -> None:  # type: ignore[no-untyped-def]
             await health_tick("parlementair", status="error", detail=_short_error(exc))
 
         await asyncio.sleep(settings.TK_POLL_INTERVAL_SECONDS)
+
+
+def _tkconv_interval(settings, nu: datetime | None = None) -> int:  # type: ignore[no-untyped-def]
+    """Hoe lang tot de volgende tkconv-ronde, naar het uur van de dag.
+
+    Kamerstukken verschijnen tijdens kantooruren: een meting over 1010
+    stukken in acht dagen gaf 08:00-18:00, met een piek om 16:00 (188
+    stukken) en daarbuiten 2 stukken in acht dagen. Overdag kort pollen is
+    dus waar de winst zit; 's nachts hetzelfde doen belast alleen Berts
+    server.
+
+    De grens is bewust niet hard op 18:00: de avondstaart is dun maar niet
+    leeg, en een stuk dat om 20:00 verschijnt hoeft niet tot de volgende
+    ochtend te wachten.
+    """
+    nu = nu or datetime.now(_AMSTERDAM)
+    uur = nu.hour
+    if settings.TKCONV_KANTOORUREN_START <= uur < settings.TKCONV_KANTOORUREN_EIND:
+        return settings.TKCONV_POLL_INTERVAL_KANTOORUREN_SECONDS
+    # De avond is het venster ná kantooruren, niet "alles vóór 23:00": zonder
+    # de ondergrens zou 03:00 ook als avond tellen en 's nachts even vaak
+    # gepolld worden als om 20:00.
+    if settings.TKCONV_KANTOORUREN_EIND <= uur < settings.TKCONV_AVOND_EIND:
+        return settings.TKCONV_POLL_INTERVAL_AVOND_SECONDS
+    return settings.TKCONV_POLL_INTERVAL_NACHT_SECONDS
+
+
+async def _tkconv_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Volg zoektermen in nieuwe kamerstukken via tkconv.
+
+    Eigen loop, los van `_parlementair_loop`: de officiële TK-API is
+    rijksinfrastructuur, tkconv is de privéserver van één persoon. Dezelfde
+    frequentie opleggen omdat ze toevallig in dezelfde loop zitten, is geen
+    keuze maar een bijwerking.
+
+    De client houdt ETags vast, dus een ronde waarin niets is verschenen
+    kost één HEAD met 0 bytes body.
+    """
+    await health_tick("tkconv", status="starting")
+    while True:
+        count = 0
+        try:
+            async with async_session() as session:
+                from bouwmeester.services.parlementair_import_service import (
+                    ParlementairImportService,
+                )
+
+                service = ParlementairImportService(session)
+                count = await service.poll_and_import(item_types=["tkconv_document"])
+                if count:
+                    logger.info(f"tkconv-ronde: {count} kamerstukken geïmporteerd")
+            await health_tick("tkconv", detail=f"{count} kamerstukken")
+        except Exception as exc:
+            logger.exception("Fout in tkconv-ronde")
+            await health_tick("tkconv", status="error", detail=_short_error(exc))
+
+        await asyncio.sleep(_tkconv_interval(settings))
 
 
 async def _opdracht_task_loop(settings) -> None:  # type: ignore[no-untyped-def]
@@ -377,6 +440,7 @@ async def main() -> None:
 
     tasks = [
         asyncio.create_task(_parlementair_loop(settings)),
+        asyncio.create_task(_tkconv_loop(settings)),
         asyncio.create_task(_mattermost_websocket_loop(settings)),
         asyncio.create_task(_opdracht_task_loop(settings)),
         asyncio.create_task(_fcc_sync_loop(settings)),

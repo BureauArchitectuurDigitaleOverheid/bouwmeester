@@ -34,6 +34,9 @@ from bouwmeester.api.routes.opdrachten import router as opdrachten_router
 from bouwmeester.api.routes.org_placements import router as org_placements_router
 from bouwmeester.api.routes.organisatie import router as organisatie_router
 from bouwmeester.api.routes.parlementair import router as parlementair_router
+from bouwmeester.api.routes.parlementair_abonnement import (
+    router as parlementair_abonnement_router,
+)
 from bouwmeester.api.routes.people import router as people_router
 from bouwmeester.api.routes.public_initiatief import (
     router as public_initiatief_router,
@@ -87,6 +90,7 @@ api_router.include_router(opdrachten_router)
 api_router.include_router(org_placements_router)
 api_router.include_router(organisatie_router)
 api_router.include_router(parlementair_router)
+api_router.include_router(parlementair_abonnement_router)
 api_router.include_router(people_router)
 api_router.include_router(public_initiatief_router)
 api_router.include_router(resource_permissions_router)
