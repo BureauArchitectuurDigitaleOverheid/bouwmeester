@@ -92,6 +92,16 @@ interface NlddButtonProps {
   loading?: boolean;
   width?: string;
   accessibleLabel?: string;
+  /**
+   * The named slot to land in.
+   *
+   * Needed because a wrapper around a slotted button is not neutral: the
+   * element places an `nldd-button-group` around whatever lands in its
+   * `actions` slot, and a `<div>` in between becomes that group's single item.
+   * The buttons then line up against the left edge of a centred dialog rather
+   * than under its heading.
+   */
+  slot?: string;
   children?: ReactNode;
   className?: string;
 }
@@ -115,6 +125,7 @@ export function NlddButton({
   loading,
   width,
   accessibleLabel,
+  slot,
   children,
   className,
 }: NlddButtonProps) {
@@ -136,6 +147,7 @@ export function NlddButton({
       {...(loading ? { loading: true } : {})}
       {...(width ? { width } : {})}
       {...(accessibleLabel ? { 'accessible-label': accessibleLabel } : {})}
+      {...(slot ? { slot } : {})}
     >
       {children}
     </nldd-button>

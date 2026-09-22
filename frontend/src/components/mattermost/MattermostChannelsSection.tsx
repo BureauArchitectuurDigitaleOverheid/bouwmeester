@@ -43,7 +43,9 @@ export function MattermostChannelsSection({ scope }: Props) {
 
   return (
     <nldd-card>
-      <nldd-container gap="12">
+      {/* `padding="16"`, zoals de andere secties in deze modal. Zonder plakte
+          de kop met zijn knop tegen de boven- en rechterrand van de kaart. */}
+      <nldd-container gap="12" padding="16">
       <nldd-container layout="row" gap="8" vertical-alignment="center">
         {/* A container defaults to width:full, so in a row beside a button it
             takes a hard 100% and the button is squeezed below its own label:

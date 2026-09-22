@@ -114,9 +114,12 @@ export function ShareTargetPage() {
           text="Geen toegang"
           supporting-text="Je hebt geen rechten om leads aan te maken. Neem contact op met een beheerder."
         >
-          <div slot="actions">
-            <NlddButton text="Naar startpagina" variant="secondary" onClick={() => navigate('/')} />
-          </div>
+          <NlddButton
+            slot="actions"
+            text="Naar startpagina"
+            variant="secondary"
+            onClick={() => navigate('/')}
+          />
         </nldd-inline-dialog>
       </nldd-simple-section>
     );
@@ -135,9 +138,12 @@ export function ShareTargetPage() {
           <nldd-text size="xs" color="secondary" horizontal-alignment="center">
             Vereist dat de app is geinstalleerd via &quot;Toevoegen aan startscherm&quot;.
           </nldd-text>
-          <div slot="actions">
-            <NlddButton text="Naar leads" variant="secondary" onClick={() => navigate('/leads')} />
-          </div>
+          <NlddButton
+            slot="actions"
+            text="Naar leads"
+            variant="secondary"
+            onClick={() => navigate('/leads')}
+          />
         </nldd-inline-dialog>
       </nldd-simple-section>
     );
@@ -148,9 +154,12 @@ export function ShareTargetPage() {
     return (
       <nldd-simple-section width="400px" horizontal-alignment="center" padding-block="80">
         <nldd-inline-dialog variant="alert" text="Oeps" supporting-text={error}>
-          <div slot="actions">
-            <NlddButton text="Naar leads" variant="secondary" onClick={() => navigate('/leads')} />
-          </div>
+          <NlddButton
+            slot="actions"
+            text="Naar leads"
+            variant="secondary"
+            onClick={() => navigate('/leads')}
+          />
         </nldd-inline-dialog>
       </nldd-simple-section>
     );
