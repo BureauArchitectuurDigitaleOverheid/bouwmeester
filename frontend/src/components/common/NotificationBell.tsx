@@ -36,33 +36,43 @@ function NotificationItem({
     NOTIFICATION_TYPE_LABELS[notification.type] || titleCase(notification.type.replace(/_/g, ' '));
   const body = richTextToPlain(notification.last_message ?? notification.message ?? '');
 
+  const rowRef = useRef<HTMLElement>(null);
+  useNlddEvent(rowRef, 'click', onClick);
+
   // A row is built from cells, never from loose text: the cell sets the type
   // scale, the color and the alignment against the row height. Text dropped
   // straight into a button row inherits the browser's button styling instead.
+  //
+  // The tag and the timestamp sit ABOVE the title, in the same cell, not
+  // beside it. A list item lays its cells out in one row, so as separate
+  // cells they competed with the title for the popover's 360px and the two
+  // printed over each other.
   return (
     <nldd-list-item
+      ref={rowRef}
       size="md"
       button={orUndef(Boolean(onClick))}
-      onClick={onClick}
       selected={orUndef(!notification.is_read)}
     >
       <nldd-cell>
-        <nldd-container layout="row" gap="8" vertical-alignment="center">
-          <nldd-tag
-            text={label}
-            color={(NOTIFICATION_TYPE_COLORS[notification.type] ?? 'neutral') as TagColor}
-            size="sm"
+        <nldd-container gap="4" min-width="0">
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            <nldd-tag
+              text={label}
+              color={(NOTIFICATION_TYPE_COLORS[notification.type] ?? 'neutral') as TagColor}
+              size="sm"
+              className="row-badge"
+            />
+            <nldd-text size="xs" color="secondary">
+              {timeAgo(notification.last_activity_at ?? notification.created_at)}
+            </nldd-text>
+          </nldd-container>
+          <nldd-text-cell
+            text={notification.title}
+            {...(body ? { 'supporting-text': body } : {})}
           />
-          <nldd-text size="xs" color="secondary">
-            {timeAgo(notification.last_activity_at ?? notification.created_at)}
-          </nldd-text>
         </nldd-container>
       </nldd-cell>
-
-      <nldd-text-cell
-        text={notification.title}
-        {...(body ? { 'supporting-text': body } : {})}
-      />
 
       {!notification.is_read && (
         <nldd-cell width="fit-content">
@@ -247,8 +257,18 @@ export function NotificationBell() {
         >
           <nldd-container gap="0">
             <nldd-container layout="row" gap="8" vertical-alignment="center" padding="12">
-              <nldd-title size={5}><h2>Meldingen</h2></nldd-title>
-              <nldd-container layout="row" gap="4" vertical-alignment="center" horizontal-alignment="right">
+              {/* The heading takes what the buttons leave; without this the
+                  button container claimed 251 of the popover's 360px and
+                  "Meldingen" broke across two lines. */}
+              <nldd-container width="fit-content" className="row-fill">
+                <nldd-title size={5}><h2>Meldingen</h2></nldd-title>
+              </nldd-container>
+              <nldd-container
+                layout="row"
+                width="fit-content"
+                gap="4"
+                vertical-alignment="center"
+              >
                 <BrowserNotificationToggle />
                 <NotificationSoundToggle />
                 {unreadCount > 0 && (

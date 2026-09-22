@@ -125,8 +125,11 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
 
   return (
     <nldd-app-view background="tinted">
-      <nldd-simple-section width="480px" horizontal-alignment="left" vertical-alignment="center">
-        <nldd-container gap="24" horizontal-alignment="center" style={{ textAlign: 'center' }}>
+      {/* One alignment for the whole card. The section was set to `left` while
+          the container inside it was `center`, so the logo and the title were
+          centred and everything below them was not. */}
+      <nldd-simple-section width="480px" horizontal-alignment="center" vertical-alignment="center">
+        <nldd-container gap="24" horizontal-alignment="center">
           <nldd-container gap="12" horizontal-alignment="center">
             <nldd-image src={logoImg} alt="Bouwmeester" width="80" height={80} shape="circle" />
             <nldd-title size={3}>
@@ -134,8 +137,12 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
             </nldd-title>
           </nldd-container>
 
+          {/* The alignment is set, not derived. Left to itself the element
+              reads content in its default slot as a task and aligns left,
+              which put this message out of step with the title above it. */}
           <nldd-inline-dialog
             variant="alert"
+            horizontal-alignment="center"
             text="Geen toegang"
             {...(email ? { 'supporting-text': `Ingelogd als ${email}` } : {})}
           >

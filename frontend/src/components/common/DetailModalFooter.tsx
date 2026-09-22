@@ -16,14 +16,21 @@ interface DetailModalFooterProps {
 export function DetailModalFooter({ actions, onClose }: DetailModalFooterProps) {
   return (
     <nldd-container layout="row" gap="8" vertical-alignment="center" width="full">
-      <nldd-container layout="row" gap="8" vertical-alignment="center">
+      {/* The left half takes the leftover space, which is what pushes close to
+          the far end. Without row-fill it claims the container default of
+          100% instead, and then close gets less room than its own label. */}
+      <nldd-container
+        layout="row"
+        width="fit-content"
+        className="row-fill"
+        gap="8"
+        vertical-alignment="center"
+      >
         {actions}
       </nldd-container>
-      <nldd-container width="fit-content" horizontal-alignment="right">
-        <Button variant="secondary" onClick={onClose}>
-          Sluiten
-        </Button>
-      </nldd-container>
+      <Button variant="secondary" onClick={onClose}>
+        Sluiten
+      </Button>
     </nldd-container>
   );
 }

@@ -61,9 +61,7 @@ export function PeoplePage() {
         <nldd-container vertical-alignment="center">
           <nldd-text color="secondary">Overzicht van alle betrokken personen.</nldd-text>
         </nldd-container>
-        <nldd-container width="fit-content">
-          <NlddButton text="Persoon toevoegen" startIcon="plus" onClick={handleAddPerson} />
-        </nldd-container>
+        <NlddButton text="Persoon toevoegen" startIcon="plus" onClick={handleAddPerson} />
       </nldd-container>
 
       {/* People list */}

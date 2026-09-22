@@ -134,15 +134,13 @@ export function DatabaseBackup() {
             )}
           </nldd-container>
 
-          <nldd-container width="fit-content">
-            <NlddButton
-              text="Database exporteren"
-              startIcon="database"
-              onClick={handleExport}
-              disabled={exporting}
-              loading={exporting}
-            />
-          </nldd-container>
+          <NlddButton
+            text="Database exporteren"
+            startIcon="database"
+            onClick={handleExport}
+            disabled={exporting}
+            loading={exporting}
+          />
         </nldd-container>
       </nldd-card>
 
@@ -234,14 +232,12 @@ export function DatabaseBackup() {
           />
 
           {!showResetInput ? (
-            <nldd-container width="fit-content">
-              <NlddButton
-                text="Database resetten"
-                startIcon="delete"
-                variant="destructive"
-                onClick={() => setShowResetInput(true)}
-              />
-            </nldd-container>
+            <NlddButton
+              text="Database resetten"
+              startIcon="delete"
+              variant="destructive"
+              onClick={() => setShowResetInput(true)}
+            />
           ) : (
             <nldd-container gap="12">
               <nldd-form-field label="Type RESET om te bevestigen">
