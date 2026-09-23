@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { Button } from './Button';
 
@@ -67,5 +67,48 @@ describe('Button', () => {
   it('passes the size through', () => {
     const { container } = render(<Button size="sm">Klein</Button>);
     expect(button(container)).toHaveAttribute('size', 'sm');
+  });
+
+  describe('a label in a span', () => {
+    const setWidth = (wide: boolean) =>
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn().mockImplementation((query: string) => ({
+          matches: wide,
+          media: query,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        })),
+      );
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    // nldd-button does not display slotted text; a span left in the slot drew
+    // an empty text area that pushed the icon off centre.
+    it('becomes the text attribute and leaves the slot empty', () => {
+      setWidth(true);
+      const { container } = render(<Button icon="plus"><span>Exporteren</span></Button>);
+      expect(button(container)).toHaveAttribute('text', 'Exporteren');
+      expect(container.querySelector('span')).not.toBeInTheDocument();
+    });
+
+    it('shows a hidden-below-sm label from sm up', () => {
+      setWidth(true);
+      const { container } = render(
+        <Button icon="plus"><span className="hidden-below-sm">Nieuwe taak</span></Button>,
+      );
+      expect(button(container)).toHaveAttribute('text', 'Nieuwe taak');
+      expect(button(container)).not.toHaveAttribute('accessible-label');
+    });
+
+    it('turns a hidden-below-sm label into the accessible name below sm', () => {
+      setWidth(false);
+      const { container } = render(
+        <Button icon="plus"><span className="hidden-below-sm">Nieuwe taak</span></Button>,
+      );
+      expect(button(container)).not.toHaveAttribute('text');
+      expect(button(container)).toHaveAttribute('accessible-label', 'Nieuwe taak');
+      expect(container.querySelector('span.hidden-below-sm')).not.toBeInTheDocument();
+    });
   });
 });

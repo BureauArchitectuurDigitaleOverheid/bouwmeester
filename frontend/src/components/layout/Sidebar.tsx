@@ -64,9 +64,9 @@ export function Sidebar({ mobile }: SidebarProps) {
       { to: '/eenheid-overzicht', icon: 'users', label: eenheidLabel, permission: 'org:read', group: 'organisatie' },
       { to: '/opdrachten', icon: 'euro-sign', label: 'Opdrachten', permission: 'opdracht:read', group: 'organisatie' },
       {
-        to: '/leads',
+        to: '/initiatieven',
         icon: 'chart-x-y-axis-line',
-        label: 'Leads',
+        label: 'Initiatieven',
         permission: 'lead:read',
         group: 'organisatie',
       },

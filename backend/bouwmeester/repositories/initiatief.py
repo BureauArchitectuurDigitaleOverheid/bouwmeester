@@ -1,14 +1,18 @@
 """Repository for Initiatief CRUD and member/eenheid management."""
 
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.initiatief_context import InitiatiefContext
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.core.slug import is_valid_slug, slugify
 from bouwmeester.models.initiatief import Initiatief
+from bouwmeester.models.initiatief_update import InitiatiefUpdatePost
+from bouwmeester.models.lead import Lead
+from bouwmeester.models.lead_column import LeadColumn
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.initiatief import (
@@ -39,6 +43,63 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         stmt = stmt.order_by(Initiatief.naam)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_list_stats(self, ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
+        """Counts per initiatief for the overview, one grouped query each.
+
+        Initiatieven without leads, members or updates are absent from the
+        result; the caller defaults them to zero.
+        """
+        stats: dict[UUID, dict[str, Any]] = {i: {} for i in ids}
+        if not ids:
+            return stats
+
+        lead_rows = await self.session.execute(
+            select(
+                Lead.initiatief_id,
+                func.count(Lead.id),
+                func.count(LeadColumn.id),
+            )
+            .outerjoin(
+                LeadColumn,
+                (LeadColumn.initiatief_id == Lead.initiatief_id)
+                & (LeadColumn.slug == Lead.stage)
+                & LeadColumn.is_active_stage.is_(True),
+            )
+            .where(Lead.initiatief_id.in_(ids))
+            .group_by(Lead.initiatief_id)
+        )
+        for initiatief_id, total, active in lead_rows:
+            stats[initiatief_id]["lead_count"] = total
+            stats[initiatief_id]["active_lead_count"] = active
+
+        member_rows = await self.session.execute(
+            select(ResourcePermission.resource_id, func.count())
+            .where(
+                ResourcePermission.resource_type == "initiatief",
+                ResourcePermission.resource_id.in_(ids),
+                ResourcePermission.person_id.is_not(None),
+            )
+            .group_by(ResourcePermission.resource_id)
+        )
+        for initiatief_id, count in member_rows:
+            stats[initiatief_id]["member_count"] = count
+
+        update_rows = await self.session.execute(
+            select(
+                InitiatiefUpdatePost.initiatief_id,
+                func.max(InitiatiefUpdatePost.published_at),
+            )
+            .where(
+                InitiatiefUpdatePost.initiatief_id.in_(ids),
+                InitiatiefUpdatePost.published_at.is_not(None),
+            )
+            .group_by(InitiatiefUpdatePost.initiatief_id)
+        )
+        for initiatief_id, last in update_rows:
+            stats[initiatief_id]["last_published_at"] = last
+
+        return stats
 
     async def get_detail(self, id: UUID) -> Initiatief | None:
         stmt = (

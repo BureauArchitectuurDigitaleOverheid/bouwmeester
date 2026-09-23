@@ -237,10 +237,16 @@ async def get_metrics(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    initiatief_id: UUID | None = Query(None),
 ) -> LeadMetricsResponse:
-    """Get funnel metrics (counts per stage, stale leads)."""
+    """Get funnel metrics (counts per stage, stale leads).
+
+    With `initiatief_id` the counts cover that initiatief only; the
+    visibility filter still applies, so naming one you cannot see yields
+    zeroes rather than its figures.
+    """
     repo = LeadRepository(db)
-    metrics = await repo.get_metrics(init_ctx=init_ctx)
+    metrics = await repo.get_metrics(init_ctx=init_ctx, initiatief_id=initiatief_id)
     return LeadMetricsResponse(**metrics)
 
 

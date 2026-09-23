@@ -530,15 +530,25 @@ class LeadRepository(BaseRepository[Lead]):
         events.sort(key=lambda e: e["timestamp"], reverse=True)
         return events[:limit]
 
-    async def get_metrics(self, init_ctx: InitiatiefContext | None = None) -> dict:
+    async def get_metrics(
+        self,
+        init_ctx: InitiatiefContext | None = None,
+        initiatief_id: UUID | None = None,
+    ) -> dict:
+        def scoped(stmt):
+            stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
+            if initiatief_id is not None:
+                stmt = stmt.where(Lead.initiatief_id == initiatief_id)
+            return stmt
+
         # Total count
         total_stmt = select(func.count()).select_from(Lead)
-        total_stmt = apply_initiatief_filter(total_stmt, Lead.initiatief_id, init_ctx)
+        total_stmt = scoped(total_stmt)
         total = (await self.session.execute(total_stmt)).scalar_one()
 
         # Count per stage
         stage_stmt = select(Lead.stage, func.count()).group_by(Lead.stage)
-        stage_stmt = apply_initiatief_filter(stage_stmt, Lead.initiatief_id, init_ctx)
+        stage_stmt = scoped(stage_stmt)
         stage_result = await self.session.execute(stage_stmt)
         by_stage = {row[0]: row[1] for row in stage_result.all()}
 
@@ -562,7 +572,7 @@ class LeadRepository(BaseRepository[Lead]):
                 ),
             )
         )
-        stale_stmt = apply_initiatief_filter(stale_stmt, Lead.initiatief_id, init_ctx)
+        stale_stmt = scoped(stale_stmt)
         stale_count = (await self.session.execute(stale_stmt)).scalar_one()
 
         return {

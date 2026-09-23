@@ -198,7 +198,7 @@ export function LeadKanbanBoard({
 
   return (
     <nldd-container gap="16">
-      <LeadMetricsBar />
+      <LeadMetricsBar initiatiefId={initiatiefId || undefined} />
 
       {/* The board itself is a plain scroll strip: nldd-container's
           `layout="row"` has no per-child drop-target styling, and every column

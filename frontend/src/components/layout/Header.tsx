@@ -25,7 +25,7 @@ const pageTitles: Record<string, string> = {
   '/auditlog': 'Auditlog',
   '/search': 'Zoeken',
   '/docs': 'Handleiding',
-  '/leads': 'Leads',
+  '/initiatieven': 'Initiatieven',
   '/samenwerkingsverbanden': 'Samenwerkingsverbanden',
   '/share-target': 'Nieuwe lead',
   // A node detail page lives under Corpus. Without an entry the bar fell back
@@ -207,20 +207,22 @@ export function Header() {
     ? eenheidTitle
     : pageTitles[pathBase] || 'Bouwmeester';
 
-  const isDetailPage = location.pathname.match(/^\/nodes\/.+/);
-  const breadcrumbs = isDetailPage
-    ? [
-        { label: 'Corpus', href: '/corpus' },
-        { label: 'Detail', href: undefined },
-      ]
-    : undefined;
+  // Detail pages get a back affordance to the list they belong to.
+  const backTarget = /^\/nodes\/.+/.test(location.pathname)
+    ? { text: 'Corpus', href: '/corpus' }
+    : /^\/initiatieven\/.+/.test(location.pathname)
+      ? { text: 'Initiatieven', href: '/initiatieven' }
+      : null;
 
   // `back-href` would trigger a full page load, so the bar fires `back` instead
   // and the router handles it. Bound here only: the event bubbles, and binding
   // it on an ancestor as well would run the handler twice for one press.
   const barRef = useRef<HTMLElement>(null);
-  const handleBack = useCallback(() => navigate('/corpus'), [navigate]);
-  useNlddEvent(barRef, 'back', breadcrumbs ? handleBack : undefined);
+  const backHref = backTarget?.href;
+  const handleBack = useCallback(() => {
+    if (backHref) navigate(backHref);
+  }, [navigate, backHref]);
+  useNlddEvent(barRef, 'back', backTarget ? handleBack : undefined);
 
   return (
     // The bar renders the h1 itself and, on a detail page, the back
@@ -228,7 +230,7 @@ export function Header() {
     <nldd-top-title-bar
       ref={barRef}
       text={title}
-      {...(breadcrumbs ? { 'back-text': 'Corpus' } : {})}
+      {...(backTarget ? { 'back-text': backTarget.text } : {})}
     >
       <>
         {/* Only shown while the sidebar is a sheet; above lg the pane is visible. */}

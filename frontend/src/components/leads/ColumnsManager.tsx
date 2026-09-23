@@ -323,6 +323,7 @@ function ColumnRow({
 }: ColumnRowProps) {
   const nameFieldRef = useRef<HTMLElement>(null);
   const renameTriggerRef = useRef<HTMLElement>(null);
+  const [pickingColor, setPickingColor] = useState(false);
 
   useNlddEvent(nameFieldRef, 'input', (e) => onEditNameChange(eventValue(e)));
   useNlddEvent(
@@ -409,11 +410,26 @@ function ColumnRow({
             activeColor="lintblauw"
             onToggle={onTogglePublic}
           />
-          <nldd-container layout="row" gap="4" vertical-alignment="center">
-            <nldd-icon name="globe" size="16" color="secondary-content" aria-hidden="true" />
-            <ColorSwatches selected={col.color} onSelect={onSetColor} />
-          </nldd-container>
+          <CurrentColorButton
+            color={col.color}
+            expanded={pickingColor}
+            onToggle={() => setPickingColor((v) => !v)}
+          />
         </nldd-container>
+
+        {/* The palette only for the row being recolored: shown on every row,
+            it took a full line each and made seven columns a long scroll. */}
+        {pickingColor && (
+          <nldd-container padding-left="4">
+            <ColorSwatches
+              selected={col.color}
+              onSelect={(color) => {
+                onSetColor(color);
+                setPickingColor(false);
+              }}
+            />
+          </nldd-container>
+        )}
       </nldd-container>
     </nldd-list-item>
   );
@@ -445,6 +461,43 @@ function ToggleChip({ active, activeIcon, inactiveIcon, label, title, activeColo
     <nldd-list-item-segment ref={ref} button title={title}>
       <nldd-tag text={label} icon={active ? activeIcon : inactiveIcon} color={active ? activeColor : 'neutral'} size="sm" />
     </nldd-list-item-segment>
+  );
+}
+
+/**
+ * The column's color as one swatch; pressing it opens the palette. A plain
+ * button for the same reason as the swatches below: at 16px the swatch is the
+ * color, and there is no design-system control for picking one.
+ */
+function CurrentColorButton({
+  color,
+  expanded,
+  onToggle,
+}: {
+  color: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const preset = COLOR_PRESETS.find((p) => p.value === color) ?? COLOR_PRESETS[0];
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={`Kleur: ${preset.label}`}
+      aria-label={`Kleur wijzigen, nu ${preset.label}`}
+      aria-expanded={expanded}
+      style={{
+        height: '16px',
+        width: '16px',
+        border: 'none',
+        padding: 0,
+        cursor: 'pointer',
+        borderRadius: '9999px',
+        backgroundColor: `var(${preset.swatchVar})`,
+        boxShadow: '0 0 0 1px var(--primitives-color-neutral-300)',
+        alignSelf: 'center',
+      }}
+    />
   );
 }
 

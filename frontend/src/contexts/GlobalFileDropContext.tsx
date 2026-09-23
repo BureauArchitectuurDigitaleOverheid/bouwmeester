@@ -2,6 +2,7 @@ import { createContext, useState, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGlobalFileDrop } from '@/hooks/useGlobalFileDrop';
 import { isEmailFile } from '@/utils/emailParser';
+import { INITIATIEVEN_PATH, isLeadDropPath } from '@/utils/initiatiefRoutes';
 import { useToast } from '@/contexts/ToastContext';
 
 type FileSubscriber = (files: File[]) => void;
@@ -47,13 +48,13 @@ export function GlobalFileDropProvider({ children }: { children: React.ReactNode
 
   const handleFiles = useCallback((files: File[]) => {
     const pathname = locationRef.current.pathname;
-    const isContextPage = pathname.startsWith('/leads') || pathname.startsWith('/corpus') || pathname.startsWith('/nodes/');
+    const isContextPage = isLeadDropPath(pathname) || pathname.startsWith('/corpus') || pathname.startsWith('/nodes/');
 
     // Email files (.eml/.msg) always route to leads, regardless of current page
     const hasEmail = files.some(isEmailFile);
-    if (hasEmail && !pathname.startsWith('/leads')) {
+    if (hasEmail && !isLeadDropPath(pathname)) {
       deferredFilesRef.current = files;
-      navigate('/leads');
+      navigate(INITIATIEVEN_PATH);
       return;
     }
 
@@ -82,7 +83,7 @@ export function GlobalFileDropProvider({ children }: { children: React.ReactNode
     setChooserFiles([]);
     // Store files for delivery after the target page mounts and subscribes
     deferredFilesRef.current = files;
-    navigate(action === 'lead' ? '/leads' : '/corpus');
+    navigate(action === 'lead' ? INITIATIEVEN_PATH : '/corpus');
   }, [navigate, chooserFiles]);
 
   const { isDragging } = useGlobalFileDrop({

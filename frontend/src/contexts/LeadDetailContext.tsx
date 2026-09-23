@@ -31,8 +31,16 @@ export function LeadDetailProvider({ children }: { children: React.ReactNode }) 
     setLeadId(null);
   }, []);
 
+  // A navigation closes the open lead, unless it came with one to open: an
+  // old `/leads?lead=…` link redirects to the lead's initiatief and passes
+  // the lead along in the navigation state. Opening it from the page itself
+  // would lose the race, because this parent effect runs after the child's.
+  const pendingLeadId = (location.state as { openLead?: string } | null)?.openLead ?? null;
   useEffect(() => {
-    setLeadId(null);
+    setLeadId(pendingLeadId);
+    if (pendingLeadId) setOpenSeq(nextModalSeq());
+    // Keyed on the path: the pending lead is read once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   return (

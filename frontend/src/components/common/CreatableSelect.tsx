@@ -115,6 +115,13 @@ export function CreatableSelect({
 
   const handleInput = useCallback(
     (event: Event) => {
+      // Two `input` events reach the host per keystroke: the combo box's own
+      // CustomEvent with `detail.value`, and after it the native InputEvent
+      // from the inner <input>, which is composed and so crosses the shadow
+      // boundary. The native one carries no value, so reading it reset the
+      // query to '' straight after every keystroke (typing filtered nothing)
+      // and, on a field with a value, fired onClear as if it had been emptied.
+      if (!(event instanceof CustomEvent)) return;
       const next = eventValue(event);
       setQuery(next);
       onQueryChange?.(next);

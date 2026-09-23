@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom';
+import { isLeadDropPath } from '@/utils/initiatiefRoutes';
 
 interface GlobalDropOverlayProps {
   visible: boolean;
@@ -23,7 +24,7 @@ export function GlobalDropOverlay({ visible }: GlobalDropOverlayProps) {
   if (!visible) return null;
 
   let message = 'Laat los om een bestand of e-mail te verwerken';
-  if (location.pathname.startsWith('/leads')) {
+  if (isLeadDropPath(location.pathname)) {
     message = 'Laat los om een nieuwe lead aan te maken';
   } else if (location.pathname.startsWith('/corpus')) {
     message = 'Laat los om een nieuwe bron toe te voegen';

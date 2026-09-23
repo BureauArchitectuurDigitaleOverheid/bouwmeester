@@ -19,7 +19,7 @@ const PAGES = [
   { path: '/tasks', name: 'tasks' },
   { path: '/organisatie', name: 'organisatie' },
   { path: '/opdrachten', name: 'opdrachten' },
-  { path: '/leads', name: 'leads' },
+  { path: '/initiatieven', name: 'initiatieven' },
   { path: '/admin', name: 'admin' },
   { path: '/auditlog', name: 'auditlog' },
   { path: '/instellingen', name: 'instellingen' },

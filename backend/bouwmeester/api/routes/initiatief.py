@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_deleted, require_found, validate_list
+from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.initiatief_context import (
@@ -27,6 +27,7 @@ from bouwmeester.schema.initiatief import (
     InitiatiefEenheidResponse,
     InitiatiefEenheidUpdate,
     InitiatiefEenheidWithNameResponse,
+    InitiatiefListItemResponse,
     InitiatiefMemberCreate,
     InitiatiefMemberResponse,
     InitiatiefResponse,
@@ -102,7 +103,7 @@ async def _require_access(
         )
 
 
-@router.get("", response_model=list[InitiatiefResponse])
+@router.get("", response_model=list[InitiatiefListItemResponse])
 async def list_initiatieven(
     current_user: OptionalUser,
     search: str | None = Query(None, max_length=200),
@@ -110,10 +111,14 @@ async def list_initiatieven(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
-) -> list[InitiatiefResponse]:
+) -> list[InitiatiefListItemResponse]:
     repo = InitiatiefRepository(db)
     items = await repo.get_all(skip=skip, limit=limit, search=search, init_ctx=init_ctx)
-    return validate_list(InitiatiefResponse, items)
+    stats = await repo.get_list_stats([i.id for i in items])
+    return [
+        InitiatiefListItemResponse.model_validate(i).model_copy(update=stats[i.id])
+        for i in items
+    ]
 
 
 @router.post(

@@ -269,7 +269,7 @@ export function LeadTimelineView({
 
   return (
     <nldd-container gap="16">
-      <LeadMetricsBar />
+      <LeadMetricsBar initiatiefId={initiatiefId || undefined} />
 
       {/* Period selector + event count */}
       <nldd-container layout="row" gap="12" vertical-alignment="center">

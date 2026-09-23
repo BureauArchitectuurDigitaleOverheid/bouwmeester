@@ -761,7 +761,7 @@ def build_chat_context_message(context: dict | None) -> str:
             "/search": "Zoeken",
             "/parlementair": "Parlementair",
             "/opdrachten": "Opdrachten",
-            "/leads": "Leads (sales funnel)",
+            "/initiatieven": "Initiatieven (per initiatief de leads-funnel)",
             "/admin": "Beheer",
         }
         label = page_labels.get(page, page)

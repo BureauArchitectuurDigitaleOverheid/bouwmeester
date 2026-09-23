@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Icon } from '@/components/nldd/Icon';
 import { Button } from '@/components/common/Button';
 import { ViewToggle } from '@/components/common/ViewToggle';
 import type { ViewToggleOption } from '@/components/common/ViewToggle';
@@ -26,9 +25,9 @@ import type { SelectOption } from '@/components/common/CreatableSelect';
 type ViewMode = 'list' | 'board' | 'personal';
 
 const VIEW_OPTIONS: ViewToggleOption<ViewMode>[] = [
-  { value: 'list', label: 'Lijst', icon: <Icon name="list" size="sm" /> },
-  { value: 'board', label: 'Bord', icon: <Icon name="columns-3" size="sm" /> },
-  { value: 'personal', label: 'Persoonlijk', icon: <Icon name="person" size="sm" /> },
+  { value: 'list', label: 'Lijst', icon: 'list' },
+  { value: 'board', label: 'Bord', icon: 'columns-3' },
+  { value: 'personal', label: 'Persoonlijk', icon: 'person' },
 ];
 
 const VIEW_STORAGE_KEY = 'tasks-view-mode';
@@ -131,12 +130,59 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
 
   return (
     <nldd-container gap="24">
-      {/* The view switcher and the new-task action, right-aligned, with the
-          filters below. nldd-toolbar owns the start/end split, so "push this
-          to the right" is a slot rather than a spacer, and it moves items into
-          an overflow menu when the row runs out of room. Same structure as
-          CorpusPage. */}
+      {/* Filters on the left, the view switcher and the new-task action on
+          the right, in one row. nldd-toolbar owns the start/end split, so
+          "push this to the right" is a slot rather than a spacer, and it moves
+          items into an overflow menu when the row runs out of room. Same
+          structure as CorpusPage. */}
       <nldd-toolbar label="Taakacties">
+        <nldd-toolbar-item slot="start" priority={1} min-width="60%">
+          {/* Filters share the toolbar row with the actions, and wrap only
+              when the room runs out. `min-width` makes the item fluid; a
+              percentage lets it give way to the end items instead of pushing
+              them into the overflow menu. Each field has a fixed width,
+              because a fit-content container measures its children and they
+              measure it back. */}
+          <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+            <nldd-container width="176px">
+              <CreatableSelect
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={statusOptions}
+                placeholder="Alle statussen"
+                searchable={false}
+              />
+            </nldd-container>
+
+            <nldd-container width="176px">
+              <CreatableSelect
+                value={priorityFilter}
+                onChange={setPriorityFilter}
+                options={priorityOptions}
+                placeholder="Alle prioriteiten"
+                searchable={false}
+              />
+            </nldd-container>
+
+            <nldd-container width="208px">
+              <CreatableSelect
+                value={personFilter}
+                onChange={setPersonFilter}
+                options={personOptions}
+                placeholder="Alle personen"
+              />
+            </nldd-container>
+
+            <nldd-container width="208px">
+              <CreatableSelect
+                value={eenheidFilter}
+                onChange={setEenheidFilter}
+                options={eenheidOptions}
+                placeholder="Alle eenheden"
+              />
+            </nldd-container>
+          </nldd-container>
+        </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={3}>
           {/* A view switcher, not a single action, so it gets the highest
               priority: a lower number overflows FIRST, and a switcher that
@@ -155,49 +201,6 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
           <nldd-menu-item slot="overflow" text="Nieuwe taak" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>
       </nldd-toolbar>
-
-      {/* Filters, in one flat wrap. Each keeps a min-width: that is what stops
-          a fit-content container from collapsing, since it then has something
-          of its own to measure rather than waiting on its children. */}
-      <nldd-container layout="wrap" gap="8" vertical-alignment="center">
-        <nldd-container width="fit-content" min-width="176px">
-          <CreatableSelect
-            value={statusFilter}
-            onChange={setStatusFilter}
-            options={statusOptions}
-            placeholder="Alle statussen"
-            searchable={false}
-          />
-        </nldd-container>
-
-        <nldd-container width="fit-content" min-width="176px">
-          <CreatableSelect
-            value={priorityFilter}
-            onChange={setPriorityFilter}
-            options={priorityOptions}
-            placeholder="Alle prioriteiten"
-            searchable={false}
-          />
-        </nldd-container>
-
-        <nldd-container width="fit-content" min-width="208px">
-          <CreatableSelect
-            value={personFilter}
-            onChange={setPersonFilter}
-            options={personOptions}
-            placeholder="Alle personen"
-          />
-        </nldd-container>
-
-        <nldd-container width="fit-content" min-width="208px">
-          <CreatableSelect
-            value={eenheidFilter}
-            onChange={setEenheidFilter}
-            options={eenheidOptions}
-            placeholder="Alle eenheden"
-          />
-        </nldd-container>
-      </nldd-container>
 
       {/* Content */}
       {viewMode === 'list' ? (

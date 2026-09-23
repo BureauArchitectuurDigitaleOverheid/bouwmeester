@@ -203,10 +203,26 @@ export function ParlementairPage() {
     <nldd-container gap="24">
       {/* Page header */}
       <nldd-toolbar label="Kamerstukacties">
-        <nldd-toolbar-item slot="start" priority={1}>
-          <nldd-text size="sm" color="secondary">
-            Beheer geïmporteerde kamerstukken uit de Tweede en Eerste Kamer.
-          </nldd-text>
+        <nldd-toolbar-item slot="start" priority={1} min-width="60%">
+          {/* Filters share the toolbar row with the actions, and wrap only
+              when the room runs out. `min-width` makes the item fluid; a
+              percentage lets it give way to the end items instead of pushing
+              them into the overflow menu. Each field has a fixed width,
+              because a fit-content container measures its children and they
+              measure it back. */}
+          <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+            <nldd-container width="224px">
+              <ParlementairSearchField value={searchInput} onChange={setSearchInput} />
+            </nldd-container>
+            <nldd-container width="208px">
+              <MultiSelect
+                value={enabledTypes}
+                onChange={handleTypesChange}
+                options={parlementairTypeOptions}
+                allLabel="Alle typen"
+              />
+            </nldd-container>
+          </nldd-container>
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end">
           <Button
@@ -240,21 +256,6 @@ export function ParlementairPage() {
           <nldd-menu-item slot="overflow" text="Importeer nieuwe kamerstukken" icon="refresh" />
         </nldd-toolbar-item>
       </nldd-toolbar>
-
-      {/* Filter bar (matching Corpus page layout) */}
-      <nldd-container layout="wrap" gap="8" vertical-alignment="center">
-        <nldd-container width="fit-content" min-width="224px">
-          <ParlementairSearchField value={searchInput} onChange={setSearchInput} />
-        </nldd-container>
-        <nldd-container width="fit-content" min-width="208px">
-          <MultiSelect
-            value={enabledTypes}
-            onChange={handleTypesChange}
-            options={parlementairTypeOptions}
-            allLabel="Alle typen"
-          />
-        </nldd-container>
-      </nldd-container>
 
       {/* Status tabs */}
       <StatusTabBar value={statusFilter} onChange={setStatusFilter} />

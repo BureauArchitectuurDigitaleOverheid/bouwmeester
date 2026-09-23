@@ -29,7 +29,7 @@ const ROUTES = [
   { path: '/auditlog', title: 'Auditlog' },
   { path: '/docs', title: 'Handleiding' },
   { path: '/instellingen', title: 'Instellingen' },
-  { path: '/leads', title: 'Leads' },
+  { path: '/initiatieven', title: 'Initiatieven' },
 ];
 
 /**

@@ -61,6 +61,10 @@ migration NAME:
 seed:
     cd backend && uv run python scripts/seed.py
 
+# Fill the initiatieven with mock leads, members, updates and signals (idempotent)
+seed-initiatieven:
+    cd backend && uv run python scripts/seed_initiatieven.py
+
 # Backfill TipTap-mentions in bestaande Mattermost-LeadActivities
 backfill-mattermost-mentions:
     cd backend && DATABASE_URL=postgresql+asyncpg://bouwmeester:bouwmeester@localhost:5433/bouwmeester uv run python -m scripts.backfill_mattermost_mentions

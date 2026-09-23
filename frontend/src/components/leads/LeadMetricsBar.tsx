@@ -2,13 +2,13 @@ import { useLeadMetrics } from '@/hooks/useLeads';
 import { LEAD_STAGE_ORDER, LEAD_STAGE_LABELS } from '@/types';
 import { stageTagColor } from './stageColors';
 
-export function LeadMetricsBar() {
-  const { data: metrics } = useLeadMetrics();
+export function LeadMetricsBar({ initiatiefId }: { initiatiefId?: string }) {
+  const { data: metrics } = useLeadMetrics(initiatiefId);
 
   if (!metrics) return null;
 
   return (
-    <nldd-container layout="wrap" gap="12" vertical-alignment="center">
+    <nldd-container layout="wrap" gap="8" vertical-alignment="center">
       <nldd-text size="sm" weight="medium">
         {metrics.total} {metrics.total === 1 ? 'lead' : 'leads'}
       </nldd-text>
@@ -22,12 +22,12 @@ export function LeadMetricsBar() {
       })}
 
       {metrics.stale_count > 0 && (
-        <nldd-container layout="row" gap="4" vertical-alignment="center">
-          <nldd-icon name="exclamation-triangle" size="16" aria-hidden="true" />
-          <nldd-text size="xs" weight="medium" color="critical">
-            {metrics.stale_count} inactief
-          </nldd-text>
-        </nldd-container>
+        <nldd-tag
+          color="critical"
+          size="sm"
+          icon="exclamation-triangle"
+          text={`${metrics.stale_count} inactief`}
+        />
       )}
     </nldd-container>
   );

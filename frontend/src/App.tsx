@@ -30,7 +30,9 @@ import { AdminPage } from '@/pages/AdminPage';
 import { AuditLogPage } from '@/pages/AuditLogPage';
 import { DocsPage } from '@/pages/DocsPage';
 import { InstellingenPage } from '@/pages/InstellingenPage';
-import { LeadsPage } from '@/pages/LeadsPage';
+import { InitiatievenPage } from '@/pages/InitiatievenPage';
+import { InitiatiefPage } from '@/pages/InitiatiefPage';
+import { LeadsRedirect } from '@/pages/LeadsRedirect';
 import { ShareTargetPage } from '@/pages/ShareTargetPage';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { useRef } from 'react';
@@ -184,7 +186,9 @@ function AuthenticatedApp() {
                   <Route path="/auditlog" element={<AuditLogPage />} />
                   <Route path="/docs" element={<DocsPage />} />
                   <Route path="/instellingen" element={<InstellingenPage />} />
-                  <Route path="/leads" element={<LeadsPage />} />
+                  <Route path="/initiatieven" element={<InitiatievenPage />} />
+                  <Route path="/initiatieven/:id/:tab?" element={<InitiatiefPage />} />
+                  <Route path="/leads" element={<LeadsRedirect />} />
                   <Route path="/share-target" element={<ShareTargetPage />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>

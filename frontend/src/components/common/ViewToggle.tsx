@@ -21,6 +21,14 @@ interface ViewToggleProps<T extends string> {
   options: ViewToggleOption<T>[];
   /** Names the group itself; the items only name the options inside it. */
   accessibleLabel?: string;
+  /**
+   * 'icon' (the default) shows only the icons, with the label as tooltip and
+   * accessible name. A view switch is a tool next to filters and actions,
+   * and as a text strip it read as a second level of navigation, and took
+   * the width of two filters. 'text' is there for a choice whose options
+   * have no recognisable icon.
+   */
+  variant?: 'text' | 'icon';
 }
 
 /**
@@ -41,6 +49,7 @@ export function ViewToggle<T extends string>({
   onChange,
   options,
   accessibleLabel = 'Weergave',
+  variant = 'icon',
 }: ViewToggleProps<T>) {
   const ref = useRef<HTMLElement>(null);
 
@@ -60,7 +69,7 @@ export function ViewToggle<T extends string>({
       size="sm"
       value={value}
       accessible-label={accessibleLabel}
-      className="keep-label-width"
+      {...(variant === 'icon' ? { variant: 'icon' } : { className: 'keep-label-width' })}
     >
       {options.map((option) => (
         <nldd-segmented-control-item

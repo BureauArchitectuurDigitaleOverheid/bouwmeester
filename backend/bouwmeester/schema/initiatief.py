@@ -151,6 +151,21 @@ class InitiatiefResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class InitiatiefListItemResponse(InitiatiefResponse):
+    """An initiatief as the overview shows it: the record plus what is in it.
+
+    The counts are what a card needs to say whether an initiatief is alive
+    without opening it. `active_lead_count` counts leads whose stage sits in
+    a column marked as an active stage, so the parked ones (koelkast, in the
+    pocket) do not make a quiet initiatief look busy.
+    """
+
+    lead_count: int = 0
+    active_lead_count: int = 0
+    member_count: int = 0
+    last_published_at: datetime | None = None
+
+
 class InitiatiefDetailResponse(InitiatiefResponse):
     members: list[InitiatiefMemberResponse] = Field(default_factory=list)
     eenheden: list[InitiatiefEenheidResponse] = Field(default_factory=list)

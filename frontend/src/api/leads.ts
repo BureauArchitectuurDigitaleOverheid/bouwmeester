@@ -109,8 +109,8 @@ export async function unlinkLeadNode(leadId: string, linkId: string): Promise<vo
   return apiDelete(`/api/leads/${leadId}/nodes/${linkId}`);
 }
 
-export async function getLeadMetrics(): Promise<LeadMetrics> {
-  return apiGet<LeadMetrics>('/api/leads/metrics');
+export async function getLeadMetrics(initiatiefId?: string): Promise<LeadMetrics> {
+  return apiGet<LeadMetrics>('/api/leads/metrics', initiatiefId ? { initiatief_id: initiatiefId } : undefined);
 }
 
 export async function uploadLeadAttachment(leadId: string, file: File): Promise<LeadAttachment> {

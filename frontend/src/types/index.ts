@@ -1994,6 +1994,15 @@ export interface Initiatief {
   updated_at: string | null;
 }
 
+/** An initiatief as the overview lists it, with what is in it. */
+export interface InitiatiefListItem extends Initiatief {
+  lead_count: number;
+  /** Leads in a column marked as an active stage. */
+  active_lead_count: number;
+  member_count: number;
+  last_published_at: string | null;
+}
+
 export interface InitiatiefCreate {
   naam: string;
   beschrijving?: string | null;

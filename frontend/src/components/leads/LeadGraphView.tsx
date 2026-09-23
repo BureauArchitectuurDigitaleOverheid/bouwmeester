@@ -720,7 +720,7 @@ function CommunityGraphInner({
 
   return (
     <nldd-container gap="16">
-      <LeadMetricsBar />
+      <LeadMetricsBar initiatiefId={initiatiefId || undefined} />
 
       {/* Node type toggles + focus indicator */}
       <div className="node-type-toggle-row">

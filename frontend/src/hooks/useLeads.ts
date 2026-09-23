@@ -197,10 +197,10 @@ export function useDeleteLeadActivity() {
   });
 }
 
-export function useLeadMetrics() {
+export function useLeadMetrics(initiatiefId?: string) {
   return useQuery({
-    queryKey: queryKeys.leads.metrics(),
-    queryFn: getLeadMetrics,
+    queryKey: [...queryKeys.leads.metrics(), initiatiefId ?? null],
+    queryFn: () => getLeadMetrics(initiatiefId),
   });
 }
 
