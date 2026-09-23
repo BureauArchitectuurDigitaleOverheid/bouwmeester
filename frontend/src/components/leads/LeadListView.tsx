@@ -113,7 +113,7 @@ export function LeadListView({
   return (
     <nldd-container gap="16">
       <nldd-container layout="row" gap="16" vertical-alignment="center" horizontal-alignment="left">
-        <LeadMetricsBar />
+        <LeadMetricsBar initiatiefId={initiatiefId || undefined} />
         <nldd-container width="fit-content" min-width="176px">
           <CreatableSelect
             value={sortBy}

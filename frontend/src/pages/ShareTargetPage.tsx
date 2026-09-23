@@ -5,6 +5,7 @@ import { LeadIntakeDialog } from '@/components/leads/LeadIntakeDialog';
 import { useParseLeadIntake } from '@/hooks/useLeads';
 import { usePermissions } from '@/hooks/usePermissions';
 import type { LeadParseResult } from '@/types';
+import { INITIATIEVEN_PATH } from '@/utils/initiatiefRoutes';
 
 interface SharedData {
   title: string;
@@ -101,7 +102,7 @@ export function ShareTargetPage() {
     setShowDialog(false);
     // Clean up blob URLs
     sharedData?.previews.forEach(URL.revokeObjectURL);
-    navigate('/leads');
+    navigate(INITIATIEVEN_PATH);
   };
 
   // No lead permission — show access denied
@@ -142,7 +143,7 @@ export function ShareTargetPage() {
             slot="actions"
             text="Naar leads"
             variant="secondary"
-            onClick={() => navigate('/leads')}
+            onClick={() => navigate(INITIATIEVEN_PATH)}
           />
         </nldd-inline-dialog>
       </nldd-simple-section>
@@ -158,7 +159,7 @@ export function ShareTargetPage() {
             slot="actions"
             text="Naar leads"
             variant="secondary"
-            onClick={() => navigate('/leads')}
+            onClick={() => navigate(INITIATIEVEN_PATH)}
           />
         </nldd-inline-dialog>
       </nldd-simple-section>

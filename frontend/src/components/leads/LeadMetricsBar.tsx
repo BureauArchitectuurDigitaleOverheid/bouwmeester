@@ -2,8 +2,8 @@ import { useLeadMetrics } from '@/hooks/useLeads';
 import { LEAD_STAGE_ORDER, LEAD_STAGE_LABELS } from '@/types';
 import { stageTagColor } from './stageColors';
 
-export function LeadMetricsBar() {
-  const { data: metrics } = useLeadMetrics();
+export function LeadMetricsBar({ initiatiefId }: { initiatiefId?: string }) {
+  const { data: metrics } = useLeadMetrics(initiatiefId);
 
   if (!metrics) return null;
 

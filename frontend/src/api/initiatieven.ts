@@ -4,6 +4,7 @@ import type {
   InitiatiefCreate,
   InitiatiefDetail,
   InitiatiefEenheid,
+  InitiatiefListItem,
   InitiatiefMember,
   InitiatiefSettingsUpdate,
   InitiatiefUpdate,
@@ -14,10 +15,10 @@ import type {
 
 export async function getInitiatieven(params?: {
   search?: string;
-}): Promise<Initiatief[]> {
+}): Promise<InitiatiefListItem[]> {
   const query: Record<string, string> = {};
   if (params?.search) query.search = params.search;
-  return apiGet<Initiatief[]>('/api/initiatieven', query);
+  return apiGet<InitiatiefListItem[]>('/api/initiatieven', query);
 }
 
 export async function getInitiatief(id: string): Promise<InitiatiefDetail> {
