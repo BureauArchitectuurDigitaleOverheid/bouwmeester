@@ -5,7 +5,6 @@ import { Input } from '@/components/common/Input';
 import { ViewToggle } from '@/components/common/ViewToggle';
 import type { ViewToggleOption } from '@/components/common/ViewToggle';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
-import { Icon } from '@/components/nldd/Icon';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -22,12 +21,14 @@ import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 
 type LeadViewMode = 'inbox' | 'kanban' | 'list' | 'graph' | 'timeline';
 
+// String icon names: the icon-only toggle draws them through the item's own
+// `icon` attribute and uses the label as tooltip and accessible name.
 const VIEW_OPTIONS: ViewToggleOption<LeadViewMode>[] = [
-  { value: 'inbox', label: 'Inbox', icon: <Icon name="inbox" size="sm" /> },
-  { value: 'kanban', label: 'Bord', icon: <Icon name="columns-3" size="sm" /> },
-  { value: 'list', label: 'Lijst', icon: <Icon name="square-grid-2x2" size="sm" /> },
-  { value: 'timeline', label: 'Tijdlijn', icon: <Icon name="clock" size="sm" /> },
-  { value: 'graph', label: 'Netwerk', icon: <Icon name="git-fork" size="sm" /> },
+  { value: 'inbox', label: 'Inbox', icon: 'inbox' },
+  { value: 'kanban', label: 'Bord', icon: 'columns-3' },
+  { value: 'list', label: 'Lijst', icon: 'square-grid-2x2' },
+  { value: 'timeline', label: 'Tijdlijn', icon: 'clock' },
+  { value: 'graph', label: 'Netwerk', icon: 'git-fork' },
 ];
 
 const VIEW_MODES: readonly LeadViewMode[] = ['inbox', 'kanban', 'list', 'graph', 'timeline'];
@@ -220,8 +221,10 @@ export function InitiatiefLeads({ initiatiefId }: { initiatiefId: string }) {
           {/* A view switcher, not a single action: the toolbar pattern gives
               those a high priority so they never collapse into the menu
               (higher priority survives longer — a lower number overflows
-              first). */}
-          <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
+              first). Icon-only, because the page's tab bar sits right above
+              it: two text strips stacked read as two levels of navigation,
+              while this one is a tool inside the Leads tab. */}
+          <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} variant="icon" />
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={2}>
           <Button icon="plus" onClick={() => setShowIntake(true)}>

@@ -1,7 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { useNlddEvent } from '@/components/nldd/events';
 import { useInitiatief } from '@/hooks/useInitiatieven';
 import { initiatiefIconColor } from '@/components/initiatieven/initiatiefColors';
@@ -16,6 +15,7 @@ import {
   type InitiatiefTab,
 } from '@/utils/initiatiefRoutes';
 import type { InitiatiefDetail } from '@/types';
+import { richTextToPlain } from '@/utils/richtext';
 
 const TAB_LABELS: Record<InitiatiefTab, string> = {
   leads: 'Leads',
@@ -82,46 +82,52 @@ export function InitiatiefPage() {
     return <Navigate to={initiatiefPath(id)} replace />;
   }
 
+  // Three levels, each set off from the next: who (name and description),
+  // where (the tabs), and what (the tab's own tools and content).
   return (
-    <nldd-container gap="16">
-      <nldd-container gap="4">
-        <nldd-container layout="row" gap="8" vertical-alignment="center">
-          <nldd-icon
-            name="circle-filled"
-            size="16"
-            color={initiatiefIconColor(initiatief.kleur)}
-            aria-hidden="true"
-          />
-          <nldd-title size={3}>
-            <h2>{initiatief.naam}</h2>
-          </nldd-title>
-          {initiatief.public_page_enabled && initiatief.slug && (
-            <nldd-link
-              href={`/c/${initiatief.slug}`}
-              target="_blank"
-              size="xs"
-              start-icon="globe"
-              text={`/c/${initiatief.slug}`}
+    <nldd-container gap="24">
+      <nldd-container gap="16">
+        <nldd-container gap="4">
+          <nldd-container layout="row" gap="8" vertical-alignment="center">
+            <nldd-icon
+              name="circle-filled"
+              size="16"
+              color={initiatiefIconColor(initiatief.kleur)}
+              aria-hidden="true"
             />
+            <nldd-title size={3}>
+              <h2>{initiatief.naam}</h2>
+            </nldd-title>
+            {initiatief.public_page_enabled && initiatief.slug && (
+              <nldd-link
+                href={`/c/${initiatief.slug}`}
+                target="_blank"
+                size="xs"
+                start-icon="globe"
+                text={`/c/${initiatief.slug}`}
+              />
+            )}
+          </nldd-container>
+          {/* One plain line under the name. The rendered rich text brought
+              paragraph margins that set it apart from its own heading. */}
+          {initiatief.beschrijving && (
+            <nldd-text size="sm" color="secondary">
+              {richTextToPlain(initiatief.beschrijving)}
+            </nldd-text>
           )}
         </nldd-container>
-        {initiatief.beschrijving && (
-          <nldd-text size="sm" color="secondary">
-            <RichTextDisplay content={initiatief.beschrijving} />
-          </nldd-text>
-        )}
-      </nldd-container>
 
-      <nldd-tab-bar ref={tabBarRef} variant="text" accessible-label="Onderdelen van het initiatief">
-        {tabs.map((t) => (
-          <nldd-tab-bar-item
-            key={t}
-            text={TAB_LABELS[t]}
-            data-tab-id={t}
-            current={activeTab === t ? true : undefined}
-          />
-        ))}
-      </nldd-tab-bar>
+        <nldd-tab-bar ref={tabBarRef} variant="text" accessible-label="Onderdelen van het initiatief">
+          {tabs.map((t) => (
+            <nldd-tab-bar-item
+              key={t}
+              text={TAB_LABELS[t]}
+              data-tab-id={t}
+              current={activeTab === t ? true : undefined}
+            />
+          ))}
+        </nldd-tab-bar>
+      </nldd-container>
 
       {/* Keyed on the initiatief, so switching between two of them does not
           carry a half-typed form or a filter from one into the other. */}

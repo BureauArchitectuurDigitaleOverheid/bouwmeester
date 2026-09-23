@@ -21,6 +21,12 @@ interface ViewToggleProps<T extends string> {
   options: ViewToggleOption<T>[];
   /** Names the group itself; the items only name the options inside it. */
   accessibleLabel?: string;
+  /**
+   * 'icon' shows only the icons, with the label as tooltip and accessible
+   * name. Use it where the toggle sits under a text tab bar, so the two do
+   * not read as the same kind of control. Needs string icon names.
+   */
+  variant?: 'text' | 'icon';
 }
 
 /**
@@ -41,6 +47,7 @@ export function ViewToggle<T extends string>({
   onChange,
   options,
   accessibleLabel = 'Weergave',
+  variant = 'text',
 }: ViewToggleProps<T>) {
   const ref = useRef<HTMLElement>(null);
 
@@ -60,7 +67,7 @@ export function ViewToggle<T extends string>({
       size="sm"
       value={value}
       accessible-label={accessibleLabel}
-      className="keep-label-width"
+      {...(variant === 'icon' ? { variant: 'icon' } : { className: 'keep-label-width' })}
     >
       {options.map((option) => (
         <nldd-segmented-control-item
