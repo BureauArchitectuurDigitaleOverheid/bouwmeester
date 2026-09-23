@@ -186,29 +186,36 @@ function Eenheden({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; is
                     `fit-content` and no floor it shrank to within a word:
                     "RegelRecht" broke as "RegelRec/ht". */}
                 <nldd-text-cell text={eenheid.eenheid_naam} width="full" />
+                {/* A fixed width for the role column. `fit-content` gave it
+                    nothing of its own to measure, so it collapsed to zero and
+                    drew the select's chevrons and the delete cross on top of
+                    each other at the row's edge. */}
                 <nldd-container
                   layout="row"
-                  width="fit-content"
+                  width={isEigenaar ? '200px' : '120px'}
                   className="shrink-0"
                   gap="6"
                   vertical-alignment="center"
+                  horizontal-alignment="right"
                 >
                   {isEigenaar ? (
-                    <Select
-                      value={eenheid.rol}
-                      aria-label="Rol van deze eenheid"
-                      onChange={(e) =>
-                        updateEenheidRolMutation.mutateAsync({
-                          initiatiefId: initiatief.id,
-                          eenheidId: eenheid.eenheid_id,
-                          rol: e.target.value,
-                        })
-                      }
-                      options={Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => ({
-                        value,
-                        label,
-                      }))}
-                    />
+                    <nldd-container width="160px">
+                      <Select
+                        value={eenheid.rol}
+                        aria-label="Rol van deze eenheid"
+                        onChange={(e) =>
+                          updateEenheidRolMutation.mutateAsync({
+                            initiatiefId: initiatief.id,
+                            eenheidId: eenheid.eenheid_id,
+                            rol: e.target.value,
+                          })
+                        }
+                        options={Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => ({
+                          value,
+                          label,
+                        }))}
+                      />
+                    </nldd-container>
                   ) : (
                     <nldd-tag color="neutral" size="sm" text={INITIATIEF_ROL_LABELS[eenheid.rol] ?? eenheid.rol} />
                   )}
