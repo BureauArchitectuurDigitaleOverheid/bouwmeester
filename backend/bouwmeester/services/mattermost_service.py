@@ -642,11 +642,77 @@ class MattermostService:
             f"Onverwachte status {resp.status_code} bij membership-check"
         )
 
+    async def team_namen(self) -> dict[str, str]:
+        """Team-id naar leesbare naam, voor de teams waar de bot in zit.
+
+        Bij het tonen opgehaald en niet in de database opgeslagen. Een
+        opgeslagen naam veroudert zodra iemand het team in Mattermost
+        hernoemt, en dan toont Bouwmeester maandenlang iets dat er correct
+        uitziet maar het niet is. Er valt op deze manier ook niets te
+        backfillen: bestaande koppelingen dragen geen naam en zouden dat
+        met een kolom erbij ook niet doen.
+
+        De bot zit in een handvol teams, dus dit is één verzoek per keer
+        dat een lijst wordt opgebouwd, niet één per kanaal.
+
+        Faalt zacht: zonder namen is de lijst hetzelfde als voorheen.
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.get("/api/v4/users/me/teams")
+            resp.raise_for_status()
+            teams = resp.json()
+        except httpx.HTTPError:
+            logger.warning("Kon de teams van de bot niet ophalen", exc_info=True)
+            return {}
+
+        namen: dict[str, str] = {}
+        for team in teams:
+            team_id = team.get("id")
+            if not team_id:
+                continue
+            # `display_name` is wat een mens in Mattermost ziet; `name` is
+            # de url-slug. Zonder display_name is de slug beter dan niets.
+            namen[team_id] = team.get("display_name") or team.get("name") or ""
+        return namen
+
+    async def team_id_per_kanaal(self) -> dict[str, str]:
+        """Kanaal-id naar team-id, voor alle kanalen van de bot.
+
+        Bestaande koppelingen zijn zonder `team_id` opgeslagen, dus er is
+        niets om een teamnaam mee op te zoeken. In plaats van een
+        migratie die dat eenmalig vult (en die voor elke koppeling van
+        vóór deze wijziging alsnog gedraaid moet worden), halen we het bij
+        het tonen op. Dat herstelt zichzelf en kan niet verouderen.
+        """
+        bot_user_id = await self.get_bot_user_id()
+        if not bot_user_id:
+            return {}
+
+        client = await self._get_client()
+        try:
+            resp = await client.get(
+                f"/api/v4/users/{bot_user_id}/channels",
+                params={"last_delete_at": 0},
+            )
+            resp.raise_for_status()
+            kanalen = resp.json()
+        except httpx.HTTPError:
+            logger.warning("Kon de kanalen van de bot niet ophalen", exc_info=True)
+            return {}
+
+        return {
+            ch["id"]: ch["team_id"]
+            for ch in kanalen
+            if ch.get("id") and ch.get("team_id")
+        }
+
     async def search_channels(self, query: str) -> list[dict]:
         """Zoek kanalen waar de bot in zit, gefilterd op naam.
 
         Returns een lijst van dicts met channel_id, channel_name,
-        channel_display_name, team_id, member_count, is_bot_member.
+        channel_display_name, team_id, team_name, member_count,
+        is_bot_member.
 
         We zoeken alleen binnen de kanalen waarvan de bot lid is — pas
         wanneer de bot toegevoegd wordt aan een kanaal kunnen we daar
@@ -672,6 +738,12 @@ class MattermostService:
             logger.exception("Failed to list bot channels")
             return []
 
+        # Twee kanalen in verschillende teams kunnen dezelfde naam dragen,
+        # en dan toont de picker twee identieke regels met een
+        # koppel-knop. Zonder de teamnaam is er geen manier om te kiezen
+        # dan gokken.
+        namen = await self.team_namen()
+
         results: list[dict] = []
         for ch in channels:
             ch_type = ch.get("type")
@@ -689,6 +761,7 @@ class MattermostService:
                     "channel_name": name,
                     "channel_display_name": display_name,
                     "team_id": ch.get("team_id"),
+                    "team_name": namen.get(ch.get("team_id") or "") or None,
                     "member_count": ch.get("total_msg_count"),
                     "is_bot_member": True,
                 }

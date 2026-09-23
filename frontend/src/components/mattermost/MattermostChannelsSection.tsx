@@ -177,6 +177,13 @@ function ChannelRow({
           <nldd-container layout="row" gap="8" vertical-alignment="center">
             <nldd-icon-cell icon="tag" size="16" />
             <nldd-text-cell text={link.channel_display_name} width="fit-content" />
+            {/* Zelfde reden als in de picker: zonder het team is niet te
+                zien welk van twee gelijknamige kanalen hier hangt. */}
+            {link.team_name && (
+              <nldd-text size="xs" color="secondary">
+                {link.team_name}
+              </nldd-text>
+            )}
             {link.disabled_at && <nldd-tag color="critical" size="sm" text="uitgeschakeld" />}
           </nldd-container>
           <nldd-container layout="wrap" gap="16">
@@ -345,9 +352,16 @@ function ChannelSearchRow({
   return (
     <nldd-list-item>
       <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
+        {/* Het team erbij, want twee kanalen in verschillende teams mogen
+            dezelfde naam dragen. Zonder die regel toont de lijst twee
+            identieke rijen met een koppel-knop en is kiezen gokken. */}
         <nldd-text-cell
           text={channel.channel_display_name}
-          supporting-text={channel.channel_name}
+          supporting-text={
+            channel.team_name
+              ? `${channel.channel_name} · ${channel.team_name}`
+              : channel.channel_name
+          }
           width="full"
         />
         <Button size="sm" variant="primary" icon="link" onClick={onPick} disabled={pending}>

@@ -14,6 +14,9 @@ class MattermostChannelSearchResult(BaseModel):
     channel_name: str
     channel_display_name: str
     team_id: str | None = None
+    # Bij het tonen opgehaald, niet opgeslagen: een opgeslagen naam
+    # veroudert zodra iemand het team hernoemt.
+    team_name: str | None = None
     member_count: int | None = None
     is_bot_member: bool = False
 
@@ -47,6 +50,7 @@ class MattermostChannelLinkResponse(BaseModel):
     channel_name: str
     channel_display_name: str
     team_id: str | None
+    team_name: str | None = None
     scope_type: str
     scope_id: UUID
     auto_note_enabled: bool
