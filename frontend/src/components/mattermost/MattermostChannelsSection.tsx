@@ -119,6 +119,12 @@ export function MattermostChannelsSection({ scope }: Props) {
                   data: { parlementaire_alerts_enabled: value },
                 })
               }
+              onToggleNieuws={(value) =>
+                updateMutation.mutate({
+                  linkId: link.id,
+                  data: { nieuws_alerts_enabled: value },
+                })
+              }
               onDelete={() => deleteMutation.mutate(link.id)}
             />
           ))}
@@ -145,20 +151,24 @@ function ChannelRow({
   onToggleAutoNote,
   onToggleSuggest,
   onToggleAlerts,
+  onToggleNieuws,
   onDelete,
 }: {
   link: MattermostChannelLink;
   onToggleAutoNote: (value: boolean) => void;
   onToggleSuggest: (value: boolean) => void;
   onToggleAlerts: (value: boolean) => void;
+  onToggleNieuws: (value: boolean) => void;
   onDelete: () => void;
 }) {
   const autoNoteRef = useRef<HTMLElement>(null);
   const suggestRef = useRef<HTMLElement>(null);
   const alertsRef = useRef<HTMLElement>(null);
+  const nieuwsRef = useRef<HTMLElement>(null);
   useNlddEvent(autoNoteRef, 'change', (e) => onToggleAutoNote(checkedValue(e)));
   useNlddEvent(suggestRef, 'change', (e) => onToggleSuggest(checkedValue(e)));
   useNlddEvent(alertsRef, 'change', (e) => onToggleAlerts(checkedValue(e)));
+  useNlddEvent(nieuwsRef, 'change', (e) => onToggleNieuws(checkedValue(e)));
 
   return (
     <nldd-list-item>
@@ -188,6 +198,15 @@ function ChannelRow({
               ref={alertsRef}
               label="Kamerstuk-alerts"
               checked={orUndef(link.parlementaire_alerts_enabled)}
+            />
+            {/* Artikelen uit de vakpers op dezelfde zoektermen. Apart van
+                de kamerstukken: dat zijn andere stukken voor een ander
+                gesprek, en een kanaal dat de Kamer volgt heeft niet
+                vanzelf om nieuws gevraagd. */}
+            <nldd-checkbox-field
+              ref={nieuwsRef}
+              label="Nieuws-alerts"
+              checked={orUndef(link.nieuws_alerts_enabled)}
             />
           </nldd-container>
         </nldd-container>

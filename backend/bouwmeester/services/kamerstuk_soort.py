@@ -32,6 +32,10 @@ CAT_BIJLAGE = "bijlage"
 CAT_BRIEF = "brief"
 CAT_EXTERN = "extern"
 CAT_WETGEVING = "wetgeving"
+# Geen kamerstuk maar een artikel uit de vakpers. Staat hier omdat de
+# categorie het icoon, de kopregel en de LLM-instructie stuurt, en een
+# nieuwsbericht alle drie anders nodig heeft dan een kamerstuk.
+CAT_NIEUWS = "nieuws"
 CAT_OVERIG = "overig"
 
 # Gemeten op 22 september 2026 tegen de echte API; de sleutels zijn het
@@ -92,6 +96,14 @@ CATEGORIE_PRESENTATIE: dict[str, dict[str, str]] = {
         "herkomst": "van buiten de Kamer",
     },
     CAT_WETGEVING: {"emoji": ":scroll:", "label": "Wetgeving", "kleur": "#991B1B"},
+    CAT_NIEUWS: {
+        "emoji": ":newspaper:",
+        "label": "Nieuws",
+        "kleur": "#7C3AED",
+        # De publicatie staat in de kopregel omdat het bij journalistiek
+        # het eerste is wat je wil weten: wie schrijft dit.
+        "herkomst": "vakpers",
+    },
     CAT_OVERIG: {"emoji": ":page_facing_up:", "label": "Kamerstuk", "kleur": "#64748B"},
 }
 

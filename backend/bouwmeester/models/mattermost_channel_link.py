@@ -66,6 +66,18 @@ class MattermostChannelLink(Base):
             "te krijgen. De zoektermen zelf staan op het initiatief."
         ),
     )
+    nieuws_alerts_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment=(
+            "Stuur artikelen uit de vakpers die op een zoekterm matchen "
+            "naar dit kanaal. Apart van de kamerstukken, want dat zijn "
+            "andere stukken voor een ander gesprek: een kanaal dat de "
+            "Kamer volgt heeft niet vanzelf om nieuws gevraagd."
+        ),
+    )
     last_seen_post_at: Mapped[int | None] = mapped_column(
         BigInteger,
         nullable=True,

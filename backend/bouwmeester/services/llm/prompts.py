@@ -142,6 +142,19 @@ _CATEGORIE_CONTEXT: dict[str, str] = {
         "wetsvoorstel, niet de wettekst zelf. Bij een motie of amendement: "
         "zeg wie hem indient en wat er precies wordt gevraagd."
     ),
+    "nieuws": (
+        "Dit is GEEN kamerstuk maar een artikel uit de vakpers (zoals "
+        "Binnenlands Bestuur of iBestuur). Het is journalistiek: een "
+        "redactie beschrijft of duidt iets, het is geen beleid en geen "
+        "standpunt van het kabinet.\n"
+        "Schrijf nooit alsof het kabinet dit vindt of besluit. Zeg wat het "
+        "artikel meldt, en als er een bron of woordvoerder in genoemd "
+        "wordt, wie dat is.\n"
+        "Belangrijk: je krijgt alleen de kop en de eerste zinnen, niet het "
+        "hele artikel. Vat samen wat daarin staat en vul niets aan. Is de "
+        "koptekst te dun om iets zinnigs over de zoekterm te zeggen, zeg "
+        "dat dan en houd de samenvatting kort."
+    ),
     "overig": (
         "Het soort van dit stuk is niet vastgesteld. Leid uit de tekst af "
         "wat het is en zeg dat in de eerste zin."

@@ -25,6 +25,7 @@ from bouwmeester.repositories.parlementair_abonnement import (
     ParlementairAbonnementRepository,
 )
 from bouwmeester.services.kamerstuk_soort import (
+    CAT_NIEUWS,
     CAT_OVERIG,
     CATEGORIE_PRESENTATIE,
 )
@@ -62,6 +63,19 @@ _NL_MAANDEN = (
 # leest ze terug; eigen reactions triggeren daar geen actie.
 REACTIE_NIET_RELEVANT = "x"
 REACTIE_OPVOLGEN = "eyes"
+
+
+def _vinkje_voor(item: ParlementairItem):
+    """Welke kanaalinstelling bepaalt of dit stuk gepost mag worden.
+
+    Op de categorie en niet op `item.type`, omdat de categorie al in
+    `extra_data` staat op het moment dat een stuk wordt gepost, en omdat
+    dat precies het veld is dat de rest van de presentatie stuurt.
+    """
+    categorie = (item.extra_data or {}).get("categorie")
+    if categorie == CAT_NIEUWS:
+        return MattermostChannelLink.nieuws_alerts_enabled
+    return MattermostChannelLink.parlementaire_alerts_enabled
 
 
 class ParlementairAlertService:
@@ -117,6 +131,11 @@ class ParlementairAlertService:
             )
             return 0
 
+        # Welk vinkje dit stuk nodig heeft. Nieuws en kamerstukken zijn
+        # los aan te zetten: een kanaal dat de Kamer volgt heeft niet
+        # vanzelf om de vakpers gevraagd, en andersom.
+        vinkje = _vinkje_voor(item)
+
         # Eén kanaal kan via meerdere termen meekijken; post er één keer.
         kanalen: dict[str, MattermostChannelLink] = {}
         for abonnement in abonnementen:
@@ -127,14 +146,14 @@ class ParlementairAlertService:
                 # Per kanaal aan te zetten, net als auto-notes en
                 # lead-suggesties. Een kanaal dat voor leads is gekoppeld
                 # hoort niet ongevraagd elk kamerstuk te krijgen.
-                MattermostChannelLink.parlementaire_alerts_enabled.is_(True),
+                vinkje.is_(True),
             )
             for link in (await self.session.execute(stmt)).scalars().all():
                 kanalen.setdefault(link.channel_id, link)
 
         if not kanalen:
             logger.info(
-                "Kamerstuk %s heeft abonnees maar geen kanaal met alerts aan",
+                "Stuk %s heeft abonnees maar geen kanaal met dit soort alerts aan",
                 item.zaak_nummer,
             )
             return 0
