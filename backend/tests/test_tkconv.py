@@ -860,6 +860,38 @@ class TestDocumentGrens:
         await client.close()
 
     @pytest.mark.asyncio
+    async def test_een_onleesbare_content_length_legt_de_ronde_niet_om(self):
+        """Een kapotte header valt terug op de teller, en gooit niet.
+
+        Headers komen van buiten. Een proxy die `content-length` verdubbelt
+        tot "123, 123" laat `int()` struikelen, en een ValueError op die
+        plek wordt door geen van de excepts gevangen: die komt omhoog in
+        `_process_item` en kost de hele ronde. Precies het gedrag dat deze
+        wijziging wil wegnemen, dus het hoort een test te hebben.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                headers={
+                    "content-type": "text/plain",
+                    "content-length": "123, 123",
+                },
+                content=b"Nederlandse Digitale Dienst",
+            )
+
+        client = TkconvClient()
+        client._http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        tekst, content_type = await client.fetch_document_text("2026D45064")
+
+        # Doorgelaten op de teller: het stuk is klein, de header onbruikbaar.
+        assert tekst is not None
+        assert "Nederlandse Digitale Dienst" in tekst
+        assert content_type == "text/plain"
+        await client.close()
+
+    @pytest.mark.asyncio
     async def test_laat_een_gewoon_document_door(self):
         """De grens mag niet raken wat er normaal langskomt (45 KB tot 16 MB)."""
 

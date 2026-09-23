@@ -80,6 +80,22 @@ MAX_DOCUMENT_TEKENS = 500_000
 MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
 
 
+def _als_getal(waarde: str | None) -> int | None:
+    """Lees een header als getal, of geef None als dat niet lukt.
+
+    Headers komen van buiten en hoeven nergens aan te voldoen. Een
+    `content-length` die leeg is, onzin bevat of door een tussenliggende
+    proxy verdubbeld is tot "123, 123" mag geen exceptie opleveren op een
+    plek waar dat de hele import-ronde kost.
+    """
+    if not waarde:
+        return None
+    try:
+        return int(waarde)
+    except ValueError:
+        return None
+
+
 @dataclass
 class TkconvItem:
     """Eén treffer uit de zoek-RSS."""
@@ -374,12 +390,20 @@ class TkconvClient:
                 # De bron kent zijn eigen omvang meestal al. Die uitlezen
                 # scheelt het binnenhalen van de eerste 20 MB van een stuk
                 # dat we toch weggooien.
-                aangekondigd = response.headers.get("content-length")
-                if aangekondigd and int(aangekondigd) > MAX_DOCUMENT_BYTES:
+                #
+                # `int()` in een try, want de header komt van buiten: leeg,
+                # onzin, of door een proxy verdubbeld tot "123, 123" laat
+                # hem struikelen. Een ValueError hier zou niet gevangen
+                # worden door de excepts hieronder en dus de hele ronde
+                # omleggen, wat precies het gedrag is dat deze wijziging
+                # wil wegnemen. Bij een onleesbare header vertrouwen we op
+                # de teller verderop.
+                aangekondigd = _als_getal(response.headers.get("content-length"))
+                if aangekondigd is not None and aangekondigd > MAX_DOCUMENT_BYTES:
                     logger.warning(
                         "getraw %s is %d MB en wordt overgeslagen (grens %d MB)",
                         nummer,
-                        int(aangekondigd) // (1024 * 1024),
+                        aangekondigd // (1024 * 1024),
                         MAX_DOCUMENT_BYTES // (1024 * 1024),
                     )
                     return None, content_type
@@ -398,6 +422,9 @@ class TkconvClient:
                         return None, content_type
                     brokken.append(brok)
 
+                # Even staan de brokken en het samengevoegde geheel naast
+                # elkaar: kortstondig twee keer de grens, dus 40 MB. Dat is
+                # te overzien; het is de 128 MB die het probleem was.
                 inhoud = b"".join(brokken)
         except httpx.HTTPStatusError as e:
             logger.warning("getraw %s gaf %s", nummer, e.response.status_code)
