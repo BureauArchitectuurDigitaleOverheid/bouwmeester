@@ -58,6 +58,27 @@ SEARCH_TIMEOUT = 30.0
 # opslag en geen promptruimte.
 MAX_DOCUMENT_TEKENS = 500_000
 
+# Hoeveel bytes we van één document binnenhalen voordat we de download
+# afbreken. Dit is een geheugengrens, geen inhoudelijke: `getraw` kent geen
+# bovengrens aan wat het teruggeeft, en de container wel.
+#
+# Gemeten op de stukken die de import op 23 september langshaalde: 45 KB,
+# 7 MB, 16 MB, en 2026D43577 van 128 MB. Die laatste komt als bytes binnen,
+# gaat als string door de PDF-parser en kost daarmee een veelvoud van zijn
+# eigen omvang. De pod werd er herhaaldelijk om gekilled: OOMKilled bij een
+# limiet van 961Mi, die het platform al twee keer automatisch had opgehoogd.
+# Inmiddels staat die op 2 GB, wat de uitschieter dempt maar niet weghaalt
+# zolang de bron zelf geen bovengrens kent. En omdat `markeer_ingehaald` pas
+# ná de hele ronde draait, bleef `ingehaald_op` NULL: de volgende ronde
+# haalde precies dezelfde stukken opnieuw op. Negentien uur lang, zonder dat
+# één ronde afrondde.
+#
+# 20 MB laat alles door wat we in productie zagen op die ene uitschieter na.
+# Een stuk daarboven is een bijlagenbundel of een scan, en `knip_rond_termen`
+# geeft het model toch maar 9.000 tekens: de rest was altijd al weggegooid
+# werk.
+MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+
 
 @dataclass
 class TkconvItem:
@@ -336,9 +357,48 @@ class TkconvClient:
         client = self._get_http_client()
         url = f"{self.base_url}/getraw/{nummer}"
 
+        # Streamend, met een grens op wat we binnenlaten. `client.get` leest
+        # de hele response in het geheugen voordat wij er iets over kunnen
+        # zeggen, en bij een document van 128 MB is dat precies de stap die
+        # de container omver duwt. Zo stopt de download zodra de grens in
+        # zicht komt, in plaats van erna.
         try:
-            response = await client.get(url, timeout=httpx.Timeout(DOCUMENT_TIMEOUT))
-            response.raise_for_status()
+            async with client.stream(
+                "GET", url, timeout=httpx.Timeout(DOCUMENT_TIMEOUT)
+            ) as response:
+                response.raise_for_status()
+
+                raw_type = response.headers.get("content-type") or ""
+                content_type = raw_type.split(";")[0].strip()
+
+                # De bron kent zijn eigen omvang meestal al. Die uitlezen
+                # scheelt het binnenhalen van de eerste 20 MB van een stuk
+                # dat we toch weggooien.
+                aangekondigd = response.headers.get("content-length")
+                if aangekondigd and int(aangekondigd) > MAX_DOCUMENT_BYTES:
+                    logger.warning(
+                        "getraw %s is %d MB en wordt overgeslagen (grens %d MB)",
+                        nummer,
+                        int(aangekondigd) // (1024 * 1024),
+                        MAX_DOCUMENT_BYTES // (1024 * 1024),
+                    )
+                    return None, content_type
+
+                brokken: list[bytes] = []
+                omvang = 0
+                async for brok in response.aiter_bytes():
+                    omvang += len(brok)
+                    if omvang > MAX_DOCUMENT_BYTES:
+                        logger.warning(
+                            "getraw %s overschrijdt %d MB tijdens het lezen "
+                            "en wordt overgeslagen",
+                            nummer,
+                            MAX_DOCUMENT_BYTES // (1024 * 1024),
+                        )
+                        return None, content_type
+                    brokken.append(brok)
+
+                inhoud = b"".join(brokken)
         except httpx.HTTPStatusError as e:
             logger.warning("getraw %s gaf %s", nummer, e.response.status_code)
             return None, None
@@ -346,9 +406,7 @@ class TkconvClient:
             logger.warning("getraw %s onbereikbaar: %s", nummer, e)
             return None, None
 
-        raw_type = response.headers.get("content-type") or ""
-        content_type = raw_type.split(";")[0].strip()
-        text = _extract_text(response.content, content_type, nummer)
+        text = _extract_text(inhoud, content_type, nummer)
         return text, content_type
 
 

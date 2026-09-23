@@ -9,14 +9,17 @@ alleen in de body matcht) zijn allebei publieke kamerstukken.
 from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from bouwmeester.models.parlementair_abonnement import ParlementairAbonnement
+from bouwmeester.services import tkconv_client
 from bouwmeester.services.import_strategies.tkconv import (
     TkconvSearchStrategy,
     reset_watermerk,
 )
 from bouwmeester.services.tkconv_client import (
+    MAX_DOCUMENT_BYTES,
     TkconvClient,
     TkconvItem,
     _split_description,
@@ -757,3 +760,122 @@ class TestGeenStilVerlies:
             limit=10,
         )
         assert s.verse_abonnementen == {vers.id}
+
+
+class TestDocumentGrens:
+    """`getraw` kent geen bovengrens, de container wel.
+
+    Op 23 september haalde de import een stuk van 128 MB op (2026D43577).
+    Dat kwam als bytes binnen en ging als string door de PDF-parser, wat de
+    pod herhaaldelijk OOMKilled opleverde. Omdat `markeer_ingehaald` pas na
+    de hele ronde draait, begon elke volgende ronde opnieuw met dezelfde
+    stukken.
+    """
+
+    @pytest.mark.asyncio
+    async def test_haalt_niets_op_als_de_omvang_al_is_aangekondigd(self):
+        """Een aangekondigde omvang boven de grens kost geen byte geheugen.
+
+        De assertie telt wat er gelezen is en niet wat er terugkomt: op de
+        oude code kwam er ook `None` uit, want de PDF-parser struikelt over
+        een body van enkel x-en. Dat maakte de test groen terwijl de 128 MB
+        wel degelijk binnen was gehaald. Wat we willen weten is of het
+        geheugen geraakt wordt, dus meten we de bytes.
+        """
+        gelezen = 0
+
+        async def body():
+            nonlocal gelezen
+            # Vier kleine blokken. De aangekondigde content-length doet het
+            # werk, dus de blokken hoeven niet echt groot te zijn: we meten
+            # of ze worden opgevraagd, niet hoeveel ze wegen.
+            for _ in range(4):
+                gelezen += 1
+                yield b"x" * 1024
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                headers={
+                    "content-type": "application/pdf",
+                    "content-length": str(MAX_DOCUMENT_BYTES + 1),
+                },
+                content=body(),
+            )
+
+        client = TkconvClient()
+        client._http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        tekst, content_type = await client.fetch_document_text("2026D43577")
+
+        assert tekst is None
+        assert content_type == "application/pdf"
+        # Geen enkel blok opgevraagd: de content-length was genoeg.
+        assert gelezen == 0
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_breekt_af_als_de_omvang_pas_tijdens_het_lezen_blijkt(
+        self, monkeypatch
+    ):
+        """Zonder content-length telt de stream zelf mee.
+
+        Bij chunked encoding kondigt de server de omvang niet aan. De grens
+        moet dan alsnog gelden, en wel tijdens het lezen: we stoppen zodra
+        de teller erover gaat, niet pas als het hele stuk binnen is.
+        """
+        blokken = 0
+        blok = 64 * 1024
+        # De grens tijdelijk omlaag, zodat de test hem met kilobytes raakt
+        # in plaats van met de 20 MB uit productie. Een test die echt 40 MB
+        # alloceert wordt zelf OOM-gekilled in de container, en dan toetsen
+        # we het geheugen van de testrunner in plaats van dat van de code.
+        grens = 256 * 1024
+        monkeypatch.setattr(tkconv_client, "MAX_DOCUMENT_BYTES", grens)
+
+        async def body():
+            nonlocal blokken
+            # Genoeg blokken om de grens ruim te passeren. Een afbrekende
+            # lezer vraagt er grens / blok + 1 op; een lezer zonder grens
+            # vraagt ze alle 40.
+            for _ in range(40):
+                blokken += 1
+                yield b"x" * blok
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                headers={"content-type": "application/pdf"},
+                content=body(),
+            )
+
+        client = TkconvClient()
+        client._http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        tekst, _ = await client.fetch_document_text("2026D43577")
+
+        assert tekst is None
+        # Afgebroken net over de grens, niet pas aan het eind van de stream.
+        assert blokken <= grens // blok + 1
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_laat_een_gewoon_document_door(self):
+        """De grens mag niet raken wat er normaal langskomt (45 KB tot 16 MB)."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/plain"},
+                content=b"Nederlandse Digitale Dienst",
+            )
+
+        client = TkconvClient()
+        client._http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        tekst, content_type = await client.fetch_document_text("2026D45064")
+
+        assert tekst is not None
+        assert "Nederlandse Digitale Dienst" in tekst
+        assert content_type == "text/plain"
+        await client.close()
