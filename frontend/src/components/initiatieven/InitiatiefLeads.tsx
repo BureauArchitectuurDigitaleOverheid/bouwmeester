@@ -228,7 +228,7 @@ export function InitiatiefLeads({ initiatiefId }: { initiatiefId: string }) {
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={2}>
           <Button icon="plus" onClick={() => setShowIntake(true)}>
-            <span className="hidden-below-sm">Nieuwe lead</span>
+            Nieuwe lead
           </Button>
           <nldd-menu-item slot="overflow" text="Nieuwe lead" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>

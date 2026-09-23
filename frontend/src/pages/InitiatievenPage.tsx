@@ -128,7 +128,7 @@ export function InitiatievenPage() {
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end">
           <Button icon="plus" onClick={() => setShowCreate(true)}>
-            <span className="hidden-below-sm">Nieuw initiatief</span>
+            Nieuw initiatief
           </Button>
           <nldd-menu-item slot="overflow" text="Nieuw initiatief" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>
