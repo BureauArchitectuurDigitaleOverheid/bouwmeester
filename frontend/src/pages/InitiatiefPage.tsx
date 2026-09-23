@@ -10,6 +10,7 @@ import { InitiatiefMensen } from '@/components/initiatieven/InitiatiefMensen';
 import { InitiatiefSignalen } from '@/components/initiatieven/InitiatiefSignalen';
 import { InitiatiefInstellingen } from '@/components/initiatieven/InitiatiefInstellingen';
 import {
+  INITIATIEVEN_PATH,
   initiatiefPath,
   isInitiatiefTab,
   type InitiatiefTab,
@@ -76,6 +77,7 @@ export function InitiatiefPage() {
     <nldd-container gap="24">
       <nldd-container gap="16">
         <nldd-container gap="4">
+          <InitiatiefBreadcrumbs naam={initiatief.naam} />
           <nldd-container layout="row" gap="8" vertical-alignment="center">
             <nldd-icon
               name="circle-filled"
@@ -118,6 +120,40 @@ export function InitiatiefPage() {
         {activeTab === 'instellingen' && <TabBody><InitiatiefInstellingen initiatief={initiatief} /></TabBody>}
       </div>
     </nldd-container>
+  );
+}
+
+/** True when the click asked for something other than plain navigation. */
+function isModifiedClick(event: MouseEvent): boolean {
+  return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button === 1;
+}
+
+/**
+ * The way back to the overview. The title bar has a back button, but the
+ * design system only shows it where panes stack on a narrow screen; on a
+ * desktop it is `display: none`, which left no route back at all.
+ *
+ * The crumb is a real link, so cmd-click opens a tab; a plain click goes
+ * through the router instead of reloading the app.
+ */
+function InitiatiefBreadcrumbs({ naam }: { naam: string }) {
+  const navigate = useNavigate();
+  const ref = useRef<HTMLElement>(null);
+  const onClick = useCallback(
+    (event: Event) => {
+      if (isModifiedClick(event as MouseEvent)) return;
+      event.preventDefault();
+      navigate(INITIATIEVEN_PATH);
+    },
+    [navigate],
+  );
+  useNlddEvent(ref, 'click', onClick);
+
+  return (
+    <nldd-breadcrumbs>
+      <nldd-breadcrumbs-item ref={ref} href={INITIATIEVEN_PATH} text="Initiatieven" />
+      <nldd-breadcrumbs-item current text={naam} />
+    </nldd-breadcrumbs>
   );
 }
 
