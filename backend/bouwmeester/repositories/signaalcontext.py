@@ -15,9 +15,7 @@ class SignaalcontextRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get(
-        self, scope_type: str, scope_id: uuid.UUID
-    ) -> Signaalcontext | None:
+    async def get(self, scope_type: str, scope_id: uuid.UUID) -> Signaalcontext | None:
         stmt = select(Signaalcontext).where(
             Signaalcontext.scope_type == scope_type,
             Signaalcontext.scope_id == scope_id,
