@@ -20,8 +20,6 @@ type RequestState =
 
 export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
   const [state, setState] = useState<RequestState>({ step: 'idle' });
-  const [naam, setNaam] = useState('');
-  const naamFieldRef = useRef<HTMLElement>(null);
 
   const handleLogout = () => {
     window.location.href = `${BASE_URL}/api/auth/logout`;
@@ -81,9 +79,8 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
   }, [state.step]);
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!email || !naam.trim()) return;
+    async (naam: string) => {
+      if (!email) return;
 
       setState({ step: 'submitting' });
       try {
@@ -94,7 +91,7 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
             'X-CSRF-Token': getCsrfToken(),
           },
           credentials: 'include',
-          body: JSON.stringify({ email, naam: naam.trim() }),
+          body: JSON.stringify({ email, naam }),
         });
 
         if (!res.ok) {
@@ -118,10 +115,8 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
         setState({ step: 'error', message: 'Verbindingsfout. Probeer het later opnieuw.' });
       }
     },
-    [email, naam]
+    [email]
   );
-
-  useNlddEvent(naamFieldRef, 'input', (e) => setNaam(eventValue(e)));
 
   return (
     <nldd-app-view background="tinted">
@@ -160,27 +155,7 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
                 </>
               )}
 
-              {state.step === 'form' && (
-                <form onSubmit={handleSubmit} style={{ width: '100%', textAlign: 'left' }}>
-                  <nldd-container gap="12">
-                    <nldd-form-field label="Je volledige naam">
-                      <nldd-text-field
-                        ref={naamFieldRef}
-                        value={naam}
-                        placeholder="Je volledige naam"
-                        required
-                        width="full"
-                      />
-                    </nldd-form-field>
-                    <NlddButton
-                      type="submit"
-                      text="Verzoek versturen"
-                      width="full"
-                      disabled={!naam.trim()}
-                    />
-                  </nldd-container>
-                </form>
-              )}
+              {state.step === 'form' && <AccessRequestForm onSubmit={handleSubmit} />}
 
               {state.step === 'submitting' && (
                 <nldd-text color="secondary">Verzoek wordt verstuurd...</nldd-text>
@@ -242,5 +217,43 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
         </nldd-container>
       </nldd-simple-section>
     </nldd-app-view>
+  );
+}
+
+/**
+ * The name form lives in its own component so its field mounts together with
+ * the hook that listens to it. `useNlddEvent` attaches in an effect that only
+ * reruns when its deps change; with the field rendered conditionally inside the
+ * page, that effect ran while the ref was still null (the idle step) and never
+ * again, so typing never reached state and the submit button stayed disabled.
+ */
+function AccessRequestForm({ onSubmit }: { onSubmit: (naam: string) => void }) {
+  const [naam, setNaam] = useState('');
+  const naamFieldRef = useRef<HTMLElement>(null);
+
+  useNlddEvent(naamFieldRef, 'input', (e) => setNaam(eventValue(e)));
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = naam.trim();
+    if (trimmed) onSubmit(trimmed);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} style={{ width: '100%', textAlign: 'left' }}>
+      <nldd-container gap="12">
+        <nldd-form-field label="Je volledige naam">
+          <nldd-text-field
+            ref={naamFieldRef}
+            value={naam}
+            placeholder="Je volledige naam"
+            autocomplete="name"
+            required
+            width="full"
+          />
+        </nldd-form-field>
+        <NlddButton type="submit" text="Verzoek versturen" width="full" disabled={!naam.trim()} />
+      </nldd-container>
+    </form>
   );
 }
