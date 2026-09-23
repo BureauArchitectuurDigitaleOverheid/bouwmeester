@@ -129,10 +129,92 @@ export function InitiatiefLeads({ initiatiefId }: { initiatiefId: string }) {
   return (
     <nldd-container gap="16">
       <nldd-toolbar label="Leadacties">
-        {/* The search field is the fluid item: `min-width` is what makes a
-            toolbar item grow into the room the others leave. */}
-        <nldd-toolbar-item slot="start" priority={1} min-width="224px">
-          <LeadsSearchField value={searchInput} onChange={setSearchInput} />
+        {/* Search and filters share one fluid item, so on a wide screen they
+            sit on the same line as the view switcher and the add button, and
+            only wrap when the room runs out. `min-width` is what makes a
+            toolbar item fluid; a percentage lets it give way to the end items
+            instead of pushing them into the overflow menu. Every field gets a
+            fixed width: a container without one takes the full row, which is
+            how the tag filter used to claim a line of its own. */}
+        <nldd-toolbar-item slot="start" priority={1} min-width="60%">
+          <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+            <nldd-container width="208px">
+              <LeadsSearchField value={searchInput} onChange={setSearchInput} />
+            </nldd-container>
+
+            {supportsAssignee && (
+              <nldd-container width="176px">
+                <CreatableSelect
+                  value={filterAssignee}
+                  onChange={setFilterAssignee}
+                  options={[
+                    { value: '', label: 'Alle personen' },
+                    ...(currentPerson
+                      ? [{ value: currentPerson.id, label: `Mijn leads (${currentPerson.naam})` }]
+                      : []),
+                    ...(people
+                      ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
+                      .map((p) => ({ value: p.id, label: p.naam, description: p.functie ?? undefined })) ?? []),
+                  ]}
+                  placeholder="Alle personen"
+                  onClear={filterAssignee ? () => setFilterAssignee('') : undefined}
+                />
+              </nldd-container>
+            )}
+
+            {supportsTag && (
+              <nldd-container layout="row" gap="4" width="160px" vertical-alignment="center">
+                <nldd-container width="full">
+                  <Input
+                    value={filterTag}
+                    onChange={(e) => setFilterTag(e.target.value)}
+                    placeholder="Filter op tag"
+                  />
+                </nldd-container>
+                {filterTag && (
+                  <NlddIconButton
+                    icon="close"
+                    accessibleLabel="Tag-filter wissen"
+                    variant="neutral-transparent"
+                    size="sm"
+                    onClick={() => setFilterTag('')}
+                  />
+                )}
+              </nldd-container>
+            )}
+
+            {supportsNextAction && (
+              <nldd-container width="144px">
+                <CreatableSelect
+                  value={nextActionFilter}
+                  onChange={setNextActionFilter}
+                  options={NEXT_ACTION_OPTIONS}
+                  placeholder="Alle acties"
+                  searchable={false}
+                  onClear={nextActionFilter ? () => setNextActionFilter('') : undefined}
+                />
+              </nldd-container>
+            )}
+
+            {supportsStage && (
+              <nldd-container width="144px">
+                <CreatableSelect
+                  value={filterStage}
+                  onChange={setFilterStage}
+                  options={STAGE_OPTIONS}
+                  placeholder="Alle fases"
+                  searchable={false}
+                  onClear={filterStage ? () => setFilterStage('') : undefined}
+                />
+              </nldd-container>
+            )}
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Wissen
+              </Button>
+            )}
+          </nldd-container>
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={3}>
           {/* A view switcher, not a single action: the toolbar pattern gives
@@ -148,87 +230,6 @@ export function InitiatiefLeads({ initiatiefId }: { initiatiefId: string }) {
           <nldd-menu-item slot="overflow" text="Nieuwe lead" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>
       </nldd-toolbar>
-
-      {(supportsAssignee || supportsTag || supportsNextAction || supportsStage) && (
-        <nldd-container layout="wrap" gap="12" vertical-alignment="center">
-          {/* Assignee */}
-          {supportsAssignee && (
-            <nldd-container width="fit-content" min-width="192px">
-              <CreatableSelect
-                value={filterAssignee}
-                onChange={setFilterAssignee}
-                options={[
-                  { value: '', label: 'Alle personen' },
-                  ...(currentPerson
-                    ? [{ value: currentPerson.id, label: `Mijn leads (${currentPerson.naam})` }]
-                    : []),
-                  ...(people
-                    ?.filter((p) => p.is_active && p.id !== currentPerson?.id)
-                    .map((p) => ({ value: p.id, label: p.naam, description: p.functie ?? undefined })) ?? []),
-                ]}
-                placeholder="Alle personen"
-                onClear={filterAssignee ? () => setFilterAssignee('') : undefined}
-              />
-            </nldd-container>
-          )}
-
-          {/* Tag */}
-          {supportsTag && (
-            <nldd-container layout="row" gap="4" min-width="176px">
-              <nldd-container width="full">
-                <Input
-                  value={filterTag}
-                  onChange={(e) => setFilterTag(e.target.value)}
-                  placeholder="Filter op tag..."
-                />
-              </nldd-container>
-              {filterTag && (
-                <NlddIconButton
-                  icon="close"
-                  accessibleLabel="Tag-filter wissen"
-                  variant="neutral-transparent"
-                  size="sm"
-                  onClick={() => setFilterTag('')}
-                />
-              )}
-            </nldd-container>
-          )}
-
-          {/* Next action */}
-          {supportsNextAction && (
-            <nldd-container width="fit-content" min-width="160px">
-              <CreatableSelect
-                value={nextActionFilter}
-                onChange={setNextActionFilter}
-                options={NEXT_ACTION_OPTIONS}
-                placeholder="Alle acties"
-                searchable={false}
-                onClear={nextActionFilter ? () => setNextActionFilter('') : undefined}
-              />
-            </nldd-container>
-          )}
-
-          {/* Stage */}
-          {supportsStage && (
-            <nldd-container width="fit-content" min-width="160px">
-              <CreatableSelect
-                value={filterStage}
-                onChange={setFilterStage}
-                options={STAGE_OPTIONS}
-                placeholder="Alle fases"
-                searchable={false}
-                onClear={filterStage ? () => setFilterStage('') : undefined}
-              />
-            </nldd-container>
-          )}
-
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
-              Filters wissen
-            </Button>
-          )}
-        </nldd-container>
-      )}
 
       {viewMode === 'inbox' ? (
         <LeadInboxView searchQuery={searchQuery} initiatiefId={initiatiefId} />
