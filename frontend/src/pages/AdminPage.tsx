@@ -135,7 +135,7 @@ export function AdminPage() {
   }
 
   return (
-    <nldd-container max-width="1152px" gap="24">
+    <nldd-container gap="24">
       {/* Tab bar */}
       <nldd-menu-bar
         ref={menuBarRef}

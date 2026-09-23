@@ -133,7 +133,7 @@ export function SamenwerkingsverbandenPage() {
   };
 
   return (
-    <nldd-container gap="24" max-width="1024px">
+    <nldd-container gap="24">
       <nldd-toolbar label="Samenwerkingsverbandacties">
         {/* `min-width` makes the item fluid, per its own docs, and that is what
             gives the wrap row below a width to break against. Without it the

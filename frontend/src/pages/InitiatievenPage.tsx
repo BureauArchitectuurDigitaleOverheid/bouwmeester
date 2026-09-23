@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { Icon } from '@/components/nldd/Icon';
 import { useNlddEvent } from '@/components/nldd/events';
 import { useInitiatieven } from '@/hooks/useInitiatieven';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
@@ -23,14 +22,15 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** One small figure on a card: an icon and a line of text. */
-function Stat({ icon, text }: { icon: string; text: string }) {
-  return (
-    <nldd-container layout="row" gap="4" vertical-alignment="center">
-      <Icon name={icon} size="xs" />
-      <nldd-text size="xs" color="secondary">{text}</nldd-text>
-    </nldd-container>
-  );
+function figures(initiatief: InitiatiefListItem): string {
+  const parts = [
+    initiatief.lead_count === 0
+      ? 'nog geen leads'
+      : `${initiatief.active_lead_count} actief van ${plural(initiatief.lead_count, 'lead', 'leads')}`,
+    plural(initiatief.member_count, 'lid', 'leden'),
+  ];
+  if (initiatief.last_published_at) parts.push(`update ${timeAgo(initiatief.last_published_at)}`);
+  return parts.join(' · ');
 }
 
 /**
@@ -78,26 +78,18 @@ function InitiatiefCard({ initiatief }: { initiatief: InitiatiefListItem }) {
         </nldd-container>
 
         {description && (
-          // nldd-text has no line-clamp; the utility class carries it, as on NodeCard.
-          <p className="line-clamp-2">
+          // nldd-text has no line-clamp; the utility class carries it, as on
+          // NodeCard. A div rather than NodeCard's <p>: the paragraph's
+          // default margins put 18px above and below the line.
+          <div className="line-clamp-2">
             <nldd-text size="xs" color="secondary">{description}</nldd-text>
-          </p>
+          </div>
         )}
 
-        <nldd-container layout="wrap" gap="12" vertical-alignment="center">
-          <Stat
-            icon="chart-x-y-axis-line"
-            text={
-              initiatief.lead_count === 0
-                ? 'Nog geen leads'
-                : `${initiatief.active_lead_count} actief van ${plural(initiatief.lead_count, 'lead', 'leads')}`
-            }
-          />
-          <Stat icon="users" text={plural(initiatief.member_count, 'lid', 'leden')} />
-          {initiatief.last_published_at && (
-            <Stat icon="megaphone" text={`Update ${timeAgo(initiatief.last_published_at)}`} />
-          )}
-        </nldd-container>
+        {/* One line of figures. As separate icon-and-text rows each took a
+            full-width line, because a row container without a width fills
+            its parent, and the card grew three lines taller than its text. */}
+        <nldd-text size="xs" color="secondary">{figures(initiatief)}</nldd-text>
       </nldd-container>
     </nldd-card>
   );
@@ -119,7 +111,7 @@ export function InitiatievenPage() {
   useEffect(() => subscribe((files) => setDroppedFiles(files)), [subscribe]);
 
   return (
-    <nldd-container gap="24" max-width="1024px">
+    <nldd-container gap="24">
       <nldd-toolbar label="Initiatiefacties">
         <nldd-toolbar-item slot="start" priority={1} min-width="160px">
           <nldd-text size="sm" color="secondary">
