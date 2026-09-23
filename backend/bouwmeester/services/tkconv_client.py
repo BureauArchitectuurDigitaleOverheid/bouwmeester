@@ -62,13 +62,21 @@ MAX_DOCUMENT_TEKENS = 500_000
 # afbreken. Dit is een geheugengrens, geen inhoudelijke: `getraw` kent geen
 # bovengrens aan wat het teruggeeft, en de container wel.
 #
-# Gemeten op de stukken die de import op 23 september langshaalde: 45 KB,
-# 7 MB, 16 MB, en 2026D43577 van 128 MB. Die laatste komt als bytes binnen,
-# gaat als string door de PDF-parser en kost daarmee een veelvoud van zijn
-# eigen omvang. De pod werd er herhaaldelijk om gekilled: OOMKilled bij een
-# limiet van 961Mi, die het platform al twee keer automatisch had opgehoogd.
-# Inmiddels staat die op 2 GB, wat de uitschieter dempt maar niet weghaalt
-# zolang de bron zelf geen bovengrens kent.
+# Gemeten bij de bron op de stukken die de import op 23 september
+# langshaalde (`content-length` van `getraw`):
+#
+#     2026D44190    0,04 MB      2026D42894    0,30 MB
+#     2026D36027    0,07 MB      2026D42895    0,32 MB
+#     2026D45065    0,11 MB      2026D42901    1,02 MB
+#     2026D45064    0,22 MB      2026D43577  125,80 MB
+#
+# De op een na grootste is 1 MB; de uitschieter is 123 keer zo groot. Die
+# komt als bytes binnen, gaat als string door de PDF-parser en kost daarmee
+# een veelvoud van zijn eigen omvang. De pod werd er herhaaldelijk om
+# gekilled: OOMKilled bij een limiet van 961Mi, die het platform al twee
+# keer automatisch had opgehoogd. Inmiddels staat die op 2 GB, wat de
+# uitschieter dempt maar niet weghaalt zolang de bron zelf geen bovengrens
+# kent.
 #
 # Dat het bleef terugkomen zit in wáár de kill viel: `fetch_document_text`
 # draait in `fetch_items`, dus tijdens het ophalen en vóór de per-item-lus
@@ -76,10 +84,10 @@ MAX_DOCUMENT_TEKENS = 500_000
 # volgende ronde begon precies bij hetzelfde stuk. Negentien uur lang,
 # zonder dat één ronde afrondde.
 #
-# 20 MB laat alles door wat we in productie zagen op die ene uitschieter na.
-# Een stuk daarboven is een bijlagenbundel of een scan, en `knip_rond_termen`
-# geeft het model toch maar 9.000 tekens: de rest was altijd al weggegooid
-# werk.
+# 20 MB ligt ruim tussen die twee in: twintig keer het grootste normale
+# stuk, en een zesde van de uitschieter. Een stuk daarboven is een
+# bijlagenbundel of een scan, en `knip_rond_termen` geeft het model toch
+# maar 9.000 tekens: de rest was altijd al weggegooid werk.
 MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
 
 
