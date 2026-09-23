@@ -157,6 +157,7 @@ def build_kamerstuk_alert_prompt(
     categorie: str = "overig",
     soort: str | None = None,
     context_regels: list[str] | None = None,
+    signaalcontext: str | None = None,
 ) -> str:
     """Prompt voor een alert over een kamerstuk dat op een zoekterm matchte.
 
@@ -189,6 +190,15 @@ def build_kamerstuk_alert_prompt(
     termen_json = json.dumps(zoektermen, ensure_ascii=False)
     soort_uitleg = _CATEGORIE_CONTEXT.get(categorie, _CATEGORIE_CONTEXT["overig"])
 
+    # De context van het dossier zelf. Staat vóór het kamerstuk, zodat het
+    # model weet waar het naar kijkt voordat het de tekst leest.
+    dossier = ""
+    if signaalcontext:
+        dossier = (
+            "WAAR DIT DOSSIER OVER GAAT:\n"
+            f"{signaalcontext[:MAX_DESCRIPTION_IN_PROMPT]}\n\n"
+        )
+
     return (
         "Je bent een beleidsanalist van het ministerie van BZK"
         " (Binnenlandse Zaken en Koninkrijksrelaties). Je schrijft een"
@@ -196,6 +206,7 @@ def build_kamerstuk_alert_prompt(
         "Dit kamerstuk kwam binnen omdat er op deze zoektermen is gezocht"
         " in de volledige tekst:\n"
         f"{termen_json}\n\n"
+        f"{dossier}"
         f"WAT VOOR STUK DIT IS:\n{soort_uitleg}\n\n"
         f"KAMERSTUK:\n{item_content}\n\n"
         "Instructies:\n"
@@ -214,6 +225,11 @@ def build_kamerstuk_alert_prompt(
         " een andere betekenis van hetzelfde woord.\n"
         "- Let op of de term hier een EIGENNAAM is of een gewoon woord."
         " Dit is de meest voorkomende valse treffer.\n"
+        "  Staat er hierboven beschreven waar dit dossier over gaat, laat"
+        " die beschrijving dan zwaarder wegen dan de zoekterm zelf. Wat"
+        " daar als niet-relevant staat, scoort onder de 20, ook als de"
+        " term letterlijk in het stuk voorkomt: de term is het net, de"
+        " beschrijving is het oordeel.\n"
         "  Voorbeelden: 'regelrecht' is ook een bijwoord, en"
         " 'regelrechter' is een rechter, geen programma. 'digitale"
         " dienst' in een opsomming als 'een gemeente, een schuldeiser"

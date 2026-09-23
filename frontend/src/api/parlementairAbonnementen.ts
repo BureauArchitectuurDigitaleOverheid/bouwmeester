@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from './client';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from './client';
 
 /** Een zoekterm die een initiatief volgt in nieuwe kamerstukken. */
 export interface ParlementairAbonnement {
@@ -108,4 +108,28 @@ export interface GekoppeldKanaal {
  */
 export async function getGekoppeldeKanalen(initiatiefId: string): Promise<GekoppeldKanaal[]> {
   return apiGet<GekoppeldKanaal[]>(`/api/initiatieven/${initiatiefId}/mattermost-channels`);
+}
+
+/**
+ * De interne context die de prompts gebruiken om ruis te scheiden.
+ *
+ * Bewust niet de beschrijving van het initiatief: die staat op de
+ * publieke pagina en beschrijft wat het initiatief doet. Deze tekst
+ * beschrijft wat wel en niet als treffer telt, en dat is afstelling van
+ * een zoekmachine.
+ */
+export interface Signaalcontext {
+  tekst: string;
+}
+
+export async function getSignaalcontext(initiatiefId: string): Promise<Signaalcontext> {
+  return apiGet<Signaalcontext>(`/api/initiatieven/${initiatiefId}/signaalcontext`);
+}
+
+/** Leeg opslaan wist de context. */
+export async function zetSignaalcontext(
+  initiatiefId: string,
+  tekst: string,
+): Promise<Signaalcontext> {
+  return apiPut<Signaalcontext>(`/api/initiatieven/${initiatiefId}/signaalcontext`, { tekst });
 }

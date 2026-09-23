@@ -178,6 +178,7 @@ class BaseLLMService(ABC):
         categorie: str = "overig",
         soort: str | None = None,
         context_regels: list[str] | None = None,
+        signaalcontext: str | None = None,
     ) -> "KamerstukAlertResult":
         """Vat een kamerstuk samen vanuit de zoekterm die het aandroeg.
 
@@ -185,6 +186,11 @@ class BaseLLMService(ABC):
         wát voor stuk dit is: een agenda van een vergadering die nog moet
         komen vraagt om een ander bericht dan een besluitenlijst van een
         vergadering die geweest is.
+
+        `signaalcontext` is de vrije tekst van het dossier zelf: waar het
+        over gaat en vooral wat er níét bij hoort. Een zoekterm kan het
+        verschil tussen een projectnaam en een staande metafoor niet
+        maken; dit is waar dat oordeel vandaan komt.
 
         Alleen publieke tekst en de zoektermen gaan de LLM in; het stuk
         staat op tweedekamer.nl.
@@ -199,6 +205,7 @@ class BaseLLMService(ABC):
             categorie=categorie,
             soort=soort,
             context_regels=context_regels,
+            signaalcontext=signaalcontext,
         )
         try:
             text = await self._complete(prompt)

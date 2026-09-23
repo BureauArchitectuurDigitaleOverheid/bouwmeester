@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from bouwmeester.models.parlementair_signaalcontext import MAX_TEKST
+
 
 class AbonnementCreate(BaseModel):
     term: str = Field(min_length=3, max_length=255)
@@ -80,3 +82,21 @@ class SuggestieResponse(BaseModel):
     treffers: int
     nieuwe_treffers: int
     voorbeelden: list[str] = []
+
+
+class SignaalcontextResponse(BaseModel):
+    """De vrije tekst die de prompts vertelt wat hier een treffer is.
+
+    Bewust gescheiden van de beschrijving van het initiatief: die is
+    publiek en beschrijft wat het initiatief doet, deze is intern en
+    beschrijft wat wel en niet meetelt. Eén veld voor allebei maakt de
+    tekst voor beide publieken onleesbaar.
+    """
+
+    tekst: str = ""
+
+
+class SignaalcontextUpdate(BaseModel):
+    """Leeg opslaan is toegestaan: dat wist de context."""
+
+    tekst: str = Field(default="", max_length=MAX_TEKST)

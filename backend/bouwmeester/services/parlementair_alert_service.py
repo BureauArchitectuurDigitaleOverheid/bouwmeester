@@ -303,6 +303,21 @@ class ParlementairAlertService:
         if not abonnementen:
             return 0
 
+        # Dezelfde drempel als bij een losse alert. Zonder dit staat de
+        # inhaalslag los van elke instelling: in productie leverde dat één
+        # bericht met 47 stukken op, waarvan 46 via een term die vooral de
+        # metafoor ving. De stukken blijven geïmporteerd en in de webapp
+        # zichtbaar; alleen het bericht wordt korter.
+        drempel = min((a.minimum_relevantie or 0) for a in abonnementen)
+        items = [i for i in items if _relevantie(i.extra_data or {}) >= drempel]
+        if not items:
+            logger.info(
+                "Inhaalslag voor %s: niets boven de drempel van %d",
+                ", ".join(repr(a.term) for a in abonnementen),
+                drempel,
+            )
+            return 0
+
         # Alle termen delen dezelfde scope (de aanroeper groepeert
         # daarop), dus de kanalen zijn voor allemaal gelijk.
         eerste = abonnementen[0]

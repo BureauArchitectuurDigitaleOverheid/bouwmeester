@@ -29,6 +29,9 @@ from bouwmeester.repositories.parlementair_item import (
     ParlementairItemRepository,
     SuggestedEdgeRepository,
 )
+from bouwmeester.repositories.parlementair_signaalcontext import (
+    ParlementairSignaalcontextRepository,
+)
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import TagCreate
 from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrategy
@@ -65,6 +68,7 @@ class ParlementairImportService:
         self.edge_repo = SuggestedEdgeRepository(session)
         self.tag_repo = TagRepository(session)
         self.abonnement_repo = ParlementairAbonnementRepository(session)
+        self.signaalcontext_repo = ParlementairSignaalcontextRepository(session)
         self.notification_service = NotificationService(session)
         # Items die na een geslaagde commit nog een Mattermost-bericht
         # moeten krijgen. Zie `_process_item` stap 8b.
@@ -239,6 +243,14 @@ class ParlementairImportService:
                 ]
                 items = [i for i in geladen if i is not None]
 
+                # Beoordeel vóór het posten, anders draagt geen van deze
+                # stukken een score en kan `minimum_relevantie` niet wegen.
+                # Dit was de reden dat de eerste inhaalslag in productie 47
+                # stukken ongefilterd in het kanaal zette: de losse alerts
+                # laten scoren en de inhaalslag niet.
+                for item in items:
+                    await self._beoordeel(item, abonnementen)
+
                 # Eerst vastleggen dát de inhaalslag is gedaan, dan pas
                 # posten. Andersom zou een mislukte commit het bericht al
                 # de deur uit hebben terwijl `ingehaald_op` NULL blijft, en
@@ -264,6 +276,88 @@ class ParlementairImportService:
                     "Inhaalslag mislukt voor %s",
                     ", ".join(str(a.id) for a in abonnementen),
                 )
+
+    async def _beoordeel(
+        self, parlementair_item: ParlementairItem, abonnementen: list
+    ) -> None:
+        """Vat het stuk samen en zet er een relevantiescore op.
+
+        Apart van `_alert_kamerstuk` omdat de inhaalslag dezelfde
+        beoordeling nodig heeft en hem niet had: `relevantie_score` werd
+        alleen hier gezet, en inhaalslag-stukken lopen langs deze methode
+        heen. Gevolg in productie: de eerste inhaalslag zette 47 stukken
+        ongefilterd in het kanaal, want `minimum_relevantie` kan niet
+        wegen wat nooit gewogen is.
+
+        Faalt zacht. Een mislukte LLM-call mag een stuk niet verzwijgen;
+        zonder score valt het stuk terug op de standaarddrempel, en dat is
+        de veilige kant (wél tonen).
+        """
+        termen = [a.term for a in abonnementen]
+        if not termen:
+            return
+
+        llm_service = await get_llm_service(self.session)
+        if llm_service is None:
+            return
+
+        try:
+            bestaand = parlementair_item.extra_data or {}
+            alert = await llm_service.summarize_kamerstuk_alert(
+                titel=parlementair_item.titel,
+                onderwerp=parlementair_item.onderwerp,
+                # Niet de eerste N tekens maar de passages waar de term
+                # valt: een begroting noemt het onderwerp halverwege,
+                # en het model zag anders alleen de voorpagina.
+                document_tekst=knip_rond_termen(
+                    parlementair_item.document_tekst or "", termen
+                ),
+                zoektermen=termen,
+                # Het model moet weten wát voor stuk dit is: een agenda
+                # die nog moet komen vraagt om een ander bericht dan een
+                # besluitenlijst van een vergadering die geweest is.
+                categorie=bestaand.get("categorie") or "overig",
+                soort=bestaand.get("soort"),
+                context_regels=_context_regels(bestaand),
+                # Waar dit dossier over gaat, en vooral: wat er níét bij
+                # hoort. Een zoekterm kan het verschil tussen een
+                # projectnaam en een metafoor niet maken, een oordeel wel.
+                signaalcontext=await self._signaalcontext(abonnementen),
+            )
+            if alert.samenvatting:
+                parlementair_item.llm_samenvatting = alert.samenvatting
+            extra = dict(bestaand)
+            extra["relevantie_score"] = alert.relevantie_score
+            extra["relevantie_reden"] = alert.reden
+            extra["actie"] = alert.actie
+            parlementair_item.extra_data = extra
+            # Eigen commit: we draaien na de commit van het item, dus
+            # zonder dit blijft de samenvatting in de sessie hangen tot
+            # de volgende commit en gaat hij bij een fout verloren.
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            logger.exception(
+                "Samenvatting mislukt voor %s", parlementair_item.zaak_nummer
+            )
+
+    async def _signaalcontext(self, abonnementen: list) -> str | None:
+        """De vrije tekst van de scope waar deze abonnementen bij horen.
+
+        Alle abonnementen op één stuk kunnen uit verschillende scopes
+        komen (twee initiatieven die dezelfde term volgen). Dan is er geen
+        één context; we nemen ze allemaal mee, gescheiden, zodat het model
+        ziet dat er twee dossiers meekijken.
+        """
+        scopes = {(a.scope_type, a.scope_id) for a in abonnementen}
+        if not scopes:
+            return None
+        teksten = []
+        for scope_type, scope_id in sorted(scopes, key=lambda s: str(s[1])):
+            tekst = await self.signaalcontext_repo.tekst_voor(scope_type, scope_id)
+            if tekst:
+                teksten.append(tekst)
+        return "\n\n".join(teksten) if teksten else None
 
     async def _alert_kamerstuk(self, parlementair_item_id: uuid.UUID) -> None:
         """Vat het stuk samen vanuit de zoekterm en post het in de kanalen.
@@ -293,45 +387,7 @@ class ParlementairImportService:
         abonnementen = await self.abonnement_repo.list_abonnementen_voor_item(
             parlementair_item.id
         )
-        termen = [a.term for a in abonnementen]
-
-        llm_service = await get_llm_service(self.session)
-        if llm_service is not None and termen:
-            try:
-                bestaand = parlementair_item.extra_data or {}
-                alert = await llm_service.summarize_kamerstuk_alert(
-                    titel=parlementair_item.titel,
-                    onderwerp=parlementair_item.onderwerp,
-                    # Niet de eerste N tekens maar de passages waar de term
-                    # valt: een begroting noemt het onderwerp halverwege,
-                    # en het model zag anders alleen de voorpagina.
-                    document_tekst=knip_rond_termen(
-                        parlementair_item.document_tekst or "", termen
-                    ),
-                    zoektermen=termen,
-                    # Het model moet weten wát voor stuk dit is: een agenda
-                    # die nog moet komen vraagt om een ander bericht dan een
-                    # besluitenlijst van een vergadering die geweest is.
-                    categorie=bestaand.get("categorie") or "overig",
-                    soort=bestaand.get("soort"),
-                    context_regels=_context_regels(bestaand),
-                )
-                if alert.samenvatting:
-                    parlementair_item.llm_samenvatting = alert.samenvatting
-                extra = dict(bestaand)
-                extra["relevantie_score"] = alert.relevantie_score
-                extra["relevantie_reden"] = alert.reden
-                extra["actie"] = alert.actie
-                parlementair_item.extra_data = extra
-                # Eigen commit: we draaien na de commit van het item, dus
-                # zonder dit blijft de samenvatting in de sessie hangen tot
-                # de volgende commit en gaat hij bij een fout verloren.
-                await self.session.commit()
-            except Exception:
-                await self.session.rollback()
-                logger.exception(
-                    "Samenvatting mislukt voor %s", parlementair_item.zaak_nummer
-                )
+        await self._beoordeel(parlementair_item, abonnementen)
 
         try:
             service = ParlementairAlertService(self.session)
